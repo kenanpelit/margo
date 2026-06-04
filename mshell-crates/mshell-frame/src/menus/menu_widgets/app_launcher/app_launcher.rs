@@ -108,6 +108,11 @@ pub(crate) struct AppLauncherModel {
     /// Per-widget provider that paints the colour swatch's background;
     /// reloaded with the selected colour in `refresh_preview`.
     swatch_provider: gtk::CssProvider,
+    /// Last CSS loaded into `swatch_provider`. Loading CSS triggers a
+    /// display-wide restyle, so we skip the reload when the swatch
+    /// hasn't changed — otherwise every Ctrl+N/K keystroke paid for a
+    /// global restyle and the list crawled.
+    swatch_css: String,
     /// Settings → Launcher knobs, mirrored live from the config store.
     show_preview: bool,
     compact_rows: bool,
@@ -708,6 +713,7 @@ impl Component for AppLauncherModel {
             is_revealed: false,
             current_preview: None,
             swatch_provider: gtk::CssProvider::new(),
+            swatch_css: String::new(),
             show_preview: config_manager()
                 .config()
                 .launcher()
@@ -1052,7 +1058,13 @@ impl AppLauncherModel {
             Some(hex) => format!(".app-launcher-preview-swatch {{ background-color: {hex}; }}"),
             None => String::new(),
         };
-        self.swatch_provider.load_from_string(&css);
+        // Only reload when the swatch actually changed — `load_from_string`
+        // forces a display-wide restyle, far too expensive to run on every
+        // keyboard move.
+        if css != self.swatch_css {
+            self.swatch_provider.load_from_string(&css);
+            self.swatch_css = css;
+        }
     }
 
     fn activate_id(&mut self, id: &str, alt: bool) {
