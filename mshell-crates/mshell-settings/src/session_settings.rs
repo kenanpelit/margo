@@ -13,12 +13,15 @@
 
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, SessionStoreFields};
+use mshell_config::schema::position::Position;
 use reactive_graph::prelude::GetUntracked;
-use relm4::gtk::prelude::{BoxExt, EditableExt, EntryExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 #[derive(Debug, Clone)]
 pub(crate) struct SessionSettingsModel {
+    /// Position dropdown options (config.menus.session_menu.position).
+    position_model: gtk::StringList,
     lock_command: String,
     logout_command: String,
     suspend_command: String,
@@ -28,6 +31,10 @@ pub(crate) struct SessionSettingsModel {
 
 #[derive(Debug)]
 pub(crate) enum SessionSettingsInput {
+    // Menu surface size / position (config.menus.session_menu).
+    SetPosition(u32),
+    SetMinWidth(i32),
+    SetMaxHeight(i32),
     LockChanged(String),
     LogoutChanged(String),
     SuspendChanged(String),
@@ -92,6 +99,63 @@ impl Component for SessionSettingsModel {
                             set_wrap: true,
                         },
                     },
+                },
+
+                // ── Menu size & position ────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Menu size & position",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 12,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
+                    gtk::Label { set_label: "Position", set_hexpand: true, set_halign: gtk::Align::Start },
+                    #[name = "pos_dd"]
+                    gtk::DropDown {
+                        set_model: Some(&model.position_model),
+                        connect_selected_notify[sender] => move |d| {
+                            sender.input(SessionSettingsInput::SetPosition(d.selected()));
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
+                    gtk::Label { set_label: "Width (px)", set_hexpand: true, set_halign: gtk::Align::Start },
+                    #[name = "width_spin"]
+                    gtk::SpinButton {
+                        set_adjustment: &gtk::Adjustment::new(360.0, 200.0, 1200.0, 10.0, 50.0, 0.0),
+                        set_digits: 0,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(SessionSettingsInput::SetMinWidth(s.value() as i32));
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
+                    gtk::Label { set_label: "Max height (px, 0 = no cap)", set_hexpand: true, set_halign: gtk::Align::Start },
+                    #[name = "height_spin"]
+                    gtk::SpinButton {
+                        set_adjustment: &gtk::Adjustment::new(0.0, 0.0, 2000.0, 20.0, 100.0, 0.0),
+                        set_digits: 0,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(SessionSettingsInput::SetMaxHeight(s.value() as i32));
+                        },
+                    },
+                },
+
+                // ── Commands ────────────────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Commands",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 12,
                 },
 
                 gtk::Label {
@@ -265,7 +329,11 @@ impl Component for SessionSettingsModel {
     ) -> ComponentParts<Self> {
         // The `SessionStoreFields` accessors consume `self`, so the
         // `config().session()` chain has to be re-walked per field.
+        let position_refs: Vec<&str> = Position::all().iter().map(|p| p.display_name()).collect();
+        let position_model = gtk::StringList::new(&position_refs);
+
         let model = SessionSettingsModel {
+            position_model,
             lock_command: config_manager()
                 .config()
                 .session()
@@ -295,11 +363,31 @@ impl Component for SessionSettingsModel {
 
         let widgets = view_output!();
 
+        // Seed the menu size/position controls from config.menus.session_menu.
+        let m = config_manager().config().get_untracked().menus.session_menu;
+        let pos_idx = Position::all()
+            .iter()
+            .position(|p| *p == m.position)
+            .unwrap_or(0) as u32;
+        widgets.pos_dd.set_selected(pos_idx);
+        widgets.width_spin.set_value(m.minimum_width as f64);
+        widgets.height_spin.set_value(m.maximum_height as f64);
+
         ComponentParts { model, widgets }
     }
 
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
+            SessionSettingsInput::SetPosition(i) => {
+                config_manager()
+                    .update_config(|c| c.menus.session_menu.position = Position::from_index(i));
+            }
+            SessionSettingsInput::SetMinWidth(v) => {
+                config_manager().update_config(|c| c.menus.session_menu.minimum_width = v.max(1));
+            }
+            SessionSettingsInput::SetMaxHeight(v) => {
+                config_manager().update_config(|c| c.menus.session_menu.maximum_height = v.max(0));
+            }
             SessionSettingsInput::LockChanged(v) => {
                 config_manager().update_config(|c| c.session.lock_command = v);
             }
