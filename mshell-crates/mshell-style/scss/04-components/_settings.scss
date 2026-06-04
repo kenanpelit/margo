@@ -25,13 +25,13 @@
 // Drag-to-reorder grip handle (the ≡ icon at the start of each
 // reorderable row). The drag gesture is bound to this widget, so it
 // needs a real hit area — a bare symbolic icon is only ~16 px. Pad it
-// out and show a grab cursor so it reads (and behaves) as a handle.
+// out so it reads (and behaves) as a handle. The grab cursor is set in
+// code (`set_cursor_from_name`) — GTK4 CSS has no `cursor` property.
 .reorder-grip {
     color: var(--on-surface-variant);
     opacity: 0.7;
     min-width: 28px;
     min-height: 28px;
-    cursor: grab;
 
     &:hover {
         opacity: 1;

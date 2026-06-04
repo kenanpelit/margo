@@ -113,6 +113,10 @@ pub(crate) fn attach_grip_drag<F>(
     gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
     let pos = pos.clone().upcast::<gtk::Widget>();
     let grip_w = grip.clone().upcast::<gtk::Widget>();
+    let grip_end = grip.clone().upcast::<gtk::Widget>();
+    // Grab affordance — GTK4 has no `cursor` CSS property, so set it in
+    // code: an open hand at rest, a closed hand while dragging.
+    grip.set_cursor_from_name(Some("grab"));
 
     // Cursor Y at drag-start, in the parent (list) coordinate space. The
     // gesture reports offsets relative to the grip; translating the start
@@ -124,6 +128,7 @@ pub(crate) fn attach_grip_drag<F>(
     let start_begin = start_y.clone();
     gesture.connect_drag_begin(move |_, sx, sy| {
         pos_begin.add_css_class("dragging");
+        grip_w.set_cursor_from_name(Some("grabbing"));
         if let Some(parent) = pos_begin.parent() {
             // `translate_coordinates` is deprecated since GTK 4.12; the
             // replacement is `compute_point` (graphene).
@@ -159,6 +164,7 @@ pub(crate) fn attach_grip_drag<F>(
     let start_end = start_y.clone();
     gesture.connect_drag_end(move |_, _offset_x, offset_y| {
         pos_end.remove_css_class("dragging");
+        grip_end.set_cursor_from_name(Some("grab"));
         clear_drop_targets(&pos_end);
         let Some(parent) = pos_end.parent() else {
             return;
