@@ -345,5 +345,6 @@ fn clipboard_settings_from_config(
         clear_after_hours: c.clear_after_hours,
         skip_sensitive: c.skip_sensitive,
         image_history: c.image_history,
+        image_max_kb: c.image_max_kb,
     }
 }

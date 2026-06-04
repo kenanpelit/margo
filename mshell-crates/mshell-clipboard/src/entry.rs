@@ -18,12 +18,77 @@ pub struct ClipboardEntry {
     pub pinned: bool,
 }
 
-/// Coarse content category used by the clipboard menu's type tabs.
+/// Coarse content category used by the clipboard menu's type tabs +
+/// per-row icon. Text copies are refined into URL / Colour / Code /
+/// Email when they match (see [`detect_text_category`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClipCategory {
     Text,
     Image,
     File,
+    Url,
+    Color,
+    Code,
+    Email,
+}
+
+/// Classify a *text* payload into a finer category. Order matters:
+/// colour + url + email are specific shapes checked before the
+/// catch-all code/text split.
+pub fn detect_text_category(s: &str) -> ClipCategory {
+    let t = s.trim();
+    if t.is_empty() {
+        return ClipCategory::Text;
+    }
+    if parse_color_hex(t).is_some() || is_rgb_func(t) {
+        return ClipCategory::Color;
+    }
+    let lower = t.to_ascii_lowercase();
+    let single_line = !t.contains('\n');
+    if single_line
+        && (lower.starts_with("http://")
+            || lower.starts_with("https://")
+            || lower.starts_with("www."))
+        && !t.contains(' ')
+    {
+        return ClipCategory::Url;
+    }
+    if single_line && looks_like_email(t) {
+        return ClipCategory::Email;
+    }
+    let codey = (t.contains('\n') && (t.contains('{') || t.contains(';') || t.contains("()")))
+        || t.starts_with("$ ")
+        || t.starts_with("#!/");
+    if codey {
+        return ClipCategory::Code;
+    }
+    ClipCategory::Text
+}
+
+/// `#rgb` / `#rrggbb` / `#rrggbbaa` → normalised lower-case `#…`.
+fn parse_color_hex(t: &str) -> Option<String> {
+    let hex = t.strip_prefix('#')?;
+    if !matches!(hex.len(), 3 | 6 | 8) || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(format!("#{}", hex.to_ascii_lowercase()))
+}
+
+fn is_rgb_func(t: &str) -> bool {
+    let l = t.to_ascii_lowercase();
+    (l.starts_with("rgb(") || l.starts_with("rgba(") || l.starts_with("hsl(")) && l.ends_with(')')
+}
+
+fn looks_like_email(t: &str) -> bool {
+    let mut parts = t.split('@');
+    let (Some(local), Some(domain), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    !local.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && !t.contains(char::is_whitespace)
 }
 
 impl ClipboardEntry {
@@ -37,10 +102,20 @@ impl ClipboardEntry {
         self.mime_type.starts_with("text/")
     }
 
-    /// Coarse content category for the menu's type tabs.
+    /// Normalised colour hex (`#rrggbb`) when this entry is a colour
+    /// copy, for the menu's swatch. `None` otherwise.
+    pub fn color_hex(&self) -> Option<String> {
+        if !self.is_text() {
+            return None;
+        }
+        let text = String::from_utf8_lossy(&self.data);
+        parse_color_hex(text.trim())
+    }
+
+    /// Coarse content category for the menu's type tabs + per-row icon.
     pub fn category(&self) -> ClipCategory {
         if self.mime_type.starts_with("text/") {
-            ClipCategory::Text
+            detect_text_category(&String::from_utf8_lossy(&self.data))
         } else if self.mime_type.starts_with("image/") {
             ClipCategory::Image
         } else {
@@ -141,5 +216,61 @@ impl PersistedEntry {
             pinned: e.pinned,
             inline_text,
         }
+    }
+}
+
+#[cfg(test)]
+mod category_tests {
+    use super::*;
+
+    #[test]
+    fn detects_hex_colour() {
+        assert_eq!(detect_text_category("#ff8800"), ClipCategory::Color);
+        assert_eq!(detect_text_category("#f80"), ClipCategory::Color);
+        assert_eq!(
+            detect_text_category("rgb(255, 136, 0)"),
+            ClipCategory::Color
+        );
+    }
+
+    #[test]
+    fn detects_url() {
+        assert_eq!(
+            detect_text_category("https://example.com/x"),
+            ClipCategory::Url
+        );
+        assert_eq!(detect_text_category("www.example.com"), ClipCategory::Url);
+        // A sentence that mentions a url is NOT a url.
+        assert_eq!(
+            detect_text_category("see https://x.com please"),
+            ClipCategory::Text
+        );
+    }
+
+    #[test]
+    fn detects_email() {
+        assert_eq!(
+            detect_text_category("kenan@example.com"),
+            ClipCategory::Email
+        );
+        assert_eq!(detect_text_category("not@an@email"), ClipCategory::Text);
+        assert_eq!(detect_text_category("plain text"), ClipCategory::Text);
+    }
+
+    #[test]
+    fn detects_code() {
+        assert_eq!(
+            detect_text_category("fn main() {\n  let x = 1;\n}"),
+            ClipCategory::Code
+        );
+        assert_eq!(detect_text_category("$ ls -la"), ClipCategory::Code);
+    }
+
+    #[test]
+    fn plain_text_stays_text() {
+        assert_eq!(
+            detect_text_category("just a normal note"),
+            ClipCategory::Text
+        );
     }
 }

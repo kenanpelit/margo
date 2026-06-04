@@ -512,9 +512,9 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for WatcherState {
                 };
 
                 // Read the live filter knobs.
-                let (skip_sensitive, image_history) = {
+                let (skip_sensitive, image_history, image_max_kb) = {
                     let s = state.settings.lock().unwrap();
-                    (s.skip_sensitive, s.image_history)
+                    (s.skip_sensitive, s.image_history, s.image_max_kb)
                 };
 
                 // Password managers (KeePassXC / Bitwarden / KDE)
@@ -535,6 +535,19 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for WatcherState {
                     }
                     match read_offer_data(&pending.offer, &mime, &state.conn) {
                         Ok(data) => {
+                            // Drop oversized images (e.g. full-screen
+                            // screenshots) when a cap is configured.
+                            if image_max_kb > 0
+                                && mime.starts_with("image/")
+                                && data.len() > image_max_kb as usize * 1024
+                            {
+                                debug!(
+                                    "Skipped {}KB image (over {}KB cap)",
+                                    data.len() / 1024,
+                                    image_max_kb
+                                );
+                                return;
+                            }
                             // Build the entry and push it into history.
                             if let Some(entry) = build_entry(mime, data) {
                                 let id = state.history.push(entry);

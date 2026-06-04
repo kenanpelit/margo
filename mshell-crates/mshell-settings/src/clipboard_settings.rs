@@ -35,6 +35,7 @@ fn apply_clipboard_config() {
         clear_after_hours: c.clear_after_hours,
         skip_sensitive: c.skip_sensitive,
         image_history: c.image_history,
+        image_max_kb: c.image_max_kb,
     });
 }
 
@@ -57,6 +58,7 @@ pub(crate) enum ClipboardSettingsInput {
     SetClearHours(i32),
     SetSkipSensitive(bool),
     SetImageHistory(bool),
+    SetImageMaxKb(u32),
     ClearAll,
     ClearUnpinned,
 }
@@ -274,6 +276,24 @@ impl Component for ClipboardSettingsModel {
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 12,
+                    gtk::Label {
+                        set_label: "Max image size (KB, 0 = no limit)",
+                        set_hexpand: true,
+                        set_halign: gtk::Align::Start,
+                    },
+                    #[name = "cb_image_max"]
+                    gtk::SpinButton {
+                        set_adjustment: &gtk::Adjustment::new(0.0, 0.0, 102_400.0, 64.0, 512.0, 0.0),
+                        set_valign: gtk::Align::Center,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(ClipboardSettingsInput::SetImageMaxKb(s.value() as u32));
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
                     gtk::Button {
                         add_css_class: "ok-button-surface",
                         set_label: "Clear unpinned",
@@ -332,6 +352,7 @@ impl Component for ClipboardSettingsModel {
         widgets.cb_hours.set_value(cb.clear_after_hours as f64);
         widgets.cb_sensitive.set_active(cb.skip_sensitive);
         widgets.cb_images.set_active(cb.image_history);
+        widgets.cb_image_max.set_value(cb.image_max_kb as f64);
 
         let _ = root;
         ComponentParts { model, widgets }
@@ -377,6 +398,10 @@ impl Component for ClipboardSettingsModel {
             }
             ClipboardSettingsInput::SetSkipSensitive(on) => {
                 config_manager().update_config(|c| c.clipboard.skip_sensitive = on);
+                apply_clipboard_config();
+            }
+            ClipboardSettingsInput::SetImageMaxKb(v) => {
+                config_manager().update_config(|c| c.clipboard.image_max_kb = v);
                 apply_clipboard_config();
             }
             ClipboardSettingsInput::SetImageHistory(on) => {

@@ -209,6 +209,9 @@ pub struct Clipboard {
     pub skip_sensitive: bool,
     /// Keep image copies in history (off = text/binary only).
     pub image_history: bool,
+    /// Skip image copies larger than this many KB (0 = no limit).
+    /// Guards against huge screenshots flooding the rolling history.
+    pub image_max_kb: u32,
     /// Row density of the history panel.
     pub density: ClipboardDensity,
 }
@@ -222,6 +225,7 @@ impl Default for Clipboard {
             clear_after_hours: 24,
             skip_sensitive: true,
             image_history: true,
+            image_max_kb: 0,
             density: ClipboardDensity::Comfortable,
         }
     }
