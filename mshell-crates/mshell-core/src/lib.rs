@@ -166,6 +166,17 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         notification_service().set_blocklist(blocklist);
     });
 
+    // Sync popup display duration from config → service (also the
+    // duration the timeout bar animates over). Live-updates on edit.
+    Effect::new(|_| {
+        let ms = mshell_config::config_manager::config_manager()
+            .config()
+            .notifications()
+            .popup_duration_ms()
+            .get();
+        notification_service().set_popup_duration(ms);
+    });
+
     // Autostart: run each `>start` script the user ticked in Settings,
     // `delay_secs` after startup. Spawned by short name via the session
     // $PATH (the same way ScriptsProvider discovered it). One-shot at

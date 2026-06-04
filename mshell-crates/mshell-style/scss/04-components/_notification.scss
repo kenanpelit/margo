@@ -33,6 +33,28 @@
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
+// ── Timeout bar (popup only) ─────────────────────────────────────────
+// A thin track across the top of a popup toast whose primary-tinted
+// fill shrinks 1.0 → 0.0 over the popup's on-screen lifetime (paused on
+// hover). GtkProgressBar paints `trough > progress`; we flatten both to
+// a 3 px rounded sliver on tokens (no hardcoded colours).
+.notification-timeout-bar {
+  min-height: 3px;
+
+  trough {
+    min-height: 3px;
+    background-color: unquote("color-mix(in srgb, var(--on-surface) 10%, transparent)");
+    border: none;
+    border-radius: var(--radius-full);
+  }
+
+  progress {
+    min-height: 3px;
+    background-color: var(--primary);
+    border-radius: var(--radius-full);
+  }
+}
+
 // ── Per-app icon (header leading glyph) ──────────────────────────────
 // Symbolic size (16 px), dim variant tier so the app name / summary
 // stays the focal point. Matches .audio-dashboard-icon treatment.

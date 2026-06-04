@@ -14,6 +14,7 @@ use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::{GtkWindowExt, OrientableExt, WidgetExt};
 use relm4::gtk::{RevealerTransitionType, gdk};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
+use std::rc::Rc;
 use std::sync::Arc;
 use tracing::debug;
 use wayle_notification::core::notification::Notification;
@@ -113,8 +114,48 @@ impl Component for PopupNotificationsModel {
             id: Box::new(|item| item.id),
             create: Box::new(move |item| {
                 let notification = item.clone();
+                let id = notification.id;
+                let svc = notification_service();
+
+                // Effective on-screen time = the configured popup
+                // duration, capped by any (shorter) app expire_timeout —
+                // matches wayle's own timer so the bar stays in sync.
+                let show_bar = config_manager()
+                    .config()
+                    .notifications()
+                    .show_timeout_bar()
+                    .get_untracked();
+                let timeout_ms = if show_bar {
+                    let base = svc.popup_duration.get();
+                    let effective = match notification.expire_timeout.get() {
+                        Some(ttl) if ttl > 0 => base.min(ttl),
+                        _ => base,
+                    };
+                    Some(effective)
+                } else {
+                    None
+                };
+
+                // Hover pauses the real auto-dismiss timer (and the bar).
+                let (on_hover_enter, on_hover_leave): (Option<Rc<dyn Fn()>>, Option<Rc<dyn Fn()>>) =
+                    if show_bar {
+                        let svc_enter = svc.clone();
+                        let svc_leave = svc.clone();
+                        (
+                            Some(Rc::new(move || svc_enter.inhibit_popup(id))),
+                            Some(Rc::new(move || svc_leave.release_popup(id))),
+                        )
+                    } else {
+                        (None, None)
+                    };
+
                 let notification_controller = NotificationModel::builder()
-                    .launch(NotificationInit { notification })
+                    .launch(NotificationInit {
+                        notification,
+                        timeout_ms,
+                        on_hover_enter,
+                        on_hover_leave,
+                    })
                     .detach();
 
                 Box::new(notification_controller) as Box<dyn GenericWidgetController>

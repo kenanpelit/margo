@@ -3,9 +3,12 @@ use mshell_config::schema::config::{
     ConfigStoreFields, GeneralStoreFields, NotificationsStoreFields,
 };
 use reactive_graph::traits::{Get, GetUntracked};
+use relm4::gtk::glib;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk, once_cell};
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::Arc;
 use time::format_description::parse;
 use time::{OffsetDateTime, UtcOffset};
@@ -30,6 +33,10 @@ pub const APP_ICON_SIZE: i32 = 16;
 pub struct NotificationModel {
     notification: Arc<Notification>,
     time: String,
+    /// On-screen lifetime in ms when shown as a popup — drives the
+    /// shrinking timeout bar. `None` in the notification *list* (those
+    /// entries don't auto-expire), which also hides the bar.
+    timeout_ms: Option<u32>,
     _effects: EffectScope,
 }
 
@@ -46,6 +53,16 @@ pub enum NotificationOutput {
 
 pub struct NotificationInit {
     pub notification: Arc<Notification>,
+    /// Popup lifetime in ms → animates the timeout bar. `None` = no bar
+    /// (notification-list usage).
+    pub timeout_ms: Option<u32>,
+    /// Called when the pointer enters the card — the popup layer wires
+    /// this to `inhibit_popup` so the auto-dismiss countdown pauses
+    /// while hovered (kept out of `mshell-common` to avoid depending on
+    /// the services layer).
+    pub on_hover_enter: Option<Rc<dyn Fn()>>,
+    /// Called when the pointer leaves — wired to `release_popup`.
+    pub on_hover_leave: Option<Rc<dyn Fn()>>,
 }
 
 #[derive(Debug)]
@@ -65,6 +82,16 @@ impl Component for NotificationModel {
             set_orientation: gtk::Orientation::Vertical,
             set_hexpand: true,
             set_spacing: 8,
+
+            // Shrinking on-screen-time bar (popup only) — animated
+            // 1.0 → 0.0 over the popup lifetime, paused on hover.
+            #[name = "timeout_bar"]
+            gtk::ProgressBar {
+                add_css_class: "notification-timeout-bar",
+                set_fraction: 1.0,
+                #[watch]
+                set_visible: model.timeout_ms.is_some(),
+            },
 
             #[name = "header"]
             gtk::Box {
@@ -206,13 +233,64 @@ impl Component for NotificationModel {
             sender_clone.input(NotificationInput::ChangeTimeFormat(format_24_h));
         });
 
+        let timeout_ms = params.timeout_ms;
+        let on_hover_enter = params.on_hover_enter.clone();
+        let on_hover_leave = params.on_hover_leave.clone();
+
         let model = NotificationModel {
             notification: params.notification,
             time,
+            timeout_ms,
             _effects: effects,
         };
 
         let widgets = view_output!();
+
+        // ── Shrinking timeout bar + hover-to-pause (popup only).
+        if let Some(ms) = timeout_ms.filter(|ms| *ms > 0) {
+            let total = ms as f64;
+            let remaining = Rc::new(Cell::new(total));
+            let paused = Rc::new(Cell::new(false));
+            const TICK_MS: u64 = 30;
+
+            let bar = widgets.timeout_bar.downgrade();
+            let paused_tick = paused.clone();
+            glib::timeout_add_local(std::time::Duration::from_millis(TICK_MS), move || {
+                let Some(bar) = bar.upgrade() else {
+                    return glib::ControlFlow::Break;
+                };
+                if !paused_tick.get() {
+                    let r = (remaining.get() - TICK_MS as f64).max(0.0);
+                    remaining.set(r);
+                    bar.set_fraction(r / total);
+                    if r <= 0.0 {
+                        return glib::ControlFlow::Break;
+                    }
+                }
+                glib::ControlFlow::Continue
+            });
+
+            // Pause both the bar *and* the real auto-dismiss timer while
+            // the pointer is over the card (noctalia parity).
+            let motion = gtk::EventControllerMotion::new();
+            let paused_enter = paused.clone();
+            let enter_cb = on_hover_enter.clone();
+            motion.connect_enter(move |_, _, _| {
+                paused_enter.set(true);
+                if let Some(f) = &enter_cb {
+                    f();
+                }
+            });
+            let paused_leave = paused.clone();
+            let leave_cb = on_hover_leave.clone();
+            motion.connect_leave(move |_| {
+                paused_leave.set(false);
+                if let Some(f) = &leave_cb {
+                    f();
+                }
+            });
+            root.add_controller(motion);
+        }
 
         // Header close (✕) button — configurable (notifications.show_close_button).
         widgets.close_button.set_visible(show_close_button);

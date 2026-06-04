@@ -1434,10 +1434,23 @@ pub struct Notifications {
     /// rebuilds a large list model on every open. 0 = unlimited.
     #[serde(default = "default_history_limit")]
     pub history_limit: u32,
+    /// Show a shrinking bar across the top of each popup toast counting
+    /// down its remaining on-screen time. On by default.
+    #[serde(default = "default_true")]
+    pub show_timeout_bar: bool,
+    /// How long (ms) a popup toast stays on screen before auto-dismiss
+    /// (an app-supplied `expire_timeout` shorter than this still wins).
+    /// Also the duration the timeout bar animates over.
+    #[serde(default = "default_popup_duration_ms")]
+    pub popup_duration_ms: u32,
 }
 
 fn default_history_limit() -> u32 {
     200
+}
+
+fn default_popup_duration_ms() -> u32 {
+    5000
 }
 
 impl Default for Notifications {
@@ -1450,6 +1463,8 @@ impl Default for Notifications {
             group_notifications: true,
             popup_width: 460,
             history_limit: default_history_limit(),
+            show_timeout_bar: true,
+            popup_duration_ms: default_popup_duration_ms(),
         }
     }
 }

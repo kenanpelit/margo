@@ -15,6 +15,8 @@ pub(crate) struct NotificationSettingsModel {
     show_action_buttons: bool,
     group_notifications: bool,
     popup_width: i32,
+    show_timeout_bar: bool,
+    popup_duration_ms: u32,
     history_limit: u32,
     /// History-menu surface size (config.menus.notification_menu) — the
     /// panel that opens on the bar pill, distinct from the popup toasts.
@@ -36,6 +38,8 @@ pub(crate) enum NotificationSettingsInput {
     GroupEffect(bool),
     PopupWidthChanged(i32),
     PopupWidthEffect(i32),
+    ShowTimeoutBarChanged(bool),
+    PopupDurationChanged(u32),
     HistoryLimitChanged(u32),
     HistoryLimitEffect(u32),
     MenuMinWidthChanged(i32),
@@ -263,6 +267,79 @@ impl Component for NotificationSettingsModel {
                         connect_value_changed[sender] => move |s| {
                             sender.input(NotificationSettingsInput::PopupWidthChanged(s.value() as i32));
                         } @popup_width_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Timeout bar",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Show a shrinking bar across the top of each popup counting down its on-screen time.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "timeout_bar_switch"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(timeout_bar_handler)]
+                        set_active: model.show_timeout_bar,
+                        connect_active_notify[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::ShowTimeoutBarChanged(s.is_active()));
+                        } @timeout_bar_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Popup duration",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "How long (ms) a popup stays on screen. A shorter app-supplied timeout still wins.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "popup_duration_spin"]
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (1000.0, 60000.0),
+                        set_increments: (500.0, 2000.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(popup_duration_handler)]
+                        set_value: model.popup_duration_ms as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::PopupDurationChanged(s.value() as u32));
+                        } @popup_duration_handler,
                     },
                 },
 
@@ -585,6 +662,16 @@ impl Component for NotificationSettingsModel {
                 .notifications()
                 .popup_width()
                 .get_untracked(),
+            show_timeout_bar: config_manager()
+                .config()
+                .notifications()
+                .show_timeout_bar()
+                .get_untracked(),
+            popup_duration_ms: config_manager()
+                .config()
+                .notifications()
+                .popup_duration_ms()
+                .get_untracked(),
             history_limit: config_manager()
                 .config()
                 .notifications()
@@ -689,6 +776,19 @@ impl Component for NotificationSettingsModel {
                 self.popup_width = w;
                 config_manager().update_config(move |config| {
                     config.notifications.popup_width = w;
+                });
+            }
+            NotificationSettingsInput::ShowTimeoutBarChanged(v) => {
+                self.show_timeout_bar = v;
+                config_manager().update_config(move |config| {
+                    config.notifications.show_timeout_bar = v;
+                });
+            }
+            NotificationSettingsInput::PopupDurationChanged(v) => {
+                let v = v.max(1);
+                self.popup_duration_ms = v;
+                config_manager().update_config(move |config| {
+                    config.notifications.popup_duration_ms = v;
                 });
             }
             NotificationSettingsInput::HistoryLimitChanged(v) => {
