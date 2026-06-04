@@ -214,6 +214,16 @@ impl SimpleComponent for WizardMenuWidgetModel {
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 8,
                     set_valign: gtk::Align::Center,
+                    // margo logo — resolved from the icon theme
+                    // (/usr/share/icons/hicolor/scalable/apps/margo.svg),
+                    // so it tracks whatever theme is installed.
+                    gtk::Image {
+                        add_css_class: "wizard-logo",
+                        set_icon_name: Some("margo"),
+                        set_pixel_size: 72,
+                        set_halign: gtk::Align::Start,
+                        set_margin_bottom: 4,
+                    },
                     gtk::Label {
                         add_css_class: "settings-hero-title",
                         set_label: "Welcome to margo",
