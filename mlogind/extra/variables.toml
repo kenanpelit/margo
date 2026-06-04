@@ -3,7 +3,8 @@
 # margo's matugen palette mapped to the greeter's roles. `mlogind sync-theme`
 # repaints these from the active wallpaper (margo writes them to
 # ~/.config/margo/mlogind-variables.toml on every theme change); until then
-# these defaults are margo's baseline (Dracula) palette.
+# these defaults are margo's baseline palette: a high-contrast Dracula tuned
+# so the greeter reads cleanly even with no synced theme.
 
 # Surfaces / structure
 bg           = "#282A36"   # window background  (--surface)
@@ -12,12 +13,12 @@ field_border = "#6272A4"   # username/password field border
 
 # Text
 text         = "#CDD6F4"   # primary text  (--on-surface)
-subtext      = "#6272A4"   # secondary text / unfocused neighbours
-muted        = "#6272A4"   # hints / movers  (--on-surface-variant)
+subtext      = "#CDD6F4"   # secondary text / unfocused neighbours
+muted        = "#CDD6F4"   # hints / movers  (--on-surface-variant)
 
 # Accent / state
 accent       = "#BD93F9"   # focus / active  (--primary)
-accent_soft  = "#BD93F9"   # softer accent for selected text
+accent_soft  = "#8BE9FD"   # softer accent for selected text  (cyan)
 danger       = "#FF5555"   # error / no-sessions  (--error)
 
 # Field titles (plain text, not colours)
