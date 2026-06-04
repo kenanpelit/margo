@@ -2,6 +2,7 @@ pub mod audio;
 pub mod bar;
 pub mod bluetooth;
 pub mod brightness;
+pub mod clipboard;
 pub mod lock;
 pub mod media;
 pub mod menu;

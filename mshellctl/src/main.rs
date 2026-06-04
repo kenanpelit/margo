@@ -46,6 +46,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::ScreenRecord { command } => {
             mshellctl::subcommands::screen_record::execute(command).await?
         }
+        Commands::Clipboard { command } => {
+            mshellctl::subcommands::clipboard::execute(command).await?
+        }
     };
 
     Ok(())

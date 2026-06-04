@@ -132,4 +132,10 @@ pub enum Commands {
         #[command(subcommand)]
         command: ScreenRecordCommands,
     },
+    /// Clipboard history — list / copy / pin / delete / clear / wipe.
+    /// Drives the same store as `mshellctl menu clipboard`.
+    Clipboard {
+        #[command(subcommand)]
+        command: crate::subcommands::clipboard::ClipboardCommands,
+    },
 }

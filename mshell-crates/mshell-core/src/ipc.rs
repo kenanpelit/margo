@@ -70,6 +70,49 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Clipboard => {
                     app_sender.emit(ShellInput::ToggleClipboard(active_monitor().await));
                 }
+                IPCCommand::ClipboardAction(spec) => {
+                    // Handled directly against the clipboard service
+                    // singleton (no UI round-trip needed).
+                    let svc = mshell_clipboard::clipboard_service();
+                    let mut it = spec.split_whitespace();
+                    let verb = it.next().unwrap_or("");
+                    let id = it.next().and_then(|s| s.parse::<u64>().ok());
+                    match (verb, id) {
+                        ("copy", Some(id)) => svc.copy_entry(id),
+                        ("pin", Some(id)) | ("unpin", Some(id)) => svc.toggle_pin(id),
+                        ("delete", Some(id)) => {
+                            svc.history().remove(id);
+                        }
+                        ("clear", _) => svc.clear_unpinned(),
+                        ("wipe", _) => svc.clear_history(),
+                        _ => tracing::warn!(%spec, "clipboard: unknown action"),
+                    }
+                }
+                IPCCommand::ClipboardList(reply) => {
+                    let out = mshell_clipboard::clipboard_service()
+                        .history()
+                        .entries()
+                        .iter()
+                        .map(|e| {
+                            let cat = format!("{:?}", e.category()).to_lowercase();
+                            let preview = match &e.preview {
+                                mshell_clipboard::EntryPreview::Text(t) => {
+                                    t.replace(['\n', '\t'], " ")
+                                }
+                                mshell_clipboard::EntryPreview::Image { width, height, .. } => {
+                                    format!("[image {width}x{height}]")
+                                }
+                                mshell_clipboard::EntryPreview::Binary { mime_type, size } => {
+                                    format!("[{mime_type} {size}B]")
+                                }
+                            };
+                            let pin = if e.pinned { "★ " } else { "" };
+                            format!("{}\t{cat}\t{pin}{preview}", e.id)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    let _ = reply.send(out);
+                }
                 IPCCommand::Notifications => {
                     app_sender.emit(ShellInput::ToggleNotifications(active_monitor().await));
                 }
@@ -555,6 +598,13 @@ enum IPCCommand {
     /// the rich in-shell selector (preview state, snap, aspect
     /// info) instead of the bare slurp overlay when mshell is up.
     SelectRegion(tokio::sync::oneshot::Sender<String>),
+    /// Headless clipboard op driven by `mshellctl clipboard …`. Spec is
+    /// `"copy <id>" | "pin <id>" | "unpin <id>" | "delete <id>" |
+    /// "clear" | "wipe"`.
+    ClipboardAction(String),
+    /// `mshellctl clipboard list` — reply with one `id\tcategory\tpreview`
+    /// line per entry (newest first).
+    ClipboardList(tokio::sync::oneshot::Sender<String>),
     OpenSettings,
     OpenWizard,
     CloseSettings,
@@ -1321,6 +1371,17 @@ impl IPCService {
     }
     async fn clipboard(&self) {
         let _ = self.tx.send(IPCCommand::Clipboard);
+    }
+    /// Headless clipboard op for `mshellctl clipboard copy|pin|unpin|delete|
+    /// clear|wipe`. `spec` is `"<verb> [id]"`.
+    async fn clipboard_action(&self, spec: String) {
+        let _ = self.tx.send(IPCCommand::ClipboardAction(spec));
+    }
+    /// `mshellctl clipboard list` — `id\tcategory\tpreview` per line.
+    async fn clipboard_list(&self) -> String {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ = self.tx.send(IPCCommand::ClipboardList(tx));
+        rx.await.unwrap_or_default()
     }
     async fn notifications(&self) {
         let _ = self.tx.send(IPCCommand::Notifications);
