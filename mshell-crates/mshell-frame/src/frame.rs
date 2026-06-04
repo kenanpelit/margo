@@ -167,6 +167,16 @@ pub enum FrameInput {
         Position,
     ),
     ToggleClockMenu,
+    /// Re-assert the layer surface's keyboard interactivity from the
+    /// current menu-reveal state. Fired once when the frame surface
+    /// first maps: gtk4-layer-shell's initial commit can land with a
+    /// non-`None` keyboard mode in some races (observed: the frame
+    /// holding `Exclusive` at login while no menu is open, trapping
+    /// keyboard focus into the invisible full-screen layer until the
+    /// first menu toggle finally ran `sync_keyboard_mode`). This
+    /// enforces the "Exclusive iff a menu is revealed" invariant
+    /// proactively at map time instead of only reactively on toggle.
+    SyncKeyboardMode,
     /// Forward a Hidden Bar IPC verb to both bars' HiddenBar widgets.
     HiddenBar(mshell_common::hidden_bar::HiddenBarVerb),
     ToggleClipboardMenu,
@@ -694,6 +704,26 @@ impl Component for Frame {
         root.set_visible(true);
         root.set_cursor_from_name(Some("default"));
 
+        // Re-assert keyboard interactivity once the surface actually
+        // maps. The `set_keyboard_mode(None)` above is queued before
+        // the layer surface exists; in practice the frame has been
+        // observed committing `Exclusive` at login anyway, which traps
+        // keyboard focus into this invisible full-screen layer (margo's
+        // `compute_desired_focus` honours any Exclusive Top/Overlay
+        // layer) until the user's first menu toggle finally runs
+        // `sync_keyboard_mode`. Firing it here closes that gap: at first
+        // map no menu is revealed, so it resolves to `None`.
+        {
+            let sender_map = sender.clone();
+            root.connect_map(move |w| {
+                tracing::info!(
+                    mode = ?w.keyboard_mode(),
+                    "frame: surface mapped — re-asserting keyboard mode"
+                );
+                sender_map.input(FrameInput::SyncKeyboardMode);
+            });
+        }
+
         // ESC closes any open menu. Belt-and-suspenders setup:
         //
         // 1) `ShortcutController(scope=Global)` with a `KeyvalTrigger`
@@ -1101,6 +1131,9 @@ impl Component for Frame {
             }
             FrameInput::ToggleClockMenu => {
                 self.toggle_menu(CLOCK_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::SyncKeyboardMode => {
                 self.sync_keyboard_mode(root);
             }
             FrameInput::HiddenBar(verb) => {
@@ -1679,11 +1712,18 @@ impl Frame {
     /// every cycle — the user sees the bar entirely disappear when
     /// clicking widgets in quick succession.
     fn sync_keyboard_mode(&self, root: &<Self as Component>::Root) {
-        let desired = if self.any_menu_revealed() {
+        let any_revealed = self.any_menu_revealed();
+        let desired = if any_revealed {
             gtk4_layer_shell::KeyboardMode::Exclusive
         } else {
             gtk4_layer_shell::KeyboardMode::None
         };
+        tracing::info!(
+            ?desired,
+            any_revealed,
+            current = ?root.keyboard_mode(),
+            "frame: sync_keyboard_mode (scheduling)"
+        );
 
         // Cancel any pending switch and replace it with the new one.
         if let Some(id) = self.pending_kbd_mode_timeout.borrow_mut().take() {
@@ -1704,7 +1744,7 @@ impl Frame {
                     return;
                 };
                 root.set_keyboard_mode(mode);
-                tracing::debug!(?mode, "frame: sync_keyboard_mode (applied)");
+                tracing::info!(?mode, "frame: sync_keyboard_mode (applied)");
             });
         *self.pending_kbd_mode_timeout.borrow_mut() = Some(id);
     }
