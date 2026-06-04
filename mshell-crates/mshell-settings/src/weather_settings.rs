@@ -26,6 +26,7 @@ pub(crate) struct WeatherSettingsModel {
     city_dialog: Option<Controller<TextEntryDialogModel>>,
     weather_unit_types: gtk::StringList,
     active_weather_unit_type: TemperatureUnitConfig,
+    poll_minutes: u32,
     /// Bookmarked locations the weather-menu switcher flips between.
     saved_locations: Vec<SavedLocation>,
     active_query: LocationQueryConfig,
@@ -43,6 +44,7 @@ pub(crate) enum WeatherSettingsInput {
     CityChosen(String, String),
     WeatherUnitTypeSelected(TemperatureUnitConfig),
     WeatherUnitTypeEffect(TemperatureUnitConfig),
+    SetPollMinutes(u32),
     DialogCanceled,
     /// Saved-location bookmarks changed in config — refresh the list.
     SavedLocationsEffect(Vec<SavedLocation>),
@@ -269,6 +271,42 @@ impl Component for WeatherSettingsModel {
                     },
                 },
 
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Update interval",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Minutes between weather refreshes. On a failed fetch the shell retries faster until it recovers.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "poll_minutes_spin"]
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (1.0, 180.0),
+                        set_increments: (1.0, 5.0),
+                        set_digits: 0,
+                        set_value: model.poll_minutes as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(WeatherSettingsInput::SetPollMinutes(s.value() as u32));
+                        },
+                    },
+                },
+
                 // ── Saved locations: bookmark the current location under a
                 //    name; the weather menu's switcher flips between them. ──
                 gtk::Box {
@@ -376,6 +414,11 @@ impl Component for WeatherSettingsModel {
                 .config()
                 .general()
                 .temperature_unit()
+                .get_untracked(),
+            poll_minutes: config_manager()
+                .config()
+                .general()
+                .weather_poll_minutes()
                 .get_untracked(),
             saved_locations: config_manager()
                 .config()
@@ -498,6 +541,13 @@ impl Component for WeatherSettingsModel {
             }
             WeatherSettingsInput::WeatherUnitTypeEffect(unit) => {
                 self.active_weather_unit_type = unit;
+            }
+            WeatherSettingsInput::SetPollMinutes(mins) => {
+                let mins = mins.clamp(1, 180);
+                self.poll_minutes = mins;
+                config_manager().update_config(move |config| {
+                    config.general.weather_poll_minutes = mins;
+                });
             }
             WeatherSettingsInput::DialogCanceled => {}
             WeatherSettingsInput::SavedLocationsEffect(saved) => {

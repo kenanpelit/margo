@@ -164,6 +164,11 @@ pub struct General {
     /// Empty by default — add bookmarks from Settings → Weather.
     pub weather_saved_locations: Vec<SavedLocation>,
     pub temperature_unit: TemperatureUnitConfig,
+    /// Minutes between weather refreshes (the Open-Meteo poll interval).
+    /// On a fetch failure the shell temporarily retries faster, then
+    /// returns to this cadence once a fetch succeeds.
+    #[serde(default = "default_weather_poll_minutes")]
+    pub weather_poll_minutes: u32,
     /// Draw rounded screen corners as a per-monitor overlay.
     /// Layer-shell windows masked at each corner so the
     /// underlying compositor's rectangular monitor edges read
@@ -205,6 +210,10 @@ pub struct General {
     pub media_large_album_art: bool,
 }
 
+fn default_weather_poll_minutes() -> u32 {
+    15
+}
+
 impl Default for General {
     fn default() -> Self {
         Self {
@@ -215,6 +224,7 @@ impl Default for General {
             },
             weather_saved_locations: Vec::new(),
             temperature_unit: TemperatureUnitConfig::Metric,
+            weather_poll_minutes: default_weather_poll_minutes(),
             show_screen_corners: false,
             screen_corner_radius: 24,
             network_osd_enabled: false,

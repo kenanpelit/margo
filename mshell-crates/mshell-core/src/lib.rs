@@ -133,8 +133,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             .get_untracked(),
     );
 
+    let weather_poll_minutes = config_manager
+        .config()
+        .general()
+        .weather_poll_minutes()
+        .get_untracked();
+
     tokio_rt().block_on(async {
-        mshell_services::init_services(location_query, temperature_units).await
+        mshell_services::init_services(location_query, temperature_units, weather_poll_minutes)
+            .await
     })?;
 
     tokio_rt().spawn(async move {
@@ -298,6 +305,61 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         let weather = weather_service();
         weather.set_units(TemperatureUnit::from(temp_unit));
     });
+
+    // Weather poll interval: configurable cadence (Settings → Widgets →
+    // Weather) + a fast retry on failure. The configured minutes live in
+    // an atomic so the failure watcher (a tokio task) can read them
+    // without touching the main-thread reactive store.
+    {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        let configured_mins = std::sync::Arc::new(AtomicU64::new(
+            mshell_config::config_manager::config_manager()
+                .config()
+                .general()
+                .weather_poll_minutes()
+                .get_untracked()
+                .max(1) as u64,
+        ));
+
+        // Live config updates (main-thread Effect): store + apply.
+        let cm_mins = configured_mins.clone();
+        let initialized = Cell::new(false);
+        Effect::new(move |_| {
+            let mins = mshell_config::config_manager::config_manager()
+                .config()
+                .general()
+                .weather_poll_minutes()
+                .get()
+                .max(1) as u64;
+            cm_mins.store(mins, Ordering::Relaxed);
+            if !initialized.get() {
+                initialized.set(true);
+                return;
+            }
+            weather_service().set_poll_interval(std::time::Duration::from_secs(mins * 60));
+        });
+
+        // Fast-retry: on a failed fetch poll every 2 min until it recovers,
+        // then snap back to the configured cadence.
+        tokio_rt().spawn(async move {
+            use futures::StreamExt;
+            let weather = weather_service();
+            let mut status = weather.status.watch();
+            const RETRY: std::time::Duration = std::time::Duration::from_secs(120);
+            while let Some(st) = status.next().await {
+                match st {
+                    wayle_weather::WeatherStatus::Error(_) => {
+                        weather.set_poll_interval(RETRY);
+                    }
+                    wayle_weather::WeatherStatus::Loaded => {
+                        let mins = configured_mins.load(Ordering::Relaxed).max(1);
+                        weather.set_poll_interval(std::time::Duration::from_secs(mins * 60));
+                    }
+                    wayle_weather::WeatherStatus::Loading => {}
+                }
+            }
+        });
+    }
 
     let app = RelmApp::new("mshell.main");
     info!("Startup completed in {:?}", start.elapsed());

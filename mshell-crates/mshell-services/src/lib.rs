@@ -43,6 +43,7 @@ use zbus::{Connection, Error};
 pub async fn init_services(
     location_query: LocationQuery,
     temperature_unit: TemperatureUnit,
+    weather_poll_minutes: u32,
 ) -> anyhow::Result<()> {
     info!("Initializing services...");
     let line_power_fut = async {
@@ -88,7 +89,7 @@ pub async fn init_services(
     )?;
     let sysinfo = SysinfoService::builder().build();
     let weather = WeatherServiceBuilder::new()
-        .poll_interval(Duration::from_mins(15))
+        .poll_interval(Duration::from_mins(weather_poll_minutes.max(1) as u64))
         .location(location_query)
         .units(temperature_unit)
         .build();
