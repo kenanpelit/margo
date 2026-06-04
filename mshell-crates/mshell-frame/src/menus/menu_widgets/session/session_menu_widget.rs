@@ -13,11 +13,10 @@
 //!   * `Space` / `Enter` activates the focused button at once
 //!     (no countdown — a deliberate click is taken at its word).
 
-use gtk4_layer_shell::{KeyboardMode, LayerShell};
 use mshell_utils::session::{SessionAction, run_session_action};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EventControllerExt, OrientableExt, WidgetExt};
 use relm4::gtk::{gdk, glib};
-use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
+use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 
 /// Seconds an armed action counts down before it fires.
@@ -280,7 +279,7 @@ impl Component for SessionMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             SessionMenuWidgetInput::Activate(action) => {
                 run_session_action(action);
@@ -334,23 +333,21 @@ impl Component for SessionMenuWidgetModel {
                 }
             }
             SessionMenuWidgetInput::ParentRevealChanged(revealed) => {
+                tracing::info!(revealed, "session: ParentRevealChanged");
                 if revealed {
                     // A fresh open — drop any stale countdown.
                     self.generation += 1;
                     self.pending = None;
                     self.focused = 0;
                     self.refresh_status();
-                    // Mirror app_launcher: flip the host layer-shell
-                    // surface to Exclusive keyboard mode so Tab /
-                    // Ctrl+N / Ctrl+P actually reach the GTK
-                    // EventControllerKey we wired up. Without this
-                    // the layer surface stays on KeyboardMode::None
-                    // (the default for menu surfaces) and only the
-                    // menu's number-key arming works because that
-                    // path travels via a different route.
-                    if let Some(window) = root.toplevel_window() {
-                        window.set_keyboard_mode(KeyboardMode::Exclusive);
-                    }
+                    // NB: keyboard mode is owned centrally by the frame's
+                    // `sync_keyboard_mode` (Exclusive iff a menu is genuinely
+                    // revealed), which is what makes Tab / Ctrl+N reach our
+                    // EventControllerKey. We must NOT set it here:
+                    // `ParentRevealChanged` rides the menu ScrolledWindow's
+                    // `map` signal, which fires at startup even when the
+                    // frame never revealed us, and setting Exclusive there
+                    // strands the invisible frame layer in keyboard focus.
                     if let Some(first) = self.buttons.first().cloned() {
                         // The layer-shell surface only takes keyboard
                         // focus after `sync_keyboard_mode`'s ~90 ms
@@ -366,10 +363,6 @@ impl Component for SessionMenuWidgetModel {
                     self.generation += 1;
                     self.pending = None;
                     self.refresh_status();
-                    // Release the exclusive grab when the menu hides.
-                    if let Some(window) = root.toplevel_window() {
-                        window.set_keyboard_mode(KeyboardMode::None);
-                    }
                 }
             }
         }

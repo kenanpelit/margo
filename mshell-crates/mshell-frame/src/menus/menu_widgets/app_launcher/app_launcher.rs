@@ -45,7 +45,6 @@ use crate::menus::menu_widgets::app_launcher::launcher_row::{
 };
 use crate::menus::menu_widgets::app_launcher::tags_provider::TagsProvider;
 use crate::menus::menu_widgets::app_launcher::windows_provider::WindowsProvider;
-use gtk4_layer_shell::{KeyboardMode, LayerShell};
 use mshell_common::dynamic_box::dynamic_box::{
     DynamicBoxFactory, DynamicBoxInit, DynamicBoxInput, DynamicBoxModel,
 };
@@ -68,9 +67,7 @@ use reactive_graph::traits::*;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
 use relm4::gtk::{RevealerTransitionType, ScrolledWindow, gdk, gio, pango};
-use relm4::{
-    Component, ComponentController, ComponentParts, ComponentSender, Controller, RelmWidgetExt, gtk,
-};
+use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -878,10 +875,19 @@ impl Component for AppLauncherModel {
                 self.broadcast_selection();
             }
             AppLauncherInput::ParentRevealChanged(revealed) => {
+                tracing::info!(
+                    revealed,
+                    was_revealed = self.is_revealed,
+                    "app_launcher: ParentRevealChanged"
+                );
                 if revealed && !self.is_revealed {
-                    if let Some(window) = widgets.apps_box.toplevel_window() {
-                        window.set_keyboard_mode(KeyboardMode::Exclusive);
-                    }
+                    // NB: keyboard mode is owned centrally by the frame's
+                    // `sync_keyboard_mode` (Exclusive iff a menu is genuinely
+                    // revealed). Do NOT flip it here: `ParentRevealChanged`
+                    // is driven by the menu ScrolledWindow's `map` signal,
+                    // which fires at startup even when the frame never
+                    // revealed us — setting Exclusive here strands the whole
+                    // invisible frame layer in keyboard focus (login trap).
                     self.runtime.borrow_mut().on_opened();
                     self.filter.clear();
                     widgets.search_entry.set_text("");
@@ -890,9 +896,6 @@ impl Component for AppLauncherModel {
                     self.push_results_to_dynamic_box();
                     self.broadcast_selection();
                 } else if !revealed && self.is_revealed {
-                    if let Some(window) = widgets.apps_box.toplevel_window() {
-                        window.set_keyboard_mode(KeyboardMode::None);
-                    }
                     // Snapshot the current query for Ctrl+R the
                     // next time the launcher opens.
                     {

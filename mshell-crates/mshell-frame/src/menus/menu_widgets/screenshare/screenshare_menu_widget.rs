@@ -1,5 +1,4 @@
 use crate::common_widgets::big_button::BigButton;
-use gtk4_layer_shell::{KeyboardMode, LayerShell};
 use mshell_screenshot::{ScreenSelectAreaRequest, ScreenSelection, select_screen};
 use relm4::gtk::prelude::*;
 use relm4::gtk::{gdk, glib};
@@ -164,18 +163,20 @@ impl Component for ScreenshareMenuWidgetModel {
     ) {
         match message {
             ScreenshareMenuWidgetInput::ParentRevealChanged(revealed) => {
-                // If state is changing from hidden to revealed
+                tracing::info!(
+                    revealed,
+                    was_revealed = self.is_revealed,
+                    "screenshare: ParentRevealChanged"
+                );
+                // Keyboard mode is owned centrally by the frame's
+                // `sync_keyboard_mode` (Exclusive iff a menu is genuinely
+                // revealed). Do NOT flip it here: `ParentRevealChanged`
+                // rides the menu ScrolledWindow's `map` signal, which fires
+                // at startup even when the frame never revealed us, and
+                // setting Exclusive there strands the invisible frame layer
+                // in keyboard focus (the login focus-trap).
                 if revealed && !self.is_revealed {
-                    if let Some(window) = widgets.root.toplevel_window() {
-                        window.set_keyboard_mode(KeyboardMode::Exclusive);
-                        widgets.monitor_button.grab_focus();
-                    }
-                // if state is change from revealed to hidden
-                } else if !revealed
-                    && self.is_revealed
-                    && let Some(window) = widgets.root.toplevel_window()
-                {
-                    window.set_keyboard_mode(KeyboardMode::None);
+                    widgets.monitor_button.grab_focus();
                 }
                 self.is_revealed = revealed;
             }
