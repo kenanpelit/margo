@@ -76,13 +76,14 @@ impl Dispatch<WlSeat, ()> for SessionState {
             capabilities: WEnum::Value(capabilities),
         } = event
             && capabilities.contains(wl_seat::Capability::Keyboard)
-                && let Some(keyboard_manager) = &state.keyboard_manager {
-                    let keyboard = keyboard_manager.create_virtual_keyboard(seat, qh, ());
+            && let Some(keyboard_manager) = &state.keyboard_manager
+        {
+            let keyboard = keyboard_manager.create_virtual_keyboard(seat, qh, ());
 
-                    let (file, len) = get_keymap_as_file();
-                    keyboard.keymap(wl_keyboard::KeymapFormat::XkbV1.into(), file.as_fd(), len);
-                    state.keyboard = Some(keyboard);
-                }
+            let (file, len) = get_keymap_as_file();
+            keyboard.keymap(wl_keyboard::KeymapFormat::XkbV1.into(), file.as_fd(), len);
+            state.keyboard = Some(keyboard);
+        }
     }
 }
 

@@ -54,9 +54,10 @@ impl Ipc {
 
     pub fn clean_up() {
         if let Err(e) = std::fs::remove_file(socket_path())
-            && e.kind() != ErrorKind::NotFound {
-                error!("mkeys: socket cleanup failed: {e}");
-            }
+            && e.kind() != ErrorKind::NotFound
+        {
+            error!("mkeys: socket cleanup failed: {e}");
+        }
     }
 }
 

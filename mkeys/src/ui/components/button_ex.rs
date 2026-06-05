@@ -117,16 +117,18 @@ impl ButtonEX {
             .build();
 
         if let Some(primary_content) = primary_content
-            && !primary_content.is_empty() {
-                let primary_content = gtk::Label::new(Some(primary_content.as_str()));
-                new_layout.append(&primary_content);
-            }
+            && !primary_content.is_empty()
+        {
+            let primary_content = gtk::Label::new(Some(primary_content.as_str()));
+            new_layout.append(&primary_content);
+        }
 
         if let Some(secondary_content) = secondary_content
-            && !secondary_content.is_empty() {
-                let secondary_content = gtk::Label::new(Some(secondary_content.as_str()));
-                new_layout.append(&secondary_content);
-            }
+            && !secondary_content.is_empty()
+        {
+            let secondary_content = gtk::Label::new(Some(secondary_content.as_str()));
+            new_layout.append(&secondary_content);
+        }
 
         new_layout.set_parent(self);
         self.set_layout(new_layout);

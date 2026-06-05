@@ -58,11 +58,12 @@ impl SimpleComponent for UIModel {
         thread::spawn(move || {
             loop {
                 if let Ok(command) = String::from_utf8(ipc_handle.read())
-                    && command.as_str() == "quit" {
-                        info!("mkeys: received quit");
-                        message_sender.input(UIMessage::AppQuit);
-                        break;
-                    }
+                    && command.as_str() == "quit"
+                {
+                    info!("mkeys: received quit");
+                    message_sender.input(UIMessage::AppQuit);
+                    break;
+                }
             }
         });
 
