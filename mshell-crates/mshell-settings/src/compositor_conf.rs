@@ -69,12 +69,12 @@ pub(crate) fn patch_conf(updates: &[(&str, String)]) {
             if trimmed.starts_with('#') {
                 continue;
             }
-            if let Some(rest) = trimmed.strip_prefix(*key) {
-                if rest.trim_start().starts_with('=') {
-                    *line = format!("{key} = {val}");
-                    found = true;
-                    break;
-                }
+            if let Some(rest) = trimmed.strip_prefix(*key)
+                && rest.trim_start().starts_with('=')
+            {
+                *line = format!("{key} = {val}");
+                found = true;
+                break;
             }
         }
         if !found {
