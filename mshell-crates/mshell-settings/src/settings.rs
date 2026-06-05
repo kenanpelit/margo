@@ -125,6 +125,10 @@ pub struct SettingsWindowModel {
     /// widgets sub-page. `route` is what `ActivateSection` understands
     /// (`theme`, `widgets/clipboard`, …). Filled like `subsection_buttons`.
     search_index: Rc<RefCell<Vec<(String, String)>>>,
+    /// Display title per route (`"network"`→"Network", `"widgets/weather"`→
+    /// "Weather"), for the flat search-results list. Filled from the SIDEBAR
+    /// table + each widgets sub-page button as it's built.
+    search_titles: Rc<RefCell<HashMap<String, String>>>,
 }
 
 #[derive(Debug)]
@@ -249,12 +253,25 @@ impl Component for SettingsWindowModel {
                         set_vscrollbar_policy: gtk::PolicyType::Automatic,
                         set_vexpand: true,
 
-                        #[name = "sidebar_box"]
                         gtk::Box {
                             set_orientation: gtk::Orientation::Vertical,
-                            set_spacing: 4,
 
-                },
+                            #[name = "sidebar_box"]
+                            gtk::Box {
+                                set_orientation: gtk::Orientation::Vertical,
+                                set_spacing: 4,
+                            },
+
+                            // Flat search results (page name → navigate), shown
+                            // only while the search box has text; the grouped
+                            // sidebar above is hidden then.
+                            #[name = "search_results_box"]
+                            gtk::Box {
+                                set_orientation: gtk::Orientation::Vertical,
+                                set_spacing: 4,
+                                set_visible: false,
+                            },
+                        },
                     },
                 },
 
@@ -525,6 +542,19 @@ impl Component for SettingsWindowModel {
                 .map(|(label, route)| (label.to_string(), route.to_string()))
                 .collect(),
         ));
+        // Display titles for the flat results list. Top-level pages seeded from
+        // the SIDEBAR table; widgets sub-pages added in `make_sub_btn`.
+        let search_titles: Rc<RefCell<HashMap<String, String>>> = Rc::new(RefCell::new(
+            SIDEBAR
+                .iter()
+                .filter_map(|e| match e {
+                    SidebarEntry::Page { route, label, .. } => {
+                        Some((route.to_string(), label.to_string()))
+                    }
+                    SidebarEntry::Section(_) => None,
+                })
+                .collect(),
+        ));
 
         let model = SettingsWindowModel {
             general_settings_controller,
@@ -574,6 +604,7 @@ impl Component for SettingsWindowModel {
             subsection_buttons: subsection_buttons.clone(),
             section_buttons: section_buttons.clone(),
             search_index: search_index.clone(),
+            search_titles: search_titles.clone(),
         };
 
         let widgets = view_output!();
@@ -983,6 +1014,9 @@ impl Component for SettingsWindowModel {
             search_index
                 .borrow_mut()
                 .push((label.to_lowercase(), format!("widgets/{stack_name}")));
+            search_titles
+                .borrow_mut()
+                .insert(format!("widgets/{stack_name}"), label.to_string());
             btn
         };
 
@@ -1673,6 +1707,9 @@ impl Component for SettingsWindowModel {
                         None => tracing::warn!(%sub, "settings: unknown widgets sub-page"),
                     }
                 }
+                // Clear the search box so a results-list click (or a deep link)
+                // restores the grouped sidebar via SearchChanged("").
+                widgets.search_entry.set_text("");
             }
             SettingsWindowInput::SearchSubmitted(query) => {
                 let q = query.trim().to_lowercase();
@@ -1694,41 +1731,48 @@ impl Component for SettingsWindowModel {
             SettingsWindowInput::SearchChanged(query) => {
                 use gtk::prelude::*;
                 let q = query.trim().to_lowercase();
-                // Top-level routes to keep visible. The search_index holds both
-                // top-level aliases AND every nested sub-page ("widgets/weather",
-                // "widgets/clipboard", …); a matching entry maps to its PARENT
-                // route (split on '/'), so searching any sub-page keeps its
-                // parent button visible — and Enter (search_index) dives
-                // straight into the exact sub-page.
-                let matching: std::collections::HashSet<String> = if q.is_empty() {
-                    std::collections::HashSet::new()
-                } else {
-                    self.search_index
-                        .borrow()
-                        .iter()
-                        .filter(|(label, _)| label.contains(&q) || keywords_for(label).contains(&q))
-                        .map(|(_, route)| route.split('/').next().unwrap_or(route).to_string())
-                        .collect()
-                };
-                // Buttons: show on direct label/keyword match or when a sub-page
-                // routed under this button matches. Keyed by route via the
-                // section_buttons map built by build_sidebar.
-                for (route, btn) in self.section_buttons.borrow().iter() {
-                    let label = sidebar_button_label(btn).to_lowercase();
-                    let show = q.is_empty()
-                        || matching.contains(route)
-                        || label.contains(&q)
-                        || keywords_for(&label).contains(&q);
-                    btn.set_visible(show);
+                // Rebuild the flat results list. Empty query → show the grouped
+                // sidebar, hide results. Non-empty → hide the sidebar and show a
+                // clickable row per matching destination (top-level pages AND
+                // nested sub-pages like Weather / Clipboard), so anything in the
+                // search_index — including the Widgets sub-sidebar — is reachable
+                // by name without knowing where it lives.
+                while let Some(c) = widgets.search_results_box.first_child() {
+                    widgets.search_results_box.remove(&c);
                 }
-                // Section headers hide while a query is active.
-                let mut child = widgets.sidebar_box.first_child();
-                while let Some(w) = child {
-                    let next = w.next_sibling();
-                    if w.has_css_class("settings-sidebar-section") {
-                        w.set_visible(q.is_empty());
+                if q.is_empty() {
+                    widgets.sidebar_box.set_visible(true);
+                    widgets.search_results_box.set_visible(false);
+                } else {
+                    widgets.sidebar_box.set_visible(false);
+                    widgets.search_results_box.set_visible(true);
+                    let titles = self.search_titles.borrow();
+                    let mut seen = std::collections::HashSet::new();
+                    for (label, route) in self.search_index.borrow().iter() {
+                        if !(label.contains(&q) || keywords_for(label).contains(&q)) {
+                            continue;
+                        }
+                        // One row per destination (a route can have several
+                        // aliases); keep the first hit's order.
+                        if !seen.insert(route.clone()) {
+                            continue;
+                        }
+                        let title = titles.get(route).cloned().unwrap_or_else(|| route.clone());
+                        let btn = gtk::Button::new();
+                        btn.add_css_class("sidebar-button");
+                        let lbl = gtk::Label::new(Some(&title));
+                        lbl.set_halign(gtk::Align::Start);
+                        lbl.set_xalign(0.0);
+                        lbl.set_hexpand(true);
+                        lbl.add_css_class("label-medium");
+                        btn.set_child(Some(&lbl));
+                        let route = route.clone();
+                        let s = sender.clone();
+                        btn.connect_clicked(move |_| {
+                            s.input(SettingsWindowInput::ActivateSection(route.clone()));
+                        });
+                        widgets.search_results_box.append(&btn);
                     }
-                    child = next;
                 }
             }
             SettingsWindowInput::SetPanelSize(w, h) => {
@@ -2205,23 +2249,6 @@ fn build_sidebar(
     buttons
 }
 
-/// Pull the label text out of a sidebar ToggleButton (its child is a
-/// `Box { Image, Label }`). Used by the live search filter. Empty when
-/// no label child is found.
-fn sidebar_button_label(btn: &gtk::ToggleButton) -> String {
-    use gtk::prelude::*;
-    let Some(boxw) = btn.child() else {
-        return String::new();
-    };
-    let mut c = boxw.first_child();
-    while let Some(w) = c {
-        if let Ok(lbl) = w.clone().downcast::<gtk::Label>() {
-            return lbl.label().to_string();
-        }
-        c = w.next_sibling();
-    }
-    String::new()
-}
 #[cfg(test)]
 mod registry_tests {
     use super::{PAGE_KEYWORDS, SEARCH_ALIASES, keywords_for};
