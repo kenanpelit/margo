@@ -1,28 +1,40 @@
+/* mkeys default theme — dark panel, light key labels. */
+
 window {
-    background-color: rgba(0, 0, 0, 0);
+    /* Translucent dark panel behind the keys. */
+    background-color: rgba(30, 30, 46, 0.92);
 }
 
 button {
-    background-color: rgb(220, 220, 220);
+    background-color: rgba(69, 71, 90, 0.96);
     background-image: none;
-    border-radius: 0;
-    margin: 1px;
-    padding: 12px;
-
+    color: #cdd6f4;
+    border: none;
+    border-radius: 8px;
+    margin: 3px;
+    padding: 10px;
+    font-size: 15px;
+    min-width: 14px;
+    min-height: 14px;
 }
 
-button>label {
-    color: black;
+/* ButtonEX nests its legends in labels inside the button. */
+button label {
+    color: #cdd6f4;
 }
 
 button:hover {
-    background-color: rgb(255, 255, 255);
+    background-color: rgba(88, 91, 112, 0.98);
 }
 
-button:active {
-    background-color: rgb(255, 255, 255);
-}
-
+/* Pressed normal keys + latched modifier/lock toggles use the accent. */
+button:active,
 button:checked {
-    background-color: rgb(255, 255, 255);
+    background-color: #89b4fa;
+    color: #1e1e2e;
+}
+
+button:active label,
+button:checked label {
+    color: #1e1e2e;
 }
