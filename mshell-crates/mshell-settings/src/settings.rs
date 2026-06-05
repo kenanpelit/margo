@@ -15,6 +15,7 @@ use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
 use crate::hidden_bar_settings::{HiddenBarSettingsInit, HiddenBarSettingsModel};
 use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
+use crate::keyboard_settings::{KeyboardSettingsInit, KeyboardSettingsModel};
 use crate::input_settings::{InputSettingsInit, InputSettingsModel};
 use crate::keybinds_settings::{KeybindsSettingsInit, KeybindsSettingsModel};
 use crate::launcher_settings::{LauncherSettingsInit, LauncherSettingsModel};
@@ -80,6 +81,7 @@ pub struct SettingsWindowModel {
     menu_settings_controller: Controller<MenuSettingsModel>,
     notification_settings_controller: Controller<NotificationSettingsModel>,
     idle_settings_controller: Controller<IdleSettingsModel>,
+    keyboard_settings_controller: Controller<KeyboardSettingsModel>,
     lock_settings_controller: Controller<LockSettingsModel>,
     tag_layout_settings_controller: Controller<TagLayoutSettingsModel>,
     launcher_settings_controller: Controller<LauncherSettingsModel>,
@@ -495,6 +497,26 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Idle",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+                    #[name = "keyboard_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("keyboard"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("input-keyboard-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "On-Screen Keyboard",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -1013,6 +1035,10 @@ impl Component for SettingsWindowModel {
             .launch(IdleSettingsInit {})
             .detach();
 
+        let keyboard_settings_controller = KeyboardSettingsModel::builder()
+            .launch(KeyboardSettingsInit {})
+            .detach();
+
         let tag_layout_settings_controller = TagLayoutSettingsModel::builder()
             .launch(TagLayoutSettingsInit {})
             .detach();
@@ -1046,6 +1072,8 @@ impl Component for SettingsWindowModel {
                 ("display", "display"),
                 ("fonts", "fonts"),
                 ("idle", "idle"),
+                ("on-screen keyboard", "keyboard"),
+                ("keyboard", "keyboard"),
                 ("lock", "lock"),
                 ("lock screen", "lock"),
                 ("tiling layout", "tiling_layout"),
@@ -1105,6 +1133,7 @@ impl Component for SettingsWindowModel {
             menu_settings_controller,
             notification_settings_controller,
             idle_settings_controller,
+            keyboard_settings_controller,
             lock_settings_controller,
             tag_layout_settings_controller,
             launcher_settings_controller,
@@ -1360,6 +1389,12 @@ impl Component for SettingsWindowModel {
             model.idle_settings_controller.widget(),
             Some("idle"),
             "Idle",
+        );
+
+        widgets.stack.add_titled(
+            model.keyboard_settings_controller.widget(),
+            Some("keyboard"),
+            "On-Screen Keyboard",
         );
 
         widgets.stack.add_titled(
@@ -2173,6 +2208,7 @@ impl Component for SettingsWindowModel {
                     "keybinds" => Some(&widgets.keybinds_btn),
                     "summon" => Some(&widgets.summon_btn),
                     "idle" => Some(&widgets.idle_btn),
+                    "keyboard" => Some(&widgets.keyboard_btn),
                     "lock" => Some(&widgets.lock_btn),
                     "tiling_layout" => Some(&widgets.tag_layout_btn),
                     "launcher" => Some(&widgets.launcher_btn),
@@ -2270,6 +2306,7 @@ fn keywords_for(label: &str) -> &'static str {
         "date_time" | "date time" | "date & time" => "clock time date timezone ntp format 24-hour",
         "region" | "region & language" => "locale language format measurement keyboard",
         "idle" => "screensaver dim timeout inhibitor dpms blank suspend",
+        "keyboard" | "on-screen keyboard" => "on-screen keyboard osk virtual keyboard touch type mkeys layout turkish",
         "lock" | "lock screen" => "lockscreen password security blur unlock pam",
         "privacy" => "location camera microphone permission history geoclue recent flatpak",
         "launcher" => "app launcher run search spotlight provider calc ssh",
