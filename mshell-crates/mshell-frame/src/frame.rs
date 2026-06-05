@@ -871,73 +871,53 @@ impl Component for Frame {
         let menu_config = base_config.clone();
         let sender_clone = sender.clone();
         effects.push(move |_| {
-            let config = menu_config.clone();
-            let clock_menu_position = config.menus().clock_menu().position().get();
-            let config = menu_config.clone();
-            let clipboard_menu_position = config.menus().clipboard_menu().position().get();
-            let config = menu_config.clone();
-            let notification_menu_position = config.menus().notification_menu().position().get();
-            let config = menu_config.clone();
-            let screenshot_menu_position = config.menus().screenshot_menu().position().get();
-            let config = menu_config.clone();
-            let app_launcher_menu_position = config.menus().app_launcher_menu().position().get();
-            let config = menu_config.clone();
-            let wallpaper_menu_position = config.menus().wallpaper_menu().position().get();
-            let config = menu_config.clone();
-            let screenshare_menu_position = config.menus().screenshare_menu().position().get();
-            let config = menu_config.clone();
-            let ufw_menu_position = config.menus().ufw_menu().position().get();
-            let config = menu_config.clone();
-            let dns_menu_position = config.menus().dns_menu().position().get();
-            let config = menu_config.clone();
-            let podman_menu_position = config.menus().podman_menu().position().get();
-            let config = menu_config.clone();
-            let notes_menu_position = config.menus().notes_menu().position().get();
-            let config = menu_config.clone();
-            let ip_menu_position = config.menus().ip_menu().position().get();
-            let config = menu_config.clone();
-            let network_menu_position = config.menus().network_menu().position().get();
-            let config = menu_config.clone();
-            let power_menu_position = config.menus().power_menu().position().get();
-            let config = menu_config.clone();
-            let media_player_menu_position = config.menus().media_player_menu().position().get();
-            let config = menu_config.clone();
-            let session_menu_position = config.menus().session_menu().position().get();
-            let config = menu_config.clone();
-            let settings_menu_position = config.menus().settings_menu().position().get();
-            let config = menu_config.clone();
-            let dashboard_menu_position = config.menus().dashboard_menu().position().get();
+            // Each StoreField accessor (`.menus()`) consumes its receiver, so
+            // every position read needs a fresh clone of the config handle.
+            // `pos!` packages that clone-then-read so the per-menu lines stay
+            // one-liners. Reading a menu's position also subscribes this effect
+            // to that menu — which is why the side-placed menus below are read
+            // into `_` (purely to re-fire when their position changes).
+            macro_rules! pos {
+                ($menu:ident) => {
+                    menu_config.clone().menus().$menu().position().get()
+                };
+            }
+            let clock_menu_position = pos!(clock_menu);
+            let clipboard_menu_position = pos!(clipboard_menu);
+            let notification_menu_position = pos!(notification_menu);
+            let screenshot_menu_position = pos!(screenshot_menu);
+            let app_launcher_menu_position = pos!(app_launcher_menu);
+            let wallpaper_menu_position = pos!(wallpaper_menu);
+            let screenshare_menu_position = pos!(screenshare_menu);
+            let ufw_menu_position = pos!(ufw_menu);
+            let dns_menu_position = pos!(dns_menu);
+            let podman_menu_position = pos!(podman_menu);
+            let notes_menu_position = pos!(notes_menu);
+            let ip_menu_position = pos!(ip_menu);
+            let network_menu_position = pos!(network_menu);
+            let power_menu_position = pos!(power_menu);
+            let media_player_menu_position = pos!(media_player_menu);
+            let session_menu_position = pos!(session_menu);
+            let settings_menu_position = pos!(settings_menu);
+            let dashboard_menu_position = pos!(dashboard_menu);
             // These menus are placed by `apply_left_and_right_side_children`
             // reading their position straight from config (not passed as a
             // RepositionMenus arg), so subscribe the effect to them here too
             // — otherwise moving them in Settings doesn't re-fire this effect
             // and the menu stays put until restart.
-            let config = menu_config.clone();
-            let _ = config.menus().cpu_dashboard_menu().position().get();
-            let config = menu_config.clone();
-            let _ = config.menus().audio_dashboard_menu().position().get();
-            let config = menu_config.clone();
-            let _ = config.menus().bluetooth_menu().position().get();
-            let config = menu_config.clone();
-            let _ = config.menus().system_update_menu().position().get();
-            let config = menu_config.clone();
-            let _ = config.menus().valent_menu().position().get();
-            let config = menu_config.clone();
-            let _ = config.menus().weather_menu().position().get();
-            let config = menu_config.clone();
-            let _ = config.menus().keep_awake_menu().position().get();
-            let config = menu_config.clone();
-            let _ = config.menus().twilight_menu().position().get();
-            let config = menu_config.clone();
-            let _ = config.menus().keybinds_menu().position().get();
-            let config = menu_config.clone();
-            let _ = config.menus().alarmclock_menu().position().get();
-            let config = menu_config.clone();
-            let _ = config.menus().control_center_menu().position().get();
-            let config = menu_config.clone();
-            let _ = config.menus().ssh_menu().position().get();
-            let config = menu_config.clone();
-            let _ = config.menus().margo_layout_menu().position().get();
+            let _ = pos!(cpu_dashboard_menu);
+            let _ = pos!(audio_dashboard_menu);
+            let _ = pos!(bluetooth_menu);
+            let _ = pos!(system_update_menu);
+            let _ = pos!(valent_menu);
+            let _ = pos!(weather_menu);
+            let _ = pos!(keep_awake_menu);
+            let _ = pos!(twilight_menu);
+            let _ = pos!(keybinds_menu);
+            let _ = pos!(alarmclock_menu);
+            let _ = pos!(control_center_menu);
+            let _ = pos!(ssh_menu);
+            let _ = pos!(margo_layout_menu);
             sender_clone.input(FrameInput::RepositionMenus(
                 clock_menu_position,
                 clipboard_menu_position,
