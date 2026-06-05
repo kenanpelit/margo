@@ -219,7 +219,19 @@ pub fn refresh(state: &mut MargoState) {
                 .clamp(1.0, 4.0);
             effective *= mul;
         }
-        let radius = state.config.border_radius as f32;
+        // The border is a concentric ring around the (rounded) window: its
+        // INNER edge must match the window's corner radius (`border_radius`)
+        // so it hugs the content with no gap, and its OUTER edge is that
+        // radius plus the border width. The shader derives the inner radius as
+        // `radius - border_width`, so pass `border_radius + width` as the outer
+        // radius → inner == the window's radius. A square window
+        // (border_radius 0) keeps a square border.
+        let base_radius = state.config.border_radius as f32;
+        let radius = if base_radius > 0.0 {
+            base_radius + effective
+        } else {
+            0.0
+        };
         state.clients[idx]
             .border
             .update(geom, effective, radius, color);
