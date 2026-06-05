@@ -2538,6 +2538,35 @@ impl Component for SettingsWindowModel {
             SettingsWindowInput::SetPanelSize(w, h) => {
                 self.panel_width = w;
                 self.panel_height = h;
+                // TEMP DEBUG: walk the parent chain after layout settles and
+                // log requested vs allocated vs measured width to find where
+                // the width override gets capped.
+                let root_dbg = _root.clone();
+                relm4::gtk::glib::idle_add_local_once(move || {
+                    use relm4::gtk::prelude::{Cast, WidgetExt};
+                    let mut node: Option<relm4::gtk::Widget> =
+                        Some(root_dbg.clone().upcast::<relm4::gtk::Widget>());
+                    let mut depth = 0;
+                    tracing::error!("PANELDBG ==== requested width={w} height={h} ====");
+                    while let Some(n) = node {
+                        let (min_w, nat_w, _, _) =
+                            n.measure(relm4::gtk::Orientation::Horizontal, -1);
+                        tracing::error!(
+                            "PANELDBG d{depth} {} alloc_w={} alloc_h={} measure(min={},nat={}) wreq={}",
+                            n.widget_name(),
+                            n.width(),
+                            n.height(),
+                            min_w,
+                            nat_w,
+                            n.width_request(),
+                        );
+                        node = n.parent();
+                        depth += 1;
+                        if depth > 14 {
+                            break;
+                        }
+                    }
+                });
             }
         }
         self.update_view(widgets, sender);
