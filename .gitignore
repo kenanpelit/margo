@@ -6,9 +6,6 @@
 /result
 CLAUDE.md
 .mcp.json
-nix
-flake.lock
-flake.nix
 # Rust build artifacts
 /target/
 
