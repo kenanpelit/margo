@@ -1,16 +1,19 @@
 use crate::about_settings::{AboutSettingsInit, AboutSettingsModel};
 use crate::animations_settings::{AnimationsSettingsInit, AnimationsSettingsModel};
+use crate::appearance_settings::{AppearanceInit, AppearanceModel};
 use crate::bar_pill_settings::{BarPillKind, BarPillSettingsInit, BarPillSettingsModel};
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
 use crate::bar_settings::bar_widget_factory::BarListLocation;
 use crate::bar_settings::bar_widget_section::{
     BarSection, WidgetSectionInit, WidgetSectionInput, WidgetSectionModel,
 };
+use crate::behaviour_settings::{BehaviourInit, BehaviourModel};
 use crate::bluetooth_settings::{BluetoothSettingsInit, BluetoothSettingsModel};
 use crate::catwalk_settings::{CatwalkSettingsInit, CatwalkSettingsModel};
 use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
 use crate::default_apps_settings::{DefaultAppsSettingsInit, DefaultAppsSettingsModel};
 use crate::display_settings::{DisplaySettingsInit, DisplaySettingsModel};
+use crate::effects_settings::{EffectsInit, EffectsModel};
 use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
 use crate::hidden_bar_settings::{HiddenBarSettingsInit, HiddenBarSettingsModel};
@@ -63,6 +66,9 @@ pub struct SettingsWindowModel {
     fonts_settings_controller: Controller<FontsSettingsModel>,
     about_settings_controller: Controller<AboutSettingsModel>,
     animations_settings_controller: Controller<AnimationsSettingsModel>,
+    appearance_settings_controller: Controller<AppearanceModel>,
+    effects_settings_controller: Controller<EffectsModel>,
+    behaviour_settings_controller: Controller<BehaviourModel>,
     overview_settings_controller: Controller<OverviewSettingsModel>,
     date_time_settings_controller: Controller<DateTimeSettingsModel>,
     region_settings_controller: Controller<RegionSettingsModel>,
@@ -248,6 +254,48 @@ impl Component for SettingsWindowModel {
                         set_xalign: 0.0,
                     },
 
+                    #[name = "appearance_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("appearance"); }
+                        },
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("preferences-desktop-display-symbolic") },
+                            gtk::Label { add_css_class: "label-medium", set_label: "Appearance", set_halign: gtk::Align::Start, set_hexpand: true },
+                        },
+                    },
+                    #[name = "effects_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("effects"); }
+                        },
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("preferences-desktop-effects-symbolic") },
+                            gtk::Label { add_css_class: "label-medium", set_label: "Effects", set_halign: gtk::Align::Start, set_hexpand: true },
+                        },
+                    },
+                    #[name = "behaviour_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("behaviour"); }
+                        },
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("preferences-system-symbolic") },
+                            gtk::Label { add_css_class: "label-medium", set_label: "Behaviour", set_halign: gtk::Align::Start, set_hexpand: true },
+                        },
+                    },
                     #[name = "animations_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -955,6 +1003,13 @@ impl Component for SettingsWindowModel {
             .launch(AboutSettingsInit {})
             .detach();
 
+        let appearance_settings_controller = AppearanceModel::builder()
+            .launch(AppearanceInit {})
+            .detach();
+        let effects_settings_controller = EffectsModel::builder().launch(EffectsInit {}).detach();
+        let behaviour_settings_controller =
+            BehaviourModel::builder().launch(BehaviourInit {}).detach();
+
         let animations_settings_controller = AnimationsSettingsModel::builder()
             .launch(AnimationsSettingsInit {})
             .detach();
@@ -1080,6 +1135,10 @@ impl Component for SettingsWindowModel {
                 ("tiling_layout", "tiling_layout"),
                 ("about", "about"),
                 ("animations", "animations"),
+                ("appearance", "appearance"),
+                ("effects", "effects"),
+                ("behaviour", "behaviour"),
+                ("behavior", "behaviour"),
                 ("date_time", "date_time"),
                 ("region", "region"),
                 ("sound", "sound"),
@@ -1115,6 +1174,9 @@ impl Component for SettingsWindowModel {
             fonts_settings_controller,
             about_settings_controller,
             animations_settings_controller,
+            appearance_settings_controller,
+            effects_settings_controller,
+            behaviour_settings_controller,
             overview_settings_controller,
             date_time_settings_controller,
             region_settings_controller,
@@ -1293,6 +1355,24 @@ impl Component for SettingsWindowModel {
             model.animations_settings_controller.widget(),
             Some("animations"),
             "Animations",
+        );
+
+        widgets.stack.add_titled(
+            model.appearance_settings_controller.widget(),
+            Some("appearance"),
+            "Appearance",
+        );
+
+        widgets.stack.add_titled(
+            model.effects_settings_controller.widget(),
+            Some("effects"),
+            "Effects",
+        );
+
+        widgets.stack.add_titled(
+            model.behaviour_settings_controller.widget(),
+            Some("behaviour"),
+            "Behaviour",
         );
 
         widgets.stack.add_titled(
@@ -2200,6 +2280,9 @@ impl Component for SettingsWindowModel {
                     "fonts" => Some(&widgets.fonts_btn),
                     "about" => Some(&widgets.about_btn),
                     "animations" => Some(&widgets.animations_btn),
+                    "appearance" => Some(&widgets.appearance_btn),
+                    "effects" => Some(&widgets.effects_btn),
+                    "behaviour" => Some(&widgets.behaviour_btn),
                     "date_time" => Some(&widgets.date_time_btn),
                     "region" => Some(&widgets.region_btn),
                     "sound" => Some(&widgets.sound_btn),
@@ -2303,6 +2386,11 @@ fn keywords_for(label: &str) -> &'static str {
         }
         "input" => "keyboard mouse touchpad layout xkb repeat sensitivity natural scroll cursor",
         "animations" => "animation motion transition speed easing",
+        "appearance" => "border thickness radius corner gap gaps opacity cursor size window look",
+        "effects" => "shadow shadows drop blur layer floating glow",
+        "behaviour" | "behavior" => {
+            "focus sloppy warp cursor drag tile swap snap hot corner overview scroll axis scratchpad tearing sync syncobj xwayland inhibit"
+        }
         "date_time" | "date time" | "date & time" => "clock time date timezone ntp format 24-hour",
         "region" | "region & language" => "locale language format measurement keyboard",
         "idle" => "screensaver dim timeout inhibitor dpms blank suspend",
