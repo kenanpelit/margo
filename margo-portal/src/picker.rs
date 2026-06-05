@@ -96,3 +96,50 @@ fn str_prop(props: &HashMap<String, OwnedValue>, key: &str) -> String {
         .unwrap_or_default()
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Source, parse_reply};
+
+    #[test]
+    fn empty_selection_is_none() {
+        assert!(parse_reply("").unwrap().is_none());
+        assert!(parse_reply("   ").unwrap().is_none());
+        assert!(parse_reply("[SELECTION]/").unwrap().is_none());
+    }
+
+    #[test]
+    fn parses_window_with_and_without_selection_prefix() {
+        match parse_reply("[SELECTION]/window:42").unwrap() {
+            Some(Source::Window { id }) => assert_eq!(id, 42),
+            other => panic!("expected window, got {other:?}"),
+        }
+        match parse_reply("window: 7 ").unwrap() {
+            Some(Source::Window { id }) => assert_eq!(id, 7),
+            other => panic!("expected window, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_monitor_connector() {
+        match parse_reply("[SELECTION]/screen:DP-1").unwrap() {
+            Some(Source::Monitor { connector }) => assert_eq!(connector, "DP-1"),
+            other => panic!("expected monitor, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn region_and_unknown_are_treated_as_cancel() {
+        assert!(
+            parse_reply("[SELECTION]/region:0,0,100,100")
+                .unwrap()
+                .is_none()
+        );
+        assert!(parse_reply("garbage").unwrap().is_none());
+    }
+
+    #[test]
+    fn non_numeric_window_id_is_an_error() {
+        assert!(parse_reply("window:notanumber").is_err());
+    }
+}
