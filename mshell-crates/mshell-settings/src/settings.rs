@@ -191,6 +191,13 @@ impl Component for SettingsWindowModel {
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
+                // Fill the root's width_request: without this the inner box
+                // stays at its natural width and any extra width from the
+                // panel size override leaks into empty trailing space (the
+                // sidebar + content never widen). Height worked regardless
+                // because it's the horizontal box's cross-axis (always
+                // filled); width is the main axis and needs the expand.
+                set_hexpand: true,
 
                 gtk::Box {
                     add_css_class: "settings-sidebar",
