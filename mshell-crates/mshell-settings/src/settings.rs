@@ -1694,19 +1694,39 @@ impl Component for SettingsWindowModel {
             SettingsWindowInput::SearchChanged(query) => {
                 use gtk::prelude::*;
                 let q = query.trim().to_lowercase();
-                // Walk the (now buttons-only) sidebar list: group headers
-                // hide while a query is active; buttons show only when their
-                // label matches. Empty query restores the full grouped list.
+                // Top-level routes to keep visible. The search_index holds both
+                // top-level aliases AND every nested sub-page ("widgets/weather",
+                // "widgets/clipboard", …); a matching entry maps to its PARENT
+                // route (split on '/'), so searching any sub-page keeps its
+                // parent button visible — and Enter (search_index) dives
+                // straight into the exact sub-page.
+                let matching: std::collections::HashSet<String> = if q.is_empty() {
+                    std::collections::HashSet::new()
+                } else {
+                    self.search_index
+                        .borrow()
+                        .iter()
+                        .filter(|(label, _)| label.contains(&q) || keywords_for(label).contains(&q))
+                        .map(|(_, route)| route.split('/').next().unwrap_or(route).to_string())
+                        .collect()
+                };
+                // Buttons: show on direct label/keyword match or when a sub-page
+                // routed under this button matches. Keyed by route via the
+                // section_buttons map built by build_sidebar.
+                for (route, btn) in self.section_buttons.borrow().iter() {
+                    let label = sidebar_button_label(btn).to_lowercase();
+                    let show = q.is_empty()
+                        || matching.contains(route)
+                        || label.contains(&q)
+                        || keywords_for(&label).contains(&q);
+                    btn.set_visible(show);
+                }
+                // Section headers hide while a query is active.
                 let mut child = widgets.sidebar_box.first_child();
                 while let Some(w) = child {
                     let next = w.next_sibling();
                     if w.has_css_class("settings-sidebar-section") {
                         w.set_visible(q.is_empty());
-                    } else if let Ok(btn) = w.clone().downcast::<gtk::ToggleButton>() {
-                        let label = sidebar_button_label(&btn).to_lowercase();
-                        let show =
-                            q.is_empty() || label.contains(&q) || keywords_for(&label).contains(&q);
-                        btn.set_visible(show);
                     }
                     child = next;
                 }
