@@ -1233,10 +1233,14 @@ fn focus_under(
                 .lock_surfaces
                 .iter()
                 .find(|(o, _)| o == output)
-                .map(|(_, s)| {
-                    let output_geo = state.space.output_geometry(output).unwrap();
+                .and_then(|(_, s)| {
+                    // `output` came from `output_under`, so it is mapped and
+                    // geometry is Some in practice. Use `?` rather than unwrap
+                    // so a degenerate output can't panic the input loop while
+                    // the session is locked (a panic there strands the user).
+                    let output_geo = state.space.output_geometry(output)?;
                     let local = pos - output_geo.loc.to_f64();
-                    (FocusTarget::SessionLock(s.clone()), local)
+                    Some((FocusTarget::SessionLock(s.clone()), local))
                 })
         });
     }
