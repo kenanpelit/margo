@@ -1559,7 +1559,22 @@ impl MargoState {
                 .as_deref()
                 .and_then(crate::wallpaper::WallpaperState::load_exact);
         }
+        // `client.border_width` is seeded from `config.borderpx` at map time
+        // (see `state/data.rs`), so a bare config swap would leave every
+        // already-open window on the OLD border width — `borderpx` would only
+        // affect windows opened after the reload. Re-apply the new global to
+        // every client that was tracking it (i.e. whose width still equals the
+        // old global), leaving per-window `windowrule` border overrides alone.
+        let old_borderpx = self.config.borderpx;
+        let new_borderpx = new_config.borderpx;
         self.config = new_config;
+        if new_borderpx != old_borderpx {
+            for client in self.clients.iter_mut() {
+                if client.border_width == old_borderpx {
+                    client.border_width = new_borderpx;
+                }
+            }
+        }
         // Per-tag tiling layouts: re-assert the configured `taglayout`
         // directives on reload so Settings → Tiling Layout "Apply"
         // (which writes the config + runs `mctl reload`) takes effect
