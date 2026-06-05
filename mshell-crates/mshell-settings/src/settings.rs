@@ -25,6 +25,7 @@ use crate::launcher_settings::{LauncherSettingsInit, LauncherSettingsModel};
 use crate::lock_settings::{LockSettingsInit, LockSettingsModel};
 use crate::media_player_settings::{MediaPlayerSettingsInit, MediaPlayerSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
+use crate::monitors_settings::{MonitorsInit, MonitorsModel};
 use crate::network_settings::{NetworkSettingsInit, NetworkSettingsModel};
 use crate::notification_settings::{NotificationSettingsInit, NotificationSettingsModel};
 use crate::overview_settings::{OverviewSettingsInit, OverviewSettingsModel};
@@ -41,6 +42,7 @@ use crate::users_settings::{UsersSettingsInit, UsersSettingsModel};
 use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
 use crate::weather_settings::{WeatherSettingsInit, WeatherSettingsModel};
 use crate::widget_menu_settings::{MenuKind, WidgetMenuSettingsInit, WidgetMenuSettingsModel};
+use crate::window_rules_settings::{WindowRulesInit, WindowRulesModel};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{BarsStoreFields, ConfigStoreFields, HorizontalBarStoreFields};
@@ -69,6 +71,8 @@ pub struct SettingsWindowModel {
     appearance_settings_controller: Controller<AppearanceModel>,
     effects_settings_controller: Controller<EffectsModel>,
     behaviour_settings_controller: Controller<BehaviourModel>,
+    window_rules_settings_controller: Controller<WindowRulesModel>,
+    monitors_settings_controller: Controller<MonitorsModel>,
     overview_settings_controller: Controller<OverviewSettingsModel>,
     date_time_settings_controller: Controller<DateTimeSettingsModel>,
     region_settings_controller: Controller<RegionSettingsModel>,
@@ -280,6 +284,34 @@ impl Component for SettingsWindowModel {
                             set_spacing: 12,
                             gtk::Image { set_icon_name: Some("applications-graphics-symbolic") },
                             gtk::Label { add_css_class: "label-medium", set_label: "Effects", set_halign: gtk::Align::Start, set_hexpand: true },
+                        },
+                    },
+                    #[name = "window_rules_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("window_rules"); }
+                        },
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("window-new-symbolic") },
+                            gtk::Label { add_css_class: "label-medium", set_label: "Window Rules", set_halign: gtk::Align::Start, set_hexpand: true },
+                        },
+                    },
+                    #[name = "monitors_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("monitors"); }
+                        },
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("video-display-symbolic") },
+                            gtk::Label { add_css_class: "label-medium", set_label: "Monitors", set_halign: gtk::Align::Start, set_hexpand: true },
                         },
                     },
                     #[name = "behaviour_btn"]
@@ -1009,6 +1041,11 @@ impl Component for SettingsWindowModel {
         let effects_settings_controller = EffectsModel::builder().launch(EffectsInit {}).detach();
         let behaviour_settings_controller =
             BehaviourModel::builder().launch(BehaviourInit {}).detach();
+        let window_rules_settings_controller = WindowRulesModel::builder()
+            .launch(WindowRulesInit {})
+            .detach();
+        let monitors_settings_controller =
+            MonitorsModel::builder().launch(MonitorsInit {}).detach();
 
         let animations_settings_controller = AnimationsSettingsModel::builder()
             .launch(AnimationsSettingsInit {})
@@ -1139,6 +1176,10 @@ impl Component for SettingsWindowModel {
                 ("effects", "effects"),
                 ("behaviour", "behaviour"),
                 ("behavior", "behaviour"),
+                ("window rules", "window_rules"),
+                ("windowrule", "window_rules"),
+                ("monitors", "monitors"),
+                ("displays", "monitors"),
                 ("date_time", "date_time"),
                 ("region", "region"),
                 ("sound", "sound"),
@@ -1177,6 +1218,8 @@ impl Component for SettingsWindowModel {
             appearance_settings_controller,
             effects_settings_controller,
             behaviour_settings_controller,
+            window_rules_settings_controller,
+            monitors_settings_controller,
             overview_settings_controller,
             date_time_settings_controller,
             region_settings_controller,
@@ -1373,6 +1416,18 @@ impl Component for SettingsWindowModel {
             model.behaviour_settings_controller.widget(),
             Some("behaviour"),
             "Behaviour",
+        );
+
+        widgets.stack.add_titled(
+            model.window_rules_settings_controller.widget(),
+            Some("window_rules"),
+            "Window Rules",
+        );
+
+        widgets.stack.add_titled(
+            model.monitors_settings_controller.widget(),
+            Some("monitors"),
+            "Monitors",
         );
 
         widgets.stack.add_titled(
@@ -2283,6 +2338,8 @@ impl Component for SettingsWindowModel {
                     "appearance" => Some(&widgets.appearance_btn),
                     "effects" => Some(&widgets.effects_btn),
                     "behaviour" => Some(&widgets.behaviour_btn),
+                    "window_rules" => Some(&widgets.window_rules_btn),
+                    "monitors" => Some(&widgets.monitors_btn),
                     "date_time" => Some(&widgets.date_time_btn),
                     "region" => Some(&widgets.region_btn),
                     "sound" => Some(&widgets.sound_btn),
@@ -2390,6 +2447,12 @@ fn keywords_for(label: &str) -> &'static str {
         "effects" => "shadow shadows drop blur layer floating glow",
         "behaviour" | "behavior" => {
             "focus sloppy warp cursor drag tile swap snap hot corner overview scroll axis scratchpad tearing sync syncobj xwayland inhibit"
+        }
+        "window_rules" => {
+            "window rule windowrule app-id appid title regex tag float floating fullscreen size monitor pin match"
+        }
+        "monitors" => {
+            "monitor display output resolution refresh hz scale position vrr connector mode"
         }
         "date_time" | "date time" | "date & time" => "clock time date timezone ntp format 24-hour",
         "region" | "region & language" => "locale language format measurement keyboard",

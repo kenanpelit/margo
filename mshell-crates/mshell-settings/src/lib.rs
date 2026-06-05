@@ -42,6 +42,7 @@ mod layout_settings;
 mod lock_settings;
 mod media_player_settings;
 mod menu_settings;
+mod monitors_settings;
 mod net;
 mod network_settings;
 mod notification_settings;
@@ -68,6 +69,7 @@ mod users_settings;
 mod wallpaper_settings;
 mod weather_settings;
 mod widget_menu_settings;
+mod window_rules_settings;
 
 pub use settings::{
     SettingsWindowCommandOutput, SettingsWindowInit, SettingsWindowInput, SettingsWindowModel,
