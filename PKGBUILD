@@ -245,6 +245,7 @@ build() {
   cargo build --frozen --release \
     --features mshell/wasm-plugins \
     -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard \
+    -p mkeys \
     -p margo-portal
 }
 
@@ -279,7 +280,7 @@ package() {
   for bin in \
       margo start-margo \
       mctl mlock mlayout mscreenshot mvisual mlogind mpower mplay \
-      mshell mshellctl mshellshare mpicker mwizard; do
+      mshell mshellctl mshellshare mpicker mwizard mkeys; do
     install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
   done
 
