@@ -177,3 +177,83 @@ pub fn monitor_id(name: &str) -> i64 {
     // Keep positive — the upstream MonitorId is positive in practice.
     hash & i64::MAX
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lowest_tag_maps_lowest_set_bit() {
+        assert_eq!(lowest_tag(0), 0, "no bits → no active workspace");
+        assert_eq!(lowest_tag(0b1), 1);
+        assert_eq!(lowest_tag(0b100), 3);
+        assert_eq!(lowest_tag(0b1010), 2, "takes the lowest set bit");
+        assert_eq!(lowest_tag(1 << 8), 9);
+    }
+
+    #[test]
+    fn monitor_id_is_deterministic_positive_and_distinct() {
+        assert_eq!(monitor_id("DP-1"), monitor_id("DP-1"));
+        assert!(monitor_id("eDP-1") >= 0);
+        assert_ne!(monitor_id("DP-1"), monitor_id("DP-2"));
+    }
+
+    #[test]
+    fn parses_minimal_document() {
+        let json = r#"{"active_output":"DP-1","layouts":["tile"],
+            "outputs":[],"clients":[],"tag_count":9}"#;
+        let s: StateJson = serde_json::from_str(json).expect("minimal doc parses");
+        assert_eq!(s.active_output, "DP-1");
+        assert_eq!(s.focused_idx, None, "absent focused_idx defaults to None");
+        assert_eq!(
+            s.keyboard_layout, "",
+            "absent keyboard_layout defaults empty"
+        );
+        assert_eq!(s.tag_count, 9);
+    }
+
+    #[test]
+    fn accepts_null_focused_idx() {
+        // Regression: margo emits `focused_idx: null` (not absent) with no
+        // window focused; an i64-only field rejected the whole snapshot and
+        // the tag-pill row stayed empty until a window opened.
+        let json = r#"{"active_output":"DP-1","focused_idx":null,"layouts":[],
+            "outputs":[],"clients":[],"tag_count":9}"#;
+        let s: StateJson = serde_json::from_str(json).expect("null focused_idx parses");
+        assert_eq!(s.focused_idx, None);
+
+        let json2 = r#"{"active_output":"DP-1","focused_idx":3,"layouts":[],
+            "outputs":[],"clients":[],"tag_count":9}"#;
+        let s2: StateJson = serde_json::from_str(json2).unwrap();
+        assert_eq!(s2.focused_idx, Some(3));
+    }
+
+    #[test]
+    fn output_and_client_optional_fields_default() {
+        // Older margo builds omit urgent/global/scratchpad/mode/wallpaper(s)
+        // and focus_history — the shell must still parse the snapshot.
+        let json = r#"{
+            "active_output":"DP-1","layouts":["tile"],"tag_count":9,
+            "outputs":[{"name":"DP-1","active":true,"active_tag_mask":1,
+                "occupied_tag_mask":1,"layout_idx":0,"width":1920,"height":1080,
+                "x":0,"y":0,"scale":1.0}],
+            "clients":[{"app_id":"kitty","title":"t","pid":42,"focused":true,
+                "floating":false,"fullscreen":false,"minimized":false,"tags":1,
+                "monitor":"DP-1","monitor_idx":0,"idx":0,"x":0,"y":0,
+                "width":800,"height":600}]
+        }"#;
+        let s: StateJson = serde_json::from_str(json).expect("optional fields default");
+        assert_eq!(s.outputs.len(), 1);
+        assert!(s.outputs[0].focus_history.is_empty());
+        assert!(s.outputs[0].mode.is_none(), "absent mode defaults to None");
+        assert!(s.outputs[0].wallpaper.is_empty());
+        assert!(!s.clients[0].urgent && !s.clients[0].global && !s.clients[0].scratchpad);
+    }
+
+    #[test]
+    fn rejects_malformed_json() {
+        assert!(serde_json::from_str::<StateJson>("not json").is_err());
+        // Missing a required field (active_output) → reject.
+        assert!(serde_json::from_str::<StateJson>(r#"{"layouts":[]}"#).is_err());
+    }
+}
