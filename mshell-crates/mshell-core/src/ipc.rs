@@ -1717,3 +1717,54 @@ async fn start_shell_service(tx: mpsc::UnboundedSender<IPCCommand>) -> zbus::Res
     std::future::pending::<()>().await;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::pick_device;
+
+    fn names() -> Vec<(String, String)> {
+        vec![
+            ("alsa_output.hdmi".into(), "HDMI Audio".into()),
+            (
+                "alsa_output.pci".into(),
+                "Logitech Z205 Analog Stereo".into(),
+            ),
+            ("bluez.headset".into(), "WH-1000XM4".into()),
+        ]
+    }
+
+    #[test]
+    fn empty_device_list_is_none() {
+        assert_eq!(pick_device(&[], None, "next"), None);
+    }
+
+    #[test]
+    fn next_and_prev_cycle_from_current() {
+        let n = names();
+        assert_eq!(pick_device(&n, Some("alsa_output.pci"), "next"), Some(2));
+        assert_eq!(pick_device(&n, Some("bluez.headset"), "next"), Some(0)); // wraps
+        assert_eq!(pick_device(&n, Some("alsa_output.hdmi"), "prev"), Some(2)); // wraps
+        assert_eq!(pick_device(&n, Some("bluez.headset"), "previous"), Some(1));
+    }
+
+    #[test]
+    fn next_without_current_starts_at_zero() {
+        assert_eq!(pick_device(&names(), None, "next"), Some(0));
+        assert_eq!(pick_device(&names(), Some("unknown"), "prev"), Some(0));
+    }
+
+    #[test]
+    fn numeric_index_selects_directly_when_in_range() {
+        assert_eq!(pick_device(&names(), None, "1"), Some(1));
+        // Out of range falls through to the name/description match (no hit).
+        assert_eq!(pick_device(&names(), None, "9"), None);
+    }
+
+    #[test]
+    fn matches_by_name_or_description_case_insensitively() {
+        assert_eq!(pick_device(&names(), None, "logitech"), Some(1));
+        assert_eq!(pick_device(&names(), None, "HDMI"), Some(0));
+        assert_eq!(pick_device(&names(), None, "bluez"), Some(2));
+        assert_eq!(pick_device(&names(), None, "nonexistent"), None);
+    }
+}

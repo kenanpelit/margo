@@ -265,3 +265,35 @@ pub fn tc(dark: &str, light: &str) -> ThemedColor {
         light: entry_light,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn as_rgb_parses_hex_with_and_without_hash() {
+        let e = ColorEntry {
+            color: "#1a2b3c".to_string(),
+        };
+        assert_eq!(e.as_rgb(), (0x1a, 0x2b, 0x3c));
+        let e2 = ColorEntry {
+            color: "ffffff".to_string(),
+        };
+        assert_eq!(e2.as_rgb(), (255, 255, 255));
+    }
+
+    #[test]
+    fn color_fills_all_three_variants() {
+        let c = color("#abcdef");
+        assert_eq!(c.dark.color, "#abcdef");
+        assert_eq!(c.default.color, "#abcdef");
+        assert_eq!(c.light.color, "#abcdef");
+    }
+
+    #[test]
+    fn tc_keeps_dark_and_light_distinct() {
+        let c = tc("#000000", "#ffffff");
+        assert_eq!(c.dark.as_rgb(), (0, 0, 0));
+        assert_eq!(c.light.as_rgb(), (255, 255, 255));
+    }
+}
