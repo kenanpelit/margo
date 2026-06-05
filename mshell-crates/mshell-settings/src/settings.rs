@@ -1428,223 +1428,210 @@ impl Component for SettingsWindowModel {
 
         // widgets.sidebar.set_stack(&widgets.stack);
 
-        widgets.stack.add_titled(
-            model.general_settings_controller.widget(),
-            Some("general"),
-            "General",
-        );
-
-        widgets.stack.add_titled(
-            model.setup_settings_controller.widget(),
-            Some("setup"),
-            "Setup",
-        );
-
-        widgets.stack.add_titled(
-            model.theme_settings_controller.widget(),
-            Some("theme"),
-            "Theme",
-        );
-
-        widgets.stack.add_titled(
-            model.fonts_settings_controller.widget(),
-            Some("fonts"),
-            "Fonts",
-        );
-
-        widgets.stack.add_titled(
-            model.about_settings_controller.widget(),
-            Some("about"),
-            "About",
-        );
-
-        widgets.stack.add_titled(
-            model.animations_settings_controller.widget(),
-            Some("animations"),
-            "Animations",
-        );
-
-        widgets.stack.add_titled(
-            model.appearance_settings_controller.widget(),
-            Some("appearance"),
-            "Appearance",
-        );
-
-        widgets.stack.add_titled(
-            model.effects_settings_controller.widget(),
-            Some("effects"),
-            "Effects",
-        );
-
-        widgets.stack.add_titled(
-            model.behaviour_settings_controller.widget(),
-            Some("behaviour"),
-            "Behaviour",
-        );
-
-        widgets.stack.add_titled(
-            model.window_rules_settings_controller.widget(),
-            Some("window_rules"),
-            "Window Rules",
-        );
-
-        widgets.stack.add_titled(
-            model.layer_rules_settings_controller.widget(),
-            Some("layer_rules"),
-            "Layer Rules",
-        );
-
-        widgets.stack.add_titled(
-            model.tag_rules_settings_controller.widget(),
-            Some("tag_rules"),
-            "Tag Rules",
-        );
-
-        widgets.stack.add_titled(
-            model.startup_env_settings_controller.widget(),
-            Some("startup_env"),
-            "Startup & Environment",
-        );
-
-        widgets.stack.add_titled(
-            model.overview_settings_controller.widget(),
-            Some("overview"),
-            "Overview",
-        );
-
-        widgets.stack.add_titled(
-            model.date_time_settings_controller.widget(),
-            Some("date_time"),
-            "Date & Time",
-        );
-
-        widgets.stack.add_titled(
-            model.region_settings_controller.widget(),
-            Some("region"),
-            "Region & Language",
-        );
-
-        widgets.stack.add_titled(
-            model.sound_settings_controller.widget(),
-            Some("sound"),
-            "Sound",
-        );
-
-        widgets.stack.add_titled(
-            model.users_settings_controller.widget(),
-            Some("users"),
-            "Users",
-        );
-
-        widgets.stack.add_titled(
-            model.input_settings_controller.widget(),
-            Some("input"),
-            "Input",
-        );
-
-        widgets.stack.add_titled(
-            model.keybinds_settings_controller.widget(),
-            Some("keybinds"),
-            "Keybinds",
-        );
-
-        widgets.stack.add_titled(
-            model.summon_settings_controller.widget(),
-            Some("summon"),
-            "Tags",
-        );
-
-        widgets.stack.add_titled(
-            model.wallpaper_settings_controller.widget(),
-            Some("wallpaper"),
-            "Wallpaper",
-        );
-
-        widgets.stack.add_titled(
-            model.display_settings_controller.widget(),
-            Some("display"),
-            "Display",
-        );
-
-        widgets.stack.add_titled(
-            model.bluetooth_settings_controller.widget(),
-            Some("bluetooth"),
-            "Bluetooth",
-        );
-
-        widgets.stack.add_titled(
-            model.default_apps_settings_controller.widget(),
-            Some("default_apps"),
-            "Default Apps",
-        );
-
-        widgets.stack.add_titled(
-            model.network_settings_controller.widget(),
-            Some("network"),
-            "Network",
-        );
-
-        widgets.stack.add_titled(
-            model.power_settings_controller.widget(),
-            Some("power"),
-            "Power",
-        );
-
-        widgets.stack.add_titled(
-            model.privacy_settings_controller.widget(),
-            Some("privacy"),
-            "Privacy",
-        );
-
-        widgets.stack.add_titled(
-            model.idle_settings_controller.widget(),
-            Some("idle"),
-            "Idle",
-        );
-
-        widgets.stack.add_titled(
-            model.keyboard_settings_controller.widget(),
-            Some("keyboard"),
-            "On-Screen Keyboard",
-        );
-
-        widgets.stack.add_titled(
-            model.lock_settings_controller.widget(),
-            Some("lock"),
-            "Lock Screen",
-        );
-
-        widgets.stack.add_titled(
-            model.tag_layout_settings_controller.widget(),
-            Some("tiling_layout"),
-            "Tiling Layout",
-        );
-
-        widgets.stack.add_titled(
-            model.launcher_settings_controller.widget(),
-            Some("launcher"),
-            "Launcher",
-        );
-
-        widgets
-            .stack
-            .add_titled(model.bar_settings_controller.widget(), Some("bar"), "Bar");
-
-        widgets.stack.add_titled(
-            model.plugins_settings_controller.widget(),
-            Some("plugins"),
-            "Plugins",
-        );
-
-        // `Menus` (the cross-cutting menu_settings page) used to
-        // live inside the Widgets sub-sidebar. It's now its own
-        // top-level entry so users can jump straight to it from
-        // the main sidebar.
-        widgets.stack.add_titled(
-            model.menu_settings_controller.widget(),
-            Some("menus"),
-            "Menus",
-        );
+        // Top-level stack pages. Insertion order does not affect display (the
+        // sidebar buttons drive visibility) — kept as one table so the page
+        // list lives in a single place instead of 36 add_titled blocks.
+        let stack_pages: [(&str, &str, gtk::Widget); 36] = [
+            (
+                "general",
+                "General",
+                model.general_settings_controller.widget().clone().into(),
+            ),
+            (
+                "setup",
+                "Setup",
+                model.setup_settings_controller.widget().clone().into(),
+            ),
+            (
+                "theme",
+                "Theme",
+                model.theme_settings_controller.widget().clone().into(),
+            ),
+            (
+                "fonts",
+                "Fonts",
+                model.fonts_settings_controller.widget().clone().into(),
+            ),
+            (
+                "about",
+                "About",
+                model.about_settings_controller.widget().clone().into(),
+            ),
+            (
+                "animations",
+                "Animations",
+                model.animations_settings_controller.widget().clone().into(),
+            ),
+            (
+                "appearance",
+                "Appearance",
+                model.appearance_settings_controller.widget().clone().into(),
+            ),
+            (
+                "effects",
+                "Effects",
+                model.effects_settings_controller.widget().clone().into(),
+            ),
+            (
+                "behaviour",
+                "Behaviour",
+                model.behaviour_settings_controller.widget().clone().into(),
+            ),
+            (
+                "window_rules",
+                "Window Rules",
+                model
+                    .window_rules_settings_controller
+                    .widget()
+                    .clone()
+                    .into(),
+            ),
+            (
+                "layer_rules",
+                "Layer Rules",
+                model
+                    .layer_rules_settings_controller
+                    .widget()
+                    .clone()
+                    .into(),
+            ),
+            (
+                "tag_rules",
+                "Tag Rules",
+                model.tag_rules_settings_controller.widget().clone().into(),
+            ),
+            (
+                "startup_env",
+                "Startup & Environment",
+                model
+                    .startup_env_settings_controller
+                    .widget()
+                    .clone()
+                    .into(),
+            ),
+            (
+                "overview",
+                "Overview",
+                model.overview_settings_controller.widget().clone().into(),
+            ),
+            (
+                "date_time",
+                "Date & Time",
+                model.date_time_settings_controller.widget().clone().into(),
+            ),
+            (
+                "region",
+                "Region & Language",
+                model.region_settings_controller.widget().clone().into(),
+            ),
+            (
+                "sound",
+                "Sound",
+                model.sound_settings_controller.widget().clone().into(),
+            ),
+            (
+                "users",
+                "Users",
+                model.users_settings_controller.widget().clone().into(),
+            ),
+            (
+                "input",
+                "Input",
+                model.input_settings_controller.widget().clone().into(),
+            ),
+            (
+                "keybinds",
+                "Keybinds",
+                model.keybinds_settings_controller.widget().clone().into(),
+            ),
+            (
+                "summon",
+                "Tags",
+                model.summon_settings_controller.widget().clone().into(),
+            ),
+            (
+                "wallpaper",
+                "Wallpaper",
+                model.wallpaper_settings_controller.widget().clone().into(),
+            ),
+            (
+                "display",
+                "Display",
+                model.display_settings_controller.widget().clone().into(),
+            ),
+            (
+                "bluetooth",
+                "Bluetooth",
+                model.bluetooth_settings_controller.widget().clone().into(),
+            ),
+            (
+                "default_apps",
+                "Default Apps",
+                model
+                    .default_apps_settings_controller
+                    .widget()
+                    .clone()
+                    .into(),
+            ),
+            (
+                "network",
+                "Network",
+                model.network_settings_controller.widget().clone().into(),
+            ),
+            (
+                "power",
+                "Power",
+                model.power_settings_controller.widget().clone().into(),
+            ),
+            (
+                "privacy",
+                "Privacy",
+                model.privacy_settings_controller.widget().clone().into(),
+            ),
+            (
+                "idle",
+                "Idle",
+                model.idle_settings_controller.widget().clone().into(),
+            ),
+            (
+                "keyboard",
+                "On-Screen Keyboard",
+                model.keyboard_settings_controller.widget().clone().into(),
+            ),
+            (
+                "lock",
+                "Lock Screen",
+                model.lock_settings_controller.widget().clone().into(),
+            ),
+            (
+                "tiling_layout",
+                "Tiling Layout",
+                model.tag_layout_settings_controller.widget().clone().into(),
+            ),
+            (
+                "launcher",
+                "Launcher",
+                model.launcher_settings_controller.widget().clone().into(),
+            ),
+            (
+                "bar",
+                "Bar",
+                model.bar_settings_controller.widget().clone().into(),
+            ),
+            (
+                "plugins",
+                "Plugins",
+                model.plugins_settings_controller.widget().clone().into(),
+            ),
+            (
+                "menus",
+                "Menus",
+                model.menu_settings_controller.widget().clone().into(),
+            ),
+        ];
+        for (route, title, widget) in stack_pages {
+            widgets.stack.add_titled(&widget, Some(route), title);
+        }
 
         // ── Widgets group ──────────────────────────────────────
         // Owns the per-menu settings pages (Layout + each menu's
