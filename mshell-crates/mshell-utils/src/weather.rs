@@ -202,3 +202,60 @@ pub fn load_weather_cache() -> Option<wayle_weather::Weather> {
     let data = std::fs::read_to_string(weather_cache_path()).ok()?;
     serde_json::from_str(&data).ok()
 }
+
+/// Poll interval to apply for a given weather status, or `None` to leave it
+/// unchanged (used for the transient `Loading` state). Drives the retry loop:
+/// a rate-limit (HTTP 429) backs off hard (1h) because the quota won't reset
+/// until its window rolls over; other errors use the configurable fast retry;
+/// a successful load returns to the normal cadence.
+pub fn weather_poll_interval(
+    status: &wayle_weather::WeatherStatus,
+    retry_mins: u64,
+    normal_mins: u64,
+) -> Option<std::time::Duration> {
+    use std::time::Duration;
+    use wayle_weather::{WeatherErrorKind, WeatherStatus};
+    match status {
+        WeatherStatus::Error(WeatherErrorKind::RateLimited) => Some(Duration::from_secs(60 * 60)),
+        WeatherStatus::Error(_) => Some(Duration::from_secs(retry_mins.max(1) * 60)),
+        WeatherStatus::Loaded => Some(Duration::from_secs(normal_mins.max(1) * 60)),
+        WeatherStatus::Loading => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::weather_poll_interval;
+    use std::time::Duration;
+    use wayle_weather::{WeatherErrorKind, WeatherStatus};
+
+    #[test]
+    fn rate_limit_backs_off_one_hour_ignoring_retry() {
+        let i = weather_poll_interval(&WeatherStatus::Error(WeatherErrorKind::RateLimited), 2, 15);
+        assert_eq!(i, Some(Duration::from_secs(3600)));
+    }
+
+    #[test]
+    fn transient_error_uses_fast_retry() {
+        let i = weather_poll_interval(&WeatherStatus::Error(WeatherErrorKind::Network), 2, 15);
+        assert_eq!(i, Some(Duration::from_secs(120)));
+    }
+
+    #[test]
+    fn loaded_returns_to_normal_cadence() {
+        let i = weather_poll_interval(&WeatherStatus::Loaded, 2, 15);
+        assert_eq!(i, Some(Duration::from_secs(900)));
+    }
+
+    #[test]
+    fn loading_leaves_interval_unchanged() {
+        assert_eq!(weather_poll_interval(&WeatherStatus::Loading, 2, 15), None);
+    }
+
+    #[test]
+    fn zero_minutes_are_clamped_to_one() {
+        // Guard against a 0-minute config busy-looping the poller.
+        let i = weather_poll_interval(&WeatherStatus::Loaded, 0, 0);
+        assert_eq!(i, Some(Duration::from_secs(60)));
+    }
+}

@@ -352,31 +352,23 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             let weather = weather_service();
             let mut status = weather.status.watch();
             while let Some(st) = status.next().await {
-                match st {
-                    // A rate-limit (HTTP 429) won't clear until the provider's
-                    // quota window resets — fast-retrying just burns more
-                    // requests against an exhausted quota and keeps us limited.
-                    // Back off hard (1h) instead of the transient-error cadence.
-                    wayle_weather::WeatherStatus::Error(
-                        wayle_weather::WeatherErrorKind::RateLimited,
-                    ) => {
-                        weather.set_poll_interval(std::time::Duration::from_secs(60 * 60));
-                    }
-                    wayle_weather::WeatherStatus::Error(_) => {
-                        let mins = retry_mins.load(Ordering::Relaxed).max(1);
-                        weather.set_poll_interval(std::time::Duration::from_secs(mins * 60));
-                    }
-                    wayle_weather::WeatherStatus::Loaded => {
-                        let mins = configured_mins.load(Ordering::Relaxed).max(1);
-                        weather.set_poll_interval(std::time::Duration::from_secs(mins * 60));
-                        // Persist the fresh reading so the pill/menu can show
-                        // it (as "cached") next time the provider is down or
-                        // rate-limited, even across a restart.
-                        if let Some(w) = weather.weather.get() {
-                            mshell_utils::weather::save_weather_cache(&w);
-                        }
-                    }
-                    wayle_weather::WeatherStatus::Loading => {}
+                // The cadence decision (rate-limit → 1h backoff, transient →
+                // fast retry, loaded → normal) lives as a pure, unit-tested
+                // function in mshell-utils.
+                if let Some(interval) = mshell_utils::weather::weather_poll_interval(
+                    &st,
+                    retry_mins.load(Ordering::Relaxed),
+                    configured_mins.load(Ordering::Relaxed),
+                ) {
+                    weather.set_poll_interval(interval);
+                }
+                // Persist a fresh reading so the pill/menu can show it (as
+                // "cached") next time the provider is down or rate-limited,
+                // even across a restart.
+                if matches!(st, wayle_weather::WeatherStatus::Loaded)
+                    && let Some(w) = weather.weather.get()
+                {
+                    mshell_utils::weather::save_weather_cache(&w);
                 }
             }
         });
