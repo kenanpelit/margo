@@ -353,6 +353,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             let mut status = weather.status.watch();
             while let Some(st) = status.next().await {
                 match st {
+                    // A rate-limit (HTTP 429) won't clear until the provider's
+                    // quota window resets — fast-retrying just burns more
+                    // requests against an exhausted quota and keeps us limited.
+                    // Back off hard (1h) instead of the transient-error cadence.
+                    wayle_weather::WeatherStatus::Error(
+                        wayle_weather::WeatherErrorKind::RateLimited,
+                    ) => {
+                        weather.set_poll_interval(std::time::Duration::from_secs(60 * 60));
+                    }
                     wayle_weather::WeatherStatus::Error(_) => {
                         let mins = retry_mins.load(Ordering::Relaxed).max(1);
                         weather.set_poll_interval(std::time::Duration::from_secs(mins * 60));
