@@ -1141,20 +1141,35 @@ fn parse_key(s: &str, prefer_sym: bool) -> Result<KeySymCode> {
         });
     }
 
-    let flags = if prefer_sym {
-        xkb::KEYSYM_NO_FLAGS
-    } else {
-        xkb::KEYSYM_CASE_INSENSITIVE
-    };
-    let keysym = xkb::keysym_from_name(s, flags);
-    if keysym.raw() == 0u32 {
-        bail!("unknown keysym: {}", s);
+    // Exact (case-sensitive) match first — XF86 keysyms are canonically
+    // mixed-case — then a case-insensitive pass (unless the caller prefers the
+    // symbol) so plain names like `return` / `escape` / `f1` parse in any case.
+    let mut raw = xkb::keysym_from_name(s, xkb::KEYSYM_NO_FLAGS).raw();
+    if raw == 0u32 && !prefer_sym {
+        raw = xkb::keysym_from_name(s, xkb::KEYSYM_CASE_INSENSITIVE).raw();
+    }
+    if raw == 0u32 {
+        // Some valid XF86 keysyms are missing from xkbcommon's name table in
+        // certain versions (notably `XF86AudioPlayPause`, which headsets emit
+        // for the combined play/pause key). Resolve those by their canonical
+        // raw value (X11/XF86keysym.h) so the bind still works.
+        raw = keysym_alias(s).with_context(|| format!("unknown keysym: {s}"))?;
     }
     Ok(KeySymCode {
-        keysym: keysym.raw(),
+        keysym: raw,
         keycode: MultiKeycode::default(),
         key_type: KeyType::Sym,
     })
+}
+
+/// Fallback for keysym names absent from xkbcommon's table. Matched
+/// case-insensitively. Values are the canonical X11/XF86keysym.h constants.
+fn keysym_alias(name: &str) -> Option<u32> {
+    const ALIASES: &[(&str, u32)] = &[("XF86AudioPlayPause", 0x1008_FF32)];
+    ALIASES
+        .iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case(name))
+        .map(|(_, v)| *v)
 }
 
 // ── Button name → evdev code ─────────────────────────────────────────────────
@@ -1601,7 +1616,27 @@ pub const OPTION_KEYS: &[&str] = &[
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_config, strip_inline_comment};
+    use super::{parse_config, parse_key, strip_inline_comment};
+
+    #[test]
+    fn xf86_media_keysyms_resolve() {
+        // Regression: case-insensitive lookup lowercases XF86 names and fails.
+        // These must parse (exact, case-sensitive) via the NO_FLAGS first pass.
+        for name in [
+            "XF86AudioPlayPause",
+            "XF86AudioPlay",
+            "XF86AudioNext",
+            "XF86AudioPrev",
+            "XF86AudioRaiseVolume",
+            "XF86MonBrightnessUp",
+        ] {
+            let k = parse_key(name, false).unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_ne!(k.keysym, 0, "{name} resolved to NoSymbol");
+        }
+        // Plain names still parse case-insensitively.
+        assert_ne!(parse_key("return", false).unwrap().keysym, 0);
+        assert_ne!(parse_key("ESCAPE", false).unwrap().keysym, 0);
+    }
 
     #[test]
     fn inline_comments_after_whitespace_are_stripped() {
@@ -1859,3 +1894,4 @@ mod tests {
         }
     }
 }
+
