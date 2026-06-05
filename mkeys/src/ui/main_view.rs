@@ -57,13 +57,12 @@ impl SimpleComponent for UIModel {
         let message_sender = sender.clone();
         thread::spawn(move || {
             loop {
-                if let Ok(command) = String::from_utf8(ipc_handle.read()) {
-                    if command.as_str() == "quit" {
+                if let Ok(command) = String::from_utf8(ipc_handle.read())
+                    && command.as_str() == "quit" {
                         info!("mkeys: received quit");
                         message_sender.input(UIMessage::AppQuit);
                         break;
                     }
-                }
             }
         });
 

@@ -35,7 +35,7 @@ impl VirtualKeyboard {
 
         Self {
             session_state: state,
-            event_queue: event_queue,
+            event_queue,
             modifiers: 0,
             locks: 0,
         }

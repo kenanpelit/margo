@@ -37,7 +37,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for SessionState {
             match interface.as_str() {
                 "zwp_virtual_keyboard_manager_v1" => {
                     let keyboard =
-                        registry.bind::<ZwpVirtualKeyboardManagerV1, _, _>(name, version, &qh, ());
+                        registry.bind::<ZwpVirtualKeyboardManagerV1, _, _>(name, version, qh, ());
 
                     state.keyboard_manager = Some(keyboard);
                 }
@@ -75,17 +75,14 @@ impl Dispatch<WlSeat, ()> for SessionState {
         if let wl_seat::Event::Capabilities {
             capabilities: WEnum::Value(capabilities),
         } = event
-        {
-            if capabilities.contains(wl_seat::Capability::Keyboard) {
-                if let Some(keyboard_manager) = &state.keyboard_manager {
+            && capabilities.contains(wl_seat::Capability::Keyboard)
+                && let Some(keyboard_manager) = &state.keyboard_manager {
                     let keyboard = keyboard_manager.create_virtual_keyboard(seat, qh, ());
 
                     let (file, len) = get_keymap_as_file();
                     keyboard.keymap(wl_keyboard::KeymapFormat::XkbV1.into(), file.as_fd(), len);
                     state.keyboard = Some(keyboard);
                 }
-            }
-        }
     }
 }
 
