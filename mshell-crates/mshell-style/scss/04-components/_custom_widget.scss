@@ -16,6 +16,13 @@
   &.paused {
     opacity: 0.55;
   }
+
+  // An `exec` poller can emit a `#<state>` first line (e.g. `#active`) which
+  // becomes a CSS class on the pill. Status pills (VPN, …) use it to tint the
+  // icon with the accent when "on" — the symbolic icon follows `color`.
+  &.active image {
+    color: var(--primary);
+  }
 }
 
 // Declarative dropdown menu (plugin / custom widget click-popover). Matches

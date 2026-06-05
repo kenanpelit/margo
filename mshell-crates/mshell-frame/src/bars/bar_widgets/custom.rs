@@ -22,6 +22,10 @@ pub(crate) struct CustomWidgetModel {
     icon: String,
     /// When true, the exec poller's first stdout line is a live image path.
     art: bool,
+    /// Currently-applied state CSS class from a `#<state>` exec first line
+    /// (e.g. a VPN pill emits `#active` to tint its icon with the accent).
+    /// Tracked so the previous class is removed before the new one is added.
+    state_class: Option<String>,
 }
 
 #[derive(Debug)]
@@ -65,6 +69,8 @@ pub(crate) enum CustomWidgetCommandOutput {
         art: Option<String>,
         label: String,
         paused: bool,
+        /// Optional state CSS class parsed from a `#<state>` first line.
+        state_class: Option<String>,
     },
 }
 
@@ -123,6 +129,7 @@ impl Component for CustomWidgetModel {
             label,
             icon: config.icon.clone(),
             art: config.art,
+            state_class: None,
         };
 
         let widgets = view_output!();
@@ -191,19 +198,21 @@ impl Component for CustomWidgetModel {
                 tokio::pin!(shutdown_fut);
                 loop {
                     if let Some(stdout) = run_capture(&exec).await {
-                        let (art_path, body, paused) = if art {
+                        let (art_path, body, paused, state_class) = if art {
                             let (cand, label, paused) = split_art_output(&stdout);
                             // Only show the image if the file actually exists.
                             let path = cand.filter(|p| std::path::Path::new(p).exists());
-                            (path, label, paused)
+                            (path, label, paused, None)
                         } else {
-                            (None, stdout, false)
+                            let (state, label) = split_state_output(&stdout);
+                            (None, label, false, state)
                         };
                         let rendered = truncate(&render(&body, &template), max_chars);
                         let _ = out.send(CustomWidgetCommandOutput::ExecResult {
                             art: art_path,
                             label: rendered,
                             paused,
+                            state_class,
                         });
                     }
                     if interval == 0 {
@@ -238,12 +247,27 @@ impl Component for CustomWidgetModel {
         _root: &Self::Root,
     ) {
         match message {
-            CustomWidgetCommandOutput::ExecResult { art, label, paused } => {
+            CustomWidgetCommandOutput::ExecResult {
+                art,
+                label,
+                paused,
+                state_class,
+            } => {
                 self.label = label;
                 if paused {
                     widgets.root.add_css_class("paused");
                 } else {
                     widgets.root.remove_css_class("paused");
+                }
+                // Swap the `#<state>` CSS class (remove the old, add the new).
+                if self.state_class != state_class {
+                    if let Some(old) = self.state_class.take() {
+                        widgets.root.remove_css_class(&old);
+                    }
+                    if let Some(new) = &state_class {
+                        widgets.root.add_css_class(new);
+                    }
+                    self.state_class = state_class;
                 }
                 if self.art {
                     // Reload the leading image (e.g. album art) — rebuild the
@@ -316,6 +340,27 @@ fn wire_panel(
 /// `(image-path candidate, label, paused)`. Line 1 is the image path (empty →
 /// `None`), line 2 the label, line 3 the status (`paused`/`stopped` → dim).
 /// Pure — the caller decides whether the path actually exists.
+/// Non-`art` exec convention: an optional leading `#<state>` line becomes a CSS
+/// class on the pill (and is stripped from the label). Lets a status pill tint
+/// itself — e.g. a VPN pill emits `#active` when connected so `.custom-bar-widget
+/// .active` can recolour the icon with the accent. The state token is sanitised
+/// to a CSS-safe identifier; anything else leaves the output as the plain label.
+fn split_state_output(stdout: &str) -> (Option<String>, String) {
+    let mut lines = stdout.lines();
+    let first = lines.next().unwrap_or("");
+    if let Some(tok) = first.trim().strip_prefix('#') {
+        let tok = tok.trim();
+        let safe = !tok.is_empty()
+            && tok
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+        let class = safe.then(|| tok.to_string());
+        let label = lines.collect::<Vec<_>>().join("\n");
+        return (class, label);
+    }
+    (None, stdout.to_string())
+}
+
 fn split_art_output(stdout: &str) -> (Option<String>, String, bool) {
     let mut lines = stdout.lines();
     let first = lines.next().unwrap_or("").trim();
