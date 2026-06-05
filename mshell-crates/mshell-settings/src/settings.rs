@@ -278,7 +278,7 @@ impl Component for SettingsWindowModel {
                         gtk::Box {
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("preferences-desktop-effects-symbolic") },
+                            gtk::Image { set_icon_name: Some("applications-graphics-symbolic") },
                             gtk::Label { add_css_class: "label-medium", set_label: "Effects", set_halign: gtk::Align::Start, set_hexpand: true },
                         },
                     },
