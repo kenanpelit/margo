@@ -18,6 +18,7 @@ pub(crate) mod hidden_bar;
 pub(crate) mod ip;
 pub(crate) mod keep_awake;
 pub(crate) mod keybinds;
+pub(crate) mod keyboard;
 pub(crate) mod keyboard_layout;
 pub(crate) mod lock;
 pub(crate) mod lock_keys;

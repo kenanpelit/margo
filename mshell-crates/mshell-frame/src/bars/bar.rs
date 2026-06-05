@@ -14,6 +14,7 @@ use crate::bars::bar_widgets::dns::{DnsInit, DnsModel};
 use crate::bars::bar_widgets::ip::{IpInit, IpModel};
 use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
 use crate::bars::bar_widgets::keybinds::{KeybindsInit, KeybindsModel};
+use crate::bars::bar_widgets::keyboard::{KeyboardInit, KeyboardModel, KeyboardOutput};
 use crate::bars::bar_widgets::keyboard_layout::{KeyboardLayoutInit, KeyboardLayoutModel};
 use crate::bars::bar_widgets::lock::{LockInit, LockModel, LockOutput};
 use crate::bars::bar_widgets::lock_keys::{LockKeysInit, LockKeysModel};
@@ -935,6 +936,13 @@ impl BarModel {
                 KeyboardLayoutModel::builder()
                     .launch(KeyboardLayoutInit { orientation })
                     .detach(),
+            ),
+            BarWidget::Keyboard => Box::new(
+                KeyboardModel::builder()
+                    .launch(KeyboardInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        KeyboardOutput::CloseMenu => BarOutput::CloseMenu,
+                    }),
             ),
             BarWidget::AudioVisualizer => Box::new(
                 AudioVisualizerModel::builder()
