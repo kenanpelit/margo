@@ -15,9 +15,9 @@ use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
 use crate::hidden_bar_settings::{HiddenBarSettingsInit, HiddenBarSettingsModel};
 use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
-use crate::keyboard_settings::{KeyboardSettingsInit, KeyboardSettingsModel};
 use crate::input_settings::{InputSettingsInit, InputSettingsModel};
 use crate::keybinds_settings::{KeybindsSettingsInit, KeybindsSettingsModel};
+use crate::keyboard_settings::{KeyboardSettingsInit, KeyboardSettingsModel};
 use crate::launcher_settings::{LauncherSettingsInit, LauncherSettingsModel};
 use crate::lock_settings::{LockSettingsInit, LockSettingsModel};
 use crate::media_player_settings::{MediaPlayerSettingsInit, MediaPlayerSettingsModel};
@@ -2306,7 +2306,9 @@ fn keywords_for(label: &str) -> &'static str {
         "date_time" | "date time" | "date & time" => "clock time date timezone ntp format 24-hour",
         "region" | "region & language" => "locale language format measurement keyboard",
         "idle" => "screensaver dim timeout inhibitor dpms blank suspend",
-        "keyboard" | "on-screen keyboard" => "on-screen keyboard osk virtual keyboard touch type mkeys layout turkish",
+        "keyboard" | "on-screen keyboard" => {
+            "on-screen keyboard osk virtual keyboard touch type mkeys layout turkish"
+        }
         "lock" | "lock screen" => "lockscreen password security blur unlock pam",
         "privacy" => "location camera microphone permission history geoclue recent flatpak",
         "launcher" => "app launcher run search spotlight provider calc ssh",
