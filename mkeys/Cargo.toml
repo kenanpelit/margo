@@ -1,0 +1,36 @@
+[package]
+name = "mkeys"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
+description = "On-screen keyboard for the margo Wayland compositor (zwp_virtual_keyboard)"
+
+[[bin]]
+name = "mkeys"
+path = "src/main.rs"
+
+[dependencies]
+# GTK / relm4 — pinned to the margo workspace generation (gtk4 0.10 gen).
+relm4 = "0.10"
+gtk4-layer-shell = "0.7"
+gdk4 = "0.10"
+# Wayland virtual keyboard
+wayland-client = { workspace = true }
+wayland-protocols-misc = { version = "0.3", features = ["client", "wayland-client"] }
+xkbcommon = { workspace = true }
+evdev = "0.13"
+tempfile = "3"
+# Assets + config
+rust-embed = "8"
+toml = { workspace = true }
+serde = { workspace = true }
+# CLI + logging
+clap = { workspace = true }
+ctrlc = "3"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true

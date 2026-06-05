@@ -5,6 +5,7 @@ members = [
     "margo-layouts",
     "margo-portal",
     "mctl",
+    "mkeys",
     "mlayout",
     "mlock",
     "mlogind",
