@@ -9,7 +9,9 @@ use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
 use mshell_services::weather_service;
-use mshell_utils::weather::{get_temperature_string, get_weather_icon_name, spawn_weather_watcher};
+use mshell_utils::weather::{
+    get_temperature_string, get_weather_icon_name, load_weather_cache, spawn_weather_watcher,
+};
 use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
@@ -209,46 +211,58 @@ impl WeatherModel {
             .get_untracked()
             .into();
 
-        match service.status.get() {
-            WeatherStatus::Loaded => {
-                if let Some(weather) = service.weather.get() {
-                    self.icon =
-                        get_weather_icon_name(&weather.current.condition, weather.current.is_day)
-                            .to_string();
-                    self.temp = get_temperature_string(&weather.current.temperature, &unit);
+        let status = service.status.get();
+        // Prefer the live reading; fall back to the on-disk cache so the pill
+        // keeps showing the last good weather when the provider is down or
+        // rate-limited (the in-memory value is also retained on error, but the
+        // disk cache additionally survives a restart).
+        let data = service
+            .weather
+            .get()
+            .map(|arc| (*arc).clone())
+            .or_else(load_weather_cache);
 
-                    // Today's high / low from the first daily forecast,
-                    // compact (rounded, no unit letter): `↑24°` / `↓15°`.
-                    if let Some(today) = weather.daily.first() {
-                        self.high = format!("↑{}", temp_compact(&today.temp_high, &unit));
-                        self.low = format!("↓{}", temp_compact(&today.temp_low, &unit));
-                    } else {
-                        self.high.clear();
-                        self.low.clear();
-                    }
+        if let Some(weather) = data {
+            self.icon = get_weather_icon_name(&weather.current.condition, weather.current.is_day)
+                .to_string();
+            self.temp = get_temperature_string(&weather.current.temperature, &unit);
 
-                    let place = if !weather.location.city.is_empty() {
-                        match &weather.location.region {
-                            Some(region) => format!("{}, {}", weather.location.city, region),
-                            None => {
-                                format!("{}, {}", weather.location.city, weather.location.country)
-                            }
-                        }
-                    } else {
-                        format!("{}, {}", weather.location.lat, weather.location.lon)
-                    };
-                    let summary = if self.high.is_empty() {
-                        format!("{place} · {}", self.temp)
-                    } else {
-                        format!("{place} · {} · {} {}", self.temp, self.high, self.low)
-                    };
-                    self.tooltip = format!("{summary}\nClick: open  ·  Right-click: high / low");
-                    return;
-                }
-                self.fallback("Weather");
+            // Today's high / low from the first daily forecast,
+            // compact (rounded, no unit letter): `↑24°` / `↓15°`.
+            if let Some(today) = weather.daily.first() {
+                self.high = format!("↑{}", temp_compact(&today.temp_high, &unit));
+                self.low = format!("↓{}", temp_compact(&today.temp_low, &unit));
+            } else {
+                self.high.clear();
+                self.low.clear();
             }
+
+            let place = if !weather.location.city.is_empty() {
+                match &weather.location.region {
+                    Some(region) => format!("{}, {}", weather.location.city, region),
+                    None => format!("{}, {}", weather.location.city, weather.location.country),
+                }
+            } else {
+                format!("{}, {}", weather.location.lat, weather.location.lon)
+            };
+            let summary = if self.high.is_empty() {
+                format!("{place} · {}", self.temp)
+            } else {
+                format!("{place} · {} · {} {}", self.temp, self.high, self.low)
+            };
+            // Flag the reading as stale when the latest fetch didn't succeed.
+            let hint = if matches!(status, WeatherStatus::Loaded) {
+                ""
+            } else {
+                "  ·  cached (offline)"
+            };
+            self.tooltip = format!("{summary}{hint}\nClick: open  ·  Right-click: high / low");
+            return;
+        }
+
+        match status {
             WeatherStatus::Loading => self.fallback("Weather: loading…"),
-            WeatherStatus::Error(_) => self.fallback("Weather: unavailable"),
+            _ => self.fallback("Weather: unavailable"),
         }
     }
 

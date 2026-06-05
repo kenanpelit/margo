@@ -167,3 +167,38 @@ pub fn spawn_weather_watcher<C>(
         let _ = out.send(status_state());
     });
 }
+
+/// On-disk cache of the last successfully-fetched weather, so the bar pill
+/// and menu can show the most recent reading instead of "unavailable" when
+/// the provider is unreachable or rate-limited — including across restarts,
+/// where the in-memory `weather_service().weather` starts empty.
+fn weather_cache_path() -> std::path::PathBuf {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache")
+        });
+    base.join("margo").join("weather.json")
+}
+
+/// Persist the last good weather snapshot (called on every successful fetch).
+pub fn save_weather_cache(weather: &wayle_weather::Weather) {
+    let path = weather_cache_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    match serde_json::to_string(weather) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&path, json) {
+                tracing::warn!(error = %e, "weather: failed to write cache");
+            }
+        }
+        Err(e) => tracing::warn!(error = %e, "weather: failed to serialize cache"),
+    }
+}
+
+/// Load the last good weather snapshot from disk, if any.
+pub fn load_weather_cache() -> Option<wayle_weather::Weather> {
+    let data = std::fs::read_to_string(weather_cache_path()).ok()?;
+    serde_json::from_str(&data).ok()
+}

@@ -4741,6 +4741,7 @@ dependencies = [
  "reactive_graph",
  "regex",
  "relm4",
+ "serde_json",
  "tokio",
  "tokio-util",
  "tracing",

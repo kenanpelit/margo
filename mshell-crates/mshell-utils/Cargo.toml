@@ -21,6 +21,7 @@ notify-rust.workspace = true
 reactive_graph.workspace = true
 regex.workspace = true
 relm4.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true

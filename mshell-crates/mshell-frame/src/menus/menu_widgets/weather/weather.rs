@@ -5,7 +5,7 @@ use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields, SavedLocation};
 use mshell_services::weather_service;
-use mshell_utils::weather::spawn_weather_watcher;
+use mshell_utils::weather::{load_weather_cache, spawn_weather_watcher};
 use reactive_graph::traits::Get;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, ListModelExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
@@ -396,121 +396,134 @@ impl Component for WeatherModel {
             WeatherCommandOutput::WeatherChanged => {
                 let service = weather_service();
 
-                match service.status.get() {
-                    WeatherStatus::Loading => self.loading_state = LoadingState::Loading,
-                    WeatherStatus::Loaded => {
-                        if let Some(weather) = service.weather.get() {
-                            if self.current_weather_controller.is_some() {
-                                if let Some(controller) = &self.current_weather_controller {
-                                    controller.emit(CurrentInput::Update(
-                                        weather.current.clone(),
-                                        weather.astronomy.clone(),
-                                    ));
-                                }
-                                if let Some(controller) = &self.hourly_controller {
-                                    controller.emit(HourlyInput::Update(weather.hourly.clone()));
-                                }
+                let live_status = service.status.get();
+                // Last-good reading: in-memory (retained on error) or the
+                // on-disk cache (which also survives restarts). Lets an outage
+                // or rate-limit keep showing the previous weather instead of
+                // blanking the menu to an error.
+                let cached = service
+                    .weather
+                    .get()
+                    .map(|arc| (*arc).clone())
+                    .or_else(load_weather_cache);
 
-                                if let Some(controller) = &self.daily_controller {
-                                    controller.emit(DailyInput::Update(weather.daily.clone()));
-                                }
-                            } else {
-                                let current_controller = CurrentModel::builder()
-                                    .launch(CurrentInit {
-                                        current_weather: weather.current.clone(),
-                                        astronomy: weather.astronomy.clone(),
-                                    })
-                                    .detach();
-
-                                let hourly_controller = HourlyModel::builder()
-                                    .launch(HourlyInit {
-                                        hourly: weather.hourly.clone(),
-                                    })
-                                    .detach();
-
-                                let daily_controller = DailyModel::builder()
-                                    .launch(DailyInit {
-                                        daily: weather.daily.clone(),
-                                    })
-                                    .detach();
-
-                                if self.all_in_one {
-                                    // Standalone: stack every section.
-                                    widgets.sections.append(current_controller.widget());
-                                    widgets.sections.append(hourly_controller.widget());
-                                    widgets.sections.append(daily_controller.widget());
-                                } else {
-                                    // Dashboard: page behind prev/next.
-                                    widgets.stack.add_titled(
-                                        current_controller.widget(),
-                                        Some(PAGE_CURRENT),
-                                        "Current",
-                                    );
-                                    widgets.stack.add_titled(
-                                        hourly_controller.widget(),
-                                        Some(PAGE_HOURLY),
-                                        "Hourly",
-                                    );
-                                    widgets.stack.add_titled(
-                                        daily_controller.widget(),
-                                        Some(PAGE_DAILY),
-                                        "Daily",
-                                    );
-                                }
-
-                                self.current_weather_controller = Some(current_controller);
-                                self.hourly_controller = Some(hourly_controller);
-                                self.daily_controller = Some(daily_controller);
-
-                                if !self.all_in_one {
-                                    self.update_page_state(&widgets.stack);
-                                }
-                            }
-
-                            if weather.location.city.is_empty().not() {
-                                self.location = format!(
-                                    "{}, {}",
-                                    weather.location.city.clone(),
-                                    if let Some(region) = &weather.location.region {
-                                        region
-                                    } else {
-                                        &weather.location.country
-                                    }
-                                );
-                            } else {
-                                self.location = format!(
-                                    "{}, {}",
-                                    weather.location.lat.clone(),
-                                    weather.location.lon.clone(),
-                                );
-                            }
+                if let Some(weather) = cached {
+                    if self.current_weather_controller.is_some() {
+                        if let Some(controller) = &self.current_weather_controller {
+                            controller.emit(CurrentInput::Update(
+                                weather.current.clone(),
+                                weather.astronomy.clone(),
+                            ));
+                        }
+                        if let Some(controller) = &self.hourly_controller {
+                            controller.emit(HourlyInput::Update(weather.hourly.clone()));
                         }
 
-                        self.loading_state = LoadingState::Loaded
+                        if let Some(controller) = &self.daily_controller {
+                            controller.emit(DailyInput::Update(weather.daily.clone()));
+                        }
+                    } else {
+                        let current_controller = CurrentModel::builder()
+                            .launch(CurrentInit {
+                                current_weather: weather.current.clone(),
+                                astronomy: weather.astronomy.clone(),
+                            })
+                            .detach();
+
+                        let hourly_controller = HourlyModel::builder()
+                            .launch(HourlyInit {
+                                hourly: weather.hourly.clone(),
+                            })
+                            .detach();
+
+                        let daily_controller = DailyModel::builder()
+                            .launch(DailyInit {
+                                daily: weather.daily.clone(),
+                            })
+                            .detach();
+
+                        if self.all_in_one {
+                            // Standalone: stack every section.
+                            widgets.sections.append(current_controller.widget());
+                            widgets.sections.append(hourly_controller.widget());
+                            widgets.sections.append(daily_controller.widget());
+                        } else {
+                            // Dashboard: page behind prev/next.
+                            widgets.stack.add_titled(
+                                current_controller.widget(),
+                                Some(PAGE_CURRENT),
+                                "Current",
+                            );
+                            widgets.stack.add_titled(
+                                hourly_controller.widget(),
+                                Some(PAGE_HOURLY),
+                                "Hourly",
+                            );
+                            widgets.stack.add_titled(
+                                daily_controller.widget(),
+                                Some(PAGE_DAILY),
+                                "Daily",
+                            );
+                        }
+
+                        self.current_weather_controller = Some(current_controller);
+                        self.hourly_controller = Some(hourly_controller);
+                        self.daily_controller = Some(daily_controller);
+
+                        if !self.all_in_one {
+                            self.update_page_state(&widgets.stack);
+                        }
                     }
-                    WeatherStatus::Error(error) => {
-                        self.loading_state = LoadingState::Error;
-                        match error {
-                            WeatherErrorKind::Network => {
-                                self.error_msg =
-                                    "Error loading weather. Check network.".to_string();
+
+                    if weather.location.city.is_empty().not() {
+                        self.location = format!(
+                            "{}, {}",
+                            weather.location.city.clone(),
+                            if let Some(region) = &weather.location.region {
+                                region
+                            } else {
+                                &weather.location.country
                             }
-                            WeatherErrorKind::ApiKeyMissing { provider: _ } => {
-                                self.error_msg =
-                                    "Error loading weather. Api key missing.".to_string();
-                            }
-                            WeatherErrorKind::LocationNotFound { query: _ } => {
-                                self.error_msg =
-                                    "Error loading weather. Location not found.".to_string();
-                            }
-                            WeatherErrorKind::RateLimited => {
-                                self.error_msg =
-                                    "Error loading weather. Too many requests.".to_string();
-                            }
-                            WeatherErrorKind::Other => {
-                                self.error_msg = "Error loading weather.".to_string();
-                            }
-                        };
+                        );
+                    } else {
+                        self.location = format!(
+                            "{}, {}",
+                            weather.location.lat.clone(),
+                            weather.location.lon.clone(),
+                        );
+                    }
+
+                    self.loading_state = LoadingState::Loaded;
+                } else {
+                    // No data anywhere (never fetched + nothing cached): keep
+                    // the loading/error states for first-run feedback.
+                    match live_status {
+                        WeatherStatus::Loading => self.loading_state = LoadingState::Loading,
+                        WeatherStatus::Loaded => {}
+                        WeatherStatus::Error(error) => {
+                            self.loading_state = LoadingState::Error;
+                            match error {
+                                WeatherErrorKind::Network => {
+                                    self.error_msg =
+                                        "Error loading weather. Check network.".to_string();
+                                }
+                                WeatherErrorKind::ApiKeyMissing { provider: _ } => {
+                                    self.error_msg =
+                                        "Error loading weather. Api key missing.".to_string();
+                                }
+                                WeatherErrorKind::LocationNotFound { query: _ } => {
+                                    self.error_msg =
+                                        "Error loading weather. Location not found.".to_string();
+                                }
+                                WeatherErrorKind::RateLimited => {
+                                    self.error_msg =
+                                        "Error loading weather. Too many requests.".to_string();
+                                }
+                                WeatherErrorKind::Other => {
+                                    self.error_msg = "Error loading weather.".to_string();
+                                }
+                            };
+                        }
                     }
                 }
             }

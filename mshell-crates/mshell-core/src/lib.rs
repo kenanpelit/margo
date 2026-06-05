@@ -369,6 +369,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                     wayle_weather::WeatherStatus::Loaded => {
                         let mins = configured_mins.load(Ordering::Relaxed).max(1);
                         weather.set_poll_interval(std::time::Duration::from_secs(mins * 60));
+                        // Persist the fresh reading so the pill/menu can show
+                        // it (as "cached") next time the provider is down or
+                        // rate-limited, even across a restart.
+                        if let Some(w) = weather.weather.get() {
+                            mshell_utils::weather::save_weather_cache(&w);
+                        }
                     }
                     wayle_weather::WeatherStatus::Loading => {}
                 }
