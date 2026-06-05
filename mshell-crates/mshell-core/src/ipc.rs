@@ -72,20 +72,18 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 }
                 IPCCommand::ClipboardAction(spec) => {
                     // Handled directly against the clipboard service
-                    // singleton (no UI round-trip needed).
+                    // singleton (no UI round-trip needed). The verb→op parse
+                    // is a pure, unit-tested function.
                     let svc = mshell_clipboard::clipboard_service();
-                    let mut it = spec.split_whitespace();
-                    let verb = it.next().unwrap_or("");
-                    let id = it.next().and_then(|s| s.parse::<u64>().ok());
-                    match (verb, id) {
-                        ("copy", Some(id)) => svc.copy_entry(id),
-                        ("pin", Some(id)) | ("unpin", Some(id)) => svc.toggle_pin(id),
-                        ("delete", Some(id)) => {
+                    match parse_clipboard_action(&spec) {
+                        Some(ClipboardAction::Copy(id)) => svc.copy_entry(id),
+                        Some(ClipboardAction::TogglePin(id)) => svc.toggle_pin(id),
+                        Some(ClipboardAction::Delete(id)) => {
                             svc.history().remove(id);
                         }
-                        ("clear", _) => svc.clear_unpinned(),
-                        ("wipe", _) => svc.clear_history(),
-                        _ => tracing::warn!(%spec, "clipboard: unknown action"),
+                        Some(ClipboardAction::Clear) => svc.clear_unpinned(),
+                        Some(ClipboardAction::Wipe) => svc.clear_history(),
+                        None => tracing::warn!(%spec, "clipboard: unknown action"),
                     }
                 }
                 IPCCommand::ClipboardList(reply) => {
@@ -744,6 +742,32 @@ fn notify_media(player: Arc<Player>) {
 /// description)` per device, `current` the default's node name. Accepts
 /// `next` / `prev` / `switch`, a numeric index, or a case-insensitive
 /// fragment matched against the description first then the node name.
+/// A parsed `mshellctl clipboard <verb> [id]` action.
+#[derive(Debug, PartialEq, Eq)]
+enum ClipboardAction {
+    Copy(u64),
+    TogglePin(u64),
+    Delete(u64),
+    Clear,
+    Wipe,
+}
+
+/// Parse a `clipboard` IPC spec (`"<verb> [id]"`) into an action, or `None`
+/// for an unknown verb / missing-or-malformed id where one is required.
+fn parse_clipboard_action(spec: &str) -> Option<ClipboardAction> {
+    let mut it = spec.split_whitespace();
+    let verb = it.next().unwrap_or("");
+    let id = it.next().and_then(|s| s.parse::<u64>().ok());
+    match (verb, id) {
+        ("copy", Some(id)) => Some(ClipboardAction::Copy(id)),
+        ("pin", Some(id)) | ("unpin", Some(id)) => Some(ClipboardAction::TogglePin(id)),
+        ("delete", Some(id)) => Some(ClipboardAction::Delete(id)),
+        ("clear", _) => Some(ClipboardAction::Clear),
+        ("wipe", _) => Some(ClipboardAction::Wipe),
+        _ => None,
+    }
+}
+
 fn pick_device(names: &[(String, String)], current: Option<&str>, target: &str) -> Option<usize> {
     if names.is_empty() {
         return None;
@@ -1720,7 +1744,50 @@ async fn start_shell_service(tx: mpsc::UnboundedSender<IPCCommand>) -> zbus::Res
 
 #[cfg(test)]
 mod tests {
-    use super::pick_device;
+    use super::{ClipboardAction, parse_clipboard_action, pick_device};
+
+    #[test]
+    fn clipboard_action_parses_known_verbs() {
+        assert_eq!(
+            parse_clipboard_action("copy 42"),
+            Some(ClipboardAction::Copy(42))
+        );
+        assert_eq!(
+            parse_clipboard_action("pin 7"),
+            Some(ClipboardAction::TogglePin(7))
+        );
+        assert_eq!(
+            parse_clipboard_action("unpin 7"),
+            Some(ClipboardAction::TogglePin(7))
+        );
+        assert_eq!(
+            parse_clipboard_action("delete 3"),
+            Some(ClipboardAction::Delete(3))
+        );
+        // clear / wipe ignore any trailing id.
+        assert_eq!(
+            parse_clipboard_action("clear"),
+            Some(ClipboardAction::Clear)
+        );
+        assert_eq!(
+            parse_clipboard_action("wipe now"),
+            Some(ClipboardAction::Wipe)
+        );
+        // Extra whitespace is tolerated.
+        assert_eq!(
+            parse_clipboard_action("  copy   9 "),
+            Some(ClipboardAction::Copy(9))
+        );
+    }
+
+    #[test]
+    fn clipboard_action_rejects_unknown_or_malformed() {
+        assert_eq!(parse_clipboard_action(""), None);
+        assert_eq!(parse_clipboard_action("bogus 1"), None);
+        // id-requiring verbs with a missing / non-numeric id → None.
+        assert_eq!(parse_clipboard_action("copy"), None);
+        assert_eq!(parse_clipboard_action("delete abc"), None);
+    }
 
     fn names() -> Vec<(String, String)> {
         vec![
