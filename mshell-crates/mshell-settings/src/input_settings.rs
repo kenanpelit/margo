@@ -10,6 +10,7 @@
 //! Text fields (xkb layout / variant / options) apply on Enter to avoid a
 //! reload per keystroke; switches, dropdowns and spinners apply on change.
 
+use crate::compositor_conf::{read_block, write_block};
 use crate::row::Row;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -111,6 +112,10 @@ const MOTIONS: [&str; 8] = [
     "down-right",
 ];
 const FINGER_OPTS: [&str; 2] = ["3", "4"];
+/// Mouse-button tokens the parser accepts (`parse_button`), in dropdown order.
+const MB_BUTTONS: [&str; 3] = ["lmb", "mmb", "rmb"];
+/// Scroll/axis direction tokens (`parse_axis_direction`), in dropdown order.
+const AXIS_DIRS: [&str; 4] = ["up", "down", "left", "right"];
 
 /// Every `gesturebind = <rest>` value in config.conf (the part after `=`),
 /// in file order — these are richer than a single key=value so we round-trip
@@ -246,6 +251,22 @@ pub(crate) struct InputSettingsModel {
     sendevents_model: gtk::StringList,
     motion_model: gtk::StringList,
     fingers_model: gtk::StringList,
+    // Mouse bindings (`mousebind = MODS, button, action, arg`).
+    mbinds: Vec<String>,
+    mbinds_box: gtk::Box,
+    mb_modifiers: String,
+    mb_button: u32,
+    mb_action: String,
+    mb_arg: String,
+    // Scroll/axis bindings (`axisbind = MODS, direction, action, arg`).
+    abinds: Vec<String>,
+    abinds_box: gtk::Box,
+    ab_modifiers: String,
+    ab_direction: u32,
+    ab_action: String,
+    ab_arg: String,
+    button_model: gtk::StringList,
+    axis_dir_model: gtk::StringList,
 }
 
 #[derive(Debug)]
@@ -278,6 +299,18 @@ pub(crate) enum InputSettingsInput {
     SetBArg(String),
     AddBind,
     RemoveBind(usize),
+    SetMbModifiers(String),
+    SetMbButton(u32),
+    SetMbAction(String),
+    SetMbArg(String),
+    AddMbind,
+    RemoveMbind(usize),
+    SetAbModifiers(String),
+    SetAbDirection(u32),
+    SetAbAction(String),
+    SetAbArg(String),
+    AddAbind,
+    RemoveAbind(usize),
 }
 
 #[derive(Debug)]
@@ -833,6 +866,64 @@ impl Component for InputSettingsModel {
                         sender.input(InputSettingsInput::AddBind);
                     },
                 },
+
+                // ════════ Mouse bindings ════════
+                gtk::Label { add_css_class: "label-large-bold", set_label: "Mouse bindings", set_halign: gtk::Align::Start, set_margin_top: 16 },
+                gtk::Label { add_css_class: "label-small", set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
+                    set_label: "Bind a (modifier +) mouse button to a compositor action (mousebind). Applied live." },
+                #[local_ref]
+                mbinds_box -> gtk::Box { set_orientation: gtk::Orientation::Vertical, set_spacing: 6 },
+                gtk::Label { add_css_class: "label-medium-bold", set_label: "Add a binding", set_halign: gtk::Align::Start, set_margin_top: 8 },
+                #[template] Row {
+                    #[template_child] title { set_label: "Button" },
+                    gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 200, set_model: Some(&model.button_model),
+                        connect_selected_notify[sender] => move |d| sender.input(InputSettingsInput::SetMbButton(d.selected())) } },
+                #[template] Row {
+                    #[template_child] title { set_label: "Action" },
+                    #[template_child] desc { set_label: "Dispatch name, e.g. killclient, togglefloating, spawn." },
+                    gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_placeholder_text: Some("killclient"),
+                        connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetMbAction(e.text().to_string())) } },
+                #[template] Row {
+                    #[template_child] title { set_label: "Argument" },
+                    #[template_child] desc { set_label: "Optional argument for the action." },
+                    gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_placeholder_text: Some("(optional)"),
+                        connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetMbArg(e.text().to_string())) } },
+                #[template] Row {
+                    #[template_child] title { set_label: "Modifiers" },
+                    #[template_child] desc { set_label: "Held key(s), e.g. super (use none with care — it grabs every click)." },
+                    gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_text: "super",
+                        connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetMbModifiers(e.text().to_string())) } },
+                gtk::Button { add_css_class: "ok-button-surface", add_css_class: "ok-button-cell", set_label: "Add mouse binding", set_margin_top: 4,
+                    connect_clicked[sender] => move |_| sender.input(InputSettingsInput::AddMbind) },
+
+                // ════════ Scroll (axis) bindings ════════
+                gtk::Label { add_css_class: "label-large-bold", set_label: "Scroll bindings", set_halign: gtk::Align::Start, set_margin_top: 16 },
+                gtk::Label { add_css_class: "label-small", set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
+                    set_label: "Bind a (modifier +) scroll direction to a compositor action (axisbind). Applied live." },
+                #[local_ref]
+                abinds_box -> gtk::Box { set_orientation: gtk::Orientation::Vertical, set_spacing: 6 },
+                gtk::Label { add_css_class: "label-medium-bold", set_label: "Add a binding", set_halign: gtk::Align::Start, set_margin_top: 8 },
+                #[template] Row {
+                    #[template_child] title { set_label: "Direction" },
+                    gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 200, set_model: Some(&model.axis_dir_model),
+                        connect_selected_notify[sender] => move |d| sender.input(InputSettingsInput::SetAbDirection(d.selected())) } },
+                #[template] Row {
+                    #[template_child] title { set_label: "Action" },
+                    #[template_child] desc { set_label: "Dispatch name, e.g. focusstack, view." },
+                    gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_placeholder_text: Some("focusstack"),
+                        connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetAbAction(e.text().to_string())) } },
+                #[template] Row {
+                    #[template_child] title { set_label: "Argument" },
+                    #[template_child] desc { set_label: "Optional argument." },
+                    gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_placeholder_text: Some("(optional)"),
+                        connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetAbArg(e.text().to_string())) } },
+                #[template] Row {
+                    #[template_child] title { set_label: "Modifiers" },
+                    #[template_child] desc { set_label: "Held key(s), e.g. super (or none)." },
+                    gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_text: "super",
+                        connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetAbModifiers(e.text().to_string())) } },
+                gtk::Button { add_css_class: "ok-button-surface", add_css_class: "ok-button-cell", set_label: "Add scroll binding", set_margin_top: 4,
+                    connect_clicked[sender] => move |_| sender.input(InputSettingsInput::AddAbind) },
             }
         }
     }
@@ -848,6 +939,8 @@ impl Component for InputSettingsModel {
         // `#[local_ref]`).
         let binds_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
         let binds = read_gesturebinds();
+        let mbinds_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        let abinds_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
         let model = InputSettingsModel {
             xkb_layout: cfg.xkb_rules.layout.clone(),
             xkb_variant: cfg.xkb_rules.variant.clone(),
@@ -887,10 +980,38 @@ impl Component for InputSettingsModel {
             ]),
             motion_model: gtk::StringList::new(&MOTIONS),
             fingers_model: gtk::StringList::new(&FINGER_OPTS),
+            mbinds: read_block("mousebind"),
+            mbinds_box: mbinds_box.clone(),
+            mb_modifiers: "super".to_string(),
+            mb_button: 0,
+            mb_action: String::new(),
+            mb_arg: String::new(),
+            abinds: read_block("axisbind"),
+            abinds_box: abinds_box.clone(),
+            ab_modifiers: "super".to_string(),
+            ab_direction: 0,
+            ab_action: String::new(),
+            ab_arg: String::new(),
+            button_model: gtk::StringList::new(&["Left button", "Middle button", "Right button"]),
+            axis_dir_model: gtk::StringList::new(&["Up", "Down", "Left", "Right"]),
         };
         let widgets = view_output!();
         let _ = root;
         rebuild_binds(&model.binds_box, &model.binds, &sender);
+        rebuild_raw_binds(
+            &model.mbinds_box,
+            &model.mbinds,
+            "No mouse bindings yet.",
+            InputSettingsInput::RemoveMbind,
+            &sender,
+        );
+        rebuild_raw_binds(
+            &model.abinds_box,
+            &model.abinds,
+            "No scroll bindings yet.",
+            InputSettingsInput::RemoveAbind,
+            &sender,
+        );
         ComponentParts { model, widgets }
     }
 
@@ -1019,6 +1140,96 @@ impl Component for InputSettingsModel {
                     rebuild_binds(&self.binds_box, &self.binds, &sender);
                 }
             }
+            InputSettingsInput::SetMbModifiers(s) => self.mb_modifiers = s,
+            InputSettingsInput::SetMbButton(v) => self.mb_button = v,
+            InputSettingsInput::SetMbAction(s) => self.mb_action = s.trim().to_string(),
+            InputSettingsInput::SetMbArg(s) => self.mb_arg = s.trim().to_string(),
+            InputSettingsInput::AddMbind => {
+                let action = self.mb_action.trim().to_string();
+                if action.is_empty() {
+                    return;
+                }
+                let button = MB_BUTTONS
+                    .get(self.mb_button as usize)
+                    .copied()
+                    .unwrap_or("rmb");
+                let mods = match self.mb_modifiers.trim() {
+                    "" => "none",
+                    m => m,
+                };
+                let mut line = format!("{mods}, {button}, {action}");
+                let arg = self.mb_arg.trim();
+                if !arg.is_empty() {
+                    line.push_str(&format!(", {arg}"));
+                }
+                self.mbinds.push(line);
+                write_block("mousebind", &self.mbinds);
+                rebuild_raw_binds(
+                    &self.mbinds_box,
+                    &self.mbinds,
+                    "No mouse bindings yet.",
+                    InputSettingsInput::RemoveMbind,
+                    &sender,
+                );
+            }
+            InputSettingsInput::RemoveMbind(i) => {
+                if i < self.mbinds.len() {
+                    self.mbinds.remove(i);
+                    write_block("mousebind", &self.mbinds);
+                    rebuild_raw_binds(
+                        &self.mbinds_box,
+                        &self.mbinds,
+                        "No mouse bindings yet.",
+                        InputSettingsInput::RemoveMbind,
+                        &sender,
+                    );
+                }
+            }
+            InputSettingsInput::SetAbModifiers(s) => self.ab_modifiers = s,
+            InputSettingsInput::SetAbDirection(v) => self.ab_direction = v,
+            InputSettingsInput::SetAbAction(s) => self.ab_action = s.trim().to_string(),
+            InputSettingsInput::SetAbArg(s) => self.ab_arg = s.trim().to_string(),
+            InputSettingsInput::AddAbind => {
+                let action = self.ab_action.trim().to_string();
+                if action.is_empty() {
+                    return;
+                }
+                let dir = AXIS_DIRS
+                    .get(self.ab_direction as usize)
+                    .copied()
+                    .unwrap_or("up");
+                let mods = match self.ab_modifiers.trim() {
+                    "" => "none",
+                    m => m,
+                };
+                let mut line = format!("{mods}, {dir}, {action}");
+                let arg = self.ab_arg.trim();
+                if !arg.is_empty() {
+                    line.push_str(&format!(", {arg}"));
+                }
+                self.abinds.push(line);
+                write_block("axisbind", &self.abinds);
+                rebuild_raw_binds(
+                    &self.abinds_box,
+                    &self.abinds,
+                    "No scroll bindings yet.",
+                    InputSettingsInput::RemoveAbind,
+                    &sender,
+                );
+            }
+            InputSettingsInput::RemoveAbind(i) => {
+                if i < self.abinds.len() {
+                    self.abinds.remove(i);
+                    write_block("axisbind", &self.abinds);
+                    rebuild_raw_binds(
+                        &self.abinds_box,
+                        &self.abinds,
+                        "No scroll bindings yet.",
+                        InputSettingsInput::RemoveAbind,
+                        &sender,
+                    );
+                }
+            }
         }
     }
 }
@@ -1058,5 +1269,44 @@ fn rebuild_binds(
         remove.connect_clicked(move |_| s.input(InputSettingsInput::RemoveBind(i)));
         row.append(&remove);
         binds_box.append(&row);
+    }
+}
+
+/// Rebuild a raw-line bind list (mouse / axis) into `box_`. The raw payload is
+/// shown verbatim; `ctor` builds the Remove message carrying the row index.
+fn rebuild_raw_binds(
+    box_: &gtk::Box,
+    binds: &[String],
+    empty_msg: &str,
+    ctor: fn(usize) -> InputSettingsInput,
+    sender: &ComponentSender<InputSettingsModel>,
+) {
+    while let Some(child) = box_.first_child() {
+        box_.remove(&child);
+    }
+    if binds.is_empty() {
+        let empty = gtk::Label::new(Some(empty_msg));
+        empty.add_css_class("label-small");
+        empty.set_halign(gtk::Align::Start);
+        empty.set_xalign(0.0);
+        box_.append(&empty);
+        return;
+    }
+    for (i, bind) in binds.iter().enumerate() {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let label = gtk::Label::new(Some(bind));
+        label.add_css_class("label-medium");
+        label.set_halign(gtk::Align::Start);
+        label.set_xalign(0.0);
+        label.set_hexpand(true);
+        label.set_wrap(true);
+        row.append(&label);
+        let remove = gtk::Button::with_label("Remove");
+        remove.add_css_class("ok-button-surface");
+        remove.set_valign(gtk::Align::Center);
+        let s = sender.clone();
+        remove.connect_clicked(move |_| s.input(ctor(i)));
+        row.append(&remove);
+        box_.append(&row);
     }
 }
