@@ -22,6 +22,7 @@ use crate::input_settings::{InputSettingsInit, InputSettingsModel};
 use crate::keybinds_settings::{KeybindsSettingsInit, KeybindsSettingsModel};
 use crate::keyboard_settings::{KeyboardSettingsInit, KeyboardSettingsModel};
 use crate::launcher_settings::{LauncherSettingsInit, LauncherSettingsModel};
+use crate::layer_rules_settings::{LayerRulesInit, LayerRulesModel};
 use crate::lock_settings::{LockSettingsInit, LockSettingsModel};
 use crate::media_player_settings::{MediaPlayerSettingsInit, MediaPlayerSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
@@ -36,7 +37,9 @@ use crate::region_settings::{RegionSettingsInit, RegionSettingsModel};
 use crate::session_settings::{SessionSettingsInit, SessionSettingsModel};
 use crate::setup_settings::{SetupSettingsInit, SetupSettingsModel};
 use crate::sound_settings::{SoundSettingsInit, SoundSettingsModel};
+use crate::startup_env_settings::{StartupEnvInit, StartupEnvModel};
 use crate::tag_layout_settings::{TagLayoutSettingsInit, TagLayoutSettingsModel};
+use crate::tag_rules_settings::{TagRulesInit, TagRulesModel};
 use crate::theme_settings::theme_settings::{ThemeSettingsInit, ThemeSettingsModel};
 use crate::users_settings::{UsersSettingsInit, UsersSettingsModel};
 use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
@@ -73,6 +76,9 @@ pub struct SettingsWindowModel {
     behaviour_settings_controller: Controller<BehaviourModel>,
     window_rules_settings_controller: Controller<WindowRulesModel>,
     monitors_settings_controller: Controller<MonitorsModel>,
+    layer_rules_settings_controller: Controller<LayerRulesModel>,
+    tag_rules_settings_controller: Controller<TagRulesModel>,
+    startup_env_settings_controller: Controller<StartupEnvModel>,
     overview_settings_controller: Controller<OverviewSettingsModel>,
     date_time_settings_controller: Controller<DateTimeSettingsModel>,
     region_settings_controller: Controller<RegionSettingsModel>,
@@ -298,6 +304,48 @@ impl Component for SettingsWindowModel {
                             set_spacing: 12,
                             gtk::Image { set_icon_name: Some("window-new-symbolic") },
                             gtk::Label { add_css_class: "label-medium", set_label: "Window Rules", set_halign: gtk::Align::Start, set_hexpand: true },
+                        },
+                    },
+                    #[name = "layer_rules_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("layer_rules"); }
+                        },
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("view-paged-symbolic") },
+                            gtk::Label { add_css_class: "label-medium", set_label: "Layer Rules", set_halign: gtk::Align::Start, set_hexpand: true },
+                        },
+                    },
+                    #[name = "tag_rules_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("tag_rules"); }
+                        },
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("view-grid-symbolic") },
+                            gtk::Label { add_css_class: "label-medium", set_label: "Tag Rules", set_halign: gtk::Align::Start, set_hexpand: true },
+                        },
+                    },
+                    #[name = "startup_env_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("startup_env"); }
+                        },
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("system-run-symbolic") },
+                            gtk::Label { add_css_class: "label-medium", set_label: "Startup & Environment", set_halign: gtk::Align::Start, set_hexpand: true },
                         },
                     },
                     #[name = "monitors_btn"]
@@ -1046,6 +1094,14 @@ impl Component for SettingsWindowModel {
             .detach();
         let monitors_settings_controller =
             MonitorsModel::builder().launch(MonitorsInit {}).detach();
+        let layer_rules_settings_controller = LayerRulesModel::builder()
+            .launch(LayerRulesInit {})
+            .detach();
+        let tag_rules_settings_controller =
+            TagRulesModel::builder().launch(TagRulesInit {}).detach();
+        let startup_env_settings_controller = StartupEnvModel::builder()
+            .launch(StartupEnvInit {})
+            .detach();
 
         let animations_settings_controller = AnimationsSettingsModel::builder()
             .launch(AnimationsSettingsInit {})
@@ -1180,6 +1236,13 @@ impl Component for SettingsWindowModel {
                 ("windowrule", "window_rules"),
                 ("monitors", "monitors"),
                 ("displays", "monitors"),
+                ("layer rules", "layer_rules"),
+                ("layerrule", "layer_rules"),
+                ("tag rules", "tag_rules"),
+                ("tagrule", "tag_rules"),
+                ("startup", "startup_env"),
+                ("environment", "startup_env"),
+                ("env", "startup_env"),
                 ("date_time", "date_time"),
                 ("region", "region"),
                 ("sound", "sound"),
@@ -1220,6 +1283,9 @@ impl Component for SettingsWindowModel {
             behaviour_settings_controller,
             window_rules_settings_controller,
             monitors_settings_controller,
+            layer_rules_settings_controller,
+            tag_rules_settings_controller,
+            startup_env_settings_controller,
             overview_settings_controller,
             date_time_settings_controller,
             region_settings_controller,
@@ -1428,6 +1494,24 @@ impl Component for SettingsWindowModel {
             model.monitors_settings_controller.widget(),
             Some("monitors"),
             "Monitors",
+        );
+
+        widgets.stack.add_titled(
+            model.layer_rules_settings_controller.widget(),
+            Some("layer_rules"),
+            "Layer Rules",
+        );
+
+        widgets.stack.add_titled(
+            model.tag_rules_settings_controller.widget(),
+            Some("tag_rules"),
+            "Tag Rules",
+        );
+
+        widgets.stack.add_titled(
+            model.startup_env_settings_controller.widget(),
+            Some("startup_env"),
+            "Startup & Environment",
         );
 
         widgets.stack.add_titled(
@@ -2340,6 +2424,9 @@ impl Component for SettingsWindowModel {
                     "behaviour" => Some(&widgets.behaviour_btn),
                     "window_rules" => Some(&widgets.window_rules_btn),
                     "monitors" => Some(&widgets.monitors_btn),
+                    "layer_rules" => Some(&widgets.layer_rules_btn),
+                    "tag_rules" => Some(&widgets.tag_rules_btn),
+                    "startup_env" => Some(&widgets.startup_env_btn),
                     "date_time" => Some(&widgets.date_time_btn),
                     "region" => Some(&widgets.region_btn),
                     "sound" => Some(&widgets.sound_btn),
@@ -2454,6 +2541,11 @@ fn keywords_for(label: &str) -> &'static str {
         "monitors" => {
             "monitor display output resolution refresh hz scale position vrr connector mode"
         }
+        "layer_rules" => {
+            "layer rule layerrule namespace bar menu notification osd noanim noblur noshadow surface"
+        }
+        "tag_rules" => "tag rule tagrule pin monitor home layout mfact master nmaster workspace",
+        "startup_env" => "startup exec env environment variable launch autostart command session",
         "date_time" | "date time" | "date & time" => "clock time date timezone ntp format 24-hour",
         "region" | "region & language" => "locale language format measurement keyboard",
         "idle" => "screensaver dim timeout inhibitor dpms blank suspend",
