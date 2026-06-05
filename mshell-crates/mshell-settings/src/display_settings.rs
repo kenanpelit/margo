@@ -17,6 +17,7 @@
 //! disk, including hand-edits the user made outside this UI.
 
 use crate::layout_settings::{LayoutSettingsInit, LayoutSettingsModel};
+use crate::monitors_settings::{MonitorsInit, MonitorsModel};
 use crate::screen_settings::{ScreenSettingsInit, ScreenSettingsModel};
 use margo_config::TwilightMode;
 use relm4::gtk::glib;
@@ -139,6 +140,7 @@ pub(crate) struct DisplaySettingsModel {
     /// Layout sub-page — owns its own state. Kept on the parent
     /// model so the controller isn't dropped after `init` returns.
     layout_controller: Controller<LayoutSettingsModel>,
+    monitors_controller: Controller<MonitorsModel>,
     /// Screen sub-page (rounded screen corners). Same ownership note.
     screen_controller: Controller<ScreenSettingsModel>,
 }
@@ -281,6 +283,26 @@ impl Component for DisplaySettingsModel {
                         gtk::Label {
                             add_css_class: "label-medium",
                             set_label: "Layout",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                    },
+                },
+
+                gtk::ToggleButton {
+                    add_css_class: "sidebar-button",
+                    set_group: Some(&twilight_btn),
+                    connect_toggled[sub_stack] => move |b| {
+                        if b.is_active() { sub_stack.set_visible_child_name("monitors"); }
+                    },
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Image { set_icon_name: Some("video-joined-displays-symbolic") },
+                        gtk::Label {
+                            add_css_class: "label-medium",
+                            set_label: "Monitors",
                             set_halign: gtk::Align::Start,
                             set_hexpand: true,
                         },
@@ -975,6 +997,8 @@ impl Component for DisplaySettingsModel {
 
                 add_named[Some("layout")] = model.layout_controller.widget(),
 
+                add_named[Some("monitors")] = model.monitors_controller.widget(),
+
                 add_named[Some("screen")] = model.screen_controller.widget(),
             }, // sub_stack
         }
@@ -1003,6 +1027,8 @@ impl Component for DisplaySettingsModel {
             .launch(LayoutSettingsInit {})
             .detach();
 
+        let monitors_controller = MonitorsModel::builder().launch(MonitorsInit {}).detach();
+
         let screen_controller = ScreenSettingsModel::builder()
             .launch(ScreenSettingsInit {})
             .detach();
@@ -1022,6 +1048,7 @@ impl Component for DisplaySettingsModel {
             dirty_presets: HashSet::new(),
             preset_debounce: None,
             layout_controller,
+            monitors_controller,
             screen_controller,
         };
 

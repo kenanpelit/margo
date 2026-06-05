@@ -26,7 +26,6 @@ use crate::layer_rules_settings::{LayerRulesInit, LayerRulesModel};
 use crate::lock_settings::{LockSettingsInit, LockSettingsModel};
 use crate::media_player_settings::{MediaPlayerSettingsInit, MediaPlayerSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
-use crate::monitors_settings::{MonitorsInit, MonitorsModel};
 use crate::network_settings::{NetworkSettingsInit, NetworkSettingsModel};
 use crate::notification_settings::{NotificationSettingsInit, NotificationSettingsModel};
 use crate::overview_settings::{OverviewSettingsInit, OverviewSettingsModel};
@@ -75,7 +74,6 @@ pub struct SettingsWindowModel {
     effects_settings_controller: Controller<EffectsModel>,
     behaviour_settings_controller: Controller<BehaviourModel>,
     window_rules_settings_controller: Controller<WindowRulesModel>,
-    monitors_settings_controller: Controller<MonitorsModel>,
     layer_rules_settings_controller: Controller<LayerRulesModel>,
     tag_rules_settings_controller: Controller<TagRulesModel>,
     startup_env_settings_controller: Controller<StartupEnvModel>,
@@ -346,20 +344,6 @@ impl Component for SettingsWindowModel {
                             set_spacing: 12,
                             gtk::Image { set_icon_name: Some("system-run-symbolic") },
                             gtk::Label { add_css_class: "label-medium", set_label: "Startup & Environment", set_halign: gtk::Align::Start, set_hexpand: true },
-                        },
-                    },
-                    #[name = "monitors_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("monitors"); }
-                        },
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("video-display-symbolic") },
-                            gtk::Label { add_css_class: "label-medium", set_label: "Monitors", set_halign: gtk::Align::Start, set_hexpand: true },
                         },
                     },
                     #[name = "behaviour_btn"]
@@ -1092,8 +1076,6 @@ impl Component for SettingsWindowModel {
         let window_rules_settings_controller = WindowRulesModel::builder()
             .launch(WindowRulesInit {})
             .detach();
-        let monitors_settings_controller =
-            MonitorsModel::builder().launch(MonitorsInit {}).detach();
         let layer_rules_settings_controller = LayerRulesModel::builder()
             .launch(LayerRulesInit {})
             .detach();
@@ -1234,8 +1216,8 @@ impl Component for SettingsWindowModel {
                 ("behavior", "behaviour"),
                 ("window rules", "window_rules"),
                 ("windowrule", "window_rules"),
-                ("monitors", "monitors"),
-                ("displays", "monitors"),
+                ("monitors", "display"),
+                ("displays", "display"),
                 ("layer rules", "layer_rules"),
                 ("layerrule", "layer_rules"),
                 ("tag rules", "tag_rules"),
@@ -1282,7 +1264,6 @@ impl Component for SettingsWindowModel {
             effects_settings_controller,
             behaviour_settings_controller,
             window_rules_settings_controller,
-            monitors_settings_controller,
             layer_rules_settings_controller,
             tag_rules_settings_controller,
             startup_env_settings_controller,
@@ -1488,12 +1469,6 @@ impl Component for SettingsWindowModel {
             model.window_rules_settings_controller.widget(),
             Some("window_rules"),
             "Window Rules",
-        );
-
-        widgets.stack.add_titled(
-            model.monitors_settings_controller.widget(),
-            Some("monitors"),
-            "Monitors",
         );
 
         widgets.stack.add_titled(
@@ -2423,7 +2398,6 @@ impl Component for SettingsWindowModel {
                     "effects" => Some(&widgets.effects_btn),
                     "behaviour" => Some(&widgets.behaviour_btn),
                     "window_rules" => Some(&widgets.window_rules_btn),
-                    "monitors" => Some(&widgets.monitors_btn),
                     "layer_rules" => Some(&widgets.layer_rules_btn),
                     "tag_rules" => Some(&widgets.tag_rules_btn),
                     "startup_env" => Some(&widgets.startup_env_btn),
@@ -2537,9 +2511,6 @@ fn keywords_for(label: &str) -> &'static str {
         }
         "window_rules" => {
             "window rule windowrule app-id appid title regex tag float floating fullscreen size monitor pin match"
-        }
-        "monitors" => {
-            "monitor display output resolution refresh hz scale position vrr connector mode"
         }
         "layer_rules" => {
             "layer rule layerrule namespace bar menu notification osd noanim noblur noshadow surface"
