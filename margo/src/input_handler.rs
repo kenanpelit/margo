@@ -1012,7 +1012,25 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
         } else {
             match focus_under(state, pos) {
                 Some((target, _)) => {
-                    state.focus_surface(Some(target));
+                    // wlr-layer-shell: a layer surface with
+                    // `keyboard_interactivity = none` must NEVER take keyboard
+                    // focus, even when clicked. Otherwise an on-screen keyboard
+                    // (mkeys) — an Overlay layer surface that injects via
+                    // zwp_virtual_keyboard — would steal focus from the app it
+                    // is typing into the instant you tap a key, so the
+                    // keystrokes land on the keyboard surface itself and the
+                    // target window receives nothing. Leave keyboard focus
+                    // untouched for such surfaces (pointer focus still works,
+                    // so the keys are still clickable).
+                    let takes_keyboard = match &target {
+                        FocusTarget::LayerSurface(layer) => layer.with_cached_state(|data| {
+                            data.keyboard_interactivity != KeyboardInteractivity::None
+                        }),
+                        _ => true,
+                    };
+                    if takes_keyboard {
+                        state.focus_surface(Some(target));
+                    }
                 }
                 _ => {
                     state.focus_surface(None);
