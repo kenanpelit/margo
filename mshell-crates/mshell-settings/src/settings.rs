@@ -47,8 +47,10 @@ use crate::widget_menu_settings::{MenuKind, WidgetMenuSettingsInit, WidgetMenuSe
 use crate::window_rules_settings::{WindowRulesInit, WindowRulesModel};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{BarsStoreFields, ConfigStoreFields, HorizontalBarStoreFields};
-use reactive_graph::prelude::Get;
+use mshell_config::schema::config::{
+    BarsStoreFields, ConfigStoreFields, GeneralStoreFields, HorizontalBarStoreFields,
+};
+use reactive_graph::prelude::{Get, GetUntracked};
 use reactive_graph::traits::ReadUntracked;
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, EditableExt, MonitorExt, OrientableExt, ToggleButtonExt, WidgetExt,
@@ -138,6 +140,9 @@ pub enum SettingsWindowInput {
     /// The sidebar search text changed — live-filter the sidebar list
     /// (hide non-matching buttons + the group headers, GNOME-style).
     SearchChanged(String),
+    /// Apply a new panel size (width, height) — fired by the size-override
+    /// effect when `general.settings_panel_{width,height}` changes.
+    SetPanelSize(i32, i32),
 }
 
 #[derive(Debug)]
@@ -171,7 +176,9 @@ impl Component for SettingsWindowModel {
         gtk::Box {
             add_css_class: "settings-panel",
             set_orientation: gtk::Orientation::Horizontal,
+            #[watch]
             set_width_request: model.panel_width,
+            #[watch]
             set_height_request: model.panel_height,
             // GTK4 ignores CSS `overflow: hidden` on a plain GtkBox — the
             // clip is a *widget* property, not a style property. Without
@@ -1010,7 +1017,7 @@ impl Component for SettingsWindowModel {
         // height so the sidebar + content read comfortably.
         // Clamp to a sane floor in case the monitor query
         // returns something degenerate (headless / virtual).
-        let (panel_width, panel_height) = match params.monitor.as_ref() {
+        let (auto_width, auto_height) = match params.monitor.as_ref() {
             Some(monitor) => {
                 let geom = monitor.geometry();
                 // A settings panel wants a comfortable, fixed-ish reading
@@ -1026,6 +1033,51 @@ impl Component for SettingsWindowModel {
             }
             None => (820, 640),
         };
+        // A user override (Settings → General → "Settings panel") pins an
+        // exact size; `0` keeps the auto fraction above. A leaked effect
+        // (below) re-applies this live when the override changes.
+        let apply_override = |auto: i32, override_px: i32| {
+            if override_px > 0 { override_px } else { auto }
+        };
+        let panel_width = apply_override(
+            auto_width,
+            config_manager()
+                .config()
+                .general()
+                .settings_panel_width()
+                .get_untracked(),
+        );
+        let panel_height = apply_override(
+            auto_height,
+            config_manager()
+                .config()
+                .general()
+                .settings_panel_height()
+                .get_untracked(),
+        );
+
+        // Re-apply the size override live: when the General page edits
+        // `settings_panel_{width,height}`, recompute the request from the
+        // stored auto size and push it via `SetPanelSize` so the open panel
+        // resizes without an mshell restart.
+        let mut size_effects = EffectScope::new();
+        let size_sender = sender.clone();
+        size_effects.push(move |_| {
+            let w = config_manager()
+                .config()
+                .general()
+                .settings_panel_width()
+                .get();
+            let h = config_manager()
+                .config()
+                .general()
+                .settings_panel_height()
+                .get();
+            let final_w = if w > 0 { w } else { auto_width };
+            let final_h = if h > 0 { h } else { auto_height };
+            size_sender.input(SettingsWindowInput::SetPanelSize(final_w, final_h));
+        });
+        Box::leak(Box::new(size_effects));
 
         let general_settings_controller = GeneralSettingsModel::builder()
             .launch(GeneralSettingsInit {})
@@ -2475,6 +2527,10 @@ impl Component for SettingsWindowModel {
                     }
                     child = next;
                 }
+            }
+            SettingsWindowInput::SetPanelSize(w, h) => {
+                self.panel_width = w;
+                self.panel_height = h;
             }
         }
         self.update_view(widgets, sender);

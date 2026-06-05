@@ -3,7 +3,10 @@ use mshell_common::text_entry_dialog::{
     TextEntryDialogInit, TextEntryDialogModel, TextEntryDialogOutput,
 };
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
+use mshell_config::schema::config::{
+    ConfigStoreFields, GeneralStoreFields, MenuStoreFields, MenusStoreFields,
+};
+use mshell_config::schema::position::Position;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, CastNone, FileExt, ListModelExt, OrientableExt, WidgetExt,
@@ -21,6 +24,14 @@ pub(crate) struct GeneralSettingsModel {
     available_profiles: gtk::StringList,
     new_profile_dialog: Option<Controller<TextEntryDialogModel>>,
     network_osd_enabled: bool,
+    /// Settings-panel anchor (`menus.settings_menu.position`).
+    settings_position: Position,
+    /// Settings-panel width/height overrides (`0` = auto). Stored on
+    /// `general.settings_panel_{width,height}`.
+    settings_width: i32,
+    settings_height: i32,
+    /// Backing model for the Position dropdown (the 8 anchors).
+    position_model: gtk::StringList,
     _effects: EffectScope,
 }
 
@@ -39,6 +50,12 @@ pub(crate) enum GeneralSettingsInput {
     DeleteProfileClicked,
     NetworkOsdEnabledToggled(bool),
     NetworkOsdEnabledEffect(bool),
+    SettingsPositionPicked(u32),
+    SettingsWidthChanged(i32),
+    SettingsHeightChanged(i32),
+    SettingsPositionEffect(Position),
+    SettingsWidthEffect(i32),
+    SettingsHeightEffect(i32),
 }
 
 #[derive(Debug)]
@@ -232,6 +249,92 @@ impl Component for GeneralSettingsModel {
                         } @network_osd_handler,
                     },
                 },
+
+                gtk::Separator {},
+
+                // ── Settings panel ─────────────────────────────
+                // Where this very Settings panel anchors + its size.
+                // Position writes `menus.settings_menu.position` (the
+                // frame re-anchors live); width/height write
+                // `general.settings_panel_{width,height}` (0 = auto,
+                // a clamped fraction of the monitor).
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Settings panel",
+                    set_halign: gtk::Align::Start,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "Where this Settings panel anchors on screen, and its size. A width or height of 0 means automatic — scaled to your monitor.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_label: "Position",
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                    },
+                    gtk::DropDown {
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&model.position_model),
+                        #[watch]
+                        #[block_signal(settings_pos_handler)]
+                        set_selected: model.settings_position.to_index(),
+                        connect_selected_notify[sender] => move |dd| {
+                            sender.input(GeneralSettingsInput::SettingsPositionPicked(dd.selected()));
+                        } @settings_pos_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_label: "Width (px, 0 = auto)",
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                    },
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_adjustment: &gtk::Adjustment::new(0.0, 0.0, 7680.0, 10.0, 100.0, 0.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(settings_w_handler)]
+                        set_value: model.settings_width as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(GeneralSettingsInput::SettingsWidthChanged(s.value() as i32));
+                        } @settings_w_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_label: "Height (px, 0 = auto)",
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                    },
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_adjustment: &gtk::Adjustment::new(0.0, 0.0, 4320.0, 10.0, 100.0, 0.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(settings_h_handler)]
+                        set_value: model.settings_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(GeneralSettingsInput::SettingsHeightChanged(s.value() as i32));
+                        } @settings_h_handler,
+                    },
+                },
             }
         }
     }
@@ -267,6 +370,37 @@ impl Component for GeneralSettingsModel {
             sender_clone.input(GeneralSettingsInput::NetworkOsdEnabledEffect(v));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let p = config_manager()
+                .config()
+                .menus()
+                .settings_menu()
+                .position()
+                .get();
+            sender_clone.input(GeneralSettingsInput::SettingsPositionEffect(p));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let w = config_manager()
+                .config()
+                .general()
+                .settings_panel_width()
+                .get();
+            sender_clone.input(GeneralSettingsInput::SettingsWidthEffect(w));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let h = config_manager()
+                .config()
+                .general()
+                .settings_panel_height()
+                .get();
+            sender_clone.input(GeneralSettingsInput::SettingsHeightEffect(h));
+        });
+
         let (full_name, user_host) = user_identity();
         let model = GeneralSettingsModel {
             full_name,
@@ -279,6 +413,23 @@ impl Component for GeneralSettingsModel {
                 .general()
                 .network_osd_enabled()
                 .get_untracked(),
+            settings_position: config_manager()
+                .config()
+                .menus()
+                .settings_menu()
+                .position()
+                .get_untracked(),
+            settings_width: config_manager()
+                .config()
+                .general()
+                .settings_panel_width()
+                .get_untracked(),
+            settings_height: config_manager()
+                .config()
+                .general()
+                .settings_panel_height()
+                .get_untracked(),
+            position_model: gtk::StringList::new(&Position::display_names()),
             _effects: effects,
         };
 
@@ -407,6 +558,30 @@ impl Component for GeneralSettingsModel {
             }
             GeneralSettingsInput::NetworkOsdEnabledEffect(v) => {
                 self.network_osd_enabled = v;
+            }
+            GeneralSettingsInput::SettingsPositionPicked(idx) => {
+                config_manager().update_config(|c| {
+                    c.menus.settings_menu.position = Position::from_index(idx);
+                });
+            }
+            GeneralSettingsInput::SettingsWidthChanged(w) => {
+                config_manager().update_config(|c| {
+                    c.general.settings_panel_width = w;
+                });
+            }
+            GeneralSettingsInput::SettingsHeightChanged(h) => {
+                config_manager().update_config(|c| {
+                    c.general.settings_panel_height = h;
+                });
+            }
+            GeneralSettingsInput::SettingsPositionEffect(p) => {
+                self.settings_position = p;
+            }
+            GeneralSettingsInput::SettingsWidthEffect(w) => {
+                self.settings_width = w;
+            }
+            GeneralSettingsInput::SettingsHeightEffect(h) => {
+                self.settings_height = h;
             }
         }
 

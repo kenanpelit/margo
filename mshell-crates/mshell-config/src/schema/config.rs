@@ -213,6 +213,15 @@ pub struct General {
     /// compact 64 px cover; on bumps it to a roomier size for a more
     /// "now playing"-style panel.
     pub media_large_album_art: bool,
+    /// Settings-panel width override in pixels. `0` = auto (a clamped
+    /// fraction of the host monitor, the historical behaviour). Any
+    /// positive value pins the panel to that exact width. Edited in
+    /// Settings → General → "Settings panel". The panel's *position*
+    /// lives separately in `menus.settings_menu.position`.
+    pub settings_panel_width: i32,
+    /// Settings-panel height override in pixels. `0` = auto (a clamped
+    /// fraction of the host monitor). Any positive value pins the height.
+    pub settings_panel_height: i32,
 }
 
 fn default_weather_poll_minutes() -> u32 {
@@ -240,6 +249,8 @@ impl Default for General {
             network_osd_enabled: false,
             media_seek_step_seconds: 10,
             media_large_album_art: false,
+            settings_panel_width: 0,
+            settings_panel_height: 0,
         }
     }
 }
