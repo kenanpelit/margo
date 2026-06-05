@@ -58,13 +58,12 @@ rustPlatform.buildRustPackage {
   cargoLock = {
     lockFile = ../Cargo.lock;
     # smithay is pinned to a git rev, so Nix needs its fetchgit NAR hash.
-    # This MUST be filled on a machine with Nix — either:
-    #   nix-prefetch-git --quiet --fetch-submodules \
-    #     --url https://github.com/Smithay/smithay.git \
-    #     --rev ff5fa7df392cecfba049ffed55cdaa4e98a8e7ef | jq -r .hash
-    # or just run `nix build` once and copy the `got: sha256-…` it prints in.
+    # When bumping the smithay rev (Cargo.toml), recompute with:
+    #   nix run nixpkgs#nix-prefetch-git -- --quiet \
+    #     --url https://github.com/Smithay/smithay.git --rev <newrev>
+    # and paste the `hash` field below.
     outputHashes = {
-      "smithay-0.7.0" = lib.fakeHash;
+      "smithay-0.7.0" = "sha256-TV/GTfSvgfVwIFUGoASU7xm38opIBLjLMf1HeNTW07U=";
     };
   };
 
