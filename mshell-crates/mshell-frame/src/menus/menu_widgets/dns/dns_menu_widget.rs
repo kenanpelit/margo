@@ -91,6 +91,10 @@ pub(crate) struct DnsMenuWidgetModel {
     preset_apply_buttons: Vec<(String, gtk::Button)>,
     /// `true` once the poll loop has been spawned (on first reveal).
     poll_started: bool,
+    /// A privileged action is in flight. Serialises toggles (osc-mullvad uses a
+    /// flock for the same reason) so a second click — or hitting Mullvad +
+    /// Blocky together — can't stack overlapping VPN/DNS/sudo operations.
+    action_busy: bool,
     /// Shared with the poll loop; gates the probes so they only run
     /// while the panel is visible.
     visible: Arc<AtomicBool>,
@@ -122,6 +126,9 @@ pub(crate) struct DnsMenuWidgetInit {}
 #[derive(Debug)]
 pub(crate) enum DnsMenuWidgetCommandOutput {
     Refreshed(DnsState),
+    /// A user action finished (vs. a background poll) — also clears the
+    /// in-flight guard so the next toggle is accepted.
+    ActionDone(DnsState),
 }
 
 #[relm4::component(pub(crate))]
@@ -290,6 +297,7 @@ impl Component for DnsMenuWidgetModel {
             action_buttons: action_buttons.clone(),
             preset_apply_buttons: preset_apply_buttons.clone(),
             poll_started: false,
+            action_busy: false,
             visible: Arc::new(AtomicBool::new(false)),
         };
 
@@ -308,6 +316,13 @@ impl Component for DnsMenuWidgetModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             DnsMenuWidgetInput::RunAction(action) => {
+                // Serialise: ignore a new action while one is still running.
+                // This is what made "press Mullvad + Blocky together" pile up
+                // overlapping VPN/DNS/sudo work — now the second is dropped.
+                if self.action_busy {
+                    return;
+                }
+                self.action_busy = true;
                 run_action(action, self.state.clone(), sender.clone());
             }
             DnsMenuWidgetInput::RefreshNow => {
@@ -338,6 +353,13 @@ impl Component for DnsMenuWidgetModel {
     ) {
         match message {
             DnsMenuWidgetCommandOutput::Refreshed(state) => {
+                if self.state != state {
+                    self.state = state;
+                    sync_view(self);
+                }
+            }
+            DnsMenuWidgetCommandOutput::ActionDone(state) => {
+                self.action_busy = false;
                 if self.state != state {
                     self.state = state;
                     sync_view(self);
@@ -519,7 +541,9 @@ fn run_action(action: String, state: DnsState, sender: ComponentSender<DnsMenuWi
         }
         tokio::time::sleep(POST_ACTION_DELAY).await;
         let s = probe_dns_state().await;
-        let _ = out.send(DnsMenuWidgetCommandOutput::Refreshed(s));
+        // ActionDone (not Refreshed) so update_cmd_with_view clears the
+        // in-flight guard even if nothing about the state changed.
+        let _ = out.send(DnsMenuWidgetCommandOutput::ActionDone(s));
     });
 }
 
@@ -538,7 +562,18 @@ async fn action_mullvad(connect: bool) -> Result<(), String> {
 
 async fn action_blocky(want_active: bool) -> Result<(), String> {
     let subcmd = if want_active { "start" } else { "stop" };
-    run_privileged(&["systemctl", subcmd, "blocky.service"]).await
+    run_privileged(&["systemctl", subcmd, "blocky.service"]).await?;
+    if want_active {
+        // Blocky is the local resolver while it runs — point resolv.conf at it
+        // (osc-mullvad's blocky_set_resolver_local). Best-effort: a failure
+        // here shouldn't undo the successful service start.
+        let _ = run_privileged_sh(
+            "rm -f /etc/resolv.conf; \
+             printf 'nameserver 127.0.0.1\\nnameserver ::1\\n' > /etc/resolv.conf",
+        )
+        .await;
+    }
+    Ok(())
 }
 
 async fn action_default(primary_conn: Option<String>) -> Result<(), String> {
@@ -594,50 +629,122 @@ async fn action_apply_preset(conn: Option<String>, ips: &str) -> Result<(), Stri
     run_privileged(&["nmcli", "con", "up", &name]).await
 }
 
+/// VPN-centric coupled toggle, mirroring osc-mullvad's
+/// `toggle_basic_vpn_with_blocky`: Blocky is the DNS ad-block **fallback** used
+/// while the VPN is down, and is kept off (no resolver conflict) while the VPN
+/// is up.
+///
+///   * VPN ON  → OFF: disconnect, then start Blocky (+ point resolv.conf at it).
+///   * VPN OFF → ON : stop Blocky first, then connect.
+///
+/// (The heavier guards in the script — account/blocked-state checks, the
+/// post-connect internet health-check + rollback — are deliberately left to the
+/// `osc-mullvad` CLI for now; this is the safe coupled core.)
 async fn action_toggle(state: DnsState) -> Result<(), String> {
-    if state.vpn || state.blocky {
-        if state.vpn {
-            let _ = action_mullvad(false).await;
-        }
-        if state.blocky {
-            let _ = action_blocky(false).await;
-        }
-        action_default(state.primary_conn.clone()).await
+    if state.vpn {
+        let _ = action_mullvad(false).await;
+        action_blocky(true).await
     } else {
+        let _ = action_blocky(false).await;
         action_mullvad(true).await
     }
 }
 
-/// Run a privileged command.
+/// Resolve a **non-interactive** privilege launcher, mirroring osc-mullvad's
+/// `sudo_run`. Returns the sudo prefix (`["sudo","-n"]` or `["sudo","-A"]`) and
+/// an optional `SUDO_ASKPASS` value, or `None` when neither passwordless sudo
+/// nor an askpass helper is available.
 ///
-/// Probes `sudo -n true` first: if passwordless sudo is set up
-/// for the user, the command runs through `sudo -n` — silent, no
-/// graphical agent. Under a Wayland compositor pkexec's polkit
-/// prompt can come up without keyboard focus (you can't type the
-/// password into it), so `sudo -n` is strongly preferred and
-/// pkexec is only the fallback for users without NOPASSWD sudo.
-async fn run_privileged(args: &[&str]) -> Result<(), String> {
+/// We must NOT fall back to an interactive prompt here. The old `pkexec`
+/// fallback popped a polkit password dialog, but the DNS menu is a layer-shell
+/// surface holding an **exclusive keyboard grab**, so the dialog never received
+/// keyboard focus — you couldn't type the password, `pkexec` blocked forever,
+/// and the whole shell appeared frozen. So: passwordless `sudo -n`; else an
+/// askpass via `sudo -A` if one is configured; else `None` (notify + skip).
+async fn sudo_launcher() -> Option<(&'static [&'static str], Option<std::ffi::OsString>)> {
+    // NOPASSWD / cached creds — silent, no agent.
     let have_sudo_n = tokio::process::Command::new("sudo")
         .args(["-n", "true"])
         .status()
         .await
         .map(|s| s.success())
         .unwrap_or(false);
+    if have_sudo_n {
+        return Some((&["-n"], None));
+    }
+    // GUI askpass: honour an existing SUDO_ASKPASS, else an `askpass` helper on
+    // PATH (matches the script's `SUDO_ASKPASS=askpass`). Such a dialog is a
+    // normal window, not a focus-grabbing polkit prompt, so it's safe here.
+    if let Some(ap) = std::env::var_os("SUDO_ASKPASS") {
+        return Some((&["-A"], Some(ap)));
+    }
+    if let Some(p) = find_on_path("askpass") {
+        return Some((&["-A"], Some(p.into_os_string())));
+    }
+    None
+}
 
-    let (bin, prefix): (&str, &[&str]) = if have_sudo_n {
-        ("sudo", &["-n"])
-    } else {
-        ("pkexec", &[])
+/// First `$PATH` entry containing an executable named `bin`.
+fn find_on_path(bin: &str) -> Option<std::path::PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|d| d.join(bin))
+        .find(|p| p.is_file())
+}
+
+/// Notify + bail when no non-interactive privilege path exists, so a privileged
+/// toggle degrades to a toast instead of a hang.
+fn no_priv_toast() {
+    mshell_launcher::notify::toast(
+        "DNS / VPN",
+        "Needs passwordless sudo — set up NOPASSWD for systemctl/nmcli/resolvectl (skipped, no prompt).",
+    );
+}
+
+/// Run a privileged command (argv form).
+async fn run_privileged(args: &[&str]) -> Result<(), String> {
+    let Some((prefix, askpass)) = sudo_launcher().await else {
+        no_priv_toast();
+        return Err("no non-interactive privilege path".into());
     };
-
-    let s = tokio::process::Command::new(bin)
-        .args(prefix)
+    let mut cmd = tokio::process::Command::new("sudo");
+    cmd.args(prefix);
+    if let Some(ap) = askpass {
+        cmd.env("SUDO_ASKPASS", ap);
+    }
+    let s = cmd
         .args(args)
         .status()
         .await
-        .map_err(|e| format!("{bin} spawn: {e}"))?;
+        .map_err(|e| format!("sudo spawn: {e}"))?;
     if !s.success() {
-        return Err(format!("{bin} {} exit {s}", args.join(" ")));
+        return Err(format!("sudo {} exit {s}", args.join(" ")));
+    }
+    Ok(())
+}
+
+/// Run a privileged shell snippet (`sudo … bash -c "<script>"`) — for the
+/// multi-step resolv.conf rewrite that osc-mullvad's `blocky_set_resolver_local`
+/// does. Same non-interactive policy as [`run_privileged`].
+async fn run_privileged_sh(script: &str) -> Result<(), String> {
+    let Some((prefix, askpass)) = sudo_launcher().await else {
+        no_priv_toast();
+        return Err("no non-interactive privilege path".into());
+    };
+    let mut cmd = tokio::process::Command::new("sudo");
+    cmd.args(prefix);
+    if let Some(ap) = askpass {
+        cmd.env("SUDO_ASKPASS", ap);
+    }
+    let s = cmd
+        .arg("bash")
+        .arg("-c")
+        .arg(script)
+        .status()
+        .await
+        .map_err(|e| format!("sudo spawn: {e}"))?;
+    if !s.success() {
+        return Err(format!("sudo bash -c exit {s}"));
     }
     Ok(())
 }
