@@ -346,15 +346,15 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
         }
         UiKind::Button => {
             let btn = gtk::Button::new();
-            // Default to the shell-canonical button look so a plugin that adds
-            // no class still matches the rest of the UI (was a bare GTK button
-            // — the source of plugin/shell button drift). `.ok-button-surface`
-            // gives the surface fill + primary state-layer + --radius-sm;
-            // text/leading-icon buttons also get `.ok-button-cell` so they
-            // join the one action-button size family (DESIGN.md §21). Author
-            // classes (plugin-segment / plugin-panel-action / …) are applied
-            // after this and override where they need a different kind.
-            btn.add_css_class("ok-button-surface");
+            // Plugins own their button design via their own classes
+            // (`plugin-action`/`-primary`/`-danger`, `plugin-tile`,
+            // `plugin-panel-action`, `plugin-segment`, … in `_plugins.scss`) —
+            // a coherent kind system: filled-primary vs flat-secondary actions,
+            // card tiles, icon pills. We deliberately do NOT inject the shell's
+            // own `.ok-button-surface`/`.ok-button-cell` here: that flattened
+            // the plugin's primary/secondary hierarchy and pinned an 84px floor
+            // onto compact icon buttons. The author classes do the styling.
+            //
             // `properties["icon"]` lets a plugin author build icon-only or
             // leading-icon buttons (e.g. the §12 circular refresh action).
             // text-only stays the default.
@@ -368,12 +368,8 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
                     h.append(&gtk::Image::from_icon_name(icon));
                     h.append(&gtk::Label::new(Some(&node.text)));
                     btn.set_child(Some(&h));
-                    btn.add_css_class("ok-button-cell");
                 }
-                (None, _) => {
-                    btn.set_label(&node.text);
-                    btn.add_css_class("ok-button-cell");
-                }
+                (None, _) => btn.set_label(&node.text),
             }
             let inner = inner.clone();
             let id = node.id.clone();
