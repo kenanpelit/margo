@@ -23,6 +23,45 @@
 use super::{FocusTarget, MargoState, matches_rule_text};
 use crate::layout::Rect;
 
+/// How `summon` / `focusapp` combine the app-id and title patterns when both
+/// are given (ported from a niri run-or-raise helper). The 4th bind field
+/// selects it; defaults to `And`.
+#[derive(Clone, Copy)]
+pub enum MatchOp {
+    /// Both given patterns must match (the default — `and` / `intersection`).
+    And,
+    /// Either given pattern matches (`or` / `union`).
+    Or,
+    /// App-id matches but title does NOT (`difference` — the same app, a
+    /// different window; e.g. "any Edge that isn't the Calendar PWA").
+    Difference,
+}
+
+impl MatchOp {
+    /// Parse the bind's 4th field. Unknown / empty → `And`.
+    pub fn parse(s: Option<&str>) -> Self {
+        match s.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+            Some("or") | Some("union") => MatchOp::Or,
+            Some("difference") | Some("diff") | Some("minus") => MatchOp::Difference,
+            _ => MatchOp::And,
+        }
+    }
+
+    /// Does this client (its `app_id` / `title`) match the patterns under the
+    /// operator? Empty patterns impose no constraint (And) / never hit (Or).
+    fn matches(self, name_pat: &str, title_pat: &str, app_id: &str, title: &str) -> bool {
+        let app_given = !name_pat.is_empty();
+        let title_given = !title_pat.is_empty();
+        let app_hit = app_given && matches_rule_text(name_pat, app_id);
+        let title_hit = title_given && matches_rule_text(title_pat, title);
+        match self {
+            MatchOp::And => (!app_given || app_hit) && (!title_given || title_hit),
+            MatchOp::Or => app_hit || title_hit,
+            MatchOp::Difference => app_hit && !title_hit,
+        }
+    }
+}
+
 impl MargoState {
     /// Find the index of the first client whose `app_id` matches `name`
     /// (regex; same matcher as windowrule appid) and, if `title` is
@@ -281,8 +320,14 @@ impl MargoState {
     /// Hidden scratchpads are skipped — they have their own
     /// `toggle_named_scratchpad` dispatch and summoning them here
     /// would bypass the single-scratchpad enforcement.
-    pub fn summon(&mut self, name: Option<&str>, title: Option<&str>, spawn: Option<&str>) {
-        let target = self.find_summonable_client(name, title);
+    pub fn summon(
+        &mut self,
+        name: Option<&str>,
+        title: Option<&str>,
+        op: MatchOp,
+        spawn: Option<&str>,
+    ) {
+        let target = self.find_summonable_client(name, title, op);
         let Some(idx) = target else {
             if let Some(cmd) = spawn.filter(|s| !s.trim().is_empty())
                 && let Err(e) = crate::utils::spawn_shell(cmd)
@@ -340,30 +385,64 @@ impl MargoState {
         }
     }
 
-    /// Like `find_client_by_id_or_title` but skips hidden scratchpads —
-    /// summoning them would conflict with the named-scratchpad toggle
-    /// dispatch and bypass single_scratchpad enforcement.
-    fn find_summonable_client(&self, name: Option<&str>, title: Option<&str>) -> Option<usize> {
+    /// Run-or-raise: focus the matching window *where it is* (switching to its
+    /// tag / monitor), cycling through instances on repeat; launch `spawn` if
+    /// none match. The counterpart to [`Self::summon`] (which brings the window
+    /// to the current tag instead of going to it).
+    ///
+    ///   bind = super,b,focusapp,^firefox$,none,firefox
+    pub fn focus_or_raise(
+        &mut self,
+        name: Option<&str>,
+        title: Option<&str>,
+        op: MatchOp,
+        spawn: Option<&str>,
+    ) {
+        match self.find_summonable_client(name, title, op) {
+            Some(idx) => self.activate_window_idx(idx),
+            None => {
+                if let Some(cmd) = spawn.filter(|s| !s.trim().is_empty())
+                    && let Err(e) = crate::utils::spawn_shell(cmd)
+                {
+                    tracing::error!(cmd = %cmd, error = ?e, "focusapp spawn failed");
+                }
+            }
+        }
+    }
+
+    /// The match to act on for `summon` / `focusapp` — skips hidden scratchpads
+    /// and cycles run-or-raise style (see [`Self::cycle_from_focused`]).
+    fn find_summonable_client(
+        &self,
+        name: Option<&str>,
+        title: Option<&str>,
+        op: MatchOp,
+    ) -> Option<usize> {
+        let matches = self.matching_clients(name, title, op);
+        self.cycle_from_focused(&matches)
+    }
+
+    /// Every client matching `name`/`title` under `op`, in client order,
+    /// skipping hidden scratchpads (they have their own toggle dispatch).
+    fn matching_clients(&self, name: Option<&str>, title: Option<&str>, op: MatchOp) -> Vec<usize> {
         let name_pat = name.unwrap_or("");
         let title_pat = title.unwrap_or("");
-        let matches: Vec<usize> = self
-            .clients
+        self.clients
             .iter()
             .enumerate()
             .filter(|(_, c)| !c.is_in_scratchpad || c.is_scratchpad_show)
-            .filter(|(_, c)| {
-                (name_pat.is_empty() || matches_rule_text(name_pat, &c.app_id))
-                    && (title_pat.is_empty() || matches_rule_text(title_pat, &c.title))
-            })
+            .filter(|(_, c)| op.matches(name_pat, title_pat, &c.app_id, &c.title))
             .map(|(idx, _)| idx)
-            .collect();
+            .collect()
+    }
+
+    /// Run-or-raise cycling: if the focused window is itself one of `matches`,
+    /// return the NEXT match so repeated presses walk through every instance;
+    /// otherwise the first. Single-instance apps (one match) are unaffected.
+    fn cycle_from_focused(&self, matches: &[usize]) -> Option<usize> {
         if matches.is_empty() {
             return None;
         }
-        // Cycle (run-or-raise style): if the focused window is itself one of the
-        // matches, summon the NEXT match so repeated presses walk through every
-        // instance; otherwise summon the first. Single-instance apps (one match)
-        // are unaffected.
         match self
             .focused_client_idx()
             .and_then(|f| matches.iter().position(|&i| i == f))

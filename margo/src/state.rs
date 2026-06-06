@@ -15,6 +15,7 @@ mod dispatch;
 mod focus_target;
 mod overview;
 mod scratchpad;
+pub(crate) use scratchpad::MatchOp;
 mod screencast;
 mod scroller_overview;
 mod state_file;

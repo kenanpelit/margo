@@ -1051,10 +1051,13 @@ fn build_arg(parts: &[String]) -> Arg {
 
     // 2024 edition: `let_chains` is stable, so collapse nested
     // `if let` into a single pattern.
-    if let Some(s3) = parts.get(3)
-        && let Ok(v) = s3.parse::<u32>()
-    {
-        arg.ui = v;
+    if let Some(s3) = parts.get(3) {
+        if let Ok(v) = s3.parse::<u32>() {
+            arg.ui = v;
+        } else if !s3.is_empty() && s3 != "0" {
+            // Non-numeric 4th field — the `summon` / `focusapp` match operator.
+            arg.v4 = Some(s3.to_string());
+        }
     }
     if let Some(s4) = parts.get(4)
         && let Ok(v) = s4.parse::<u32>()

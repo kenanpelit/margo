@@ -380,16 +380,31 @@ pub const ACTIONS: &[Action] = &[
     Action {
         name: "summon",
         aliases: &["taghere", "tag_here", "tag-here", "bring_here", "bringhere"],
-        args: "<APPID> <TITLE|none> <SPAWN>",
+        args: "<APPID> <TITLE|none> <SPAWN> [OP]",
         group: Group::Scratchpad,
         summary: "Bring an app to the current tag, or launch it if not running.",
         detail: "mango-here equivalent. Searches every monitor/tag for a window \
                  matching the appid (and optional title) regex. If found, moves \
                  it to the focused monitor's active tag and focuses it. If not, \
                  spawns the SPAWN command. When several windows match, repeated \
-                 presses cycle through them (run-or-raise style). Hidden \
-                 scratchpads are skipped — use `toggle_named_scratchpad` for \
-                 those. Bind: `bind = alt,1,summon,^firefox$,none,firefox`.",
+                 presses cycle through them (run-or-raise style). The optional \
+                 4th field OP combines appid+title: `and` (default), `or`, or \
+                 `difference` (appid but not title). Hidden scratchpads are \
+                 skipped — use `toggle_named_scratchpad` for those. Bind: \
+                 `bind = alt,1,summon,^firefox$,none,firefox`.",
+    },
+    Action {
+        name: "focusapp",
+        aliases: &["raiseapp", "runorraise", "run_or_raise", "focus_app"],
+        args: "<APPID> <TITLE|none> <SPAWN> [OP]",
+        group: Group::Scratchpad,
+        summary: "Focus an app where it is (switch to its tag), or launch it.",
+        detail: "Run-or-raise: the counterpart to `summon`. Instead of bringing \
+                 the window to the current tag, it goes TO the window — switches \
+                 to the window's tag/monitor and focuses it. Same matching as \
+                 `summon` (appid/title regex, cycling on repeat, optional OP \
+                 operator); spawns SPAWN if no instance is running. Bind: \
+                 `bind = super,b,focusapp,^firefox$,none,firefox`.",
     },
     Action {
         name: "toggle_scratchpad",

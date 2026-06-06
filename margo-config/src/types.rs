@@ -269,6 +269,9 @@ pub struct Arg {
     /// Bind-only tertiary string; not on the IPC wire. Used for
     /// scratchpad spawn commands parsed from config.
     pub v3: Option<String>,
+    /// Bind-only quaternary string; not on the IPC wire. Used for the
+    /// `summon` / `focusapp` match operator (`and` / `or` / `difference`).
+    pub v4: Option<String>,
     /// Bind-only u32 (tag bitmasks parsed from config). Not on wire.
     pub ui: u32,
     /// Bind-only secondary u32. Not on wire.

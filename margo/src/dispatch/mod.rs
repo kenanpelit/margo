@@ -562,7 +562,22 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 !t.is_empty() && !t.eq_ignore_ascii_case("none")
             });
             let spawn = arg.v3.as_deref().filter(|s| !s.trim().is_empty());
-            state.summon(name, title, spawn);
+            let op = crate::state::MatchOp::parse(arg.v4.as_deref());
+            state.summon(name, title, op, spawn);
+        }
+        // Run-or-raise: focus the app *where it is* (switch to its tag),
+        // cycling instances; launch if missing. Same args as `summon`, plus
+        // the optional 4th match operator. Bind:
+        //   bind = super,b,focusapp,^firefox$,none,firefox
+        "focusapp" | "raiseapp" | "runorraise" | "run_or_raise" | "focus_app" => {
+            let name = arg.v.as_deref();
+            let title = arg.v2.as_deref().filter(|s| {
+                let t = s.trim();
+                !t.is_empty() && !t.eq_ignore_ascii_case("none")
+            });
+            let spawn = arg.v3.as_deref().filter(|s| !s.trim().is_empty());
+            let op = crate::state::MatchOp::parse(arg.v4.as_deref());
+            state.focus_or_raise(name, title, op, spawn);
         }
         // Recovery action: pull the focused client back out of any
         // scratchpad state. Useful when a regular window
