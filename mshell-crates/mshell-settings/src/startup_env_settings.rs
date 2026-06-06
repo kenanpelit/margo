@@ -150,10 +150,16 @@ fn spawn_script(entry: &ScriptAutostart) {
     let dir = expand_cwd(&entry.working_dir);
     let args: Vec<&str> = entry.args.split_whitespace().collect();
 
+    // Transient --user *scope* (not a service): a wrapper script that launches
+    // an app and exits leaves the app alive, and it's detached from mshell's
+    // cgroup so it behaves like a real autostart. See mshell-core's runner.
     let mut sd = std::process::Command::new("systemd-run");
-    sd.arg("--user").arg("--quiet").arg("--collect");
+    sd.arg("--user")
+        .arg("--scope")
+        .arg("--quiet")
+        .arg("--collect");
     if let Some(d) = &dir {
-        sd.arg(format!("--working-directory={d}"));
+        sd.current_dir(d);
     }
     sd.arg("--").arg(&entry.name).args(&args);
     if sd.spawn().is_ok() {

@@ -465,22 +465,30 @@ fn sanitize_unit(name: &str) -> String {
 
 /// Launch an autostart script **detached from mshell's cgroup** so it survives
 /// `systemctl --user restart mshell` (which tears down mshell.service's whole
-/// control-group). We start it in a transient `systemd --user` unit with a
-/// stable name, so a re-run on the next mshell start is a harmless no-op
-/// (systemd refuses the duplicate unit) rather than a second instance. Falls
-/// back to a plain child process when systemd-run isn't available.
+/// control-group). We start it in a transient `systemd --user` **scope** —
+/// not a service. A scope is just a cgroup with no lifecycle of its own, so a
+/// `start-*` wrapper that launches an app and then exits leaves the app alive
+/// (a Type=simple *service* would treat the wrapper exiting as "done" and
+/// KillMode=control-group would reap the app a moment after login). The scope
+/// lives under the user manager, outside mshell.service, so it survives a
+/// mshell restart and is reaped at logout. This is the same mechanism
+/// `uwsm app` / GNOME app-scopes use. A stable unit name makes a re-run on the
+/// next mshell start a harmless no-op. Falls back to a plain child process
+/// when systemd-run isn't available.
 fn spawn_autostart_detached(entry: &ScriptAutostart) {
     let dir = expand_cwd(&entry.working_dir);
     let args: Vec<&str> = entry.args.split_whitespace().collect();
 
-    let unit = format!("margo-autostart-{}.service", sanitize_unit(&entry.name));
+    let unit = format!("margo-autostart-{}", sanitize_unit(&entry.name));
     let mut sd = std::process::Command::new("systemd-run");
     sd.arg("--user")
+        .arg("--scope")
         .arg("--quiet")
         .arg("--collect")
         .arg(format!("--unit={unit}"));
+    // The scope's command inherits this cwd (systemd-run execs it in place).
     if let Some(d) = &dir {
-        sd.arg(format!("--working-directory={d}"));
+        sd.current_dir(d);
     }
     sd.arg("--").arg(&entry.name).args(&args);
     if sd.spawn().is_ok() {
