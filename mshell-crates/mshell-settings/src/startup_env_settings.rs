@@ -58,8 +58,8 @@ pub(crate) struct StartupEnvModel {
     /// Executable names on `$PATH` — for the per-row found/missing badge.
     /// Snapshotted once at page open.
     path_exes: Rc<BTreeSet<String>>,
-    /// Searchable picker of `$PATH` executables for the Add row.
-    script_dd: gtk::DropDown,
+    /// Free-text Add field: a `start-*` script name or a full command.
+    script_entry: gtk::Entry,
     exec_rules: Vec<String>,
     env_rules: Vec<String>,
     exec_list: gtk::ListBox,
@@ -142,17 +142,27 @@ fn expand_cwd(dir: &str) -> Option<String> {
     })
 }
 
-/// Run a script now (Run button), args + working dir honoured. Launched in a
-/// transient `systemd --user` unit — detached from mshell's cgroup, so the
-/// test instance behaves like a real autostart (survives a mshell restart)
-/// rather than dying with the Settings process. Falls back to a direct child.
+/// The shell command line for an entry: command/script name + optional args.
+/// Run through `sh -c`, so it can be a bare `start-*` script or a full command
+/// (pipes, `&&`, quotes). Mirrors `mshell-core`'s autostart runner.
+fn entry_cmdline(entry: &ScriptAutostart) -> String {
+    let mut line = entry.name.trim().to_string();
+    let args = entry.args.trim();
+    if !args.is_empty() {
+        line.push(' ');
+        line.push_str(args);
+    }
+    line
+}
+
+/// Run an entry now (Run button), via `sh -c` in a transient `systemd --user`
+/// *scope* — detached from mshell's cgroup, so the test instance behaves like a
+/// real autostart (a wrapper that launches an app and exits leaves it alive,
+/// and a mshell restart won't kill it). Falls back to a direct `sh -c`.
 fn spawn_script(entry: &ScriptAutostart) {
     let dir = expand_cwd(&entry.working_dir);
-    let args: Vec<&str> = entry.args.split_whitespace().collect();
+    let cmdline = entry_cmdline(entry);
 
-    // Transient --user *scope* (not a service): a wrapper script that launches
-    // an app and exits leaves the app alive, and it's detached from mshell's
-    // cgroup so it behaves like a real autostart. See mshell-core's runner.
     let mut sd = std::process::Command::new("systemd-run");
     sd.arg("--user")
         .arg("--scope")
@@ -161,15 +171,15 @@ fn spawn_script(entry: &ScriptAutostart) {
     if let Some(d) = &dir {
         sd.current_dir(d);
     }
-    sd.arg("--").arg(&entry.name).args(&args);
+    sd.arg("--").arg("sh").arg("-c").arg(&cmdline);
     if sd.spawn().is_ok() {
         mshell_launcher::notify::toast("Started", &entry.name);
         return;
     }
 
-    // No systemd-run: direct child (won't survive a mshell restart).
-    let mut cmd = std::process::Command::new(&entry.name);
-    cmd.args(&args);
+    // No systemd-run: direct `sh -c` (won't survive a mshell restart).
+    let mut cmd = std::process::Command::new("sh");
+    cmd.arg("-c").arg(&cmdline);
     if let Some(d) = &dir {
         cmd.current_dir(d);
     }
@@ -223,10 +233,12 @@ fn rebuild_scripts(
         label.add_css_class("label-medium");
         line1.append(&label);
 
-        // Read-only status (not a button): flag a script whose name doesn't
-        // resolve to an executable on $PATH — a typo, or one that isn't
-        // installed yet. Found scripts show nothing.
-        if !path_exes.contains(&name) {
+        // Read-only status (not a button): flag an entry whose first word
+        // doesn't resolve to an executable on $PATH — a typo, or one that
+        // isn't installed yet. Resolved entries show nothing. We check only
+        // the first token so full commands (`foo --bar`, `sh -c '…'`) work.
+        let first_token = name.split_whitespace().next().unwrap_or("");
+        if !path_exes.contains(first_token) {
             let badge = gtk::Label::new(Some("not on PATH"));
             badge.add_css_class("label-small");
             badge.add_css_class("startup-script-missing");
@@ -474,15 +486,15 @@ impl Component for StartupEnvModel {
                     },
                 },
 
-                // ════════ Autostart scripts ════════
-                gtk::Label { add_css_class: "label-large-bold", set_label: "Autostart scripts", set_halign: gtk::Align::Start },
+                // ════════ Autostart ════════
+                gtk::Label { add_css_class: "label-large-bold", set_label: "Autostart", set_halign: gtk::Align::Start },
                 gtk::Label {
                     add_css_class: "label-small",
                     set_halign: gtk::Align::Start,
                     set_xalign: 0.0,
                     set_wrap: true,
                     set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                    set_label: "Toggle a script to run it at startup, set a delay, choose Every-start or Login-only, and pass arguments / a working directory. Drag the handle to reorder, or hit Run to test. Names match executables on $PATH (also available via `>start` in the launcher).",
+                    set_label: "A `start-*` script or any command (pipes, &&, quotes — run via sh -c). Per entry: run-at-startup toggle, a delay, Every-start (also on mshell restart) vs Login-only, extra arguments, and a working directory. Drag to reorder, or hit Run to test. The badge flags a name that isn't on $PATH.",
                 },
 
                 #[local_ref]
@@ -496,19 +508,28 @@ impl Component for StartupEnvModel {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 8,
                     #[local_ref]
-                    script_dd -> gtk::DropDown {
+                    script_entry -> gtk::Entry {
                         set_hexpand: true,
-                        set_tooltip_text: Some("Pick an executable from $PATH (type to search)"),
+                        set_placeholder_text: Some("script or command, e.g. start-foo  /  wl-paste --watch cliphist store"),
+                        connect_activate[sender] => move |_| sender.input(StartupEnvInput::AddScript),
                     },
                     gtk::Button {
                         add_css_class: "suggested-action",
-                        set_label: "Add script",
+                        set_label: "Add",
                         connect_clicked[sender] => move |_| sender.input(StartupEnvInput::AddScript),
                     },
                 },
 
                 // ════════ Startup commands ════════
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Startup commands", set_halign: gtk::Align::Start, set_margin_top: 8 },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    set_label: "Compositor `exec` — run once when margo launches, before the shell. For a delay or a Login-only / Every-start trigger, use Autostart above instead.",
+                },
 
                 #[template] Row {
                     #[template_child] title { set_label: "Command" },
@@ -572,21 +593,13 @@ impl Component for StartupEnvModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let path_exes = Rc::new(scan_path_exes());
-        // Searchable $PATH picker for the Add row.
-        let exe_list: Vec<&str> = path_exes.iter().map(|s| s.as_str()).collect();
-        let script_dd = gtk::DropDown::from_strings(&exe_list);
-        script_dd.set_enable_search(true);
-        script_dd.set_expression(Some(gtk::PropertyExpression::new(
-            gtk::StringObject::static_type(),
-            None::<gtk::Expression>,
-            "string",
-        )));
+        let script_entry = gtk::Entry::new();
 
         let model = StartupEnvModel {
             scripts: read_autostart_scripts(),
             scripts_box: gtk::Box::new(gtk::Orientation::Vertical, 6),
             path_exes,
-            script_dd,
+            script_entry,
             exec_rules: read_block("exec"),
             env_rules: read_block("env"),
             exec_list: gtk::ListBox::new(),
@@ -596,7 +609,7 @@ impl Component for StartupEnvModel {
             f_env_val: String::new(),
         };
         let scripts_box = model.scripts_box.clone();
-        let script_dd = model.script_dd.clone();
+        let script_entry = model.script_entry.clone();
         let exec_list = model.exec_list.clone();
         let env_list = model.env_list.clone();
         let widgets = view_output!();
@@ -610,16 +623,12 @@ impl Component for StartupEnvModel {
         match message {
             // ── Autostart scripts ──
             StartupEnvInput::AddScript => {
-                let name = self
-                    .script_dd
-                    .selected_item()
-                    .and_downcast::<gtk::StringObject>()
-                    .map(|s| s.string().to_string())
-                    .unwrap_or_default();
+                let name = self.script_entry.text().trim().to_string();
                 if name.is_empty() || self.scripts.iter().any(|e| e.name == name) {
                     return;
                 }
                 upsert_autostart(&name, |_| {});
+                self.script_entry.set_text("");
                 self.scripts = read_autostart_scripts();
                 rebuild_scripts(&self.scripts_box, &self.scripts, &self.path_exes, &sender);
             }

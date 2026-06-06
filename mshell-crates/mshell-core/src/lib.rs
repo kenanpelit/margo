@@ -460,7 +460,21 @@ fn sanitize_unit(name: &str) -> String {
                 '_'
             }
         })
+        .take(80) // keep transient unit names reasonable for command-line entries
         .collect()
+}
+
+/// Build the shell command line for an autostart entry: the command/script name
+/// plus its optional extra-args string. Run through `sh -c`, so the entry may
+/// be a bare `start-*` script or a full command (pipes, `&&`, quotes).
+fn autostart_cmdline(entry: &ScriptAutostart) -> String {
+    let mut line = entry.name.trim().to_string();
+    let args = entry.args.trim();
+    if !args.is_empty() {
+        line.push(' ');
+        line.push_str(args);
+    }
+    line
 }
 
 /// Launch an autostart script **detached from mshell's cgroup** so it survives
@@ -477,7 +491,9 @@ fn sanitize_unit(name: &str) -> String {
 /// when systemd-run isn't available.
 fn spawn_autostart_detached(entry: &ScriptAutostart) {
     let dir = expand_cwd(&entry.working_dir);
-    let args: Vec<&str> = entry.args.split_whitespace().collect();
+    // The entry can be a bare `start-*` script OR an arbitrary command line
+    // (pipes, &&, quotes), so run it through `sh -c` — the shell parses it.
+    let cmdline = autostart_cmdline(entry);
 
     let unit = format!("margo-autostart-{}", sanitize_unit(&entry.name));
     let mut sd = std::process::Command::new("systemd-run");
@@ -490,7 +506,7 @@ fn spawn_autostart_detached(entry: &ScriptAutostart) {
     if let Some(d) = &dir {
         sd.current_dir(d);
     }
-    sd.arg("--").arg(&entry.name).args(&args);
+    sd.arg("--").arg("sh").arg("-c").arg(&cmdline);
     if sd.spawn().is_ok() {
         return;
     }
@@ -498,8 +514,8 @@ fn spawn_autostart_detached(entry: &ScriptAutostart) {
     // No systemd-run (non-systemd session): direct child of mshell — the
     // legacy behaviour. Won't survive a mshell restart, but it's the best we
     // can do without a session manager.
-    let mut cmd = std::process::Command::new(&entry.name);
-    cmd.args(&args);
+    let mut cmd = std::process::Command::new("sh");
+    cmd.arg("-c").arg(&cmdline);
     if let Some(d) = &dir {
         cmd.current_dir(d);
     }
