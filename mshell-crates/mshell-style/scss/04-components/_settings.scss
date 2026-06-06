@@ -479,6 +479,14 @@
     font-weight: 600;
 }
 
+// Hairline divider between grouped sub-sections on a settings page (e.g. the
+// Input page's Gesture / Mouse / Scroll binding blocks) so they read as
+// separate settings rather than one run-on list.
+.settings-section-sep {
+    min-height: 1px;
+    background-color: var(--outline-variant);
+}
+
 // Settings sliders (e.g. Sound → Volume): a proper coloured volume bar — a
 // filled --primary track + a knob — instead of GTK's faint default line.
 // Mirrors .control-center-slider so sliders read the same shell-wide.

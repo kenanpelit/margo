@@ -912,7 +912,13 @@ impl Component for InputSettingsModel {
                 },
 
                 // ════════ Mouse bindings ════════
-                gtk::Label { add_css_class: "label-large-bold", set_label: "Mouse bindings", set_halign: gtk::Align::Start, set_margin_top: 16 },
+                gtk::Separator {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    add_css_class: "settings-section-sep",
+                    set_margin_top: 16,
+                    set_margin_bottom: 8,
+                },
+                gtk::Label { add_css_class: "label-large-bold", set_label: "Mouse bindings", set_halign: gtk::Align::Start },
                 gtk::Label { add_css_class: "label-small", set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
                     set_label: "Bind a (modifier +) mouse button to a compositor action (mousebind). Applied live." },
                 #[local_ref]
@@ -938,10 +944,17 @@ impl Component for InputSettingsModel {
                     gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_text: "super",
                         connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetMbModifiers(e.text().to_string())) } },
                 gtk::Button { add_css_class: "ok-button-surface", add_css_class: "ok-button-cell", set_label: "Add mouse binding", set_margin_top: 4,
+                    set_halign: gtk::Align::Start,
                     connect_clicked[sender] => move |_| sender.input(InputSettingsInput::AddMbind) },
 
                 // ════════ Scroll (axis) bindings ════════
-                gtk::Label { add_css_class: "label-large-bold", set_label: "Scroll bindings", set_halign: gtk::Align::Start, set_margin_top: 16 },
+                gtk::Separator {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    add_css_class: "settings-section-sep",
+                    set_margin_top: 16,
+                    set_margin_bottom: 8,
+                },
+                gtk::Label { add_css_class: "label-large-bold", set_label: "Scroll bindings", set_halign: gtk::Align::Start },
                 gtk::Label { add_css_class: "label-small", set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
                     set_label: "Bind a (modifier +) scroll direction to a compositor action (axisbind). Applied live." },
                 #[local_ref]
@@ -967,6 +980,7 @@ impl Component for InputSettingsModel {
                     gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_text: "super",
                         connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetAbModifiers(e.text().to_string())) } },
                 gtk::Button { add_css_class: "ok-button-surface", add_css_class: "ok-button-cell", set_label: "Add scroll binding", set_margin_top: 4,
+                    set_halign: gtk::Align::Start,
                     connect_clicked[sender] => move |_| sender.input(InputSettingsInput::AddAbind) },
             }
         }
