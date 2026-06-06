@@ -653,8 +653,12 @@ fn splice(model: &gtk::StringList, names: impl Iterator<Item = String>) {
 
 fn volume_scale() -> gtk::Scale {
     let scale = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.01);
+    // Fixed width (NOT hexpand): the row's title/desc column already hexpands,
+    // so an hexpand slider would split the leftover space with it — and since
+    // each row's description is a different length, the sliders would come out
+    // different widths. A fixed 240 px keeps all four sound sliders identical.
     scale.set_width_request(240);
-    scale.set_hexpand(true);
+    scale.set_halign(gtk::Align::End);
     scale.set_valign(gtk::Align::Center);
     scale.set_draw_value(true);
     scale.set_value_pos(gtk::PositionType::Right);
@@ -669,8 +673,12 @@ fn volume_scale() -> gtk::Scale {
 /// works in whole percents rather than the live 0..1 device volume).
 fn percent_scale() -> gtk::Scale {
     let scale = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 100.0, 1.0);
+    // Fixed width (NOT hexpand): the row's title/desc column already hexpands,
+    // so an hexpand slider would split the leftover space with it — and since
+    // each row's description is a different length, the sliders would come out
+    // different widths. A fixed 240 px keeps all four sound sliders identical.
     scale.set_width_request(240);
-    scale.set_hexpand(true);
+    scale.set_halign(gtk::Align::End);
     scale.set_valign(gtk::Align::Center);
     scale.set_draw_value(true);
     scale.set_value_pos(gtk::PositionType::Right);
