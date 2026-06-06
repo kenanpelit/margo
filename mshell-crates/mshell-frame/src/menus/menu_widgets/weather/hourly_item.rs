@@ -1,170 +1,72 @@
-use mshell_common::scoped_effects::EffectScope;
-use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
+//! One hourly-forecast cell. A plain `gtk::Box` builder — **not** a relm4
+//! component. Each cell used to be its own `Component` that registered two
+//! reactive `EffectScope` config watchers (temperature unit + clock format);
+//! with a full forecast (dozens of hours) × every output that was hundreds of
+//! component launches + reactive subscriptions on the GTK main thread at
+//! startup, burning ~15 s at 100 % CPU before the bar could paint. The parent
+//! (`hourly.rs`) now owns the unit/format watch centrally and rebuilds these
+//! cheap widgets on change.
+
 use mshell_utils::weather::{get_percent_string, get_temperature_string, get_weather_icon_name};
-use reactive_graph::traits::{Get, GetUntracked};
-use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::gtk;
+use relm4::gtk::prelude::{BoxExt, WidgetExt};
 use wayle_weather::{HourlyForecast, TemperatureUnit};
 
-#[derive(Debug, Clone)]
-pub(crate) struct HourlyItemModel {
-    hourly: HourlyForecast,
-    temperature_unit: TemperatureUnit,
-    time_label: String,
-    _effects: EffectScope,
-}
+/// Build a single hourly cell (time · icon · temp · UV · rain%) as a plain
+/// widget tree. No component, no reactive effects.
+pub(crate) fn build_hourly_item(
+    hourly: &HourlyForecast,
+    temperature_unit: &TemperatureUnit,
+    format_24_h: bool,
+) -> gtk::Box {
+    let time_label = if format_24_h {
+        hourly.time.format("%H").to_string()
+    } else {
+        hourly.time.format("%I %p").to_string()
+    };
 
-#[derive(Debug)]
-pub(crate) enum HourlyItemInput {
-    UpdateTemperatureUnit(TemperatureUnit),
-    ChangeFormat(bool),
-}
+    let root = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(8)
+        .build();
 
-#[derive(Debug)]
-pub(crate) enum HourlyItemOutput {}
+    let time = gtk::Label::new(Some(&time_label));
+    time.add_css_class("label-small-bold");
+    root.append(&time);
 
-pub(crate) struct HourlyItemInit {
-    pub hourly: HourlyForecast,
-}
+    let icon = gtk::Image::new();
+    icon.add_css_class("hourly-weather-icon");
+    icon.set_icon_name(Some(get_weather_icon_name(
+        &hourly.condition,
+        hourly.is_day,
+    )));
+    root.append(&icon);
 
-#[derive(Debug)]
-pub(crate) enum HourlyItemCommandOutput {}
+    let temp = gtk::Label::new(Some(
+        get_temperature_string(&hourly.temperature, temperature_unit).as_str(),
+    ));
+    temp.add_css_class("label-small-bold");
+    root.append(&temp);
 
-#[relm4::component(pub)]
-impl Component for HourlyItemModel {
-    type CommandOutput = HourlyItemCommandOutput;
-    type Input = HourlyItemInput;
-    type Output = HourlyItemOutput;
-    type Init = HourlyItemInit;
+    let uv = gtk::Label::new(Some(&format!("{} UV", hourly.uv_index)));
+    uv.add_css_class("label-small-bold");
+    root.append(&uv);
 
-    view! {
-        #[root]
-        gtk::Box {
-            set_orientation: gtk::Orientation::Vertical,
-            set_spacing: 8,
+    // Rain chance.
+    let rain = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .halign(gtk::Align::Center)
+        .spacing(2)
+        .build();
+    rain.add_css_class("hourly-rain");
+    let rain_icon = gtk::Image::new();
+    rain_icon.add_css_class("hourly-rain-icon");
+    rain_icon.set_icon_name(Some("weather-showers-scattered-symbolic"));
+    rain.append(&rain_icon);
+    let rain_label = gtk::Label::new(Some(get_percent_string(&hourly.rain_chance).as_str()));
+    rain_label.add_css_class("label-small");
+    rain.append(&rain_label);
+    root.append(&rain);
 
-            gtk::Label {
-                add_css_class: "label-small-bold",
-                set_label: model.time_label.as_str(),
-            },
-
-            gtk::Image {
-                add_css_class: "hourly-weather-icon",
-                #[watch]
-                set_icon_name: Some(get_weather_icon_name(
-                    &model.hourly.condition,
-                    model.hourly.is_day,
-                )),
-            },
-
-            gtk::Label {
-                add_css_class: "label-small-bold",
-                #[watch]
-                set_label: get_temperature_string(
-                    &model.hourly.temperature,
-                    &model.temperature_unit
-                ).as_str(),
-            },
-
-            gtk::Label {
-                add_css_class: "label-small-bold",
-                #[watch]
-                set_label: format!("{} UV", model.hourly.uv_index).as_str(),
-            },
-
-            // Rain chance — the most-wanted hourly field, previously
-            // dropped despite being in the wayle model.
-            gtk::Box {
-                add_css_class: "hourly-rain",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_halign: gtk::Align::Center,
-                set_spacing: 2,
-
-                gtk::Image {
-                    add_css_class: "hourly-rain-icon",
-                    set_icon_name: Some("weather-showers-scattered-symbolic"),
-                },
-
-                gtk::Label {
-                    add_css_class: "label-small",
-                    #[watch]
-                    set_label: get_percent_string(&model.hourly.rain_chance).as_str(),
-                },
-            },
-        }
-    }
-
-    fn init(
-        params: Self::Init,
-        root: Self::Root,
-        sender: ComponentSender<Self>,
-    ) -> ComponentParts<Self> {
-        let base_config = config_manager().config();
-
-        let mut effects = EffectScope::new();
-
-        let config = base_config.clone();
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config.clone();
-            let temperature_unit = config.general().temperature_unit().get();
-            sender_clone.input(HourlyItemInput::UpdateTemperatureUnit(
-                TemperatureUnit::from(temperature_unit),
-            ));
-        });
-
-        let sender_clone = sender.clone();
-        let config = base_config.clone();
-        effects.push(move |_| {
-            let config = config.clone();
-            let format_24_h = config.general().clock_format_24_h().get();
-            sender_clone.input(HourlyItemInput::ChangeFormat(format_24_h));
-        });
-
-        let config = base_config.clone();
-        let format_24_h = config.general().clock_format_24_h().get_untracked();
-
-        let time_label = if format_24_h {
-            params.hourly.time.format("%H").to_string()
-        } else {
-            params.hourly.time.format("%I %p").to_string()
-        };
-
-        let model = HourlyItemModel {
-            hourly: params.hourly,
-            temperature_unit: TemperatureUnit::from(
-                base_config.general().temperature_unit().get_untracked(),
-            ),
-            time_label,
-            _effects: effects,
-        };
-
-        let widgets = view_output!();
-
-        ComponentParts { model, widgets }
-    }
-
-    fn update_with_view(
-        &mut self,
-        widgets: &mut Self::Widgets,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
-        match message {
-            HourlyItemInput::UpdateTemperatureUnit(temperature_unit) => {
-                self.temperature_unit = temperature_unit;
-            }
-            HourlyItemInput::ChangeFormat(format_24_h) => {
-                self.time_label = if format_24_h {
-                    self.hourly.time.format("%H").to_string()
-                } else {
-                    self.hourly.time.format("%I %p").to_string()
-                };
-            }
-        }
-
-        self.update_view(widgets, sender);
-    }
+    root
 }

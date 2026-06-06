@@ -1,19 +1,18 @@
-use crate::menus::menu_widgets::weather::hourly_item::{HourlyItemInit, HourlyItemModel};
+use crate::menus::menu_widgets::weather::hourly_item::build_hourly_item;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
 use mshell_utils::scroll_extensions::wire_vertical_to_horizontal;
 use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
-use relm4::{
-    Component, ComponentController, ComponentParts, ComponentSender, Controller, RelmRemoveAllExt,
-    RelmWidgetExt, gtk,
-};
+use relm4::{Component, ComponentParts, ComponentSender, RelmRemoveAllExt, RelmWidgetExt, gtk};
 use wayle_weather::{HourlyForecast, TemperatureUnit};
 
 pub(crate) struct HourlyModel {
-    controllers: Vec<Controller<HourlyItemModel>>,
+    /// Cached forecast so a unit/format change can rebuild without a refetch.
+    hourly: Vec<HourlyForecast>,
     temperature_unit: TemperatureUnit,
+    format_24_h: bool,
     _effects: EffectScope,
 }
 
@@ -21,6 +20,7 @@ pub(crate) struct HourlyModel {
 pub(crate) enum HourlyInput {
     Update(Vec<HourlyForecast>),
     UpdateTemperatureUnit(TemperatureUnit),
+    ChangeFormat(bool),
 }
 
 #[derive(Debug)]
@@ -32,6 +32,19 @@ pub(crate) struct HourlyInit {
 
 #[derive(Debug)]
 pub(crate) enum HourlyCommandOutput {}
+
+/// Repaint the cells as plain widgets (cheap — no per-cell component/effects).
+fn rebuild_items(
+    container: &gtk::Box,
+    hourly: &[HourlyForecast],
+    unit: &TemperatureUnit,
+    format_24_h: bool,
+) {
+    container.remove_all();
+    for forecast in hourly {
+        container.append(&build_hourly_item(forecast, unit, format_24_h));
+    }
+}
 
 #[relm4::component(pub)]
 impl Component for HourlyModel {
@@ -76,44 +89,53 @@ impl Component for HourlyModel {
     ) -> ComponentParts<Self> {
         let base_config = config_manager().config();
 
+        // Two effects TOTAL (not per cell): temperature unit + clock format.
         let mut effects = EffectScope::new();
+        {
+            let config = base_config.clone();
+            let s = sender.clone();
+            effects.push(move |_| {
+                let config = config.clone();
+                let unit = config.general().temperature_unit().get();
+                s.input(HourlyInput::UpdateTemperatureUnit(TemperatureUnit::from(
+                    unit,
+                )));
+            });
+        }
+        {
+            let config = base_config.clone();
+            let s = sender.clone();
+            effects.push(move |_| {
+                let config = config.clone();
+                let fmt = config.general().clock_format_24_h().get();
+                s.input(HourlyInput::ChangeFormat(fmt));
+            });
+        }
 
-        let config = base_config.clone();
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config.clone();
-            let temperature_unit = config.general().temperature_unit().get();
-            sender_clone.input(HourlyInput::UpdateTemperatureUnit(TemperatureUnit::from(
-                temperature_unit,
-            )));
-        });
+        let temperature_unit = TemperatureUnit::from(
+            base_config
+                .clone()
+                .general()
+                .temperature_unit()
+                .get_untracked(),
+        );
+        let format_24_h = base_config.general().clock_format_24_h().get_untracked();
 
-        let mut model = HourlyModel {
-            controllers: Vec::new(),
-            temperature_unit: TemperatureUnit::from(
-                base_config.general().temperature_unit().get_untracked(),
-            ),
+        let model = HourlyModel {
+            hourly: params.hourly,
+            temperature_unit,
+            format_24_h,
             _effects: effects,
         };
 
         let widgets = view_output!();
 
-        let container = widgets.widget_container.clone();
-        let mut controllers: Vec<Controller<HourlyItemModel>> = Vec::new();
-
-        params.hourly.iter().for_each(|forecast| {
-            let controller = HourlyItemModel::builder()
-                .launch(HourlyItemInit {
-                    hourly: forecast.clone(),
-                })
-                .detach();
-
-            container.append(controller.widget());
-            controllers.push(controller);
-        });
-
-        model.controllers = controllers;
-
+        rebuild_items(
+            &widgets.widget_container,
+            &model.hourly,
+            &model.temperature_unit,
+            model.format_24_h,
+        );
         wire_vertical_to_horizontal(&widgets.scroll_window, 32.0);
 
         ComponentParts { model, widgets }
@@ -127,29 +149,26 @@ impl Component for HourlyModel {
         _root: &Self::Root,
     ) {
         match message {
-            HourlyInput::Update(hourly) => {
-                widgets.widget_container.remove_all();
-                let container = widgets.widget_container.clone();
-                let mut controllers: Vec<Controller<HourlyItemModel>> = Vec::new();
-
-                hourly.iter().for_each(|forecast| {
-                    let controller = HourlyItemModel::builder()
-                        .launch(HourlyItemInit {
-                            hourly: forecast.clone(),
-                        })
-                        .detach();
-
-                    container.append(controller.widget());
-                    controllers.push(controller);
-                });
-
-                self.controllers = controllers;
+            HourlyInput::Update(hourly) => self.hourly = hourly,
+            HourlyInput::UpdateTemperatureUnit(unit) => {
+                if self.temperature_unit == unit {
+                    return;
+                }
+                self.temperature_unit = unit;
             }
-            HourlyInput::UpdateTemperatureUnit(temperature_unit) => {
-                self.temperature_unit = temperature_unit;
+            HourlyInput::ChangeFormat(fmt) => {
+                if self.format_24_h == fmt {
+                    return;
+                }
+                self.format_24_h = fmt;
             }
         }
-
+        rebuild_items(
+            &widgets.widget_container,
+            &self.hourly,
+            &self.temperature_unit,
+            self.format_24_h,
+        );
         self.update_view(widgets, sender);
     }
 }
