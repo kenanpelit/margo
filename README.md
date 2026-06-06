@@ -43,20 +43,38 @@ itself from your wallpaper with Material You.
 
 <table>
 <tr>
-<td align="center" width="25%"><img src="docs/assets/grid-dashboard.webp" alt="Dashboard"><br><sub><b>Dashboard</b><br>clock · calendar · weather · quick-settings · media</sub></td>
-<td align="center" width="25%"><img src="docs/assets/grid-launcher.webp" alt="App launcher"><br><sub><b>App launcher</b><br>fuzzy apps + ~15 providers</sub></td>
-<td align="center" width="25%"><img src="docs/assets/grid-twilight.webp" alt="Twilight"><br><sub><b>Twilight</b><br>blue-light filter + schedule presets</sub></td>
-<td align="center" width="25%"><img src="docs/assets/grid-power.webp" alt="Power profiles"><br><sub><b>Power profiles</b><br>saver · balanced · performance</sub></td>
+<td align="center" width="25%"><img src="docs/assets/dashboard.webp" alt="Dashboard"><br><sub><b>Dashboard</b><br>clock · calendar · weather · media</sub></td>
+<td align="center" width="25%"><img src="docs/assets/control.webp" alt="Control Center"><br><sub><b>Control Center</b><br>toggles · sliders · session</sub></td>
+<td align="center" width="25%"><img src="docs/assets/launcher.webp" alt="App launcher"><br><sub><b>App launcher</b><br>fuzzy apps + ~15 providers</sub></td>
+<td align="center" width="25%"><img src="docs/assets/settings.webp" alt="Settings"><br><sub><b>Settings</b><br>shell + compositor, searchable</sub></td>
 </tr>
 <tr>
-<td align="center" width="25%"><img src="docs/assets/grid-dns.webp" alt="DNS / VPN"><br><sub><b>DNS / VPN</b><br>one-tap preset switching</sub></td>
-<td align="center" width="25%"><img src="docs/assets/grid-keepawake.webp" alt="Keep Awake"><br><sub><b>Keep Awake</b><br>temporary idle inhibitor</sub></td>
-<td align="center" width="25%"><img src="docs/assets/grid-podman.webp" alt="Podman"><br><sub><b>Podman</b><br>containers · images · pods</sub></td>
-<td align="center" width="25%"><img src="docs/assets/grid-notes.webp" alt="Notes Hub"><br><sub><b>Notes Hub</b><br>scratchpad · notes · todos</sub></td>
+<td align="center" width="25%"><img src="docs/assets/cpu.webp" alt="System monitor"><br><sub><b>System monitor</b><br>CPU · memory · top processes</sub></td>
+<td align="center" width="25%"><img src="docs/assets/audio.webp" alt="Audio mixer"><br><sub><b>Audio mixer</b><br>per-app volume + device ports</sub></td>
+<td align="center" width="25%"><img src="docs/assets/network.webp" alt="Network"><br><sub><b>Network</b><br>Wi-Fi · wired · VPN</sub></td>
+<td align="center" width="25%"><img src="docs/assets/dnsvpn.webp" alt="DNS / VPN"><br><sub><b>DNS / VPN</b><br>one-tap preset switching</sub></td>
+</tr>
+<tr>
+<td align="center" width="25%"><img src="docs/assets/spotify.webp" alt="Media player"><br><sub><b>Media</b><br>now-playing controls</sub></td>
+<td align="center" width="25%"><img src="docs/assets/lyrics.webp" alt="Lyrics"><br><sub><b>Lyrics</b><br>synced, scrolling</sub></td>
+<td align="center" width="25%"><img src="docs/assets/weather.webp" alt="Weather"><br><sub><b>Weather</b><br>forecast + hourly details</sub></td>
+<td align="center" width="25%"><img src="docs/assets/layout.webp" alt="Tiling layouts"><br><sub><b>Tiling layouts</b><br>15 algorithms, per-tag</sub></td>
+</tr>
+<tr>
+<td align="center" width="25%"><img src="docs/assets/alarm.webp" alt="Alarms"><br><sub><b>Alarms</b><br>alarm · stopwatch</sub></td>
+<td align="center" width="25%"><img src="docs/assets/breathing.webp" alt="Breathing"><br><sub><b>Breathing</b><br>guided wind-down</sub></td>
+<td align="center" width="25%"><img src="docs/assets/keep_awake.webp" alt="Keep Awake"><br><sub><b>Keep Awake</b><br>temporary idle inhibitor</sub></td>
+<td align="center" width="25%"><img src="docs/assets/twilight.webp" alt="Twilight"><br><sub><b>Twilight</b><br>blue-light filter + schedule</sub></td>
+</tr>
+<tr>
+<td align="center" width="25%"><img src="docs/assets/podman.webp" alt="Podman"><br><sub><b>Podman</b><br>containers · images · pods</sub></td>
+<td align="center" width="25%"><img src="docs/assets/notes.webp" alt="Notes Hub"><br><sub><b>Notes Hub</b><br>scratchpad · notes · todos</sub></td>
+<td align="center" width="25%"><img src="docs/assets/valent.webp" alt="KDE Connect"><br><sub><b>KDE Connect</b><br>phone integration (Valent)</sub></td>
+<td align="center" width="25%"><img src="docs/assets/screenshot.webp" alt="Screenshot editor"><br><sub><b>Screenshot</b><br>region → annotate → copy</sub></td>
 </tr>
 </table>
 
-<sub>These are eight of mshell's 30-plus widgets. More on the <a href="https://kenanpelit.github.io/margo/">documentation site</a>.</sub>
+<sub>Twenty of mshell's 30-plus widgets and menus — every one recolours itself from your wallpaper with Material You. More on the <a href="https://kenanpelit.github.io/margo/">documentation site</a>.</sub>
 
 ## Binaries
 
