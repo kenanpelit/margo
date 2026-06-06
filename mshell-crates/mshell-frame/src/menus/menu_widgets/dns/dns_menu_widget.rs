@@ -401,7 +401,10 @@ fn make_action_button(label: &str, icon: &str) -> gtk::Button {
     inner.append(&l);
     gtk::Button::builder()
         .child(&inner)
-        .css_classes(vec!["ok-button-surface", "ok-button-cell", "dns-action"])
+        // No .ok-button-cell — .dns-action styles these like the control-center
+        // power-profile segmented buttons (see _dns.scss); .ok-button-surface
+        // still supplies the .selected → --primary fill.
+        .css_classes(vec!["ok-button-surface", "dns-action"])
         .hexpand(true)
         .build()
 }

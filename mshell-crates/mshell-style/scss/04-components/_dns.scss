@@ -57,13 +57,31 @@
   opacity: 0.7;
 }
 
-// ── 4 primary action buttons ────────────────────────────────
-// These carry `.ok-button-cell` in Rust (padding space-3 × space-1, 84px
-// floor). Don't re-declare padding here — a shorter space-2 override made the
-// DNS buttons stubbier than the power / session rows (DESIGN.md §21). Keep only
-// the hover / selected tinting below.
+// ── 4 primary action buttons (Mullvad / Blocky / Default / Toggle) ──
+// Styled like the control-center power-profile segmented buttons
+// (`.control-center-pp-btn`): compact --radius-lg buttons on
+// --surface-container, small icon + bold label, filling --primary when
+// selected. They carry `.ok-button-surface` (not `.ok-button-cell`) so
+// `.selected` supplies the primary fill.
 .dns-action {
+  background-color: var(--surface-container);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-3);
+  min-width: 0;
+  min-height: 0;
   transition: background-color var(--motion-fast) var(--ease-standard);
+  // Cancel button-base's `> *` inner padding (from .ok-button-surface) so the
+  // single space-2×space-3 padding matches the control-center pp button.
+  > * {
+    padding: 0;
+  }
+  image {
+    -gtk-icon-size: var(--icon-sm);
+  }
+  label {
+    font-size: var(--font-xs);
+    font-weight: 600;
+  }
 }
 .dns-action:not(.selected):hover {
   background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
