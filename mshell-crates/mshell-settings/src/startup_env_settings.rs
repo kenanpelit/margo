@@ -195,22 +195,19 @@ fn rebuild_scripts(
         label.add_css_class("label-medium");
         line1.append(&label);
 
-        // Found / missing on $PATH badge.
-        let found = path_exes.contains(&name);
-        let badge = gtk::Image::from_icon_name(if found {
-            "emblem-ok-symbolic"
-        } else {
-            "dialog-warning-symbolic"
-        });
-        badge.set_tooltip_text(Some(if found {
-            "Found on $PATH"
-        } else {
-            "Not found on $PATH — check the name"
-        }));
-        if !found {
-            badge.add_css_class("warning");
+        // Read-only status (not a button): flag a script whose name doesn't
+        // resolve to an executable on $PATH — a typo, or one that isn't
+        // installed yet. Found scripts show nothing.
+        if !path_exes.contains(&name) {
+            let badge = gtk::Label::new(Some("not on PATH"));
+            badge.add_css_class("label-small");
+            badge.add_css_class("startup-script-missing");
+            badge.set_valign(gtk::Align::Center);
+            badge.set_tooltip_text(Some(
+                "This name doesn't match any executable on $PATH — check the spelling, or install it.",
+            ));
+            line1.append(&badge);
         }
-        line1.append(&badge);
 
         let run = gtk::Button::from_icon_name("media-playback-start-symbolic");
         run.add_css_class("flat");

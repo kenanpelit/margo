@@ -471,6 +471,14 @@
     border-radius: var(--radius-sm);
 }
 
+// Settings → Startup: a read-only badge flagging an autostart-script name that
+// doesn't resolve to an executable on $PATH (a typo, or not installed yet).
+// Only shown for the missing case — a found script needs no decoration.
+.startup-script-missing {
+    color: var(--warning);
+    font-weight: 600;
+}
+
 // Settings → Users: the inline status line turns error-coloured on a
 // failed / dismissed privileged action (matugen error role).
 .status-error {
