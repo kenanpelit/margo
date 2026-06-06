@@ -153,56 +153,16 @@
   .container-menu-widget {
   }
 
-  // ── Visual merges via adjacent-sibling selectors ──────
+  // Dashboard widgets are distinct, fully-rounded cards (GNOME quick-settings
+  // style), each keeping the soft --radius-md corners on all four sides.
   //
-  // GTK4's CSS engine doesn't support :has(), so we can only
-  // style the LATER widget in a pair. The earlier widget's
-  // bottom corners get squared off via a dashboard-scoped
-  // descendant rule below — it's safe because the dashboard
-  // config always pairs these widgets the same way.
-  //
-  // Each pair: kill the inter-card gap, square the touching
-  // corners, paint a faint 1 px top-rule on the lower widget
-  // so the seam reads as one card with an internal divider.
-
-  // Calendar + Weather (left column "Daily Overview").
-  .calendar-menu-widget + .weather-menu-widget {
-    margin-top: 0;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
-    box-shadow: inset 0 1px 0 0 var(--outline-variant);
-  }
-
-  // AudioOutput + AudioInput (right column "Audio").
-  .audio-out-menu-widget + .audio-in-menu-widget {
-    margin-top: 0;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
-    box-shadow: inset 0 1px 0 0 var(--outline-variant);
-  }
-
-  // Network + Bluetooth (right column "Connectivity").
-  .network-menu-widget + .bluetooth-menu-widget {
-    margin-top: 0;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
-    box-shadow: inset 0 1px 0 0 var(--outline-variant);
-  }
-
-  // Earlier-widget bottom-corner squareoff. Since :has() is
-  // out, target by structural assumption — in the dashboard
-  // config these widgets are always followed by their pair,
-  // so it's safe to always round-off their bottom corners.
-  // (For the standalone QS menu the same widgets are NOT
-  // paired this way; the `.dashboard-menu` scope is what
-  // keeps this from leaking there.)
-  .calendar-menu-widget,
-  .audio-out-menu-widget,
-  .network-menu-widget {
-    margin-bottom: 0;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-  }
+  // We used to *fuse* the column pairs (Calendar+Weather, AudioOut+AudioIn,
+  // Network+Bluetooth) into one card by squaring the touching corners — but
+  // that squared the EARLIER widget's bottom *unconditionally* (GTK4 CSS has
+  // no `:has()` to make it depend on the pair actually following). Any layout
+  // where the pair wasn't present left an orphaned square-bottomed card (e.g.
+  // a calendar with no weather under it). Distinct rounded cards are robust
+  // for every dashboard layout and match the rest of the rounded shape scale.
 
   // The footer Power row (QuickActions) sits flush below the
   // body — give it its own card chrome, same as the in-body
