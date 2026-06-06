@@ -35,13 +35,13 @@
 // (non-selected) state carries a calm tonal hover (DESIGN.md
 // §7 state-on-interactive / §Motion).
 .power-profile-button {
-  // Control-center tile geometry (DESIGN.md §21/§22): --radius-xl + even
-  // space-3 padding + a 56px floor, so each profile button is a balanced
-  // rounded tile (not a stretched wide pill) matching the rest of the shell.
-  padding: var(--space-3);
+  // Slim fully-rounded pill — same .ok-button-cell action-button geometry used
+  // across the shell (DESIGN.md §21): thin (40px) + --radius-pill, not a chunky
+  // tile.
+  padding: var(--space-2) var(--space-4);
   min-width: 84px;
-  min-height: 56px;
-  border-radius: var(--radius-xl);
+  min-height: 40px;
+  border-radius: var(--radius-pill);
   transition: background-color var(--motion-medium) var(--ease-standard),
               color var(--motion-medium) var(--ease-standard);
 }
@@ -53,21 +53,22 @@
 // Plain surface buttons; `.selected` (from `ok-button-surface`)
 // carries the active-state tint for Lock Auto / Idle Toggle.
 .power-control-button {
-  // Same control-center tile geometry as .power-profile-button so every button
-  // in the power widget — and across menus — is one rounded-tile family.
-  padding: var(--space-3);
+  // Same slim pill as .power-profile-button so every button in the power
+  // widget — and across menus — is one family (DESIGN.md §21).
+  padding: var(--space-2) var(--space-4);
   min-width: 84px;
-  min-height: 56px;
-  border-radius: var(--radius-xl);
+  min-height: 40px;
+  border-radius: var(--radius-pill);
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
-// Charge-limit presets (60 / 80 / 100 %). Same tile geometry as the rows above.
+// Charge-limit presets (60 / 80 / 100 %) — a compact secondary selector, so a
+// notch slimmer than the action pills above: smaller % chips, not chunky.
 .power-charge-preset {
-  padding: var(--space-3);
-  min-width: 84px;
-  min-height: 56px;
-  border-radius: var(--radius-xl);
+  padding: var(--space-1) var(--space-3);
+  min-width: 52px;
+  min-height: 30px;
+  border-radius: var(--radius-pill);
 }
 .power-control-button:not(.selected):hover {
   background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");

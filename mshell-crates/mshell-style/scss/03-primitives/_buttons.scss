@@ -114,15 +114,17 @@ button.ok-button-error {
 // rounded tile, matching the control-center tiles (DESIGN.md §21/§22) — not a
 // short wide pill. Use this instead of re-declaring per widget.
 //
-// Geometry mirrors `.control-center-tile`: --radius-xl corners + even space-3
-// padding + a 56px floor. The 56px height is what lets the 32px radius read as
-// a rounded card rather than a stadium, and gives short-label buttons a
-// balanced aspect ratio instead of a stretched sliver.
+// Geometry: a slim, fully-rounded pill — the GNOME/ashell action-button look.
+// Thin (40px) so it never reads as a chunky block; --radius-pill so "very
+// rounded" stays clean at that height (a big --radius-xl only reads as a
+// rounded *square* on a tall content-filled tile like the control center, not
+// on a slim button). 84px min-width keeps a short label from shrinking to a
+// sliver, so a row of these stays one uniform family.
 .ok-button-cell {
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-4);
   min-width: 84px;
-  min-height: 56px;
-  border-radius: var(--radius-xl);
+  min-height: 40px;
+  border-radius: var(--radius-pill);
 }
 
 .ok-button-medium-thin {

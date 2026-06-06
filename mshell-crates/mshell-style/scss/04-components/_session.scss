@@ -13,12 +13,12 @@
 }
 
 .session-button {
-  // Control-center tile geometry (DESIGN.md §21/§22) — one rounded-tile family
-  // with the power / DNS / UFW action rows.
-  padding: var(--space-3);
+  // Slim fully-rounded pill — one family with the power / DNS / UFW action
+  // rows (DESIGN.md §21).
+  padding: var(--space-2) var(--space-4);
   min-width: 84px;
-  min-height: 56px;
-  border-radius: var(--radius-xl);
+  min-height: 40px;
+  border-radius: var(--radius-pill);
 }
 
 // Destructive actions — tint the icon so they stand apart from the

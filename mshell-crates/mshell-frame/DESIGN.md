@@ -1209,14 +1209,17 @@ Every button resolves on three axes — don't invent one-off button styles:
   transition with `--motion-fast` `--ease-standard`; never snap.
 
 Radius + size: a **menu action button** (the `.ok-button-cell` family — power
-profile/control, session, DNS, UFW footer, network, …) uses the **control-center
-tile metric** (§22): `--radius-xl` corners, even `--space-3` padding, an 84 px
-min-width and a **56 px min-height floor**. The height is not optional — it is
-what makes the 32 px radius read as a rounded *tile* rather than a stretched
-stadium pill, and gives short-label buttons a balanced aspect ratio. Pill
-toggles / category chips use `--radius-pill`; tiny inline icon buttons and bar
-pills (§4) keep their own smaller radii. One tile family across menus, the
-control center, and plugin selectors — never a per-widget one-off size.
+profile/control, session, DNS, UFW footer, network, …) is a **slim fully-rounded
+pill**: `--radius-pill`, `--space-2 × --space-4` padding, 84 px min-width, 40 px
+min-height. Thin so it never reads as a chunky block; fully rounded for the
+GNOME/ashell look. Do **not** reach for `--radius-xl` here — a big radius only
+reads as a rounded *square* on a tall, content-filled toggle **tile** (the
+control center, §22), not on a slim button, where it just forces an ugly chunky
+height. Compact secondary selectors (e.g. the charge-limit % presets) are a
+notch slimmer (≈30 px) but the same pill. Pill toggles / category chips also use
+`--radius-pill`; tiny inline icon buttons and bar pills (§4) keep their own
+radii. One pill family across menus + plugin selectors; tall toggle tiles are a
+separate kind (§22).
 
 ## 22. Control-center tile anatomy
 
