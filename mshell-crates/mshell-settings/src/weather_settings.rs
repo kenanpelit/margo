@@ -183,7 +183,7 @@ impl Component for WeatherSettingsModel {
                     },
 
                     gtk::Button {
-                        set_css_classes: &["label-medium", "ok-button-primary"],
+                        set_css_classes: &["ok-button-primary", "ok-button-cell"],
                         set_label: "Change Coordinates",
                         set_halign: gtk::Align::Start,
                         set_hexpand: false,
@@ -220,7 +220,7 @@ impl Component for WeatherSettingsModel {
                     },
 
                     gtk::Button {
-                        set_css_classes: &["label-medium", "ok-button-primary"],
+                        set_css_classes: &["ok-button-primary", "ok-button-cell"],
                         set_label: "Change Location",
                         set_halign: gtk::Align::Start,
                         set_hexpand: false,
@@ -370,7 +370,7 @@ impl Component for WeatherSettingsModel {
                     },
 
                     gtk::Button {
-                        set_css_classes: &["label-medium", "ok-button-primary"],
+                        set_css_classes: &["ok-button-primary", "ok-button-cell"],
                         set_label: "Save current as…",
                         set_halign: gtk::Align::Start,
                         set_valign: gtk::Align::Center,
@@ -700,7 +700,7 @@ impl WeatherSettingsModel {
 
             let remove = gtk::Button::builder()
                 .label("Remove")
-                .css_classes(["label-small", "ok-button-surface"])
+                .css_classes(["ok-button-surface", "ok-button-cell"])
                 .valign(gtk::Align::Center)
                 .build();
             let sender = sender.clone();

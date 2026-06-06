@@ -170,7 +170,7 @@ impl Component for PluginsSettingsModel {
                     },
                     #[name = "update_all_btn"]
                     gtk::Button {
-                        set_css_classes: &["ok-button-surface"],
+                        set_css_classes: &["ok-button-surface", "ok-button-cell"],
                         set_label: "Update all now",
                         set_valign: gtk::Align::Center,
                         connect_clicked[sender] => move |_| sender.input(PluginsSettingsInput::UpdateAll),
@@ -207,7 +207,7 @@ impl Component for PluginsSettingsModel {
                         set_hexpand: true,
                     },
                     gtk::Button {
-                        set_css_classes: &["ok-button-surface"],
+                        set_css_classes: &["ok-button-surface", "ok-button-cell"],
                         set_label: "Add",
                         connect_clicked[sender] => move |_| sender.input(PluginsSettingsInput::AddSource),
                     },
@@ -231,7 +231,7 @@ impl Component for PluginsSettingsModel {
                         set_valign: gtk::Align::Center,
                     },
                     gtk::Button {
-                        set_css_classes: &["ok-button-surface"],
+                        set_css_classes: &["ok-button-surface", "ok-button-cell"],
                         set_label: "Refresh",
                         connect_clicked[sender] => move |_| sender.input(PluginsSettingsInput::Refresh),
                     },

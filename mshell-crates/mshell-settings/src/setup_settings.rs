@@ -155,7 +155,7 @@ impl Component for SetupSettingsModel {
                         },
                     },
                     gtk::Button {
-                        set_css_classes: &["label-medium", "ok-button-primary"],
+                        set_css_classes: &["ok-button-primary", "ok-button-cell"],
                         set_label: "Run setup wizard",
                         set_valign: gtk::Align::Center,
                         connect_clicked => move |_| {
@@ -217,7 +217,7 @@ impl Component for SetupSettingsModel {
                     },
 
                     gtk::Button {
-                        set_css_classes: &["label-medium", "ok-button-primary"],
+                        set_css_classes: &["ok-button-primary", "ok-button-cell"],
                         set_label: "Save as \"active\"",
                         set_valign: gtk::Align::Center,
                         connect_clicked[sender] => move |_| {
