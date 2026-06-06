@@ -10,24 +10,14 @@
 //! the rest of Settings already uses (idle / theme / wallpaper).
 
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{
-    AutostartTrigger, ConfigStoreFields, LauncherStoreFields, PassStoreFields, ScriptAutostart,
-};
-use mshell_launcher::providers::ScriptsProvider;
+use mshell_config::schema::config::{ConfigStoreFields, LauncherStoreFields, PassStoreFields};
 use mshell_launcher::{frecency, history};
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 #[derive(Debug)]
-pub(crate) struct LauncherSettingsModel {
-    /// User-managed startup-script list — the source of truth.
-    /// Add by name (text entry below), delete per row; each entry
-    /// carries its run-at-startup toggle + post-startup delay.
-    /// Mirrors `config.launcher.autostart_scripts`, refreshed on
-    /// every add / remove.
-    scripts: Vec<ScriptAutostart>,
-}
+pub(crate) struct LauncherSettingsModel {}
 
 #[derive(Debug)]
 pub(crate) enum LauncherSettingsInput {
@@ -40,17 +30,6 @@ pub(crate) enum LauncherSettingsInput {
     /// `mshell_clipboard::clipboard_service()`. Effect is
     /// immediate — no file to remove.
     ClearClipboard,
-    /// Add a script to the startup list by name (text entry).
-    /// No-op on empty / duplicate names.
-    AddScript(String),
-    /// Remove a script from the startup list (delete button).
-    RemoveScript(String),
-    /// Toggle a script's run-at-startup flag (by short name).
-    SetAutostart(String, bool),
-    /// Set how many seconds after startup a script runs (by name).
-    SetDelay(String, u32),
-    /// Set a script's run trigger (Every start / Login only), by name.
-    SetTrigger(String, AutostartTrigger),
     /// Set the GNU pass store directory (`config.pass.store_path`).
     /// Empty falls back to $PASSWORD_STORE_DIR / ~/.password-store.
     SetPassStorePath(String),
@@ -217,82 +196,6 @@ impl Component for LauncherSettingsModel {
                     },
                 },
 
-                // Scripts ──────────────────────────────────────
-                gtk::Label {
-                    add_css_class: "label-large-bold",
-                    set_label: "Scripts",
-                    set_halign: gtk::Align::Start,
-                },
-
-                gtk::Label {
-                    add_css_class: "label-small",
-                    #[watch]
-                    set_label: &format!(
-                        "Type a script name and click Add to put it on the \
-                         startup list. Tick a row to run it at shell startup, \
-                         and set how many seconds after startup it should \
-                         launch. Names match executables on $PATH (e.g. \
-                         `{prefix}foo`), which also run via `>start` in the \
-                         launcher. {count} script(s) listed.",
-                        prefix = ScriptsProvider::DEFAULT_PREFIX,
-                        count = model.scripts.len(),
-                    ),
-                    set_halign: gtk::Align::Start,
-                    set_xalign: 0.0,
-                    set_wrap: true,
-                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                },
-
-                #[name = "scripts_scroll"]
-                gtk::ScrolledWindow {
-                    set_vscrollbar_policy: gtk::PolicyType::Automatic,
-                    set_hscrollbar_policy: gtk::PolicyType::Never,
-                    // Grow with the list, but use the generous space the
-                    // page has: a tall floor so it never feels cramped, and
-                    // a high cap before it scrolls in place.
-                    set_propagate_natural_height: true,
-                    set_min_content_height: 360,
-                    set_max_content_height: 900,
-                    set_vexpand: true,
-                    set_hexpand: true,
-
-                    #[name = "scripts_box"]
-                    gtk::Box {
-                        add_css_class: "settings-boxed-list",
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_spacing: 2,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 8,
-
-                    #[name = "name_entry"]
-                    gtk::Entry {
-                        set_hexpand: true,
-                        set_placeholder_text: Some("script name, e.g. start-foo"),
-                        // Enter in the entry adds too.
-                        connect_activate[sender] => move |e| {
-                            sender.input(LauncherSettingsInput::AddScript(
-                                e.text().to_string(),
-                            ));
-                            e.set_text("");
-                        },
-                    },
-
-                    gtk::Button {
-                        add_css_class: "ok-button-primary",
-                        set_label: "Add",
-                        connect_clicked[sender, name_entry] => move |_| {
-                            sender.input(LauncherSettingsInput::AddScript(
-                                name_entry.text().to_string(),
-                            ));
-                            name_entry.set_text("");
-                        },
-                    },
-                },
-
                 // Cache ────────────────────────────────────────
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -396,13 +299,10 @@ impl Component for LauncherSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = LauncherSettingsModel {
-            scripts: read_autostart_scripts(),
-        };
+        let model = LauncherSettingsModel {};
 
         let widgets = view_output!();
 
-        rebuild_scripts_box(&widgets.scripts_box, &model.scripts, &sender);
         widgets.pass_store_entry.set_text(
             &config_manager()
                 .config()
@@ -447,39 +347,6 @@ impl Component for LauncherSettingsModel {
                 mshell_clipboard::clipboard_service().clear_history();
                 mshell_launcher::notify::toast("Clipboard cleared", "All entries removed.");
             }
-            LauncherSettingsInput::AddScript(name) => {
-                let name = name.trim().to_string();
-                if name.is_empty() || self.scripts.iter().any(|e| e.name == name) {
-                    // Empty or already listed — nothing to do.
-                    return;
-                }
-                // New entries default to enabled so "type + Add" is
-                // enough to autostart; the toggle turns it back off.
-                // They also default to LoginOnce — the common intent for
-                // autostart is "run when I log in", not on every restart.
-                upsert_autostart(&name, |e| {
-                    e.enabled = true;
-                    e.trigger = AutostartTrigger::LoginOnce;
-                });
-                self.scripts = read_autostart_scripts();
-                rebuild_scripts_box(&widgets.scripts_box, &self.scripts, &sender);
-            }
-            LauncherSettingsInput::RemoveScript(name) => {
-                config_manager().update_config(|config| {
-                    config.launcher.autostart_scripts.retain(|e| e.name != name);
-                });
-                self.scripts = read_autostart_scripts();
-                rebuild_scripts_box(&widgets.scripts_box, &self.scripts, &sender);
-            }
-            LauncherSettingsInput::SetAutostart(name, enabled) => {
-                upsert_autostart(&name, |e| e.enabled = enabled);
-            }
-            LauncherSettingsInput::SetDelay(name, secs) => {
-                upsert_autostart(&name, |e| e.delay_secs = secs);
-            }
-            LauncherSettingsInput::SetTrigger(name, trigger) => {
-                upsert_autostart(&name, |e| e.trigger = trigger);
-            }
             LauncherSettingsInput::SetPassStorePath(path) => {
                 let path = path.trim().to_string();
                 config_manager().update_config(move |config| {
@@ -489,164 +356,4 @@ impl Component for LauncherSettingsModel {
         }
         self.update_view(widgets, sender);
     }
-}
-
-/// Snapshot the user's startup-script list from config.
-fn read_autostart_scripts() -> Vec<ScriptAutostart> {
-    config_manager()
-        .config()
-        .launcher()
-        .autostart_scripts()
-        .get_untracked()
-}
-
-/// Repaint the startup-scripts list: one row per configured entry —
-/// name, "after N s" delay spin, run-at-startup toggle, and a delete
-/// button. Toggle / spin persist through `upsert_autostart`; delete
-/// routes back through `RemoveScript`.
-fn rebuild_scripts_box(
-    scripts_box: &gtk::Box,
-    scripts: &[ScriptAutostart],
-    sender: &ComponentSender<LauncherSettingsModel>,
-) {
-    while let Some(child) = scripts_box.first_child() {
-        scripts_box.remove(&child);
-    }
-    if scripts.is_empty() {
-        let empty = gtk::Label::builder()
-            .label(
-                "No startup scripts yet. Type a script name above and \
-                   click Add.",
-            )
-            .halign(gtk::Align::Start)
-            .xalign(0.0)
-            .wrap(true)
-            .build();
-        empty.add_css_class("label-small");
-        scripts_box.append(&empty);
-        return;
-    }
-
-    for entry in scripts {
-        let name = entry.name.clone();
-
-        let row = gtk::Box::builder()
-            .orientation(gtk::Orientation::Horizontal)
-            .spacing(8)
-            .build();
-        row.add_css_class("launcher-script-row");
-
-        let icon = gtk::Image::from_icon_name("utilities-terminal-symbolic");
-        let label = gtk::Label::builder()
-            .label(&name)
-            .halign(gtk::Align::Start)
-            .hexpand(true)
-            .xalign(0.0)
-            .build();
-        label.add_css_class("label-medium");
-        row.append(&icon);
-        row.append(&label);
-
-        // Delay: "after N s" — relevant once autostart is on.
-        let after = gtk::Label::new(Some("after"));
-        after.add_css_class("label-small");
-        let delay_spin = gtk::SpinButton::with_range(0.0, 3600.0, 1.0);
-        delay_spin.set_digits(0);
-        delay_spin.set_valign(gtk::Align::Center);
-        delay_spin.set_tooltip_text(Some("Seconds after startup before this runs"));
-        delay_spin.set_value(entry.delay_secs as f64); // before connect → no spurious input
-        let secs = gtk::Label::new(Some("s"));
-        secs.add_css_class("label-small");
-        {
-            let name = name.clone();
-            let sender = sender.clone();
-            delay_spin.connect_value_changed(move |s| {
-                sender.input(LauncherSettingsInput::SetDelay(
-                    name.clone(),
-                    s.value().max(0.0) as u32,
-                ));
-            });
-        }
-        row.append(&after);
-        row.append(&delay_spin);
-        row.append(&secs);
-
-        // Trigger: "Every start" vs "Login only". Login-only fires once
-        // per login session and is skipped on `systemctl --user restart
-        // mshell`; every-start matches the historical behaviour.
-        let trigger = gtk::DropDown::from_strings(&["Every start", "Login only"]);
-        trigger.set_valign(gtk::Align::Center);
-        trigger.set_tooltip_text(Some(
-            "When this runs: every shell start, or once per login (skipped on restart)",
-        ));
-        trigger.set_selected(entry.trigger.to_index()); // before connect → no spurious input
-        {
-            let name = name.clone();
-            let sender = sender.clone();
-            trigger.connect_selected_notify(move |d| {
-                sender.input(LauncherSettingsInput::SetTrigger(
-                    name.clone(),
-                    AutostartTrigger::from_index(d.selected()),
-                ));
-            });
-        }
-        row.append(&trigger);
-
-        // Autostart toggle.
-        let toggle = gtk::Switch::new();
-        toggle.set_valign(gtk::Align::Center);
-        toggle.set_tooltip_text(Some("Run at shell startup"));
-        toggle.set_active(entry.enabled); // before connect → no spurious input
-        {
-            let name = name.clone();
-            let sender = sender.clone();
-            toggle.connect_active_notify(move |sw| {
-                sender.input(LauncherSettingsInput::SetAutostart(
-                    name.clone(),
-                    sw.is_active(),
-                ));
-            });
-        }
-        row.append(&toggle);
-
-        // Delete — drop the entry from the startup list.
-        let delete = gtk::Button::from_icon_name("user-trash-symbolic");
-        delete.add_css_class("ok-button-flat");
-        delete.set_valign(gtk::Align::Center);
-        delete.set_tooltip_text(Some("Remove from startup list"));
-        {
-            let name = name.clone();
-            let sender = sender.clone();
-            delete.connect_clicked(move |_| {
-                sender.input(LauncherSettingsInput::RemoveScript(name.clone()));
-            });
-        }
-        row.append(&delete);
-
-        scripts_box.append(&row);
-    }
-}
-
-/// Find-or-insert a script's autostart entry by name and mutate it,
-/// persisting to config (the startup runner + Settings both read it).
-fn upsert_autostart(name: &str, mutate: impl FnOnce(&mut ScriptAutostart)) {
-    config_manager().update_config(|config| {
-        if let Some(entry) = config
-            .launcher
-            .autostart_scripts
-            .iter_mut()
-            .find(|e| e.name == name)
-        {
-            mutate(entry);
-        } else {
-            let mut entry = ScriptAutostart {
-                name: name.to_string(),
-                enabled: false,
-                delay_secs: 0,
-                trigger: AutostartTrigger::default(),
-            };
-            mutate(&mut entry);
-            config.launcher.autostart_scripts.push(entry);
-        }
-    });
 }

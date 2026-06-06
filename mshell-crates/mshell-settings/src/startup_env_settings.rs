@@ -1,16 +1,45 @@
-//! Settings → Startup & Environment. Two list editors over margo's
-//! `exec = …` (startup commands) and `env = KEY, VALUE` lines in `config.conf`.
+//! Settings → Startup. The one place for everything that runs when you log in:
+//!
+//! 1. **Autostart scripts** — the shell's `>start` scripts, each with a
+//!    run-at-startup toggle, a post-login delay, an Every-start / Login-only
+//!    trigger, extra arguments, a working directory, drag-to-reorder, a
+//!    Run-now button, and a found/missing-on-`$PATH` badge. Round-tripped
+//!    through `config.launcher.autostart_scripts` (the same list the launcher's
+//!    `>start` provider and the boot runner read).
+//! 2. **Startup commands** — margo's `exec = …` lines in `config.conf`.
+//! 3. **Environment variables** — margo's `env = KEY, VALUE` lines.
+
+use std::collections::BTreeSet;
+use std::rc::Rc;
 
 use crate::compositor_conf::{read_block, write_block};
+use crate::reorder_dnd::attach_grip_drag;
 use crate::row::Row;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{
+    AutostartTrigger, ConfigStoreFields, LauncherStoreFields, ScriptAutostart,
+};
+use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 #[derive(Debug)]
 pub(crate) enum StartupEnvInput {
+    // Autostart scripts
+    AddScript,
+    RemoveScript(String),
+    SetAutostart(String, bool),
+    SetDelay(String, u32),
+    SetTrigger(String, u32),
+    SetArgs(String, String),
+    SetCwd(String, String),
+    RunNow(String),
+    MoveScript(usize, i32),
+    // Startup commands (`exec`)
     SetExec(String),
     AddExec,
     RemoveExec(usize),
+    // Environment (`env`)
     SetEnvKey(String),
     SetEnvVal(String),
     AddEnv,
@@ -24,6 +53,13 @@ pub(crate) enum StartupEnvCommandOutput {}
 pub(crate) struct StartupEnvInit {}
 
 pub(crate) struct StartupEnvModel {
+    scripts: Vec<ScriptAutostart>,
+    scripts_box: gtk::Box,
+    /// Executable names on `$PATH` — for the per-row found/missing badge.
+    /// Snapshotted once at page open.
+    path_exes: Rc<BTreeSet<String>>,
+    /// Searchable picker of `$PATH` executables for the Add row.
+    script_dd: gtk::DropDown,
     exec_rules: Vec<String>,
     env_rules: Vec<String>,
     exec_list: gtk::ListBox,
@@ -33,7 +69,275 @@ pub(crate) struct StartupEnvModel {
     f_env_val: String,
 }
 
-fn rebuild(
+/// Snapshot the user's autostart-script list from config.
+fn read_autostart_scripts() -> Vec<ScriptAutostart> {
+    config_manager()
+        .config()
+        .launcher()
+        .autostart_scripts()
+        .get_untracked()
+}
+
+/// Find-or-create the entry for `name`, apply `mutate`, persist.
+fn upsert_autostart(name: &str, mutate: impl FnOnce(&mut ScriptAutostart)) {
+    config_manager().update_config(|config| {
+        if let Some(entry) = config
+            .launcher
+            .autostart_scripts
+            .iter_mut()
+            .find(|e| e.name == name)
+        {
+            mutate(entry);
+        } else {
+            let mut entry = ScriptAutostart {
+                name: name.to_string(),
+                enabled: true,
+                delay_secs: 0,
+                trigger: AutostartTrigger::LoginOnce,
+                args: String::new(),
+                working_dir: String::new(),
+            };
+            mutate(&mut entry);
+            config.launcher.autostart_scripts.push(entry);
+        }
+    });
+}
+
+/// Every executable name reachable on `$PATH`, deduped + sorted.
+fn scan_path_exes() -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let Some(path) = std::env::var_os("PATH") else {
+        return out;
+    };
+    for dir in std::env::split_paths(&path) {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in rd.flatten() {
+            if let Ok(ft) = entry.file_type()
+                && (ft.is_file() || ft.is_symlink())
+                && let Ok(name) = entry.file_name().into_string()
+            {
+                out.insert(name);
+            }
+        }
+    }
+    out
+}
+
+/// Spawn a script immediately (args + working dir honoured), for the Run-now
+/// button. Mirrors the boot runner in `mshell-core`.
+fn spawn_script(entry: &ScriptAutostart) {
+    let mut cmd = std::process::Command::new(&entry.name);
+    if !entry.args.trim().is_empty() {
+        cmd.args(entry.args.split_whitespace());
+    }
+    let dir = entry.working_dir.trim();
+    if !dir.is_empty() {
+        let expanded = if let Some(rest) = dir.strip_prefix("~/") {
+            std::env::var("HOME")
+                .map(|h| format!("{h}/{rest}"))
+                .unwrap_or_else(|_| dir.to_string())
+        } else if dir == "~" {
+            std::env::var("HOME").unwrap_or_else(|_| dir.to_string())
+        } else {
+            dir.to_string()
+        };
+        cmd.current_dir(expanded);
+    }
+    match cmd.spawn() {
+        Ok(_) => mshell_launcher::notify::toast("Started", &entry.name),
+        Err(e) => mshell_launcher::notify::toast("Failed to start", format!("{}: {e}", entry.name)),
+    }
+}
+
+/// Repaint the autostart-script list — one card per entry.
+fn rebuild_scripts(
+    scripts_box: &gtk::Box,
+    scripts: &[ScriptAutostart],
+    path_exes: &BTreeSet<String>,
+    sender: &ComponentSender<StartupEnvModel>,
+) {
+    while let Some(child) = scripts_box.first_child() {
+        scripts_box.remove(&child);
+    }
+    if scripts.is_empty() {
+        let empty = gtk::Label::builder()
+            .label("No autostart scripts yet. Add one below.")
+            .halign(gtk::Align::Start)
+            .xalign(0.0)
+            .wrap(true)
+            .build();
+        empty.add_css_class("label-small");
+        scripts_box.append(&empty);
+        return;
+    }
+
+    for (i, entry) in scripts.iter().enumerate() {
+        let name = entry.name.clone();
+
+        let card = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        card.add_css_class("launcher-script-row");
+
+        // ── Line 1: grip · name · status · run · enable · remove ──
+        let line1 = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+
+        let grip = gtk::Image::from_icon_name("list-drag-handle-symbolic");
+        grip.set_tooltip_text(Some("Drag to reorder"));
+        line1.append(&grip);
+
+        let label = gtk::Label::builder()
+            .label(&name)
+            .halign(gtk::Align::Start)
+            .hexpand(true)
+            .xalign(0.0)
+            .build();
+        label.add_css_class("label-medium");
+        line1.append(&label);
+
+        // Found / missing on $PATH badge.
+        let found = path_exes.contains(&name);
+        let badge = gtk::Image::from_icon_name(if found {
+            "emblem-ok-symbolic"
+        } else {
+            "dialog-warning-symbolic"
+        });
+        badge.set_tooltip_text(Some(if found {
+            "Found on $PATH"
+        } else {
+            "Not found on $PATH — check the name"
+        }));
+        if !found {
+            badge.add_css_class("warning");
+        }
+        line1.append(&badge);
+
+        let run = gtk::Button::from_icon_name("media-playback-start-symbolic");
+        run.add_css_class("flat");
+        run.set_valign(gtk::Align::Center);
+        run.set_tooltip_text(Some("Run now"));
+        {
+            let s = sender.clone();
+            let n = name.clone();
+            run.connect_clicked(move |_| s.input(StartupEnvInput::RunNow(n.clone())));
+        }
+        line1.append(&run);
+
+        let enable = gtk::Switch::new();
+        enable.set_valign(gtk::Align::Center);
+        enable.set_tooltip_text(Some("Run at startup"));
+        enable.set_active(entry.enabled);
+        {
+            let s = sender.clone();
+            let n = name.clone();
+            enable.connect_active_notify(move |sw| {
+                s.input(StartupEnvInput::SetAutostart(n.clone(), sw.is_active()))
+            });
+        }
+        line1.append(&enable);
+
+        let remove = gtk::Button::from_icon_name("user-trash-symbolic");
+        remove.add_css_class("flat");
+        remove.set_valign(gtk::Align::Center);
+        remove.set_tooltip_text(Some("Remove"));
+        {
+            let s = sender.clone();
+            let n = name.clone();
+            remove.connect_clicked(move |_| s.input(StartupEnvInput::RemoveScript(n.clone())));
+        }
+        line1.append(&remove);
+
+        card.append(&line1);
+
+        // ── Line 2: delay · trigger · args · working dir ──
+        let line2 = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        line2.set_margin_start(28);
+
+        let after = gtk::Label::new(Some("after"));
+        after.add_css_class("label-small");
+        let delay = gtk::SpinButton::with_range(0.0, 3600.0, 1.0);
+        delay.set_digits(0);
+        delay.set_valign(gtk::Align::Center);
+        delay.set_tooltip_text(Some("Seconds after startup before this runs"));
+        delay.set_value(entry.delay_secs as f64);
+        {
+            let s = sender.clone();
+            let n = name.clone();
+            delay.connect_value_changed(move |sp| {
+                s.input(StartupEnvInput::SetDelay(
+                    n.clone(),
+                    sp.value().max(0.0) as u32,
+                ))
+            });
+        }
+        let secs = gtk::Label::new(Some("s"));
+        secs.add_css_class("label-small");
+        line2.append(&after);
+        line2.append(&delay);
+        line2.append(&secs);
+
+        let trigger = gtk::DropDown::from_strings(&["Every start", "Login only"]);
+        trigger.set_valign(gtk::Align::Center);
+        trigger.set_tooltip_text(Some(
+            "Every start: also on mshell restart. Login only: first start per login.",
+        ));
+        trigger.set_selected(match entry.trigger {
+            AutostartTrigger::EveryStart => 0,
+            AutostartTrigger::LoginOnce => 1,
+        });
+        {
+            let s = sender.clone();
+            let n = name.clone();
+            trigger.connect_selected_notify(move |d| {
+                s.input(StartupEnvInput::SetTrigger(n.clone(), d.selected()))
+            });
+        }
+        line2.append(&trigger);
+
+        let args = gtk::Entry::new();
+        args.set_hexpand(true);
+        args.set_valign(gtk::Align::Center);
+        args.set_placeholder_text(Some("arguments (optional)"));
+        args.set_text(&entry.args);
+        {
+            let s = sender.clone();
+            let n = name.clone();
+            args.connect_changed(move |e| {
+                s.input(StartupEnvInput::SetArgs(n.clone(), e.text().to_string()))
+            });
+        }
+        line2.append(&args);
+
+        let cwd = gtk::Entry::new();
+        cwd.set_hexpand(true);
+        cwd.set_valign(gtk::Align::Center);
+        cwd.set_placeholder_text(Some("working dir, e.g. ~/projects (optional)"));
+        cwd.set_text(&entry.working_dir);
+        {
+            let s = sender.clone();
+            let n = name.clone();
+            cwd.connect_changed(move |e| {
+                s.input(StartupEnvInput::SetCwd(n.clone(), e.text().to_string()))
+            });
+        }
+        line2.append(&cwd);
+
+        card.append(&line2);
+
+        // Drag-to-reorder from the grip.
+        {
+            let s = sender.clone();
+            attach_grip_drag(&grip, &card, move |delta| {
+                s.input(StartupEnvInput::MoveScript(i, delta));
+            });
+        }
+
+        scripts_box.append(&card);
+    }
+}
+
+/// Rebuild a raw-line list (exec / env) into `list_box`.
+fn rebuild_raw(
     list_box: &gtk::ListBox,
     rules: &[String],
     empty_msg: &str,
@@ -69,9 +373,6 @@ fn rebuild(
         lbl.set_hexpand(true);
         lbl.set_xalign(0.0);
         lbl.set_wrap(true);
-        // Break mid-token (regex / paths have no spaces) + report the
-        // wrapped width as natural, so a long payload doesn't force the
-        // Settings panel wider than its configured size on this page.
         lbl.set_wrap_mode(gtk::pango::WrapMode::WordChar);
         lbl.set_natural_wrap_mode(gtk::NaturalWrapMode::None);
         lbl.set_selectable(true);
@@ -89,14 +390,15 @@ fn rebuild(
 }
 
 fn rebuild_all(model: &StartupEnvModel, sender: &ComponentSender<StartupEnvModel>) {
-    rebuild(
+    rebuild_scripts(&model.scripts_box, &model.scripts, &model.path_exes, sender);
+    rebuild_raw(
         &model.exec_list,
         &model.exec_rules,
         "No startup commands yet.",
         StartupEnvInput::RemoveExec,
         sender,
     );
-    rebuild(
+    rebuild_raw(
         &model.env_list,
         &model.env_rules,
         "No environment variables set.",
@@ -136,10 +438,10 @@ impl Component for StartupEnvModel {
                     gtk::Box {
                         set_orientation: gtk::Orientation::Vertical,
                         set_valign: gtk::Align::Center,
-                        gtk::Label { add_css_class: "settings-hero-title", set_label: "Startup & Environment", set_halign: gtk::Align::Start },
+                        gtk::Label { add_css_class: "settings-hero-title", set_label: "Startup", set_halign: gtk::Align::Start },
                         gtk::Label {
                             add_css_class: "settings-hero-subtitle",
-                            set_label: "Commands run when margo starts, and environment variables exported to the session. Take effect on the next start (reload re-reads, but env/exec only apply at launch).",
+                            set_label: "Scripts, commands, and environment variables that run when you log in. Scripts apply on the next shell start; exec / env apply on the next compositor start.",
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -147,7 +449,41 @@ impl Component for StartupEnvModel {
                     },
                 },
 
-                gtk::Label { add_css_class: "label-large-bold", set_label: "Startup commands", set_halign: gtk::Align::Start },
+                // ════════ Autostart scripts ════════
+                gtk::Label { add_css_class: "label-large-bold", set_label: "Autostart scripts", set_halign: gtk::Align::Start },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    set_label: "Toggle a script to run it at startup, set a delay, choose Every-start or Login-only, and pass arguments / a working directory. Drag the handle to reorder, or hit Run to test. Names match executables on $PATH (also available via `>start` in the launcher).",
+                },
+
+                #[local_ref]
+                scripts_box -> gtk::Box {
+                    add_css_class: "settings-boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 6,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    #[local_ref]
+                    script_dd -> gtk::DropDown {
+                        set_hexpand: true,
+                        set_tooltip_text: Some("Pick an executable from $PATH (type to search)"),
+                    },
+                    gtk::Button {
+                        add_css_class: "suggested-action",
+                        set_label: "Add script",
+                        connect_clicked[sender] => move |_| sender.input(StartupEnvInput::AddScript),
+                    },
+                },
+
+                // ════════ Startup commands ════════
+                gtk::Label { add_css_class: "label-large-bold", set_label: "Startup commands", set_halign: gtk::Align::Start, set_margin_top: 8 },
 
                 #[template] Row {
                     #[template_child] title { set_label: "Command" },
@@ -170,6 +506,7 @@ impl Component for StartupEnvModel {
                     set_selection_mode: gtk::SelectionMode::None,
                 },
 
+                // ════════ Environment variables ════════
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Environment variables", set_halign: gtk::Align::Start, set_margin_top: 8 },
 
                 #[template] Row {
@@ -209,7 +546,22 @@ impl Component for StartupEnvModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let path_exes = Rc::new(scan_path_exes());
+        // Searchable $PATH picker for the Add row.
+        let exe_list: Vec<&str> = path_exes.iter().map(|s| s.as_str()).collect();
+        let script_dd = gtk::DropDown::from_strings(&exe_list);
+        script_dd.set_enable_search(true);
+        script_dd.set_expression(Some(gtk::PropertyExpression::new(
+            gtk::StringObject::static_type(),
+            None::<gtk::Expression>,
+            "string",
+        )));
+
         let model = StartupEnvModel {
+            scripts: read_autostart_scripts(),
+            scripts_box: gtk::Box::new(gtk::Orientation::Vertical, 6),
+            path_exes,
+            script_dd,
             exec_rules: read_block("exec"),
             env_rules: read_block("env"),
             exec_list: gtk::ListBox::new(),
@@ -218,9 +570,12 @@ impl Component for StartupEnvModel {
             f_env_key: String::new(),
             f_env_val: String::new(),
         };
+        let scripts_box = model.scripts_box.clone();
+        let script_dd = model.script_dd.clone();
         let exec_list = model.exec_list.clone();
         let env_list = model.env_list.clone();
         let widgets = view_output!();
+
         rebuild_all(&model, &sender);
         let _ = root;
         ComponentParts { model, widgets }
@@ -228,9 +583,76 @@ impl Component for StartupEnvModel {
 
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
+            // ── Autostart scripts ──
+            StartupEnvInput::AddScript => {
+                let name = self
+                    .script_dd
+                    .selected_item()
+                    .and_downcast::<gtk::StringObject>()
+                    .map(|s| s.string().to_string())
+                    .unwrap_or_default();
+                if name.is_empty() || self.scripts.iter().any(|e| e.name == name) {
+                    return;
+                }
+                upsert_autostart(&name, |_| {});
+                self.scripts = read_autostart_scripts();
+                rebuild_scripts(&self.scripts_box, &self.scripts, &self.path_exes, &sender);
+            }
+            StartupEnvInput::RemoveScript(name) => {
+                config_manager().update_config(|config| {
+                    config.launcher.autostart_scripts.retain(|e| e.name != name);
+                });
+                self.scripts = read_autostart_scripts();
+                rebuild_scripts(&self.scripts_box, &self.scripts, &self.path_exes, &sender);
+            }
+            StartupEnvInput::SetAutostart(name, enabled) => {
+                upsert_autostart(&name, |e| e.enabled = enabled);
+                self.scripts = read_autostart_scripts();
+            }
+            StartupEnvInput::SetDelay(name, secs) => {
+                upsert_autostart(&name, |e| e.delay_secs = secs);
+                self.scripts = read_autostart_scripts();
+            }
+            StartupEnvInput::SetTrigger(name, idx) => {
+                let trigger = if idx == 1 {
+                    AutostartTrigger::LoginOnce
+                } else {
+                    AutostartTrigger::EveryStart
+                };
+                upsert_autostart(&name, |e| e.trigger = trigger);
+                self.scripts = read_autostart_scripts();
+            }
+            StartupEnvInput::SetArgs(name, args) => {
+                upsert_autostart(&name, |e| e.args = args.trim().to_string());
+                self.scripts = read_autostart_scripts();
+            }
+            StartupEnvInput::SetCwd(name, dir) => {
+                upsert_autostart(&name, |e| e.working_dir = dir.trim().to_string());
+                self.scripts = read_autostart_scripts();
+            }
+            StartupEnvInput::RunNow(name) => {
+                if let Some(entry) = self.scripts.iter().find(|e| e.name == name) {
+                    spawn_script(entry);
+                }
+            }
+            StartupEnvInput::MoveScript(from, delta) => {
+                if from >= self.scripts.len() || delta == 0 {
+                    return;
+                }
+                let to = (from as i32 + delta).clamp(0, self.scripts.len() as i32 - 1) as usize;
+                if to == from {
+                    return;
+                }
+                let entry = self.scripts.remove(from);
+                self.scripts.insert(to, entry);
+                let new_order = self.scripts.clone();
+                config_manager().update_config(move |config| {
+                    config.launcher.autostart_scripts = new_order;
+                });
+                rebuild_scripts(&self.scripts_box, &self.scripts, &self.path_exes, &sender);
+            }
+            // ── Startup commands ──
             StartupEnvInput::SetExec(v) => self.f_exec = v,
-            StartupEnvInput::SetEnvKey(v) => self.f_env_key = v,
-            StartupEnvInput::SetEnvVal(v) => self.f_env_val = v,
             StartupEnvInput::AddExec => {
                 let cmd = self.f_exec.trim();
                 if cmd.is_empty() {
@@ -247,6 +669,9 @@ impl Component for StartupEnvModel {
                     rebuild_all(self, &sender);
                 }
             }
+            // ── Environment ──
+            StartupEnvInput::SetEnvKey(v) => self.f_env_key = v,
+            StartupEnvInput::SetEnvVal(v) => self.f_env_val = v,
             StartupEnvInput::AddEnv => {
                 let key = self.f_env_key.trim();
                 if key.is_empty() {

@@ -212,7 +212,24 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             if entry.delay_secs > 0 {
                 tokio::time::sleep(std::time::Duration::from_secs(entry.delay_secs as u64)).await;
             }
-            if let Err(err) = std::process::Command::new(&entry.name).spawn() {
+            let mut cmd = std::process::Command::new(&entry.name);
+            if !entry.args.trim().is_empty() {
+                cmd.args(entry.args.split_whitespace());
+            }
+            let dir = entry.working_dir.trim();
+            if !dir.is_empty() {
+                let expanded = if let Some(rest) = dir.strip_prefix("~/") {
+                    std::env::var("HOME")
+                        .map(|h| format!("{h}/{rest}"))
+                        .unwrap_or_else(|_| dir.to_string())
+                } else if dir == "~" {
+                    std::env::var("HOME").unwrap_or_else(|_| dir.to_string())
+                } else {
+                    dir.to_string()
+                };
+                cmd.current_dir(expanded);
+            }
+            if let Err(err) = cmd.spawn() {
                 tracing::warn!(script = %entry.name, ?err, "autostart: spawn failed");
             }
         });

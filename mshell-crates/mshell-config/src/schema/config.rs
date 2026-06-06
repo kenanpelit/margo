@@ -1395,6 +1395,11 @@ pub struct ScriptAutostart {
     /// `EveryStart` so configs written before this field existed keep
     /// their original "runs on every restart" behaviour.
     pub trigger: AutostartTrigger,
+    /// Extra arguments appended to the command (whitespace-separated).
+    pub args: String,
+    /// Working directory to run the script in (empty = inherit the
+    /// session's). `~` is expanded at launch.
+    pub working_dir: String,
 }
 
 /// How often an autostart script fires across a login session.

@@ -795,7 +795,7 @@ impl Component for SettingsWindowModel {
             ),
             (
                 "startup_env",
-                "Startup & Environment",
+                "Startup",
                 model
                     .startup_env_settings_controller
                     .widget()
@@ -1857,7 +1857,8 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
     ),
     (
         "startup_env",
-        "startup exec env environment variable launch autostart command session",
+        "startup script autostart start exec env environment variable launch \
+         command session delay login working directory arguments",
     ),
     ("date_time", "clock time date timezone ntp format 24-hour"),
     ("date time", "clock time date timezone ntp format 24-hour"),
@@ -1965,6 +1966,8 @@ const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("tag rules", "tag_rules"),
     ("tagrule", "tag_rules"),
     ("startup", "startup_env"),
+    ("scripts", "startup_env"),
+    ("autostart", "startup_env"),
     ("environment", "startup_env"),
     ("env", "startup_env"),
     ("date_time", "date_time"),
@@ -2036,7 +2039,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     Page {
         route: "startup_env",
         icon: "system-run-symbolic",
-        label: "Startup & Environment",
+        label: "Startup",
     },
     Page {
         route: "behaviour",
