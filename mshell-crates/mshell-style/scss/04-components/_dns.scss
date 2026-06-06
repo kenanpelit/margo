@@ -58,9 +58,11 @@
 }
 
 // ── 4 primary action buttons ────────────────────────────────
+// These carry `.ok-button-cell` in Rust (padding space-3 × space-1, 84px
+// floor). Don't re-declare padding here — a shorter space-2 override made the
+// DNS buttons stubbier than the power / session rows (DESIGN.md §21). Keep only
+// the hover / selected tinting below.
 .dns-action {
-  padding: var(--space-2) var(--space-1);
-  border-radius: var(--radius-sm);
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .dns-action:not(.selected):hover {

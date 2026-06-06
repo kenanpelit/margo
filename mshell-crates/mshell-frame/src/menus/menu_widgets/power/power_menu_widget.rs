@@ -304,7 +304,9 @@ impl Component for PowerMenuWidgetModel {
         let charge_spin = gtk::SpinButton::with_range(40.0, 100.0, 1.0);
         charge_spin.set_hexpand(true);
         let apply_button = gtk::Button::with_label("Apply");
-        apply_button.set_css_classes(&["ok-button-surface"]);
+        // ok-button-cell → same size family as the profile / control / preset
+        // rows (DESIGN.md §21), not the stubbier button-base default.
+        apply_button.set_css_classes(&["ok-button-surface", "ok-button-cell"]);
         {
             let s = sender.clone();
             let spin = charge_spin.clone();

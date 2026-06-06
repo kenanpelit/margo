@@ -35,7 +35,10 @@
 // (non-selected) state carries a calm tonal hover (DESIGN.md
 // §7 state-on-interactive / §Motion).
 .power-profile-button {
+  // Match .ok-button-cell (DESIGN.md §21): one size family across every menu
+  // action button — same padding + 84px floor as the DNS / UFW / session rows.
   padding: var(--space-3) var(--space-1);
+  min-width: 84px;
   border-radius: var(--radius-sm);
   transition: background-color var(--motion-medium) var(--ease-standard),
               color var(--motion-medium) var(--ease-standard);
@@ -48,11 +51,20 @@
 // Plain surface buttons; `.selected` (from `ok-button-surface`)
 // carries the active-state tint for Lock Auto / Idle Toggle.
 .power-control-button {
-  // Same padding as .power-profile-button so every button in the
-  // power widget is the same size (uniform grid), and same radius.
+  // Same .ok-button-cell geometry as .power-profile-button so every button in
+  // the power widget — and across menus — is the same size (DESIGN.md §21).
   padding: var(--space-3) var(--space-1);
+  min-width: 84px;
   border-radius: var(--radius-sm);
   transition: background-color var(--motion-fast) var(--ease-standard);
+}
+
+// Charge-limit presets (60 / 80 / 100 %) + the Apply button. Were on the
+// button-base default (space-2 × space-3, no floor) — pull them onto the same
+// cell geometry so the charge row matches the profile / control rows above.
+.power-charge-preset {
+  padding: var(--space-3) var(--space-1);
+  min-width: 84px;
 }
 .power-control-button:not(.selected):hover {
   background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");

@@ -13,7 +13,10 @@
 }
 
 .session-button {
+  // .ok-button-cell geometry (DESIGN.md §21) — one size family with the
+  // power / DNS / UFW action rows.
   padding: var(--space-3) var(--space-1);
+  min-width: 84px;
   border-radius: var(--radius-sm);
 }
 
