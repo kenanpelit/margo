@@ -2743,28 +2743,31 @@ impl MargoState {
                 .map(|(_, s)| FocusTarget::SessionLock(s.clone()));
         }
 
-        // Highest-priority Exclusive layer on Top/Overlay anywhere.
-        for layer in self.layer_shell_state.layer_surfaces().rev() {
-            let exclusive = layer.with_cached_state(|data| {
-                data.keyboard_interactivity
-                    == smithay::wayland::shell::wlr_layer::KeyboardInteractivity::Exclusive
-                    && matches!(
-                        data.layer,
-                        smithay::wayland::shell::wlr_layer::Layer::Top
-                            | smithay::wayland::shell::wlr_layer::Layer::Overlay
-                    )
-            });
-            if !exclusive {
-                continue;
-            }
-            let mapped = self.space.outputs().find_map(|output| {
-                let map = layer_map_for_output(output);
-                map.layers()
-                    .find(|m| m.layer_surface() == &layer)
-                    .map(|m| m.layer_surface().clone())
-            });
-            if let Some(s) = mapped {
-                return Some(FocusTarget::LayerSurface(s));
+        // Highest-priority Exclusive keyboard layer. Per wlr-layer-shell,
+        // Overlay outranks Top for input as well as paint — so an Exclusive
+        // Overlay surface (e.g. the screenshot region selector) must beat a
+        // Top-layer Exclusive menu (dashboard / quick-settings) left open
+        // underneath it; otherwise the selector never receives Enter/Esc.
+        // Scan Overlay first, then Top.
+        use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer as WlrLayer};
+        for want in [WlrLayer::Overlay, WlrLayer::Top] {
+            for layer in self.layer_shell_state.layer_surfaces().rev() {
+                let exclusive = layer.with_cached_state(|data| {
+                    data.keyboard_interactivity == KeyboardInteractivity::Exclusive
+                        && data.layer == want
+                });
+                if !exclusive {
+                    continue;
+                }
+                let mapped = self.space.outputs().find_map(|output| {
+                    let map = layer_map_for_output(output);
+                    map.layers()
+                        .find(|m| m.layer_surface() == &layer)
+                        .map(|m| m.layer_surface().clone())
+                });
+                if let Some(s) = mapped {
+                    return Some(FocusTarget::LayerSurface(s));
+                }
             }
         }
 

@@ -138,7 +138,14 @@ fn create_overlay_window(
     window.set_anchor(gtk4_layer_shell::Edge::Left, true);
     window.set_anchor(gtk4_layer_shell::Edge::Right, true);
     window.set_exclusive_zone(-1);
-    window.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::OnDemand);
+    // Exclusive (not OnDemand): the region selector is a modal capture tool
+    // that must own the keyboard for the whole drag→Enter/Esc cycle. OnDemand
+    // only grabs focus on pointer interaction and loses to any Exclusive menu
+    // (dashboard / quick-settings) left open underneath — so Enter never
+    // committed the selection while a layer-shell menu was up. Exclusive on the
+    // Overlay layer outranks the Top-layer menu in the compositor's focus
+    // policy. All overlays share one selection, so whichever wins focus commits.
+    window.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::Exclusive);
     window.set_namespace(Some("mshell-screenshot"));
 
     if let Some(monitor) = gdk_monitor {
