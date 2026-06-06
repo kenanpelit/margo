@@ -1,6 +1,7 @@
 use crate::about_settings::{AboutSettingsInit, AboutSettingsModel};
 use crate::animations_settings::{AnimationsSettingsInit, AnimationsSettingsModel};
 use crate::appearance_settings::{AppearanceInit, AppearanceModel};
+use crate::backup_settings::{BackupSettingsInit, BackupSettingsModel};
 use crate::bar_pill_settings::{BarPillKind, BarPillSettingsInit, BarPillSettingsModel};
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
 use crate::bar_settings::bar_widget_factory::BarListLocation;
@@ -79,6 +80,7 @@ pub struct SettingsWindowModel {
     layer_rules_settings_controller: Controller<LayerRulesModel>,
     tag_rules_settings_controller: Controller<TagRulesModel>,
     startup_env_settings_controller: Controller<StartupEnvModel>,
+    backup_settings_controller: Controller<BackupSettingsModel>,
     overview_settings_controller: Controller<OverviewSettingsModel>,
     date_time_settings_controller: Controller<DateTimeSettingsModel>,
     region_settings_controller: Controller<RegionSettingsModel>,
@@ -425,6 +427,9 @@ impl Component for SettingsWindowModel {
         let startup_env_settings_controller = StartupEnvModel::builder()
             .launch(StartupEnvInit {})
             .detach();
+        let backup_settings_controller = BackupSettingsModel::builder()
+            .launch(BackupSettingsInit {})
+            .detach();
 
         let animations_settings_controller = AnimationsSettingsModel::builder()
             .launch(AnimationsSettingsInit {})
@@ -575,6 +580,7 @@ impl Component for SettingsWindowModel {
             layer_rules_settings_controller,
             tag_rules_settings_controller,
             startup_env_settings_controller,
+            backup_settings_controller,
             overview_settings_controller,
             date_time_settings_controller,
             region_settings_controller,
@@ -724,7 +730,7 @@ impl Component for SettingsWindowModel {
         // Top-level stack pages. Insertion order does not affect display (the
         // sidebar buttons drive visibility) — kept as one table so the page
         // list lives in a single place instead of 36 add_titled blocks.
-        let stack_pages: [(&str, &str, gtk::Widget); 36] = [
+        let stack_pages: [(&str, &str, gtk::Widget); 37] = [
             (
                 "general",
                 "General",
@@ -801,6 +807,11 @@ impl Component for SettingsWindowModel {
                     .widget()
                     .clone()
                     .into(),
+            ),
+            (
+                "backup",
+                "Backup",
+                model.backup_settings_controller.widget().clone().into(),
             ),
             (
                 "overview",
@@ -1860,6 +1871,11 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
         "startup script autostart start exec env environment variable launch \
          command session delay login working directory arguments",
     ),
+    (
+        "backup",
+        "backup export import profile profiles reset restore bundle snapshot \
+         tar config default factory save load",
+    ),
     ("date_time", "clock time date timezone ntp format 24-hour"),
     ("date time", "clock time date timezone ntp format 24-hour"),
     ("date & time", "clock time date timezone ntp format 24-hour"),
@@ -1970,6 +1986,13 @@ const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("autostart", "startup_env"),
     ("environment", "startup_env"),
     ("env", "startup_env"),
+    ("backup", "backup"),
+    ("export", "backup"),
+    ("import", "backup"),
+    ("profile", "backup"),
+    ("profiles", "backup"),
+    ("reset", "backup"),
+    ("restore", "backup"),
     ("date_time", "date_time"),
     ("region", "region"),
     ("sound", "sound"),
@@ -2040,6 +2063,11 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "startup_env",
         icon: "system-run-symbolic",
         label: "Startup",
+    },
+    Page {
+        route: "backup",
+        icon: "document-save-symbolic",
+        label: "Backup",
     },
     Page {
         route: "behaviour",
