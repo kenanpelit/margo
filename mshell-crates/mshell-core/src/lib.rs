@@ -221,6 +221,28 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // Replaces the external bt-autoconnect.service + bluetooth_toggle scripts.
     mshell_services::bluetooth::spawn_autoconnect_startup();
 
+    // Restore default audio levels: PipeWire doesn't persist sink/source volume
+    // across reboots, so on opt-in (Settings → Sound) we pin the default output
+    // + input to the user's chosen levels once WirePlumber has settled. Done
+    // via `wpctl` against the default sink/source — robust regardless of which
+    // device resolves as default, and a no-op if wpctl isn't installed.
+    {
+        let audio = config_manager.config().audio().get_untracked();
+        if audio.restore_volume_on_start {
+            let out = (audio.default_output_volume.clamp(0, 100) as f64) / 100.0;
+            let inp = (audio.default_input_volume.clamp(0, 100) as f64) / 100.0;
+            tokio_rt().spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                let _ = std::process::Command::new("wpctl")
+                    .args(["set-volume", "@DEFAULT_AUDIO_SINK@", &format!("{out:.2}")])
+                    .status();
+                let _ = std::process::Command::new("wpctl")
+                    .args(["set-volume", "@DEFAULT_AUDIO_SOURCE@", &format!("{inp:.2}")])
+                    .status();
+            });
+        }
+    }
+
     // Plugin keybinds: generate the binds file each launch + after any change
     // to the resolved set. Idempotent — `write_binds_file` returns false when
     // the contents already match. We call `mctl reload` only if the file

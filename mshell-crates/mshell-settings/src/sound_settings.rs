@@ -70,6 +70,10 @@ pub(crate) enum SoundSettingsInput {
     SetInputDevice(u32),
     SetInputVolume(f64),
     SetInputMute(bool),
+    /// Startup-default knobs (config-only; mshell-core applies them at login).
+    SetRestoreOnStart(bool),
+    SetDefaultOutVolume(i32),
+    SetDefaultInVolume(i32),
     /// User toggled "Hide HDMI / DisplayPort outputs".
     SetHideHdmiOutputs(bool),
     /// Config reactive effect — mirrors `audio.hide_hdmi_outputs` into model.
@@ -227,6 +231,32 @@ impl Component for SoundSettingsModel {
                     #[template_child] desc { set_label: "Silence the input." },
                     #[local_ref] in_mute_w -> gtk::Switch {},
                 },
+
+                // ── Startup defaults ──
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 8,
+                    set_label: "Startup defaults",
+                },
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Restore volume on startup" },
+                    #[template_child] desc { set_label: "Pin the output + mic to the levels below at each login. PipeWire forgets volumes across reboots." },
+                    #[local_ref] restore_switch_w -> gtk::Switch {},
+                },
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Default output level" },
+                    #[template_child] desc { set_label: "Speaker level applied at startup." },
+                    #[local_ref] def_out_scale_w -> gtk::Scale {},
+                },
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Default input level" },
+                    #[template_child] desc { set_label: "Microphone level applied at startup." },
+                    #[local_ref] def_in_scale_w -> gtk::Scale {},
+                },
             }
         }
     }
@@ -365,6 +395,29 @@ impl Component for SoundSettingsModel {
             .hide_hdmi_outputs()
             .get_untracked();
 
+        // ── Startup-default controls (config-only; applied at login) ──
+        // Set the initial value/state BEFORE connecting handlers so seeding
+        // from config doesn't write the same value straight back.
+        let audio_cfg = config_manager().config().audio().get_untracked();
+        let restore_switch = gtk::Switch::builder().valign(gtk::Align::Center).build();
+        restore_switch.set_active(audio_cfg.restore_volume_on_start);
+        restore_switch.connect_active_notify({
+            let s = sender.clone();
+            move |sw| s.input(SoundSettingsInput::SetRestoreOnStart(sw.is_active()))
+        });
+        let def_out_scale = percent_scale();
+        def_out_scale.set_value(audio_cfg.default_output_volume as f64);
+        def_out_scale.connect_value_changed({
+            let s = sender.clone();
+            move |sc| s.input(SoundSettingsInput::SetDefaultOutVolume(sc.value() as i32))
+        });
+        let def_in_scale = percent_scale();
+        def_in_scale.set_value(audio_cfg.default_input_volume as f64);
+        def_in_scale.connect_value_changed({
+            let s = sender.clone();
+            move |sc| s.input(SoundSettingsInput::SetDefaultInVolume(sc.value() as i32))
+        });
+
         let model = SoundSettingsModel {
             out_devices,
             in_devices,
@@ -396,6 +449,9 @@ impl Component for SoundSettingsModel {
         let in_dd_w = &in_dd;
         let in_scale_w = &in_scale;
         let in_mute_w = &in_mute;
+        let restore_switch_w = &restore_switch;
+        let def_out_scale_w = &def_out_scale;
+        let def_in_scale_w = &def_in_scale;
         let widgets = view_output!();
         let _ = root;
         ComponentParts { model, widgets }
@@ -444,6 +500,15 @@ impl Component for SoundSettingsModel {
                         let _ = d.set_mute(m).await;
                     });
                 }
+            }
+            SoundSettingsInput::SetRestoreOnStart(v) => {
+                config_manager().update_config(|c| c.audio.restore_volume_on_start = v);
+            }
+            SoundSettingsInput::SetDefaultOutVolume(v) => {
+                config_manager().update_config(|c| c.audio.default_output_volume = v.clamp(0, 100));
+            }
+            SoundSettingsInput::SetDefaultInVolume(v) => {
+                config_manager().update_config(|c| c.audio.default_input_volume = v.clamp(0, 100));
             }
             SoundSettingsInput::SetHideHdmiOutputs(v) => {
                 config_manager().update_config(|c| c.audio.hide_hdmi_outputs = v);
@@ -596,6 +661,20 @@ fn volume_scale() -> gtk::Scale {
     scale.set_format_value_func(|_, v| format!("{:.0}%", v * 100.0));
     // Colours the trough + the filled portion (--primary) so it reads as a
     // proper volume bar, not a faint line. See `.settings-slider` in SCSS.
+    scale.add_css_class("settings-slider");
+    scale
+}
+
+/// A 0–100 percent slider for the startup-default levels (config-only, so it
+/// works in whole percents rather than the live 0..1 device volume).
+fn percent_scale() -> gtk::Scale {
+    let scale = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 100.0, 1.0);
+    scale.set_width_request(240);
+    scale.set_hexpand(true);
+    scale.set_valign(gtk::Align::Center);
+    scale.set_draw_value(true);
+    scale.set_value_pos(gtk::PositionType::Right);
+    scale.set_format_value_func(|_, v| format!("{v:.0}%"));
     scale.add_css_class("settings-slider");
     scale
 }

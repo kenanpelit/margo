@@ -1989,14 +1989,33 @@ impl Default for PrivacyConfig {
 /// from the output-device list, the output-switch cycle, and the audio
 /// dashboard menu's device picker. Default `false` so the behaviour is
 /// unchanged for users who haven't opted in.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct AudioConfig {
     /// Hide HDMI / DisplayPort audio sinks from the output list and switcher.
     /// Matched by node name or description; default `false`.
     pub hide_hdmi_outputs: bool,
+    /// Restore the default output + input volumes to the levels below on shell
+    /// startup. PipeWire doesn't persist volumes across reboots, so without
+    /// this the levels drift; with it, every login lands on your chosen
+    /// defaults. Off by default (no surprise volume changes).
+    pub restore_volume_on_start: bool,
+    /// Default output (speaker) level as a percentage `0..=100`. Applied at
+    /// startup when `restore_volume_on_start` is on.
+    pub default_output_volume: i32,
+    /// Default input (microphone) level as a percentage `0..=100`.
+    pub default_input_volume: i32,
+}
+
+impl Default for AudioConfig {
+    fn default() -> Self {
+        Self {
+            hide_hdmi_outputs: false,
+            restore_volume_on_start: false,
+            default_output_volume: 50,
+            default_input_volume: 50,
+        }
+    }
 }
 
 /// Control Center tile visibility and order.
