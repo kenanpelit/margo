@@ -107,19 +107,22 @@ button.ok-button-error {
   }
 }
 
-// Uniform widget action / control button — the text buttons that sit
-// in a row inside a menu (UFW footer, power controls, …). Pair with
-// .ok-button-surface for the fill + primary state-layer + --radius-sm
-// (button-base); this just pins the shared cell padding so every such
-// button is the same size. Mirrors .power-control-button — use this
-// instead of re-declaring per widget so the button rows stay uniform.
+// Uniform widget action / control button — the text buttons that sit in a row
+// inside a menu (UFW footer, power controls, session, DNS, …). Pair with
+// .ok-button-surface for the fill + primary state-layer; this pins the shared
+// tile geometry so every such button reads as the SAME GNOME/ashell-style
+// rounded tile, matching the control-center tiles (DESIGN.md §21/§22) — not a
+// short wide pill. Use this instead of re-declaring per widget.
+//
+// Geometry mirrors `.control-center-tile`: --radius-xl corners + even space-3
+// padding + a 56px floor. The 56px height is what lets the 32px radius read as
+// a rounded card rather than a stadium, and gives short-label buttons a
+// balanced aspect ratio instead of a stretched sliver.
 .ok-button-cell {
-  padding: var(--space-3) var(--space-1);
-  // Uniform minimum footprint so a short-label button ("Refresh")
-  // doesn't shrink to a sliver next to a longer one ("Open in
-  // browser") — every action button reads as the same family. Wider
-  // labels grow past this; hexpand'd buttons still fill their slot.
+  padding: var(--space-3);
   min-width: 84px;
+  min-height: 56px;
+  border-radius: var(--radius-xl);
 }
 
 .ok-button-medium-thin {

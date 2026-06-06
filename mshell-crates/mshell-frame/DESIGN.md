@@ -1208,9 +1208,15 @@ Every button resolves on three axes — don't invent one-off button styles:
   → active/pressed → disabled (drop to ~30 % alpha, never a new grey). All four
   transition with `--motion-fast` `--ease-standard`; never snap.
 
-Radius: action buttons use `--radius-sm`; pill toggles / category chips use
-`--radius-pill`. Same three-axis grammar covers bar pills (§4) and panel
-header buttons (§12).
+Radius + size: a **menu action button** (the `.ok-button-cell` family — power
+profile/control, session, DNS, UFW footer, network, …) uses the **control-center
+tile metric** (§22): `--radius-xl` corners, even `--space-3` padding, an 84 px
+min-width and a **56 px min-height floor**. The height is not optional — it is
+what makes the 32 px radius read as a rounded *tile* rather than a stretched
+stadium pill, and gives short-label buttons a balanced aspect ratio. Pill
+toggles / category chips use `--radius-pill`; tiny inline icon buttons and bar
+pills (§4) keep their own smaller radii. One tile family across menus, the
+control center, and plugin selectors — never a per-widget one-off size.
 
 ## 22. Control-center tile anatomy
 

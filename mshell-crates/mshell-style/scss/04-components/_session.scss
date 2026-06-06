@@ -13,11 +13,12 @@
 }
 
 .session-button {
-  // .ok-button-cell geometry (DESIGN.md §21) — one size family with the
-  // power / DNS / UFW action rows.
-  padding: var(--space-3) var(--space-1);
+  // Control-center tile geometry (DESIGN.md §21/§22) — one rounded-tile family
+  // with the power / DNS / UFW action rows.
+  padding: var(--space-3);
   min-width: 84px;
-  border-radius: var(--radius-sm);
+  min-height: 56px;
+  border-radius: var(--radius-xl);
 }
 
 // Destructive actions — tint the icon so they stand apart from the
