@@ -221,6 +221,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // Replaces the external bt-autoconnect.service + bluetooth_toggle scripts.
     mshell_services::bluetooth::spawn_autoconnect_startup();
 
+    // Home-network login automation: if enabled, bring up the saved Wi-Fi
+    // connection then connect Mullvad (Blocky coupled as the no-VPN DNS
+    // fallback). Native replacement for the external home-net-vpn script.
+    mshell_services::login_net::spawn_login_net_startup();
+
     // Restore default audio levels: PipeWire doesn't persist sink/source volume
     // across reboots, so on opt-in (Settings → Sound) we pin the default output
     // + input to the user's chosen levels once WirePlumber has settled. Done

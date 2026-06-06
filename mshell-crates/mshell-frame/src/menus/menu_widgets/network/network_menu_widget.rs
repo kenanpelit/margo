@@ -91,6 +91,8 @@ impl std::fmt::Debug for NetworkMenuWidgetModel {
 pub(crate) enum NetworkMenuWidgetInput {
     SetWifiEnabled(bool),
     Rescan,
+    /// Run the home-network login reconcile now (Wi-Fi up + Mullvad + Blocky).
+    ConnectHomeNetwork,
     Connect(String),
     Disconnect,
     /// Sent by the host menu on show/hide. The 2 s `/proc/net/dev`
@@ -293,6 +295,14 @@ impl Component for NetworkMenuWidgetModel {
                         sender.input(NetworkMenuWidgetInput::Disconnect);
                     },
                 },
+                gtk::Button {
+                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
+                    set_label: "Home VPN",
+                    set_tooltip_text: Some("Bring up the saved Wi-Fi + connect Mullvad (Settings → Network)"),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(NetworkMenuWidgetInput::ConnectHomeNetwork);
+                    },
+                },
             },
 
             gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
@@ -412,6 +422,9 @@ impl Component for NetworkMenuWidgetModel {
                     vec!["device".into(), "wifi".into(), "rescan".into()],
                     sender.clone(),
                 );
+            }
+            NetworkMenuWidgetInput::ConnectHomeNetwork => {
+                mshell_services::login_net::run_now();
             }
             NetworkMenuWidgetInput::Connect(ssid) => {
                 run_nmcli(

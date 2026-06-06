@@ -37,6 +37,7 @@ pub struct Config {
     pub pass: Pass,
     pub alarm: AlarmConfig,
     pub network: NetworkConfig,
+    pub login_network: LoginNetworkConfig,
     pub bluetooth: BluetoothConfig,
     pub power: PowerConfig,
     pub privacy: PrivacyConfig,
@@ -1881,6 +1882,41 @@ pub struct NetworkConfig {
     pub proxy_ignore: String,
     /// PAC URL used when `proxy_mode == Automatic`.
     pub proxy_pac_url: String,
+}
+
+/// Home-network login automation (Settings → Network · Network Console menu).
+///
+/// Native replacement for the external `home-net-vpn` login script: at login,
+/// bring up a saved Wi-Fi connection then connect Mullvad (with Blocky as the
+/// no-VPN DNS fallback). The same engine backs the menu's "Connect home network
+/// now" button. Off by default.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct LoginNetworkConfig {
+    /// Master switch for the at-login reconcile.
+    pub enabled: bool,
+    /// NetworkManager connection NAME to bring up (e.g. "Ken_5"). Empty = skip
+    /// the Wi-Fi step (only do the VPN part).
+    pub wifi_connection: String,
+    /// After Wi-Fi is up, connect Mullvad.
+    pub connect_vpn: bool,
+    /// Couple Blocky as the DNS fallback — stop it while the VPN is up
+    /// (needs passwordless sudo for `systemctl`; skipped with a toast otherwise).
+    pub couple_blocky: bool,
+    /// Seconds to wait after shell start before reconciling (let NM settle).
+    pub delay_secs: u32,
+}
+
+impl Default for LoginNetworkConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            wifi_connection: String::new(),
+            connect_vpn: true,
+            couple_blocky: true,
+            delay_secs: 4,
+        }
+    }
 }
 
 /// Bluetooth auto-connect + audio-routing settings (Settings → Bluetooth).

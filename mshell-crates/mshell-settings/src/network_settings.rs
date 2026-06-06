@@ -45,6 +45,12 @@ pub(crate) struct NetworkSettingsModel {
     proxy_socks: String,
     proxy_ignore: String,
     proxy_pac_url: String,
+    // ── Home-network login automation ──
+    login_enabled: bool,
+    login_wifi: String,
+    login_connect_vpn: bool,
+    login_couple_blocky: bool,
+    login_delay: u32,
 }
 
 impl std::fmt::Debug for NetworkSettingsModel {
@@ -88,6 +94,13 @@ pub(crate) enum NetworkSettingsInput {
     ProxySocksChanged(String),
     ProxyIgnoreChanged(String),
     ProxyPacUrlChanged(String),
+    // ── Home-network login automation ──
+    SetLoginEnabled(bool),
+    SetLoginWifi(String),
+    SetLoginVpn(bool),
+    SetLoginBlocky(bool),
+    SetLoginDelay(u32),
+    LoginRunNow,
 }
 
 // ── Output / Init / CommandOutput ─────────────────────────────────────────────
@@ -557,6 +570,131 @@ impl Component for NetworkSettingsModel {
                     set_wrap: true,
                     set_natural_wrap_mode: gtk::NaturalWrapMode::None,
                 },
+
+                // ════════ Home network at login ════════
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Home network at login",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 16,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "At login: bring up a saved Wi-Fi connection, then connect Mullvad (Blocky coupled as the no-VPN DNS fallback). Native replacement for home-net-vpn.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_label: "Enable at login",
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                    },
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        set_active: model.login_enabled,
+                        connect_state_set[sender] => move |_, v| {
+                            sender.input(NetworkSettingsInput::SetLoginEnabled(v));
+                            glib::Propagation::Proceed
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_label: "Wi-Fi connection",
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                    },
+                    gtk::Entry {
+                        set_valign: gtk::Align::Center,
+                        set_width_request: 200,
+                        set_text: model.login_wifi.as_str(),
+                        set_placeholder_text: Some("NetworkManager name, e.g. Ken_5"),
+                        connect_changed[sender] => move |e| {
+                            sender.input(NetworkSettingsInput::SetLoginWifi(e.text().to_string()));
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_label: "Connect Mullvad",
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                    },
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        set_active: model.login_connect_vpn,
+                        connect_state_set[sender] => move |_, v| {
+                            sender.input(NetworkSettingsInput::SetLoginVpn(v));
+                            glib::Propagation::Proceed
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_label: "Couple Blocky (stop while VPN up)",
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                    },
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        set_active: model.login_couple_blocky,
+                        connect_state_set[sender] => move |_, v| {
+                            sender.input(NetworkSettingsInput::SetLoginBlocky(v));
+                            glib::Propagation::Proceed
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_label: "Delay after login (seconds)",
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                    },
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (0.0, 120.0),
+                        set_increments: (1.0, 5.0),
+                        set_digits: 0,
+                        set_value: model.login_delay as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(NetworkSettingsInput::SetLoginDelay(s.value() as u32));
+                        },
+                    },
+                },
+
+                gtk::Button {
+                    add_css_class: "ok-button-surface",
+                    add_css_class: "ok-button-cell",
+                    set_label: "Connect home network now",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 4,
+                    connect_clicked[sender] => move |_| {
+                        sender.input(NetworkSettingsInput::LoginRunNow);
+                    },
+                },
             }
         },
 
@@ -624,6 +762,8 @@ impl Component for NetworkSettingsModel {
             .proxy_pac_url()
             .get_untracked();
 
+        let login = config_manager().config().login_network().get_untracked();
+
         let model = NetworkSettingsModel {
             wifi_available: wifi_opt.is_some(),
             wifi_enabled: wifi_opt.as_ref().map(|w| w.enabled.get()).unwrap_or(false),
@@ -648,6 +788,11 @@ impl Component for NetworkSettingsModel {
             proxy_socks,
             proxy_ignore,
             proxy_pac_url,
+            login_enabled: login.enabled,
+            login_wifi: login.wifi_connection,
+            login_connect_vpn: login.connect_vpn,
+            login_couple_blocky: login.couple_blocky,
+            login_delay: login.delay_secs,
         };
 
         let widgets = view_output!();
@@ -1024,6 +1169,29 @@ impl Component for NetworkSettingsModel {
             NetworkSettingsInput::ProxyPacUrlChanged(v) => {
                 self.proxy_pac_url = v.clone();
                 config_manager().update_config(|c| c.network.proxy_pac_url = v);
+            }
+            NetworkSettingsInput::SetLoginEnabled(v) => {
+                self.login_enabled = v;
+                config_manager().update_config(|c| c.login_network.enabled = v);
+            }
+            NetworkSettingsInput::SetLoginWifi(v) => {
+                self.login_wifi = v.clone();
+                config_manager().update_config(|c| c.login_network.wifi_connection = v);
+            }
+            NetworkSettingsInput::SetLoginVpn(v) => {
+                self.login_connect_vpn = v;
+                config_manager().update_config(|c| c.login_network.connect_vpn = v);
+            }
+            NetworkSettingsInput::SetLoginBlocky(v) => {
+                self.login_couple_blocky = v;
+                config_manager().update_config(|c| c.login_network.couple_blocky = v);
+            }
+            NetworkSettingsInput::SetLoginDelay(v) => {
+                self.login_delay = v;
+                config_manager().update_config(|c| c.login_network.delay_secs = v);
+            }
+            NetworkSettingsInput::LoginRunNow => {
+                mshell_services::login_net::run_now();
             }
         }
 
