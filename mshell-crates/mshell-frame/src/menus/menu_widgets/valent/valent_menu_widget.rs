@@ -434,6 +434,7 @@ fn pairing_card(device: &Device, sender: &ComponentSender<ValentMenuWidgetModel>
 
     let pair = gtk::Button::with_label("Pair");
     pair.add_css_class("ok-button-primary");
+    pair.add_css_class("ok-button-cell");
     pair.set_halign(gtk::Align::Start);
     pair.set_sensitive(!device.pair_requested);
     {
@@ -455,6 +456,7 @@ fn unreachable_card(device: &Device, sender: &ComponentSender<ValentMenuWidgetMo
     );
     let unpair = gtk::Button::with_label("Unpair");
     unpair.add_css_class("ok-button-surface");
+    unpair.add_css_class("ok-button-cell");
     unpair.set_halign(gtk::Align::Center);
     {
         let id = device.id.clone();

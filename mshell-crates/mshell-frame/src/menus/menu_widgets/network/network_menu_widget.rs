@@ -707,12 +707,14 @@ fn make_network_row(
     let connect = if net.in_use {
         let b = gtk::Button::with_label("Connected");
         b.add_css_class("ok-button-surface");
+        b.add_css_class("ok-button-cell");
         b.add_css_class("selected");
         b.set_sensitive(false);
         b
     } else {
         let b = gtk::Button::with_label("Connect");
         b.add_css_class("ok-button-surface");
+        b.add_css_class("ok-button-cell");
         let ssid = net.ssid.clone();
         let s = sender.clone();
         b.connect_clicked(move |_| {
