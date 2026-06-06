@@ -62,13 +62,20 @@
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
-// Charge-limit presets (60 / 80 / 100 %) — a compact secondary selector, so a
-// notch slimmer than the action pills above: smaller % chips, not chunky.
+// Charge-limit presets (60 / 80 / 100 %) — styled like the control-center
+// power-profile segmented buttons (`.control-center-pp-btn`): compact
+// --radius-lg buttons on --surface-container, small bold labels, filling
+// --primary when selected (via .ok-button-surface.selected).
 .power-charge-preset {
-  padding: var(--space-1) var(--space-3);
-  min-width: 52px;
-  min-height: 30px;
-  border-radius: var(--radius-pill);
+  background-color: var(--surface-container);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-3);
+  min-width: 0;
+  min-height: 0;
+  label {
+    font-size: var(--font-xs);
+    font-weight: 600;
+  }
 }
 .power-control-button:not(.selected):hover {
   background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");

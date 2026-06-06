@@ -536,18 +536,63 @@ fn run_action(action: String, state: DnsState, sender: ComponentSender<DnsMenuWi
             }
             _ => Err(format!("unknown action: {action}")),
         };
-        if let Err(e) = result {
+        let ok = result.is_ok();
+        if let Err(e) = &result {
             warn!(action = %action, error = %e, "dns action failed");
         }
         tokio::time::sleep(POST_ACTION_DELAY).await;
         let s = probe_dns_state().await;
+        // Desktop notification on every transition, like osc-mullvad's
+        // toggle_result_notify.
+        notify_transition(&action, &s, ok);
         // ActionDone (not Refreshed) so update_cmd_with_view clears the
         // in-flight guard even if nothing about the state changed.
         let _ = out.send(DnsMenuWidgetCommandOutput::ActionDone(s));
     });
 }
 
-async fn action_mullvad(connect: bool) -> Result<(), String> {
+/// Fire a desktop notification (`notify-send`) describing the resulting
+/// DNS/VPN posture after an action — mirrors osc-mullvad's result notify.
+fn notify_transition(action: &str, s: &DnsState, ok: bool) {
+    let (title, body, icon) = if !ok {
+        (
+            "⚠️ DNS / VPN".to_string(),
+            format!("Action failed: {action}"),
+            "dialog-warning-symbolic",
+        )
+    } else if action.starts_with("provider:") {
+        (
+            "DNS preset".to_string(),
+            "Custom DNS applied".to_string(),
+            "network-server-symbolic",
+        )
+    } else if s.vpn {
+        (
+            "🔒 Mullvad VPN".to_string(),
+            "Connected · Blocky off".to_string(),
+            "network-vpn-symbolic",
+        )
+    } else if s.blocky {
+        (
+            "🛡 Blocky DNS".to_string(),
+            "VPN off · local ad-block DNS active".to_string(),
+            "network-server-symbolic",
+        )
+    } else {
+        (
+            "🔓 DNS".to_string(),
+            "VPN & Blocky off · default resolver".to_string(),
+            "network-wired-symbolic",
+        )
+    };
+    let _ = tokio::process::Command::new("notify-send")
+        .args(["-a", "Mullvad VPN", "-i", icon, &title, &body])
+        .spawn();
+}
+
+/// Raw `mullvad connect/disconnect` — no coupling (so the coupled wrappers
+/// below don't form a recursive async cycle).
+async fn mullvad_set(connect: bool) -> Result<(), String> {
     let arg = if connect { "connect" } else { "disconnect" };
     let s = tokio::process::Command::new("mullvad")
         .arg(arg)
@@ -560,13 +605,13 @@ async fn action_mullvad(connect: bool) -> Result<(), String> {
     Ok(())
 }
 
-async fn action_blocky(want_active: bool) -> Result<(), String> {
-    let subcmd = if want_active { "start" } else { "stop" };
+/// Raw Blocky start/stop (+ resolv.conf → 127.0.0.1 on start) — no coupling.
+async fn blocky_set(active: bool) -> Result<(), String> {
+    let subcmd = if active { "start" } else { "stop" };
     run_privileged(&["systemctl", subcmd, "blocky.service"]).await?;
-    if want_active {
+    if active {
         // Blocky is the local resolver while it runs — point resolv.conf at it
-        // (osc-mullvad's blocky_set_resolver_local). Best-effort: a failure
-        // here shouldn't undo the successful service start.
+        // (osc-mullvad's blocky_set_resolver_local). Best-effort.
         let _ = run_privileged_sh(
             "rm -f /etc/resolv.conf; \
              printf 'nameserver 127.0.0.1\\nnameserver ::1\\n' > /etc/resolv.conf",
@@ -574,6 +619,24 @@ async fn action_blocky(want_active: bool) -> Result<(), String> {
         .await;
     }
     Ok(())
+}
+
+/// Connect/disconnect the VPN. Connecting first stops Blocky — VPN and Blocky
+/// are mutually exclusive (Blocky is only the no-VPN DNS fallback), so the two
+/// can never both end up active (= both buttons selected).
+async fn action_mullvad(connect: bool) -> Result<(), String> {
+    if connect {
+        let _ = blocky_set(false).await;
+    }
+    mullvad_set(connect).await
+}
+
+/// Start/stop Blocky. Starting it first disconnects the VPN (mutual exclusion).
+async fn action_blocky(want_active: bool) -> Result<(), String> {
+    if want_active {
+        let _ = mullvad_set(false).await;
+    }
+    blocky_set(want_active).await
 }
 
 async fn action_default(primary_conn: Option<String>) -> Result<(), String> {
@@ -641,11 +704,13 @@ async fn action_apply_preset(conn: Option<String>, ips: &str) -> Result<(), Stri
 /// post-connect internet health-check + rollback — are deliberately left to the
 /// `osc-mullvad` CLI for now; this is the safe coupled core.)
 async fn action_toggle(state: DnsState) -> Result<(), String> {
+    // The two actions are mutually exclusive (each turns the other off), so the
+    // toggle just flips the dominant path: VPN up → bring Blocky fallback up
+    // (which disconnects the VPN); VPN down → connect the VPN (which stops
+    // Blocky).
     if state.vpn {
-        let _ = action_mullvad(false).await;
         action_blocky(true).await
     } else {
-        let _ = action_blocky(false).await;
         action_mullvad(true).await
     }
 }
