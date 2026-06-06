@@ -86,21 +86,47 @@ scripts. The whole shell recolours itself from your wallpaper.
 
 <div class="grid" markdown>
 
-![Dashboard — clock, calendar, weather, quick-settings sliders, and media in one panel](assets/showcase-dashboard.webp){ loading=lazy }
+![Dashboard — clock, calendar, weather, media, and quick-settings in one panel](assets/dashboard.webp){ loading=lazy }
 
-![App launcher — fuzzy apps with frecency, plus ~15 providers and category tabs](assets/showcase-launcher.webp){ loading=lazy }
+![Control Center — quick toggles, sliders, and session controls](assets/control.webp){ loading=lazy }
 
-![Twilight — the built-in blue-light filter with schedule presets](assets/showcase-twilight.webp){ loading=lazy }
+![App launcher — fuzzy apps with frecency, plus ~15 providers and category tabs](assets/launcher.webp){ loading=lazy }
 
-![Power profiles — saver / balanced / performance, plus power controls](assets/showcase-power.webp){ loading=lazy }
+![Settings — the shell and the compositor's config.conf, with a flat name search](assets/settings.webp){ loading=lazy }
 
-![DNS / VPN — one-tap switching between DNS presets](assets/showcase-dns.webp){ loading=lazy }
+![System monitor — CPU, memory, and the top processes](assets/cpu.webp){ loading=lazy }
 
-![Keep Awake — a temporary idle inhibitor with a duration grid](assets/showcase-keepawake.webp){ loading=lazy }
+![Audio mixer — per-app volume and output device ports](assets/audio.webp){ loading=lazy }
 
-![Podman — containers, images, and pods at a glance](assets/showcase-podman.webp){ loading=lazy }
+![Network — Wi-Fi, wired, and VPN connections](assets/network.webp){ loading=lazy }
 
-![Notes Hub — scratchpad, notes, and todos](assets/showcase-notes.webp){ loading=lazy }
+![DNS / VPN — one-tap switching between presets](assets/dnsvpn.webp){ loading=lazy }
+
+![Media — now-playing controls for any MPRIS player](assets/spotify.webp){ loading=lazy }
+
+![Lyrics — synced, scrolling lyrics for the current track](assets/lyrics.webp){ loading=lazy }
+
+![Weather — current conditions plus an hourly and daily forecast](assets/weather.webp){ loading=lazy }
+
+![Tiling layouts — 15 algorithms, remembered per tag](assets/layout.webp){ loading=lazy }
+
+![Alarms — alarms and a stopwatch](assets/alarm.webp){ loading=lazy }
+
+![Breathing — a guided wind-down exercise](assets/breathing.webp){ loading=lazy }
+
+![Ambient sounds — focus soundscapes](assets/ambient_sound.webp){ loading=lazy }
+
+![Keep Awake — a temporary idle inhibitor with a duration grid](assets/keep_awake.webp){ loading=lazy }
+
+![Twilight — the built-in blue-light filter with schedule presets](assets/twilight.webp){ loading=lazy }
+
+![Podman — containers, images, and pods at a glance](assets/podman.webp){ loading=lazy }
+
+![Notes Hub — scratchpad, notes, and todos](assets/notes.webp){ loading=lazy }
+
+![KDE Connect — phone integration via Valent](assets/valent.webp){ loading=lazy }
+
+![Screenshot editor — select a region, annotate, and copy](assets/screenshot.webp){ loading=lazy }
 
 </div>
 
