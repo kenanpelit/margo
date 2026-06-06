@@ -125,25 +125,47 @@ fn scan_path_exes() -> BTreeSet<String> {
     out
 }
 
-/// Spawn a script immediately (args + working dir honoured), for the Run-now
-/// button. Mirrors the boot runner in `mshell-core`.
-fn spawn_script(entry: &ScriptAutostart) {
-    let mut cmd = std::process::Command::new(&entry.name);
-    if !entry.args.trim().is_empty() {
-        cmd.args(entry.args.split_whitespace());
+/// Expand a leading `~` / `~/` in a working-dir string. `None` for empty.
+fn expand_cwd(dir: &str) -> Option<String> {
+    let dir = dir.trim();
+    if dir.is_empty() {
+        return None;
     }
-    let dir = entry.working_dir.trim();
-    if !dir.is_empty() {
-        let expanded = if let Some(rest) = dir.strip_prefix("~/") {
-            std::env::var("HOME")
-                .map(|h| format!("{h}/{rest}"))
-                .unwrap_or_else(|_| dir.to_string())
-        } else if dir == "~" {
-            std::env::var("HOME").unwrap_or_else(|_| dir.to_string())
-        } else {
-            dir.to_string()
-        };
-        cmd.current_dir(expanded);
+    Some(if let Some(rest) = dir.strip_prefix("~/") {
+        std::env::var("HOME")
+            .map(|h| format!("{h}/{rest}"))
+            .unwrap_or_else(|_| dir.to_string())
+    } else if dir == "~" {
+        std::env::var("HOME").unwrap_or_else(|_| dir.to_string())
+    } else {
+        dir.to_string()
+    })
+}
+
+/// Run a script now (Run button), args + working dir honoured. Launched in a
+/// transient `systemd --user` unit — detached from mshell's cgroup, so the
+/// test instance behaves like a real autostart (survives a mshell restart)
+/// rather than dying with the Settings process. Falls back to a direct child.
+fn spawn_script(entry: &ScriptAutostart) {
+    let dir = expand_cwd(&entry.working_dir);
+    let args: Vec<&str> = entry.args.split_whitespace().collect();
+
+    let mut sd = std::process::Command::new("systemd-run");
+    sd.arg("--user").arg("--quiet").arg("--collect");
+    if let Some(d) = &dir {
+        sd.arg(format!("--working-directory={d}"));
+    }
+    sd.arg("--").arg(&entry.name).args(&args);
+    if sd.spawn().is_ok() {
+        mshell_launcher::notify::toast("Started", &entry.name);
+        return;
+    }
+
+    // No systemd-run: direct child (won't survive a mshell restart).
+    let mut cmd = std::process::Command::new(&entry.name);
+    cmd.args(&args);
+    if let Some(d) = &dir {
+        cmd.current_dir(d);
     }
     match cmd.spawn() {
         Ok(_) => mshell_launcher::notify::toast("Started", &entry.name),

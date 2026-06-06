@@ -8,7 +8,7 @@ use crate::relm_app::{Shell, ShellInit};
 use any_spawner::Executor;
 use mshell_config::schema::config::{
     ConfigStoreFields, GeneralStoreFields, IconsStoreFields, LauncherStoreFields,
-    NotificationsStoreFields, ThemeStoreFields,
+    NotificationsStoreFields, ScriptAutostart, ThemeStoreFields,
 };
 use mshell_idle::inhibitor::IdleInhibitor;
 use mshell_services::notification_service;
@@ -212,26 +212,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             if entry.delay_secs > 0 {
                 tokio::time::sleep(std::time::Duration::from_secs(entry.delay_secs as u64)).await;
             }
-            let mut cmd = std::process::Command::new(&entry.name);
-            if !entry.args.trim().is_empty() {
-                cmd.args(entry.args.split_whitespace());
-            }
-            let dir = entry.working_dir.trim();
-            if !dir.is_empty() {
-                let expanded = if let Some(rest) = dir.strip_prefix("~/") {
-                    std::env::var("HOME")
-                        .map(|h| format!("{h}/{rest}"))
-                        .unwrap_or_else(|_| dir.to_string())
-                } else if dir == "~" {
-                    std::env::var("HOME").unwrap_or_else(|_| dir.to_string())
-                } else {
-                    dir.to_string()
-                };
-                cmd.current_dir(expanded);
-            }
-            if let Err(err) = cmd.spawn() {
-                tracing::warn!(script = %entry.name, ?err, "autostart: spawn failed");
-            }
+            spawn_autostart_detached(&entry);
         });
     }
 
@@ -449,5 +430,72 @@ fn clipboard_settings_from_config(
         skip_sensitive: c.skip_sensitive,
         image_history: c.image_history,
         image_max_kb: c.image_max_kb,
+    }
+}
+
+/// Expand a leading `~` / `~/` in a working-dir string. `None` for empty.
+fn expand_cwd(dir: &str) -> Option<String> {
+    let dir = dir.trim();
+    if dir.is_empty() {
+        return None;
+    }
+    Some(if let Some(rest) = dir.strip_prefix("~/") {
+        std::env::var("HOME")
+            .map(|h| format!("{h}/{rest}"))
+            .unwrap_or_else(|_| dir.to_string())
+    } else if dir == "~" {
+        std::env::var("HOME").unwrap_or_else(|_| dir.to_string())
+    } else {
+        dir.to_string()
+    })
+}
+
+/// systemd unit names allow only `[A-Za-z0-9:_.\-]`; map anything else to `_`.
+fn sanitize_unit(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '.' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// Launch an autostart script **detached from mshell's cgroup** so it survives
+/// `systemctl --user restart mshell` (which tears down mshell.service's whole
+/// control-group). We start it in a transient `systemd --user` unit with a
+/// stable name, so a re-run on the next mshell start is a harmless no-op
+/// (systemd refuses the duplicate unit) rather than a second instance. Falls
+/// back to a plain child process when systemd-run isn't available.
+fn spawn_autostart_detached(entry: &ScriptAutostart) {
+    let dir = expand_cwd(&entry.working_dir);
+    let args: Vec<&str> = entry.args.split_whitespace().collect();
+
+    let unit = format!("margo-autostart-{}.service", sanitize_unit(&entry.name));
+    let mut sd = std::process::Command::new("systemd-run");
+    sd.arg("--user")
+        .arg("--quiet")
+        .arg("--collect")
+        .arg(format!("--unit={unit}"));
+    if let Some(d) = &dir {
+        sd.arg(format!("--working-directory={d}"));
+    }
+    sd.arg("--").arg(&entry.name).args(&args);
+    if sd.spawn().is_ok() {
+        return;
+    }
+
+    // No systemd-run (non-systemd session): direct child of mshell — the
+    // legacy behaviour. Won't survive a mshell restart, but it's the best we
+    // can do without a session manager.
+    let mut cmd = std::process::Command::new(&entry.name);
+    cmd.args(&args);
+    if let Some(d) = &dir {
+        cmd.current_dir(d);
+    }
+    if let Err(err) = cmd.spawn() {
+        tracing::warn!(script = %entry.name, ?err, "autostart: spawn failed");
     }
 }
