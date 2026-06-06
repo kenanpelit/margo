@@ -30,6 +30,7 @@ pub(crate) struct ThemeSettingsModel {
     radius_widget: i32,
     radius_window: i32,
     border_width: i32,
+    surface_opacity: i32,
     available_css: gtk::StringList,
     active_css: String,
     matugen_preferences: gtk::StringList,
@@ -60,6 +61,7 @@ pub(crate) enum ThemeSettingsInput {
     AutoPolarityChanged(bool),
     MatugenContrastSelected(f64),
     WindowOpacitySelected(f64),
+    SurfaceOpacitySelected(i32),
     ThemeSelected(Themes),
     CssFileSelected(Option<String>),
     RadiusWidgetSelected(i32),
@@ -84,6 +86,7 @@ pub(crate) enum ThemeSettingsInput {
     RadiusWidgetEffect(i32),
     RadiusWindowEffect(i32),
     BorderWidthEffect(i32),
+    SurfaceOpacityEffect(i32),
 }
 
 #[derive(Debug)]
@@ -649,6 +652,45 @@ impl Component for ThemeSettingsModel {
                     },
                 },
 
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Surface opacity",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Frost the bar + menu/panel surfaces so the wallpaper shows through. 100 = fully opaque (60–100%).",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (60.0, 100.0),
+                        set_increments: (5.0, 5.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(surface_opacity_handler)]
+                        set_value: model.surface_opacity as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(ThemeSettingsInput::SurfaceOpacitySelected(s.value() as i32));
+                        } @surface_opacity_handler,
+                    },
+                },
+
                 gtk::Separator {},
 
                 gtk::Label {
@@ -1075,6 +1117,13 @@ impl Component for ThemeSettingsModel {
             sender_clone.input(ThemeSettingsInput::BorderWidthEffect(value));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.theme().attributes().sizing().surface_opacity().get();
+            sender_clone.input(ThemeSettingsInput::SurfaceOpacityEffect(value));
+        });
+
         let mut model = ThemeSettingsModel {
             available_shell_icon_themes,
             active_shell_theme: config_manager()
@@ -1137,6 +1186,13 @@ impl Component for ThemeSettingsModel {
                 .attributes()
                 .sizing()
                 .border_width()
+                .get_untracked(),
+            surface_opacity: config_manager()
+                .config()
+                .theme()
+                .attributes()
+                .sizing()
+                .surface_opacity()
                 .get_untracked(),
             available_css,
             active_css: {
@@ -1291,6 +1347,11 @@ impl Component for ThemeSettingsModel {
                     config.theme.attributes.window_opacity = WindowOpacity::new(opacity);
                 });
             }
+            ThemeSettingsInput::SurfaceOpacitySelected(pct) => {
+                config_manager().update_config(move |config| {
+                    config.theme.attributes.sizing.surface_opacity = pct.clamp(60, 100);
+                });
+            }
             ThemeSettingsInput::ThemeSelected(theme) => {
                 tracing::debug!(?theme, "theme_settings: ThemeSelected → update_config");
                 config_manager().update_config(|config| {
@@ -1336,6 +1397,7 @@ impl Component for ThemeSettingsModel {
                     config.theme.attributes.sizing.radius_widget = defaults.radius_widget;
                     config.theme.attributes.sizing.radius_window = defaults.radius_window;
                     config.theme.attributes.sizing.border_width = defaults.border_width;
+                    config.theme.attributes.sizing.surface_opacity = defaults.surface_opacity;
                     config.theme.attributes.sizing.bar_hover_strength = defaults.bar_hover_strength;
                     config.theme.attributes.sizing.settings_font_scale =
                         defaults.settings_font_scale;
@@ -1397,6 +1459,9 @@ impl Component for ThemeSettingsModel {
             }
             ThemeSettingsInput::BorderWidthEffect(radius) => {
                 self.border_width = radius;
+            }
+            ThemeSettingsInput::SurfaceOpacityEffect(pct) => {
+                self.surface_opacity = pct;
             }
         }
 

@@ -404,6 +404,7 @@ impl Component for StyleManagerModel {
                         --font-scale-settings: {};
                         --font-scale: {};
                         --font-bar-scale: {};
+                        --surface-opacity: {}%;
                     }}"#,
                     if attributes.font.primary.is_empty() {
                         "inherit"
@@ -441,6 +442,11 @@ impl Component for StyleManagerModel {
                     // / --font-bar in _font.scss.
                     attributes.sizing.font_scale.clamp(0.5, 2.0),
                     attributes.sizing.bar_font_scale.clamp(0.5, 2.0),
+                    // Painted shell-surface opacity as a CSS percentage;
+                    // clamped so a frosted surface never fully vanishes. Read
+                    // by the frame-draw widget (fill alpha) and color-mix on
+                    // the frameless panel backgrounds.
+                    attributes.sizing.surface_opacity.clamp(60, 100),
                 ));
 
                 sender.input(ReloadTheme(

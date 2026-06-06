@@ -181,6 +181,16 @@ fn apply_css_vars(style: &mut FrameStyle, vars: &HashMap<String, String>) {
         }
     }
 
+    // Shell-surface opacity (Settings → Appearance). A percentage that scales
+    // the painted frame fill so the wallpaper shows through (ashell-style);
+    // the border stays at full alpha for definition. Clamped 60–100 %.
+    if let Some(raw) = vars.get("--surface-opacity") {
+        let pct = resolve_var(raw, vars).trim().trim_end_matches('%');
+        if let Ok(p) = pct.parse::<f64>() {
+            style.background_rgba.3 *= (p / 100.0).clamp(0.6, 1.0);
+        }
+    }
+
     if let Some(raw) = vars.get("--frame-border") {
         let resolved = resolve_var(raw, vars);
         if let Some(c) = parse_color(resolved) {

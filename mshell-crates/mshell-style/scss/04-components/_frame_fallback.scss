@@ -18,7 +18,9 @@
   // wants a transparent bar with each pill floating as its own surface —
   // adding a panel border/shadow there would defeat that look.
   .bar:not(.islands) {
-    background-color: var(--surface-container);
+    // --surface-opacity (Settings → Appearance) frosts the surface so the
+    // wallpaper shows through; 100% = fully opaque.
+    background-color: color-mix(in srgb, var(--surface-container) var(--surface-opacity), transparent);
     border: 1px solid var(--outline-variant);
     border-radius: var(--radius-lg);
     margin: var(--space-2);
@@ -27,9 +29,9 @@
   }
 
   // Menu surfaces (clipboard, dashboard, control-center, …) get the same
-  // opaque rounded treatment so they're legible without the frame behind.
+  // rounded treatment so they're legible without the frame behind.
   .menu-scroll-window {
-    background-color: var(--surface-container);
+    background-color: color-mix(in srgb, var(--surface-container) var(--surface-opacity), transparent);
     border: 1px solid var(--outline-variant);
     border-radius: var(--radius-lg);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);

@@ -3,6 +3,9 @@
   --radius-widget: 8px;
   //overridden by style manager
   --radius-window: 8px;
+  // Painted shell-surface opacity (Settings → Appearance); overridden by the
+  // style manager from config. 100% = fully opaque.
+  --surface-opacity: 100%;
 
   // Material-3 shape scale. Semantic radii so components share one
   // corner language instead of every surface using --radius-widget.

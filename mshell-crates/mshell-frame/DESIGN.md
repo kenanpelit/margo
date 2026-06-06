@@ -1167,6 +1167,70 @@ you overload one.
 
 ---
 
+## 20. Translucency (`--surface-opacity`)
+
+The painted shell surfaces — the bar and every menu/panel — can frost so the
+wallpaper shows through, the way ashell's `opacity` does. One user knob drives
+it: **Settings → Theme → Surface opacity** (`theme.attributes.sizing.surface_opacity`,
+a percentage 60–100, default 100 = fully opaque).
+
+**The matugen-alpha rule.** Translucency only ever scales a surface's **alpha**
+— never recolours it. Colours stay matugen tokens; opacity is a separate
+multiplier so the palette still tracks the wallpaper. Two application points,
+because margo paints surfaces two ways:
+
+- **Framed (default):** the single `FrameDrawWidget` fills the bar+menu shape;
+  it reads `--surface-opacity` and scales its fill alpha (border stays at full
+  alpha for definition). So bar and menus frost together as one connected
+  surface.
+- **Frameless (`.frame-disabled`):** each bar/menu paints its own background —
+  `color-mix(in srgb, var(--surface-container) var(--surface-opacity), transparent)`.
+
+`--surface-opacity` is injected on `:root` by the style manager
+(`attributes_css_provider`, alongside `--radius-widget` etc.), so it is live
+and reactive — no rebuild. **Never** frost a surface that must stay legible
+over arbitrary content: the lock screen, modal dialogs, and notification toasts
+stay opaque regardless of the knob.
+
+## 21. Button taxonomy
+
+Every button resolves on three axes — don't invent one-off button styles:
+
+- **Kind** — `solid` (filled, the primary affordance), `outline` (hairline
+  `--outline-variant`, transparent fill, secondary actions), `ghost`/`flat`
+  (no chrome until hover, in-row icon actions; add `flat`).
+- **Hierarchy** — `primary` (`--primary` / `--on-primary`), `secondary`
+  (`--secondary-container`), `danger` (`--error` / `--on-error`, destructive
+  only). At most **one** primary per surface (§13.2).
+- **State** — rest → hover (canonical state-layer wash, `@include state-layer`)
+  → active/pressed → disabled (drop to ~30 % alpha, never a new grey). All four
+  transition with `--motion-fast` `--ease-standard`; never snap.
+
+Radius: action buttons use `--radius-sm`; pill toggles / category chips use
+`--radius-pill`. Same three-axis grammar covers bar pills (§4) and panel
+header buttons (§12).
+
+## 22. Control-center tile anatomy
+
+The quick-settings tile (`control_center/tile.rs`) is the canonical toggle.
+Three shapes, one grammar:
+
+- **Normal** — flat `--surface-container` card (`--radius-md`): leading icon,
+  then a `title` + a **live `subtitle`** (the current state — "Wi-Fi · MyNet",
+  "Twilight · 4000 K", "Bluetooth · 2 devices"; keep it current via
+  `set_subtitle`, never leave it static).
+- **Expandable** — same, plus a trailing `>` chevron (`go-next-symbolic`) that
+  opens the detail/sub-page inline.
+- **Small** — icon-only (`.small`), for dense rows.
+
+**Active = whole-tile fill** (GNOME quick-settings, not a coloured chip): the
+button fills with `--primary` and icon/title/subtitle flip to `--on-primary`.
+The fill **animates** (`transition: background --motion-fast`) so toggling
+morphs rather than snaps. Right-click a tile to jump to its Settings page where
+one exists. Reuse this tile for any new quick toggle — don't hand-roll a button.
+
+---
+
 ## Quick checklists
 
 **New bar pill (opens a menu):** §4 pill shape → §6 all 11 wiring

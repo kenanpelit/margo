@@ -394,6 +394,12 @@ pub struct Sizing {
     /// media / network labels) on top of the global `font_scale`.
     /// `1.0` = unscaled; clamped to `0.5..=2.0`.
     pub bar_font_scale: f64,
+    /// Painted shell-surface opacity, as a percentage (`100` = opaque). Lower
+    /// values frost the bar + menu/panel backgrounds so the wallpaper shows
+    /// through (ashell-style). Clamped to `60..=100` so a surface never
+    /// disappears. Drives `--surface-opacity` (the frame-draw fill alpha +
+    /// the frameless panel backgrounds).
+    pub surface_opacity: i32,
 }
 
 impl Default for Sizing {
@@ -410,6 +416,7 @@ impl Default for Sizing {
             settings_font_scale: 1.0,
             font_scale: 1.0,
             bar_font_scale: 1.0,
+            surface_opacity: 100,
         }
     }
 }
