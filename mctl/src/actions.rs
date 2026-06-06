@@ -386,9 +386,10 @@ pub const ACTIONS: &[Action] = &[
         detail: "mango-here equivalent. Searches every monitor/tag for a window \
                  matching the appid (and optional title) regex. If found, moves \
                  it to the focused monitor's active tag and focuses it. If not, \
-                 spawns the SPAWN command. Hidden scratchpads are skipped — use \
-                 `toggle_named_scratchpad` for those. Bind: \
-                 `bind = alt,1,summon,^firefox$,none,firefox`.",
+                 spawns the SPAWN command. When several windows match, repeated \
+                 presses cycle through them (run-or-raise style). Hidden \
+                 scratchpads are skipped — use `toggle_named_scratchpad` for \
+                 those. Bind: `bind = alt,1,summon,^firefox$,none,firefox`.",
     },
     Action {
         name: "toggle_scratchpad",

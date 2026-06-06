@@ -346,25 +346,31 @@ impl MargoState {
     fn find_summonable_client(&self, name: Option<&str>, title: Option<&str>) -> Option<usize> {
         let name_pat = name.unwrap_or("");
         let title_pat = title.unwrap_or("");
-        for (idx, c) in self.clients.iter().enumerate() {
-            if c.is_in_scratchpad && !c.is_scratchpad_show {
-                continue;
-            }
-            let app_match = if name_pat.is_empty() {
-                true
-            } else {
-                matches_rule_text(name_pat, &c.app_id)
-            };
-            let title_match = if title_pat.is_empty() {
-                true
-            } else {
-                matches_rule_text(title_pat, &c.title)
-            };
-            if app_match && title_match {
-                return Some(idx);
-            }
+        let matches: Vec<usize> = self
+            .clients
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| !c.is_in_scratchpad || c.is_scratchpad_show)
+            .filter(|(_, c)| {
+                (name_pat.is_empty() || matches_rule_text(name_pat, &c.app_id))
+                    && (title_pat.is_empty() || matches_rule_text(title_pat, &c.title))
+            })
+            .map(|(idx, _)| idx)
+            .collect();
+        if matches.is_empty() {
+            return None;
         }
-        None
+        // Cycle (run-or-raise style): if the focused window is itself one of the
+        // matches, summon the NEXT match so repeated presses walk through every
+        // instance; otherwise summon the first. Single-instance apps (one match)
+        // are unaffected.
+        match self
+            .focused_client_idx()
+            .and_then(|f| matches.iter().position(|&i| i == f))
+        {
+            Some(pos) => Some(matches[(pos + 1) % matches.len()]),
+            None => Some(matches[0]),
+        }
     }
 
     /// Public action: full reset of the focused client back to
