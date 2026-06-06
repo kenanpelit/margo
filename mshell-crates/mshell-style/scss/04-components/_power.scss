@@ -72,6 +72,13 @@
   padding: var(--space-2) var(--space-3);
   min-width: 0;
   min-height: 0;
+  // Cancel the button-base `> *` inner padding that .ok-button-surface adds —
+  // otherwise the label carries a second 8×12 ring and the preset is ~16px
+  // bigger than the control-center pp button it should match. With this, both
+  // are a single 8×12 padding + radius-lg box.
+  > * {
+    padding: 0;
+  }
   label {
     font-size: var(--font-xs);
     font-weight: 600;
