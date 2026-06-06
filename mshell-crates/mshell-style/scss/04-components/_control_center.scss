@@ -72,7 +72,7 @@
   .control-center-pp-btn {
     all: unset;
     background: var(--surface-container);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     padding: var(--space-2) var(--space-3);
     color: var(--on-surface-variant);
     @include state-layer(var(--surface-container));
@@ -130,7 +130,7 @@
 .control-center-slider-chevron {
   all: unset;
   padding: var(--space-1);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   color: var(--on-surface-variant);
   @include state-layer();
 
@@ -186,7 +186,8 @@
 .control-center-tile {
   all: unset;
   background: var(--surface-container);
-  border-radius: var(--radius-md);
+  // Very rounded, GNOME / ashell-style toggle tile (ashell uses ~32px).
+  border-radius: var(--radius-xl);
   padding: var(--space-3);
   // State-layer over the resting surface colour so hover composites cleanly.
   @include state-layer(var(--surface-container));
@@ -325,7 +326,7 @@
 // Flat back-arrow button — same visual weight as the header panel-action-btn.
 .control-center-back-btn {
   all: unset;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: var(--space-2);
   color: var(--on-surface-variant);
   @include state-layer(transparent);
