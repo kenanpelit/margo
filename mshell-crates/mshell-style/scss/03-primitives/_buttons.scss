@@ -14,8 +14,11 @@
     color: var(#{$fg-content});
     -gtk-icon-size: var(--icon-sm);
   }
+  // GNOME/libadwaita-style comfort: a touch wider than tall (8 × 12) so
+  // labelled buttons read roomy rather than cramped. Icon-only buttons that
+  // pin their own min-width/height (e.g. 48×48) keep the icon centred.
   > * {
-    padding: var(--padding-md);
+    padding: var(--space-2) var(--space-3);
   }
 }
 
