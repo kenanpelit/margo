@@ -589,9 +589,14 @@ fn splice(model: &gtk::StringList, names: impl Iterator<Item = String>) {
 fn volume_scale() -> gtk::Scale {
     let scale = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.01);
     scale.set_width_request(240);
+    scale.set_hexpand(true);
     scale.set_valign(gtk::Align::Center);
     scale.set_draw_value(true);
+    scale.set_value_pos(gtk::PositionType::Right);
     scale.set_format_value_func(|_, v| format!("{:.0}%", v * 100.0));
+    // Colours the trough + the filled portion (--primary) so it reads as a
+    // proper volume bar, not a faint line. See `.settings-slider` in SCSS.
+    scale.add_css_class("settings-slider");
     scale
 }
 

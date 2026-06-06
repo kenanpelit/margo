@@ -479,6 +479,36 @@
     font-weight: 600;
 }
 
+// Settings sliders (e.g. Sound → Volume): a proper coloured volume bar — a
+// filled --primary track + a knob — instead of GTK's faint default line.
+// Mirrors .control-center-slider so sliders read the same shell-wide.
+.settings-slider {
+    trough {
+        min-height: 6px;
+        border-radius: var(--radius-pill);
+        background-color: var(--surface-container-high);
+    }
+    highlight {
+        min-height: 6px;
+        border-radius: var(--radius-pill);
+        background-color: var(--primary);
+    }
+    slider {
+        min-width: 16px;
+        min-height: 16px;
+        border-radius: var(--radius-pill);
+        background-color: var(--primary);
+        margin: calc(var(--space-1) * -1);
+        box-shadow: 0 1px 3px unquote("color-mix(in srgb, var(--on-surface) 30%, transparent)");
+    }
+    // Breathing room between the bar and the trailing "NN%" value.
+    value {
+        margin-left: var(--space-3);
+        color: var(--on-surface-variant);
+        font-variant-numeric: tabular-nums;
+    }
+}
+
 // Settings → Users: the inline status line turns error-coloured on a
 // failed / dismissed privileged action (matugen error role).
 .status-error {
