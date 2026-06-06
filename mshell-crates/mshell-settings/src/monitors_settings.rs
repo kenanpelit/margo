@@ -72,6 +72,11 @@ fn rebuild_list(model: &MonitorsModel, sender: &ComponentSender<MonitorsModel>) 
         lbl.set_hexpand(true);
         lbl.set_xalign(0.0);
         lbl.set_wrap(true);
+        // Break mid-token (regex / paths have no spaces) + report the
+        // wrapped width as natural, so a long payload doesn't force the
+        // Settings panel wider than its configured size on this page.
+        lbl.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+        lbl.set_natural_wrap_mode(gtk::NaturalWrapMode::None);
         lbl.set_selectable(true);
         lbl.add_css_class("label-medium");
         hbox.append(&lbl);

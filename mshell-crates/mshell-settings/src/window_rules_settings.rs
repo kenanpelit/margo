@@ -73,6 +73,13 @@ fn rebuild_list(model: &WindowRulesModel, sender: &ComponentSender<WindowRulesMo
         lbl.set_hexpand(true);
         lbl.set_xalign(0.0);
         lbl.set_wrap(true);
+        // A rule payload is mostly one long, space-free token (regex / app-id),
+        // so plain word-wrap can't break it — its minimum width becomes the
+        // whole token and forces the Settings panel wider than its configured
+        // size on this page. Allow breaking mid-token and report the wrapped
+        // (small) width as the natural one so the page fits the panel instead.
+        lbl.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+        lbl.set_natural_wrap_mode(gtk::NaturalWrapMode::None);
         lbl.set_selectable(true);
         lbl.add_css_class("label-medium");
         hbox.append(&lbl);
