@@ -244,6 +244,16 @@ pub(crate) struct InputSettingsModel {
     b_fingers: u32,
     b_action: String,
     b_arg: String,
+    /// `Some(i)` while editing the existing gesture bind at index `i`;
+    /// `None` while composing a brand-new one.
+    editing: Option<usize>,
+    /// Handles to the gesture-form widgets, so `EditBind` can load a row's
+    /// values back into them (and `AddBind` can clear them after a save).
+    b_motion_dd: gtk::DropDown,
+    b_fingers_dd: gtk::DropDown,
+    b_action_entry: gtk::Entry,
+    b_arg_entry: gtk::Entry,
+    b_modifiers_entry: gtk::Entry,
     // Dropdown models
     click_model: gtk::StringList,
     scroll_model: gtk::StringList,
@@ -299,6 +309,8 @@ pub(crate) enum InputSettingsInput {
     SetBArg(String),
     AddBind,
     RemoveBind(usize),
+    EditBind(usize),
+    CancelEdit,
     SetMbModifiers(String),
     SetMbButton(u32),
     SetMbAction(String),
@@ -320,6 +332,24 @@ pub(crate) struct InputSettingsInit {}
 
 #[derive(Debug)]
 pub(crate) enum InputSettingsCommandOutput {}
+
+impl InputSettingsModel {
+    /// Clear the gesture-add form to its empty defaults and leave edit mode.
+    /// Called after a save / cancel so the form is ready for the next binding.
+    fn reset_gesture_form(&mut self) {
+        self.editing = None;
+        self.b_modifiers = "none".to_string();
+        self.b_motion = 0;
+        self.b_fingers = 0;
+        self.b_action.clear();
+        self.b_arg.clear();
+        self.b_modifiers_entry.set_text("none");
+        self.b_action_entry.set_text("");
+        self.b_arg_entry.set_text("");
+        self.b_motion_dd.set_selected(0);
+        self.b_fingers_dd.set_selected(0);
+    }
+}
 
 #[relm4::component(pub)]
 impl Component for InputSettingsModel {
@@ -857,13 +887,27 @@ impl Component for InputSettingsModel {
                     },
                 },
 
-                gtk::Button {
-                    add_css_class: "ok-button-surface",
-                    add_css_class: "ok-button-cell",
-                    set_label: "Add gesture binding",
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
                     set_margin_top: 4,
-                    connect_clicked[sender] => move |_| {
-                        sender.input(InputSettingsInput::AddBind);
+                    gtk::Button {
+                        add_css_class: "ok-button-surface",
+                        add_css_class: "ok-button-cell",
+                        #[watch]
+                        set_label: if model.editing.is_some() { "Save changes" } else { "Add gesture binding" },
+                        connect_clicked[sender] => move |_| {
+                            sender.input(InputSettingsInput::AddBind);
+                        },
+                    },
+                    gtk::Button {
+                        add_css_class: "ok-button-surface",
+                        set_label: "Cancel",
+                        #[watch]
+                        set_visible: model.editing.is_some(),
+                        connect_clicked[sender] => move |_| {
+                            sender.input(InputSettingsInput::CancelEdit);
+                        },
                     },
                 },
 
@@ -941,7 +985,7 @@ impl Component for InputSettingsModel {
         let binds = read_gesturebinds();
         let mbinds_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
         let abinds_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
-        let model = InputSettingsModel {
+        let mut model = InputSettingsModel {
             xkb_layout: cfg.xkb_rules.layout.clone(),
             xkb_variant: cfg.xkb_rules.variant.clone(),
             xkb_options: cfg.xkb_rules.options.clone(),
@@ -970,6 +1014,14 @@ impl Component for InputSettingsModel {
             b_fingers: 0,
             b_action: String::new(),
             b_arg: String::new(),
+            editing: None,
+            // Placeholders; replaced with the real form widgets right after
+            // `view_output!()` builds them (see below).
+            b_motion_dd: gtk::DropDown::from_strings(&[]),
+            b_fingers_dd: gtk::DropDown::from_strings(&[]),
+            b_action_entry: gtk::Entry::new(),
+            b_arg_entry: gtk::Entry::new(),
+            b_modifiers_entry: gtk::Entry::new(),
             click_model: gtk::StringList::new(&["None", "Button areas", "Clickfinger"]),
             scroll_model: gtk::StringList::new(&["Disabled", "Two-finger", "Edge", "On-button"]),
             accel_model: gtk::StringList::new(&["None", "Flat", "Adaptive"]),
@@ -996,6 +1048,12 @@ impl Component for InputSettingsModel {
             axis_dir_model: gtk::StringList::new(&["Up", "Down", "Left", "Right"]),
         };
         let widgets = view_output!();
+        // Grab the real form widgets so EditBind can repopulate them.
+        model.b_motion_dd = widgets.motion_dd.clone();
+        model.b_fingers_dd = widgets.fingers_dd.clone();
+        model.b_action_entry = widgets.action_entry.clone();
+        model.b_arg_entry = widgets.arg_entry.clone();
+        model.b_modifiers_entry = widgets.modifiers_entry.clone();
         let _ = root;
         rebuild_binds(&model.binds_box, &model.binds, &sender);
         rebuild_raw_binds(
@@ -1129,17 +1187,59 @@ impl Component for InputSettingsModel {
                 if !arg.is_empty() {
                     line.push_str(&format!(", {arg}"));
                 }
-                self.binds.push(line);
+                // Editing an existing row replaces it in place; otherwise append.
+                match self.editing.take() {
+                    Some(idx) if idx < self.binds.len() => self.binds[idx] = line,
+                    _ => self.binds.push(line),
+                }
                 write_gesturebinds(&self.binds);
                 rebuild_binds(&self.binds_box, &self.binds, &sender);
+                self.reset_gesture_form();
             }
             InputSettingsInput::RemoveBind(i) => {
                 if i < self.binds.len() {
                     self.binds.remove(i);
                     write_gesturebinds(&self.binds);
                     rebuild_binds(&self.binds_box, &self.binds, &sender);
+                    // If the row being edited vanished/shifted, leave edit mode.
+                    if let Some(e) = self.editing
+                        && e >= self.binds.len()
+                    {
+                        self.reset_gesture_form();
+                    }
                 }
             }
+            InputSettingsInput::EditBind(i) => {
+                let Some(raw) = self.binds.get(i).cloned() else {
+                    return;
+                };
+                let f: Vec<String> = raw.split(',').map(|s| s.trim().to_string()).collect();
+                if f.len() < 4 {
+                    return;
+                }
+                let mods = if f[0].is_empty() || f[0].eq_ignore_ascii_case("none") {
+                    "none".to_string()
+                } else {
+                    f[0].clone()
+                };
+                let motion = MOTIONS.iter().position(|m| *m == f[1]).unwrap_or(0) as u32;
+                let fingers = FINGER_OPTS.iter().position(|x| *x == f[2]).unwrap_or(0) as u32;
+                let action = f[3].clone();
+                let arg = f.get(4..).map(|a| a.join(", ")).unwrap_or_default();
+                self.b_modifiers = mods.clone();
+                self.b_motion = motion;
+                self.b_fingers = fingers;
+                self.b_action = action.clone();
+                self.b_arg = arg.clone();
+                self.editing = Some(i);
+                // Load the values into the form widgets.
+                self.b_modifiers_entry.set_text(&mods);
+                self.b_action_entry.set_text(&action);
+                self.b_arg_entry.set_text(&arg);
+                self.b_motion_dd.set_selected(motion);
+                self.b_fingers_dd.set_selected(fingers);
+            }
+            InputSettingsInput::CancelEdit => self.reset_gesture_form(),
             InputSettingsInput::SetMbModifiers(s) => self.mb_modifiers = s,
             InputSettingsInput::SetMbButton(v) => self.mb_button = v,
             InputSettingsInput::SetMbAction(s) => self.mb_action = s.trim().to_string(),
@@ -1262,6 +1362,12 @@ fn rebuild_binds(
         label.set_hexpand(true);
         label.set_wrap(true);
         row.append(&label);
+        let edit = gtk::Button::with_label("Edit");
+        edit.add_css_class("ok-button-surface");
+        edit.set_valign(gtk::Align::Center);
+        let se = sender.clone();
+        edit.connect_clicked(move |_| se.input(InputSettingsInput::EditBind(i)));
+        row.append(&edit);
         let remove = gtk::Button::with_label("Remove");
         remove.add_css_class("ok-button-surface");
         remove.set_valign(gtk::Align::Center);
