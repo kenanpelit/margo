@@ -258,6 +258,53 @@ Duplicate-bind detection runs offline:
 mctl check-config       # exits 1 if any bind is shadowed
 ```
 
+## Gestures
+
+Touchpad (and touchscreen) swipes map to dispatch actions with `gesturebind`,
+exactly the way keys map with `bind`:
+
+```
+gesturebind = MODIFIERS, MOTION, FINGERS, ACTION[, ARG[, ARG…]]
+```
+
+- **Modifiers:** held keyboard modifiers (`super`, `ctrl`, …) or `NONE`.
+- **Motion:** swipe direction — the four cardinals `up` / `down` / `left` /
+  `right` and the four diagonals `up_left` / `up_right` / `down_left` /
+  `down_right`. A swipe is treated as diagonal only when it is clearly at an
+  angle (both axes carry > 40 % of the travel); otherwise it snaps to the
+  nearest cardinal, so diagonal binds never steal a straight swipe.
+- **Fingers:** `3` or `4`.
+- **Action:** any [dispatch action](#dispatch-actions) below; trailing fields
+  are its args. Swipes shorter than `swipe_min_threshold` px are ignored.
+
+A typical Niri/Mango-style set — 3 fingers to move *within* a monitor, 4 fingers
+to move *between* tags and monitors:
+
+```ini
+# 3 fingers — horizontal: focus windows; vertical: browser-tab cycle (native
+# sendkey, app-gated) falling back to window focus
+gesturebind = NONE, left,  3, focusdir, left
+gesturebind = NONE, right, 3, focusdir, right
+gesturebind = NONE, up,    3, sendkey, ctrl+shift+Tab, ^(firefox|chrome.*|brave.*)$, focusdir:up
+gesturebind = NONE, down,  3, sendkey, ctrl+Tab,       ^(firefox|chrome.*|brave.*)$, focusdir:down
+
+# 4 fingers — horizontal: tag nav; vertical: overview; up-diagonal: roam monitors
+gesturebind = NONE, left,      4, viewtoleft
+gesturebind = NONE, right,     4, viewtoright
+gesturebind = NONE, up,        4, toggle_overview
+gesturebind = NONE, down,      4, toggle_overview
+gesturebind = NONE, up_left,   4, focusmon, left
+gesturebind = NONE, up_right,  4, focusmon, right
+```
+
+Mouse buttons bind with `mousebind`, and the scroll wheel with `axisbind`:
+
+```ini
+mousebind = super, btn_left,  moveresize, curmove
+mousebind = super, btn_right, moveresize, curresize
+axisbind  = super, UP,        focusdir,   left      # Super + wheel → roam columns
+```
+
 ## Dispatch actions
 
 Every action below can be bound to a key (`bind`), a mouse button (`mousebind`), a gesture (`gesturebind`), or run live with `mctl dispatch <action> [args]`. Comma-separated aliases are interchangeable. This catalogue is generated from the same source as **`mctl actions --verbose`**, which is always current — run it if a build adds an action this page hasn't caught up with.
@@ -322,7 +369,8 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | Action | Arg | Description |
 | --- | --- | --- |
 | `toggle_named_scratchpad` | `<APPID> <TITLE\|none> <SPAWN>` | Show/hide a named scratchpad; spawn it if absent. Pairs with `windowrule isnamedscratchpad:1`. |
-| `summon`, `bring_here` | `<APPID> <TITLE\|none> <SPAWN>` | Bring a matching app to the current tag, or launch it if not running. |
+| `summon`, `bring_here` | `<APPID> <TITLE\|none> <SPAWN> [OP]` | Bring a matching app **to the current tag**, or launch it if not running. Repeated presses cycle through every match (run-or-raise). `OP` (optional 4th field) combines appid+title: `and` (default) / `or` / `difference` (appid but not title). |
+| `focusapp`, `raiseapp` | `<APPID> <TITLE\|none> <SPAWN> [OP]` | Run-or-raise counterpart to `summon`: focus the app **where it is** (switch to its tag/monitor), cycling instances; launch if none match. Same matching + `OP` operator. |
 | `toggle_scratchpad` | | Toggle every anonymous scratchpad on the focused monitor. |
 | `unscratchpad`, `exit_scratchpad` | | Emergency reset of the focused window's scratchpad/floating/fullscreen state. |
 
@@ -339,6 +387,8 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | Action | Arg | Description |
 | --- | --- | --- |
 | `spawn` | `<COMMAND>` | Run a shell command (through `sh -c`). |
+| `sendkey` | `<COMBO>[,<APPID-REGEX>][,<FALLBACK>]` | Inject a synthetic key combo into the focused window. Optional app-id gate restricts it to matching windows; optional fallback action fires otherwise (e.g. `focusdir:up`). Great for gestures that send browser shortcuts. |
+| `cyclekblayout`, `cycle_kb_layout` | | Cycle the keyboard to the next configured xkb layout. |
 | `run_script`, `rhai-eval` | `<PATH>` | Evaluate a Rhai script against the live compositor. |
 | `screenshot` / `screenshot-window` / `screenshot-region` / `screenshot-output` | | Capture output / window / region → editor → file (via `mscreenshot`). |
 | `reload`, `reload_config` | | Reload `~/.config/margo/config.conf` in place. |
