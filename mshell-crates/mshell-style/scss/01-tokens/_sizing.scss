@@ -7,15 +7,15 @@
   // style manager from config. 100% = fully opaque.
   --surface-opacity: 100%;
 
-  // Material-3 shape scale. Semantic radii so components share one
-  // corner language instead of every surface using --radius-widget.
-  // Fixed (not config-driven): corner geometry is part of the design
-  // language, not a per-user knob — see DESIGN.md §Shape language.
-  --radius-xs: 8px;     // small chips, inline badges
-  --radius-sm: 12px;    // buttons, list items
-  --radius-md: 16px;    // cards, tiles
-  --radius-lg: 24px;    // launcher / menu surfaces
-  --radius-xl: 28px;    // search field
+  // Semantic shape scale — soft, GNOME/ashell-style rounding. Components
+  // share one corner language instead of every surface using
+  // --radius-widget. Fixed (not config-driven): corner geometry is part of
+  // the design language, not a per-user knob — see DESIGN.md §Shape language.
+  --radius-xs: 10px;    // small chips, inline badges
+  --radius-sm: 16px;    // buttons, list items
+  --radius-md: 20px;    // cards, tiles
+  --radius-lg: 28px;    // launcher / menu surfaces
+  --radius-xl: 32px;    // search field, hero toggles
   --radius-pill: 999px; // fully-rounded pills (category chips)
 
   /* Spacing scale (DESIGN.md §1) — never hardcode raw px for gaps/padding. */

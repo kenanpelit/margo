@@ -144,15 +144,17 @@ language and never change at runtime:
 
 | Token | px | Use |
 |---|---|---|
-| `--radius-xs` | 8 | nested image/thumb inside a card, inline badge |
-| `--radius-sm` | 12 | **buttons, list rows, entries, spins, dropdowns, calendar cells** |
-| `--radius-md` | 16 | cards, tiles, hero panels, generic surfaces |
-| `--radius-lg` | 24 | launcher / large menu surfaces |
-| `--radius-xl` | 28 | search field (compact menus / launcher; a *panel* search is a pill — §12) |
+| `--radius-xs` | 10 | nested image/thumb inside a card, inline badge |
+| `--radius-sm` | 16 | **buttons, list rows, entries, spins, dropdowns, calendar cells** |
+| `--radius-md` | 20 | cards, tiles, hero panels, generic surfaces |
+| `--radius-lg` | 28 | launcher / large menu surfaces |
+| `--radius-xl` | 32 | search field, hero toggles (a *panel* search is a pill — §12) |
 | `--radius-pill` | 999 | toggles/switches, progress bars, category chips |
 
-`button-base` is `--radius-sm`, so **every `.ok-button-*` is 12 by
-default** — don't re-declare a button radius per component.
+The scale is intentionally soft (GNOME / ashell-style rounding) — buttons
+read as gently-rounded, cards/tiles clearly so. `button-base` is
+`--radius-sm`, so **every `.ok-button-*` is 16 by default** — don't
+re-declare a button radius per component.
 
 **Nesting (concentric corners).** Two boxes are only stepped down a
 notch when one is *physically inside* the other with padding (e.g. a
