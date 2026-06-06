@@ -35,12 +35,12 @@
 // (non-selected) state carries a calm tonal hover (DESIGN.md
 // §7 state-on-interactive / §Motion).
 .power-profile-button {
-  // Slim fully-rounded pill — same .ok-button-cell action-button geometry used
-  // across the shell (DESIGN.md §21): thin (40px) + --radius-pill, not a chunky
-  // tile.
-  padding: var(--space-2) var(--space-4);
+  // Slim fully-rounded pill (DESIGN.md §21). A touch smaller than the generic
+  // action pill — the power widget stacks three of these in a row, so 34px +
+  // tighter vertical padding keeps the row compact.
+  padding: var(--space-1) var(--space-3);
   min-width: 84px;
-  min-height: 40px;
+  min-height: 34px;
   border-radius: var(--radius-pill);
   transition: background-color var(--motion-medium) var(--ease-standard),
               color var(--motion-medium) var(--ease-standard);
@@ -53,11 +53,11 @@
 // Plain surface buttons; `.selected` (from `ok-button-surface`)
 // carries the active-state tint for Lock Auto / Idle Toggle.
 .power-control-button {
-  // Same slim pill as .power-profile-button so every button in the power
-  // widget — and across menus — is one family (DESIGN.md §21).
-  padding: var(--space-2) var(--space-4);
+  // Same compact pill as .power-profile-button so the whole power widget stays
+  // uniform (DESIGN.md §21).
+  padding: var(--space-1) var(--space-3);
   min-width: 84px;
-  min-height: 40px;
+  min-height: 34px;
   border-radius: var(--radius-pill);
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
