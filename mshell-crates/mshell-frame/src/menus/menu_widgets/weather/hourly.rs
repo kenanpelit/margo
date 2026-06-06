@@ -149,7 +149,14 @@ impl Component for HourlyModel {
         _root: &Self::Root,
     ) {
         match message {
-            HourlyInput::Update(hourly) => self.hourly = hourly,
+            HourlyInput::Update(hourly) => {
+                // The weather component re-emits Update on every store tick;
+                // skip the (expensive) rebuild when the forecast is unchanged.
+                if self.hourly == hourly {
+                    return;
+                }
+                self.hourly = hourly;
+            }
             HourlyInput::UpdateTemperatureUnit(unit) => {
                 if self.temperature_unit == unit {
                     return;

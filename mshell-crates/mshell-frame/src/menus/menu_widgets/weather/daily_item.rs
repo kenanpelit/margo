@@ -1,145 +1,59 @@
-use mshell_common::scoped_effects::EffectScope;
-use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
+//! One daily-forecast cell. A plain `gtk::Box` builder — **not** a relm4
+//! component (same reasoning as `hourly_item.rs`: a component-per-cell with a
+//! reactive config watcher each was hundreds of launches on the GTK main
+//! thread). The parent (`daily.rs`) owns the temperature-unit watch.
+
 use mshell_utils::weather::{get_percent_string, get_temperature_string, get_weather_icon_name};
-use reactive_graph::traits::{Get, GetUntracked};
-use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::gtk;
+use relm4::gtk::prelude::{BoxExt, WidgetExt};
 use wayle_weather::{DailyForecast, TemperatureUnit};
 
-#[derive(Debug, Clone)]
-pub(crate) struct DailyItemModel {
-    daily: DailyForecast,
-    temperature_unit: TemperatureUnit,
-    _effects: EffectScope,
-}
+/// Build a single daily cell (day · icon · high · low · rain%) as a plain
+/// widget tree. No component, no reactive effects.
+pub(crate) fn build_daily_item(
+    daily: &DailyForecast,
+    temperature_unit: &TemperatureUnit,
+) -> gtk::Box {
+    let root = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(8)
+        .build();
 
-#[derive(Debug)]
-pub(crate) enum DailyItemInput {
-    UpdateTemperatureUnit(TemperatureUnit),
-}
+    let day = gtk::Label::new(Some(&daily.date.format("%a").to_string()));
+    day.add_css_class("label-small-bold");
+    root.append(&day);
 
-#[derive(Debug)]
-pub(crate) enum DailyItemOutput {}
+    let icon = gtk::Image::new();
+    icon.add_css_class("hourly-weather-icon");
+    icon.set_icon_name(Some(get_weather_icon_name(&daily.condition, true)));
+    root.append(&icon);
 
-pub(crate) struct DailyItemInit {
-    pub daily: DailyForecast,
-}
+    let high = gtk::Label::new(Some(
+        get_temperature_string(&daily.temp_high, temperature_unit).as_str(),
+    ));
+    high.add_css_class("label-small-bold");
+    root.append(&high);
 
-#[derive(Debug)]
-pub(crate) enum DailyItemCommandOutput {}
+    let low = gtk::Label::new(Some(
+        get_temperature_string(&daily.temp_low, temperature_unit).as_str(),
+    ));
+    low.add_css_class("label-small-bold");
+    root.append(&low);
 
-#[relm4::component(pub)]
-impl Component for DailyItemModel {
-    type CommandOutput = DailyItemCommandOutput;
-    type Input = DailyItemInput;
-    type Output = DailyItemOutput;
-    type Init = DailyItemInit;
+    let rain = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .halign(gtk::Align::Center)
+        .spacing(2)
+        .build();
+    rain.add_css_class("daily-rain");
+    let rain_icon = gtk::Image::new();
+    rain_icon.add_css_class("daily-rain-icon");
+    rain_icon.set_icon_name(Some("weather-showers-scattered-symbolic"));
+    rain.append(&rain_icon);
+    let rain_label = gtk::Label::new(Some(get_percent_string(&daily.rain_chance).as_str()));
+    rain_label.add_css_class("label-small");
+    rain.append(&rain_label);
+    root.append(&rain);
 
-    view! {
-        #[root]
-        gtk::Box {
-            set_orientation: gtk::Orientation::Vertical,
-            set_spacing: 8,
-
-            gtk::Label {
-                add_css_class: "label-small-bold",
-                set_label: model.daily.date.format("%a").to_string().as_str(),
-            },
-
-            gtk::Image {
-                add_css_class: "hourly-weather-icon",
-                #[watch]
-                set_icon_name: Some(get_weather_icon_name(
-                    &model.daily.condition,
-                    true,
-                )),
-            },
-
-            gtk::Label {
-                add_css_class: "label-small-bold",
-                #[watch]
-                set_label: get_temperature_string(
-                    &model.daily.temp_high,
-                    &model.temperature_unit
-                ).as_str(),
-            },
-
-            gtk::Label {
-                add_css_class: "label-small-bold",
-                #[watch]
-                set_label: get_temperature_string(
-                    &model.daily.temp_low,
-                    &model.temperature_unit
-                ).as_str(),
-            },
-
-            // Rain chance for the day — surfaced from the wayle model.
-            gtk::Box {
-                add_css_class: "daily-rain",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_halign: gtk::Align::Center,
-                set_spacing: 2,
-
-                gtk::Image {
-                    add_css_class: "daily-rain-icon",
-                    set_icon_name: Some("weather-showers-scattered-symbolic"),
-                },
-
-                gtk::Label {
-                    add_css_class: "label-small",
-                    #[watch]
-                    set_label: get_percent_string(&model.daily.rain_chance).as_str(),
-                },
-            },
-        }
-    }
-
-    fn init(
-        params: Self::Init,
-        root: Self::Root,
-        sender: ComponentSender<Self>,
-    ) -> ComponentParts<Self> {
-        let base_config = config_manager().config();
-
-        let mut effects = EffectScope::new();
-
-        let config = base_config.clone();
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config.clone();
-            let temperature_unit = config.general().temperature_unit().get();
-            sender_clone.input(DailyItemInput::UpdateTemperatureUnit(
-                TemperatureUnit::from(temperature_unit),
-            ));
-        });
-
-        let model = DailyItemModel {
-            daily: params.daily,
-            temperature_unit: TemperatureUnit::from(
-                base_config.general().temperature_unit().get_untracked(),
-            ),
-            _effects: effects,
-        };
-
-        let widgets = view_output!();
-
-        ComponentParts { model, widgets }
-    }
-
-    fn update_with_view(
-        &mut self,
-        widgets: &mut Self::Widgets,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
-        match message {
-            DailyItemInput::UpdateTemperatureUnit(temperature_unit) => {
-                self.temperature_unit = temperature_unit;
-            }
-        }
-
-        self.update_view(widgets, sender);
-    }
+    root
 }

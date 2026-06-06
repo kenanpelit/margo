@@ -1,18 +1,16 @@
-use crate::menus::menu_widgets::weather::daily_item::{DailyItemInit, DailyItemModel};
+use crate::menus::menu_widgets::weather::daily_item::build_daily_item;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
 use mshell_utils::scroll_extensions::wire_vertical_to_horizontal;
 use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
-use relm4::{
-    Component, ComponentController, ComponentParts, ComponentSender, Controller, RelmRemoveAllExt,
-    RelmWidgetExt, gtk,
-};
+use relm4::{Component, ComponentParts, ComponentSender, RelmRemoveAllExt, RelmWidgetExt, gtk};
 use wayle_weather::{DailyForecast, TemperatureUnit};
 
 pub(crate) struct DailyModel {
-    controllers: Vec<Controller<DailyItemModel>>,
+    /// Cached forecast so a unit change can rebuild without a refetch.
+    daily: Vec<DailyForecast>,
     temperature_unit: TemperatureUnit,
     _effects: EffectScope,
 }
@@ -32,6 +30,14 @@ pub(crate) struct DailyInit {
 
 #[derive(Debug)]
 pub(crate) enum DailyCommandOutput {}
+
+/// Repaint the cells as plain widgets (cheap — no per-cell component/effects).
+fn rebuild_items(container: &gtk::Box, daily: &[DailyForecast], unit: &TemperatureUnit) {
+    container.remove_all();
+    for forecast in daily {
+        container.append(&build_daily_item(forecast, unit));
+    }
+}
 
 #[relm4::component(pub)]
 impl Component for DailyModel {
@@ -76,44 +82,36 @@ impl Component for DailyModel {
     ) -> ComponentParts<Self> {
         let base_config = config_manager().config();
 
+        // One effect TOTAL (not per cell): temperature unit.
         let mut effects = EffectScope::new();
+        {
+            let config = base_config.clone();
+            let s = sender.clone();
+            effects.push(move |_| {
+                let config = config.clone();
+                let unit = config.general().temperature_unit().get();
+                s.input(DailyInput::UpdateTemperatureUnit(TemperatureUnit::from(
+                    unit,
+                )));
+            });
+        }
 
-        let config = base_config.clone();
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config.clone();
-            let temperature_unit = config.general().temperature_unit().get();
-            sender_clone.input(DailyInput::UpdateTemperatureUnit(TemperatureUnit::from(
-                temperature_unit,
-            )));
-        });
+        let temperature_unit =
+            TemperatureUnit::from(base_config.general().temperature_unit().get_untracked());
 
-        let mut model = DailyModel {
-            controllers: Vec::new(),
-            temperature_unit: TemperatureUnit::from(
-                base_config.general().temperature_unit().get_untracked(),
-            ),
+        let model = DailyModel {
+            daily: params.daily,
+            temperature_unit,
             _effects: effects,
         };
 
         let widgets = view_output!();
 
-        let container = widgets.widget_container.clone();
-        let mut controllers: Vec<Controller<DailyItemModel>> = Vec::new();
-
-        params.daily.iter().for_each(|forecast| {
-            let controller = DailyItemModel::builder()
-                .launch(DailyItemInit {
-                    daily: forecast.clone(),
-                })
-                .detach();
-
-            container.append(controller.widget());
-            controllers.push(controller);
-        });
-
-        model.controllers = controllers;
-
+        rebuild_items(
+            &widgets.widget_container,
+            &model.daily,
+            &model.temperature_unit,
+        );
         wire_vertical_to_horizontal(&widgets.scroll_window, 32.0);
 
         ComponentParts { model, widgets }
@@ -128,28 +126,25 @@ impl Component for DailyModel {
     ) {
         match message {
             DailyInput::Update(daily) => {
-                widgets.widget_container.remove_all();
-                let container = widgets.widget_container.clone();
-                let mut controllers: Vec<Controller<DailyItemModel>> = Vec::new();
-
-                daily.iter().for_each(|forecast| {
-                    let controller = DailyItemModel::builder()
-                        .launch(DailyItemInit {
-                            daily: forecast.clone(),
-                        })
-                        .detach();
-
-                    container.append(controller.widget());
-                    controllers.push(controller);
-                });
-
-                self.controllers = controllers;
+                // The weather component re-emits Update on every store tick;
+                // skip the rebuild when the forecast is unchanged.
+                if self.daily == daily {
+                    return;
+                }
+                self.daily = daily;
             }
-            DailyInput::UpdateTemperatureUnit(temperature_unit) => {
-                self.temperature_unit = temperature_unit;
+            DailyInput::UpdateTemperatureUnit(unit) => {
+                if self.temperature_unit == unit {
+                    return;
+                }
+                self.temperature_unit = unit;
             }
         }
-
+        rebuild_items(
+            &widgets.widget_container,
+            &self.daily,
+            &self.temperature_unit,
+        );
         self.update_view(widgets, sender);
     }
 }
