@@ -1,121 +1,117 @@
-//! Linux-VT colour bridge — make the bare-TTY greeter render the margo theme
-//! reliably on any console.
+//! Linux-VT colour bridge — make the bare-TTY greeter match `--preview`.
 //!
 //! mlogind's theme uses 24-bit hex colours (`#282A36`, `#BD93F9`, …) which
 //! `config::get_color` turns into `ratatui::Color::Rgb`. A **terminal
 //! emulator** (where `mlogind --preview` runs) renders those truecolor SGR
 //! sequences exactly, so preview shows the real margo palette. The **bare
-//! Linux VT** (kernel fbcon / DRM-KMS console, where the real greeter runs)
-//! has *no* truecolor: it owns a 16-entry palette and approximates every
-//! `38;2;r;g;b` down to the nearest of those 16.
+//! Linux VT** (kernel fbcon, where the real greeter runs) has *no* truecolor:
+//! it owns a 16-entry palette and approximates every `38;2;r;g;b` down to the
+//! nearest of those 16. That mismatch is why login looks nothing like
+//! `--preview` — same config, different output colour depth.
 //!
-//! An earlier version tried to *reprogram* console palette slots via the
-//! Linux-console OSC `ESC ] P n rrggbb` and hand back `Color::Indexed(slot)`.
-//! On modern DRM/KMS consoles that escape is silently ignored, so the indexed
-//! colours rendered with the console's *default* palette instead — e.g. the
-//! accent landed on slot 2 (default green), which is why login came out
-//! "greenish" no matter what the theme said.
+//! Fix: on the real VT we reprogram a handful of console palette entries to
+//! the theme's *actual* RGB values via the Linux-console OSC
+//! `ESC ] P n rrggbb` (see `console_codes(4)`), then hand back
+//! `Color::Indexed(slot)` so the kernel uses that exact entry instead of an
+//! approximation. In preview this whole module is a no-op — the emulator
+//! keeps its truecolor.
 //!
-//! Fix: don't depend on reprogramming. On the real VT we map each themed
-//! `Rgb` to the **nearest of the 16 standard ANSI colours** and return it as a
-//! *named* `Color` (`Black`, `LightMagenta`, …). Named colours render through
-//! the console's own (boot-time) palette, so the result is deterministic and
-//! correct on every console — a clean 16-colour Dracula. In preview we leave
-//! truecolor untouched so the emulator still shows the exact palette.
+//! Slot policy: we assign first-come into [`USABLE_SLOTS`], which deliberately
+//! **skips slots 1 (red) and 3 (yellow)** so `status_message`'s named
+//! `Color::Red` / `Color::Yellow` keep working, and **lists the low slots
+//! first** so the window background (drawn before anything else) lands on a
+//! low slot — bright-slot *backgrounds* can blink on fbcon, low ones never do.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::HashMap;
+use std::io::Write;
+use std::sync::{Mutex, OnceLock};
 
 use ratatui::style::Color;
 
-/// True when rendering into a terminal emulator (`--preview`): keep truecolor
-/// and never down-map to the 16-colour palette.
-static PREVIEW: AtomicBool = AtomicBool::new(false);
+/// Console palette entries we may repurpose, in assignment order.
+///
+/// Skips 1 (red) and 3 (yellow) — reserved for `status_message`'s error /
+/// warning text. Low slots (0,2,4–7) come first so the first colour seen each
+/// frame (the background) gets a non-blinking entry; the bright half (8–15) is
+/// overflow for richer themes (e.g. after `sync-theme` pulls a wallpaper
+/// palette with more distinct colours).
+const USABLE_SLOTS: [u8; 14] = [0, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
-/// A standard Linux-console palette entry: its RGB (for nearest-match) and the
-/// named ratatui `Color` to render it as.
-struct Ansi(u8, u8, u8, Color);
+struct PaletteState {
+    /// True when rendering into a terminal emulator (`--preview`); then we
+    /// leave truecolor alone and never emit Linux-VT escapes.
+    preview: bool,
+    /// Distinct RGB → assigned console slot.
+    slots: HashMap<(u8, u8, u8), u8>,
+    /// Index into `USABLE_SLOTS` of the next free slot.
+    next: usize,
+}
 
-/// The grayscale ramp — used for genuinely achromatic theme colours so a dark
-/// near-neutral background doesn't get tinted.
-const ACHROMATIC: [Ansi; 4] = [
-    Ansi(0, 0, 0, Color::Black),
-    Ansi(85, 85, 85, Color::DarkGray),
-    Ansi(170, 170, 170, Color::Gray),
-    Ansi(255, 255, 255, Color::White),
-];
+static STATE: OnceLock<Mutex<PaletteState>> = OnceLock::new();
 
-/// The 12 chromatic console colours (normal + bright) — used for any theme
-/// colour with real hue, so Dracula's blues/purples/cyans stay *coloured*
-/// instead of collapsing onto the nearest gray.
-const CHROMATIC: [Ansi; 12] = [
-    Ansi(170, 0, 0, Color::Red),
-    Ansi(0, 170, 0, Color::Green),
-    Ansi(170, 85, 0, Color::Yellow),
-    Ansi(0, 0, 170, Color::Blue),
-    Ansi(170, 0, 170, Color::Magenta),
-    Ansi(0, 170, 170, Color::Cyan),
-    Ansi(255, 85, 85, Color::LightRed),
-    Ansi(85, 255, 85, Color::LightGreen),
-    Ansi(255, 255, 85, Color::LightYellow),
-    Ansi(85, 85, 255, Color::LightBlue),
-    Ansi(255, 85, 255, Color::LightMagenta),
-    Ansi(85, 255, 255, Color::LightCyan),
-];
-
-/// Chroma (max − min channel) at or above which a colour is treated as having
-/// real hue. `#CDD6F4` (text, chroma 39) stays achromatic → white; `#6272A4`
-/// (field border, chroma 66) and the accents read as colour.
-const CHROMA_THRESHOLD: i32 = 48;
+fn state() -> &'static Mutex<PaletteState> {
+    STATE.get_or_init(|| {
+        Mutex::new(PaletteState {
+            preview: false,
+            slots: HashMap::new(),
+            next: 0,
+        })
+    })
+}
 
 /// Record whether we're rendering in preview (terminal emulator) mode.
 /// Call once at startup, before the first draw.
 pub fn init(preview: bool) {
-    PREVIEW.store(preview, Ordering::Relaxed);
+    state().lock().unwrap().preview = preview;
 }
 
 /// Map a resolved style colour to something the current output can show.
 ///
 /// * preview, or a non-`Rgb` colour → returned unchanged (emulator does
-///   truecolor; named colours already index the palette correctly).
-/// * real VT + `Rgb` → snapped to a named ANSI colour so the console renders it
-///   via its own palette (no reprogramming, deterministic on every console).
-///   Achromatic colours snap to the gray ramp; anything with real hue snaps to
-///   a chromatic bucket, so the dark theme keeps its blues/purples/cyans and
-///   doesn't read as plain black-and-white.
+///   truecolor; named colours already index the palette).
+/// * real VT + `Rgb` → reprogram a console slot to that RGB and return
+///   `Indexed(slot)` so the kernel renders it verbatim. Once every usable
+///   slot is taken, fall back to `Rgb` and let the kernel approximate.
 pub fn map_color(color: Color) -> Color {
     let Color::Rgb(r, g, b) = color else {
         return color;
     };
-    if PREVIEW.load(Ordering::Relaxed) {
+
+    let mut st = state().lock().unwrap();
+    if st.preview {
         return color;
     }
-    nearest_ansi(r, g, b)
-}
 
-/// Nearest named ANSI colour, gated by chroma so low-saturation colours map to
-/// gray and hued colours map to a chromatic bucket.
-fn nearest_ansi(r: u8, g: u8, b: u8) -> Color {
-    let chroma = r.max(g).max(b) as i32 - r.min(g).min(b) as i32;
-    let palette: &[Ansi] = if chroma >= CHROMA_THRESHOLD {
-        &CHROMATIC
-    } else {
-        &ACHROMATIC
-    };
-
-    let (r, g, b) = (r as i32, g as i32, b as i32);
-    let mut best = &palette[0];
-    let mut best_dist = i32::MAX;
-    for entry in palette {
-        let (dr, dg, db) = (r - entry.0 as i32, g - entry.1 as i32, b - entry.2 as i32);
-        let dist = dr * dr + dg * dg + db * db;
-        if dist < best_dist {
-            best_dist = dist;
-            best = entry;
-        }
+    if let Some(&slot) = st.slots.get(&(r, g, b)) {
+        return Color::Indexed(slot);
     }
-    best.3
+
+    let Some(&slot) = USABLE_SLOTS.get(st.next) else {
+        // Out of slots — let the kernel approximate this one to 16 colours.
+        return color;
+    };
+    st.next += 1;
+    st.slots.insert((r, g, b), slot);
+
+    // Linux-console palette-set: ESC ] P <slot-nibble> <rrggbb>, 7 hex digits,
+    // no string terminator. Written straight to stdout from inside the draw
+    // closure — ratatui buffers the frame and flushes *after* the closure, so
+    // this lands before the pixels that use it.
+    let _ = write!(std::io::stdout(), "\x1b]P{slot:X}{r:02X}{g:02X}{b:02X}");
+    let _ = std::io::stdout().flush();
+
+    Color::Indexed(slot)
 }
 
-/// No-op kept for call-site compatibility — we no longer reprogram the console
-/// palette, so there is nothing to restore.
-pub fn reset() {}
+/// Restore the console's default palette and forget our slot assignments, so a
+/// later redraw reprograms from scratch. No-op in preview.
+pub fn reset() {
+    let mut st = state().lock().unwrap();
+    if st.preview {
+        return;
+    }
+    st.slots.clear();
+    st.next = 0;
+    let _ = write!(std::io::stdout(), "\x1b]R");
+    let _ = std::io::stdout().flush();
+}
