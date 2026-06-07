@@ -178,7 +178,7 @@ impl Component for DockSettingsModel {
                 },
                 #[template] DockRow {
                     #[template_child] title { set_label: "Standalone style" },
-                    #[template_child] desc { set_label: "Popup = opens like the session menu (Esc / click-away closes). Layer-shell = pinned to a screen edge." },
+                    #[template_child] desc { set_label: "Layer-shell = bar-attached, opens inside the bar like the session menu. Popup = its own floating window pinned to a screen edge (Always / Auto-hide / Toggle)." },
                     gtk::DropDown {
                         set_valign: gtk::Align::Center,
                         set_width_request: 160,

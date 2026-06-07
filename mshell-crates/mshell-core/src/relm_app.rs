@@ -60,12 +60,10 @@ pub(crate) struct WindowGroup {
 /// `dock.standalone` is off. Used at window-group creation and on a live
 /// `dock.standalone/behavior/position` change (rebuild).
 fn make_mdock(monitor: &Monitor) -> Option<Controller<MdockSurface>> {
-    let standalone = config_manager()
-        .config()
-        .dock()
-        .standalone()
-        .get_untracked();
-    if !standalone {
+    let dock = config_manager().config().dock().get_untracked();
+    // The standalone surface is the *Popup* (independent) style only. In
+    // LayerShell style the dock is a bar-attached Frame menu instead.
+    if !dock.standalone || !matches!(dock.style, mshell_config::schema::config::DockStyle::Popup) {
         return None;
     }
     Some(
@@ -75,6 +73,16 @@ fn make_mdock(monitor: &Monitor) -> Option<Controller<MdockSurface>> {
             })
             .detach(),
     )
+}
+
+/// Is the standalone dock the bar-attached (LayerShell) Frame menu?
+fn dock_is_layer_shell() -> bool {
+    let dock = config_manager().config().dock().get_untracked();
+    dock.standalone
+        && matches!(
+            dock.style,
+            mshell_config::schema::config::DockStyle::LayerShell
+        )
 }
 
 pub(crate) struct Shell {
@@ -405,24 +413,22 @@ impl Component for Shell {
                     group.mdock = make_mdock(&group.monitor);
                 }
             }
-            ShellInput::DockToggle => {
+            ShellInput::DockToggle | ShellInput::DockShow | ShellInput::DockHide => {
+                // LayerShell style = a bar-attached Frame menu (toggle-only, so
+                // show/hide also toggle). Popup style = the independent surface,
+                // which honours show/hide/toggle distinctly.
+                let layer_shell = dock_is_layer_shell();
                 for group in self.window_groups.values() {
-                    if let Some(m) = &group.mdock {
-                        m.emit(MdockSurfaceInput::Toggle);
-                    }
-                }
-            }
-            ShellInput::DockShow => {
-                for group in self.window_groups.values() {
-                    if let Some(m) = &group.mdock {
-                        m.emit(MdockSurfaceInput::Show);
-                    }
-                }
-            }
-            ShellInput::DockHide => {
-                for group in self.window_groups.values() {
-                    if let Some(m) = &group.mdock {
-                        m.emit(MdockSurfaceInput::Hide);
+                    if layer_shell {
+                        if let Some(f) = &group.frame {
+                            f.emit(FrameInput::ToggleDockMenu);
+                        }
+                    } else if let Some(m) = &group.mdock {
+                        m.emit(match message {
+                            ShellInput::DockShow => MdockSurfaceInput::Show,
+                            ShellInput::DockHide => MdockSurfaceInput::Hide,
+                            _ => MdockSurfaceInput::Toggle,
+                        });
                     }
                 }
             }

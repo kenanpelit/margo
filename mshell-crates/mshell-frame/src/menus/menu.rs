@@ -103,6 +103,9 @@ pub(crate) enum MenuType {
     Keybinds,
     /// `alarm_clock` bar pill's panel — tabbed Alarms + Stopwatch.
     AlarmClock,
+    /// mdock as a bar-attached menu (the "layer-shell" mdock style) —
+    /// the pinned/running app strip opened inside the frame.
+    Dock,
     /// `control_center` bar pill's panel — system preferences and
     /// quick-access controls.
     ControlCenter,
@@ -486,6 +489,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, alarmclock_menu);
                 effect_min_width!(effects, base_config, sender, alarmclock_menu);
                 effect_max_height!(effects, base_config, sender, alarmclock_menu);
+            }
+            MenuType::Dock => {
+                css_class = "mdock-menu".to_string();
+                effect_widgets!(effects, base_config, sender, dock_menu);
+                effect_min_width!(effects, base_config, sender, dock_menu);
+                effect_max_height!(effects, base_config, sender, dock_menu);
             }
             MenuType::ControlCenter => {
                 css_class = "control-center-menu".to_string();

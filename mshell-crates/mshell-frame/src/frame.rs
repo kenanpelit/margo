@@ -38,6 +38,7 @@ const KEEP_AWAKE_MENU: &str = "keep_awake";
 const TWILIGHT_MENU: &str = "twilight";
 const KEYBINDS_MENU: &str = "keybinds";
 const ALARMCLOCK_MENU: &str = "alarmclock";
+const DOCK_MENU: &str = "dock";
 const CONTROL_CENTER_MENU: &str = "control_center";
 const SSH_MENU: &str = "ssh_sessions";
 const NDNS_MENU: &str = "dns";
@@ -103,6 +104,7 @@ pub struct Frame {
     twilight_menu: Controller<MenuModel>,
     keybinds_menu: Controller<MenuModel>,
     alarmclock_menu: Controller<MenuModel>,
+    dock_menu: Controller<MenuModel>,
     control_center_menu: Controller<MenuModel>,
     ssh_menu: Controller<MenuModel>,
     dns_menu: Controller<MenuModel>,
@@ -211,6 +213,7 @@ pub enum FrameInput {
     ToggleTwilightMenu,
     ToggleKeybindsMenu,
     ToggleAlarmClockMenu,
+    ToggleDockMenu,
     ToggleControlCenterMenu,
     ToggleSshSessionsMenu,
     ToggleDnsMenu,
@@ -815,6 +818,7 @@ impl Component for Frame {
         let twilight_menu = Self::build_menu(&sender, MenuType::Twilight);
         let keybinds_menu = Self::build_menu(&sender, MenuType::Keybinds);
         let alarmclock_menu = Self::build_menu(&sender, MenuType::AlarmClock);
+        let dock_menu = Self::build_menu(&sender, MenuType::Dock);
         let control_center_menu = Self::build_menu(&sender, MenuType::ControlCenter);
         let ssh_menu = Self::build_menu(&sender, MenuType::SshSessions);
         let dns_menu = Self::build_menu(&sender, MenuType::Dns);
@@ -915,6 +919,7 @@ impl Component for Frame {
             let _ = pos!(twilight_menu);
             let _ = pos!(keybinds_menu);
             let _ = pos!(alarmclock_menu);
+            let _ = pos!(dock_menu);
             let _ = pos!(control_center_menu);
             let _ = pos!(ssh_menu);
             let _ = pos!(margo_layout_menu);
@@ -1003,6 +1008,7 @@ impl Component for Frame {
             twilight_menu,
             keybinds_menu,
             alarmclock_menu,
+            dock_menu,
             control_center_menu,
             ssh_menu,
             dns_menu,
@@ -1223,6 +1229,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleAlarmClockMenu => {
                 self.toggle_menu(ALARMCLOCK_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleDockMenu => {
+                self.toggle_menu(DOCK_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleControlCenterMenu => {
@@ -2281,6 +2291,13 @@ impl Frame {
             .alarmclock_menu()
             .position()
             .get();
+        let dock_menu_widget: Widget = self.dock_menu.widget().clone().upcast();
+        let dock_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .dock_menu()
+            .position()
+            .get();
         let control_center_menu_widget: Widget = self.control_center_menu.widget().clone().upcast();
         let control_center_menu_position = mshell_config::config_manager::config_manager()
             .config()
@@ -2426,6 +2443,7 @@ impl Frame {
             ALARMCLOCK_MENU,
             &alarmclock_menu_position,
         );
+        Self::add_to_stack(widgets, &dock_menu_widget, DOCK_MENU, &dock_menu_position);
         Self::add_to_stack(
             widgets,
             &control_center_menu_widget,
