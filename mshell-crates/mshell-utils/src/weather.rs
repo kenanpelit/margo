@@ -204,19 +204,20 @@ pub fn load_weather_cache() -> Option<wayle_weather::Weather> {
 }
 
 /// Poll interval to apply for a given weather status, or `None` to leave it
-/// unchanged (used for the transient `Loading` state). Drives the retry loop:
-/// a rate-limit (HTTP 429) backs off hard (1h) because the quota won't reset
-/// until its window rolls over; other errors use the configurable fast retry;
-/// a successful load returns to the normal cadence.
+/// unchanged (the transient `Loading` state). On **any** fetch failure —
+/// rate-limit (HTTP 429), offline, parse error, … — back off to the
+/// configurable `retry_mins` (the "backoff on failure" knob) so we stop
+/// hammering an endpoint that's failing; a successful load returns to the
+/// normal `normal_mins` cadence. The user can set `retry_mins` as high as they
+/// like (e.g. 720 = 12 h) from Settings → Weather.
 pub fn weather_poll_interval(
     status: &wayle_weather::WeatherStatus,
     retry_mins: u64,
     normal_mins: u64,
 ) -> Option<std::time::Duration> {
     use std::time::Duration;
-    use wayle_weather::{WeatherErrorKind, WeatherStatus};
+    use wayle_weather::WeatherStatus;
     match status {
-        WeatherStatus::Error(WeatherErrorKind::RateLimited) => Some(Duration::from_secs(60 * 60)),
         WeatherStatus::Error(_) => Some(Duration::from_secs(retry_mins.max(1) * 60)),
         WeatherStatus::Loaded => Some(Duration::from_secs(normal_mins.max(1) * 60)),
         WeatherStatus::Loading => None,
@@ -230,15 +231,20 @@ mod tests {
     use wayle_weather::{WeatherErrorKind, WeatherStatus};
 
     #[test]
-    fn rate_limit_backs_off_one_hour_ignoring_retry() {
-        let i = weather_poll_interval(&WeatherStatus::Error(WeatherErrorKind::RateLimited), 2, 15);
-        assert_eq!(i, Some(Duration::from_secs(3600)));
+    fn rate_limit_uses_configurable_backoff() {
+        // A long backoff (12 h) honours the user's setting — no hard-coded cap.
+        let i = weather_poll_interval(
+            &WeatherStatus::Error(WeatherErrorKind::RateLimited),
+            720,
+            15,
+        );
+        assert_eq!(i, Some(Duration::from_secs(720 * 60)));
     }
 
     #[test]
-    fn transient_error_uses_fast_retry() {
-        let i = weather_poll_interval(&WeatherStatus::Error(WeatherErrorKind::Network), 2, 15);
-        assert_eq!(i, Some(Duration::from_secs(120)));
+    fn any_error_uses_the_backoff_interval() {
+        let i = weather_poll_interval(&WeatherStatus::Error(WeatherErrorKind::Network), 60, 15);
+        assert_eq!(i, Some(Duration::from_secs(60 * 60)));
     }
 
     #[test]

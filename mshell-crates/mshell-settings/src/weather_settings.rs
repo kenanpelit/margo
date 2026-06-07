@@ -321,13 +321,13 @@ impl Component for WeatherSettingsModel {
                         gtk::Label {
                             add_css_class: "label-medium-bold",
                             set_halign: gtk::Align::Start,
-                            set_label: "Retry interval on failure",
+                            set_label: "Backoff on failure",
                             set_hexpand: true,
                         },
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "Minutes between retries while a fetch keeps failing (faster fallback). Returns to the normal interval once it recovers.",
+                            set_label: "Minutes to wait before retrying while fetches keep failing (rate-limit / offline). Set it high — e.g. 720 = 12 h — so it stops hammering. Returns to the normal interval once it recovers.",
                             set_xalign: 0.0,
                             set_wrap: true,
                             set_natural_wrap_mode: gtk::NaturalWrapMode::None,
@@ -337,8 +337,8 @@ impl Component for WeatherSettingsModel {
                     #[name = "retry_minutes_spin"]
                     gtk::SpinButton {
                         set_valign: gtk::Align::Center,
-                        set_range: (1.0, 60.0),
-                        set_increments: (1.0, 5.0),
+                        set_range: (1.0, 1440.0),
+                        set_increments: (5.0, 60.0),
                         set_digits: 0,
                         set_value: model.retry_minutes as f64,
                         connect_value_changed[sender] => move |s| {

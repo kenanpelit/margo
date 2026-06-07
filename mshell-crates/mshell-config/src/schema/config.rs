@@ -167,13 +167,14 @@ pub struct General {
     pub weather_saved_locations: Vec<SavedLocation>,
     pub temperature_unit: TemperatureUnitConfig,
     /// Minutes between weather refreshes (the Open-Meteo poll interval).
-    /// On a fetch failure the shell temporarily retries faster, then
-    /// returns to this cadence once a fetch succeeds.
+    /// Normal cadence between successful weather fetches. On a failure the
+    /// shell switches to `weather_retry_minutes` until a fetch succeeds again.
     #[serde(default = "default_weather_poll_minutes")]
     pub weather_poll_minutes: u32,
-    /// Minutes between retries while a weather fetch is failing (the
-    /// faster fallback cadence); returns to `weather_poll_minutes` once
-    /// a fetch succeeds.
+    /// Backoff between attempts while a weather fetch keeps failing
+    /// (rate-limit / offline). Set high (e.g. 720 = 12 h) to stop hammering an
+    /// endpoint that's down; returns to `weather_poll_minutes` once a fetch
+    /// succeeds.
     #[serde(default = "default_weather_retry_minutes")]
     pub weather_retry_minutes: u32,
     /// Draw rounded screen corners as a per-monitor overlay.
@@ -231,7 +232,9 @@ fn default_weather_poll_minutes() -> u32 {
 }
 
 fn default_weather_retry_minutes() -> u32 {
-    2
+    // Back off a full hour on any fetch failure (rate-limit / offline) instead
+    // of hammering the endpoint. Configurable up to 12 h+ in Settings.
+    60
 }
 
 impl Default for General {
