@@ -26,7 +26,7 @@ bugs after the fact ("açıkken son 3 oturum diskte dursun").
 
 | Question | Decision |
 |---|---|
-| Location | `$XDG_STATE_HOME/margo/logs/` (default `~/.local/state/margo/logs/`), **separate subdirs**: `logs/margo/` and `logs/mshell/`. |
+| Location | `$XDG_STATE_HOME/margo/logs/` (default `~/.local/state/margo/logs/`), **flat** — both apps write directly here, namespaced by the `{app}-` filename prefix (`margo-*.log`, `mshell-*.log`). No per-app subdir. |
 | Default | **On**, level `info`. |
 | Levels | Full ladder `error < warn < info < debug < trace`, selectable in Settings + command, applied **live** (no restart). |
 | "Last 3 sessions" | **Each process start = a new session file**; keep the newest 3 per app, delete older. |
@@ -46,7 +46,8 @@ rotating per-session file layer, and expose a live level handle.
 pub struct LogInit {
     /// "margo" or "mshell" — used for the filter target and the file prefix.
     pub app_name: String,
-    /// Directory for THIS app's logs, e.g. ~/.local/state/margo/logs/margo.
+    /// The shared log directory, ~/.local/state/margo/logs (flat; files are
+    /// namespaced by the `{app_name}-` prefix). Both apps pass the same dir.
     pub dir: PathBuf,
     /// Initial level: "error"|"warn"|"info"|"debug"|"trace".
     pub level: String,
@@ -112,8 +113,9 @@ file; the previous session's file is preserved (one of the kept 3). Empty files
   - `log_level` (string, default `"info"`; validate against the ladder)
   - `log_keep_sessions` (u32, default `3`)
 - **`margo/src/main.rs`**: replace the inline tracing init with
-  `margo_logging::init(LogInit{ app_name:"margo", dir: state_logs/"margo",
-  level, enabled, keep_sessions, to_stdout:true })`. Store the `LogHandle` in a
+  `margo_logging::init(LogInit{ app_name:"margo", dir: state_logs,
+  level, enabled, keep_sessions, to_stdout:true })` (where `state_logs =
+  ~/.local/state/margo/logs`). Store the `LogHandle` in a
   `static OnceLock<LogHandle>` (the guard must outlive the process).
 - **`reload_config`**: when the parsed config's `log_level`/`log_to_file`
   change, call `handle.set_level` / `set_enabled` so a `mctl config reload`
@@ -135,7 +137,7 @@ file; the previous session's file is preserved (one of the kept 3). Empty files
   with a manual `Default` (serde-default caveat per config-conventions) and a
   `.logging()` store accessor.
 - **`mshell-logging::init`**: delegate to `margo_logging::init` (app
-  `"mshell"`, dir `state_logs/"mshell"`), reading the config. Store the
+  `"mshell"`, dir `~/.local/state/margo/logs`), reading the config. Store the
   `LogHandle` in a global `OnceLock` so `mshell-core` IPC can reach it. Keep the
   `init(app_name)` signature working for any other callers.
 - **`mshellctl` + IPC** (`mshell-core/src/ipc.rs`): new `log` verbs mirroring
