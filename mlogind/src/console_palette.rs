@@ -31,26 +31,41 @@ use ratatui::style::Color;
 /// and never down-map to the 16-colour palette.
 static PREVIEW: AtomicBool = AtomicBool::new(false);
 
-/// The 16 standard Linux-console palette RGBs, indexed 0..16, used purely to
-/// find which named ANSI colour a themed RGB is closest to.
-const ANSI16: [(u8, u8, u8); 16] = [
-    (0, 0, 0),       // 0  black
-    (170, 0, 0),     // 1  red
-    (0, 170, 0),     // 2  green
-    (170, 85, 0),    // 3  yellow/brown
-    (0, 0, 170),     // 4  blue
-    (170, 0, 170),   // 5  magenta
-    (0, 170, 170),   // 6  cyan
-    (170, 170, 170), // 7  white/gray
-    (85, 85, 85),    // 8  bright black
-    (255, 85, 85),   // 9  bright red
-    (85, 255, 85),   // 10 bright green
-    (255, 255, 85),  // 11 bright yellow
-    (85, 85, 255),   // 12 bright blue
-    (255, 85, 255),  // 13 bright magenta
-    (85, 255, 255),  // 14 bright cyan
-    (255, 255, 255), // 15 bright white
+/// A standard Linux-console palette entry: its RGB (for nearest-match) and the
+/// named ratatui `Color` to render it as.
+struct Ansi(u8, u8, u8, Color);
+
+/// The grayscale ramp — used for genuinely achromatic theme colours so a dark
+/// near-neutral background doesn't get tinted.
+const ACHROMATIC: [Ansi; 4] = [
+    Ansi(0, 0, 0, Color::Black),
+    Ansi(85, 85, 85, Color::DarkGray),
+    Ansi(170, 170, 170, Color::Gray),
+    Ansi(255, 255, 255, Color::White),
 ];
+
+/// The 12 chromatic console colours (normal + bright) — used for any theme
+/// colour with real hue, so Dracula's blues/purples/cyans stay *coloured*
+/// instead of collapsing onto the nearest gray.
+const CHROMATIC: [Ansi; 12] = [
+    Ansi(170, 0, 0, Color::Red),
+    Ansi(0, 170, 0, Color::Green),
+    Ansi(170, 85, 0, Color::Yellow),
+    Ansi(0, 0, 170, Color::Blue),
+    Ansi(170, 0, 170, Color::Magenta),
+    Ansi(0, 170, 170, Color::Cyan),
+    Ansi(255, 85, 85, Color::LightRed),
+    Ansi(85, 255, 85, Color::LightGreen),
+    Ansi(255, 255, 85, Color::LightYellow),
+    Ansi(85, 85, 255, Color::LightBlue),
+    Ansi(255, 85, 255, Color::LightMagenta),
+    Ansi(85, 255, 255, Color::LightCyan),
+];
+
+/// Chroma (max − min channel) at or above which a colour is treated as having
+/// real hue. `#CDD6F4` (text, chroma 39) stays achromatic → white; `#6272A4`
+/// (field border, chroma 66) and the accents read as colour.
+const CHROMA_THRESHOLD: i32 = 48;
 
 /// Record whether we're rendering in preview (terminal emulator) mode.
 /// Call once at startup, before the first draw.
@@ -62,9 +77,11 @@ pub fn init(preview: bool) {
 ///
 /// * preview, or a non-`Rgb` colour → returned unchanged (emulator does
 ///   truecolor; named colours already index the palette correctly).
-/// * real VT + `Rgb` → snapped to the nearest of the 16 standard ANSI colours,
-///   returned as a *named* `Color` so the console renders it via its own
-///   palette (no reprogramming, deterministic on every console).
+/// * real VT + `Rgb` → snapped to a named ANSI colour so the console renders it
+///   via its own palette (no reprogramming, deterministic on every console).
+///   Achromatic colours snap to the gray ramp; anything with real hue snaps to
+///   a chromatic bucket, so the dark theme keeps its blues/purples/cyans and
+///   doesn't read as plain black-and-white.
 pub fn map_color(color: Color) -> Color {
     let Color::Rgb(r, g, b) = color else {
         return color;
@@ -72,40 +89,31 @@ pub fn map_color(color: Color) -> Color {
     if PREVIEW.load(Ordering::Relaxed) {
         return color;
     }
-    nearest_ansi16(r, g, b)
+    nearest_ansi(r, g, b)
 }
 
-/// Nearest of the 16 standard ANSI colours, as a named ratatui `Color`.
-fn nearest_ansi16(r: u8, g: u8, b: u8) -> Color {
+/// Nearest named ANSI colour, gated by chroma so low-saturation colours map to
+/// gray and hued colours map to a chromatic bucket.
+fn nearest_ansi(r: u8, g: u8, b: u8) -> Color {
+    let chroma = r.max(g).max(b) as i32 - r.min(g).min(b) as i32;
+    let palette: &[Ansi] = if chroma >= CHROMA_THRESHOLD {
+        &CHROMATIC
+    } else {
+        &ACHROMATIC
+    };
+
     let (r, g, b) = (r as i32, g as i32, b as i32);
-    let mut best = 0usize;
+    let mut best = &palette[0];
     let mut best_dist = i32::MAX;
-    for (i, &(pr, pg, pb)) in ANSI16.iter().enumerate() {
-        let (dr, dg, db) = (r - pr as i32, g - pg as i32, b - pb as i32);
+    for entry in palette {
+        let (dr, dg, db) = (r - entry.0 as i32, g - entry.1 as i32, b - entry.2 as i32);
         let dist = dr * dr + dg * dg + db * db;
         if dist < best_dist {
             best_dist = dist;
-            best = i;
+            best = entry;
         }
     }
-    match best {
-        0 => Color::Black,
-        1 => Color::Red,
-        2 => Color::Green,
-        3 => Color::Yellow,
-        4 => Color::Blue,
-        5 => Color::Magenta,
-        6 => Color::Cyan,
-        7 => Color::Gray,
-        8 => Color::DarkGray,
-        9 => Color::LightRed,
-        10 => Color::LightGreen,
-        11 => Color::LightYellow,
-        12 => Color::LightBlue,
-        13 => Color::LightMagenta,
-        14 => Color::LightCyan,
-        _ => Color::White,
-    }
+    best.3
 }
 
 /// No-op kept for call-site compatibility — we no longer reprogram the console
