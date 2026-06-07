@@ -55,6 +55,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
         while let Some(cmd) = shell_rx.recv().await {
             match cmd {
                 IPCCommand::Quit => app_sender.emit(ShellInput::Quit),
+                IPCCommand::DockToggle => app_sender.emit(ShellInput::DockToggle),
+                IPCCommand::DockShow => app_sender.emit(ShellInput::DockShow),
+                IPCCommand::DockHide => app_sender.emit(ShellInput::DockHide),
                 IPCCommand::AppLauncher => {
                     app_sender.emit(ShellInput::ToggleAppLauncher(active_monitor().await));
                 }
@@ -504,6 +507,9 @@ pub const APP_LAUNCHER_TABS: &[&str] = &[
 
 enum IPCCommand {
     Quit,
+    DockToggle,
+    DockShow,
+    DockHide,
     AppLauncher,
     /// `mshellctl menu app-launcher --tab <name>` — open the
     /// launcher and pre-select the named category tab. Unknown
@@ -1373,6 +1379,16 @@ impl IPCService {
 impl IPCService {
     async fn quit(&self) {
         let _ = self.tx.send(IPCCommand::Quit);
+    }
+    /// Standalone mdock surface controls.
+    async fn dock_toggle(&self) {
+        let _ = self.tx.send(IPCCommand::DockToggle);
+    }
+    async fn dock_show(&self) {
+        let _ = self.tx.send(IPCCommand::DockShow);
+    }
+    async fn dock_hide(&self) {
+        let _ = self.tx.send(IPCCommand::DockHide);
     }
     async fn app_launcher(&self) {
         let _ = self.tx.send(IPCCommand::AppLauncher);

@@ -101,6 +101,11 @@ pub enum Commands {
         #[command(subcommand)]
         command: crate::subcommands::log::LogCommands,
     },
+    /// Standalone mdock surface — toggle / show / hide.
+    Dock {
+        #[command(subcommand)]
+        command: crate::subcommands::dock::DockCommands,
+    },
     /// Lock the session. Bare `lock` locks; `lock check` reports state.
     Lock {
         #[command(subcommand)]

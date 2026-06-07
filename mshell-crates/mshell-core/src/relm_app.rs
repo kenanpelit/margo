@@ -247,10 +247,9 @@ impl Component for Shell {
         // Rebuild the standalone mdock surfaces when their shape changes.
         let sender_clone = sender.clone();
         Effect::new(move |_| {
-            let dock = config_manager().config().dock();
-            let _ = dock.standalone().get();
-            let _ = dock.behavior().get();
-            let _ = dock.position().get();
+            let _ = config_manager().config().dock().standalone().get();
+            let _ = config_manager().config().dock().behavior().get();
+            let _ = config_manager().config().dock().position().get();
             sender_clone.input(ShellInput::RebuildDocks);
         });
 
