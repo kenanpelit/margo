@@ -48,9 +48,11 @@ pub struct LogInit {
     pub keep_sessions: usize,
     /// Also mirror to stdout (preserves the pre-existing console behaviour).
     pub to_stdout: bool,
-    /// Optional env var whose value overrides the filter at startup
-    /// (e.g. `"MARGO_LOG"` for margo, `"RUST_LOG"` for mshell). Honoured for
-    /// both the file and the stdout layers when set + non-empty.
+    /// Optional env var whose value overrides the **stdout** filter at startup
+    /// (e.g. `"MARGO_LOG"` for margo, `"RUST_LOG"` for mshell) — a dev
+    /// convenience for the console. The **file** layer ignores it and always
+    /// follows the configured level, so Settings / `log level` stay the single
+    /// source of truth for what lands on disk.
     pub env_override: Option<String>,
 }
 
@@ -204,7 +206,12 @@ pub fn init(opts: LogInit) -> LogHandle {
     }
 
     if file_ready {
-        let file_initial = initial_filter(env_ref, &app_name, &level, enabled);
+        // The FILE layer is driven by config/Settings only — NOT by RUST_LOG /
+        // MARGO_LOG. That keeps the on-disk log a faithful record of the
+        // configured level (and live `mctl/mshellctl log level`), instead of
+        // whatever stale dev override happens to sit in the environment. The
+        // env override still tunes stdout below.
+        let file_initial = filter_string(&app_name, &level, enabled);
         let (filter, handle) = reload::Layer::new(EnvFilter::new(file_initial));
         let appender = tracing_appender::rolling::never(&dir, &session_name);
         let file_layer = fmt_layer::layer()
