@@ -186,6 +186,7 @@ impl Component for WeatherSettingsModel {
                         set_css_classes: &["ok-button-primary"],
                         set_label: "Change Coordinates",
                         set_halign: gtk::Align::Start,
+                        set_valign: gtk::Align::Center,
                         set_hexpand: false,
                         connect_clicked[sender] => move |_| {
                             sender.input(WeatherSettingsInput::ChangeCoordinatesClicked);
@@ -223,6 +224,7 @@ impl Component for WeatherSettingsModel {
                         set_css_classes: &["ok-button-primary"],
                         set_label: "Change Location",
                         set_halign: gtk::Align::Start,
+                        set_valign: gtk::Align::Center,
                         set_hexpand: false,
                         connect_clicked[sender] => move |_| {
                             sender.input(WeatherSettingsInput::ChangeCityClicked);
