@@ -203,21 +203,32 @@ pub fn load_weather_cache() -> Option<wayle_weather::Weather> {
     serde_json::from_str(&data).ok()
 }
 
+/// A pure connectivity failure (DNS / timeout / connection refused — e.g. the
+/// network not being up yet at login) recovers on its own in seconds, so we
+/// retry it *quickly* instead of applying the long backoff. Hammering an
+/// endpoint that returned 429 / a bad key / a bad location, on the other hand,
+/// won't help — those get the configurable `retry_mins` backoff.
+const TRANSIENT_RETRY: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Poll interval to apply for a given weather status, or `None` to leave it
-/// unchanged (the transient `Loading` state). On **any** fetch failure —
-/// rate-limit (HTTP 429), offline, parse error, … — back off to the
-/// configurable `retry_mins` (the "backoff on failure" knob) so we stop
-/// hammering an endpoint that's failing; a successful load returns to the
-/// normal `normal_mins` cadence. The user can set `retry_mins` as high as they
-/// like (e.g. 720 = 12 h) from Settings → Weather.
+/// unchanged (the transient `Loading` state).
+///
+/// - **Connectivity blip** (`Network` — DNS/timeout, the classic "network not
+///   up yet at boot" case): retry fast (`TRANSIENT_RETRY`) so weather loads as
+///   soon as the link comes up, rather than disappearing for an hour.
+/// - **Rate-limit / bad key / bad location / other**: back off to the
+///   configurable `retry_mins` ("backoff on failure" knob, up to 720 = 12 h) —
+///   retrying fast can't clear those.
+/// - **Loaded**: return to the normal `normal_mins` cadence.
 pub fn weather_poll_interval(
     status: &wayle_weather::WeatherStatus,
     retry_mins: u64,
     normal_mins: u64,
 ) -> Option<std::time::Duration> {
     use std::time::Duration;
-    use wayle_weather::WeatherStatus;
+    use wayle_weather::{WeatherErrorKind, WeatherStatus};
     match status {
+        WeatherStatus::Error(WeatherErrorKind::Network) => Some(TRANSIENT_RETRY),
         WeatherStatus::Error(_) => Some(Duration::from_secs(retry_mins.max(1) * 60)),
         WeatherStatus::Loaded => Some(Duration::from_secs(normal_mins.max(1) * 60)),
         WeatherStatus::Loading => None,
@@ -242,9 +253,23 @@ mod tests {
     }
 
     #[test]
-    fn any_error_uses_the_backoff_interval() {
+    fn network_error_retries_fast_not_the_long_backoff() {
+        // A connectivity blip (network not up yet at boot) must NOT vanish for
+        // `retry_mins`; it retries quickly so weather loads once the link is up.
         let i = weather_poll_interval(&WeatherStatus::Error(WeatherErrorKind::Network), 60, 15);
-        assert_eq!(i, Some(Duration::from_secs(60 * 60)));
+        assert_eq!(i, Some(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn non_network_errors_use_the_backoff_interval() {
+        for kind in [
+            WeatherErrorKind::RateLimited,
+            WeatherErrorKind::Other,
+            WeatherErrorKind::LocationNotFound { query: "x".into() },
+        ] {
+            let i = weather_poll_interval(&WeatherStatus::Error(kind), 60, 15);
+            assert_eq!(i, Some(Duration::from_secs(60 * 60)));
+        }
     }
 
     #[test]

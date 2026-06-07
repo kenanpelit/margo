@@ -123,10 +123,12 @@ impl ConfigManager {
     /// Apply a mutation to the current effective config, persist the change to
     /// the appropriate layer (active profile if one is set, otherwise global
     /// config), then reload so the full effective config reflects it.
+    #[track_caller]
     pub fn update_config<F>(&self, f: F)
     where
         F: FnOnce(&mut Config),
     {
+        let caller = std::panic::Location::caller();
         // Snapshot current effective config and apply the mutation.
         let mut updated = self.config.read_untracked().clone();
         f(&mut updated);
@@ -144,6 +146,11 @@ impl ConfigManager {
         if updated == baseline {
             return;
         }
+
+        // Who actually wrote (after the no-op guard). A write that recurs on
+        // every login points at a non-idempotent migration/normalisation worth
+        // fixing — `mshellctl log level debug` surfaces the call site.
+        tracing::debug!(caller = %caller, "update_config: persisting a real change");
 
         // Determine which file owns this layer.
         let active = self.active_profile.read_untracked();
