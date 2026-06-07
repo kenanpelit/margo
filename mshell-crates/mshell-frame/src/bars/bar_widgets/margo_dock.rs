@@ -520,7 +520,11 @@ mod dock_filter_tests {
 
     #[test]
     fn ignore_list_is_case_insensitive_and_show_running_gates() {
-        let running = vec!["Firefox".to_string(), "kitty".to_string(), "Slack".to_string()];
+        let running = vec![
+            "Firefox".to_string(),
+            "kitty".to_string(),
+            "Slack".to_string(),
+        ];
         let ignore = vec!["slack".to_string()];
         assert_eq!(
             visible_running_classes(&running, &ignore, true),
