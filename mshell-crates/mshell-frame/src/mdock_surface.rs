@@ -24,7 +24,6 @@ pub struct MdockSurface {
     /// The auto-hide edge trigger (only present in AutoHide behaviour) — kept
     /// alive for the surface's lifetime.
     _trigger: Option<gtk::Window>,
-    behavior: DockBehavior,
     _dock: Controller<MargoDockModel>,
 }
 
@@ -157,7 +156,6 @@ impl Component for MdockSurface {
                 revealer,
                 window: root,
                 _trigger: trigger,
-                behavior: cfg.behavior,
                 _dock: dock,
             },
             widgets: (),
