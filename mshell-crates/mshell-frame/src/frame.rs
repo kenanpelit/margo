@@ -1746,6 +1746,13 @@ impl Frame {
                     return;
                 };
                 root.set_keyboard_mode(mode);
+                // Force a surface commit so the new keyboard_interactivity
+                // actually reaches the compositor. When a menu is closed via
+                // IPC (`mshellctl dock toggle`) rather than a keypress, there is
+                // no further input/render to flush the deferred layer-shell
+                // state, so margo never sees the Exclusive→None flip and keeps
+                // the keyboard until the next event (the user had to press Esc).
+                root.queue_draw();
                 tracing::debug!(?mode, "frame: sync_keyboard_mode (applied)");
             });
         *self.pending_kbd_mode_timeout.borrow_mut() = Some(id);
@@ -2639,6 +2646,7 @@ impl Frame {
             .forward(sender.input_sender(), |msg| match msg {
                 MenuOutput::CloseMenu => FrameInput::CloseMenus,
                 MenuOutput::ToggleSessionMenu => FrameInput::ToggleSessionMenu,
+                MenuOutput::OpenAppLauncher => FrameInput::ToggleAppLauncherMenu,
             })
     }
 

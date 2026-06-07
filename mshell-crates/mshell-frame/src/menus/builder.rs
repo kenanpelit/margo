@@ -246,9 +246,9 @@ pub fn build_widget(
                     bar_type: BarType::Bottom,
                 })
                 .forward(sender.output_sender(), |msg| match msg {
-                    // The launcher button closes the dock menu (the standalone
-                    // popup launches the app launcher directly).
-                    MargoDockOutput::AppLauncherClicked => MenuOutput::CloseMenu,
+                    // Launcher button → open the app launcher (the frame swaps
+                    // the dock menu out for the app-launcher menu).
+                    MargoDockOutput::AppLauncherClicked => MenuOutput::OpenAppLauncher,
                 }),
         ),
         MenuWidget::MediaPlayer => Box::new(

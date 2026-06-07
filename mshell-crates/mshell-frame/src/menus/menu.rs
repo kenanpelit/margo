@@ -209,6 +209,9 @@ pub(crate) enum MenuOutput {
     /// A menu widget (the control center power icon) asks the frame to open
     /// the session / power menu.
     ToggleSessionMenu,
+    /// The mdock menu's launcher button asks the frame to open the app
+    /// launcher (which also swaps out the dock menu).
+    OpenAppLauncher,
 }
 
 pub(crate) struct MenuInit {
