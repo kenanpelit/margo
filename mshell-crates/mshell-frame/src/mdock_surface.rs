@@ -40,6 +40,9 @@ pub struct MdockSurfaceInit {
     pub monitor: Option<gtk::gdk::Monitor>,
 }
 
+/// Slide animation duration, ms — matches the bar toggle's smooth feel.
+const SLIDE_MS: u32 = 300;
+
 fn bar_type_for(p: DockPosition) -> BarType {
     match p {
         DockPosition::Top => BarType::Top,
@@ -77,8 +80,10 @@ impl Component for MdockSurface {
             .detach();
 
         let revealer = gtk::Revealer::builder()
-            .transition_type(gtk::RevealerTransitionType::Crossfade)
-            .transition_duration(180)
+            // Slide in/out from the anchored edge (like the bar toggle) for a
+            // smooth reveal both ways — not a snap.
+            .transition_type(transition_for(cfg.position))
+            .transition_duration(SLIDE_MS)
             // Centre the card on the anchored edge so the dock doesn't stretch
             // to fill the (possibly full-length) layer-shell window.
             .halign(gtk::Align::Center)
@@ -86,6 +91,21 @@ impl Component for MdockSurface {
             .child(dock.widget())
             .build();
         revealer.add_css_class("mdock-surface");
+
+        // Keep the window mapped during the slide-OUT, then unmap it only after
+        // the revealer animation finishes — otherwise the window vanishes
+        // before the slide plays (the snap the user saw). Always-on docks never
+        // unmap. This is what makes `mshellctl dock toggle` smooth like the bar.
+        {
+            let window = root.clone();
+            let behavior = cfg.behavior;
+            let rev = revealer.clone();
+            revealer.connect_child_revealed_notify(move |_| {
+                if !rev.is_child_revealed() && !matches!(behavior, DockBehavior::Always) {
+                    window.set_visible(false);
+                }
+            });
+        }
 
         // Layer-shell window setup. `all: unset` on `.mdock-window` strips the
         // default opaque window background so only the rounded surface shows
@@ -151,14 +171,25 @@ impl Component for MdockSurface {
             MdockSurfaceInput::Toggle => !self.revealer.reveals_child(),
         };
         if show {
+            // Map first, then slide in.
             self.window.set_visible(true);
             self.revealer.set_reveal_child(true);
         } else {
+            // Slide out; the `child_revealed` handler unmaps the window once
+            // the animation finishes (smooth hide, not a snap).
             self.revealer.set_reveal_child(false);
-            if !matches!(self.behavior, DockBehavior::Always) {
-                self.window.set_visible(false);
-            }
         }
+    }
+}
+
+/// Revealer slide direction so the dock slides in from its anchored edge.
+fn transition_for(p: DockPosition) -> gtk::RevealerTransitionType {
+    use gtk::RevealerTransitionType as T;
+    match p {
+        DockPosition::Bottom => T::SlideUp,
+        DockPosition::Top => T::SlideDown,
+        DockPosition::Left => T::SlideRight,
+        DockPosition::Right => T::SlideLeft,
     }
 }
 
