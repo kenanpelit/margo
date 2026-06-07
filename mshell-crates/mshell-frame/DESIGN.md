@@ -1230,6 +1230,18 @@ action button — it makes it a chunky 84×40 menu pill, out of scale with the
 dense Settings rows. (The one exception is the Users page's selectable user
 *card*, which uses `.ok-button-cell` as a card shape, not as a button.)
 
+**Surface buttons on a settings page are outlined + elevated.** A plain
+`.ok-button-surface` is filled with `--surface` — the same colour as the
+`.settings-page` background — so at rest it vanishes and reads as flat text.
+`_settings.scss` therefore gives `.settings-page button.ok-button-surface` a
+one-step elevated fill (`--surface-container-high`) + a hairline
+`--outline-variant` border, so every secondary action ("Open log folder",
+"Add … binding", "Refresh", "Browse", "Connect home network now", the
+twilight/layout Preview buttons, …) clearly reads as a button. Primary actions
+stay filled (`.ok-button-primary`); the rule is scoped to `.settings-page` so
+menus / dashboards / bar widgets are untouched. Don't reintroduce a bare
+`--surface` action button on a settings page.
+
 ## 22. Control-center tile anatomy
 
 The quick-settings tile (`control_center/tile.rs`) is the canonical toggle.

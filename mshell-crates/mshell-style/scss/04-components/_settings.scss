@@ -195,6 +195,32 @@
     font-size: calc(15.5px * var(--font-scale-settings, 1.0));
 }
 
+// Secondary action buttons (.ok-button-surface) share the page's
+// --surface fill, so at rest they vanish into the background and read
+// as flat text — "Open log folder", "Add … binding", "Refresh",
+// "Browse", "Connect home network now", the twilight/layout Preview
+// buttons, etc. Give every surface button on a settings page a clear
+// affordance: a one-step elevated fill + a hairline outline so it
+// obviously looks clickable. Primary-action buttons (.ok-button-primary,
+// e.g. "Open Lock settings") stay filled and are untouched. Scoped to
+// .settings-page so menus / dashboards / bar widgets keep their own look.
+.settings-page button.ok-button-surface {
+    background-color: var(--surface-container-high);
+    border: 1px solid var(--outline-variant);
+
+    &:hover {
+        background-color: unquote("color-mix(in srgb, var(--primary) 14%, var(--surface-container-high))");
+    }
+    &:active {
+        background-color: unquote("color-mix(in srgb, var(--primary) 22%, var(--surface-container-high))");
+    }
+    // Toggle-style surface buttons flip to a filled --primary when
+    // selected; drop the outline there so the filled state stays clean.
+    &.selected {
+        border-color: transparent;
+    }
+}
+
 // ── Apple-style hero header ────────────────────────────────────
 //
 // Top-of-page banner: large symbolic icon on the left, page title
