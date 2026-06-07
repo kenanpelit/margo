@@ -261,7 +261,15 @@ pub(super) fn setup_connector(
         }
     };
 
-    let allocator = GbmAllocator::new(gbm.clone(), GbmBufferFlags::RENDERING);
+    // RENDERING | SCANOUT — the SCANOUT flag is what lets the GBM buffer be used
+    // as a direct DRM scanout framebuffer. The boot path (mod.rs) sets both; this
+    // hotplug path was missing SCANOUT, so `DrmCompositor::new` failed its
+    // framebuffer export with EINVAL ("Failed to add framebuffer") and a
+    // re-plugged external monitor stayed dark.
+    let allocator = GbmAllocator::new(
+        gbm.clone(),
+        GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
+    );
     let exporter = GbmFramebufferExporter::new(gbm.clone(), primary_node.into());
     let color_formats = [DrmFourcc::Xrgb8888, DrmFourcc::Argb8888];
     // Use device-reported cursor plane size (matches the startup path).
