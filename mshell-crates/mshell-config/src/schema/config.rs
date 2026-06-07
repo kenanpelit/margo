@@ -1324,8 +1324,34 @@ pub struct Valent {
     pub main_device_id: String,
 }
 
-/// Margo dock (the running/pinned app strip). Tunables surfaced under
-/// Settings → Widgets → Margo Dock.
+/// Standalone-dock (mdock) reveal behaviour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DockBehavior {
+    /// Always visible; reserves an exclusive zone.
+    Always,
+    /// Hidden; a thin edge trigger reveals it on hover (hydock style).
+    #[default]
+    AutoHide,
+    /// Hidden; shown/hidden via `mshellctl dock toggle` / a keybind.
+    Toggle,
+}
+
+/// Which screen edge the standalone mdock surface anchors to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DockPosition {
+    Top,
+    #[default]
+    Bottom,
+    Left,
+    Right,
+}
+
+/// mdock — the running/pinned app dock. Two modes: a bar-widget pill and a
+/// standalone per-output layer-shell surface (always / auto-hide / toggle).
+/// Tunables surfaced under Settings → Widgets → mdock. (Pins live in the
+/// `pinned_apps_store` cache, not here.) serde key stays `dock`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct Dock {
@@ -1340,6 +1366,30 @@ pub struct Dock {
     /// has no matching `.desktop` (e.g. isolated browser profiles), which
     /// would otherwise fall back to a generic icon.
     pub icon_overrides: Vec<DockIconOverride>,
+
+    // ── mdock additions ─────────────────────────────────────────────
+    /// Show the dock as a bar-widget pill (the classic mode).
+    pub in_bar: bool,
+    /// Run the standalone layer-shell dock surface.
+    pub standalone: bool,
+    /// Standalone reveal behaviour.
+    pub behavior: DockBehavior,
+    /// Screen edge the standalone dock anchors to.
+    pub position: DockPosition,
+    /// App classes never shown in the dock (case-insensitive).
+    pub ignore: Vec<String>,
+    /// Spacing between dock items, px.
+    pub spacing: u32,
+    /// Show a small preview card on icon hover.
+    pub hover_preview: bool,
+    /// Show the separator between apps and the launcher button.
+    pub separator: bool,
+    /// Show the app-launcher button on the dock.
+    pub launcher_enabled: bool,
+    /// Launcher button icon (themed name or path).
+    pub launcher_icon: String,
+    /// Shell command the launcher button runs (empty = toggle mshell launcher).
+    pub launcher_command: String,
 }
 
 impl Default for Dock {
@@ -1349,6 +1399,47 @@ impl Default for Dock {
             show_tooltips: true,
             show_running: true,
             icon_overrides: Vec::new(),
+            in_bar: true,
+            standalone: false,
+            behavior: DockBehavior::AutoHide,
+            position: DockPosition::Bottom,
+            ignore: Vec::new(),
+            spacing: 6,
+            hover_preview: true,
+            separator: true,
+            launcher_enabled: true,
+            launcher_icon: "view-app-grid-symbolic".to_string(),
+            launcher_command: String::new(),
+        }
+    }
+}
+
+impl PatchField for DockBehavior {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
+}
+
+impl PatchField for DockPosition {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
         }
     }
 }
@@ -2183,6 +2274,7 @@ impl Default for ControlCenterConfig {
 #[cfg(test)]
 mod schema_tests {
     use super::Config;
+    use super::{DockBehavior, DockPosition};
 
     /// An empty YAML map → every field falls back to its default.
     #[test]
@@ -2241,5 +2333,20 @@ mod schema_tests {
         let yaml = serde_yaml::to_string(&def).unwrap();
         let back: Config = serde_yaml::from_str(&yaml).unwrap();
         assert_eq!(back, def);
+    }
+
+    /// An old config that only knew the original dock fields still loads, with
+    /// the mdock additions defaulted.
+    #[test]
+    fn dock_old_config_loads_with_new_defaults() {
+        let yaml = "dock:\n  icon_size: 48\n  show_running: false\n";
+        let cfg: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(cfg.dock.icon_size, 48);
+        assert!(!cfg.dock.show_running);
+        assert!(cfg.dock.in_bar);
+        assert!(!cfg.dock.standalone);
+        assert_eq!(cfg.dock.behavior, DockBehavior::AutoHide);
+        assert_eq!(cfg.dock.position, DockPosition::Bottom);
+        assert!(cfg.dock.launcher_enabled);
     }
 }
