@@ -124,7 +124,10 @@ fn merge_in_configuration(config: &mut Config, cli: &Cli) {
                 );
             }
 
-            None
+            // Never fall through with no palette: substitute margo's baked
+            // Dracula variables so a stale/absent `/etc/mlogind/variables.toml`
+            // can't leave the greeter on ratatui's bare defaults.
+            Some(config::Variables::baked_default())
         }
     };
 

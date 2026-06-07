@@ -439,10 +439,27 @@ impl<'de> Deserialize<'de> for SwitcherVisibility {
 
 impl Default for Config {
     fn default() -> Config {
-        toml::from_str(include_str!("../extra/config.toml")).unwrap_or_else(|e| {
+        // The baked theme + layout live entirely in-code: `extra/config.toml`
+        // is the structural base (every field present, colours still carrying
+        // their `$var` placeholders) and `extra/variables.toml` is margo's
+        // baseline Dracula palette. We substitute the baked variables into the
+        // baked config here so `Config::default()` is a *fully resolved* theme
+        // — the greeter renders margo's palette even with no `/etc/mlogind`
+        // files synced. A real `/etc` config/variables pair just overlays.
+        let text = include_str!("../extra/config.toml");
+        let mut config: Config = toml::from_str(text).unwrap_or_else(|e| {
             eprintln!("Default configuration file cannot be properly parsed: {e}");
             process::exit(1);
-        })
+        });
+
+        let variables = Variables::baked_default();
+        match toml::from_str::<RoughConfig>(text).map(|r| r.into_partial(&variables)) {
+            Ok(Ok(partial)) => config.merge_in_partial(partial),
+            Ok(Err(e)) => eprintln!("Baked theme variables could not be applied: {e}"),
+            Err(e) => eprintln!("Baked config could not be re-parsed for theming: {e}"),
+        }
+
+        config
     }
 }
 
@@ -468,6 +485,15 @@ impl PartialConfig {
 }
 
 impl Variables {
+    /// margo's baseline Dracula palette, baked into the binary from
+    /// `extra/variables.toml`. Used to fully resolve the in-code default theme
+    /// and as the fallback when no `/etc/mlogind/variables.toml` is synced, so
+    /// the greeter never falls back to the bare ratatui defaults.
+    pub fn baked_default() -> Variables {
+        toml::from_str(include_str!("../extra/variables.toml"))
+            .expect("baked extra/variables.toml must parse")
+    }
+
     /// Facilitates the loading of the entire configuration
     pub fn from_file(path: &Path) -> Result<Variables, Box<dyn std::error::Error>> {
         let mut file = File::open(path)?;
