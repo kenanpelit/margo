@@ -340,7 +340,9 @@ impl Component for MargoDockItemModel {
                     if let Some(idx) = current_idx {
                         let next_idx = (idx + 1) % matching.len();
                         let client_to_focus = matching[next_idx];
-                        let command = focus_command(client_to_focus);
+                        let Some(command) = focus_command(client_to_focus) else {
+                            return;
+                        };
 
                         tokio::spawn(async move {
                             if let Err(e) = hyprland.dispatch(&command).await {
@@ -368,8 +370,9 @@ impl Component for MargoDockItemModel {
                         clients_on_workspace[0]
                     };
 
-                    let command = focus_command(client_to_focus);
-                    if let Err(e) = hyprland.dispatch(&command).await {
+                    if let Some(command) = focus_command(client_to_focus)
+                        && let Err(e) = hyprland.dispatch(&command).await
+                    {
                         error!(error = %e, "Failed to focus client");
                     }
                 });
@@ -391,8 +394,9 @@ impl Component for MargoDockItemModel {
                 matching.sort_by_key(|client| client.address.get());
                 if matching.len() < 2 {
                     // 0 or 1 window — nothing to cycle through.
-                    if let Some(c) = matching.first() {
-                        let command = focus_command(c);
+                    if let Some(c) = matching.first()
+                        && let Some(command) = focus_command(c)
+                    {
                         tokio::spawn(async move {
                             let _ = hyprland.dispatch(&command).await;
                         });
@@ -412,7 +416,9 @@ impl Component for MargoDockItemModel {
                 } else {
                     (cur + len - 1) % len
                 };
-                let command = focus_command(&matching[next]);
+                let Some(command) = focus_command(&matching[next]) else {
+                    return;
+                };
                 tokio::spawn(async move {
                     if let Err(e) = hyprland.dispatch(&command).await {
                         error!(error = %e, "Failed to cycle client");
@@ -668,14 +674,17 @@ impl MargoDockItemModel {
 /// exact-window `focuswindow <idx>` verb (margo focuses it + jumps to its
 /// tag); falls back to viewing the window's tag if the synthesized address
 /// can't yield a client index.
-fn focus_command(client: &Client) -> String {
-    match client.address.get().margo_idx() {
-        Some(idx) => format!("dispatch focuswindow {idx}"),
-        None => format!(
-            "hl.dsp.focus({{ workspace = \"{}\" }})",
-            client.workspace.get().id
-        ),
-    }
+/// margo focus dispatch for a client — `dispatch focuswindow <idx>`, which
+/// margo resolves to `activate_window_idx` (jumps to the window's tag, focuses
+/// + raises it). `None` when the address can't be decoded to an index (the
+/// old Hyprland-style `hl.dsp.focus(...)` fallback was a no-op on margo, so we
+/// just skip rather than emit a dead command).
+fn focus_command(client: &Client) -> Option<String> {
+    client
+        .address
+        .get()
+        .margo_idx()
+        .map(|idx| format!("dispatch focuswindow {idx}"))
 }
 
 fn add_launch_to_menu(
@@ -840,7 +849,9 @@ fn add_window_details_to_menu(
         // that's why picking a window from the menu did nothing. `focus_command`
         // emits `dispatch focuswindow <idx>`, which margo turns into
         // `activate_window_idx` (focuses the exact window + jumps to its tag).
-        let command = focus_command(client);
+        let Some(command) = focus_command(client) else {
+            return;
+        };
         action.connect_activate(move |_, _| {
             let command = command.clone();
             tokio::spawn(async move {
@@ -885,5 +896,32 @@ fn apply_override_icon(image: &gtk::Image, icon: &str) {
         image.set_from_file(Some(icon));
     } else {
         image.set_icon_name(Some(icon));
+    }
+}
+
+#[cfg(test)]
+mod focus_cycle_tests {
+    /// Given an app's window addresses and the last-focused one, the next click
+    /// targets the next address (wrapping) — the cycle logic the click handler
+    /// implements over `matching` + `last_selected_address`.
+    fn next_address(addrs: &[&str], last: Option<&str>) -> Option<String> {
+        if addrs.is_empty() {
+            return None;
+        }
+        let idx = last.and_then(|l| addrs.iter().position(|a| *a == l));
+        let next = match idx {
+            Some(i) => (i + 1) % addrs.len(),
+            None => 0,
+        };
+        Some(addrs[next].to_string())
+    }
+
+    #[test]
+    fn click_cycles_then_wraps() {
+        let a = ["0x1", "0x2", "0x3"];
+        assert_eq!(next_address(&a, None).as_deref(), Some("0x1"));
+        assert_eq!(next_address(&a, Some("0x1")).as_deref(), Some("0x2"));
+        assert_eq!(next_address(&a, Some("0x3")).as_deref(), Some("0x1"));
+        assert_eq!(next_address(&[], None), None);
     }
 }
