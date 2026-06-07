@@ -592,6 +592,35 @@ impl MargoDockItemModel {
         }
     }
 
+    /// Richer hover preview: the app name in bold over a bulleted list of its
+    /// open window titles (Pango markup). Live pixel thumbnails are deferred
+    /// (need margo per-toplevel capture); this card is the v1 preview.
+    fn tooltip_markup(&self) -> String {
+        let app_name = self
+            .app_info
+            .as_ref()
+            .map(|a| a.name().to_string())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| self.class.clone());
+        let clients = margo_service().clients.get();
+        let titles: Vec<String> = clients
+            .iter()
+            .filter(|c| c.class.get() == self.class)
+            .map(|c| c.title.get().to_string())
+            .filter(|t| !t.trim().is_empty())
+            .collect();
+        let name = glib::markup_escape_text(&app_name);
+        if titles.is_empty() {
+            format!("<b>{name}</b>")
+        } else {
+            let lines: Vec<String> = titles
+                .iter()
+                .map(|t| format!("• {}", glib::markup_escape_text(t)))
+                .collect();
+            format!("<b>{name}</b>\n{}", lines.join("\n"))
+        }
+    }
+
     /// Apply the `dock` config to this item's widgets: icon pixel size
     /// (overrides the CSS `-gtk-icon-size`) and the tooltip (suppressed
     /// when tooltips are turned off). Called on build, on window-count
@@ -599,12 +628,11 @@ impl MargoDockItemModel {
     fn apply_dock_config(&self, image: &gtk::Image, root: &gtk::Box) {
         let size = config_manager().config().dock().icon_size().get_untracked();
         image.set_pixel_size(size as i32);
-        let show_tooltips = config_manager()
-            .config()
-            .dock()
-            .show_tooltips()
-            .get_untracked();
-        if show_tooltips {
+        let dock = config_manager().config().dock().get_untracked();
+        if dock.hover_preview {
+            // Rich card (bold app name + window titles).
+            root.set_tooltip_markup(Some(&self.tooltip_markup()));
+        } else if dock.show_tooltips {
             root.set_tooltip_text(Some(&self.tooltip_text()));
         } else {
             root.set_tooltip_text(None);

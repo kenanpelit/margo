@@ -1,0 +1,11 @@
+// mdock — standalone dock surface (the layer-shell window hosting the dock
+// strip). The bar-widget mode keeps `.margo-dock-bar-widget` styling; this is
+// only the floating/standalone surface chrome.
+
+.mdock-surface {
+  padding: var(--space-2);
+  margin: var(--space-2);
+  background-color: var(--surface-container);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--outline-variant);
+}
