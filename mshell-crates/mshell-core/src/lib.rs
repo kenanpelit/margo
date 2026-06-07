@@ -388,6 +388,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             use futures::StreamExt;
             let weather = weather_service();
             let mut status = weather.status.watch();
+            // wayle's `set_poll_interval` RESTARTS the poller, and tokio's
+            // `interval` fires its first tick immediately — so calling it on
+            // every status emission means each rate-limit error re-polls at
+            // once, defeating the backoff (the ~2 min spam was wayle's internal
+            // retry, not our cadence). Only re-arm when the interval changes.
+            let mut last_applied: Option<std::time::Duration> = None;
             while let Some(st) = status.next().await {
                 // The cadence decision (rate-limit → 1h backoff, transient →
                 // fast retry, loaded → normal) lives as a pure, unit-tested
@@ -396,7 +402,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                     &st,
                     retry_mins.load(Ordering::Relaxed),
                     configured_mins.load(Ordering::Relaxed),
-                ) {
+                ) && last_applied != Some(interval)
+                {
+                    last_applied = Some(interval);
                     weather.set_poll_interval(interval);
                 }
                 // Persist a fresh reading so the pill/menu can show it (as
