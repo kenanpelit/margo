@@ -687,7 +687,6 @@ impl Component for NetworkSettingsModel {
 
                 gtk::Button {
                     add_css_class: "ok-button-surface",
-                    add_css_class: "ok-button-cell",
                     set_label: "Connect home network now",
                     set_halign: gtk::Align::Start,
                     set_margin_top: 4,

@@ -204,7 +204,7 @@ impl Component for LayoutSettingsModel {
                     set_halign: gtk::Align::Center,
 
                     gtk::Button {
-                        set_css_classes: &["ok-button-primary", "ok-button-cell"],
+                        set_css_classes: &["ok-button-primary"],
                         set_label: "Apply arrangement",
                         #[watch]
                         set_sensitive: model.editor_dirty,

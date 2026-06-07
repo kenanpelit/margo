@@ -140,7 +140,7 @@ impl Component for WallpaperSettingsModel {
                     },
 
                     gtk::Button {
-                        set_css_classes: &["ok-button-primary", "ok-button-cell"],
+                        set_css_classes: &["ok-button-primary"],
                         set_label: "Change Directory",
                         set_halign: gtk::Align::Start,
                         set_hexpand: false,

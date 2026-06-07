@@ -893,7 +893,6 @@ impl Component for InputSettingsModel {
                     set_margin_top: 4,
                     gtk::Button {
                         add_css_class: "ok-button-surface",
-                        add_css_class: "ok-button-cell",
                         #[watch]
                         set_label: if model.editing.is_some() { "Save changes" } else { "Add gesture binding" },
                         connect_clicked[sender] => move |_| {
@@ -943,7 +942,7 @@ impl Component for InputSettingsModel {
                     #[template_child] desc { set_label: "Held key(s), e.g. super (use none with care — it grabs every click)." },
                     gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_text: "super",
                         connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetMbModifiers(e.text().to_string())) } },
-                gtk::Button { add_css_class: "ok-button-surface", add_css_class: "ok-button-cell", set_label: "Add mouse binding", set_margin_top: 4,
+                gtk::Button { add_css_class: "ok-button-surface", set_label: "Add mouse binding", set_margin_top: 4,
                     set_halign: gtk::Align::Start,
                     connect_clicked[sender] => move |_| sender.input(InputSettingsInput::AddMbind) },
 
@@ -979,7 +978,7 @@ impl Component for InputSettingsModel {
                     #[template_child] desc { set_label: "Held key(s), e.g. super (or none)." },
                     gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_text: "super",
                         connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetAbModifiers(e.text().to_string())) } },
-                gtk::Button { add_css_class: "ok-button-surface", add_css_class: "ok-button-cell", set_label: "Add scroll binding", set_margin_top: 4,
+                gtk::Button { add_css_class: "ok-button-surface", set_label: "Add scroll binding", set_margin_top: 4,
                     set_halign: gtk::Align::Start,
                     connect_clicked[sender] => move |_| sender.input(InputSettingsInput::AddAbind) },
             }

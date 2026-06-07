@@ -1221,6 +1221,15 @@ notch slimmer (≈30 px) but the same pill. Pill toggles / category chips also u
 radii. One pill family across menus + plugin selectors; tall toggle tiles are a
 separate kind (§22).
 
+**Settings-window buttons are NOT this pill.** The Settings pages
+(`mshell-settings`) use the **compact** button — plain `.ok-button-surface` /
+`.ok-button-primary` with **no** `.ok-button-cell` (button-base default:
+`--radius-sm`, `--space-2 × --space-3` padding, content width). Reference: the
+Privacy page's "Open Lock settings". Do not put `.ok-button-cell` on a Settings
+action button — it makes it a chunky 84×40 menu pill, out of scale with the
+dense Settings rows. (The one exception is the Users page's selectable user
+*card*, which uses `.ok-button-cell` as a card shape, not as a button.)
+
 ## 22. Control-center tile anatomy
 
 The quick-settings tile (`control_center/tile.rs`) is the canonical toggle.

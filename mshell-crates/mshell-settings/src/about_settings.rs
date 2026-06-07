@@ -136,7 +136,6 @@ impl Component for AboutSettingsModel {
 
                 gtk::Button {
                     add_css_class: "ok-button-surface",
-                    add_css_class: "ok-button-cell",
                     set_halign: gtk::Align::Start,
                     set_margin_top: 12,
                     set_label: "Refresh",

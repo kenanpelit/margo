@@ -143,7 +143,6 @@ impl Component for UsersSettingsModel {
                     },
                     gtk::Button {
                         add_css_class: "ok-button-surface",
-                        add_css_class: "ok-button-cell",
                         set_label: "Create",
                         connect_clicked[sender] => move |_| {
                             sender.input(UsersSettingsInput::AddUser);
@@ -498,7 +497,6 @@ fn user_card(u: &UserInfo, sender: &ComponentSender<UsersSettingsModel>) -> gtk:
     {
         let btn = gtk::Button::with_label("Change picture…");
         btn.add_css_class("ok-button-surface");
-        btn.add_css_class("ok-button-cell");
         btn.set_halign(gtk::Align::Start);
         let s = sender.clone();
         let user = u.name.clone();
@@ -517,7 +515,6 @@ fn user_card(u: &UserInfo, sender: &ComponentSender<UsersSettingsModel>) -> gtk:
         entry.set_hexpand(true);
         let save = gtk::Button::with_label("Save");
         save.add_css_class("ok-button-surface");
-        save.add_css_class("ok-button-cell");
         let s = sender.clone();
         let user = u.name.clone();
         let entry_c = entry.clone();
@@ -560,7 +557,6 @@ fn user_card(u: &UserInfo, sender: &ComponentSender<UsersSettingsModel>) -> gtk:
         confirm.set_hexpand(true);
         let set = gtk::Button::with_label("Set password");
         set.add_css_class("ok-button-surface");
-        set.add_css_class("ok-button-cell");
         let s = sender.clone();
         let user = u.name.clone();
         let new_c = new.clone();
@@ -589,7 +585,6 @@ fn user_card(u: &UserInfo, sender: &ComponentSender<UsersSettingsModel>) -> gtk:
     if !u.is_current {
         let btn = gtk::Button::with_label("Remove user…");
         btn.add_css_class("ok-button-surface");
-        btn.add_css_class("ok-button-cell");
         btn.add_css_class("destructive-action");
         btn.set_halign(gtk::Align::Start);
         let s = sender.clone();

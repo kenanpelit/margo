@@ -150,7 +150,7 @@ impl Component for GeneralSettingsModel {
                             set_halign: gtk::Align::Start,
                         },
                         gtk::Button {
-                            set_css_classes: &["ok-button-primary", "ok-button-cell"],
+                            set_css_classes: &["ok-button-primary"],
                             set_label: "Change Picture…",
                             set_halign: gtk::Align::Start,
                             set_hexpand: false,
@@ -190,7 +190,7 @@ impl Component for GeneralSettingsModel {
                     },
 
                     gtk::Button {
-                        set_css_classes: &["ok-button-primary", "ok-button-cell"],
+                        set_css_classes: &["ok-button-primary"],
                         set_label: "New Profile",
                         set_halign: gtk::Align::Start,
                         set_hexpand: false,
@@ -200,7 +200,7 @@ impl Component for GeneralSettingsModel {
                     },
 
                     gtk::Button {
-                        set_css_classes: &["ok-button-primary", "ok-button-cell"],
+                        set_css_classes: &["ok-button-primary"],
                         #[watch]
                         set_sensitive: model.available_profiles.n_items() > 1,
                         set_label: "Delete Profile",
