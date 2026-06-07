@@ -134,6 +134,17 @@ impl ConfigManager {
         // them into the user's profile.
         crate::plugin_bridge::strip_plugin_widgets(&mut updated);
 
+        // No-op guard: if the mutation left the effective config unchanged,
+        // skip the persist + reload (and its "Config reloaded" log). Eagerly
+        // built per-monitor widgets re-persist unchanged values at startup,
+        // which otherwise triggers a YAML write + a full reparse each time —
+        // the ~45 "Config reloaded" burst at login.
+        let mut baseline = self.config.read_untracked().clone();
+        crate::plugin_bridge::strip_plugin_widgets(&mut baseline);
+        if updated == baseline {
+            return;
+        }
+
         // Determine which file owns this layer.
         let active = self.active_profile.read_untracked();
         let layer_path = match active.as_deref() {
