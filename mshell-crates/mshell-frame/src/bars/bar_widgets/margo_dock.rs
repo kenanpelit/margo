@@ -200,6 +200,7 @@ impl Component for MargoDockModel {
             let _ = config_manager().config().dock().icon_size().get();
             let _ = config_manager().config().dock().show_tooltips().get();
             let _ = config_manager().config().dock().show_running().get();
+            let _ = config_manager().config().dock().ignore().get();
             sender_clone.input(MargoDockInput::DockConfigChanged);
         });
 
@@ -356,25 +357,27 @@ impl Component for MargoDockModel {
                     })
                     .collect();
 
-                // Then append running apps that aren't pinned — unless the
-                // dock is configured pinned-only (`show_running = false`).
-                if config_manager()
-                    .config()
-                    .dock()
-                    .show_running()
-                    .get_untracked()
-                {
-                    let unpinned_rows = sorted_clients
-                        .iter()
-                        .map(|client| client.class.get().to_string())
-                        .filter(|class| seen.insert(class.clone()))
-                        .map(|class| DockItem {
-                            client_count: *counts.get(&class).unwrap_or(&0),
-                            class,
-                            pinned: false,
-                        });
-                    rows.extend(unpinned_rows);
-                }
+                // Then append running apps that aren't pinned — gated by
+                // `show_running` and filtered through the `ignore` list (both
+                // via the pure `visible_running_classes` helper).
+                let dock_cfg = config_manager().config().dock().get_untracked();
+                let running_classes: Vec<String> = sorted_clients
+                    .iter()
+                    .map(|client| client.class.get().to_string())
+                    .collect();
+                let unpinned_rows = visible_running_classes(
+                    &running_classes,
+                    &dock_cfg.ignore,
+                    dock_cfg.show_running,
+                )
+                .into_iter()
+                .filter(|class| seen.insert(class.clone()))
+                .map(|class| DockItem {
+                    client_count: *counts.get(&class).unwrap_or(&0),
+                    class,
+                    pinned: false,
+                });
+                rows.extend(unpinned_rows);
 
                 // Sort rows according to remembered drag-and-drop order.
                 if !self.ordered_keys.is_empty() {
@@ -489,5 +492,40 @@ impl MargoDockModel {
                 }
             }
         });
+    }
+}
+
+/// Visible *running* app classes for the dock: the running set minus the
+/// ignore list (case-insensitive), preserving input order (the caller dedupes
+/// + adds counts). `show_running == false` ⇒ a pinned-only dock (empty here).
+pub(crate) fn visible_running_classes(
+    running: &[String],
+    ignore: &[String],
+    show_running: bool,
+) -> Vec<String> {
+    if !show_running {
+        return Vec::new();
+    }
+    let ignore_lc: Vec<String> = ignore.iter().map(|s| s.to_lowercase()).collect();
+    running
+        .iter()
+        .filter(|c| !ignore_lc.contains(&c.to_lowercase()))
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod dock_filter_tests {
+    use super::visible_running_classes;
+
+    #[test]
+    fn ignore_list_is_case_insensitive_and_show_running_gates() {
+        let running = vec!["Firefox".to_string(), "kitty".to_string(), "Slack".to_string()];
+        let ignore = vec!["slack".to_string()];
+        assert_eq!(
+            visible_running_classes(&running, &ignore, true),
+            vec!["Firefox".to_string(), "kitty".to_string()]
+        );
+        assert!(visible_running_classes(&running, &ignore, false).is_empty());
     }
 }
