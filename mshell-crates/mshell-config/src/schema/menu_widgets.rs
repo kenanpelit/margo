@@ -53,6 +53,10 @@ pub enum MenuWidget {
     /// opens contiguous with the bar instead of as a separate
     /// xdg_popup window.
     MargoLayout,
+    /// mdock as a Frame menu — the pinned/running app strip rendered inside the
+    /// bar's frame (the "layer-shell", bar-attached mdock style). Toggled by
+    /// `mshellctl dock`.
+    MargoDock,
     MediaPlayer,
     Dns,
     NetworkToggle,
@@ -147,6 +151,7 @@ impl MenuWidget {
             MenuWidget::CpuDashboard => "CPU Dashboard",
             MenuWidget::Divider => "Divider",
             MenuWidget::MargoLayout => "Margo Layout",
+            MenuWidget::MargoDock => "mdock",
             MenuWidget::MediaPlayer => "Media Player",
             MenuWidget::Dns => "DNS / VPN",
             MenuWidget::NetworkToggle => "Network",

@@ -1,3 +1,5 @@
+use crate::bars::bar::BarType;
+use crate::bars::bar_widgets::margo_dock::{MargoDockInit, MargoDockModel, MargoDockOutput};
 use crate::menus::menu::{MenuModel, MenuOutput};
 use crate::menus::menu_widgets::alarm_clock::alarm_clock_menu_widget::{
     AlarmClockMenuWidgetInit, AlarmClockMenuWidgetModel,
@@ -235,6 +237,18 @@ pub fn build_widget(
                 .launch(MargoLayoutMenuWidgetInit {})
                 .forward(sender.output_sender(), |msg| match msg {
                     MargoLayoutMenuWidgetOutput::CloseMenu => MenuOutput::CloseMenu,
+                }),
+        ),
+        MenuWidget::MargoDock => Box::new(
+            MargoDockModel::builder()
+                .launch(MargoDockInit {
+                    orientation: relm4::gtk::Orientation::Horizontal,
+                    bar_type: BarType::Bottom,
+                })
+                .forward(sender.output_sender(), |msg| match msg {
+                    // The launcher button closes the dock menu (the standalone
+                    // popup launches the app launcher directly).
+                    MargoDockOutput::AppLauncherClicked => MenuOutput::CloseMenu,
                 }),
         ),
         MenuWidget::MediaPlayer => Box::new(
