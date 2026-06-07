@@ -1242,6 +1242,33 @@ stay filled (`.ok-button-primary`); the rule is scoped to `.settings-page` so
 menus / dashboards / bar widgets are untouched. Don't reintroduce a bare
 `--surface` action button on a settings page.
 
+## 21b. mdock — the dual-mode dock
+
+**mdock** is one dock core with two display modes, driven by `config.dock`
+(serde key stays `dock`; user-facing name is "mdock"):
+
+- **Bar widget** — `BarWidget::MargoDock`, the pill embedded in a bar
+  (`margo_dock.rs` strip + `margo_dock_item.rs` items).
+- **Standalone surface** — `mdock_surface.rs`: a per-output layer-shell window
+  (`namespace = "mdock"`) hosting the *same* `MargoDockModel` strip inside a
+  `Revealer`. Three behaviours (`config.dock.behavior`): **Always** (visible,
+  `auto_exclusive_zone_enable`), **AutoHide** (hidden; a 1px
+  `namespace = "mdock-trigger"` edge strip reveals it on pointer-enter, a
+  `leave` controller hides it — hydock pattern; no exclusive zone), **Toggle**
+  (hidden; `mshellctl dock toggle|show|hide` → `Dock*` D-Bus → `ShellInput::Dock*`
+  → the per-output `Controller<MdockSurface>`). Edge from `config.dock.position`.
+
+Spawned per-output in `relm_app.rs` (`WindowGroup.mdock`, `make_mdock`), rebuilt
+on a `standalone`/`behavior`/`position` change (`ShellInput::RebuildDocks`).
+Pure layer-shell mapping in `mdock_layout.rs` (edge/orientation/zone/trigger),
+unit-tested. Pins use the `pinned_apps_store` cache (not config). Click focuses
+the exact window by `Address` → `dispatch focuswindow <idx>` →
+`activate_window_idx` (jumps to the window's tag); `focus_command` returns
+`Option` (no dead Hyprland fallback). Hover preview = a Pango-markup tooltip
+card (app name + window titles); live pixel thumbnails are deferred (need margo
+per-toplevel capture). Settings → Widgets → mdock owns every knob. Port of
+hydock (GPL-3.0).
+
 ## 22. Control-center tile anatomy
 
 The quick-settings tile (`control_center/tile.rs`) is the canonical toggle.

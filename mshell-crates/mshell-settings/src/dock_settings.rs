@@ -8,9 +8,7 @@
 //! dock's right-click menu), not here.
 
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{
-    ConfigStoreFields, DockBehavior, DockPosition, DockStoreFields,
-};
+use mshell_config::schema::config::{ConfigStoreFields, DockBehavior, DockPosition};
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};

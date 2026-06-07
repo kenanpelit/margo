@@ -102,7 +102,13 @@ impl Component for MdockSurface {
 
         // Auto-hide edge trigger reveals the dock on pointer-enter.
         let trigger = if uses_edge_trigger(cfg.behavior) {
-            Some(build_trigger(&params.monitor, edge, orientation, &sender, &root))
+            Some(build_trigger(
+                &params.monitor,
+                edge,
+                orientation,
+                &sender,
+                &root,
+            ))
         } else {
             None
         };
@@ -131,25 +137,19 @@ impl Component for MdockSurface {
         }
     }
 
-    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
-        match msg {
-            MdockSurfaceInput::Show => {
-                self.window.set_visible(true);
-                self.revealer.set_reveal_child(true);
-            }
-            MdockSurfaceInput::Hide => {
-                self.revealer.set_reveal_child(false);
-                if !matches!(self.behavior, DockBehavior::Always) {
-                    self.window.set_visible(false);
-                }
-            }
-            MdockSurfaceInput::Toggle => {
-                let next = if self.revealer.reveals_child() {
-                    MdockSurfaceInput::Hide
-                } else {
-                    MdockSurfaceInput::Show
-                };
-                self.update(next, sender, root);
+    fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
+        let show = match msg {
+            MdockSurfaceInput::Show => true,
+            MdockSurfaceInput::Hide => false,
+            MdockSurfaceInput::Toggle => !self.revealer.reveals_child(),
+        };
+        if show {
+            self.window.set_visible(true);
+            self.revealer.set_reveal_child(true);
+        } else {
+            self.revealer.set_reveal_child(false);
+            if !matches!(self.behavior, DockBehavior::Always) {
+                self.window.set_visible(false);
             }
         }
     }
