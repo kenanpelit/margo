@@ -4,10 +4,11 @@ use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use mshell_cache::wallpaper::{CycleDirection, cycle_wallpaper};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    BarsStoreFields, ConfigStoreFields, FrameStoreFields, GeneralStoreFields, IdleStoreFields,
-    WallpaperRotationMode, WallpaperStoreFields,
+    BarsStoreFields, ConfigStoreFields, DockStoreFields, FrameStoreFields, GeneralStoreFields,
+    IdleStoreFields, WallpaperRotationMode, WallpaperStoreFields,
 };
 use mshell_frame::frame::{Frame, FrameInit, FrameInput};
+use mshell_frame::mdock_surface::{MdockSurface, MdockSurfaceInit, MdockSurfaceInput};
 use mshell_idle::idle_manager::{self, IdleConfig, IdleStage};
 use mshell_idle::inhibitor::IdleInhibitor;
 use mshell_lockscreen::lock_screen_manager::{LockScreenManagerInit, LockScreenManagerModel};
@@ -36,6 +37,8 @@ use tracing::info;
 pub(crate) struct WindowGroup {
     pub monitor: Monitor,
     pub frame: Option<Controller<Frame>>,
+    /// Standalone mdock surface for this output (when `dock.standalone`).
+    pub mdock: Option<Controller<MdockSurface>>,
     pub _wallpaper: Option<Controller<WallpaperModel>>,
     pub _popup_notifications: Option<Controller<PopupNotificationsModel>>,
     pub _volume_osd: Option<Controller<VolumeOsdModel>>,
@@ -51,6 +54,27 @@ pub(crate) struct WindowGroup {
     /// monitor hot-unplug. Empty when `general.show_screen_corners`
     /// is off.
     pub _screen_corners: Vec<gtk::Window>,
+}
+
+/// Build the standalone mdock surface for an output, or `None` when
+/// `dock.standalone` is off. Used at window-group creation and on a live
+/// `dock.standalone/behavior/position` change (rebuild).
+fn make_mdock(monitor: &Monitor) -> Option<Controller<MdockSurface>> {
+    let standalone = config_manager()
+        .config()
+        .dock()
+        .standalone()
+        .get_untracked();
+    if !standalone {
+        return None;
+    }
+    Some(
+        MdockSurface::builder()
+            .launch(MdockSurfaceInit {
+                monitor: Some(monitor.clone()),
+            })
+            .detach(),
+    )
 }
 
 pub(crate) struct Shell {
@@ -73,6 +97,13 @@ pub(crate) enum ShellInput {
     MonitorFilterUpdated(Vec<String>),
     AddWindowGroup(String, Monitor),
     RemoveWindowGroup(String),
+    /// `dock.standalone/behavior/position` changed — tear down + recreate
+    /// every output's standalone mdock surface.
+    RebuildDocks,
+    /// Standalone mdock: toggle / show / hide on every output.
+    DockToggle,
+    DockShow,
+    DockHide,
     Quit,
     ToggleAppLauncher(Option<String>),
     /// Open the app launcher AND pre-select the named category
@@ -211,6 +242,16 @@ impl Component for Shell {
                 .monitor_filter()
                 .get();
             sender_clone.input(ShellInput::MonitorFilterUpdated(monitors));
+        });
+
+        // Rebuild the standalone mdock surfaces when their shape changes.
+        let sender_clone = sender.clone();
+        Effect::new(move |_| {
+            let dock = config_manager().config().dock();
+            let _ = dock.standalone().get();
+            let _ = dock.behavior().get();
+            let _ = dock.position().get();
+            sender_clone.input(ShellInput::RebuildDocks);
         });
 
         let monitor_filter = config_manager()
@@ -356,6 +397,35 @@ impl Component for Shell {
                     }
                 }
             }
+            ShellInput::RebuildDocks => {
+                for group in self.window_groups.values_mut() {
+                    if let Some(old) = group.mdock.take() {
+                        old.widget().close();
+                    }
+                    group.mdock = make_mdock(&group.monitor);
+                }
+            }
+            ShellInput::DockToggle => {
+                for group in self.window_groups.values() {
+                    if let Some(m) = &group.mdock {
+                        m.emit(MdockSurfaceInput::Toggle);
+                    }
+                }
+            }
+            ShellInput::DockShow => {
+                for group in self.window_groups.values() {
+                    if let Some(m) = &group.mdock {
+                        m.emit(MdockSurfaceInput::Show);
+                    }
+                }
+            }
+            ShellInput::DockHide => {
+                for group in self.window_groups.values() {
+                    if let Some(m) = &group.mdock {
+                        m.emit(MdockSurfaceInput::Hide);
+                    }
+                }
+            }
             ShellInput::AddWindowGroup(name, monitor) => {
                 info!("Creating new window group");
                 let wallpaper = Some(
@@ -442,9 +512,12 @@ impl Component for Shell {
                     Vec::new()
                 };
 
+                let mdock = make_mdock(&monitor);
+
                 let window_group = WindowGroup {
                     monitor: monitor.clone(),
                     frame,
+                    mdock,
                     _wallpaper: wallpaper,
                     _popup_notifications: popup_notifications,
                     _volume_osd: volume_osd,
