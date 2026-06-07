@@ -1327,7 +1327,19 @@ pub struct Valent {
     pub main_device_id: String,
 }
 
-/// Standalone-dock (mdock) reveal behaviour.
+/// How the standalone mdock surface is presented.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DockStyle {
+    /// A session-menu-style popup: opens on demand as a floating panel, closes
+    /// on Esc / click-away. Not pinned to the screen edge.
+    Popup,
+    /// An edge-anchored dock (Always visible / Auto-hide), pinned to the screen.
+    #[default]
+    LayerShell,
+}
+
+/// Standalone-dock (mdock) reveal behaviour (only used in LayerShell style).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DockBehavior {
@@ -1373,9 +1385,11 @@ pub struct Dock {
     // ── mdock additions ─────────────────────────────────────────────
     /// Show the dock as a bar-widget pill (the classic mode).
     pub in_bar: bool,
-    /// Run the standalone layer-shell dock surface.
+    /// Run the standalone dock surface.
     pub standalone: bool,
-    /// Standalone reveal behaviour.
+    /// How the standalone surface is presented (popup vs edge layer-shell).
+    pub style: DockStyle,
+    /// Standalone reveal behaviour (LayerShell style only).
     pub behavior: DockBehavior,
     /// Screen edge the standalone dock anchors to.
     pub position: DockPosition,
@@ -1404,6 +1418,7 @@ impl Default for Dock {
             icon_overrides: Vec::new(),
             in_bar: true,
             standalone: false,
+            style: DockStyle::LayerShell,
             behavior: DockBehavior::AutoHide,
             position: DockPosition::Bottom,
             ignore: Vec::new(),
@@ -1413,6 +1428,21 @@ impl Default for Dock {
             launcher_enabled: true,
             launcher_icon: "view-app-grid-symbolic".to_string(),
             launcher_command: String::new(),
+        }
+    }
+}
+
+impl PatchField for DockStyle {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
         }
     }
 }

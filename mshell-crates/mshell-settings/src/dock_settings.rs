@@ -8,7 +8,7 @@
 //! dock's right-click menu), not here.
 
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, DockBehavior, DockPosition};
+use mshell_config::schema::config::{ConfigStoreFields, DockBehavior, DockPosition, DockStyle};
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -26,6 +26,20 @@ fn behavior_from_index(i: u32) -> DockBehavior {
         0 => DockBehavior::Always,
         2 => DockBehavior::Toggle,
         _ => DockBehavior::AutoHide,
+    }
+}
+
+fn style_index(s: DockStyle) -> u32 {
+    match s {
+        DockStyle::Popup => 0,
+        DockStyle::LayerShell => 1,
+    }
+}
+
+fn style_from_index(i: u32) -> DockStyle {
+    match i {
+        0 => DockStyle::Popup,
+        _ => DockStyle::LayerShell,
     }
 }
 
@@ -58,8 +72,10 @@ pub(crate) struct DockSettingsModel {
     standalone: bool,
     separator: bool,
     launcher_enabled: bool,
+    style_idx: u32,
     behavior_idx: u32,
     position_idx: u32,
+    styles: gtk::StringList,
     behaviors: gtk::StringList,
     positions: gtk::StringList,
 }
@@ -75,6 +91,7 @@ pub(crate) enum DockSettingsInput {
     SetStandalone(bool),
     SetSeparator(bool),
     SetLauncherEnabled(bool),
+    SetStyle(u32),
     SetBehavior(u32),
     SetPosition(u32),
 }
@@ -160,7 +177,19 @@ impl Component for DockSettingsModel {
                     },
                 },
                 #[template] DockRow {
-                    #[template_child] title { set_label: "Standalone behaviour" },
+                    #[template_child] title { set_label: "Standalone style" },
+                    #[template_child] desc { set_label: "Popup = opens like the session menu (Esc / click-away closes). Layer-shell = pinned to a screen edge." },
+                    gtk::DropDown {
+                        set_valign: gtk::Align::Center,
+                        set_width_request: 160,
+                        set_model: Some(&model.styles),
+                        #[block_signal(style_h)]
+                        set_selected: model.style_idx,
+                        connect_selected_notify[sender] => move |d| sender.input(DockSettingsInput::SetStyle(d.selected())) @style_h,
+                    },
+                },
+                #[template] DockRow {
+                    #[template_child] title { set_label: "Standalone behaviour (layer-shell)" },
                     #[template_child] desc { set_label: "Always visible, auto-hide on the edge, or toggle on demand (mshellctl dock toggle)." },
                     gtk::DropDown {
                         set_valign: gtk::Align::Center,
@@ -310,8 +339,10 @@ impl Component for DockSettingsModel {
             standalone: d.standalone,
             separator: d.separator,
             launcher_enabled: d.launcher_enabled,
+            style_idx: style_index(d.style),
             behavior_idx: behavior_index(d.behavior),
             position_idx: position_index(d.position),
+            styles: gtk::StringList::new(&["Popup", "Layer-shell"]),
             behaviors: gtk::StringList::new(&["Always", "Auto-hide", "Toggle"]),
             positions: gtk::StringList::new(&["Top", "Bottom", "Left", "Right"]),
         };
@@ -359,6 +390,11 @@ impl Component for DockSettingsModel {
             DockSettingsInput::SetLauncherEnabled(v) => {
                 self.launcher_enabled = v;
                 config_manager().update_config(move |c| c.dock.launcher_enabled = v);
+            }
+            DockSettingsInput::SetStyle(i) => {
+                self.style_idx = i;
+                let s = style_from_index(i);
+                config_manager().update_config(move |c| c.dock.style = s);
             }
             DockSettingsInput::SetBehavior(i) => {
                 self.behavior_idx = i;

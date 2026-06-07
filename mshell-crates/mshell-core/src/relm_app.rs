@@ -248,6 +248,7 @@ impl Component for Shell {
         let sender_clone = sender.clone();
         Effect::new(move |_| {
             let _ = config_manager().config().dock().standalone().get();
+            let _ = config_manager().config().dock().style().get();
             let _ = config_manager().config().dock().behavior().get();
             let _ = config_manager().config().dock().position().get();
             sender_clone.input(ShellInput::RebuildDocks);

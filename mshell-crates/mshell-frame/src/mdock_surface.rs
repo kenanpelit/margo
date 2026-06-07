@@ -7,13 +7,13 @@
 //! same licence as margo.
 
 use crate::bars::bar::BarType;
-use crate::bars::bar_widgets::margo_dock::{MargoDockInit, MargoDockModel};
+use crate::bars::bar_widgets::margo_dock::{MargoDockInit, MargoDockModel, MargoDockOutput};
 use crate::bars::bar_widgets::mdock_layout::{
     edge_for, orientation_for, reserves_exclusive_zone, uses_edge_trigger,
 };
-use gtk4_layer_shell::{Layer, LayerShell};
+use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, DockBehavior, DockPosition};
+use mshell_config::schema::config::{ConfigStoreFields, DockBehavior, DockPosition, DockStyle};
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
@@ -32,6 +32,8 @@ pub enum MdockSurfaceInput {
     Show,
     Hide,
     Toggle,
+    /// The dock's launcher button was clicked — open the app launcher.
+    LauncherClicked,
 }
 
 pub struct MdockSurfaceInit {
@@ -39,13 +41,39 @@ pub struct MdockSurfaceInit {
     pub monitor: Option<gtk::gdk::Monitor>,
 }
 
-/// Slide animation duration, ms — matches the bar toggle's smooth feel.
-const SLIDE_MS: u32 = 300;
-
 fn bar_type_for(p: DockPosition) -> BarType {
     match p {
         DockPosition::Top => BarType::Top,
         _ => BarType::Bottom,
+    }
+}
+
+/// Align the popup card against its `position` edge (centred on the cross
+/// axis), like a menu anchored to that side.
+fn align_popup(revealer: &gtk::Revealer, position: DockPosition) {
+    use gtk::Align::{Center, End, Start};
+    let m = 8;
+    match position {
+        DockPosition::Left => {
+            revealer.set_halign(Start);
+            revealer.set_valign(Center);
+            revealer.set_margin_start(m);
+        }
+        DockPosition::Right => {
+            revealer.set_halign(End);
+            revealer.set_valign(Center);
+            revealer.set_margin_end(m);
+        }
+        DockPosition::Top => {
+            revealer.set_halign(Center);
+            revealer.set_valign(Start);
+            revealer.set_margin_top(m);
+        }
+        DockPosition::Bottom => {
+            revealer.set_halign(Center);
+            revealer.set_valign(End);
+            revealer.set_margin_bottom(m);
+        }
     }
 }
 
@@ -70,45 +98,42 @@ impl Component for MdockSurface {
         let edge = edge_for(cfg.position);
         let orientation = orientation_for(cfg.position);
 
-        // The dock strip — the SAME component the bar pill embeds.
+        let popup = matches!(cfg.style, DockStyle::Popup);
+
+        // The dock strip — the SAME component the bar pill embeds. Forward its
+        // launcher-button output so the button actually opens the launcher.
         let dock = MargoDockModel::builder()
             .launch(MargoDockInit {
                 orientation,
                 bar_type: bar_type_for(cfg.position),
             })
-            .detach();
+            .forward(sender.input_sender(), |msg| match msg {
+                MargoDockOutput::AppLauncherClicked => MdockSurfaceInput::LauncherClicked,
+            });
 
+        // No slide — instant show/hide (the slide read poorly). The card just
+        // appears/disappears; for a popup it behaves like the session menu.
         let revealer = gtk::Revealer::builder()
-            // Slide in/out from the anchored edge (like the bar toggle) for a
-            // smooth reveal both ways — not a snap.
-            .transition_type(transition_for(cfg.position))
-            .transition_duration(SLIDE_MS)
-            // Centre the card on the anchored edge so the dock doesn't stretch
-            // to fill the (possibly full-length) layer-shell window.
-            .halign(gtk::Align::Center)
-            .valign(gtk::Align::Center)
+            .transition_type(gtk::RevealerTransitionType::None)
             .child(dock.widget())
             .build();
         revealer.add_css_class("mdock-surface");
 
-        // Keep the window mapped during the slide-OUT, then unmap it only after
-        // the revealer animation finishes — otherwise the window vanishes
-        // before the slide plays (the snap the user saw). Always-on docks never
-        // unmap. This is what makes `mshellctl dock toggle` smooth like the bar.
+        // Unmap the window once hidden so it stops capturing input. An always-on
+        // layer-shell dock stays mapped; everything else unmaps when concealed.
+        let keep_mapped = !popup && matches!(cfg.behavior, DockBehavior::Always);
         {
             let window = root.clone();
-            let behavior = cfg.behavior;
             let rev = revealer.clone();
             revealer.connect_child_revealed_notify(move |_| {
-                if !rev.is_child_revealed() && !matches!(behavior, DockBehavior::Always) {
+                if !rev.is_child_revealed() && !keep_mapped {
                     window.set_visible(false);
                 }
             });
         }
 
-        // Layer-shell window setup. `all: unset` on `.mdock-window` strips the
-        // default opaque window background so only the rounded surface shows
-        // (same trick as the notification-popup window).
+        // `all: unset` on `.mdock-window` strips the default opaque window
+        // background so only the rounded surface shows.
         root.add_css_class("mdock-window");
         root.init_layer_shell();
         if let Some(m) = &params.monitor {
@@ -117,37 +142,76 @@ impl Component for MdockSurface {
         root.set_namespace(Some("mdock"));
         root.set_layer(Layer::Top);
         root.set_decorated(false);
-        root.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::None);
-        root.set_anchor(edge, true);
-        if reserves_exclusive_zone(cfg.behavior) {
-            root.auto_exclusive_zone_enable();
-        } else {
-            root.set_exclusive_zone(0);
-        }
         root.set_child(Some(&revealer));
 
-        // Auto-hide edge trigger reveals the dock on pointer-enter.
-        let trigger = if uses_edge_trigger(cfg.behavior) {
-            Some(build_trigger(
-                &params.monitor,
-                edge,
-                orientation,
-                &sender,
-                &root,
-            ))
-        } else {
-            None
-        };
+        let mut trigger = None;
 
-        // Initial visibility per behaviour.
-        match cfg.behavior {
-            DockBehavior::Always => {
-                root.set_visible(true);
-                revealer.set_reveal_child(true);
+        if popup {
+            // Session-menu-style popup: a full-screen transparent surface with
+            // the card anchored to its `position` edge. Grabs the keyboard so
+            // Esc closes it; clicking outside the card closes it too. Opens on
+            // `mshellctl dock toggle`.
+            root.set_keyboard_mode(KeyboardMode::Exclusive);
+            for e in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+                root.set_anchor(e, true);
             }
-            DockBehavior::AutoHide | DockBehavior::Toggle => {
-                root.set_visible(false);
-                revealer.set_reveal_child(false);
+            root.set_exclusive_zone(0);
+            align_popup(&revealer, cfg.position);
+
+            // Esc → close.
+            let key = gtk::EventControllerKey::new();
+            let s = sender.clone();
+            key.connect_key_pressed(move |_, k, _, _| {
+                if k == gtk::gdk::Key::Escape {
+                    s.input(MdockSurfaceInput::Hide);
+                    gtk::glib::Propagation::Stop
+                } else {
+                    gtk::glib::Propagation::Proceed
+                }
+            });
+            root.add_controller(key);
+
+            // Click outside the card → close.
+            let click = gtk::GestureClick::new();
+            let s = sender.clone();
+            let card = revealer.clone();
+            let win = root.clone();
+            click.connect_pressed(move |_, _, x, y| {
+                let inside = card
+                    .compute_bounds(&win)
+                    .map(|b| b.contains_point(&gtk::graphene::Point::new(x as f32, y as f32)))
+                    .unwrap_or(false);
+                if !inside {
+                    s.input(MdockSurfaceInput::Hide);
+                }
+            });
+            root.add_controller(click);
+
+            root.set_visible(false);
+        } else {
+            // Edge layer-shell dock.
+            root.set_keyboard_mode(KeyboardMode::None);
+            // Centre the card on the anchored edge.
+            revealer.set_halign(gtk::Align::Center);
+            revealer.set_valign(gtk::Align::Center);
+            root.set_anchor(edge, true);
+            if reserves_exclusive_zone(cfg.behavior) {
+                root.auto_exclusive_zone_enable();
+            } else {
+                root.set_exclusive_zone(0);
+            }
+
+            trigger = uses_edge_trigger(cfg.behavior)
+                .then(|| build_trigger(&params.monitor, edge, orientation, &sender, &root));
+
+            match cfg.behavior {
+                DockBehavior::Always => {
+                    root.set_visible(true);
+                    revealer.set_reveal_child(true);
+                }
+                DockBehavior::AutoHide | DockBehavior::Toggle => {
+                    root.set_visible(false);
+                }
             }
         }
 
@@ -167,28 +231,34 @@ impl Component for MdockSurface {
             MdockSurfaceInput::Show => true,
             MdockSurfaceInput::Hide => false,
             MdockSurfaceInput::Toggle => !self.revealer.reveals_child(),
+            MdockSurfaceInput::LauncherClicked => {
+                open_launcher();
+                return;
+            }
         };
         if show {
-            // Map first, then slide in.
             self.window.set_visible(true);
             self.revealer.set_reveal_child(true);
         } else {
-            // Slide out; the `child_revealed` handler unmaps the window once
-            // the animation finishes (smooth hide, not a snap).
             self.revealer.set_reveal_child(false);
         }
     }
 }
 
-/// Revealer slide direction so the dock slides in from its anchored edge.
-fn transition_for(p: DockPosition) -> gtk::RevealerTransitionType {
-    use gtk::RevealerTransitionType as T;
-    match p {
-        DockPosition::Bottom => T::SlideUp,
-        DockPosition::Top => T::SlideDown,
-        DockPosition::Left => T::SlideRight,
-        DockPosition::Right => T::SlideLeft,
-    }
+/// Open the app launcher from the dock's launcher button: run the configured
+/// `launcher_command` if set, else toggle the shell's app-launcher menu.
+fn open_launcher() {
+    let cmd = config_manager()
+        .config()
+        .dock()
+        .get_untracked()
+        .launcher_command;
+    let cmd = if cmd.trim().is_empty() {
+        "mshellctl menu app-launcher".to_string()
+    } else {
+        cmd
+    };
+    let _ = std::process::Command::new("sh").arg("-c").arg(cmd).spawn();
 }
 
 /// Build the 1px auto-hide trigger strip along `edge`. Pointer-enter reveals
