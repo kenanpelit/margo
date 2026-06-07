@@ -2,10 +2,20 @@
 // strip). The bar-widget mode keeps `.margo-dock-bar-widget` styling; this is
 // only the floating/standalone surface chrome.
 
+// Strip the default window background so only the rounded surface shows
+// (same trick as `.popup-notifications-window`). Without this the layer-shell
+// window paints an opaque rectangle behind the card.
+.mdock-window {
+  all: unset;
+}
+
+// The visible card — a clean rounded menu-style surface (matches the
+// session/quick-settings menu language): elevated container fill, soft shadow,
+// generous radius. Centred + content-sized via the revealer's align.
 .mdock-surface {
   padding: var(--space-2);
-  margin: var(--space-2);
+  margin: var(--space-3);
   background-color: var(--surface-container);
   border-radius: var(--radius-xl);
-  border: 1px solid var(--outline-variant);
+  box-shadow: 0 2px 12px unquote("color-mix(in srgb, var(--on-surface) 28%, transparent)");
 }

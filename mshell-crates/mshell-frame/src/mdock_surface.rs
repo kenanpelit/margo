@@ -79,11 +79,18 @@ impl Component for MdockSurface {
         let revealer = gtk::Revealer::builder()
             .transition_type(gtk::RevealerTransitionType::Crossfade)
             .transition_duration(180)
+            // Centre the card on the anchored edge so the dock doesn't stretch
+            // to fill the (possibly full-length) layer-shell window.
+            .halign(gtk::Align::Center)
+            .valign(gtk::Align::Center)
             .child(dock.widget())
             .build();
         revealer.add_css_class("mdock-surface");
 
-        // Layer-shell window setup.
+        // Layer-shell window setup. `all: unset` on `.mdock-window` strips the
+        // default opaque window background so only the rounded surface shows
+        // (same trick as the notification-popup window).
+        root.add_css_class("mdock-window");
         root.init_layer_shell();
         if let Some(m) = &params.monitor {
             root.set_monitor(Some(m));
