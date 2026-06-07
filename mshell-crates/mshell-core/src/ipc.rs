@@ -1483,6 +1483,23 @@ impl IPCService {
     async fn audio_status_json(&self) -> String {
         render_audio_status(true)
     }
+    /// Set the shell's file-log level live (error|warn|info|debug|trace).
+    async fn log_level(&self, level: String) -> String {
+        match mshell_logging::set_level(&level) {
+            Ok(()) => format!("shell log level set to {level}"),
+            Err(e) => format!("error: {e}"),
+        }
+    }
+    /// Enable/disable the shell's file logging live.
+    async fn log_enabled(&self, enabled: bool) -> String {
+        match mshell_logging::set_enabled(enabled) {
+            Ok(()) => format!(
+                "shell file logging {}",
+                if enabled { "enabled" } else { "disabled" }
+            ),
+            Err(e) => format!("error: {e}"),
+        }
+    }
     /// Absolute output volume as a percent (0–150).
     async fn audio_volume_set(&self, percent: f64) {
         let _ = self.tx.send(IPCCommand::VolumeSet(percent / 100.0));

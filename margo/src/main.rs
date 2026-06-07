@@ -58,7 +58,6 @@ use smithay::reexports::{
     wayland_server::Display,
 };
 use tracing::{error, info, warn};
-use tracing_subscriber::{filter::EnvFilter, fmt};
 
 use state::{MargoClientData, MargoState};
 
@@ -210,14 +209,17 @@ struct Args {
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
+/// Live handle to margo's file logger. Set once in `main` after the config is
+/// parsed; read by the `loglevel` / `logenabled` dispatch actions and by
+/// `reload_config` to retune at runtime. Holds the file sink alive for the
+/// whole process.
+pub static LOG_HANDLE: std::sync::OnceLock<margo_logging::LogHandle> = std::sync::OnceLock::new();
+
 fn main() -> Result<()> {
-    fmt()
-        .with_env_filter(
-            EnvFilter::try_from_env("MARGO_LOG")
-                .or_else(|_| EnvFilter::try_new("info"))
-                .unwrap(),
-        )
-        .init();
+    // Logging is brought up a few lines down — *after* the config parse — so
+    // the file sink (~/.local/state/margo/logs/margo-*.log) honours the
+    // user's `log_to_file` / `log_file_level` / `log_keep_sessions` knobs from
+    // the very first line. `MARGO_LOG` still overrides at startup.
 
     // Tracy profiler. Built with `--features profile-with-tracy`, this
     // starts the client so the sprinkled `span!`s record and a Tracy GUI
@@ -251,11 +253,27 @@ fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let config =
-        margo_config::parse_config_with_defaults(args.config.as_deref()).unwrap_or_else(|e| {
-            error!("config error: {e}, using defaults");
-            margo_config::Config::default()
-        });
+    let (config, config_err) =
+        match margo_config::parse_config_with_defaults(args.config.as_deref()) {
+            Ok(c) => (c, None),
+            Err(e) => (margo_config::Config::default(), Some(e.to_string())),
+        };
+
+    // Stand up logging now that the knobs are known. Keeps the last
+    // `log_keep_sessions` files in ~/.local/state/margo/logs (margo-*.log).
+    let _ = LOG_HANDLE.set(margo_logging::init(margo_logging::LogInit {
+        app_name: "margo".to_string(),
+        dir: margo_logging::logs_dir(),
+        level: config.log_file_level.clone(),
+        enabled: config.log_to_file,
+        keep_sessions: config.log_keep_sessions.max(1) as usize,
+        to_stdout: true,
+        env_override: Some("MARGO_LOG".to_string()),
+    }));
+
+    if let Some(e) = config_err {
+        error!("config error: {e}, using defaults");
+    }
 
     for (name, value) in &config.envs {
         // SAFETY: single-threaded at this point, no other threads reading env

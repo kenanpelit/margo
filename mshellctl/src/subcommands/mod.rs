@@ -4,6 +4,7 @@ pub mod bluetooth;
 pub mod brightness;
 pub mod clipboard;
 pub mod lock;
+pub mod log;
 pub mod media;
 pub mod menu;
 pub mod plugin;

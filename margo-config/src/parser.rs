@@ -626,6 +626,11 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "xkb_rules_variant" => cfg.xkb_rules.variant = val.to_string(),
         "xkb_rules_options" => cfg.xkb_rules.options = val.to_string(),
 
+        // logging (file logging to ~/.local/state/margo/logs, last N sessions)
+        "log_to_file" => cfg.log_to_file = parse_bool(val),
+        "log_file_level" => cfg.log_file_level = val.trim().to_ascii_lowercase(),
+        "log_keep_sessions" => cfg.log_keep_sessions = parse_u32(val),
+
         other => {
             warn!("unknown config key: {}", other);
         }
@@ -1516,7 +1521,10 @@ pub const OPTION_KEYS: &[&str] = &[
     "layer_animation_type_open",
     "layer_shadows",
     "left_handed",
+    "log_file_level",
+    "log_keep_sessions",
     "log_level",
+    "log_to_file",
     "maximizescreencolor",
     "middle_button_emulation",
     "mouse_natural_scrolling",

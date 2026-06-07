@@ -3,6 +3,7 @@ members = [
     "margo",
     "margo-config",
     "margo-layouts",
+    "margo-logging",
     "margo-portal",
     "mctl",
     "mkeys",

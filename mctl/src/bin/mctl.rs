@@ -93,6 +93,27 @@ enum Command {
         args: Vec<String>,
     },
 
+    /// File-logging controls (~/.local/state/margo/logs/margo-*.log).
+    #[command(long_about = "Control margo's file logging. Logs live flat in \
+                      ~/.local/state/margo/logs as margo-YYYYMMDD-HHMMSS.log \
+                      (last `log_keep_sessions` kept; a margo-latest.log \
+                      symlink points at the current one).\n\
+                      \n\
+                      `level`/`enable`/`disable` retune the *running* \
+                      compositor live (no restart); they map to the \
+                      `loglevel` / `logenabled` dispatch actions. `path` and \
+                      `open` are local conveniences.\n\
+                      \n\
+                      EXAMPLES:\n  \
+                        mctl log level debug    # go deep, live\n  \
+                        mctl log level info     # back to normal\n  \
+                        mctl log path           # print the log dir + current file\n  \
+                        mctl log open           # open the log dir")]
+    Log {
+        #[command(subcommand)]
+        action: LogCmd,
+    },
+
     /// One-shot Rhai script execution against the live compositor (W3.2).
     #[command(
         display_order = 22,
@@ -547,6 +568,23 @@ enum Command {
 }
 
 #[derive(Subcommand, Debug)]
+enum LogCmd {
+    /// Set the file-log level live: error | warn | info | debug | trace.
+    Level {
+        /// One of error, warn, info, debug, trace.
+        level: String,
+    },
+    /// Turn file logging on, live.
+    Enable,
+    /// Turn file logging off, live.
+    Disable,
+    /// Print the log directory and the current-session file path.
+    Path,
+    /// Open the log directory in the default file manager.
+    Open,
+}
+
+#[derive(Subcommand, Debug)]
 enum TwilightCmd {
     /// Print the current twilight state (temperature, gamma, phase,
     /// source). Reads `state snapshot` — works even when the compositor
@@ -744,6 +782,25 @@ fn main() -> Result<()> {
             let a: Vec<&str> = cmd_args.iter().map(String::as_str).collect();
             send_dispatch(&name, &a)?;
         }
+        Command::Log { action } => match action {
+            LogCmd::Level { level } => send_dispatch("loglevel", &[&level])?,
+            LogCmd::Enable => send_dispatch("logenabled", &["true"])?,
+            LogCmd::Disable => send_dispatch("logenabled", &["false"])?,
+            LogCmd::Path => {
+                let dir = margo_logging::logs_dir();
+                println!("dir:     {}", dir.display());
+                println!("current: {}", dir.join("margo-latest.log").display());
+            }
+            LogCmd::Open => {
+                let dir = margo_logging::logs_dir();
+                let _ = std::fs::create_dir_all(&dir);
+                std::process::Command::new("xdg-open")
+                    .arg(&dir)
+                    .spawn()
+                    .map(|_| ())
+                    .unwrap_or_else(|e| eprintln!("could not open {}: {e}", dir.display()));
+            }
+        },
         Command::Run { file } => {
             // W3.2 — resolve to an absolute path so the
             // compositor (different CWD) reads the same file.

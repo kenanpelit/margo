@@ -18,6 +18,7 @@ mshell-common.workspace = true
 mshell-config.workspace = true
 mshell-frame.workspace = true
 mshell-idle.workspace = true
+mshell-logging.workspace = true
 mshell-lockscreen.workspace = true
 mshell-notification-popups.workspace = true
 mshell-osd.workspace = true

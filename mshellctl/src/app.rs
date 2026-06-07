@@ -95,6 +95,12 @@ pub enum Commands {
         #[command(subcommand)]
         command: BrightnessCommands,
     },
+    /// Shell file-logging controls (~/.local/state/margo/logs/mshell-*.log).
+    /// `level`/`enable`/`disable` retune the running shell live.
+    Log {
+        #[command(subcommand)]
+        command: crate::subcommands::log::LogCommands,
+    },
     /// Lock the session. Bare `lock` locks; `lock check` reports state.
     Lock {
         #[command(subcommand)]

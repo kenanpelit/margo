@@ -12,12 +12,14 @@ dirs.workspace = true
 fontconfig.workspace = true
 futures.workspace = true
 margo-config = { path = "../../margo-config" }
+margo-logging = { path = "../../margo-logging" }
 mpower = { path = "../../mpower" }
 mshell-cache.workspace = true
 mshell-clipboard.workspace = true
 mshell-common.workspace = true
 mshell-config.workspace = true
 mshell-launcher.workspace = true
+mshell-logging.workspace = true
 mshell-matugen.workspace = true
 mshell-plugins.workspace = true
 mshell-services.workspace = true

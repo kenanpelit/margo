@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 margo-config = { path = "../margo-config" }
+margo-logging = { path = "../margo-logging" }
 mctl = { path = "../mctl" }
 margo-layouts = { path = "../margo-layouts" }
 

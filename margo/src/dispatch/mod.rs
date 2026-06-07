@@ -204,6 +204,34 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 }
             }
         }
+        "loglevel" | "log_level" => {
+            let level = arg.v.as_deref().unwrap_or("info");
+            match crate::LOG_HANDLE.get() {
+                Some(h) => match h.set_level(level) {
+                    Ok(()) => tracing::info!("file log level set to {level}"),
+                    Err(e) => tracing::warn!("loglevel: {e}"),
+                },
+                None => tracing::warn!("loglevel: log handle not initialised"),
+            }
+        }
+        "logenabled" | "log_enabled" => {
+            let on = matches!(
+                arg.v
+                    .as_deref()
+                    .unwrap_or("true")
+                    .trim()
+                    .to_ascii_lowercase()
+                    .as_str(),
+                "1" | "true" | "on" | "yes" | "enable" | "enabled"
+            );
+            match crate::LOG_HANDLE.get() {
+                Some(h) => {
+                    let _ = h.set_enabled(on);
+                    tracing::info!("file logging {}", if on { "enabled" } else { "disabled" });
+                }
+                None => tracing::warn!("logenabled: log handle not initialised"),
+            }
+        }
         "reload" | "reload_config" => match state.reload_config() {
             Ok(()) => {
                 // Reload succeeded — but warnings from the validator

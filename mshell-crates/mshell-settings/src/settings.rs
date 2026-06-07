@@ -25,6 +25,7 @@ use crate::keyboard_settings::{KeyboardSettingsInit, KeyboardSettingsModel};
 use crate::launcher_settings::{LauncherSettingsInit, LauncherSettingsModel};
 use crate::layer_rules_settings::{LayerRulesInit, LayerRulesModel};
 use crate::lock_settings::{LockSettingsInit, LockSettingsModel};
+use crate::logging_settings::{LoggingInit, LoggingModel};
 use crate::media_player_settings::{MediaPlayerSettingsInit, MediaPlayerSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
 use crate::network_settings::{NetworkSettingsInit, NetworkSettingsModel};
@@ -81,6 +82,7 @@ pub struct SettingsWindowModel {
     tag_rules_settings_controller: Controller<TagRulesModel>,
     startup_env_settings_controller: Controller<StartupEnvModel>,
     backup_settings_controller: Controller<BackupSettingsModel>,
+    logging_settings_controller: Controller<LoggingModel>,
     overview_settings_controller: Controller<OverviewSettingsModel>,
     date_time_settings_controller: Controller<DateTimeSettingsModel>,
     region_settings_controller: Controller<RegionSettingsModel>,
@@ -431,6 +433,8 @@ impl Component for SettingsWindowModel {
             .launch(BackupSettingsInit {})
             .detach();
 
+        let logging_settings_controller = LoggingModel::builder().launch(LoggingInit {}).detach();
+
         let animations_settings_controller = AnimationsSettingsModel::builder()
             .launch(AnimationsSettingsInit {})
             .detach();
@@ -581,6 +585,7 @@ impl Component for SettingsWindowModel {
             tag_rules_settings_controller,
             startup_env_settings_controller,
             backup_settings_controller,
+            logging_settings_controller,
             overview_settings_controller,
             date_time_settings_controller,
             region_settings_controller,
@@ -730,7 +735,7 @@ impl Component for SettingsWindowModel {
         // Top-level stack pages. Insertion order does not affect display (the
         // sidebar buttons drive visibility) — kept as one table so the page
         // list lives in a single place instead of 36 add_titled blocks.
-        let stack_pages: [(&str, &str, gtk::Widget); 37] = [
+        let stack_pages: [(&str, &str, gtk::Widget); 38] = [
             (
                 "general",
                 "General",
@@ -812,6 +817,11 @@ impl Component for SettingsWindowModel {
                 "backup",
                 "Backup",
                 model.backup_settings_controller.widget().clone().into(),
+            ),
+            (
+                "logging",
+                "Logging",
+                model.logging_settings_controller.widget().clone().into(),
             ),
             (
                 "overview",
@@ -1876,6 +1886,11 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
         "backup export import profile profiles reset restore bundle snapshot \
          tar config default factory save load",
     ),
+    (
+        "logging",
+        "log logs logging level debug trace info warn error diagnostics \
+         troubleshoot file session verbose",
+    ),
     ("date_time", "clock time date timezone ntp format 24-hour"),
     ("date time", "clock time date timezone ntp format 24-hour"),
     ("date & time", "clock time date timezone ntp format 24-hour"),
@@ -1973,6 +1988,8 @@ const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("effects", "effects"),
     ("behaviour", "behaviour"),
     ("behavior", "behaviour"),
+    ("logging", "logging"),
+    ("logs", "logging"),
     ("window rules", "window_rules"),
     ("windowrule", "window_rules"),
     ("monitors", "display"),
@@ -2068,6 +2085,11 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "backup",
         icon: "document-save-symbolic",
         label: "Backup",
+    },
+    Page {
+        route: "logging",
+        icon: "text-x-generic-symbolic",
+        label: "Logging",
     },
     Page {
         route: "behaviour",

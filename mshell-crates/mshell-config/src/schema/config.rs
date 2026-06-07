@@ -43,6 +43,7 @@ pub struct Config {
     pub privacy: PrivacyConfig,
     pub audio: AudioConfig,
     pub control_center: ControlCenterConfig,
+    pub logging: LoggingConfig,
 }
 
 /// One configured alarm. `repeat_mask` bit `i` (0 = Sunday … 6 = Saturday)
@@ -1915,6 +1916,31 @@ impl Default for LoginNetworkConfig {
             connect_vpn: true,
             couple_blocky: true,
             delay_secs: 4,
+        }
+    }
+}
+
+/// Shell file-logging (Settings → Logging). Mirrors margo's compositor knobs:
+/// the shell writes per-session files to ~/.local/state/margo/logs (mshell-*.log,
+/// last `keep_sessions` kept), driven by the shared `margo-logging` engine.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct LoggingConfig {
+    /// Write log files at all. On by default so the last few sessions are
+    /// always on disk for diagnosis.
+    pub enabled: bool,
+    /// Level: error | warn | info | debug | trace.
+    pub level: String,
+    /// How many session files to keep on disk.
+    pub keep_sessions: u32,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            level: "info".to_string(),
+            keep_sessions: 3,
         }
     }
 }

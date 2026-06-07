@@ -1569,6 +1569,15 @@ impl MargoState {
         let old_borderpx = self.config.borderpx;
         let new_borderpx = new_config.borderpx;
         self.config = new_config;
+
+        // Re-apply the file-logging knobs live so `mctl config reload`
+        // (and Settings → Logging via the compositor `.conf`) takes effect
+        // without a restart. `keep_sessions` only matters at the next start.
+        if let Some(h) = crate::LOG_HANDLE.get() {
+            let _ = h.set_enabled(self.config.log_to_file);
+            let _ = h.set_level(&self.config.log_file_level);
+        }
+
         if new_borderpx != old_borderpx {
             for client in self.clients.iter_mut() {
                 if client.border_width == old_borderpx {

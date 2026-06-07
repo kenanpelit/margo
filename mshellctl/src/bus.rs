@@ -46,3 +46,21 @@ pub async fn bus_command_with_reply<R: serde::de::DeserializeOwned + zbus::zvari
         .await?;
     reply.body().deserialize()
 }
+
+pub async fn bus_command_with_arg_reply<A, R>(method_name: &'static str, arg: &A) -> zbus::Result<R>
+where
+    A: serde::Serialize + zbus::zvariant::Type,
+    R: serde::de::DeserializeOwned + zbus::zvariant::Type,
+{
+    let connection = connection::Builder::session()?.build().await?;
+    let reply = connection
+        .call_method(
+            Some("com.mshell.Shell"),
+            "/com/mshell/Shell",
+            Some("com.mshell.Shell"),
+            method_name,
+            arg,
+        )
+        .await?;
+    reply.body().deserialize()
+}

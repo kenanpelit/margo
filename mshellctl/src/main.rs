@@ -26,6 +26,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Brightness { command } => {
             mshellctl::subcommands::brightness::execute(command).await?
         }
+        Commands::Log { command } => mshellctl::subcommands::log::execute(command).await?,
         Commands::SetWallpaper { path } => {
             bus_command_with_arg("SetWallpaper", &path.to_string_lossy().as_ref()).await?;
         }

@@ -1,0 +1,21 @@
+[package]
+name = "margo-logging"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Shared file-logging engine for margo + mshell: per-start session rotation (keep N), reloadable level, stdout + durable file sink."
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+chrono.workspace = true
+dirs.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

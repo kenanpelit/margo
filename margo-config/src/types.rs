@@ -953,6 +953,13 @@ pub struct Config {
     // xkb
     pub xkb_rules: XkbRules,
 
+    // logging — file logging to ~/.local/state/margo/logs (last N sessions).
+    // (`log_level` above is dwl's legacy numeric verbosity; the file logger
+    // uses its own string level ladder error..trace.)
+    pub log_to_file: bool,
+    pub log_file_level: String,
+    pub log_keep_sessions: u32,
+
     // rules / bindings
     pub window_rules: Vec<WindowRule>,
     pub monitor_rules: Vec<MonitorRule>,
@@ -1234,6 +1241,10 @@ impl Default for Config {
             key_mode: "default".into(),
 
             xkb_rules: XkbRules::default(),
+
+            log_to_file: true,
+            log_file_level: "info".into(),
+            log_keep_sessions: 3,
 
             window_rules: vec![],
             monitor_rules: vec![],

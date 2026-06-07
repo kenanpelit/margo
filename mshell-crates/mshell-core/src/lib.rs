@@ -106,6 +106,18 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let config_manager = mshell_config::config_manager::config_manager();
     config_manager.watch_config();
 
+    // Bring up file logging now that the config is loaded, so the shell's
+    // ~/.local/state/margo/logs/mshell-*.log honours the user's `[logging]`
+    // knobs (last N sessions kept; level live-tunable via `mshellctl log`).
+    {
+        let logging = config_manager.config().get_untracked().logging;
+        mshell_logging::init(mshell_logging::Init {
+            enabled: logging.enabled,
+            level: logging.level,
+            keep_sessions: logging.keep_sessions as usize,
+        });
+    }
+
     // Seed the clipboard watcher's settings from config before any
     // bar/menu widget touches `clipboard_service()` (which is lazy
     // and would otherwise spin up with defaults). Persistence +

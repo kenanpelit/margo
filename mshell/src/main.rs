@@ -13,8 +13,8 @@ struct Args {}
 fn main() -> Result<(), Box<dyn Error>> {
     let _args = Args::parse();
 
-    mshell_logging::init("mshell");
-
+    // File logging is brought up inside `mshell_core::run()` once the config
+    // (and thus the user's `[logging]` knobs) is loaded.
     mshell_core::run()?;
 
     Ok(())
