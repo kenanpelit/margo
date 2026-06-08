@@ -69,10 +69,7 @@ mod theme_baseline_tests {
             shadow_only_floating: true,
             shadows_size: 22,
             shadows_blur: 14.0,
-            // Default OFF during blur bring-up — the render pass is new and
-            // its visual/perf correctness isn't hardware-verified yet. Opt in
-            // with `blur = 1` (or a future theme that enables it).
-            blur: false,
+            blur: true,
             blur_layer: false,
             ..Config::default()
         };
