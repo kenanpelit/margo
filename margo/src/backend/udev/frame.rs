@@ -426,6 +426,18 @@ fn render_output(
     // through the primary plane, not a flaky overlay plane.
     let frame_flags =
         FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT_ANY | FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT;
+    // Blur captures the framebuffer behind a translucent window. Under
+    // smithay's age-based damage tracking only the damaged region is
+    // redrawn into the rotating GBM buffers, so the blur can sample stale
+    // backdrop in the parts of its area that weren't damaged this frame —
+    // which shimmers/flickers as the buffers rotate (seen on tab strips and
+    // any translucent window). Forcing a full redraw on each rendered frame
+    // while blur is on keeps the captured backdrop current. Gated on the
+    // opt-in, default-off blur flags; this only fires on frames that already
+    // render (an idle screen still renders nothing and idles).
+    if state.config.blur || state.config.blur_layer {
+        od.compositor.reset_buffers();
+    }
     match od
         .compositor
         .render_frame(renderer, &elements, clear_color, frame_flags)
