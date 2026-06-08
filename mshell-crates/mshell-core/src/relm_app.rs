@@ -27,6 +27,7 @@ use mshell_session::session_lock::{lock_session, session_locked};
 use mshell_style::style_manager::{StyleManagerModel, StyleManagerOutput};
 use mshell_wallpaper::wallpaper::{WallpaperInit, WallpaperModel};
 use reactive_graph::effect::Effect;
+use reactive_graph::prelude::ReadUntracked;
 use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::gdk::Monitor;
 use relm4::{gtk::prelude::*, main_application, prelude::*};
@@ -112,6 +113,9 @@ pub(crate) enum ShellInput {
     DockToggle,
     DockShow,
     DockHide,
+    /// Activate the Nth (1-based) pinned dock app — focus its first window if
+    /// running, else launch it. Bound to a hotkey (e.g. Super+Alt+N).
+    DockActivate(u32),
     Quit,
     ToggleAppLauncher(Option<String>),
     /// Open the app launcher AND pre-select the named category
@@ -429,6 +433,34 @@ impl Component for Shell {
                             ShellInput::DockHide => MdockSurfaceInput::Hide,
                             _ => MdockSurfaceInput::Toggle,
                         });
+                    }
+                }
+            }
+            ShellInput::DockActivate(n) => {
+                // Nth (1-based) pinned app: focus its first running window, else
+                // launch it. Runs once (single app component) — no per-output
+                // broadcast, so launch can't fire N times.
+                let apps = mshell_cache::pinned_apps::pinned_apps_store()
+                    .read_untracked()
+                    .apps
+                    .clone();
+                if let Some(app) = apps.get((n.max(1) - 1) as usize) {
+                    let class = app.hyprland_class.clone();
+                    let mut matching: Vec<_> = margo_service()
+                        .clients
+                        .get()
+                        .into_iter()
+                        .filter(|c| c.class.get() == class)
+                        .collect();
+                    matching.sort_by_key(|c| c.address.get());
+                    if let Some(idx) = matching.first().and_then(|c| c.address.get().margo_idx()) {
+                        mshell_services::tokio_rt().spawn(async move {
+                            let _ = margo_service()
+                                .dispatch(&format!("focuswindow {idx}"))
+                                .await;
+                        });
+                    } else if let Some(info) = mshell_utils::app_info::find_app_info(&class) {
+                        mshell_utils::launch::launch_detached(&info);
                     }
                 }
             }

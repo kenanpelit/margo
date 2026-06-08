@@ -58,6 +58,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::DockToggle => app_sender.emit(ShellInput::DockToggle),
                 IPCCommand::DockShow => app_sender.emit(ShellInput::DockShow),
                 IPCCommand::DockHide => app_sender.emit(ShellInput::DockHide),
+                IPCCommand::DockActivate(n) => app_sender.emit(ShellInput::DockActivate(n)),
                 IPCCommand::AppLauncher => {
                     app_sender.emit(ShellInput::ToggleAppLauncher(active_monitor().await));
                 }
@@ -510,6 +511,7 @@ enum IPCCommand {
     DockToggle,
     DockShow,
     DockHide,
+    DockActivate(u32),
     AppLauncher,
     /// `mshellctl menu app-launcher --tab <name>` — open the
     /// launcher and pre-select the named category tab. Unknown
@@ -1389,6 +1391,10 @@ impl IPCService {
     }
     async fn dock_hide(&self) {
         let _ = self.tx.send(IPCCommand::DockHide);
+    }
+    /// Activate the Nth (1-based) pinned dock app — focus or launch.
+    async fn dock_activate(&self, index: u32) {
+        let _ = self.tx.send(IPCCommand::DockActivate(index));
     }
     async fn app_launcher(&self) {
         let _ = self.tx.send(IPCCommand::AppLauncher);
