@@ -49,6 +49,7 @@ impl Component for LockKeysModel {
         #[name = "root"]
         gtk::Box {
             add_css_class: "lock-keys-bar-widget",
+            add_css_class: "ok-bar-widget",
             set_hexpand: model._orientation == Orientation::Vertical,
             set_vexpand: model._orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,

@@ -26,6 +26,7 @@ impl Component for VpnIndicatorModel {
         #[root]
         gtk::Box {
             add_css_class: "vpn-indicator-bar-widget",
+            add_css_class: "ok-bar-widget",
         }
     }
 
