@@ -694,6 +694,68 @@ impl SimpleComponent for WizardMenuWidgetModel {
                         #[watch]
                         set_visible: !model.applied,
                     },
+
+                    // Handy default shortcuts — what the new user can open
+                    // right away. These mirror the shipped binds.conf
+                    // defaults (mshellctl menu …).
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_label: "Handy shortcuts",
+                        set_halign: gtk::Align::Start,
+                        set_margin_top: 10,
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 8,
+                        gtk::Label {
+                            set_css_classes: &["keybind-chip", "keybind-mod", "mod-super"],
+                            set_label: "Super + Space",
+                        },
+                        gtk::Label {
+                            add_css_class: "keybinds-desc",
+                            set_label: "Open the app launcher",
+                            set_halign: gtk::Align::Start, set_xalign: 0.0, set_hexpand: true,
+                        },
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 8,
+                        gtk::Label {
+                            set_css_classes: &["keybind-chip", "keybind-mod", "mod-super"],
+                            set_label: "Super + F1",
+                        },
+                        gtk::Label {
+                            add_css_class: "keybinds-desc",
+                            set_label: "Show all keyboard shortcuts",
+                            set_halign: gtk::Align::Start, set_xalign: 0.0, set_hexpand: true,
+                        },
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 8,
+                        gtk::Label {
+                            set_css_classes: &["keybind-chip", "keybind-mod", "mod-super"],
+                            set_label: "Super + D",
+                        },
+                        gtk::Label {
+                            add_css_class: "keybinds-desc",
+                            set_label: "Open the dashboard (calendar, media, weather…)",
+                            set_halign: gtk::Align::Start, set_xalign: 0.0, set_hexpand: true,
+                        },
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 8,
+                        gtk::Label {
+                            set_css_classes: &["keybind-chip", "keybind-mod", "mod-super"],
+                            set_label: "Super + Shift + D",
+                        },
+                        gtk::Label {
+                            add_css_class: "keybinds-desc",
+                            set_label: "Open the control centre (quick settings)",
+                            set_halign: gtk::Align::Start, set_xalign: 0.0, set_hexpand: true,
+                        },
+                    },
                 },
             },
 
@@ -702,14 +764,14 @@ impl SimpleComponent for WizardMenuWidgetModel {
                 set_spacing: 8,
                 set_halign: gtk::Align::End,
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface"],
+                    set_css_classes: &["ok-button-surface", "wizard-nav-button"],
                     set_label: "Cancel",
                     #[watch]
                     set_visible: !model.applied,
                     connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::Cancel),
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface"],
+                    set_css_classes: &["ok-button-surface", "wizard-nav-button"],
                     set_label: "Back",
                     #[watch]
                     set_visible: !model.applied,
@@ -718,14 +780,14 @@ impl SimpleComponent for WizardMenuWidgetModel {
                     connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::Back),
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface"],
+                    set_css_classes: &["ok-button-surface", "wizard-nav-button"],
                     set_label: "Reboot now",
                     #[watch]
                     set_visible: model.applied,
                     connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::Reboot),
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-primary"],
+                    set_css_classes: &["ok-button-primary", "wizard-nav-button"],
                     #[watch]
                     set_label: if model.applied {
                         "Close"

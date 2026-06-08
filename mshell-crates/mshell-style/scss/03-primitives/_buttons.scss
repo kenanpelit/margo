@@ -145,3 +145,16 @@ button.ok-button-error {
     -gtk-icon-size: var(--icon-lg);
   }
 }
+
+// Wizard footer nav buttons — bigger + bolder than the standard action
+// buttons so the onboarding call-to-action ("Next" / "Apply & finish")
+// and the Back / Cancel controls are unmistakable. Layered ON TOP of
+// .ok-button-surface / .ok-button-primary, which still carry the fill +
+// state-layers; this only pins the larger, bolder geometry.
+.wizard-nav-button {
+  padding: var(--space-3) var(--space-4);
+  min-width: 108px;
+  min-height: 46px;
+  border-radius: var(--radius-pill);
+  font-weight: 700;
+}
