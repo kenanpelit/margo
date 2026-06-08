@@ -1904,6 +1904,11 @@ impl MargoState {
         // the natural Mango/Hypr feel — no fixed 3×3 per-tag thumbnails.
         let geometries = layout::arrange(layout, &ctx);
         let now = crate::utils::now_ms();
+        // gid → active group member's TARGET slot rect, filled during the
+        // loop below and consumed by the hidden-member pre-size pass after
+        // it (kills the tab-switch wallpaper flash).
+        let mut group_slots: std::collections::HashMap<u32, crate::layout::Rect> =
+            std::collections::HashMap::new();
         for (client_idx, mut rect) in geometries {
             // Apply per-client size constraints from window rules. The layout
             // algorithm is constraint-agnostic; we clamp post-hoc so that
@@ -1919,6 +1924,13 @@ impl MargoState {
                     c.max_width,
                     c.max_height,
                 );
+            }
+            // Tabbed group: remember the active member's target slot so its
+            // hidden siblings can be pinned to the same size after the loop.
+            if self.clients[client_idx].group_active {
+                if let Some(gid) = self.clients[client_idx].group_id {
+                    group_slots.insert(gid, rect);
+                }
             }
             let old = self.clients[client_idx].geom;
 
@@ -2094,6 +2106,34 @@ impl MargoState {
                 self.clients[client_idx].geom = rect;
             }
             self.clients[client_idx].is_tag_switching = false;
+        }
+
+        // Tabbed groups: pre-size every HIDDEN member to its active
+        // sibling's slot. Only the active member is arranged above; the
+        // hidden ones otherwise keep a stale size, so when
+        // `changegroupactive` cycles to one it reconfigures from that
+        // size — leaving a frame where the slot shows the wallpaper
+        // before the client redraws (the flash the user reported).
+        // Pinning their size means the swap shows their correctly-sized
+        // last buffer instantly. Guarded on `geom != slot`, so once
+        // settled this configures nothing until the slot actually moves.
+        if !group_slots.is_empty() {
+            for i in 0..self.clients.len() {
+                if self.clients[i].monitor != mon_idx
+                    || !self.clients[i].is_hidden_group_member()
+                {
+                    continue;
+                }
+                let slot = self.clients[i]
+                    .group_id
+                    .and_then(|gid| group_slots.get(&gid).copied());
+                if let Some(slot) = slot {
+                    if self.clients[i].geom != slot {
+                        self.clients[i].geom = slot;
+                        self.configure_window_size(i, slot);
+                    }
+                }
+            }
         }
 
         // Apply fullscreen / floating overrides outside overview. Overview
