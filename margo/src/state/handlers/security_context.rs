@@ -28,10 +28,16 @@ impl SecurityContextHandler for MargoState {
             .loop_handle
             .insert_source(source, move |client_stream, _, state| {
                 tracing::debug!(?context, "security-context: new sandboxed client");
-                if let Err(err) = state
-                    .display_handle
-                    .insert_client(client_stream, std::sync::Arc::new(()))
-                {
+                // Must be MargoClientData (not `()`): every client needs a
+                // CompositorClientState, and `client_compositor_state` panics
+                // ("unknown client data type") on any other data type. With `()`
+                // the sandboxed client's first `wl_output` bind crashed the
+                // whole compositor — i.e. launching any Flatpak / sandboxed app
+                // through this socket took margo (and every client) down.
+                if let Err(err) = state.display_handle.insert_client(
+                    client_stream,
+                    std::sync::Arc::new(crate::state::MargoClientData::default()),
+                ) {
                     tracing::warn!(
                         error = %err,
                         "security-context: failed to insert client",
