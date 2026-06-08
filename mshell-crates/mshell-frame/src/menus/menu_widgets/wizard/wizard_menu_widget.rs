@@ -97,7 +97,7 @@ pub(crate) struct WizardMenuWidgetModel {
     steps: Vec<steps::StepKind>,
     /// Index into `steps` — the current step.
     pos: usize,
-    /// Chosen starter profile ("default" or "Nova"); seeded + activated live
+    /// Chosen starter profile ("default" or "margo"); seeded + activated live
     /// when picked on the Welcome step.
     base_profile: String,
     mode: MatugenMode,
@@ -253,20 +253,20 @@ impl SimpleComponent for WizardMenuWidgetModel {
 
                     gtk::Button {
                         #[watch]
-                        set_css_classes: if model.base_profile == "Nova" {
+                        set_css_classes: if model.base_profile == "margo" {
                             &["ok-button-surface", "selected"]
                         } else {
                             &["ok-button-surface"]
                         },
                         connect_clicked[sender] => move |_| {
-                            sender.input(WizardMenuWidgetInput::BaseProfileSelected("Nova"));
+                            sender.input(WizardMenuWidgetInput::BaseProfileSelected("margo"));
                         },
                         gtk::Box {
                             set_orientation: gtk::Orientation::Vertical,
                             set_spacing: 2,
                             gtk::Label {
                                 add_css_class: "label-medium-bold",
-                                set_label: "Nova — the full experience",
+                                set_label: "margo — the full experience",
                                 set_halign: gtk::Align::Start,
                                 set_xalign: 0.0,
                             },
@@ -1238,10 +1238,10 @@ fn read_live() -> WizardMenuWidgetModel {
         steps: steps::build_steps(&HwInfo::probe()),
         pos: 0,
         // Pre-select whichever bundled profile is already active, else the
-        // recommended "Nova".
+        // recommended "margo".
         base_profile: match config_manager().active_profile().get_untracked().as_deref() {
             Some("default") => "default".to_string(),
-            _ => "Nova".to_string(),
+            _ => "margo".to_string(),
         },
         mode: config_manager()
             .config()

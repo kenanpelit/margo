@@ -4,7 +4,7 @@
 # │ A quiet starting point: a single top bar with just the essentials, the  │
 # │ stock Material-You dark theme, and built-in defaults for everything     │
 # │ else. Pick this in the setup wizard for a bare canvas, then add widgets │
-# │ and menus from Settings as you go. (The richer "Nova" profile turns     │
+# │ and menus from Settings as you go. (The richer "margo" profile turns    │
 # │ everything on.)                                                         │
 # │                                                                         │
 # │ This profile is an overlay: any key it omits falls back to margo's      │

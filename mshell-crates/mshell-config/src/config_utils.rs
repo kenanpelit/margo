@@ -175,13 +175,13 @@ pub(crate) fn persist_config_layer<T: Serialize>(
 // means it works whether or not the package data is present (e.g. a dev
 // `cargo install` of just the binary).
 const BUNDLED_DEFAULT: &str = include_str!("../../../mshell/examples/profiles/default.yaml");
-const BUNDLED_NOVA: &str = include_str!("../../../mshell/examples/profiles/Nova.yaml");
+const BUNDLED_MARGO: &str = include_str!("../../../mshell/examples/profiles/margo.yaml");
 
 /// Baked YAML for a bundled starter profile, if the name is one we ship.
 pub fn bundled_profile_yaml(name: &str) -> Option<&'static str> {
     match name {
         "default" => Some(BUNDLED_DEFAULT),
-        "Nova" => Some(BUNDLED_NOVA),
+        "margo" => Some(BUNDLED_MARGO),
         _ => None,
     }
 }
@@ -209,13 +209,13 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    /// The profile examples shipped with the package (Default / Nova) must
+    /// The profile examples shipped with the package (default / margo) must
     /// merge cleanly over the compiled-in defaults and extract to a full
     /// `Config` — a broken example would ship a broken first-run experience.
     #[test]
     fn shipped_profiles_parse() {
         let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../mshell/examples/profiles");
-        for name in ["default.yaml", "Nova.yaml"] {
+        for name in ["default.yaml", "margo.yaml"] {
             let path = base.join(name);
             let cfg = Figment::from(Serialized::defaults(Config::default()))
                 .merge(Yaml::file(&path))
