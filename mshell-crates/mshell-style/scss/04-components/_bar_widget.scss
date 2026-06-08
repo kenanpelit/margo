@@ -223,10 +223,22 @@
     border-radius: var(--radius-widget);
     background-color: transparent;
     transition: background-color var(--motion-fast) var(--ease-standard);
-    // TEMP DIAGNOSTIC — confirms .bar-pill-std reaches every pill. If you see
-    // a red outline on every bar pill the pipeline works (remove this line);
-    // if not, the new mshell binary/CSS isn't actually running.
-    border: 2px solid red;
+}
+
+// Uniform HEIGHT. The inconsistency was vertical: icon-button pills + the tag
+// group rendered taller than the text/number pills (network, sysstat, audio)
+// because their inner buttons/boxes carried their own min-height + vertical
+// padding. Zero that inner vertical sizing so every pill collapses to the
+// root's single 28px — which makes every hover box the same height + shape.
+// (Horizontal padding is left alone, so width still follows content.)
+.bar .bar-pill-std > *,
+.bar .bar-pill-std button,
+.bar .bar-pill-std box {
+    min-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 0;
 }
 
 .bar .bar-pill-std:hover {
