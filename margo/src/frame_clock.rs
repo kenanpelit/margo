@@ -183,11 +183,7 @@ mod tests {
         let delay = c.next_tick_delay(now, interval);
         // Allow a tiny epsilon for Duration arithmetic.
         let expected = interval - half;
-        let diff = if delay > expected {
-            delay - expected
-        } else {
-            expected - delay
-        };
+        let diff = delay.abs_diff(expected);
         assert!(diff < Duration::from_micros(10), "delay drift too large");
         assert!(!c.is_due(now, interval), "not due before a full interval");
 
