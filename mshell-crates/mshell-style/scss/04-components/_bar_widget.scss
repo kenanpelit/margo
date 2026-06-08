@@ -208,3 +208,59 @@
     min-width: 1px;
     margin: var(--space-2) var(--space-1);
 }
+
+// ── Central pill standard (.bar-pill-std) ───────────────────────────────────
+// `bar.rs` adds `.bar-pill-std` to EVERY pill's root when it appends it (native
+// widgets AND plugin pills). The surface, hover wash, and geometry therefore
+// come from ONE place, so pills can no longer drift into different hover
+// sizes/shapes — the "every pill should look the same" requirement. The hover
+// is a matugen `--primary` wash at `--bar-hover-strength` (Settings → Bar);
+// islands mode swaps the transparent base for an opaque `--surface-container`
+// surface. Inner per-widget washes are neutralised below so the colour change
+// is ONE uniform rounded rectangle spanning the whole pill.
+.bar .bar-pill-std {
+    min-height: 28px;
+    border-radius: var(--radius-widget);
+    background-color: transparent;
+    transition: background-color var(--motion-fast) var(--ease-standard);
+}
+
+.bar .bar-pill-std:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) var(--bar-hover-strength), transparent)");
+}
+
+.bar .bar-pill-std:active {
+    background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
+}
+
+// Islands: the pill root is an opaque themed surface; the hover composites the
+// same primary wash over it instead of mixing toward transparent.
+.bar.islands .bar-pill-std {
+    background-color: var(--surface-container);
+}
+
+.bar.islands .bar-pill-std:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) var(--bar-hover-strength), var(--surface-container))");
+}
+
+.bar.islands .bar-pill-std:active {
+    background-color: unquote("color-mix(in srgb, var(--primary) 22%, var(--surface-container))");
+}
+
+// Neutralise every inner wash/surface so `.bar-pill-std` is the single, uniform
+// hover + surface for the pill. Higher specificity than the legacy per-pill
+// `.ok-bar-widget` / `.margo-tags-bar-widget` rules, so it wins.
+.bar .bar-pill-std .ok-bar-widget,
+.bar .bar-pill-std .ok-bar-widget:hover,
+.bar .bar-pill-std .ok-bar-widget:active,
+.bar .bar-pill-std .ok-bar-widget > button:hover,
+.bar .bar-pill-std .ok-bar-widget > button:active,
+.bar .bar-pill-std > button:hover,
+.bar .bar-pill-std > button:active {
+    background-color: transparent;
+}
+
+.bar.islands .bar-pill-std .ok-bar-widget,
+.bar.islands .bar-pill-std .margo-tags-bar-widget {
+    background-color: transparent;
+}

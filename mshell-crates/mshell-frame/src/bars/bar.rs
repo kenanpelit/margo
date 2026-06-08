@@ -611,6 +611,7 @@ impl Component for BarModel {
                 for item in &bar_widgets {
                     let controller =
                         BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
+                    controller.root_widget().add_css_class("bar-pill-std");
                     widgets.start_container.append(&controller.root_widget());
                     self.start_widgets.push(controller);
                 }
@@ -625,6 +626,7 @@ impl Component for BarModel {
                 for item in &bar_widgets {
                     let controller =
                         BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
+                    controller.root_widget().add_css_class("bar-pill-std");
                     widgets.end_container.append(&controller.root_widget());
                     self.end_widgets.push(controller);
                 }
@@ -639,6 +641,7 @@ impl Component for BarModel {
                 for item in &bar_widgets {
                     let controller =
                         BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
+                    controller.root_widget().add_css_class("bar-pill-std");
                     widgets.center_container.append(&controller.root_widget());
                     self.center_widgets.push(controller);
                 }
@@ -700,6 +703,7 @@ impl Component for BarModel {
                     for item in &kinds {
                         let c =
                             BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
+                        c.root_widget().add_css_class("bar-pill-std");
                         widgets.start_container.append(&c.root_widget());
                         self.start_widgets.push(c);
                     }
@@ -711,6 +715,7 @@ impl Component for BarModel {
                     for item in &kinds {
                         let c =
                             BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
+                        c.root_widget().add_css_class("bar-pill-std");
                         widgets.center_container.append(&c.root_widget());
                         self.center_widgets.push(c);
                     }
@@ -722,6 +727,7 @@ impl Component for BarModel {
                     for item in &kinds {
                         let c =
                             BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
+                        c.root_widget().add_css_class("bar-pill-std");
                         widgets.end_container.append(&c.root_widget());
                         self.end_widgets.push(c);
                     }
