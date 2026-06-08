@@ -458,9 +458,11 @@ impl Component for MargoDockItemModel {
                     let general_section = gio::Menu::new();
                     if let Some(app) = &self.app_info {
                         add_launch_to_menu(&general_section, &action_group, app);
-                        if self.pinned {
-                            self.add_unpin_to_menu(&general_section, &action_group, app);
-                        }
+                    }
+                    if self.pinned {
+                        self.add_unpin_to_menu(&general_section, &action_group);
+                    } else {
+                        self.add_pin_to_menu(&general_section, &action_group);
                     }
                     menu.append_section(general_section_title.as_deref(), &general_section);
                 } else {
@@ -493,12 +495,14 @@ impl Component for MargoDockItemModel {
                     let general_section = gio::Menu::new();
                     if let Some(app) = &self.app_info {
                         add_launch_to_menu(&general_section, &action_group, app);
-
-                        if self.pinned {
-                            self.add_unpin_to_menu(&general_section, &action_group, app);
-                        } else {
-                            self.add_pin_to_menu(&general_section, &action_group, app);
-                        }
+                    }
+                    // Pin / unpin keys off the window class, so it's offered even
+                    // for synthetic-class apps with no matching .desktop
+                    // (app_info None) — those were missing the Pin entry.
+                    if self.pinned {
+                        self.add_unpin_to_menu(&general_section, &action_group);
+                    } else {
+                        self.add_pin_to_menu(&general_section, &action_group);
                     }
 
                     add_quit_to_menu(&general_section, &action_group, &self.class);
@@ -507,6 +511,14 @@ impl Component for MargoDockItemModel {
 
                 let popover = gtk::PopoverMenu::from_model(Some(&menu));
                 popover.set_has_arrow(false);
+                // Open the menu away from the screen edge the dock sits on, so a
+                // bottom dock's menu pops *upward* instead of off the bottom of
+                // the screen. (Without an explicit position GTK defaults to
+                // Bottom and the menu falls off-screen.)
+                popover.set_position(match self.bar_type {
+                    BarType::Top => gtk::PositionType::Bottom,
+                    BarType::Bottom => gtk::PositionType::Top,
+                });
                 popover.insert_action_group("main", Some(&action_group));
                 popover.set_parent(&widgets.root);
 
@@ -658,18 +670,25 @@ impl MargoDockItemModel {
         });
     }
 
-    fn add_pin_to_menu(
-        &self,
-        menu: &gio::Menu,
-        action_group: &gio::SimpleActionGroup,
-        app: &DesktopAppInfo,
-    ) {
+    /// Stable key used to pin/unpin this item: the app's `.desktop` id when one
+    /// matched, else the raw window class (so synthetic-class apps with no
+    /// `.desktop` still pin + unpin consistently against the same key).
+    fn pin_key(&self) -> String {
+        self.app_info
+            .as_ref()
+            .and_then(|a| a.id())
+            .map(|id| id.to_string())
+            .filter(|id| !id.is_empty())
+            .unwrap_or_else(|| self.class.clone())
+    }
+
+    fn add_pin_to_menu(&self, menu: &gio::Menu, action_group: &gio::SimpleActionGroup) {
         let action = gio::SimpleAction::new("pin", None);
-        let app = app.clone();
+        let desktop_id = self.pin_key();
         let class = self.class.clone();
         action.connect_activate(move |_, _| {
             pin_app(PinnedApp {
-                desktop_id: app.id().map(|id| id.to_string()).unwrap_or_default(),
+                desktop_id: desktop_id.clone(),
                 hyprland_class: class.clone(),
             });
         });
@@ -677,21 +696,11 @@ impl MargoDockItemModel {
         menu.append(Some("Pin to dock"), Some("main.pin"));
     }
 
-    fn add_unpin_to_menu(
-        &self,
-        menu: &gio::Menu,
-        action_group: &gio::SimpleActionGroup,
-        app: &DesktopAppInfo,
-    ) {
+    fn add_unpin_to_menu(&self, menu: &gio::Menu, action_group: &gio::SimpleActionGroup) {
         let action = gio::SimpleAction::new("unpin", None);
-        let app = app.clone();
+        let desktop_id = self.pin_key();
         action.connect_activate(move |_, _| {
-            unpin_app(
-                app.id()
-                    .map(|id| id.to_string())
-                    .unwrap_or_default()
-                    .as_str(),
-            );
+            unpin_app(&desktop_id);
         });
         action_group.add_action(&action);
         menu.append(Some("Unpin"), Some("main.unpin"));
