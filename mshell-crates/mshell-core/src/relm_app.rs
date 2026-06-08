@@ -456,7 +456,7 @@ impl Component for Shell {
                     if let Some(idx) = matching.first().and_then(|c| c.address.get().margo_idx()) {
                         mshell_services::tokio_rt().spawn(async move {
                             let _ = margo_service()
-                                .dispatch(&format!("focuswindow {idx}"))
+                                .dispatch(&format!("dispatch focuswindow {idx}"))
                                 .await;
                         });
                     } else if let Some(info) = mshell_utils::app_info::find_app_info(&class) {
