@@ -148,12 +148,13 @@ The tab strip is the **only** on-screen cue that a tile is a group, and it is
 merges windows, but you see no strip and can't tell which tile is grouped — raise
 `group_bar_height` to ~22 to draw it.
 
-The strip is deliberately **text-free** (the compositor has no font renderer): one
-flat colour chip per member, the active one in `group_active_color` and the rest in
-`group_inactive_color`. So it shows *that* a tile is a group, how many members it
-has, and which is active — **not** the app name. Cycle members with
-`changegroupactive` and the slot content changes. Colours default to the
-focus/border palette and follow matugen via `colors.conf`.
+Each chip shows the member's **window title** (app-id fallback), rasterised with
+[`fontdue`](https://crates.io/crates/fontdue) and truncated with an ellipsis to
+fit. The active member's chip uses `group_active_color`, the rest
+`group_inactive_color`, and the label colour auto-picks black/white for contrast.
+Cycle members with `changegroupactive`. Colours default to the focus/border
+palette and follow matugen via `colors.conf`. (If no system font is found under
+`/usr/share/fonts` the labels are skipped, but the coloured chips still draw.)
 
 | Key | Default | Meaning |
 | --- | --- | --- |
