@@ -762,7 +762,7 @@ impl SimpleComponent for WizardMenuWidgetModel {
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 8,
-                set_halign: gtk::Align::End,
+                set_halign: gtk::Align::Center,
                 gtk::Button {
                     set_css_classes: &["ok-button-surface", "wizard-button"],
                     set_label: "Cancel",

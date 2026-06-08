@@ -153,9 +153,9 @@ button.ok-button-error {
 // .ok-button-primary, which still carry the fill + state-layers; this
 // only pins the larger, bolder geometry.
 .wizard-button {
-  padding: var(--space-3) var(--space-4);
-  min-width: 108px;
-  min-height: 46px;
+  padding: var(--space-1) var(--space-4);
+  min-width: 100px;
+  min-height: 34px;
   border-radius: var(--radius-pill);
   font-weight: 700;
 }
