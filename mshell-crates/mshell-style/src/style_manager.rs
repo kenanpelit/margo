@@ -390,6 +390,19 @@ impl Component for StyleManagerModel {
                 }
             },
             AttributesUpdate(attributes) => {
+                // Manual frame colour overrides (Settings → Bar → Frame).
+                // Empty = leave the SCSS default (matugen --surface /
+                // --outline) in place. Non-empty CSS hex overrides --frame-bg
+                // / --frame-border, which the painted bar frame reads.
+                let mut frame_overrides = String::new();
+                let fc = attributes.sizing.frame_color.trim();
+                if !fc.is_empty() {
+                    frame_overrides.push_str(&format!("--frame-bg: {fc};"));
+                }
+                let fbc = attributes.sizing.frame_border_color.trim();
+                if !fbc.is_empty() {
+                    frame_overrides.push_str(&format!("--frame-border: {fbc};"));
+                }
                 self.attributes_css_provider.load_from_string(&format!(
                     r#":root {{
                         --font-family-primary: {};
@@ -405,6 +418,7 @@ impl Component for StyleManagerModel {
                         --font-scale: {};
                         --font-bar-scale: {};
                         --surface-opacity: {}%;
+                        {}
                     }}"#,
                     if attributes.font.primary.is_empty() {
                         "inherit"
@@ -447,6 +461,7 @@ impl Component for StyleManagerModel {
                     // by the frame-draw widget (fill alpha) and color-mix on
                     // the frameless panel backgrounds.
                     attributes.sizing.surface_opacity.clamp(60, 100),
+                    frame_overrides,
                 ));
 
                 sender.input(ReloadTheme(

@@ -15,10 +15,29 @@ use relm4::gtk::prelude::*;
 use relm4::gtk::{gdk, gio, glib};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 
+/// `gdk::RGBA` → CSS hex `#rrggbbaa`, the form injected as `--frame-bg` /
+/// `--frame-border` (GTK4 + the frame-draw widget both parse 8-digit hex).
+fn rgba_to_css(c: gdk::RGBA) -> String {
+    let q = |f: f32| (f.clamp(0.0, 1.0) * 255.0).round() as u32;
+    format!(
+        "#{:02x}{:02x}{:02x}{:02x}",
+        q(c.red()),
+        q(c.green()),
+        q(c.blue()),
+        q(c.alpha())
+    )
+}
+
 #[derive(Debug)]
 pub(crate) struct BarSettingsModel {
     enable_frame: bool,
     islands: bool,
+    /// Manual frame colour override on? Derived from a non-empty
+    /// `sizing.frame_color`. When off the frame follows the matugen palette.
+    frame_color_custom: bool,
+    /// Current frame fill / border colours shown in the pickers.
+    frame_color: gdk::RGBA,
+    frame_border_color: gdk::RGBA,
     /// Bar show/hide slide animation duration (ms); `bars.slide_duration_ms`.
     slide_duration: i32,
     chips: FactoryVecDeque<MonitorChipModel>,
@@ -71,6 +90,9 @@ const MIN_HEIGHT_DEBOUNCE_MS: u64 = 350;
 pub(crate) enum BarSettingsInput {
     EnableFrameToggled(bool),
     EnableFrameChanged(bool),
+    FrameColorCustomToggled(bool),
+    FrameFillColorSet(gdk::RGBA),
+    FrameBorderColorSet(gdk::RGBA),
     IslandsToggled(bool),
     IslandsChanged(bool),
     /// SpinButton edited → write `bars.slide_duration_ms`.
@@ -201,6 +223,70 @@ impl Component for BarSettingsModel {
                             glib::Propagation::Proceed
                         } @enable_frame_handler,
                     }
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Custom frame colour — override the wallpaper-derived (matugen) frame fill + border with fixed colours. Off = follow the theme.",
+                        set_hexpand: true,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    },
+
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(frame_color_custom_handler)]
+                        set_active: model.frame_color_custom,
+                        connect_state_set[sender] => move |_, enabled| {
+                            sender.input(BarSettingsInput::FrameColorCustomToggled(enabled));
+                            glib::Propagation::Proceed
+                        } @frame_color_custom_handler,
+                    }
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
+                    #[watch]
+                    set_sensitive: model.frame_color_custom,
+
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_label: "Fill",
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                        set_xalign: 0.0,
+                    },
+                    gtk::ColorDialogButton {
+                        set_valign: gtk::Align::Center,
+                        set_dialog: &gtk::ColorDialog::builder().with_alpha(true).build(),
+                        #[watch]
+                        set_rgba: &model.frame_color,
+                        connect_rgba_notify[sender] => move |b| {
+                            sender.input(BarSettingsInput::FrameFillColorSet(b.rgba()));
+                        },
+                    },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_label: "Border",
+                        set_halign: gtk::Align::Start,
+                    },
+                    gtk::ColorDialogButton {
+                        set_valign: gtk::Align::Center,
+                        set_dialog: &gtk::ColorDialog::builder().with_alpha(true).build(),
+                        #[watch]
+                        set_rgba: &model.frame_border_color,
+                        connect_rgba_notify[sender] => move |b| {
+                            sender.input(BarSettingsInput::FrameBorderColorSet(b.rgba()));
+                        },
+                    },
                 },
 
                 gtk::Box {
@@ -887,9 +973,28 @@ impl Component for BarSettingsModel {
             })
             .detach();
 
+        let init_frame_fill = config_manager()
+            .config()
+            .theme()
+            .attributes()
+            .sizing()
+            .frame_color()
+            .get_untracked();
+        let init_frame_border = config_manager()
+            .config()
+            .theme()
+            .attributes()
+            .sizing()
+            .frame_border_color()
+            .get_untracked();
         let model = BarSettingsModel {
             enable_frame: false,
             islands: false,
+            frame_color_custom: !init_frame_fill.trim().is_empty(),
+            frame_color: gdk::RGBA::parse(init_frame_fill.trim())
+                .unwrap_or_else(|_| gdk::RGBA::new(0.12, 0.12, 0.18, 1.0)),
+            frame_border_color: gdk::RGBA::parse(init_frame_border.trim())
+                .unwrap_or_else(|_| gdk::RGBA::new(0.19, 0.20, 0.27, 1.0)),
             slide_duration: config_manager()
                 .config()
                 .bars()
@@ -989,6 +1094,39 @@ impl Component for BarSettingsModel {
             }
             BarSettingsInput::EnableFrameChanged(enable) => {
                 self.enable_frame = enable;
+            }
+            BarSettingsInput::FrameColorCustomToggled(on) => {
+                self.frame_color_custom = on;
+                let (fill, border) = if on {
+                    (
+                        rgba_to_css(self.frame_color),
+                        rgba_to_css(self.frame_border_color),
+                    )
+                } else {
+                    (String::new(), String::new())
+                };
+                config_manager().update_config(|config| {
+                    config.theme.attributes.sizing.frame_color = fill;
+                    config.theme.attributes.sizing.frame_border_color = border;
+                });
+            }
+            BarSettingsInput::FrameFillColorSet(rgba) => {
+                self.frame_color = rgba;
+                if self.frame_color_custom {
+                    let hex = rgba_to_css(rgba);
+                    config_manager().update_config(|config| {
+                        config.theme.attributes.sizing.frame_color = hex;
+                    });
+                }
+            }
+            BarSettingsInput::FrameBorderColorSet(rgba) => {
+                self.frame_border_color = rgba;
+                if self.frame_color_custom {
+                    let hex = rgba_to_css(rgba);
+                    config_manager().update_config(|config| {
+                        config.theme.attributes.sizing.frame_border_color = hex;
+                    });
+                }
             }
             BarSettingsInput::IslandsToggled(enabled) => {
                 config_manager().update_config(|config| {

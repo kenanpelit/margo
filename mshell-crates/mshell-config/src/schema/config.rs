@@ -405,6 +405,13 @@ pub struct Sizing {
     /// disappears. Drives `--surface-opacity` (the frame-draw fill alpha +
     /// the frameless panel backgrounds).
     pub surface_opacity: i32,
+    /// Manual frame FILL colour override as a CSS hex string
+    /// (`#rrggbbaa`). Empty = follow the matugen `--surface` role. Set from
+    /// Settings → Bar → Frame; drives `--frame-bg` (the painted bar frame).
+    pub frame_color: String,
+    /// Manual frame BORDER colour override (CSS hex `#rrggbbaa`). Empty =
+    /// matugen `--outline`. Drives `--frame-border`.
+    pub frame_border_color: String,
 }
 
 impl Default for Sizing {
@@ -423,6 +430,8 @@ impl Default for Sizing {
             font_scale: 1.0,
             bar_font_scale: 1.0,
             surface_opacity: 100,
+            frame_color: String::new(),
+            frame_border_color: String::new(),
         }
     }
 }
