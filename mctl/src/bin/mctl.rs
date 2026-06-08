@@ -114,6 +114,23 @@ enum Command {
         action: LogCmd,
     },
 
+    /// List / enable / disable plugins (~/.config/margo/plugins/<name>/).
+    #[command(long_about = "Inspect and toggle plugins discovered under \
+                      ~/.config/margo/plugins/<name>/plugin.toml. `list` shows each \
+                      plugin's name / version / enabled flag (on-disk state). \
+                      `enable` / `disable` flip the manifest's `enabled` key; the \
+                      change takes effect on the next margo start (plugins load once \
+                      at startup, so there is no live toggle).\n\
+                      \n\
+                      EXAMPLES:\n  \
+                        mctl plugin list\n  \
+                        mctl plugin disable my-plugin\n  \
+                        mctl plugin enable my-plugin")]
+    Plugin {
+        #[command(subcommand)]
+        action: PluginCmd,
+    },
+
     /// One-shot Rhai script execution against the live compositor (W3.2).
     #[command(
         display_order = 22,
@@ -585,6 +602,22 @@ enum LogCmd {
 }
 
 #[derive(Subcommand, Debug)]
+enum PluginCmd {
+    /// List discovered plugins + their enabled state (on-disk).
+    List,
+    /// Enable a plugin by name (takes effect on the next margo start).
+    Enable {
+        /// Plugin directory name or manifest `name`.
+        name: String,
+    },
+    /// Disable a plugin by name (takes effect on the next margo start).
+    Disable {
+        /// Plugin directory name or manifest `name`.
+        name: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum TwilightCmd {
     /// Print the current twilight state (temperature, gamma, phase,
     /// source). Reads `state snapshot` — works even when the compositor
@@ -770,6 +803,11 @@ fn main() -> Result<()> {
             action: TwilightCmd::Preset { action },
         } => {
             return cmd_twilight_preset(action);
+        }
+        // Plugins live as files under ~/.config/margo/plugins/; list/toggle is
+        // pure filesystem, no compositor connection needed.
+        Command::Plugin { action } => {
+            return cmd_plugin(action);
         }
         _ => {}
     }
@@ -1037,7 +1075,8 @@ fn main() -> Result<()> {
         | Command::ConfigErrors
         | Command::Clients { .. }
         | Command::Outputs { .. }
-        | Command::Focused { .. } => {
+        | Command::Focused { .. }
+        | Command::Plugin { .. } => {
             // These return early at the top of `main`; this arm only
             // exists to keep the match exhaustive.
             unreachable!("offline commands return early in main");
@@ -1045,6 +1084,111 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// `~/.config/margo/plugins` if it exists.
+fn mctl_plugins_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(|h| std::path::PathBuf::from(h).join("margo/plugins"))
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(|h| std::path::PathBuf::from(h).join(".config/margo/plugins"))
+        })
+        .filter(|p| p.is_dir())
+}
+
+/// Read a bare `key = value` field from a plugin.toml manifest (same flat
+/// grammar margo's loader uses — no nested tables).
+fn manifest_field(text: &str, key: &str) -> Option<String> {
+    text.lines().find_map(|line| {
+        let line = line.trim();
+        if line.starts_with('#') {
+            return None;
+        }
+        let (k, v) = line.split_once('=')?;
+        (k.trim() == key).then(|| v.trim().trim_matches('"').trim_matches('\'').to_string())
+    })
+}
+
+fn manifest_enabled(text: &str) -> bool {
+    // Default true (matches the loader): absent / unparseable ⇒ enabled.
+    manifest_field(text, "enabled")
+        .map(|v| matches!(v.as_str(), "true" | "yes" | "1" | "on"))
+        .unwrap_or(true)
+}
+
+fn cmd_plugin(action: &PluginCmd) -> Result<()> {
+    let dir = mctl_plugins_dir().context("no plugins directory (~/.config/margo/plugins)")?;
+    match action {
+        PluginCmd::List => {
+            let mut found = false;
+            let mut entries: Vec<_> = std::fs::read_dir(&dir)?.flatten().collect();
+            entries.sort_by_key(|e| e.file_name());
+            for entry in entries {
+                let manifest = entry.path().join("plugin.toml");
+                let Ok(text) = std::fs::read_to_string(&manifest) else {
+                    continue;
+                };
+                found = true;
+                let dirname = entry.file_name().to_string_lossy().to_string();
+                let name = manifest_field(&text, "name").unwrap_or_else(|| dirname.clone());
+                let version = manifest_field(&text, "version").unwrap_or_default();
+                let mark = if manifest_enabled(&text) {
+                    "●"
+                } else {
+                    "○"
+                };
+                println!("{mark}  {name:<24} {version}");
+            }
+            if !found {
+                println!("(no plugins in {})", dir.display());
+            }
+        }
+        PluginCmd::Enable { name } => set_plugin_enabled(&dir, name, true)?,
+        PluginCmd::Disable { name } => set_plugin_enabled(&dir, name, false)?,
+    }
+    Ok(())
+}
+
+/// Flip the `enabled` key of the plugin matching `name` (by directory name or
+/// manifest `name`). Rewrites the `enabled = ...` line, or appends it.
+fn set_plugin_enabled(dir: &std::path::Path, name: &str, enabled: bool) -> Result<()> {
+    for entry in std::fs::read_dir(dir)?.flatten() {
+        let manifest = entry.path().join("plugin.toml");
+        let Ok(text) = std::fs::read_to_string(&manifest) else {
+            continue;
+        };
+        let dirname = entry.file_name().to_string_lossy().to_string();
+        let mname = manifest_field(&text, "name").unwrap_or_else(|| dirname.clone());
+        if dirname == name || mname == name {
+            let val = if enabled { "true" } else { "false" };
+            let mut out = String::new();
+            let mut rewrote = false;
+            for line in text.lines() {
+                let is_enabled = line
+                    .split_once('=')
+                    .map(|(k, _)| k.trim() == "enabled")
+                    .unwrap_or(false);
+                if is_enabled {
+                    out.push_str(&format!("enabled = {val}\n"));
+                    rewrote = true;
+                } else {
+                    out.push_str(line);
+                    out.push('\n');
+                }
+            }
+            if !rewrote {
+                out.push_str(&format!("enabled = {val}\n"));
+            }
+            std::fs::write(&manifest, out)?;
+            println!(
+                "{} plugin '{name}'. Takes effect on the next margo start.",
+                if enabled { "Enabled" } else { "Disabled" }
+            );
+            return Ok(());
+        }
+    }
+    bail!("no plugin named '{name}' in {}", dir.display());
 }
 
 fn cmd_actions(verbose: bool, group_filter: Option<&str>, names_only: bool) -> Result<()> {
