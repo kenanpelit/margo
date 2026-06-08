@@ -10,6 +10,15 @@
   opacity: 0.4;
 }
 
+// Group divider between the pinned apps and the running-only ones.
+.margo-dock-group-separator {
+  background-color: var(--outline-variant);
+  min-width: 1px;
+  min-height: 1px;
+  margin: var(--space-xs, 4px);
+  opacity: 0.6;
+}
+
 .margo-dock-item:drop(active) {
   background: transparent;
   border: none;

@@ -34,6 +34,10 @@ pub struct DockItem {
     class: String,
     client_count: i16,
     pinned: bool,
+    /// Draw a group divider to the leading side of this item — set on the first
+    /// running-only app that follows a pinned one, so pinned vs running read as
+    /// two groups.
+    separator_before: bool,
 }
 
 pub(crate) struct MargoDockModel {
@@ -109,6 +113,7 @@ impl Component for MargoDockModel {
                         bar_type: params.bar_type,
                         orientation: params.orientation,
                         pinned: item.pinned,
+                        separator_before: item.separator_before,
                     })
                     .detach();
                 Box::new(controller) as Box<dyn GenericWidgetController>
@@ -353,6 +358,7 @@ impl Component for MargoDockModel {
                             class: app.hyprland_class.clone(),
                             client_count: *counts.get(&app.hyprland_class).unwrap_or(&0),
                             pinned: true,
+                            separator_before: false,
                         }
                     })
                     .collect();
@@ -376,6 +382,7 @@ impl Component for MargoDockModel {
                     client_count: *counts.get(&class).unwrap_or(&0),
                     class,
                     pinned: false,
+                    separator_before: false,
                 });
                 rows.extend(unpinned_rows);
 
@@ -401,6 +408,17 @@ impl Component for MargoDockModel {
                     rows.iter().map(|r| r.class.as_str()).collect();
                 self.ordered_keys
                     .retain(|k| current_classes.contains(k.as_str()));
+
+                // Group divider: the first running-only app that directly
+                // follows a pinned one gets a leading separator, so pinned vs
+                // running apps read as two groups.
+                for i in 0..rows.len() {
+                    rows[i].separator_before = !rows[i].pinned && i > 0 && rows[i - 1].pinned;
+                }
+                let sep_before: std::collections::HashMap<String, bool> = rows
+                    .iter()
+                    .map(|r| (r.class.clone(), r.separator_before))
+                    .collect();
 
                 self.dynamic_box
                     .sender()
@@ -431,6 +449,12 @@ impl Component for MargoDockModel {
                             let _ = ctrl
                                 .sender()
                                 .send(MargoDockItemInput::PinnedChanged(is_pinned));
+                        }
+                        let sep = sep_before.get(&model.class).copied().unwrap_or(false);
+                        if model.separator_before != sep {
+                            let _ = ctrl
+                                .sender()
+                                .send(MargoDockItemInput::SeparatorBeforeChanged(sep));
                         }
                     }
                 });

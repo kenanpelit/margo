@@ -34,6 +34,9 @@ pub(crate) struct MargoDockItemModel {
     last_selected_address: Option<Address>,
     popover: Option<gtk::PopoverMenu>,
     pub(crate) pinned: bool,
+    /// Show a group divider on the leading side (first running-only app after
+    /// the pinned group).
+    pub(crate) separator_before: bool,
 }
 
 #[derive(Debug)]
@@ -49,6 +52,9 @@ pub(crate) enum MargoDockItemInput {
     Selected(Address),
     Unselected,
     PinnedChanged(bool),
+    /// Group-divider visibility changed (item moved across the pinned/running
+    /// boundary).
+    SeparatorBeforeChanged(bool),
     /// Dock config (icon size / tooltip toggle) changed — re-apply.
     RefreshConfig,
 }
@@ -62,6 +68,7 @@ pub(crate) struct MargoDockItemInit {
     pub(crate) bar_type: BarType,
     pub(crate) orientation: Orientation,
     pub(crate) pinned: bool,
+    pub(crate) separator_before: bool,
 }
 
 #[derive(Debug)]
@@ -103,6 +110,19 @@ impl Component for MargoDockItemModel {
         #[name = "root"]
         gtk::Box {
             add_css_class: "margo-dock-item",
+            set_orientation: model.orientation,
+
+            // Leading group divider — splits the pinned apps from the
+            // running-only ones. Perpendicular to the dock's main axis.
+            gtk::Separator {
+                set_orientation: match model.orientation {
+                    Orientation::Horizontal => Orientation::Vertical,
+                    _ => Orientation::Horizontal,
+                },
+                add_css_class: "margo-dock-group-separator",
+                #[watch]
+                set_visible: model.separator_before,
+            },
 
             gtk::Overlay {
                 add_overlay = &gtk::Box {
@@ -251,6 +271,7 @@ impl Component for MargoDockItemModel {
             is_selected: false,
             last_selected_address: None,
             popover: None,
+            separator_before: params.separator_before,
             pinned: params.pinned,
         };
 
@@ -561,6 +582,9 @@ impl Component for MargoDockItemModel {
             }
             MargoDockItemInput::PinnedChanged(pinned) => {
                 self.pinned = pinned;
+            }
+            MargoDockItemInput::SeparatorBeforeChanged(sep) => {
+                self.separator_before = sep;
             }
             MargoDockItemInput::RefreshConfig => {
                 self.apply_dock_config(&widgets.image, &widgets.root);
