@@ -159,6 +159,10 @@ impl MargoState {
                     "focused": Some(idx) == focused_idx,
                     "pid": c.pid,
                     "scanout": c.last_scanout,
+                    // Tabbed-group membership (null for ungrouped windows).
+                    // Lets the shell surface "tab 2/4" / a group pill later.
+                    "group_id": c.group_id,
+                    "group_active": c.group_active,
                 })
             })
             .collect();

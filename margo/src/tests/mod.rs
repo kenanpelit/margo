@@ -37,6 +37,7 @@ mod dmabuf;
 mod focus_mon;
 mod gamma_control;
 mod globals;
+mod groups;
 mod idle;
 mod layer_shell;
 mod output_assignment;

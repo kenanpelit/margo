@@ -415,6 +415,11 @@ pub struct WindowRule {
     pub force_tearing: Option<bool>,
     pub no_swallow: Option<bool>,
     pub no_blur: Option<bool>,
+    /// `group:1` — auto-merge matching windows into a tabbed group
+    /// keyed by their app-id, so e.g. every terminal opens as a tab of
+    /// the same group. `None`/`Some(false)` leaves the window
+    /// ungrouped (the default).
+    pub group: Option<bool>,
     pub canvas_no_tile: Option<bool>,
     pub focused_opacity: Option<f32>,
     pub unfocused_opacity: Option<f32>,
@@ -868,6 +873,21 @@ pub struct Config {
     pub shadows_position_x: i32,
     pub shadows_position_y: i32,
 
+    // tabbed window groups (`togglegroup`)
+    /// Height in logical pixels of the tab strip drawn above a grouped
+    /// tile. `0` disables the strip entirely (groups still work via
+    /// keybinds; you just don't see the tabs). Default 0 — groups are
+    /// opt-in, so the chrome is too.
+    pub group_bar_height: u32,
+    /// Horizontal gap in logical pixels between adjacent tab chips.
+    pub group_bar_gap: u32,
+    /// Fill colour of the active member's tab chip. Defaults to
+    /// `focuscolor`; override via matugen `colors.conf`.
+    pub group_active_color: Rgba,
+    /// Fill colour of inactive members' tab chips. Defaults to
+    /// `bordercolor`; override via matugen `colors.conf`.
+    pub group_inactive_color: Rgba,
+
     // input
     pub repeat_rate: i32,
     pub repeat_delay: i32,
@@ -1191,6 +1211,24 @@ impl Default for Config {
             shadows_blur: 26.0,
             shadows_position_x: 0,
             shadows_position_y: 4,
+
+            // Tabbed groups: strip hidden by default (groups are opt-in),
+            // chips reuse the focus/border palette so they match the
+            // active matugen theme out of the box.
+            group_bar_height: 0,
+            group_bar_gap: 4,
+            group_active_color: Rgba([
+                0xc6_u8 as f32 / 255.0,
+                0x6b_u8 as f32 / 255.0,
+                0x25_u8 as f32 / 255.0,
+                1.0,
+            ]),
+            group_inactive_color: Rgba([
+                0x44_u8 as f32 / 255.0,
+                0x44_u8 as f32 / 255.0,
+                0x44_u8 as f32 / 255.0,
+                1.0,
+            ]),
 
             repeat_rate: 25,
             repeat_delay: 600,

@@ -14,6 +14,8 @@ mod debug_dump;
 mod dispatch;
 mod focus_target;
 mod frame_clock_sched;
+mod groups;
+pub(crate) use groups::GroupLock;
 mod overview;
 mod scratchpad;
 pub(crate) use scratchpad::MatchOp;
@@ -573,6 +575,17 @@ pub struct MargoState {
     pub clients: Vec<MargoClient>,
     pub monitors: Vec<MargoMonitor>,
 
+    /// Monotonic allocator for tabbed-window-group ids. Starts at 1
+    /// (`0` is never a valid group id) and only ever increments, so
+    /// a freed id is never reused for the lifetime of the session —
+    /// keeps `group_id` comparisons unambiguous. See `state::groups`.
+    pub next_group_id: u32,
+    /// When set, `togglegroup` is a no-op (Hyprland `lockgroups`):
+    /// prevents windows from accidentally merging into / splitting
+    /// out of groups while the user arranges them. Existing groups
+    /// keep working (cycle / move); only group/ungroup is frozen.
+    pub groups_locked: bool,
+
     pub input_keyboard: KeyboardState,
     pub input_pointer: PointerState,
     pub input_touch: TouchState,
@@ -999,6 +1012,8 @@ impl MargoState {
             lock_surfaces: vec![],
             clients: vec![],
             monitors: vec![],
+            next_group_id: 1,
+            groups_locked: false,
             session_locked: false,
             current_kb_layout: String::new(),
             idle_notifier_state,
@@ -3748,9 +3763,13 @@ impl MargoState {
                 handle.send_closed();
             }
             let window = self.clients[idx].window.clone();
+            let group = self.group_of(idx);
             self.space.unmap_elem(&window);
             self.clients.remove(idx);
             self.shift_indices_after_remove(idx);
+            if let Some(gid) = group {
+                self.repair_group(gid);
+            }
             let mon_idx = self.focused_monitor();
             if !self.monitors.is_empty() {
                 self.arrange_monitor(mon_idx);

@@ -1291,6 +1291,11 @@ impl MargoState {
         // sees it as a real participant.
         self.clients[idx].is_initial_map_pending = false;
 
+        // Auto-group by `group:1` windowrule (no-op unless a rule
+        // matched). Runs before the arrange below so the collapse to a
+        // single slot lands in the same map pass.
+        self.maybe_auto_group(idx);
+
         if !self.monitors.is_empty() {
             self.arrange_monitor(target_mon);
         }

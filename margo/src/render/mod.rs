@@ -3,6 +3,7 @@
 pub mod blur;
 pub mod clipped_surface;
 pub mod config_error_overlay;
+pub mod group_tabs;
 pub mod hdr_metadata;
 pub mod icc_lut;
 pub mod linear_composite;

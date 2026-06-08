@@ -50,7 +50,10 @@ use smithay::{
 };
 use tracing::{error, info, warn};
 
-use crate::{input_handler::handle_input, state::MargoState};
+use crate::{
+    input_handler::handle_input,
+    state::{MargoClient, MargoState},
+};
 
 mod frame;
 mod helpers;
@@ -2485,6 +2488,59 @@ fn push_closing_clients(
     }
 }
 
+/// Push the tab-strip chrome for a grouped, active window. No-op for
+/// ungrouped windows, hidden group members, or when
+/// `group_bar_height == 0`. The strip sits above the tile's top edge,
+/// one solid chip per group member (active highlighted). Minimal flat
+/// chrome — see `render::group_tabs`.
+fn push_group_tabs(
+    state: &MargoState,
+    client: Option<&MargoClient>,
+    output_geo: Rectangle<i32, Logical>,
+    output_scale: f64,
+    elements: &mut Vec<MargoRenderElement>,
+) {
+    let bar_h = state.config.group_bar_height as i32;
+    if bar_h <= 0 {
+        return;
+    }
+    let Some(client) = client else { return };
+    // Only the visible (active) member carries the strip; hidden
+    // members aren't rendered at all.
+    let Some(gid) = client.group_id else { return };
+    if !client.group_active {
+        return;
+    }
+    let members: Vec<usize> = state
+        .clients
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.group_id == Some(gid))
+        .map(|(i, _)| i)
+        .collect();
+    if members.len() < 2 {
+        return;
+    }
+    let active_idx = state
+        .clients
+        .iter()
+        .position(|c| std::ptr::eq(c, client))
+        .unwrap_or(members[0]);
+    for solid in crate::render::group_tabs::render_elements(
+        client.geom,
+        &members,
+        active_idx,
+        bar_h,
+        state.config.group_bar_gap as i32,
+        state.config.group_active_color.0,
+        state.config.group_inactive_color.0,
+        output_geo.loc,
+        output_scale,
+    ) {
+        elements.push(MargoRenderElement::Solid(solid));
+    }
+}
+
 fn push_client_elements(
     renderer: &mut GlesRenderer,
     state: &MargoState,
@@ -2649,6 +2705,8 @@ fn push_client_elements(
                         elements.push(MargoRenderElement::Border(border));
                     }
                 }
+
+                push_group_tabs(state, client, output_geo, output_scale, elements);
 
                 // Drop shadow under floating windows when
                 // `Config::shadows` is on, the client doesn't have
@@ -2968,6 +3026,8 @@ fn push_client_elements(
                         elements.push(MargoRenderElement::Border(border));
                     }
                 }
+
+                push_group_tabs(state, client, output_geo, output_scale, elements);
 
                 let rendered = AsRenderElements::<GlesRenderer>::render_elements::<
                     WaylandSurfaceRenderElement<GlesRenderer>,
