@@ -611,7 +611,6 @@ impl Component for BarModel {
                 for item in &bar_widgets {
                     let controller =
                         BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
-                    controller.root_widget().add_css_class("bar-pill-std");
                     widgets.start_container.append(&controller.root_widget());
                     self.start_widgets.push(controller);
                 }
@@ -626,7 +625,6 @@ impl Component for BarModel {
                 for item in &bar_widgets {
                     let controller =
                         BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
-                    controller.root_widget().add_css_class("bar-pill-std");
                     widgets.end_container.append(&controller.root_widget());
                     self.end_widgets.push(controller);
                 }
@@ -641,7 +639,6 @@ impl Component for BarModel {
                 for item in &bar_widgets {
                     let controller =
                         BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
-                    controller.root_widget().add_css_class("bar-pill-std");
                     widgets.center_container.append(&controller.root_widget());
                     self.center_widgets.push(controller);
                 }
@@ -703,7 +700,6 @@ impl Component for BarModel {
                     for item in &kinds {
                         let c =
                             BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
-                        c.root_widget().add_css_class("bar-pill-std");
                         widgets.start_container.append(&c.root_widget());
                         self.start_widgets.push(c);
                     }
@@ -715,7 +711,6 @@ impl Component for BarModel {
                     for item in &kinds {
                         let c =
                             BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
-                        c.root_widget().add_css_class("bar-pill-std");
                         widgets.center_container.append(&c.root_widget());
                         self.center_widgets.push(c);
                     }
@@ -727,7 +722,6 @@ impl Component for BarModel {
                     for item in &kinds {
                         let c =
                             BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
-                        c.root_widget().add_css_class("bar-pill-std");
                         widgets.end_container.append(&c.root_widget());
                         self.end_widgets.push(c);
                     }
@@ -771,7 +765,12 @@ impl BarModel {
         widget: &BarWidget,
         sender: &ComponentSender<Self>,
     ) -> Box<dyn GenericWidgetController> {
-        match widget {
+        // Every pill — native widget AND plugin (`BarWidget::Custom`) — is
+        // built here, so tagging the controller's root with `.bar-pill-std`
+        // in this one place gives ALL of them a single uniform surface +
+        // hover + geometry (see _bar_widget.scss). No per-widget or
+        // per-append-site opt-in to forget.
+        let controller: Box<dyn GenericWidgetController> = match widget {
             BarWidget::HiddenBar => {
                 // Build this bar's `hidden_widgets` as children to live inside
                 // the drawer's revealer; keep their controllers alive in the
@@ -1237,7 +1236,9 @@ impl BarModel {
                         WallpaperOutput::Clicked => BarOutput::WallpaperClicked,
                     }),
             ),
-        }
+        };
+        controller.root_widget().add_css_class("bar-pill-std");
+        controller
     }
 }
 
