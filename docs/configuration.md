@@ -143,8 +143,16 @@ bind = super+alt,    g,   lockgroups, toggle
 windowrule = group:1, appid:^kitty$
 ```
 
-The tab strip is drawn with flat solid-colour chips. It's **hidden by default**
-(`group_bar_height = 0`); raise it to draw the strip. Colours default to the
+The tab strip is the **only** on-screen cue that a tile is a group, and it is
+**hidden by default** (`group_bar_height = 0`). With height 0 `togglegroup` still
+merges windows, but you see no strip and can't tell which tile is grouped — raise
+`group_bar_height` to ~22 to draw it.
+
+The strip is deliberately **text-free** (the compositor has no font renderer): one
+flat colour chip per member, the active one in `group_active_color` and the rest in
+`group_inactive_color`. So it shows *that* a tile is a group, how many members it
+has, and which is active — **not** the app name. Cycle members with
+`changegroupactive` and the slot content changes. Colours default to the
 focus/border palette and follow matugen via `colors.conf`.
 
 | Key | Default | Meaning |
