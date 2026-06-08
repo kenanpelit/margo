@@ -117,7 +117,14 @@ impl XdgShellHandler for MargoState {
         );
     }
 
-    fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
+    fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
+        surface.with_pending_state(|state| {
+            state.positioner = positioner;
+            state.geometry = positioner.get_geometry();
+        });
+        // Keep the popup inside its parent's output (flip/slide per the
+        // positioner) so edge-of-screen menus don't spill off.
+        self.unconstrain_popup(&surface);
         match self.popups.track_popup(PopupKind::Xdg(surface)) {
             Ok(()) => tracing::info!("new_popup: tracked"),
             Err(e) => tracing::warn!(?e, "new_popup: track_popup failed"),
@@ -134,6 +141,7 @@ impl XdgShellHandler for MargoState {
             state.geometry = positioner.get_geometry();
             state.positioner = positioner;
         });
+        self.unconstrain_popup(&surface);
         surface.send_repositioned(token);
     }
 
@@ -521,4 +529,71 @@ impl XdgShellHandler for MargoState {
         self.set_client_fullscreen(idx, false);
     }
 }
+
+impl MargoState {
+    /// Re-position an xdg popup so it stays inside the output its parent sits
+    /// on, applying the positioner's flip/slide/resize constraint adjustment.
+    /// Without this, GTK / Chromium menus (right-click menus, dropdowns, the
+    /// dock context menu) opened near a screen edge spilled off-screen because
+    /// we honoured the client's raw requested geometry verbatim. The parent is
+    /// either a mapped toplevel window or a layer surface (bars / the dock).
+    fn unconstrain_popup(&self, popup: &PopupSurface) {
+        use smithay::desktop::{
+            WindowSurfaceType, find_popup_root_surface, get_popup_toplevel_coords,
+            layer_map_for_output,
+        };
+        use smithay::utils::{Logical, Rectangle};
+
+        let kind = PopupKind::Xdg(popup.clone());
+        let Ok(root) = find_popup_root_surface(&kind) else {
+            return;
+        };
+
+        // Parent root geometry in global coordinates.
+        let root_geo: Rectangle<i32, Logical> = if let Some(window) = self
+            .space
+            .elements()
+            .find(|w| w.wl_surface().map(|s| *s == root).unwrap_or(false))
+        {
+            match self.space.element_geometry(window) {
+                Some(g) => g,
+                None => return,
+            }
+        } else if let Some(geo) = self.space.outputs().find_map(|o| {
+            let map = layer_map_for_output(o);
+            let layer = map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)?;
+            let lgeo = map.layer_geometry(layer)?;
+            let ogeo = self.space.output_geometry(o)?;
+            Some(Rectangle::new(
+                (ogeo.loc.x + lgeo.loc.x, ogeo.loc.y + lgeo.loc.y).into(),
+                lgeo.size,
+            ))
+        }) {
+            geo
+        } else {
+            return;
+        };
+
+        // The output that contains the parent.
+        let Some(output_geo) = self
+            .space
+            .outputs()
+            .filter_map(|o| self.space.output_geometry(o))
+            .find(|g| g.overlaps(root_geo))
+        else {
+            return;
+        };
+
+        // Express the available output area in the popup's parent-local frame,
+        // then let smithay clamp the geometry to it.
+        let mut target = output_geo;
+        target.loc -= root_geo.loc;
+        target.loc -= get_popup_toplevel_coords(&kind);
+
+        popup.with_pending_state(|state| {
+            state.geometry = state.positioner.get_unconstrained_geometry(target);
+        });
+    }
+}
+
 delegate_xdg_shell!(MargoState);
