@@ -46,6 +46,9 @@ image = { version = "0.25", default-features = false, features = [
   "png",
   "webp",
 ] }
+# Pure-Rust glyph rasteriser for compositor-drawn text (tabbed-group
+# tab labels). No system font lib (pango/freetype) dependency.
+fontdue = "0.9"
 # HDR Phase 4 — per-output ICC profile parsing + transform.
 # Always-on dep; the colord D-Bus client that reads the user's
 # per-output profile path lives behind the `dbus` feature, but

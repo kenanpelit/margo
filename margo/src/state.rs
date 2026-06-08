@@ -2119,9 +2119,7 @@ impl MargoState {
         // settled this configures nothing until the slot actually moves.
         if !group_slots.is_empty() {
             for i in 0..self.clients.len() {
-                if self.clients[i].monitor != mon_idx
-                    || !self.clients[i].is_hidden_group_member()
-                {
+                if self.clients[i].monitor != mon_idx || !self.clients[i].is_hidden_group_member() {
                     continue;
                 }
                 let slot = self.clients[i]

@@ -2494,6 +2494,7 @@ fn push_closing_clients(
 /// one solid chip per group member (active highlighted). Minimal flat
 /// chrome — see `render::group_tabs`.
 fn push_group_tabs(
+    renderer: &mut GlesRenderer,
     state: &MargoState,
     client: Option<&MargoClient>,
     output_geo: Rectangle<i32, Logical>,
@@ -2526,6 +2527,60 @@ fn push_group_tabs(
         .iter()
         .position(|c| std::ptr::eq(c, client))
         .unwrap_or(members[0]);
+
+    // App-name label on each chip (fontdue → MemoryRenderBuffer). Pushed
+    // BEFORE the solid chips so it sits at a lower index → drawn on top of
+    // its chip. Skipped silently when no font is available; the coloured
+    // chips still render.
+    let gap = state.config.group_bar_gap as i32;
+    for chip in crate::render::group_tabs::chip_rects(client.geom, &members, active_idx, bar_h, gap)
+    {
+        let Some(c) = state.clients.get(chip.client_idx) else {
+            continue;
+        };
+        let label = if !c.title.is_empty() {
+            c.title.as_str()
+        } else {
+            c.app_id.as_str()
+        };
+        if label.is_empty() {
+            continue;
+        }
+        // Chip rect → output-local physical.
+        let phys_x = ((chip.rect.x - output_geo.loc.x) as f64) * output_scale;
+        let phys_y = ((chip.rect.y - output_geo.loc.y) as f64) * output_scale;
+        let phys_w = (chip.rect.width as f64) * output_scale;
+        let phys_h = (chip.rect.height as f64) * output_scale;
+        let text_h = (phys_h * 0.6).round() as i32;
+        let pad_x = (phys_h * 0.3).round();
+        let max_w = (phys_w - 2.0 * pad_x).round() as i32;
+        if text_h <= 2 || max_w <= 2 {
+            continue;
+        }
+        // Contrast: dark text on a light chip, light text on a dark one.
+        let bg = if chip.active {
+            state.config.group_active_color.0
+        } else {
+            state.config.group_inactive_color.0
+        };
+        let lum = 0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2];
+        let rgb = if lum > 0.55 {
+            [0u8, 0, 0]
+        } else {
+            [255u8, 255, 255]
+        };
+        // Vertically centre the (≈1.2×text_h tall) label within the chip.
+        let label_h = (text_h as f64) * 1.2;
+        let pos_y = phys_y + ((phys_h - label_h) / 2.0).max(0.0);
+        let pos =
+            smithay::utils::Point::<f64, smithay::utils::Physical>::from((phys_x + pad_x, pos_y));
+        if let Some(el) =
+            crate::render::text::label_element(renderer, label, text_h, max_w, rgb, pos)
+        {
+            elements.push(MargoRenderElement::Cursor(el));
+        }
+    }
+
     for solid in crate::render::group_tabs::render_elements(
         client.geom,
         &members,
@@ -2706,7 +2761,7 @@ fn push_client_elements(
                     }
                 }
 
-                push_group_tabs(state, client, output_geo, output_scale, elements);
+                push_group_tabs(renderer, state, client, output_geo, output_scale, elements);
 
                 // Drop shadow under floating windows when
                 // `Config::shadows` is on, the client doesn't have
@@ -3027,7 +3082,7 @@ fn push_client_elements(
                     }
                 }
 
-                push_group_tabs(state, client, output_geo, output_scale, elements);
+                push_group_tabs(renderer, state, client, output_geo, output_scale, elements);
 
                 let rendered = AsRenderElements::<GlesRenderer>::render_elements::<
                     WaylandSurfaceRenderElement<GlesRenderer>,
