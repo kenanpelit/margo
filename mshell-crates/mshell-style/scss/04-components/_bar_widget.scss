@@ -223,6 +223,10 @@
     border-radius: var(--radius-widget);
     background-color: transparent;
     transition: background-color var(--motion-fast) var(--ease-standard);
+    // TEMP DIAGNOSTIC — confirms .bar-pill-std reaches every pill. If you see
+    // a red outline on every bar pill the pipeline works (remove this line);
+    // if not, the new mshell binary/CSS isn't actually running.
+    border: 2px solid red;
 }
 
 .bar .bar-pill-std:hover {
