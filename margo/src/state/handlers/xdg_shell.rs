@@ -269,13 +269,30 @@ impl XdgShellHandler for MargoState {
         // toplevels it must be FocusTarget::Window. We search the
         // client list for a window whose wl_surface matches; if no
         // match (X11 client, or weird race), abort the grab silently.
-        let root_focus = self.clients.iter().find_map(|c| {
-            c.window
-                .wl_surface()
-                .as_deref()
-                .filter(|s| **s == root_wl_surface)
-                .map(|_| FocusTarget::Window(c.window.clone()))
-        });
+        let root_focus = self
+            .clients
+            .iter()
+            .find_map(|c| {
+                c.window
+                    .wl_surface()
+                    .as_deref()
+                    .filter(|s| **s == root_wl_surface)
+                    .map(|_| FocusTarget::Window(c.window.clone()))
+            })
+            .or_else(|| {
+                // The popup's root may be a layer surface (a bar / the dock),
+                // not a toplevel. Resolve it so layer-shell popups (the dock
+                // right-click menu) also get the keyboard grab — without this
+                // the grab bailed out here and Esc never reached the menu.
+                self.space.outputs().find_map(|o| {
+                    let map = smithay::desktop::layer_map_for_output(o);
+                    map.layer_for_surface(
+                        &root_wl_surface,
+                        smithay::desktop::WindowSurfaceType::TOPLEVEL,
+                    )
+                    .map(|l| FocusTarget::LayerSurface(l.layer_surface().clone()))
+                })
+            });
         let Some(root) = root_focus else {
             return;
         };
