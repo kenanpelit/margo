@@ -1237,7 +1237,16 @@ impl BarModel {
                     }),
             ),
         };
-        controller.root_widget().add_css_class("bar-pill-std");
+        // One pill standard for EVERY widget + plugin: the `.bar-pill-std`
+        // surface/hover/radius (see _bar_widget.scss) PLUS centre alignment so
+        // each pill takes its natural, content-sized box (centred in the bar)
+        // instead of stretching to fill the bar height/width. This is exactly
+        // what the dashboard pill does, applied uniformly here so a widget that
+        // set `hexpand/vexpand: true` internally can no longer balloon.
+        let root = controller.root_widget();
+        root.add_css_class("bar-pill-std");
+        root.set_halign(gtk::Align::Center);
+        root.set_valign(gtk::Align::Center);
         controller
     }
 }
