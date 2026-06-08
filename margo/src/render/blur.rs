@@ -132,6 +132,8 @@ thread_local! {
 /// + GL error so an on-hardware "blur shows nothing" can be triaged from
 /// the log instead of the screen. Remove once blur is verified.
 static BLUR_DIAG_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static BLUR_DIAG_COMPOSITE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// Marker handle proving the blur GL resources compiled successfully.
 /// `push_*_elements` checks `shader()` like it does for shadows; the
@@ -378,11 +380,11 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
         _opaque_regions: &[Rectangle<i32, Physical>],
         _cache: Option<&UserDataMap>,
     ) -> Result<(), GlesError> {
-        // `projection` maps output-physical pixel coords → clip space,
-        // already accounting for the frame's transform. We pass it to
-        // the composite shader so our final quad lands exactly on `dst`
-        // regardless of output rotation.
-        let projection = *frame.projection();
+        // The composite quad is positioned by mapping `dst` (output-
+        // physical pixels) directly into NDC against the GL viewport
+        // inside `draw_blur` — deterministic, no dependency on smithay's
+        // projection-matrix layout (the previous `frame.projection()`
+        // path drew the quad off-screen on this hardware).
         let region_w = dst.size.w.max(1);
         let region_h = dst.size.h.max(1);
         let corner_px = self.corner_radius * self.scale.x as f32;
@@ -394,16 +396,7 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
                 let Some(blur_gl) = borrow.as_mut() else {
                     return;
                 };
-                draw_blur(
-                    gl,
-                    blur_gl,
-                    dst,
-                    region_w,
-                    region_h,
-                    corner_px,
-                    &params,
-                    &projection,
-                );
+                draw_blur(gl, blur_gl, dst, region_w, region_h, corner_px, &params);
             });
         })?;
         Ok(())
@@ -428,7 +421,6 @@ unsafe fn draw_blur(
     region_h: i32,
     corner_px: f32,
     params: &BlurParams,
-    projection: &[f32; 9],
 ) {
     let passes = effective_passes(params.num_passes, region_w, region_h);
     if passes == 0 {
@@ -589,8 +581,20 @@ unsafe fn draw_blur(
             region_h,
             corner_px,
             params,
-            projection,
+            prev_vp,
         );
+
+        // One-shot diagnostic: GL error after the composite (the capture
+        // diag above runs before it, so this is the missing half).
+        if !BLUR_DIAG_COMPOSITE.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            let err = gl.GetError();
+            tracing::warn!(
+                target: "margo::render::blur",
+                "BLUR-DIAG composite: viewport=[{},{},{},{}] dst=({},{} {}x{}) composite_glerror=0x{:x}",
+                prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3],
+                dst.loc.x, dst.loc.y, dst.size.w, dst.size.h, err,
+            );
+        }
 
         // ── Restore GL state ─────────────────────────────────────────
         gl.UseProgram(prev_prog as ffi::types::GLuint);
@@ -715,7 +719,7 @@ unsafe fn composite_pass(
     region_h: i32,
     corner_px: f32,
     params: &BlurParams,
-    projection: &[f32; 9],
+    viewport: [i32; 4],
 ) {
     unsafe {
         gl.UseProgram(prog);
@@ -734,7 +738,17 @@ unsafe fn composite_pass(
         set_uniform_1f(gl, prog, c"noise", params.noise);
         set_uniform_2f(gl, prog, c"dst_origin", dst.loc.x as f32, dst.loc.y as f32);
         set_uniform_2f(gl, prog, c"dst_size", region_w as f32, region_h as f32);
-        set_uniform_mat3(gl, prog, c"projection", projection);
+        // Viewport (x, y, w, h) so the vertex shader maps dst-pixels → NDC
+        // directly, bypassing smithay's projection-matrix convention.
+        set_uniform_4f(
+            gl,
+            prog,
+            c"viewport",
+            viewport[0] as f32,
+            viewport[1] as f32,
+            viewport[2] as f32,
+            viewport[3] as f32,
+        );
 
         gl.DrawArrays(ffi::TRIANGLES, 0, 6);
         disable_quad_attribs(gl, locs);
@@ -780,16 +794,20 @@ unsafe fn set_uniform_2f(
 }
 
 /// # Safety: current GL context.
-unsafe fn set_uniform_mat3(
+#[allow(clippy::too_many_arguments)]
+unsafe fn set_uniform_4f(
     gl: &ffi::Gles2,
     prog: ffi::types::GLuint,
     name: &std::ffi::CStr,
-    m: &[f32; 9],
+    a: f32,
+    b: f32,
+    c: f32,
+    d: f32,
 ) {
     unsafe {
         let loc = gl.GetUniformLocation(prog, name.as_ptr() as *const _);
         if loc >= 0 {
-            gl.UniformMatrix3fv(loc, 1, ffi::FALSE, m.as_ptr());
+            gl.Uniform4f(loc, a, b, c, d);
         }
     }
 }
@@ -823,13 +841,18 @@ attribute vec2 a_pos;
 attribute vec2 a_uv;
 uniform vec2 dst_origin;
 uniform vec2 dst_size;
-uniform mat3 projection;
+uniform vec4 viewport;   // x, y, w, h in framebuffer pixels
 varying vec2 v_uv;
 void main() {
     v_uv = a_uv;
+    // dst rect in output-physical pixels (top-left origin).
     vec2 px = dst_origin + a_uv * dst_size;
-    vec3 clip = projection * vec3(px, 1.0);
-    gl_Position = vec4(clip.xy, 0.0, 1.0);
+    // Map pixel coords → NDC against the GL viewport. Pixel Y grows down,
+    // NDC Y grows up, so the Y axis is flipped. Deterministic — does not
+    // depend on smithay's projection-matrix layout/transpose.
+    float ndc_x = 2.0 * (px.x - viewport.x) / viewport.z - 1.0;
+    float ndc_y = 1.0 - 2.0 * (px.y - viewport.y) / viewport.w;
+    gl_Position = vec4(ndc_x, ndc_y, 0.0, 1.0);
 }
 "#;
 
