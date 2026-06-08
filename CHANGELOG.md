@@ -34,6 +34,8 @@ the same surface, hover, height, and shape.
   frame fill + border to fixed colours instead of the matugen palette.
 - **Setup-wizard polish.** Prominent nav + in-page action buttons, a
   default-shortcuts cheat-sheet on the Review step, and centred footer nav.
+- **Configurable bar separator colour.** Settings → Bar can override the
+  Separator widget's colour (`separator_color`) instead of matugen `--outline`.
 
 ### Changed
 
@@ -57,6 +59,9 @@ the same surface, hover, height, and shape.
   compositor on launch.
 - External-monitor hotplug now allocates a scanout-capable buffer so a
   re-plugged display is detected.
+- Bar separator stays visible in every mode again (the new central pill
+  standard had painted the Separator/Spacer helpers transparent); the frame
+  Fill/Border colour pickers no longer drift apart in Settings → Bar.
 
 ## [0.9.8] – 2026-06-04
 
