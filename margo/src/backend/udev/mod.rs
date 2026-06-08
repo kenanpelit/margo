@@ -75,6 +75,7 @@ render_elements! {
     WaylandSurface=WaylandSurfaceRenderElement<GlesRenderer>,
     Border=crate::render::rounded_border::RoundedBorderElement,
     Shadow=crate::render::shadow::ShadowRenderElement,
+    Blur=crate::render::blur::BlurRenderElement,
     Clipped=crate::render::clipped_surface::ClippedSurfaceRenderElement,
     Resize=crate::render::resize_render::ResizeRenderElement,
     OpenClose=crate::render::open_close::OpenCloseRenderElement,
@@ -2881,6 +2882,47 @@ fn push_client_elements(
                         Wrap::from(elem),
                     )));
                 }
+
+                // Background blur UNDER the surface. Pushed AFTER the
+                // surface elements so it sits at a higher index in the
+                // Vec → drawn earlier (painter's algorithm) → beneath
+                // the translucent window, which then composites over it.
+                // Where the surface is opaque the blur is fully hidden
+                // (wasted GPU only); where it's translucent the blur
+                // shows through — Hyprland's `blur` policy. Gated on
+                // `Config::blur`, excluded for `no_blur` / fullscreen /
+                // scratchpad clients (a blur there would bleed past
+                // edges that should feel locked to the screen).
+                if let Some(client) = client {
+                    if state.config.blur
+                        && !client.no_blur
+                        && !client.is_fullscreen
+                        && !client.is_in_scratchpad
+                    {
+                        if let (Some(geo), true) = (
+                            clip_geometry,
+                            crate::render::blur::shader(renderer).is_some(),
+                        ) {
+                            let rect = Rectangle::<i32, Logical>::new(
+                                (geo.loc.x.round() as i32, geo.loc.y.round() as i32).into(),
+                                (
+                                    (geo.size.w.round() as i32).max(1),
+                                    (geo.size.h.round() as i32).max(1),
+                                )
+                                    .into(),
+                            );
+                            elements.push(MargoRenderElement::Blur(
+                                crate::render::blur::BlurRenderElement::new(
+                                    smithay::backend::renderer::element::Id::new(),
+                                    rect,
+                                    radius,
+                                    state.config.blur_params,
+                                    scale,
+                                ),
+                            ));
+                        }
+                    }
+                }
             }
             WindowSurface::X11(_) => {
                 if let (Some(client), Some(program)) = (client, border_program.as_ref()) {
@@ -3036,6 +3078,42 @@ fn push_layer_elements(
             elements.push(MargoRenderElement::Space(SpaceRenderElements::Surface(
                 elem,
             )));
+        }
+
+        // Background blur UNDER a layer surface when `Config::blur_layer`
+        // is on and no matching `layerrule = noblur:1` excludes it.
+        // Pushed AFTER the surface elements → drawn beneath it (same
+        // painter-order reasoning as the window path). Skipped while the
+        // layer is mid open-animation (alpha < full) to avoid a blur
+        // flashing in ahead of the surface.
+        if state.config.blur_layer {
+            let namespace = surface.namespace();
+            let no_blur = state
+                .config
+                .layer_rules
+                .iter()
+                .filter(|r| crate::state::matches_layer_name(r, namespace))
+                .any(|r| r.no_blur);
+            let mid_anim = state
+                .layer_animations
+                .get(&key)
+                .map(|a| !a.is_close && a.progress < 1.0)
+                .unwrap_or(false);
+            if !no_blur && !mid_anim && crate::render::blur::shader(renderer).is_some() {
+                let rect = Rectangle::<i32, Logical>::new(
+                    (geo.loc.x, geo.loc.y).into(),
+                    (geo.size.w.max(1), geo.size.h.max(1)).into(),
+                );
+                elements.push(MargoRenderElement::Blur(
+                    crate::render::blur::BlurRenderElement::new(
+                        smithay::backend::renderer::element::Id::new(),
+                        rect,
+                        0.0,
+                        state.config.blur_params,
+                        scale,
+                    ),
+                ));
+            }
         }
     }
 }

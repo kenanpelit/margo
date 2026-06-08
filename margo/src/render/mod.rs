@@ -1,5 +1,6 @@
 //! Custom render elements (shader-based) used by margo's renderer.
 
+pub mod blur;
 pub mod clipped_surface;
 pub mod config_error_overlay;
 pub mod hdr_metadata;
