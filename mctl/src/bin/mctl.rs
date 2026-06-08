@@ -1118,7 +1118,32 @@ fn manifest_enabled(text: &str) -> bool {
 }
 
 fn cmd_plugin(action: &PluginCmd) -> Result<()> {
-    let dir = mctl_plugins_dir().context("no plugins directory (~/.config/margo/plugins)")?;
+    let Some(dir) = mctl_plugins_dir() else {
+        // No `~/.config/margo/plugins/` — the common case. Not an error;
+        // explain the three separate plugin/scripting worlds so the user
+        // isn't left thinking something is broken.
+        match action {
+            PluginCmd::List => {
+                println!("No compositor plugins.");
+                println!();
+                println!(
+                    "  `mctl plugin` manages PACKAGED Rhai plugins in\n  \
+                     ~/.config/margo/plugins/<name>/ (plugin.toml + init.rhai).\n\n  \
+                     Personal scripting lives in ~/.config/margo/init.rhai and loads\n  \
+                     automatically — no packaging needed.\n  \
+                     Shell (WASM) plugins are a separate system: Settings → Plugins\n  \
+                     (or `mshellctl`)."
+                );
+            }
+            PluginCmd::Enable { .. } | PluginCmd::Disable { .. } => {
+                println!(
+                    "No ~/.config/margo/plugins/ directory yet — nothing to enable/disable.\n\
+                     Create ~/.config/margo/plugins/<name>/ with a plugin.toml + init.rhai first."
+                );
+            }
+        }
+        return Ok(());
+    };
     match action {
         PluginCmd::List => {
             let mut found = false;
