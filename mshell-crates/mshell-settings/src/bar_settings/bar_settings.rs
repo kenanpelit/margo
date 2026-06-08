@@ -38,6 +38,9 @@ pub(crate) struct BarSettingsModel {
     /// Current frame fill / border colours shown in the pickers.
     frame_color: gdk::RGBA,
     frame_border_color: gdk::RGBA,
+    /// Manual separator colour override on? + the colour shown in the picker.
+    separator_color_custom: bool,
+    separator_color: gdk::RGBA,
     /// Bar show/hide slide animation duration (ms); `bars.slide_duration_ms`.
     slide_duration: i32,
     chips: FactoryVecDeque<MonitorChipModel>,
@@ -93,6 +96,8 @@ pub(crate) enum BarSettingsInput {
     FrameColorCustomToggled(bool),
     FrameFillColorSet(gdk::RGBA),
     FrameBorderColorSet(gdk::RGBA),
+    SeparatorColorCustomToggled(bool),
+    SeparatorColorSet(gdk::RGBA),
     IslandsToggled(bool),
     IslandsChanged(bool),
     /// SpinButton edited → write `bars.slide_duration_ms`.
@@ -253,16 +258,21 @@ impl Component for BarSettingsModel {
 
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
+                    set_spacing: 8,
                     #[watch]
                     set_sensitive: model.frame_color_custom,
 
                     gtk::Label {
                         add_css_class: "label-small",
-                        set_label: "Fill",
+                        set_label: "Frame fill / border",
                         set_halign: gtk::Align::Start,
                         set_hexpand: true,
                         set_xalign: 0.0,
+                    },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_label: "Fill",
+                        set_halign: gtk::Align::End,
                     },
                     gtk::ColorDialogButton {
                         set_valign: gtk::Align::Center,
@@ -276,7 +286,7 @@ impl Component for BarSettingsModel {
                     gtk::Label {
                         add_css_class: "label-small",
                         set_label: "Border",
-                        set_halign: gtk::Align::Start,
+                        set_halign: gtk::Align::End,
                     },
                     gtk::ColorDialogButton {
                         set_valign: gtk::Align::Center,
@@ -285,6 +295,57 @@ impl Component for BarSettingsModel {
                         set_rgba: &model.frame_border_color,
                         connect_rgba_notify[sender] => move |b| {
                             sender.input(BarSettingsInput::FrameBorderColorSet(b.rgba()));
+                        },
+                    },
+                },
+
+                // ── Separator colour ────────────────────────────────────
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Custom separator colour — the thin divider pills (Separator widget). Off = follow the theme (matugen outline).",
+                        set_hexpand: true,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    },
+
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(separator_color_custom_handler)]
+                        set_active: model.separator_color_custom,
+                        connect_state_set[sender] => move |_, enabled| {
+                            sender.input(BarSettingsInput::SeparatorColorCustomToggled(enabled));
+                            glib::Propagation::Proceed
+                        } @separator_color_custom_handler,
+                    }
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    #[watch]
+                    set_sensitive: model.separator_color_custom,
+
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_label: "Separator",
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                        set_xalign: 0.0,
+                    },
+                    gtk::ColorDialogButton {
+                        set_valign: gtk::Align::Center,
+                        set_dialog: &gtk::ColorDialog::builder().with_alpha(true).build(),
+                        #[watch]
+                        set_rgba: &model.separator_color,
+                        connect_rgba_notify[sender] => move |b| {
+                            sender.input(BarSettingsInput::SeparatorColorSet(b.rgba()));
                         },
                     },
                 },
@@ -987,6 +1048,13 @@ impl Component for BarSettingsModel {
             .sizing()
             .frame_border_color()
             .get_untracked();
+        let init_separator = config_manager()
+            .config()
+            .theme()
+            .attributes()
+            .sizing()
+            .separator_color()
+            .get_untracked();
         let model = BarSettingsModel {
             enable_frame: false,
             islands: false,
@@ -995,6 +1063,9 @@ impl Component for BarSettingsModel {
                 .unwrap_or_else(|_| gdk::RGBA::new(0.12, 0.12, 0.18, 1.0)),
             frame_border_color: gdk::RGBA::parse(init_frame_border.trim())
                 .unwrap_or_else(|_| gdk::RGBA::new(0.19, 0.20, 0.27, 1.0)),
+            separator_color_custom: !init_separator.trim().is_empty(),
+            separator_color: gdk::RGBA::parse(init_separator.trim())
+                .unwrap_or_else(|_| gdk::RGBA::new(0.27, 0.28, 0.35, 1.0)),
             slide_duration: config_manager()
                 .config()
                 .bars()
@@ -1125,6 +1196,26 @@ impl Component for BarSettingsModel {
                     let hex = rgba_to_css(rgba);
                     config_manager().update_config(|config| {
                         config.theme.attributes.sizing.frame_border_color = hex;
+                    });
+                }
+            }
+            BarSettingsInput::SeparatorColorCustomToggled(on) => {
+                self.separator_color_custom = on;
+                let val = if on {
+                    rgba_to_css(self.separator_color)
+                } else {
+                    String::new()
+                };
+                config_manager().update_config(|config| {
+                    config.theme.attributes.sizing.separator_color = val;
+                });
+            }
+            BarSettingsInput::SeparatorColorSet(rgba) => {
+                self.separator_color = rgba;
+                if self.separator_color_custom {
+                    let hex = rgba_to_css(rgba);
+                    config_manager().update_config(|config| {
+                        config.theme.attributes.sizing.separator_color = hex;
                     });
                 }
             }

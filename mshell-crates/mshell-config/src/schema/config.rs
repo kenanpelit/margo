@@ -412,6 +412,9 @@ pub struct Sizing {
     /// Manual frame BORDER colour override (CSS hex `#rrggbbaa`). Empty =
     /// matugen `--outline`. Drives `--frame-border`.
     pub frame_border_color: String,
+    /// Manual bar SEPARATOR colour override (CSS hex `#rrggbbaa`). Empty =
+    /// matugen `--outline`. Drives `--bar-separator-color`. Settings → Bar.
+    pub separator_color: String,
 }
 
 impl Default for Sizing {
@@ -432,6 +435,7 @@ impl Default for Sizing {
             surface_opacity: 100,
             frame_color: String::new(),
             frame_border_color: String::new(),
+            separator_color: String::new(),
         }
     }
 }

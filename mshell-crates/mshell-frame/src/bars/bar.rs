@@ -1243,10 +1243,15 @@ impl BarModel {
         // instead of stretching to fill the bar height/width. This is exactly
         // what the dashboard pill does, applied uniformly here so a widget that
         // set `hexpand/vexpand: true` internally can no longer balloon.
-        let root = controller.root_widget();
-        root.add_css_class("bar-pill-std");
-        root.set_halign(gtk::Align::Center);
-        root.set_valign(gtk::Align::Center);
+        // Spacer / Separator are render-only layout helpers, not pills — the
+        // pill standard would override the separator's own colour/width
+        // (`.bar-pill-std` paints transparent) and make it vanish.
+        if !matches!(widget, BarWidget::Spacer(_) | BarWidget::Separator) {
+            let root = controller.root_widget();
+            root.add_css_class("bar-pill-std");
+            root.set_halign(gtk::Align::Center);
+            root.set_valign(gtk::Align::Center);
+        }
         controller
     }
 }

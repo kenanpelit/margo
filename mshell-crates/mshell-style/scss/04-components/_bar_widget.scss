@@ -204,7 +204,9 @@
 // gap (width from config); the separator is a thin vertical line, inset
 // vertically so it doesn't run the full bar height.
 .bar-separator {
-    background-color: var(--outline);
+    // Colour follows matugen `--outline` unless Settings → Bar sets a manual
+    // separator colour (injected as `--bar-separator-color`).
+    background-color: var(--bar-separator-color, var(--outline));
     min-width: 1px;
     margin: var(--space-2) var(--space-1);
 }

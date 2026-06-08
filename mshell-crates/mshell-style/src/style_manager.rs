@@ -403,6 +403,10 @@ impl Component for StyleManagerModel {
                 if !fbc.is_empty() {
                     frame_overrides.push_str(&format!("--frame-border: {fbc};"));
                 }
+                let sc = attributes.sizing.separator_color.trim();
+                if !sc.is_empty() {
+                    frame_overrides.push_str(&format!("--bar-separator-color: {sc};"));
+                }
                 self.attributes_css_provider.load_from_string(&format!(
                     r#":root {{
                         --font-family-primary: {};
