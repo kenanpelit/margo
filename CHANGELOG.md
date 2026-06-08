@@ -7,6 +7,57 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.0.2] – 2026-06-09
+
+A compositor-effects + bar-consistency release: opt-in dual-Kawase blur,
+Hyprland-style tabbed window groups, a per-output frame clock, and a single
+bar-pill standard that finally makes every widget (and plugin) render with
+the same surface, hover, height, and shape.
+
+### Added
+
+- **Dual-Kawase background blur (opt-in, default off).** `blur` / `blur_layer`
+  blur behind translucent windows / layer-shell surfaces; strength + radius
+  are tunable from Settings → Effects (`blur_params_num_passes`,
+  `blur_params_radius`) and per-window/-layer `noblur:1` rules.
+- **Tabbed window groups (Hyprland-style, opt-in).** `togglegroup`,
+  `changegroupactive`, `movegroupwindow`, `movewindowtogroup`, `lockgroups`
+  merge windows into one tile with a tab strip. The strip shows each member's
+  app-name label (rendered with `fontdue`) on rounded, matugen-tinted chips;
+  height/colours via `group_bar_height` / `group_active_color` /
+  `group_inactive_color`.
+- **Per-output frame clock (opt-in).** `per_output_frame_clock` paces each
+  monitor by its own refresh so a 60 Hz panel can't hold back a 144 Hz one.
+- **`mctl plugin` subcommand.** `list` / `enable` / `disable` for compositor
+  Rhai plugins.
+- **Manual frame colour override.** Settings → Bar → Frame can pin the bar
+  frame fill + border to fixed colours instead of the matugen palette.
+- **Setup-wizard polish.** Prominent nav + in-page action buttons, a
+  default-shortcuts cheat-sheet on the Review step, and centred footer nav.
+
+### Changed
+
+- **One central bar-pill standard (`.bar-pill-std`).** `build_widget` tags
+  every pill — native widgets AND plugin pills — with a single class +
+  centre alignment, so they all share the same surface, matugen hover wash,
+  height, and rounded shape (no more per-widget drift or full-width
+  ballooning). Adjustable from one place.
+- Wizard's full starter profile renamed **Nova → margo** (lowercase,
+  brand-consistent); the minimal one stays **default**.
+
+### Fixed
+
+- **Blur shimmer.** Forcing a full redraw per frame while blur is on stops the
+  stale-backdrop flicker from age-based damage tracking; the composite quad is
+  now positioned via a deterministic viewport→NDC mapping.
+- **Tabbed-group glitches.** The tab strip reserves its height inside the tile
+  (title no longer hides under the bar / eats the gap), and hidden members are
+  pre-sized so `changegroupactive` doesn't flash the wallpaper.
+- Flatpak / sandboxed (security-context) clients no longer crash the
+  compositor on launch.
+- External-monitor hotplug now allocates a scanout-capable buffer so a
+  re-plugged display is detected.
+
 ## [0.9.8] – 2026-06-04
 
 A shell-polish release: a walker-class app launcher, a much richer
