@@ -60,6 +60,7 @@ nav:
   - Configuration:
       - Overview: configuration.md
       - Full reference: config-reference.md
+  - Dock (mdock): mdock.md
   - Companion tools: companion-tools.md
   - Scripting: scripting.md
   - Manual checklist: manual-checklist.md
