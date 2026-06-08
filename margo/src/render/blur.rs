@@ -128,6 +128,11 @@ thread_local! {
     static CACHED: RefCell<Option<BlurGl>> = const { RefCell::new(None) };
 }
 
+/// One-shot diagnostic: log the first `draw_blur` invocation's geometry
+/// + GL error so an on-hardware "blur shows nothing" can be triaged from
+/// the log instead of the screen. Remove once blur is verified.
+static BLUR_DIAG_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Marker handle proving the blur GL resources compiled successfully.
 /// `push_*_elements` checks `shader()` like it does for shadows; the
 /// element itself re-fetches the thread-local at draw time.
@@ -476,6 +481,17 @@ unsafe fn draw_blur(
             region_w,
             region_h,
         );
+
+        // One-shot diagnostic (see BLUR_DIAG_DONE). Logs the first draw so
+        // a "blur invisible" report can be triaged from the journal.
+        if !BLUR_DIAG_DONE.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            let err = gl.GetError();
+            tracing::warn!(
+                target: "margo::render::blur",
+                "BLUR-DIAG first draw: dst.loc=({},{}) region={}x{} fb_h={} src_y={} passes={} capture_glerror=0x{:x}",
+                dst.loc.x, dst.loc.y, region_w, region_h, fb_h, src_y, passes, err,
+            );
+        }
 
         gl.Disable(ffi::SCISSOR_TEST);
         gl.Disable(ffi::BLEND);
