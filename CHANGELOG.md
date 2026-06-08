@@ -62,6 +62,9 @@ the same surface, hover, height, and shape.
 - Bar separator stays visible in every mode again (the new central pill
   standard had painted the Separator/Spacer helpers transparent); the frame
   Fill/Border colour pickers no longer drift apart in Settings → Bar.
+- `mctl plugin list` no longer errors when there's no
+  `~/.config/margo/plugins/` directory — it explains the difference between
+  packaged compositor plugins, auto-loaded `init.rhai`, and shell plugins.
 
 ## [0.9.8] – 2026-06-04
 
