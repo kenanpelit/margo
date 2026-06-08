@@ -502,6 +502,12 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "shadows_position_x" => cfg.shadows_position_x = parse_i32(val),
         "shadows_position_y" => cfg.shadows_position_y = parse_i32(val),
 
+        // tabbed window groups
+        "group_bar_height" => cfg.group_bar_height = parse_u32(val),
+        "group_bar_gap" => cfg.group_bar_gap = parse_u32(val),
+        "group_active_color" => cfg.group_active_color = parse_color(val)?,
+        "group_inactive_color" => cfg.group_inactive_color = parse_color(val)?,
+
         // input
         "repeat_rate" => cfg.repeat_rate = parse_i32(val),
         "repeat_delay" => cfg.repeat_delay = parse_i32(val),
@@ -883,6 +889,7 @@ fn parse_windowrule(cfg: &mut Config, val: &str) -> Result<()> {
             "force_tearing" => rule.force_tearing = Some(parse_bool_s(&v)),
             "noswallow" => rule.no_swallow = Some(parse_bool_s(&v)),
             "noblur" => rule.no_blur = Some(parse_bool_s(&v)),
+            "group" | "isgroup" => rule.group = Some(parse_bool_s(&v)),
             "canvas_notile" => rule.canvas_no_tile = Some(parse_bool_s(&v)),
             "focused_opacity" => rule.focused_opacity = Some(parse_f32_s(&v)),
             "unfocused_opacity" => rule.unfocused_opacity = Some(parse_f32_s(&v)),
@@ -1507,6 +1514,10 @@ pub const OPTION_KEYS: &[&str] = &[
     "gappoh",
     "gappov",
     "globalcolor",
+    "group_active_color",
+    "group_bar_gap",
+    "group_bar_height",
+    "group_inactive_color",
     "hotarea_corner",
     "hotarea_size",
     "hot_corner_bottom_left",
@@ -1903,5 +1914,45 @@ mod tests {
         for r in &cfg.window_rules {
             assert_eq!(r.is_overlay, Some(true), "overlay not set for {:?}", r.id);
         }
+    }
+
+    #[test]
+    fn parses_group_scalar_knobs() {
+        // Drift guard: the four `group_*` scalar keys must parse into
+        // their Config fields (and not warn as unknown).
+        let cfg = parse_conf(
+            "grp",
+            "group_bar_height = 24\ngroup_bar_gap = 6\n\
+             group_active_color = 0x11223344\ngroup_inactive_color = 0x55667788\n",
+        );
+        assert_eq!(cfg.group_bar_height, 24);
+        assert_eq!(cfg.group_bar_gap, 6);
+        assert_eq!(
+            cfg.group_active_color.0,
+            super::Rgba::from_hex(0x11223344).0
+        );
+        assert_eq!(
+            cfg.group_inactive_color.0,
+            super::Rgba::from_hex(0x55667788).0
+        );
+    }
+
+    #[test]
+    fn group_defaults_off() {
+        // Additivity: with no group_* keys, the strip is hidden (0) so
+        // groups stay invisible until explicitly opted into.
+        let cfg = parse_conf("grpdef", "borderpx = 2\n");
+        assert_eq!(cfg.group_bar_height, 0);
+    }
+
+    #[test]
+    fn windowrule_group_aliases() {
+        let cfg = parse_conf(
+            "wrgrp",
+            "windowrule = group:1,appid:^a$\nwindowrule = isgroup:1,appid:^b$\n",
+        );
+        assert_eq!(cfg.window_rules.len(), 2);
+        assert_eq!(cfg.window_rules[0].group, Some(true));
+        assert_eq!(cfg.window_rules[1].group, Some(true));
     }
 }

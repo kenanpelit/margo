@@ -115,6 +115,50 @@ bind = super,       g, togglegaps          # gaps on/off
 bind = super+shift, g, incgaps,    +4      # widen gaps (negative tightens)
 ```
 
+### Tabbed window groups
+
+Hyprland-style window groups merge several windows into **one tile** that shows
+one member at a time, with a tab strip across the top — like browser tabs for
+your windows. Groups are **purely opt-in**: no windows are grouped until you
+bind the verbs or set a `group:1` windowrule, so existing setups are unchanged.
+
+A grouped set occupies a single layout slot (it reuses the Deck rect); only the
+active member is mapped full-size, the rest are hidden until you cycle to them.
+
+| Action | Arg | Meaning |
+| --- | --- | --- |
+| `togglegroup` | — | group the focused window with its layout neighbour, or ungroup it if already grouped |
+| `changegroupactive` | `next` \| `prev` | cycle which member is displayed (wraps) |
+| `movegroupwindow` | `next` \| `prev` | reorder the focused window in the tab strip (no wrap) |
+| `movewindowtogroup` | — | absorb the focused window into a neighbour's group (only ever adds) |
+| `lockgroups` | `on` \| `off` \| `toggle` | freeze group/ungroup ops (existing groups still cycle) |
+
+```ini
+bind = super,        g,   togglegroup
+bind = super,        Tab, changegroupactive, next
+bind = super+shift,  Tab, changegroupactive, prev
+bind = super+alt,    g,   lockgroups, toggle
+
+# Auto-group every kitty window into one tab strip:
+windowrule = group:1, appid:^kitty$
+```
+
+The tab strip is drawn with flat solid-colour chips. It's **hidden by default**
+(`group_bar_height = 0`); raise it to draw the strip. Colours default to the
+focus/border palette and follow matugen via `colors.conf`.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `group_bar_height` | `0` | tab-strip height in px; `0` hides it (groups still work by keybind) |
+| `group_bar_gap` | `4` | px gap between tab chips |
+| `group_active_color` | `focuscolor` | active member's chip fill |
+| `group_inactive_color` | `bordercolor` | inactive members' chip fill |
+
+> Clicking / scrolling the tab chips to switch members is not wired yet — use
+> `changegroupactive` for now. The strip currently renders above the tile's top
+> edge; on a window flush against the work-area top it can overlap the area
+> above it.
+
 ### Scroller options
 
 The scroller is the most option-heavy layout, so it has its own block:

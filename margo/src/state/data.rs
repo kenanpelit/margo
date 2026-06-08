@@ -152,6 +152,22 @@ pub struct MargoClient {
     pub no_fade_in: bool,
     pub no_fade_out: bool,
     pub no_blur: bool,
+    /// Tabbed window group identity. `None` for the overwhelming
+    /// majority of windows (ungrouped). When `Some(id)`, this client
+    /// is one tab of the group `id`: the group occupies a single
+    /// layout slot (the Deck rect), and only the member with
+    /// `group_active = true` is mapped + sized full-slot — the rest
+    /// are unmapped (treated as not-visible) until cycled to.
+    ///
+    /// Purely additive: nothing sets this unless the user runs
+    /// `togglegroup` / a `group:1` windowrule, so existing sessions
+    /// see zero behaviour change.
+    pub group_id: Option<u32>,
+    /// True for the single displayed member of this client's group.
+    /// Invariant maintained by the `state::groups` helpers: a group
+    /// always has exactly one active member. Meaningless (and left
+    /// `false`) when `group_id` is `None`.
+    pub group_active: bool,
     pub canvas_no_tile: bool,
     /// Set by a window rule. When true, screen-capture clients see
     /// solid black for this window's region.
@@ -243,6 +259,8 @@ impl MargoClient {
             no_fade_in: false,
             no_fade_out: false,
             no_blur: false,
+            group_id: None,
+            group_active: false,
             canvas_no_tile: false,
             block_out_from_screencast: false,
             min_width: 0,
@@ -294,6 +312,15 @@ impl MargoClient {
             && !self.is_unglobal
     }
 
+    /// A grouped tab that is NOT the active member of its group.
+    /// These windows stay in `self.clients` (so cycling can bring
+    /// them back) but are unmapped from the scene and skipped by
+    /// layout — the group shows one member at a time. Ungrouped
+    /// windows (`group_id == None`) are never hidden by this.
+    pub fn is_hidden_group_member(&self) -> bool {
+        self.group_id.is_some() && !self.group_active
+    }
+
     pub fn is_visible_on(&self, mon: usize, tagset: u32) -> bool {
         // Hidden scratchpads (in_scratchpad without `show`) are
         // unmapped from the scene but remain in `clients` so the next
@@ -302,6 +329,14 @@ impl MargoClient {
         // so guarding it here keeps the rest of the codebase from
         // each having to learn about the scratchpad show flag.
         if self.is_in_scratchpad && !self.is_scratchpad_show {
+            return false;
+        }
+        // Non-active members of a tabbed group collapse to the active
+        // member's slot — they're unmapped until cycled to. Same
+        // chokepoint rationale as scratchpads above: every
+        // layout/focus/IPC path goes through `is_visible_on`, so the
+        // single member shows and the rest stay off-screen everywhere.
+        if self.is_hidden_group_member() {
             return false;
         }
         self.monitor == mon && (self.tags & tagset) != 0

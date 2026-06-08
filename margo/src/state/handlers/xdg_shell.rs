@@ -401,9 +401,15 @@ impl XdgShellHandler for MargoState {
                 self.request_repaint();
             }
             let window = self.clients[idx].window.clone();
+            // Capture the group before the client vanishes so we can
+            // repair the one-active-member invariant afterwards.
+            let group = self.group_of(idx);
             self.space.unmap_elem(&window);
             self.clients.remove(idx);
             self.shift_indices_after_remove(idx);
+            if let Some(gid) = group {
+                self.repair_group(gid);
+            }
             // Re-focus, preferring the previous focus (niri-style
             // focus stack recall), falling back to the spatially
             // nearest visible window.

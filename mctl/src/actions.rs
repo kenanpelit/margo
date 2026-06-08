@@ -263,6 +263,60 @@ pub const ACTIONS: &[Action] = &[
         detail: "",
     },
     Action {
+        name: "togglegroup",
+        aliases: &["toggle_group", "togglegroupmerge"],
+        args: "",
+        group: Group::Window,
+        summary: "Group/ungroup the focused window with its layout neighbour (tabbed group).",
+        detail: "Hyprland-style window groups. Grouping collapses the windows \
+                 into ONE tile that shows one member at a time, with a tab strip \
+                 across the top (`group_bar_height`). If the focused window is \
+                 already grouped, this pulls it back out; the group dissolves \
+                 when only one member remains. No-op while `lockgroups` is on. \
+                 Bind: `bind = super,g,togglegroup`.",
+    },
+    Action {
+        name: "changegroupactive",
+        aliases: &["change_group_active", "groupcycle"],
+        args: "<next|prev>",
+        group: Group::Window,
+        summary: "Cycle which member of the focused window's group is displayed.",
+        detail: "Wraps at the ends; moves keyboard focus to the newly-shown \
+                 member. No-op if the focused window isn't grouped. Defaults to \
+                 `next` when no arg. Binds: \
+                 `bind = super,Tab,changegroupactive,next` / \
+                 `bind = super+shift,Tab,changegroupactive,prev`.",
+    },
+    Action {
+        name: "movegroupwindow",
+        aliases: &["move_group_window", "movewindowingroup"],
+        args: "<next|prev>",
+        group: Group::Window,
+        summary: "Reorder the focused window within its group's tab strip (no wrap).",
+        detail: "Swaps the focused member with the adjacent one in tab order. \
+                 No-op at the ends or if the focused window isn't grouped.",
+    },
+    Action {
+        name: "movewindowtogroup",
+        aliases: &["move_window_to_group"],
+        args: "",
+        group: Group::Window,
+        summary: "Absorb the focused window into its layout neighbour's group.",
+        detail: "Like `togglegroup` but only ever ADDS to a group — never \
+                 ungroups. Useful for 'pull the next window into my tabs'.",
+    },
+    Action {
+        name: "lockgroups",
+        aliases: &["lock_groups"],
+        args: "<on|off|toggle>",
+        group: Group::Window,
+        summary: "Freeze group/ungroup operations (existing groups still cycle).",
+        detail: "Hyprland `lockgroups`. While locked, `togglegroup` / \
+                 `movewindowtogroup` / auto-group windowrules are no-ops, so you \
+                 can rearrange windows without accidentally merging them. \
+                 Defaults to `toggle`. Bind: `bind = super+alt,g,lockgroups,toggle`.",
+    },
+    Action {
         name: "togglefullscreen",
         aliases: &[],
         args: "",

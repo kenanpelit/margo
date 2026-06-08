@@ -613,6 +613,49 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         // app_id match) and the user wants it back as a normal
         // tile / float.
         "unscratchpad" | "unscratchpad_focused" | "exit_scratchpad" => state.unscratchpad_focused(),
+        // ── Tabbed window groups ────────────────────────────────────
+        // `togglegroup`: group the focused window with its layout
+        // neighbour, or ungroup it if it's already in a group. The
+        // group occupies one tile slot and shows one member at a time
+        // (tab strip at the top). Bind:
+        //   bind = super,g,togglegroup
+        "togglegroup" | "toggle_group" | "togglegroupmerge" => state.toggle_group(),
+        // `changegroupactive next|prev`: cycle the displayed member of
+        // the focused window's group. Falls back to `next` when no arg.
+        //   bind = super,Tab,changegroupactive,next
+        //   bind = super+shift,Tab,changegroupactive,prev
+        "changegroupactive" | "change_group_active" | "groupcycle" => {
+            state.change_group_active(direction_arg(arg))
+        }
+        // `movegroupwindow next|prev`: reorder the focused window inside
+        // its group's tab strip (no wrap).
+        //   bind = super+ctrl,l,movegroupwindow,next
+        //   bind = super+ctrl,h,movegroupwindow,prev
+        "movegroupwindow" | "move_group_window" | "movewindowingroup" => {
+            state.move_group_window(direction_arg(arg))
+        }
+        // `movewindowtogroup`: absorb the focused window into the group
+        // of its layout neighbour (only ever adds — never ungroups).
+        //   bind = super+shift,g,movewindowtogroup
+        "movewindowtogroup" | "move_window_to_group" => state.move_window_to_group(),
+        // `lockgroups [on|off|toggle]`: freeze group/ungroup ops.
+        //   bind = super+alt,g,lockgroups,toggle
+        "lockgroups" | "lock_groups" => {
+            let mode = match arg
+                .v
+                .as_deref()
+                .unwrap_or("toggle")
+                .to_ascii_lowercase()
+                .as_str()
+            {
+                "on" | "1" | "true" | "lock" | "locked" | "enable" => crate::state::GroupLock::On,
+                "off" | "0" | "false" | "unlock" | "unlocked" | "disable" => {
+                    crate::state::GroupLock::Off
+                }
+                _ => crate::state::GroupLock::Toggle,
+            };
+            state.set_groups_locked(mode);
+        }
         "incnmaster" => state.inc_nmaster(arg.i),
         "setmfact" => state.set_mfact(arg.f),
         "togglegaps" => state.toggle_gaps(),
