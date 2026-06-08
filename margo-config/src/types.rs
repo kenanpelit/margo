@@ -948,6 +948,13 @@ pub struct Config {
     pub allow_tearing: TearingMode,
     pub allow_shortcuts_inhibit: ShortcutsInhibit,
     pub allow_lock_transparent: bool,
+    /// Opt-in: pace each output by its own refresh rate (per-output
+    /// frame clock) instead of the single global render tick. Default
+    /// `false` — the global-tick path is byte-for-byte unchanged for
+    /// existing users. When `true`, each output re-arms its own present
+    /// timer off its last vblank and only the due output(s) render +
+    /// animate.
+    pub per_output_frame_clock: bool,
     pub key_mode: String,
 
     // xkb
@@ -1238,6 +1245,7 @@ impl Default for Config {
             allow_tearing: TearingMode::Disabled,
             allow_shortcuts_inhibit: ShortcutsInhibit::Enable,
             allow_lock_transparent: false,
+            per_output_frame_clock: false,
             key_mode: "default".into(),
 
             xkb_rules: XkbRules::default(),

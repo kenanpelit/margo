@@ -532,6 +532,7 @@ const BOOL_KEYS: &[&str] = &[
     "no_border_when_single",
     "no_radius_when_single",
     "numlockon",
+    "per_output_frame_clock",
     "scratchpad_cross_monitor",
     "scroller_focus_center",
     "scroller_overview_loop",
