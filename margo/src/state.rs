@@ -1925,10 +1925,21 @@ impl MargoState {
                     c.max_height,
                 );
             }
-            // Tabbed group: remember the active member's target slot so its
-            // hidden siblings can be pinned to the same size after the loop.
+            // Tabbed group: reserve the tab strip's height at the TOP of the
+            // tile and shrink the window content to match, so the strip sits
+            // INSIDE the window's allocation (a title-bar band above the
+            // content) instead of floating in the gap above it — where it slid
+            // under the top bar and ate the outer gap. chip_rects draws the
+            // strip at `geom.y - bar_h`, i.e. exactly this reserved band, now
+            // within the work area. The shrunk rect is recorded so hidden
+            // siblings match it (seamless cycling).
             if self.clients[client_idx].group_active {
                 if let Some(gid) = self.clients[client_idx].group_id {
+                    let bar_h = self.config.group_bar_height as i32;
+                    if bar_h > 0 && rect.height > bar_h {
+                        rect.y += bar_h;
+                        rect.height -= bar_h;
+                    }
                     group_slots.insert(gid, rect);
                 }
             }
