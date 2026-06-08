@@ -28,6 +28,8 @@ pub(crate) struct EffectsModel {
     blur: bool,
     blur_layer: bool,
     blur_optimized: bool,
+    blur_params_num_passes: f64,
+    blur_params_radius: f64,
 }
 
 fn adj(value: f64, lo: f64, hi: f64, step: f64) -> gtk::Adjustment {
@@ -145,7 +147,7 @@ impl Component for EffectsModel {
                     set_halign: gtk::Align::Start,
                     set_xalign: 0.0,
                     set_wrap: true,
-                    set_label: "Note: the Kawase blur backend isn't implemented yet, so these are stored but have no visible effect for now.",
+                    set_label: "Dual-Kawase blur behind translucent surfaces. It only shows where a window is actually translucent — lower its opacity (Appearance / a window rule). Strength = passes (1 is barely visible; 3 is a good default); radius widens the sample.",
                 },
 
                 #[template] Row {
@@ -172,6 +174,22 @@ impl Component for EffectsModel {
                         connect_active_notify[sender] => move |s| sender.input(EffectsInput::SetBool("blur_optimized", s.is_active())),
                     },
                 },
+                #[template] Row {
+                    #[template_child] title { set_label: "Blur strength (passes)" },
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_adjustment: &adj(model.blur_params_num_passes, 0.0, 6.0, 1.0),
+                        connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("blur_params_num_passes", s.value() as i64)),
+                    },
+                },
+                #[template] Row {
+                    #[template_child] title { set_label: "Blur radius" },
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_adjustment: &adj(model.blur_params_radius, 1.0, 24.0, 1.0),
+                        connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("blur_params_radius", s.value() as i64)),
+                    },
+                },
             }
         }
     }
@@ -193,6 +211,8 @@ impl Component for EffectsModel {
             blur: read_bool("blur", false),
             blur_layer: read_bool("blur_layer", false),
             blur_optimized: read_bool("blur_optimized", true),
+            blur_params_num_passes: read_int("blur_params_num_passes", 1) as f64,
+            blur_params_radius: read_int("blur_params_radius", 5) as f64,
         };
         let widgets = view_output!();
         let _ = root;
