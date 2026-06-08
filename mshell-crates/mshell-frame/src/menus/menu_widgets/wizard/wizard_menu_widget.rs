@@ -514,7 +514,7 @@ impl SimpleComponent for WizardMenuWidgetModel {
                             },
                         },
                         gtk::Button {
-                            set_css_classes: &["ok-button-surface"],
+                            set_css_classes: &["ok-button-surface", "wizard-button"],
                             set_label: "Scan",
                             set_valign: gtk::Align::Center,
                             connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::ScanWifi),
@@ -530,7 +530,7 @@ impl SimpleComponent for WizardMenuWidgetModel {
                         },
                     },
                     gtk::Button {
-                        set_css_classes: &["ok-button-primary"],
+                        set_css_classes: &["ok-button-primary", "wizard-button"],
                         set_label: "Connect",
                         set_halign: gtk::Align::Start,
                         #[watch]
@@ -559,7 +559,7 @@ impl SimpleComponent for WizardMenuWidgetModel {
                         set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
                     },
                     gtk::Button {
-                        set_css_classes: &["ok-button-surface"],
+                        set_css_classes: &["ok-button-surface", "wizard-button"],
                         set_label: "Browse…",
                         set_halign: gtk::Align::Start,
                         connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::BrowseWallpaper),
@@ -602,7 +602,7 @@ impl SimpleComponent for WizardMenuWidgetModel {
                         set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
                     },
                     gtk::Button {
-                        set_css_classes: &["ok-button-surface"],
+                        set_css_classes: &["ok-button-surface", "wizard-button"],
                         set_label: "Auto-arrange monitors",
                         set_halign: gtk::Align::Start,
                         connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::AutoArrangeDisplays),
@@ -764,14 +764,14 @@ impl SimpleComponent for WizardMenuWidgetModel {
                 set_spacing: 8,
                 set_halign: gtk::Align::End,
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "wizard-nav-button"],
+                    set_css_classes: &["ok-button-surface", "wizard-button"],
                     set_label: "Cancel",
                     #[watch]
                     set_visible: !model.applied,
                     connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::Cancel),
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "wizard-nav-button"],
+                    set_css_classes: &["ok-button-surface", "wizard-button"],
                     set_label: "Back",
                     #[watch]
                     set_visible: !model.applied,
@@ -780,14 +780,14 @@ impl SimpleComponent for WizardMenuWidgetModel {
                     connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::Back),
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "wizard-nav-button"],
+                    set_css_classes: &["ok-button-surface", "wizard-button"],
                     set_label: "Reboot now",
                     #[watch]
                     set_visible: model.applied,
                     connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::Reboot),
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-primary", "wizard-nav-button"],
+                    set_css_classes: &["ok-button-primary", "wizard-button"],
                     #[watch]
                     set_label: if model.applied {
                         "Close"

@@ -146,12 +146,13 @@ button.ok-button-error {
   }
 }
 
-// Wizard footer nav buttons — bigger + bolder than the standard action
-// buttons so the onboarding call-to-action ("Next" / "Apply & finish")
-// and the Back / Cancel controls are unmistakable. Layered ON TOP of
-// .ok-button-surface / .ok-button-primary, which still carry the fill +
-// state-layers; this only pins the larger, bolder geometry.
-.wizard-nav-button {
+// Wizard buttons — bigger + bolder than the standard action buttons so
+// both the footer nav (Next / Back / Cancel) and the in-page actions
+// (Scan, Connect, Browse, Auto-arrange…) are unmistakable on the
+// onboarding flow. Layered ON TOP of .ok-button-surface /
+// .ok-button-primary, which still carry the fill + state-layers; this
+// only pins the larger, bolder geometry.
+.wizard-button {
   padding: var(--space-3) var(--space-4);
   min-width: 108px;
   min-height: 46px;
