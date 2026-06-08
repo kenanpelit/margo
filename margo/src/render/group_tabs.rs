@@ -20,12 +20,12 @@
 //! the strip is invisible until the user opts in — groups still work
 //! by keybind without it.
 
-use smithay::backend::renderer::element::Kind;
-use smithay::backend::renderer::element::solid::SolidColorRenderElement;
-use smithay::backend::renderer::utils::CommitCounter;
+use smithay::backend::renderer::element::Id;
+use smithay::backend::renderer::gles::GlesPixelProgram;
 use smithay::utils::{Physical, Point, Rectangle, Size};
 
 use crate::layout::Rect;
+use crate::render::rounded_solid::RoundedSolidElement;
 
 /// One tab chip in output-local **logical** coordinates, paired with the
 /// index of the client it represents. Shared shape for both rendering
@@ -90,11 +90,12 @@ pub fn chip_rects(
     out
 }
 
-/// Build the solid-colour render elements for a group's tab strip.
+/// Build the rounded-solid render elements for a group's tab strip.
 ///
 /// `slot` is the active member's geometry (global-logical),
 /// `output_origin` is the output's top-left in global-logical coords,
-/// and `scale` is the output scale. Returns one element per member.
+/// `scale` is the output scale, `radius` the corner radius (logical px),
+/// and `program` the compiled rounded-solid shader. One element per member.
 #[allow(clippy::too_many_arguments)]
 pub fn render_elements(
     slot: Rect,
@@ -106,7 +107,10 @@ pub fn render_elements(
     inactive_color: [f32; 4],
     output_origin: Point<i32, smithay::utils::Logical>,
     output_scale: f64,
-) -> Vec<SolidColorRenderElement> {
+    radius: f32,
+    program: GlesPixelProgram,
+) -> Vec<RoundedSolidElement> {
+    let radius_phys = radius * output_scale as f32;
     chip_rects(slot, members, active_idx, bar_height, gap)
         .into_iter()
         .map(|chip| {
@@ -123,12 +127,12 @@ pub fn render_elements(
             } else {
                 inactive_color
             };
-            SolidColorRenderElement::new(
-                smithay::backend::renderer::element::Id::new(),
+            RoundedSolidElement::new(
+                Id::new(),
                 Rectangle::new(loc, size),
-                CommitCounter::default(),
+                radius_phys,
                 color,
-                Kind::Unspecified,
+                program.clone(),
             )
         })
         .collect()

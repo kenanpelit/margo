@@ -83,6 +83,7 @@ render_elements! {
     Resize=crate::render::resize_render::ResizeRenderElement,
     OpenClose=crate::render::open_close::OpenCloseRenderElement,
     Solid=smithay::backend::renderer::element::solid::SolidColorRenderElement,
+    RoundedSolid=crate::render::rounded_solid::RoundedSolidElement,
     // Scroller-overview thumbnail: a window surface scaled down (Rescale)
     // and placed into its tag's cell (Relocate). See
     // `build_scroller_overview_elements`.
@@ -2581,18 +2582,27 @@ fn push_group_tabs(
         }
     }
 
-    for solid in crate::render::group_tabs::render_elements(
-        client.geom,
-        &members,
-        active_idx,
-        bar_h,
-        state.config.group_bar_gap as i32,
-        state.config.group_active_color.0,
-        state.config.group_inactive_color.0,
-        output_geo.loc,
-        output_scale,
-    ) {
-        elements.push(MargoRenderElement::Solid(solid));
+    // Rounded chips: reuse the analytic rounded-rect shader. If it fails to
+    // compile, fall back to flat solid quads so the strip still draws.
+    if let Some(prog) = crate::render::rounded_solid::shader(renderer) {
+        // Corner radius scales with the strip height (capped) so the chips
+        // read as rounded pills regardless of group_bar_height.
+        let radius = (bar_h as f32 * 0.4).min(10.0);
+        for chip in crate::render::group_tabs::render_elements(
+            client.geom,
+            &members,
+            active_idx,
+            bar_h,
+            state.config.group_bar_gap as i32,
+            state.config.group_active_color.0,
+            state.config.group_inactive_color.0,
+            output_geo.loc,
+            output_scale,
+            radius,
+            prog.0,
+        ) {
+            elements.push(MargoRenderElement::RoundedSolid(chip));
+        }
     }
 }
 

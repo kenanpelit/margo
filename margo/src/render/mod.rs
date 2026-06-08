@@ -11,6 +11,7 @@ pub mod namespaced;
 pub mod open_close;
 pub mod resize_render;
 pub mod rounded_border;
+pub mod rounded_solid;
 pub mod shadow;
 pub mod text;
 pub mod window_capture;
