@@ -56,7 +56,7 @@ mod frame;
 mod helpers;
 mod hotplug;
 mod mode;
-use frame::{flush_presentation_feedback, render_all_outputs};
+use frame::{flush_presentation_feedback, render_all_outputs, render_due_outputs};
 use helpers::{find_crtc, monotonic_now, smithay_transform};
 use hotplug::rescan_outputs;
 use mode::{apply_pending_mode_changes, select_drm_mode};
@@ -742,7 +742,13 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                     // Also bumps the per-output frame_callback_sequence
                     // + sends frame callbacks — see `state::note_vblank`.
                     if let Some(out) = flipped_output {
-                        state.note_vblank(&out);
+                        if state.per_output_frame_clock_enabled() {
+                            // Opt-in path: clear this output's in-flight
+                            // gate, stamp last_present, re-arm its timer.
+                            state.note_vblank_per_output(&out);
+                        } else {
+                            state.note_vblank(&out);
+                        }
                     }
                 }
                 DrmEvent::Error(e) => error!("DRM error: {:?}", e),
@@ -784,7 +790,35 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                     let mut bd = backend_data.borrow_mut();
                     apply_pending_mode_changes(&mut bd, state);
                 }
-                if state.take_repaint_request() {
+                if state.per_output_frame_clock_enabled() {
+                    // Opt-in per-output path: render ONLY the outputs
+                    // whose present timer has come due (dirty + refresh
+                    // interval elapsed + not awaiting a vblank). Each
+                    // due output's clock is flipped in-flight by
+                    // `take_due_outputs`; its vblank re-arms the next
+                    // tick. The global dirty flag is still drained so it
+                    // doesn't leak into the global path on a later
+                    // config reload that turns the flag back off.
+                    state.take_repaint_request();
+                    let due = state.take_due_outputs();
+                    if !due.is_empty() {
+                        let mut bd = backend_data.borrow_mut();
+                        let BackendData {
+                            renderer,
+                            outputs,
+                            drm,
+                            ..
+                        } = &mut *bd;
+                        render_due_outputs(
+                            renderer,
+                            outputs,
+                            drm,
+                            state,
+                            &due,
+                            "repaint-per-output",
+                        );
+                    }
+                } else if state.take_repaint_request() {
                     let mut bd = backend_data.borrow_mut();
                     let BackendData {
                         renderer,

@@ -13,6 +13,7 @@ mod data;
 mod debug_dump;
 mod dispatch;
 mod focus_target;
+mod frame_clock_sched;
 mod overview;
 mod scratchpad;
 pub(crate) use scratchpad::MatchOp;
@@ -478,6 +479,14 @@ pub struct MargoState {
     /// `frame_callback_sequence`.
     pub estimated_vblank_timers:
         std::collections::HashMap<String, smithay::reexports::calloop::RegistrationToken>,
+    /// Per-output frame-clock state. Populated + consulted ONLY when
+    /// `config.per_output_frame_clock` is true (the opt-in path). Each
+    /// entry paces one output by its own refresh rate: a present timer
+    /// re-armed off the output's last vblank, a dirty flag, and an
+    /// in-flight gate. Keyed by output name. When the flag is false
+    /// this map stays empty and the global-tick path is taken
+    /// unchanged. See `backend::udev::per_output_clock`.
+    pub per_output_clocks: std::collections::HashMap<String, crate::frame_clock::OutputClock>,
     /// `wp_cursor_shape_v1` — clients (GTK/Qt/Chromium) request a
     /// cursor by name instead of attaching their own surface. Without
     /// this, GTK rolls its own cursor surface and the buffer scale
@@ -1018,6 +1027,7 @@ impl MargoState {
             layer_kb_interactivity_hashes: std::collections::HashMap::new(),
             frame_callback_sequence: std::collections::HashMap::new(),
             estimated_vblank_timers: std::collections::HashMap::new(),
+            per_output_clocks: std::collections::HashMap::new(),
             cursor_shape_manager_state,
             fractional_scale_manager_state,
             enable_gaps: config.enable_gaps,
@@ -1215,6 +1225,10 @@ impl MargoState {
         self.space.unmap_output(output);
         self.lock_surfaces.retain(|(o, _)| o != output);
         self.pending_gamma.retain(|(o, _)| o != output);
+        // Per-output frame clock: drop this output's clock + cancel its
+        // present timer so a gone display doesn't keep waking the loop
+        // (no-op when the opt-in flag is off / no clock exists).
+        self.drop_output_clock(&output.name());
         // Hotplug-out: refresh the shared D-Bus snapshot so
         // xdp-gnome's chooser dialog drops the now-gone output.
         self.refresh_ipc_outputs();
@@ -1397,6 +1411,20 @@ impl MargoState {
 
     pub fn request_repaint(&mut self) {
         self.repaint_requested = true;
+        // Opt-in per-output frame clock: a global repaint can affect
+        // any output, so flag every output's clock dirty and ensure its
+        // present timer is armed. The per-output timers gate *when* each
+        // output actually renders (at its own refresh), and the repaint
+        // ping below still wakes the loop so a due output renders this
+        // turn. With the flag off this is a no-op and the original
+        // global path runs unchanged.
+        if self.per_output_frame_clock_enabled() {
+            self.mark_all_clocks_dirty();
+            if let Some(ping) = &self.repaint_ping {
+                ping.ping();
+            }
+            return;
+        }
         // Wake the redraw scheduler so the loop drains the flag this
         // iteration. Coalesces: many request_repaint() calls between two
         // dispatches still produce a single Ping event (eventfd semantics
@@ -1466,6 +1494,15 @@ impl MargoState {
     /// loop via the supplied [`Ping`] sender.
     pub fn set_repaint_ping(&mut self, ping: Ping) {
         self.repaint_ping = Some(ping);
+    }
+
+    /// Clone of the repaint-ping handle, for the per-output frame clock
+    /// to wake the redraw scheduler from a present-timer callback
+    /// without going through `request_repaint` (which would re-dirty
+    /// every output's clock and re-arm every timer — we only want to
+    /// nudge the loop so it renders whichever outputs are already due).
+    pub(crate) fn repaint_ping_handle(&self) -> Option<Ping> {
+        self.repaint_ping.clone()
     }
 
     pub fn take_repaint_request(&mut self) -> bool {

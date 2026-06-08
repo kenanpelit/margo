@@ -25,6 +25,7 @@ mod cursor;
 #[cfg(feature = "dbus")]
 mod dbus;
 mod dispatch;
+mod frame_clock;
 mod input;
 mod input_handler;
 mod ipc;

@@ -267,6 +267,58 @@ pub(super) fn flush_presentation_feedback(
     );
 }
 
+/// Apply any gamma ramp updates queued by wlr_gamma_control clients
+/// (and the built-in twilight scheduler). Multi-GPU care: this runs
+/// once per `BackendData` (= once per DRM device), and
+/// `state.pending_gamma` is shared across all devices. Draining
+/// unconditionally would consume entries destined for the *next*
+/// device's render pass and silently drop them — so we only consume
+/// entries whose output we can see in this device's `outputs` map, and
+/// re-park the rest for the next render call.
+fn apply_pending_gamma(
+    outputs: &mut HashMap<crtc::Handle, OutputDevice>,
+    drm: &DrmDevice,
+    state: &mut MargoState,
+) {
+    if state.pending_gamma.is_empty() {
+        return;
+    }
+    let pending = std::mem::take(&mut state.pending_gamma);
+    let mut deferred: Vec<(smithay::output::Output, Option<Vec<u16>>)> = Vec::new();
+    for (output, ramp) in pending {
+        let target = outputs.values_mut().find(|od| od.output == output);
+        let Some(od) = target else {
+            // This output lives on another device — keep it queued so
+            // the next render call sees it.
+            deferred.push((output, ramp));
+            continue;
+        };
+        let Some(g) = od.gamma.as_mut() else {
+            tracing::debug!("gamma: skip {} (no GAMMA_LUT)", od.output.name());
+            continue;
+        };
+        match g.set_gamma(drm, ramp.as_deref()) {
+            Ok(()) => tracing::debug!(
+                "gamma applied output={} ramp={}",
+                od.output.name(),
+                if ramp.is_some() { "client" } else { "default" }
+            ),
+            Err(e) => warn!(
+                output = %od.output.name(),
+                error = ?e,
+                "gamma set failed"
+            ),
+        }
+    }
+    if !deferred.is_empty() {
+        state.pending_gamma = deferred;
+        // Kick another repaint so the deferred device picks up its
+        // ramps on the next frame instead of sitting idle until
+        // something else schedules it.
+        state.request_repaint();
+    }
+}
+
 pub(super) fn render_all_outputs(
     renderer: &mut GlesRenderer,
     outputs: &mut HashMap<crtc::Handle, OutputDevice>,
@@ -274,55 +326,32 @@ pub(super) fn render_all_outputs(
     state: &mut MargoState,
     reason: &'static str,
 ) {
-    // Apply any gamma ramp updates queued by wlr_gamma_control
-    // clients (and the built-in twilight scheduler). Multi-GPU
-    // care: this function runs once per `BackendData` (= once per
-    // DRM device), and `state.pending_gamma` is shared across all
-    // devices. Draining unconditionally would consume entries
-    // destined for the *next* device's render pass and silently
-    // drop them — so we only consume entries whose output we can
-    // see in this device's `outputs` map, and re-park the rest
-    // for the next `render_all_outputs` call.
-    if !state.pending_gamma.is_empty() {
-        let pending = std::mem::take(&mut state.pending_gamma);
-        let mut deferred: Vec<(smithay::output::Output, Option<Vec<u16>>)> = Vec::new();
-        for (output, ramp) in pending {
-            let target = outputs.values_mut().find(|od| od.output == output);
-            let Some(od) = target else {
-                // This output lives on another device — keep it
-                // queued so the next render_all_outputs call sees
-                // it.
-                deferred.push((output, ramp));
-                continue;
-            };
-            let Some(g) = od.gamma.as_mut() else {
-                tracing::debug!("gamma: skip {} (no GAMMA_LUT)", od.output.name());
-                continue;
-            };
-            match g.set_gamma(drm, ramp.as_deref()) {
-                Ok(()) => tracing::debug!(
-                    "gamma applied output={} ramp={}",
-                    od.output.name(),
-                    if ramp.is_some() { "client" } else { "default" }
-                ),
-                Err(e) => warn!(
-                    output = %od.output.name(),
-                    error = ?e,
-                    "gamma set failed"
-                ),
-            }
-        }
-        if !deferred.is_empty() {
-            state.pending_gamma = deferred;
-            // Kick another repaint so the deferred device picks
-            // up its ramps on the next frame instead of sitting
-            // idle until something else schedules it.
-            state.request_repaint();
-        }
-    }
+    apply_pending_gamma(outputs, drm, state);
 
     for od in outputs.values_mut() {
-        render_output(renderer, od, state, reason);
+        render_output(renderer, od, state, reason, false);
+    }
+}
+
+/// Opt-in per-output frame-clock render. Renders ONLY the outputs in
+/// `due` (computed by `MargoState::take_due_outputs`). Each due output
+/// was already flipped in-flight on its `OutputClock`; this function
+/// passes `per_output = true` so `render_output` uses the per-output
+/// vblank gate instead of the global `pending_vblanks` counter. Gamma
+/// ramps are applied the same way as the global path.
+pub(super) fn render_due_outputs(
+    renderer: &mut GlesRenderer,
+    outputs: &mut HashMap<crtc::Handle, OutputDevice>,
+    drm: &DrmDevice,
+    state: &mut MargoState,
+    due: &[Output],
+    reason: &'static str,
+) {
+    apply_pending_gamma(outputs, drm, state);
+    for od in outputs.values_mut() {
+        if due.contains(&od.output) {
+            render_output(renderer, od, state, reason, true);
+        }
     }
 }
 
@@ -331,6 +360,7 @@ fn render_output(
     od: &mut OutputDevice,
     state: &mut MargoState,
     reason: &'static str,
+    per_output: bool,
 ) {
     let _span = tracy_client::span!("render_output");
     // Delineate frames for Tracy's frame/FPS view — one mark per render
@@ -441,7 +471,15 @@ fn render_output(
                         }
                     })
                     .unwrap_or(std::time::Duration::from_micros(16_667));
-                state.queue_estimated_vblank_timer(&od.output, refresh_interval);
+                if per_output {
+                    // Per-output path: no page-flip means no DRM vblank
+                    // to clear this output's in-flight gate or re-arm
+                    // its present timer — do both here, then send frame
+                    // callbacks so its clients still pace at refresh.
+                    state.note_empty_render_per_output(&od.output);
+                } else {
+                    state.queue_estimated_vblank_timer(&od.output, refresh_interval);
+                }
                 state.display_handle.flush_clients().ok();
                 return;
             }
@@ -449,7 +487,12 @@ fn render_output(
             match od.compositor.queue_frame(()) {
                 Ok(()) => {
                     od.queued_count += 1;
-                    state.note_frame_queued();
+                    // Global gate only — the per-output path tracks its
+                    // own in-flight state on the `OutputClock`
+                    // (`pending_vblank`), set when the output became due.
+                    if !per_output {
+                        state.note_frame_queued();
+                    }
                     tracing::trace!(
                         output = %od.output.name(),
                         reason = reason,
@@ -501,6 +544,13 @@ fn render_output(
                 }
                 Err(e) => {
                     od.queue_error_count += 1;
+                    if per_output {
+                        // No flip was scheduled, so no vblank will clear
+                        // this output's in-flight gate — release it and
+                        // re-arm so the next tick retries. (Skip
+                        // last_present stamp: the frame didn't present.)
+                        state.clear_pending_vblank_per_output(&od.output);
+                    }
                     state.request_repaint();
                     if od.queue_error_count <= 10 || od.queue_error_count.is_multiple_of(300) {
                         warn!(
