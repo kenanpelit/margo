@@ -64,6 +64,10 @@ window switcher with a live thumbnail overlay.
 - The VPN pill shows the connected **country** beside the shield; the menu's
   favourites list marks the currently-connected relay active ("Connected" +
   accent); and a small **account-expiry** line sits under the DNS section.
+- The VPN menu has a collapsible **Countries** picker (every Mullvad country +
+  relay count, from `mvpn countries`; per-row Connect runs `mvpn <cc>`), and
+  the favourites' Connect buttons now connect to *that* relay
+  (`mvpn fav connect <relay>`) instead of always the fastest favourite.
 - Changing a widget's position/config no longer flashes the clock menu over
   whatever menu is open: the per-region stacks' visible child is now preserved
   across the menu restack.
