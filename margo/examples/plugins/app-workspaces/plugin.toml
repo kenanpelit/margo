@@ -1,0 +1,10 @@
+# margo compositor plugin manifest.
+#
+# A "plugin" is just this manifest + an init.rhai in the same directory,
+# under ~/.config/margo/plugins/<name>/. margo discovers + runs it at
+# startup; `mctl plugin list / enable / disable` manage it. (Personal
+# one-off scripting can instead just live in ~/.config/margo/init.rhai.)
+name = "app-workspaces"
+version = "1.0.0"
+description = "Send chosen apps to their home tag when they open"
+enabled = true

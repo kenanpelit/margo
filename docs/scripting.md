@@ -103,6 +103,50 @@ enabled     = true
 
 Compile / runtime errors per-plugin don't take down the loader — bad plugins log a warning and the rest still load.
 
+Manage installed plugins with `mctl plugin`:
+
+```bash
+mctl plugin list                 # discovered plugins + on-disk enabled state
+mctl plugin disable auto-monocle # flip enabled=false (takes effect next start)
+mctl plugin enable  auto-monocle
+```
+
+### Example: `app-workspaces`
+
+A complete, copy-pasteable plugin — when a chosen app opens, move its window
+to a fixed "home" tag, so your media / chat windows always land in the same
+place. Two files in `~/.config/margo/plugins/app-workspaces/`:
+
+```toml title="plugin.toml"
+name        = "app-workspaces"
+version     = "1.0.0"
+description = "Send chosen apps to their home tag when they open"
+enabled     = true
+```
+
+```rhai title="init.rhai"
+// Edit the table (app-id → tag). Find an app's id with `mctl clients`.
+// Set a tag to 0 to leave that app where it is.
+fn home_tag(app) {
+    if app == "Spotify"  { return 8; }   // music   → tag 8
+    if app == "ferdium"  { return 9; }   // chats   → tag 9
+    if app == "webcord"  { return 5; }   // Discord → tag 5
+    return 0;
+}
+
+on_window_open(|| {
+    let t = home_tag(focused_appid());
+    if t > 0 {
+        // Moves the just-opened window to tag `t` (you stay put). Add the
+        // `view` line if you'd rather FOLLOW it to its home tag.
+        dispatch("tag", [tag(t)]);
+        // dispatch("view", [tag(t)]);
+    }
+});
+```
+
+After `mctl plugin list` shows it, restart margo (relogin) to load it.
+
 ## Output
 
 `print(...)` and `debug(...)` from inside a script land in `journalctl -u margo` at info / debug level respectively. Useful for "why didn't my hook fire?" debugging.
@@ -117,9 +161,4 @@ on_window_open(|| {
 journalctl --user -u margo -f | grep margo::scripting
 ```
 
-## What's still queued
-
-- `on_output_change` hook — easy add when demand surfaces.
-- A `mctl plugin list/enable/disable` workflow — backed already by `MargoState::plugins`, just no front-end yet.
-
-See [Roadmap → Scripting & plugins](roadmap.md#7-scripting--plugins) for the full rollout history (Phase 1 → 3 shipped, plugin packaging shipped, `mctl run` shipped).
+See [Roadmap → Scripting & plugins](roadmap.md#7-scripting--plugins) for the full rollout history (Phase 1 → 3 shipped, plugin packaging shipped, `mctl run` + `mctl plugin list/enable/disable` shipped, `on_output_change` shipped).
