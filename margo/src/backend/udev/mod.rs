@@ -2157,6 +2157,13 @@ pub(super) fn build_render_elements_inner(
         }
     }
 
+    // MRU window switcher overlay (Super+Tab) — above windows, below cursor.
+    if state.is_mru_open() {
+        for e in build_mru_switcher_elements(renderer, state, output_geo, output_scale) {
+            elements.push(e);
+        }
+    }
+
     push_layer_elements(
         renderer,
         &layer_map,
@@ -2222,6 +2229,138 @@ pub(super) fn build_render_elements_inner(
 /// resize) into a vertical strip of per-tag cells, the selected tag
 /// centered. Cursor stays on top. Replaces the normal window/layer
 /// compositing for this output.
+/// MRU window-switcher overlay: a centred row of live, scaled-down window
+/// thumbnails drawn on top of the normal desktop while the switcher is open,
+/// the selected one ringed with the accent colour. Reuses the scroller
+/// overview's live-surface Rescale+Relocate path (no off-screen capture), so
+/// it's damage-tracked and cheap. Returned elements are appended above windows
+/// but below the cursor.
+fn build_mru_switcher_elements(
+    renderer: &mut GlesRenderer,
+    state: &MargoState,
+    output_geo: Rectangle<i32, Logical>,
+    output_scale: f64,
+) -> Vec<MargoRenderElement> {
+    use smithay::backend::renderer::element::utils::{
+        Relocate, RelocateRenderElement, RescaleRenderElement,
+    };
+    use smithay::backend::renderer::element::{Id, Kind};
+
+    let Some(sw) = state.mru_switcher.as_ref() else {
+        return Vec::new();
+    };
+    let scale = Scale::from(output_scale);
+    let mut out: Vec<MargoRenderElement> = Vec::new();
+
+    // Layout (logical px, output-local).
+    const TH: i32 = 170; // thumbnail height
+    const GAP: i32 = 16;
+    const PAD: i32 = 22;
+    const MAX: usize = 8;
+
+    // (window, thumb_width, scale_factor)
+    let mut cells: Vec<(smithay::desktop::Window, i32, f64)> = Vec::new();
+    for win in sw.candidates.iter().take(MAX) {
+        let g = win.geometry().size;
+        let (gw, gh) = (g.w.max(1), g.h.max(1));
+        let sf = f64::from(TH) / f64::from(gh);
+        let tw = ((f64::from(gw) * sf).round() as i32).clamp(60, TH * 2);
+        cells.push((win.clone(), tw, sf));
+    }
+    if cells.is_empty() {
+        return out;
+    }
+
+    let inner_w: i32 =
+        cells.iter().map(|c| c.1).sum::<i32>() + GAP * (cells.len().saturating_sub(1) as i32);
+    let panel_w = inner_w + 2 * PAD;
+    let panel_h = TH + 2 * PAD;
+    let ox = (output_geo.size.w - panel_w) / 2;
+    let oy = (output_geo.size.h - panel_h) / 2;
+
+    let prog = crate::render::rounded_solid::shader(renderer).map(|p| p.0);
+    let radius = (14.0 * output_scale) as f32;
+
+    // ── Thumbnails (topmost) + per-thumb selection ring ──────────────
+    let mut cursor_x = ox + PAD;
+    for (i, (win, tw, sf)) in cells.iter().enumerate() {
+        let cell_x = cursor_x;
+        let cell_y = oy + PAD;
+        cursor_x += tw + GAP;
+
+        let cell_phys: Point<i32, Physical> =
+            Point::<i32, Logical>::from((cell_x, cell_y)).to_physical_precise_round(scale);
+
+        if let Some(surface) = win.wl_surface() {
+            let geo = win.geometry();
+            let phys_loc: Point<i32, Physical> =
+                Point::<i32, Logical>::from((-geo.loc.x, -geo.loc.y))
+                    .to_physical_precise_round(scale);
+            let surf_elems = render_elements_from_surface_tree::<
+                GlesRenderer,
+                WaylandSurfaceRenderElement<GlesRenderer>,
+            >(
+                renderer,
+                &surface,
+                phys_loc,
+                output_scale,
+                1.0,
+                Kind::Unspecified,
+            );
+            for e in surf_elems {
+                // Unique namespace per slot so the damage tracker doesn't
+                // collide a window shown both here and on the desktop.
+                let ns = crate::render::namespaced::NamespacedElement::new(e, 0x4d56_0000 + i);
+                let scaled = RescaleRenderElement::from_element(ns, Point::from((0, 0)), *sf);
+                let placed =
+                    RelocateRenderElement::from_element(scaled, cell_phys, Relocate::Relative);
+                out.push(MargoRenderElement::NamespacedSurface(placed));
+            }
+        }
+
+        // Selection ring behind the selected thumbnail (a slightly larger
+        // rounded fill; the thumb covers the centre, leaving a border).
+        if i == sw.selected
+            && let Some(p) = prog.clone()
+        {
+            let ring = Rectangle::<i32, Logical>::new(
+                Point::from((cell_x - 5, cell_y - 5)),
+                smithay::utils::Size::from((tw + 10, TH + 10)),
+            )
+            .to_physical_precise_round(scale);
+            out.push(MargoRenderElement::RoundedSolid(
+                crate::render::rounded_solid::RoundedSolidElement::new(
+                    Id::new(),
+                    ring,
+                    radius,
+                    state.config.group_active_color.0,
+                    p,
+                ),
+            ));
+        }
+    }
+
+    // ── Backing panel (bottom of the overlay) ────────────────────────
+    if let Some(p) = prog {
+        let panel = Rectangle::<i32, Logical>::new(
+            Point::from((ox, oy)),
+            smithay::utils::Size::from((panel_w, panel_h)),
+        )
+        .to_physical_precise_round(scale);
+        out.push(MargoRenderElement::RoundedSolid(
+            crate::render::rounded_solid::RoundedSolidElement::new(
+                Id::new(),
+                panel,
+                radius,
+                [0.0, 0.0, 0.0, 0.62],
+                p,
+            ),
+        ));
+    }
+
+    out
+}
+
 fn build_scroller_overview_elements(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
