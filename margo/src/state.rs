@@ -627,6 +627,14 @@ pub struct MargoState {
     /// backend pops these and applies them via DRM `GAMMA_LUT`. Winit just
     /// drops them silently.
     pub pending_gamma: Vec<(Output, Option<Vec<u16>>)>,
+    /// Pending DPMS power changes drained by the udev backend each frame.
+    /// `(output, on)` — `on = false` calls `DrmCompositor::clear()` (panel
+    /// off); `true` re-renders the output (panel on). Winit drops them.
+    pub pending_dpms: Vec<(Output, bool)>,
+    /// `true` while ANY output is DPMS-off. Lets `handle_input` cheaply gate
+    /// the "any input wakes the screen" safety net without touching the
+    /// backend, and lets a `dpms toggle` decide direction.
+    pub any_dpms_off: bool,
     pub screencopy_state: crate::protocols::screencopy::ScreencopyManagerState,
     pub libinput_devices: Vec<smithay::reexports::input::Device>,
     /// Windows that have been requested to close but are still on screen
@@ -1058,6 +1066,8 @@ impl MargoState {
             libinput: None,
             gamma_control_manager_state,
             pending_gamma: Vec::new(),
+            pending_dpms: Vec::new(),
+            any_dpms_off: false,
             screencopy_state,
             libinput_devices: Vec::new(),
             closing_clients: Vec::new(),
@@ -1108,6 +1118,40 @@ impl MargoState {
     /// "disable" request now succeeds, kanshi profiles that toggle
     /// outputs flip cleanly, and the bar / state file see the right
     /// active-output set. Power-off of the panel is a follow-up.
+    /// Request a DPMS power change (real panel off/on via the udev
+    /// backend's `DrmCompositor::clear()` / re-render). `on = Some(false)`
+    /// powers the panel(s) OFF, `Some(true)` ON; `None` toggles globally
+    /// (any-off → on-all, else off-all). `target = Some(name)` scopes to one
+    /// output, `None` = all. Pushes to `pending_dpms` + kicks a repaint;
+    /// no-ops on winit. Any subsequent input wakes the screen (see
+    /// `wake_dpms_on_input`), so a black screen is always recoverable.
+    pub fn request_dpms(&mut self, on: Option<bool>, target: Option<&str>) {
+        let outputs: Vec<Output> = self
+            .monitors
+            .iter()
+            .filter(|m| target.is_none_or(|t| m.output.name() == t))
+            .map(|m| m.output.clone())
+            .collect();
+        if outputs.is_empty() {
+            return;
+        }
+        let want_on = on.unwrap_or(self.any_dpms_off);
+        for o in &outputs {
+            self.pending_dpms.push((o.clone(), want_on));
+        }
+        self.any_dpms_off = !want_on;
+        self.request_repaint();
+    }
+
+    /// Safety net: called from `handle_input` on any real input event. If a
+    /// panel is DPMS-off, wake all outputs — so the user can never get
+    /// stuck on a black screen even if an idle daemon's resume path fails.
+    pub fn wake_dpms_on_input(&mut self) {
+        if self.any_dpms_off {
+            self.request_dpms(Some(true), None);
+        }
+    }
+
     pub fn disable_monitor(&mut self, mon_idx: usize) {
         if mon_idx >= self.monitors.len() {
             return;

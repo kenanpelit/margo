@@ -44,6 +44,9 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
     ) {
         let seat = state.seat.clone();
         state.idle_notifier_state.notify_activity(&seat);
+        // Safety net: any real input wakes a DPMS-off panel, so a manual /
+        // idle-daemon screen-off can never strand the user on black.
+        state.wake_dpms_on_input();
     }
 
     match event {

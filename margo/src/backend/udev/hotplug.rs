@@ -369,6 +369,7 @@ pub(super) fn setup_connector(
             queue_error_count: 0,
             gamma: gamma_props,
             connector: conn_handle,
+            dpms_off: false,
             pending_presentation: Vec::new(),
             vblank_seq: 0,
         },

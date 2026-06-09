@@ -707,6 +707,19 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 }
             }
         }
+        // Real panel power (DPMS) off/on. arg.v = on|off|toggle (default
+        // toggle); arg.v2 = optional output name (default all). Any input
+        // afterwards wakes the screen, so an off is always recoverable.
+        //   bind = super,F10,dpms,off            # all panels off
+        //   mctl dispatch dpms off eDP-1          # one panel off
+        "dpms" => {
+            let on = match arg.v.as_deref().unwrap_or("toggle") {
+                "on" => Some(true),
+                "off" => Some(false),
+                _ => None,
+            };
+            state.request_dpms(on, arg.v2.as_deref());
+        }
         // Routes to the grid or scroller overview per `overview_style`
         // (Settings → Overview). `toggle_grid_overview` /
         // `toggle_scroller_overview` force a specific one.

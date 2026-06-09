@@ -116,6 +116,10 @@ pub struct OutputDevice {
     /// connected on this card?" which gave wrong answers in multi-monitor
     /// setups.
     pub(super) connector: connector::Handle,
+    /// `true` while this output is DPMS-off (panel powered down via
+    /// `DrmCompositor::clear()`). The render loop skips it until woken; a
+    /// `pending_dpms (output, true)` re-renders + re-enables it.
+    pub(super) dpms_off: bool,
     /// `wp_presentation_feedback` builders that have been collected at
     /// submit time but not yet signalled. We hold them here until the
     /// matching `DrmEvent::VBlank` fires, then call `.presented(now,
@@ -649,6 +653,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                 queue_error_count: 0,
                 gamma: gamma_props,
                 connector: *conn_handle,
+                dpms_off: false,
                 pending_presentation: Vec::new(),
                 vblank_seq: 0,
             },

@@ -319,6 +319,48 @@ fn apply_pending_gamma(
     }
 }
 
+/// Drain `state.pending_dpms` — real panel power off/on. `off` calls
+/// smithay's `DrmCompositor::clear()` (which sets DPMS off + disables the
+/// planes); `on` just drops the flag, and the normal render below re-renders
+/// + `queue_frame`s the output, which re-enables it. Entries for outputs on
+/// another device are re-parked, like the gamma drain.
+fn apply_pending_dpms(outputs: &mut HashMap<crtc::Handle, OutputDevice>, state: &mut MargoState) {
+    if state.pending_dpms.is_empty() {
+        return;
+    }
+    let pending = std::mem::take(&mut state.pending_dpms);
+    let mut deferred: Vec<(Output, bool)> = Vec::new();
+    for (output, on) in pending {
+        let Some(od) = outputs.values_mut().find(|od| od.output == output) else {
+            deferred.push((output, on));
+            continue;
+        };
+        if on {
+            if od.dpms_off {
+                od.dpms_off = false;
+                // `clear()` left the surface with no pending damage, so force
+                // the next `render_frame` to produce a full, non-empty frame
+                // — otherwise it could report `is_empty` and never queue a
+                // page-flip, leaving the panel dark.
+                let _ = od.compositor.reset_state();
+                tracing::info!(output = %od.output.name(), "dpms: on");
+            }
+        } else if !od.dpms_off {
+            match od.compositor.clear() {
+                Ok(()) => {
+                    od.dpms_off = true;
+                    tracing::info!(output = %od.output.name(), "dpms: off (panel cleared)");
+                }
+                Err(e) => warn!(output = %od.output.name(), error = ?e, "dpms: clear failed"),
+            }
+        }
+    }
+    if !deferred.is_empty() {
+        state.pending_dpms = deferred;
+        state.request_repaint();
+    }
+}
+
 pub(super) fn render_all_outputs(
     renderer: &mut GlesRenderer,
     outputs: &mut HashMap<crtc::Handle, OutputDevice>,
@@ -327,6 +369,7 @@ pub(super) fn render_all_outputs(
     reason: &'static str,
 ) {
     apply_pending_gamma(outputs, drm, state);
+    apply_pending_dpms(outputs, state);
 
     for od in outputs.values_mut() {
         render_output(renderer, od, state, reason, false);
@@ -348,6 +391,7 @@ pub(super) fn render_due_outputs(
     reason: &'static str,
 ) {
     apply_pending_gamma(outputs, drm, state);
+    apply_pending_dpms(outputs, state);
     for od in outputs.values_mut() {
         if due.contains(&od.output) {
             render_output(renderer, od, state, reason, true);
@@ -368,6 +412,12 @@ fn render_output(
     #[cfg(feature = "profile-with-tracy")]
     tracy_client::frame_mark();
 
+    // DPMS-off output: the panel is powered down via `compositor.clear()`.
+    // Rendering + queueing a frame would re-enable it, so skip entirely
+    // until a `pending_dpms (output, true)` clears the flag.
+    if od.dpms_off {
+        return;
+    }
     // Soft-disabled output: skip entirely.
     if let Some(mon) = state.monitors.iter().find(|m| m.output == od.output) {
         if !mon.enabled {
