@@ -115,7 +115,7 @@ bars:
     - Separator
     - Clipboard
     - Podman
-    - Dns
+    - Vpn
     - Ufw
     - Power
     - ControlCenter
@@ -207,7 +207,7 @@ menus:
   dns_menu:
     position: TopRight
     widgets:
-    - Dns
+    - Vpn
     - !Spacer
       size: 16
     - Ip

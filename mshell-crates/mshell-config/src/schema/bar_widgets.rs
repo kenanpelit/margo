@@ -89,7 +89,7 @@ pub enum BarWidget {
     /// Mullvad VPN pill — native status pill driving the `mvpn` binary. Opens
     /// the combined DNS/VPN menu (VPN controls + a collapsible DNS section),
     /// which is why the retired DNS pill's old `"dns"` config alias lands here.
-    #[serde(alias = "dns")]
+    #[serde(alias = "Dns", alias = "dns")]
     Vpn,
     Ip,
     Network,
