@@ -227,17 +227,17 @@ impl Component for VpnMenuWidgetModel {
                 set_homogeneous: true,
 
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
+                    set_css_classes: &["ok-button-surface", "dns-action"],
                     set_label: "Random",
                     connect_clicked[sender] => move |_| sender.input(VpnMenuWidgetInput::Random),
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
+                    set_css_classes: &["ok-button-surface", "dns-action"],
                     set_label: "Fastest",
                     connect_clicked[sender] => move |_| sender.input(VpnMenuWidgetInput::Fastest),
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
+                    set_css_classes: &["ok-button-surface", "dns-action"],
                     set_label: "Add",
                     set_tooltip_text: Some("Add the current relay to favourites"),
                     connect_clicked[sender] => move |_| sender.input(VpnMenuWidgetInput::AddCurrent),
@@ -325,7 +325,7 @@ impl Component for VpnMenuWidgetModel {
                 set_margin_top: 4,
 
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
+                    set_css_classes: &["ok-button-surface", "dns-action"],
                     set_label: "Refresh",
                     connect_clicked[sender] => move |_| sender.input(VpnMenuWidgetInput::RefreshNow),
                 },
@@ -708,7 +708,7 @@ fn rebuild_countries(
         let n = gtk::Label::new(Some(&format!("{count}")));
         n.add_css_class("label-small");
         let connect = gtk::Button::with_label("Connect");
-        connect.add_css_class("ok-button-cell");
+        connect.set_css_classes(&["ok-button-surface", "dns-action"]);
         {
             let (s, c) = (sender.clone(), code.clone());
             connect
@@ -753,12 +753,13 @@ fn rebuild_favs(
         let ping = gtk::Label::new(Some(&f.ping));
         ping.add_css_class("label-small");
         let connect = gtk::Button::with_label(if is_active { "Connected" } else { "Connect" });
-        connect.add_css_class("ok-button-cell");
+        connect.set_css_classes(&["ok-button-surface", "dns-action"]);
         if is_active {
-            connect.add_css_class("active");
+            connect.add_css_class("selected");
             connect.set_sensitive(false);
         }
         let remove = gtk::Button::from_icon_name("user-trash-symbolic");
+        remove.set_css_classes(&["ok-button-surface", "dns-action"]);
         {
             let (s, r) = (sender.clone(), f.relay.clone());
             connect.connect_clicked(move |_| s.input(VpnMenuWidgetInput::Connect(r.clone())));

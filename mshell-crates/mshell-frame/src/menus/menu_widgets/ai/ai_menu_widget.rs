@@ -95,13 +95,13 @@ impl Component for AiMenuWidgetModel {
                     set_xalign: 0.0,
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
+                    set_css_classes: &["ok-button-surface", "dns-action"],
                     set_icon_name: "edit-copy-symbolic",
                     set_tooltip_text: Some("Copy the last reply"),
                     connect_clicked => AiMenuWidgetInput::CopyLast,
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
+                    set_css_classes: &["ok-button-surface", "dns-action"],
                     set_icon_name: "document-new-symbolic",
                     set_tooltip_text: Some("New conversation"),
                     connect_clicked => AiMenuWidgetInput::New,
@@ -125,34 +125,36 @@ impl Component for AiMenuWidgetModel {
             },
 
             // ── Composer ────────────────────────────────────────
+            // The prompt is its own full-width single line; the actions sit
+            // on a compact row below, sized like the mode buttons.
+            #[name = "input"]
+            gtk::Entry {
+                set_hexpand: true,
+                set_placeholder_text: Some("Ask anything… (Enter to send)"),
+                connect_activate => AiMenuWidgetInput::Send,
+            },
+
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 6,
+                set_homogeneous: true,
 
-                #[name = "input"]
-                gtk::Entry {
-                    set_hexpand: true,
-                    set_placeholder_text: Some("Ask anything… (Enter to send)"),
-                    connect_activate => AiMenuWidgetInput::Send,
-                },
                 #[name = "send_btn"]
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
-                    set_icon_name: "document-send-symbolic",
+                    set_css_classes: &["ok-button-surface", "dns-action"],
+                    set_label: "Send",
                     connect_clicked => AiMenuWidgetInput::Send,
                 },
                 #[name = "stop_btn"]
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
-                    set_icon_name: "media-playback-stop-symbolic",
-                    set_tooltip_text: Some("Stop"),
+                    set_css_classes: &["ok-button-surface", "dns-action"],
+                    set_label: "Stop",
                     set_visible: false,
                     connect_clicked => AiMenuWidgetInput::Stop,
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
-                    set_icon_name: "view-refresh-symbolic",
-                    set_tooltip_text: Some("Retry the last prompt"),
+                    set_css_classes: &["ok-button-surface", "dns-action"],
+                    set_label: "Retry",
                     connect_clicked => AiMenuWidgetInput::Retry,
                 },
             },

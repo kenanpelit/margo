@@ -41,6 +41,8 @@ pub(crate) enum MenuKind {
     /// The standalone DNS menu (`dns_menu`), opened by `mshellctl menu dns`.
     /// No bar pill — its config is only useful for that terminal verb.
     Dns,
+    /// The AI assistant chat menu (`ai_menu`), opened by the AI bar pill.
+    Ai,
     Ip,
     Network,
     Notes,
@@ -77,6 +79,7 @@ macro_rules! menu_read {
             MenuKind::MediaPlayer => m.media_player_menu().$field().$g(),
             MenuKind::Vpn => m.vpn_menu().$field().$g(),
             MenuKind::Dns => m.dns_menu().$field().$g(),
+            MenuKind::Ai => m.ai_menu().$field().$g(),
             MenuKind::Ip => m.ip_menu().$field().$g(),
             MenuKind::Network => m.network_menu().$field().$g(),
             MenuKind::Notes => m.notes_menu().$field().$g(),
@@ -113,6 +116,7 @@ macro_rules! menu_write {
             MenuKind::MediaPlayer => c.menus.media_player_menu.$field = $val,
             MenuKind::Vpn => c.menus.vpn_menu.$field = $val,
             MenuKind::Dns => c.menus.dns_menu.$field = $val,
+            MenuKind::Ai => c.menus.ai_menu.$field = $val,
             MenuKind::Ip => c.menus.ip_menu.$field = $val,
             MenuKind::Network => c.menus.network_menu.$field = $val,
             MenuKind::Notes => c.menus.notes_menu.$field = $val,
@@ -153,6 +157,7 @@ impl MenuKind {
             Self::MediaPlayer => "Media Player",
             Self::Vpn => "VPN",
             Self::Dns => "DNS",
+            Self::Ai => "AI",
             Self::Ip => "Public IP",
             Self::Network => "Network Console",
             Self::Notes => "Notes Hub",
@@ -203,6 +208,7 @@ impl MenuKind {
             MenuKind::Ufw,
             MenuKind::Vpn,
             MenuKind::Dns,
+            MenuKind::Ai,
             MenuKind::Podman,
             MenuKind::Notes,
             MenuKind::Ip,

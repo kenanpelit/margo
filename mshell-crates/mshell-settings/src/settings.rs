@@ -1161,6 +1161,12 @@ impl Component for SettingsWindowModel {
                 label: "DNS",
                 icon: "network-server-symbolic",
             },
+            WidgetEntry::Menu {
+                kind: MenuKind::Ai,
+                stack_name: "ai_widget",
+                label: "AI",
+                icon: "starred-symbolic",
+            },
             WidgetEntry::MediaPlayer,
             WidgetEntry::HiddenBar,
             WidgetEntry::Catwalk,
