@@ -366,6 +366,10 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         }
         "scroller_overview_zoom" => cfg.scroller_overview_zoom = parse_f32(val).clamp(0.1, 1.0),
         "scroller_overview_gap" => cfg.scroller_overview_gap = parse_i32(val).max(0),
+        "mru_thumb_height" => cfg.mru_thumb_height = parse_u32(val).clamp(60, 600),
+        "mru_scope" => cfg.mru_scope = val.trim().to_lowercase(),
+        "mru_filter" => cfg.mru_filter = val.trim().to_lowercase(),
+        "mru_show_labels" => cfg.mru_show_labels = parse_bool(val),
         "scroller_overview_loop" => cfg.scroller_overview_loop = parse_bool(val),
         "overview_backdrop_color" => cfg.overview_backdrop_color = parse_color(val)?,
         "overview_backdrop_image" => {
@@ -1556,6 +1560,10 @@ pub const OPTION_KEYS: &[&str] = &[
     "overview_zoom",
     "ov_tab_mode",
     "scroller_overview_gap",
+    "mru_thumb_height",
+    "mru_scope",
+    "mru_filter",
+    "mru_show_labels",
     "scroller_overview_loop",
     "scroller_overview_zoom",
     "overview_backdrop_color",

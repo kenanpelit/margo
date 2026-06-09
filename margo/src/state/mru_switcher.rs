@@ -60,9 +60,37 @@ pub struct MruSwitcher {
     pub filter: MruFilter,
 }
 
+pub fn parse_scope(s: &str) -> MruScope {
+    match s.trim().to_lowercase().as_str() {
+        "output" => MruScope::Output,
+        "workspace" => MruScope::Workspace,
+        _ => MruScope::All,
+    }
+}
+
+pub fn parse_filter(s: &str) -> MruFilter {
+    match s.trim().to_lowercase().as_str() {
+        "appid" => MruFilter::AppId,
+        _ => MruFilter::All,
+    }
+}
+
 impl MargoState {
     pub fn is_mru_open(&self) -> bool {
         self.mru_switcher.is_some()
+    }
+
+    /// Advance using bind args when given, else the configured defaults
+    /// (`mru_scope` / `mru_filter`). The keybind/dispatch entry point.
+    pub fn mru_advance_args(
+        &mut self,
+        scope: Option<&str>,
+        filter: Option<&str>,
+        dir: MruDirection,
+    ) {
+        let scope = parse_scope(scope.unwrap_or(&self.config.mru_scope));
+        let filter = parse_filter(filter.unwrap_or(&self.config.mru_filter));
+        self.mru_advance(scope, filter, dir);
     }
 
     /// Build the MRU-ordered candidate window list for a scope + filter.
@@ -151,10 +179,19 @@ impl MargoState {
         }
     }
 
-    /// Commit: keep the selected window focused and close the switcher.
+    /// Commit: close the switcher, then focus the selected window for real so
+    /// it records a fresh `last_focus_serial` (becomes most-recently-used).
     pub fn mru_confirm(&mut self) {
-        self.mru_focus_selected();
+        let win = self
+            .mru_switcher
+            .as_ref()
+            .and_then(|s| s.candidates.get(s.selected).cloned());
         self.mru_switcher = None;
+        if let Some(win) = win
+            && let Some(idx) = self.clients.iter().position(|c| c.window == win)
+        {
+            self.activate_window_idx(idx);
+        }
         self.request_repaint();
     }
 

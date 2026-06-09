@@ -740,6 +740,18 @@ pub struct Config {
     /// Vertical gap between scroller-overview tag cells, in pre-zoom
     /// logical pixels. Default `40`.
     pub scroller_overview_gap: i32,
+
+    // ── MRU window switcher (Super/Alt+Tab) ──────────────────────────
+    /// Thumbnail height in the MRU switcher overlay, logical px. Default `170`.
+    pub mru_thumb_height: u32,
+    /// Default switcher scope when a bind passes none: `all` | `output` |
+    /// `workspace`. Default `all`.
+    pub mru_scope: String,
+    /// Default switcher filter when a bind passes none: `all` | `appid`.
+    /// Default `all`.
+    pub mru_filter: String,
+    /// Draw the app-id label under each thumbnail. Default `true`.
+    pub mru_show_labels: bool,
     /// Wrap the scroller overview around: scrolling past the last tag
     /// continues seamlessly to the first (and vice versa) instead of
     /// rubber-banding at the ends. Default `false`.
@@ -1098,6 +1110,10 @@ impl Default for Config {
             overview_style: OverviewStyle::Grid,
             scroller_overview_zoom: 0.5,
             scroller_overview_gap: 40,
+            mru_thumb_height: 170,
+            mru_scope: "all".to_string(),
+            mru_filter: "all".to_string(),
+            mru_show_labels: true,
             scroller_overview_loop: false,
             overview_backdrop_color: Rgba([0.15, 0.15, 0.15, 1.0]),
             overview_backdrop_image: None,

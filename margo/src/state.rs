@@ -2557,9 +2557,13 @@ impl MargoState {
         if let Some(FocusTarget::Window(w)) = &target {
             let new_idx = self.clients.iter().position(|c| &c.window == w);
             if let Some(idx) = new_idx {
-                // MRU recency key for the Super+Tab switcher.
-                self.focus_counter += 1;
-                self.clients[idx].last_focus_serial = self.focus_counter;
+                // MRU recency key for the Super+Tab switcher — but NOT while the
+                // switcher is cycling (preview-focus must not rewrite the MRU
+                // order; only the committed pick does, in `mru_confirm`).
+                if self.mru_switcher.is_none() {
+                    self.focus_counter += 1;
+                    self.clients[idx].last_focus_serial = self.focus_counter;
+                }
                 let mon = self.clients[idx].monitor;
                 if mon < self.monitors.len() {
                     let hist = &mut self.monitors[mon].focus_history;

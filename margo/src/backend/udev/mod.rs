@@ -2253,19 +2253,28 @@ fn build_mru_switcher_elements(
     let mut out: Vec<MargoRenderElement> = Vec::new();
 
     // Layout (logical px, output-local).
-    const TH: i32 = 170; // thumbnail height
+    let th = (state.config.mru_thumb_height as i32).clamp(60, 600);
+    let show_labels = state.config.mru_show_labels;
     const GAP: i32 = 16;
     const PAD: i32 = 22;
     const MAX: usize = 8;
+    const TITLE_H: i32 = 22;
+    let label_h: i32 = if show_labels { 20 } else { 0 };
 
-    // (window, thumb_width, scale_factor)
-    let mut cells: Vec<(smithay::desktop::Window, i32, f64)> = Vec::new();
+    // (window, thumb_width, scale_factor, app_id)
+    let mut cells: Vec<(smithay::desktop::Window, i32, f64, String)> = Vec::new();
     for win in sw.candidates.iter().take(MAX) {
         let g = win.geometry().size;
         let (gw, gh) = (g.w.max(1), g.h.max(1));
-        let sf = f64::from(TH) / f64::from(gh);
-        let tw = ((f64::from(gw) * sf).round() as i32).clamp(60, TH * 2);
-        cells.push((win.clone(), tw, sf));
+        let sf = f64::from(th) / f64::from(gh);
+        let tw = ((f64::from(gw) * sf).round() as i32).clamp(60, th * 2);
+        let app_id = state
+            .clients
+            .iter()
+            .find(|c| c.window == *win)
+            .map(|c| c.app_id.clone())
+            .unwrap_or_default();
+        cells.push((win.clone(), tw, sf, app_id));
     }
     if cells.is_empty() {
         return out;
@@ -2274,18 +2283,38 @@ fn build_mru_switcher_elements(
     let inner_w: i32 =
         cells.iter().map(|c| c.1).sum::<i32>() + GAP * (cells.len().saturating_sub(1) as i32);
     let panel_w = inner_w + 2 * PAD;
-    let panel_h = TH + 2 * PAD;
+    let panel_h = TITLE_H + th + label_h + 2 * PAD;
     let ox = (output_geo.size.w - panel_w) / 2;
     let oy = (output_geo.size.h - panel_h) / 2;
 
     let prog = crate::render::rounded_solid::shader(renderer).map(|p| p.0);
     let radius = (14.0 * output_scale) as f32;
 
-    // ── Thumbnails (topmost) + per-thumb selection ring ──────────────
+    // Scope title at the panel top (niri shows the active scope).
+    let scope_txt = match sw.scope {
+        crate::state::mru_switcher::MruScope::All => "All windows",
+        crate::state::mru_switcher::MruScope::Output => "This output",
+        crate::state::mru_switcher::MruScope::Workspace => "This workspace",
+    };
+    let title_pos: Point<i32, Physical> =
+        Point::<i32, Logical>::from((ox + PAD, oy + 4)).to_physical_precise_round(scale);
+    if let Some(el) = crate::render::text::label_element(
+        renderer,
+        scope_txt,
+        (f64::from(TITLE_H) * output_scale * 0.78) as i32,
+        (f64::from(panel_w) * output_scale) as i32,
+        [200, 200, 210],
+        title_pos.to_f64(),
+    ) {
+        out.push(MargoRenderElement::Cursor(el));
+    }
+
+    // ── Thumbnails (topmost) + labels + per-thumb selection ring ─────
+    let row_y = oy + PAD + TITLE_H;
     let mut cursor_x = ox + PAD;
-    for (i, (win, tw, sf)) in cells.iter().enumerate() {
+    for (i, (win, tw, sf, app_id)) in cells.iter().enumerate() {
         let cell_x = cursor_x;
-        let cell_y = oy + PAD;
+        let cell_y = row_y;
         cursor_x += tw + GAP;
 
         let cell_phys: Point<i32, Physical> =
@@ -2318,6 +2347,27 @@ fn build_mru_switcher_elements(
             }
         }
 
+        // app-id label under the thumbnail.
+        if show_labels && !app_id.is_empty() {
+            let lpos: Point<i32, Physical> = Point::<i32, Logical>::from((cell_x, cell_y + th + 2))
+                .to_physical_precise_round(scale);
+            let rgb = if i == sw.selected {
+                [240, 240, 255]
+            } else {
+                [165, 165, 175]
+            };
+            if let Some(el) = crate::render::text::label_element(
+                renderer,
+                app_id,
+                (f64::from(label_h) * output_scale * 0.85) as i32,
+                (f64::from(*tw) * output_scale) as i32,
+                rgb,
+                lpos.to_f64(),
+            ) {
+                out.push(MargoRenderElement::Cursor(el));
+            }
+        }
+
         // Selection ring behind the selected thumbnail (a slightly larger
         // rounded fill; the thumb covers the centre, leaving a border).
         if i == sw.selected
@@ -2325,7 +2375,7 @@ fn build_mru_switcher_elements(
         {
             let ring = Rectangle::<i32, Logical>::new(
                 Point::from((cell_x - 5, cell_y - 5)),
-                smithay::utils::Size::from((tw + 10, TH + 10)),
+                smithay::utils::Size::from((tw + 10, th + 10)),
             )
             .to_physical_precise_round(scale);
             out.push(MargoRenderElement::RoundedSolid(
