@@ -4845,6 +4845,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mvpn"
+version = "1.0.2"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_json",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "mwizard"
 version = "1.0.2"
 dependencies = [

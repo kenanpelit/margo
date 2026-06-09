@@ -94,6 +94,30 @@ pub fn pick_relays(list: &str, country: &str, city: &str, own: Ownership) -> Vec
     relays
 }
 
+/// The public IPv4 of a relay, from its `relay list` line:
+/// `us-nyc-wg-803 (23.234.101.3, 2607:…) - hosted by …` → `23.234.101.3`.
+pub fn relay_ipv4(list: &str, relay: &str) -> Option<String> {
+    for line in list.lines() {
+        if !line.starts_with("\t\t") {
+            continue;
+        }
+        let t = line.trim();
+        let mut it = t.split_whitespace();
+        if it.next() != Some(relay) {
+            continue;
+        }
+        // Next token is "(23.234.101.3," — strip the punctuation.
+        let raw = it.next().unwrap_or("");
+        let ip: String = raw
+            .trim_matches(|c| c == '(' || c == ')' || c == ',')
+            .to_string();
+        if ip.split('.').count() == 4 && ip.split('.').all(|o| o.parse::<u8>().is_ok()) {
+            return Some(ip);
+        }
+    }
+    None
+}
+
 /// `de-ber-wg-006` / `us-nyc-ovpn-101` shape: cc-city-(wg|ovpn)-NNN.
 fn looks_like_relay(id: &str) -> bool {
     let parts: Vec<&str> = id.split('-').collect();
@@ -177,6 +201,12 @@ USA (us)\n\
         );
         assert_eq!(pick_relays(SAMPLE, "de", "", Ownership::Rented).len(), 2);
         assert_eq!(pick_relays(SAMPLE, "", "", Ownership::Any).len(), 4);
+    }
+
+    #[test]
+    fn extracts_relay_ipv4() {
+        assert_eq!(relay_ipv4(SAMPLE, "de-ber-wg-006"), Some("1.2.3.4".into()));
+        assert_eq!(relay_ipv4(SAMPLE, "nope"), None);
     }
 
     #[test]

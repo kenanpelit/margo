@@ -7,7 +7,7 @@
 mod engine;
 
 use clap::{Parser, Subcommand};
-use engine::{actions, relays, status};
+use engine::{actions, favorites, obf, relays, status};
 
 #[derive(Parser, Debug)]
 #[command(name = "mvpn", version, about = "Native Mullvad VPN control for margo")]
@@ -46,6 +46,19 @@ enum Cmd {
     Rented { country: Option<String> },
     /// Toggle the tunnel protocol (WireGuard ↔ OpenVPN).
     Protocol,
+    /// Find the fastest relay (optionally in a country), connect + save to favorites.
+    Fastest { country: Option<String> },
+    /// Alias for `fastest`.
+    #[command(name = "fastest-fav")]
+    FastestFav { country: Option<String> },
+    /// Manage favorite relays.
+    Fav {
+        #[command(subcommand)]
+        action: FavCmd,
+    },
+    /// Anti-censorship / obfuscation: bare = show; `cycle`, `hunt443`, or a mode
+    /// (auto|off|udp2tcp|shadowsocks|quic).
+    Obf { arg: Option<String> },
     /// Set lockdown mode (block traffic when the VPN drops).
     Lockdown {
         #[arg(value_parser = ["on", "off"])]
@@ -63,6 +76,25 @@ enum Cmd {
     #[command(external_subcommand)]
     Location(Vec<String>),
 }
+
+#[derive(Subcommand, Debug)]
+enum FavCmd {
+    /// Add the currently-connected relay (measures its ping).
+    Add,
+    /// Remove a relay from favorites.
+    Remove { relay: String },
+    /// List favorites, fastest-first.
+    List,
+    /// Connect to the fastest favorite.
+    Connect,
+    /// Re-ping favorites (optionally in a country), drop dead ones, re-sort.
+    Refresh { country: Option<String> },
+}
+
+// Ping sampling defaults (made configurable via mvpn.toml in a later phase).
+const FASTEST_SAMPLE: usize = 8;
+const PING_COUNT: u32 = 3;
+const PING_TIMEOUT: u32 = 2;
 
 fn main() {
     let cli = Cli::parse();
@@ -100,6 +132,34 @@ fn main() {
             relays::Ownership::Rented,
         ),
         Cmd::Protocol => actions::toggle_protocol(),
+        Cmd::Fastest { country } | Cmd::FastestFav { country } => {
+            match favorites::fastest(
+                country.as_deref().unwrap_or(""),
+                FASTEST_SAMPLE,
+                PING_COUNT,
+                PING_TIMEOUT,
+            ) {
+                Some((relay, avg)) => {
+                    println!("→ {relay} · {avg:.0} ms");
+                    true
+                }
+                None => {
+                    eprintln!("mvpn fastest: no responsive relay found");
+                    false
+                }
+            }
+        }
+        Cmd::Fav { action } => run_fav(action),
+        Cmd::Obf { arg } => match arg.as_deref() {
+            None => {
+                let m = obf::current();
+                println!("obfuscation: {}", if m.is_empty() { "unknown" } else { &m });
+                true
+            }
+            Some("cycle") => obf::cycle().inspect(|m| println!("→ {m}")).is_some(),
+            Some("hunt443") => obf::hunt443(),
+            Some(mode) => obf::set(mode),
+        },
         Cmd::Lockdown { state } => actions::set_lockdown(state == "on"),
         Cmd::AutoConnect { state } => actions::set_autoconnect(state == "on"),
         Cmd::Menu => {
@@ -121,6 +181,46 @@ fn main() {
 
     if !ok {
         std::process::exit(1);
+    }
+}
+
+fn run_fav(action: FavCmd) -> bool {
+    match action {
+        FavCmd::Add => favorites::add_current(),
+        FavCmd::Remove { relay } => {
+            favorites::remove(&relay);
+            true
+        }
+        FavCmd::List => {
+            for f in favorites::load() {
+                match f.ping {
+                    Some(p) => println!("{:>7.0} ms  {}", p, f.relay),
+                    None => println!("    N/A    {}", f.relay),
+                }
+            }
+            true
+        }
+        FavCmd::Connect => match favorites::connect_fastest() {
+            Some(r) => {
+                println!("→ {r}");
+                true
+            }
+            None => {
+                eprintln!("mvpn fav connect: no favorites (add one with `mvpn fav add`)");
+                false
+            }
+        },
+        FavCmd::Refresh { country } => {
+            let favs =
+                favorites::refresh(country.as_deref().unwrap_or(""), PING_COUNT, PING_TIMEOUT);
+            for f in &favs {
+                match f.ping {
+                    Some(p) => println!("{:>7.0} ms  {}", p, f.relay),
+                    None => println!("    N/A    {}", f.relay),
+                }
+            }
+            true
+        }
     }
 }
 

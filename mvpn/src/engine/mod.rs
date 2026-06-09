@@ -9,6 +9,9 @@
 #![allow(dead_code)]
 
 pub mod actions;
+pub mod favorites;
+pub mod latency;
+pub mod obf;
 pub mod relays;
 pub mod status;
 pub mod sys;
