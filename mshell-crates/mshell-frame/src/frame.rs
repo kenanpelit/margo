@@ -2632,6 +2632,7 @@ impl Frame {
                 BarOutput::ControlCenterClicked => FrameInput::ToggleControlCenterMenu,
                 BarOutput::SshSessionsClicked => FrameInput::ToggleSshSessionsMenu,
                 BarOutput::VpnClicked => FrameInput::ToggleVpnMenu,
+                BarOutput::DnsClicked => FrameInput::ToggleDnsMenu,
                 BarOutput::PodmanClicked => FrameInput::TogglePodmanMenu,
                 BarOutput::NotesClicked => FrameInput::ToggleNotesMenu,
                 BarOutput::PluginPanelClicked {

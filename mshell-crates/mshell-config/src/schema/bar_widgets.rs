@@ -87,10 +87,11 @@ pub enum BarWidget {
     Setup,
     MediaPlayer,
     /// Mullvad VPN pill — native status pill driving the `mvpn` binary. Opens
-    /// the combined DNS/VPN menu (VPN controls + a collapsible DNS section),
-    /// which is why the retired DNS pill's old `"dns"` config alias lands here.
-    #[serde(alias = "Dns", alias = "dns")]
+    /// the combined VPN menu (VPN controls + a collapsible DNS section).
     Vpn,
+    /// DNS pill — opens the standalone DNS menu (`mshellctl menu dns`); a
+    /// dedicated DNS / Blocky entry, separate from the combined `Vpn` pill.
+    Dns,
     Ip,
     Network,
     /// A user-defined pill; the `String` is the `custom_widgets` entry name.
@@ -164,6 +165,7 @@ impl BarWidget {
             BarWidget::Setup => "Setup",
             BarWidget::MediaPlayer => "Media Player",
             BarWidget::Vpn => "VPN",
+            BarWidget::Dns => "DNS",
             BarWidget::Ip => "Public IP",
             BarWidget::Network => "Network Console",
             BarWidget::Custom(_) => "Custom Widget",
@@ -223,6 +225,7 @@ impl BarWidget {
             BarWidget::Setup,
             BarWidget::MediaPlayer,
             BarWidget::Vpn,
+            BarWidget::Dns,
             BarWidget::Ip,
             BarWidget::Network,
             BarWidget::Spacer(8),

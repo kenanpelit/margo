@@ -193,6 +193,7 @@ pub(crate) enum BarOutput {
     SshSessionsClicked,
     AudioDashboardClicked,
     VpnClicked,
+    DnsClicked,
     PodmanClicked,
     NotesClicked,
     IpClicked,
@@ -1048,6 +1049,14 @@ impl BarModel {
                 LogoutModel::builder()
                     .launch(LogoutInit { orientation })
                     .detach(),
+            ),
+            // DNS pill — opens the standalone DNS menu (`mshellctl menu dns`).
+            BarWidget::Dns => Box::new(
+                crate::bars::bar_widgets::dns::DnsModel::builder()
+                    .launch(crate::bars::bar_widgets::dns::DnsInit {})
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::dns::DnsOutput::Clicked => BarOutput::DnsClicked,
+                    }),
             ),
             // Mullvad VPN pill — drives the `mvpn` binary for status/toggle,
             // but its left-click opens the shell's own native layer-shell VPN
