@@ -59,6 +59,11 @@ window switcher with a live thumbnail overlay.
 - The Mullvad pill opens the shell's **own native layer-shell menu** instead of
   spawning the standalone `mvpn menu` popup, so it matches the other menus'
   chrome and DESIGN.md exactly.
+- A standalone **DNS** bar pill is available again in the widget picker
+  (alongside the combined VPN pill) — it opens the `mshellctl menu dns` menu.
+- Changing a widget's position/config no longer flashes the clock menu over
+  whatever menu is open: the per-region stacks' visible child is now preserved
+  across the menu restack.
 - **`mvpn` Protocol button** repurposed to a working WireGuard
   quantum-resistance toggle (modern Mullvad removed `relay set tunnel-protocol`).
 - **`mvpn menu` is a real layer-shell panel**, not a floating "popup", and Esc
