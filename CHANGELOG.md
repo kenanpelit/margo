@@ -7,6 +7,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.0.3] – 2026-06-09
+
+A VPN + window-switcher release: a native Mullvad VPN tool (CLI + GTK panel +
+bar pill + Settings page) and a niri-style most-recently-used Super/Alt+Tab
+window switcher with a live thumbnail overlay.
+
 ### Added
 
 - **`mvpn` — native Mullvad VPN control.** A new standalone binary: a full CLI
@@ -15,8 +21,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   palette. Ports the favorites (ping-sorted), fastest-relay, obfuscation
   (`anti-censorship`), device-slot (multi-machine), blocky DNS-guard, timer and
   leak-test logic natively in Rust — file-compatible with the existing
-  `~/.mullvad/{favorites,slot.state}`. The bar pill is a config-only custom
-  widget (`mvpn install-pill`). Replaces the external `mullvad` WASM plugin.
+  `~/.mullvad/{favorites,slot.state}`. Honours the `OSC_MULLVAD_*` env overrides.
+  Replaces the external `mullvad` WASM plugin.
+- **Native "Mullvad VPN" bar pill + Settings → VPN page.** The pill is a real,
+  widget-picker-selectable `BarWidget` (status icon, accent-tinted when up,
+  left-click → `mvpn menu`, right-click → toggle). The Settings page manages
+  favourites (add / remove / connect) + connect/disconnect.
+- **MRU window switcher (niri-style Super/Alt+Tab).** Hold the modifier, tap Tab
+  to walk windows in most-recently-used order, release to commit. A live
+  thumbnail-row overlay (scope title + per-thumb app-id labels), separate from
+  the grid overview. Dispatch `mru_next` / `mru_prev` (`arg.v` = scope, `arg.v2`
+  = filter); knobs `mru_thumb_height` / `mru_scope` / `mru_filter` /
+  `mru_show_labels`, also editable under Settings → Overview.
+
+### Fixed
+
+- **`mvpn` Protocol button** repurposed to a working WireGuard
+  quantum-resistance toggle (modern Mullvad removed `relay set tunnel-protocol`).
+- MRU switcher: genuine most-recently-used ordering (cycling no longer
+  rewrites the order) and the stuck-modifier bug (the Alt/Super release now
+  reaches the focused window, so it isn't left "held").
 
 ## [1.0.2] – 2026-06-09
 
