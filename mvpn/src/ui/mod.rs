@@ -18,8 +18,6 @@ use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 
 use crate::engine::{actions, diag, favorites, obf, relays, slot, status};
 
-const APP_ID: &str = "com.mshell.mvpn";
-
 /// A consistent snapshot of everything the panel shows, built off-thread.
 struct Snapshot {
     status: status::Status,
@@ -60,13 +58,21 @@ fn kick(tx: &Tx, op: impl FnOnce() + Send + 'static) {
 }
 
 pub fn run() -> bool {
-    let app = gtk4::Application::builder().application_id(APP_ID).build();
-    app.connect_activate(build_ui);
-    app.run_with_args::<&str>(&[]);
+    // No GtkApplication: GtkApplication's window management interferes with
+    // gtk4-layer-shell (the surface ends up a normal xdg-toplevel "popup"),
+    // even with a plain gtk::Window. Drive a raw GLib main loop directly —
+    // the canonical standalone layer-shell pattern.
+    if gtk4::init().is_err() {
+        eprintln!("mvpn: GTK init failed");
+        return false;
+    }
+    let main_loop = glib::MainLoop::new(None, false);
+    build_ui(&main_loop);
+    main_loop.run();
     true
 }
 
-fn build_ui(app: &gtk4::Application) {
+fn build_ui(main_loop: &glib::MainLoop) {
     let palette = theme::load();
     let provider = gtk4::CssProvider::new();
     provider.load_from_string(&theme::css(&palette));
@@ -78,13 +84,8 @@ fn build_ui(app: &gtk4::Application) {
         );
     }
 
-    // A PLAIN gtk::Window (not ApplicationWindow): ApplicationWindow's
-    // GtkApplication window-management fights gtk4-layer-shell and the surface
-    // ends up a normal xdg-toplevel ("popup"). mkeys/mlock use a plain Window
-    // for exactly this reason. We register it with the app so the GApplication
-    // stays alive, and quit when it closes.
+    // A plain gtk::Window driven by a raw main loop — no GtkApplication.
     let window = gtk4::Window::new();
-    app.add_window(&window);
     window.add_css_class("mvpn");
     window.set_default_size(420, 720);
 
@@ -99,9 +100,9 @@ fn build_ui(app: &gtk4::Application) {
     // Exclusive keyboard while open so Esc closes immediately (no click needed).
     window.set_keyboard_mode(KeyboardMode::Exclusive);
     {
-        let app = app.clone();
+        let ml = main_loop.clone();
         window.connect_close_request(move |_| {
-            app.quit();
+            ml.quit();
             glib::Propagation::Proceed
         });
     }
