@@ -10,8 +10,11 @@
 //! probes only while visible), so a menu the user never opens spawns no
 //! `mvpn` processes — see [`VpnMenuWidgetInput::ParentRevealChanged`].
 
+use super::super::dns::dns_menu_widget::{
+    DnsMenuWidgetInit, DnsMenuWidgetInput, DnsMenuWidgetModel,
+};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -47,6 +50,12 @@ pub(crate) struct VpnMenuWidgetModel {
     /// Lazy-poll gates — see `ParentRevealChanged`.
     poll_started: bool,
     visible: Arc<AtomicBool>,
+    /// Embedded DNS section (Blocky / Default / presets), collapsed by
+    /// default. Its own probe loop only runs while the section is expanded
+    /// AND the menu is visible — see `forward_dns_reveal`.
+    dns: Controller<DnsMenuWidgetModel>,
+    dns_expanded: bool,
+    menu_visible: bool,
 }
 
 impl std::fmt::Debug for VpnMenuWidgetModel {
@@ -73,6 +82,8 @@ pub(crate) enum VpnMenuWidgetInput {
     /// Sent by the host menu on show/hide. The poll loop starts lazily on the
     /// first reveal and probes only while visible.
     ParentRevealChanged(bool),
+    /// The DNS section's expander toggled.
+    DnsExpanded(bool),
 }
 
 #[derive(Debug)]
@@ -203,6 +214,21 @@ impl Component for VpnMenuWidgetModel {
                 set_spacing: 4,
             },
 
+            gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
+
+            // ── DNS section (Blocky / Default / presets) ────────
+            // Collapsed by default; the embedded DnsMenuWidget's child is
+            // attached + its expand signal wired in `init`.
+            #[name = "dns_expander"]
+            gtk::Expander {
+                add_css_class: "vpn-dns-expander",
+                set_label: Some("DNS  ·  Blocky · presets"),
+                set_expanded: false,
+                connect_expanded_notify[sender] => move |e| {
+                    sender.input(VpnMenuWidgetInput::DnsExpanded(e.is_expanded()));
+                },
+            },
+
             // ── Footer ──────────────────────────────────────────
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
@@ -298,6 +324,11 @@ impl Component for VpnMenuWidgetModel {
 
         let fav_box_widget = gtk::Box::new(gtk::Orientation::Vertical, 4);
 
+        // Embedded DNS section: Blocky / Default / presets, no VPN chrome.
+        let dns = DnsMenuWidgetModel::builder()
+            .launch(DnsMenuWidgetInit { embedded: true })
+            .detach();
+
         let model = VpnMenuWidgetModel {
             connected: false,
             lockdown: false,
@@ -315,9 +346,14 @@ impl Component for VpnMenuWidgetModel {
             fav_box: fav_box_widget.clone(),
             poll_started: false,
             visible: Arc::new(AtomicBool::new(false)),
+            dns,
+            dns_expanded: false,
+            menu_visible: false,
         };
 
         let widgets = view_output!();
+        // Drop the embedded DNS widget into the expander now that both exist.
+        widgets.dns_expander.set_child(Some(model.dns.widget()));
         ComponentParts { model, widgets }
     }
 
@@ -366,6 +402,12 @@ impl Component for VpnMenuWidgetModel {
                     }
                     reload(&sender);
                 }
+                self.menu_visible = visible;
+                self.forward_dns_reveal();
+            }
+            VpnMenuWidgetInput::DnsExpanded(expanded) => {
+                self.dns_expanded = expanded;
+                self.forward_dns_reveal();
             }
         }
     }
@@ -414,6 +456,18 @@ impl Component for VpnMenuWidgetModel {
         }
 
         rebuild_favs(&self.fav_box, &self.favs, &sender);
+    }
+}
+
+impl VpnMenuWidgetModel {
+    /// Drive the embedded DNS section's lazy probe: it runs only while the
+    /// menu is visible *and* the DNS section is expanded.
+    fn forward_dns_reveal(&self) {
+        let reveal = self.menu_visible && self.dns_expanded;
+        let _ = self
+            .dns
+            .sender()
+            .send(DnsMenuWidgetInput::ParentRevealChanged(reveal));
     }
 }
 

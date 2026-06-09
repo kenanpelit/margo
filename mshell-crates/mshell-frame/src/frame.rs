@@ -2631,7 +2631,6 @@ impl Frame {
                 BarOutput::AlarmClockClicked => FrameInput::ToggleAlarmClockMenu,
                 BarOutput::ControlCenterClicked => FrameInput::ToggleControlCenterMenu,
                 BarOutput::SshSessionsClicked => FrameInput::ToggleSshSessionsMenu,
-                BarOutput::DnsClicked => FrameInput::ToggleDnsMenu,
                 BarOutput::VpnClicked => FrameInput::ToggleVpnMenu,
                 BarOutput::PodmanClicked => FrameInput::TogglePodmanMenu,
                 BarOutput::NotesClicked => FrameInput::ToggleNotesMenu,

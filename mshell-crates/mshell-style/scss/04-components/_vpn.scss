@@ -29,3 +29,19 @@
   color: var(--on-primary);
   opacity: 1;
 }
+
+// ── Collapsible DNS section (embedded DnsMenuWidget) ─────────
+.vpn-dns-expander {
+  font-weight: 600;
+  > title {
+    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-1);
+  }
+  > title:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 12%, transparent)");
+  }
+  // Inset the revealed DNS widget a touch from the disclosure title.
+  .dns-menu-widget {
+    margin-top: var(--space-2);
+  }
+}

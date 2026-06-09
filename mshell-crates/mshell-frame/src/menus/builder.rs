@@ -259,7 +259,7 @@ pub fn build_widget(
         ),
         MenuWidget::Dns => Box::new(
             DnsMenuWidgetModel::builder()
-                .launch(DnsMenuWidgetInit {})
+                .launch(DnsMenuWidgetInit { embedded: false })
                 .detach(),
         ),
         MenuWidget::Vpn => Box::new(

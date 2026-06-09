@@ -35,7 +35,7 @@
 //! approach noctalia's `apply.sh` takes) — and only falls back to
 //! pkexec's graphical agent when `sudo -n` isn't available.
 
-use crate::bars::bar_widgets::dns::{DnsState, Mode, probe_dns_state};
+use super::state::{DnsState, Mode, probe_dns_state};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
@@ -98,6 +98,10 @@ pub(crate) struct DnsMenuWidgetModel {
     /// Shared with the poll loop; gates the probes so they only run
     /// while the panel is visible.
     visible: Arc<AtomicBool>,
+    /// Embedded inside the VPN menu's DNS section: hide the VPN-redundant
+    /// chrome (hero header + VPN status line) and the Mullvad / Toggle
+    /// actions, keeping just Blocky / Default / presets.
+    embedded: bool,
 }
 
 impl std::fmt::Debug for DnsMenuWidgetModel {
@@ -121,7 +125,10 @@ pub(crate) enum DnsMenuWidgetInput {
 #[derive(Debug)]
 pub(crate) enum DnsMenuWidgetOutput {}
 
-pub(crate) struct DnsMenuWidgetInit {}
+pub(crate) struct DnsMenuWidgetInit {
+    /// See [`DnsMenuWidgetModel::embedded`].
+    pub(crate) embedded: bool,
+}
 
 #[derive(Debug)]
 pub(crate) enum DnsMenuWidgetCommandOutput {
@@ -154,6 +161,9 @@ impl Component for DnsMenuWidgetModel {
 
                 gtk::Box {
                     add_css_class: "panel-header",
+                    // Embedded in the VPN menu: the DNS expander label is the
+                    // header, so drop this title row (icon + "DNS / VPN" + badge).
+                    set_visible: !model.embedded,
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 12,
 
@@ -190,6 +200,8 @@ impl Component for DnsMenuWidgetModel {
                 vpn_line_widget -> gtk::Label {
                     add_css_class: "label-small",
                     set_xalign: 0.0,
+                    // VPN status is the host VPN menu's job when embedded.
+                    set_visible: !model.embedded,
                 },
                 #[local_ref]
                 blocky_line_widget -> gtk::Label {
@@ -246,24 +258,34 @@ impl Component for DnsMenuWidgetModel {
     }
 
     fn init(
-        _params: Self::Init,
+        params: Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let embedded = params.embedded;
         let badge_widget = gtk::Label::new(Some("Idle"));
         let vpn_line_widget = gtk::Label::new(Some("VPN: off"));
         let blocky_line_widget = gtk::Label::new(Some("Blocky: inactive"));
         let dns_line_widget = gtk::Label::new(Some("DNS: —"));
 
-        // Build action buttons row.
+        // Build action buttons row. Embedded in the VPN menu, drop the
+        // VPN-redundant `Mullvad` + `Toggle` actions — keep Blocky / Default.
         let actions_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         let mut action_buttons: Vec<(String, gtk::Button)> = Vec::with_capacity(4);
-        for (id, label, icon) in [
-            ("mullvad", "Mullvad", "vpn-symbolic"),
-            ("blocky", "Blocky", "server-symbolic"),
-            ("default", "Default", "network-wired-symbolic"),
-            ("toggle", "Toggle", "settings-symbolic"),
-        ] {
+        let actions: &[(&str, &str, &str)] = if embedded {
+            &[
+                ("blocky", "Blocky", "server-symbolic"),
+                ("default", "Default", "network-wired-symbolic"),
+            ]
+        } else {
+            &[
+                ("mullvad", "Mullvad", "vpn-symbolic"),
+                ("blocky", "Blocky", "server-symbolic"),
+                ("default", "Default", "network-wired-symbolic"),
+                ("toggle", "Toggle", "settings-symbolic"),
+            ]
+        };
+        for &(id, label, icon) in actions {
             let btn = make_action_button(label, icon);
             let s = sender.clone();
             let id_owned = id.to_string();
@@ -299,6 +321,7 @@ impl Component for DnsMenuWidgetModel {
             poll_started: false,
             action_busy: false,
             visible: Arc::new(AtomicBool::new(false)),
+            embedded,
         };
 
         // Attach the action buttons we built to the actions_box

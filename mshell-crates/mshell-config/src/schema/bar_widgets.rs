@@ -86,8 +86,10 @@ pub enum BarWidget {
     /// setup wizard) — a layer-shell surface, not a separate window.
     Setup,
     MediaPlayer,
-    Dns,
-    /// Mullvad VPN pill — native status pill driving the `mvpn` binary.
+    /// Mullvad VPN pill — native status pill driving the `mvpn` binary. Opens
+    /// the combined DNS/VPN menu (VPN controls + a collapsible DNS section),
+    /// which is why the retired DNS pill's old `"dns"` config alias lands here.
+    #[serde(alias = "dns")]
     Vpn,
     Ip,
     Network,
@@ -161,8 +163,7 @@ impl BarWidget {
             BarWidget::Logout => "Logout",
             BarWidget::Setup => "Setup",
             BarWidget::MediaPlayer => "Media Player",
-            BarWidget::Dns => "DNS / VPN",
-            BarWidget::Vpn => "Mullvad VPN",
+            BarWidget::Vpn => "DNS / VPN",
             BarWidget::Ip => "Public IP",
             BarWidget::Network => "Network Console",
             BarWidget::Custom(_) => "Custom Widget",
@@ -221,7 +222,6 @@ impl BarWidget {
             BarWidget::Logout,
             BarWidget::Setup,
             BarWidget::MediaPlayer,
-            BarWidget::Dns,
             BarWidget::Vpn,
             BarWidget::Ip,
             BarWidget::Network,

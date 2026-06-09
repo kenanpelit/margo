@@ -222,7 +222,7 @@ impl Component for ControlCenterMenuWidgetModel {
 
         // New detail pages: VPN (DNS menu) and Valent
         let vpn_detail = DnsMenuWidgetModel::builder()
-            .launch(DnsMenuWidgetInit {})
+            .launch(DnsMenuWidgetInit { embedded: false })
             .detach();
 
         let valent_detail = ValentMenuWidgetModel::builder()
