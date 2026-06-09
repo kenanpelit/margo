@@ -185,9 +185,18 @@ impl Component for AiMenuWidgetModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             AiMenuWidgetInput::ParentRevealChanged(visible) => {
-                if visible && !self.loaded {
-                    self.loaded = true;
-                    self.restore_history();
+                if visible {
+                    if !self.loaded {
+                        self.loaded = true;
+                        self.restore_history();
+                    }
+                    // Focus the prompt so you can type immediately on open
+                    // (`mshellctl menu ai` / the pill). Deferred to idle so the
+                    // entry is mapped + the layer surface has keyboard focus.
+                    let entry = self.input.clone();
+                    relm4::gtk::glib::idle_add_local_once(move || {
+                        entry.grab_focus();
+                    });
                 }
             }
             AiMenuWidgetInput::Send => {
