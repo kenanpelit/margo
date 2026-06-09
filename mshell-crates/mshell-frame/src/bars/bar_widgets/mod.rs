@@ -1,4 +1,5 @@
 pub(crate) mod active_window;
+pub(crate) mod ai;
 pub(crate) mod alarm_clock;
 pub(crate) mod app_launcher;
 pub(crate) mod audio_dashboard;

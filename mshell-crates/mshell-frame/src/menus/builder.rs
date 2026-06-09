@@ -1,6 +1,7 @@
 use crate::bars::bar::BarType;
 use crate::bars::bar_widgets::margo_dock::{MargoDockInit, MargoDockModel, MargoDockOutput};
 use crate::menus::menu::{MenuModel, MenuOutput};
+use crate::menus::menu_widgets::ai::ai_menu_widget::{AiMenuWidgetInit, AiMenuWidgetModel};
 use crate::menus::menu_widgets::alarm_clock::alarm_clock_menu_widget::{
     AlarmClockMenuWidgetInit, AlarmClockMenuWidgetModel,
 };
@@ -265,6 +266,11 @@ pub fn build_widget(
         MenuWidget::Vpn => Box::new(
             VpnMenuWidgetModel::builder()
                 .launch(VpnMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Ai => Box::new(
+            AiMenuWidgetModel::builder()
+                .launch(AiMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::NetworkToggle => Box::new(

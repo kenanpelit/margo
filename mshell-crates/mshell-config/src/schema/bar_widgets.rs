@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
 pub enum BarWidget {
     ActiveWindow,
+    /// AI assistant pill — opens the native streaming chat menu
+    /// (`MenuType::Ai`). Provider / model / key live in Settings → AI.
+    Ai,
     /// Alarm clock pill — alarm-bell glyph that opens the Alarm Clock
     /// menu (alarms list + add/edit + stopwatch). Shows the running
     /// stopwatch time inline when one is going, and a ringing badge
@@ -166,6 +169,7 @@ impl BarWidget {
             BarWidget::MediaPlayer => "Media Player",
             BarWidget::Vpn => "VPN",
             BarWidget::Dns => "DNS",
+            BarWidget::Ai => "AI",
             BarWidget::Ip => "Public IP",
             BarWidget::Network => "Network Console",
             BarWidget::Custom(_) => "Custom Widget",
@@ -226,6 +230,7 @@ impl BarWidget {
             BarWidget::MediaPlayer,
             BarWidget::Vpn,
             BarWidget::Dns,
+            BarWidget::Ai,
             BarWidget::Ip,
             BarWidget::Network,
             BarWidget::Spacer(8),

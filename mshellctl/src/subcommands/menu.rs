@@ -98,6 +98,8 @@ pub enum MenuCommands {
     Vpn,
     /// Toggle the DNS / VPN menu (alias for `vpn`)
     Dns,
+    /// Toggle the AI assistant chat menu
+    Ai,
     /// Toggle the Podman menu
     Podman,
     /// Toggle the Notes Hub menu
@@ -223,6 +225,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Dns => {
             bus_command("Dns").await?;
+        }
+        MenuCommands::Ai => {
+            bus_command("Ai").await?;
         }
         MenuCommands::Podman => {
             bus_command("Podman").await?;

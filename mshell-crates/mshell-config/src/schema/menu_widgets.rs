@@ -64,6 +64,9 @@ pub enum MenuWidget {
     /// auto-connect / quantum-resistant toggles, anti-censorship mode,
     /// and the favourites list. Shells out to the `mvpn` binary.
     Vpn,
+    /// AI assistant menu — a streaming multi-provider chat panel. Config
+    /// (provider / model / key) lives in Settings → AI.
+    Ai,
     NetworkToggle,
     Ip,
     Network,
@@ -160,6 +163,7 @@ impl MenuWidget {
             MenuWidget::MediaPlayer => "Media Player",
             MenuWidget::Dns => "DNS / VPN",
             MenuWidget::Vpn => "VPN",
+            MenuWidget::Ai => "AI Assistant",
             MenuWidget::NetworkToggle => "Network",
             MenuWidget::Ip => "Public IP",
             MenuWidget::Network => "Network Console",
@@ -223,6 +227,7 @@ impl MenuWidget {
             MenuWidget::MediaPlayer,
             MenuWidget::Dns,
             MenuWidget::Vpn,
+            MenuWidget::Ai,
             MenuWidget::NetworkToggle,
             MenuWidget::Ip,
             MenuWidget::Network,

@@ -812,6 +812,7 @@ pub struct Menus {
     pub ufw_menu: Menu,
     pub dns_menu: Menu,
     pub vpn_menu: Menu,
+    pub ai_menu: Menu,
     pub podman_menu: Menu,
     pub notes_menu: Menu,
     pub ip_menu: Menu,
@@ -1092,6 +1093,12 @@ impl Default for Menus {
                 widgets: vec![MenuWidget::Vpn],
                 minimum_width: 430,
                 maximum_height: 0,
+            },
+            ai_menu: Menu {
+                position: Position::TopRight,
+                widgets: vec![MenuWidget::Ai],
+                minimum_width: 460,
+                maximum_height: 560,
             },
             podman_menu: Menu {
                 position: Position::TopRight,

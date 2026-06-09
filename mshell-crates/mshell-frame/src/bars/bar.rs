@@ -193,6 +193,7 @@ pub(crate) enum BarOutput {
     SshSessionsClicked,
     AudioDashboardClicked,
     VpnClicked,
+    AiClicked,
     DnsClicked,
     PodmanClicked,
     NotesClicked,
@@ -1049,6 +1050,14 @@ impl BarModel {
                 LogoutModel::builder()
                     .launch(LogoutInit { orientation })
                     .detach(),
+            ),
+            // AI pill — opens the native streaming chat menu (`MenuType::Ai`).
+            BarWidget::Ai => Box::new(
+                crate::bars::bar_widgets::ai::AiModel::builder()
+                    .launch(crate::bars::bar_widgets::ai::AiInit {})
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::ai::AiOutput::Clicked => BarOutput::AiClicked,
+                    }),
             ),
             // DNS pill — opens the standalone DNS menu (`mshellctl menu dns`).
             BarWidget::Dns => Box::new(

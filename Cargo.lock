@@ -4410,6 +4410,7 @@ dependencies = [
  "futures",
  "gtk4-layer-shell",
  "libc",
+ "mshell-ai",
  "mshell-cache",
  "mshell-clipboard",
  "mshell-common",

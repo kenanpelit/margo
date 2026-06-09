@@ -1,0 +1,40 @@
+@use "../02-functions/index" as *;
+// AI assistant menu — streaming chat panel. Reuses the shared panel-header /
+// card language (DESIGN.md); the chat bubbles are the AI-specific part.
+
+.ai-menu-widget {
+  padding: 0;
+}
+
+.ai-bar-widget.active image {
+  color: var(--primary);
+}
+
+.ai-transcript {
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-low);
+  padding: var(--space-2);
+}
+
+// ── Chat bubbles ────────────────────────────────────────────
+.ai-bubble {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+}
+.ai-bubble-user {
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
+  margin-left: var(--space-5);
+}
+.ai-bubble-ai {
+  background-color: var(--surface-container-high);
+  margin-right: var(--space-5);
+}
+.ai-bubble-role {
+  font-size: var(--font-xs);
+  font-weight: 700;
+  opacity: 0.7;
+}
+.ai-bubble-text {
+  font-size: var(--font-sm);
+}

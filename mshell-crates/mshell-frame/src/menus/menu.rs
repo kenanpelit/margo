@@ -1,4 +1,5 @@
 use crate::menus::builder::build_widget;
+use crate::menus::menu_widgets::ai::ai_menu_widget::{AiMenuWidgetInput, AiMenuWidgetModel};
 use crate::menus::menu_widgets::app_launcher::app_launcher::{AppLauncherInput, AppLauncherModel};
 use crate::menus::menu_widgets::audio_in::audio_in_menu_widget::{
     AudioInMenuWidgetInput, AudioInMenuWidgetModel,
@@ -80,6 +81,7 @@ pub(crate) enum MenuType {
     Ufw,
     Dns,
     Vpn,
+    Ai,
     Podman,
     Notes,
     Ip,
@@ -410,6 +412,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, vpn_menu);
                 effect_min_width!(effects, base_config, sender, vpn_menu);
                 effect_max_height!(effects, base_config, sender, vpn_menu);
+            }
+            MenuType::Ai => {
+                css_class = "ai-menu".to_string();
+                effect_widgets!(effects, base_config, sender, ai_menu);
+                effect_min_width!(effects, base_config, sender, ai_menu);
+                effect_max_height!(effects, base_config, sender, ai_menu);
             }
             MenuType::Podman => {
                 css_class = "podman-menu".to_string();
@@ -782,6 +790,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(VpnMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<AiMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(AiMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =
