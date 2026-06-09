@@ -5,6 +5,7 @@
 //! custom widget that polls `mvpn status --pill`.
 
 mod engine;
+mod ui;
 
 use clap::{Parser, Subcommand};
 use engine::{actions, blocky, diag, favorites, obf, relays, slot, status, timer};
@@ -271,10 +272,7 @@ fn main() {
             println!("blocky: {}", blocky::ensure());
             true
         }
-        Cmd::Menu => {
-            eprintln!("mvpn menu: the GTK panel is not wired up yet (UI phase).");
-            false
-        }
+        Cmd::Menu => ui::run(),
         Cmd::Location(args) => {
             // `mvpn de` / `mvpn us nyc` → pick a random relay there + connect.
             let country = args.first().map(String::as_str).unwrap_or("");

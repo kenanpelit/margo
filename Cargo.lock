@@ -4849,7 +4849,11 @@ name = "mvpn"
 version = "1.0.2"
 dependencies = [
  "anyhow",
+ "async-channel",
  "clap",
+ "glib 0.20.12",
+ "gtk4",
+ "gtk4-layer-shell",
  "serde",
  "serde_json",
  "toml 0.8.23",
