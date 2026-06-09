@@ -69,7 +69,7 @@ pub fn run() -> bool {
 fn build_ui(app: &gtk4::Application) {
     let palette = theme::load();
     let provider = gtk4::CssProvider::new();
-    provider.load_from_data(&theme::css(&palette));
+    provider.load_from_string(&theme::css(&palette));
     if let Some(display) = gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
             &display,
