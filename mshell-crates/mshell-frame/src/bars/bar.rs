@@ -1056,6 +1056,13 @@ impl BarModel {
                     crate::bars::bar_widgets::dns::DnsOutput::Clicked => BarOutput::DnsClicked,
                 },
             )),
+            // Mullvad VPN pill — drives the `mvpn` binary; handles its own
+            // click (opens `mvpn menu`) so it needs no frame menu wiring.
+            BarWidget::Vpn => Box::new(
+                crate::bars::bar_widgets::vpn::VpnModel::builder()
+                    .launch(crate::bars::bar_widgets::vpn::VpnInit {})
+                    .detach(),
+            ),
             BarWidget::Ip => Box::new(IpModel::builder().launch(IpInit {}).forward(
                 sender.output_sender(),
                 |msg| match msg {

@@ -87,6 +87,8 @@ pub enum BarWidget {
     Setup,
     MediaPlayer,
     Dns,
+    /// Mullvad VPN pill — native status pill driving the `mvpn` binary.
+    Vpn,
     Ip,
     Network,
     /// A user-defined pill; the `String` is the `custom_widgets` entry name.
@@ -160,6 +162,7 @@ impl BarWidget {
             BarWidget::Setup => "Setup",
             BarWidget::MediaPlayer => "Media Player",
             BarWidget::Dns => "DNS / VPN",
+            BarWidget::Vpn => "Mullvad VPN",
             BarWidget::Ip => "Public IP",
             BarWidget::Network => "Network Console",
             BarWidget::Custom(_) => "Custom Widget",
@@ -219,6 +222,7 @@ impl BarWidget {
             BarWidget::Setup,
             BarWidget::MediaPlayer,
             BarWidget::Dns,
+            BarWidget::Vpn,
             BarWidget::Ip,
             BarWidget::Network,
             BarWidget::Spacer(8),
