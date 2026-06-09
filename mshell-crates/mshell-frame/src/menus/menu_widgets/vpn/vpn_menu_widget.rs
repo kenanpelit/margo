@@ -32,6 +32,8 @@ pub(crate) struct Fav {
 
 pub(crate) struct VpnMenuWidgetModel {
     connected: bool,
+    /// Currently-connected relay id (empty when down).
+    connected_relay: String,
     lockdown: bool,
     autoconnect: bool,
     quantum: bool,
@@ -47,6 +49,7 @@ pub(crate) struct VpnMenuWidgetModel {
     quantum_sw: gtk::Switch,
     obf_drop: gtk::DropDown,
     fav_box: gtk::Box,
+    expiry_label: gtk::Label,
     /// Lazy-poll gates — see `ParentRevealChanged`.
     poll_started: bool,
     visible: Arc<AtomicBool>,
@@ -96,11 +99,16 @@ pub(crate) enum VpnMenuWidgetCommandOutput {
     Loaded {
         status: String,
         connected: bool,
+        /// Currently-connected relay id (empty when down) — used to mark the
+        /// matching favourites row as active.
+        relay: String,
         favs: Vec<Fav>,
         lockdown: bool,
         autoconnect: bool,
         quantum: bool,
         obf: String,
+        /// Account expiry date (`YYYY-MM-DD`), from `mvpn toggles`.
+        expiry: String,
     },
 }
 
@@ -229,6 +237,15 @@ impl Component for VpnMenuWidgetModel {
                 },
             },
 
+            // Account expiry — small dim line, hidden until known.
+            #[local_ref]
+            expiry_label_widget -> gtk::Label {
+                add_css_class: "label-small",
+                add_css_class: "dim-label",
+                set_xalign: 0.0,
+                set_margin_top: 2,
+            },
+
             // ── Footer ──────────────────────────────────────────
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
@@ -323,6 +340,8 @@ impl Component for VpnMenuWidgetModel {
         }
 
         let fav_box_widget = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        let expiry_label_widget = gtk::Label::new(None);
+        expiry_label_widget.set_visible(false);
 
         // Embedded DNS section: Blocky / Default / presets, no VPN chrome.
         let dns = DnsMenuWidgetModel::builder()
@@ -331,6 +350,7 @@ impl Component for VpnMenuWidgetModel {
 
         let model = VpnMenuWidgetModel {
             connected: false,
+            connected_relay: String::new(),
             lockdown: false,
             autoconnect: false,
             quantum: false,
@@ -344,6 +364,7 @@ impl Component for VpnMenuWidgetModel {
             quantum_sw: quantum_sw.clone(),
             obf_drop: obf_drop.clone(),
             fav_box: fav_box_widget.clone(),
+            expiry_label: expiry_label_widget.clone(),
             poll_started: false,
             visible: Arc::new(AtomicBool::new(false)),
             dns,
@@ -422,13 +443,16 @@ impl Component for VpnMenuWidgetModel {
         let VpnMenuWidgetCommandOutput::Loaded {
             status,
             connected,
+            relay,
             favs,
             lockdown,
             autoconnect,
             quantum,
             obf,
+            expiry,
         } = message;
         self.connected = connected;
+        self.connected_relay = relay;
         self.lockdown = lockdown;
         self.autoconnect = autoconnect;
         self.quantum = quantum;
@@ -455,7 +479,15 @@ impl Component for VpnMenuWidgetModel {
             self.obf_drop.set_selected(sel);
         }
 
-        rebuild_favs(&self.fav_box, &self.favs, &sender);
+        // Account expiry line — hidden until known / unparseable.
+        let show_expiry = !expiry.is_empty() && expiry != "—";
+        if show_expiry {
+            self.expiry_label
+                .set_label(&format!("Account expires {expiry}"));
+        }
+        self.expiry_label.set_visible(show_expiry);
+
+        rebuild_favs(&self.fav_box, &self.favs, &self.connected_relay, &sender);
     }
 }
 
@@ -499,7 +531,14 @@ fn bool_arg(on: bool) -> String {
 }
 
 /// Clear + repopulate the favourites list (relay + ping, per-row connect/remove).
-fn rebuild_favs(b: &gtk::Box, favs: &[Fav], sender: &ComponentSender<VpnMenuWidgetModel>) {
+/// The row whose relay is `connected_relay` is marked active: its button reads
+/// "Connected" and the row + button carry the `.active` accent class.
+fn rebuild_favs(
+    b: &gtk::Box,
+    favs: &[Fav],
+    connected_relay: &str,
+    sender: &ComponentSender<VpnMenuWidgetModel>,
+) {
     while let Some(c) = b.first_child() {
         b.remove(&c);
     }
@@ -511,15 +550,23 @@ fn rebuild_favs(b: &gtk::Box, favs: &[Fav], sender: &ComponentSender<VpnMenuWidg
         return;
     }
     for f in favs {
+        let is_active = !connected_relay.is_empty() && f.relay == connected_relay;
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         row.add_css_class("ok-button-surface");
+        if is_active {
+            row.add_css_class("active");
+        }
         let name = gtk::Label::new(Some(&f.relay));
         name.set_xalign(0.0);
         name.set_hexpand(true);
         let ping = gtk::Label::new(Some(&f.ping));
         ping.add_css_class("label-small");
-        let connect = gtk::Button::with_label("Connect");
+        let connect = gtk::Button::with_label(if is_active { "Connected" } else { "Connect" });
         connect.add_css_class("ok-button-cell");
+        if is_active {
+            connect.add_css_class("active");
+            connect.set_sensitive(false);
+        }
         let remove = gtk::Button::from_icon_name("user-trash-symbolic");
         {
             let (s, r) = (sender.clone(), f.relay.clone());
@@ -576,8 +623,12 @@ fn start_polling(sender: &ComponentSender<VpnMenuWidgetModel>, visible: Arc<Atom
 async fn load() -> VpnMenuWidgetCommandOutput {
     let status_raw = capture(&["status", "--json"]).await;
     let connected = status_raw.contains("\"connected\":true");
+    let relay = if connected {
+        json_str(&status_raw, "relay")
+    } else {
+        String::new()
+    };
     let status = if connected {
-        let relay = json_str(&status_raw, "relay");
         let loc = json_str(&status_raw, "location");
         format!(
             "Connected · {relay}{}",
@@ -602,6 +653,7 @@ async fn load() -> VpnMenuWidgetCommandOutput {
     VpnMenuWidgetCommandOutput::Loaded {
         status,
         connected,
+        relay,
         favs,
         lockdown: kv("lockdown") == "on",
         autoconnect: kv("autoconnect") == "on",
@@ -610,6 +662,7 @@ async fn load() -> VpnMenuWidgetCommandOutput {
             let m = kv("obf");
             if m.is_empty() { "auto".to_string() } else { m }
         },
+        expiry: kv("expiry"),
     }
 }
 

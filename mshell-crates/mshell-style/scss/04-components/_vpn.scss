@@ -30,6 +30,23 @@
   opacity: 1;
 }
 
+// ── Bar pill country label ──────────────────────────────────
+.vpn-bar-label {
+  font-size: var(--font-xs);
+  font-weight: 600;
+}
+
+// ── Favourites: the currently-connected relay's row ─────────
+row.active.ok-button-surface,
+.vpn-menu-widget .active.ok-button-surface {
+  background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+}
+.vpn-menu-widget button.ok-button-cell.active {
+  background-color: var(--primary);
+  color: var(--on-primary);
+  opacity: 1;
+}
+
 // ── Collapsible DNS section (embedded DnsMenuWidget) ─────────
 .vpn-dns-expander {
   font-weight: 600;

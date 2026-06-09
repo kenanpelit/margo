@@ -299,6 +299,7 @@ fn main() {
             println!("quantum={}", on(actions::quantum_on()));
             let m = obf::current();
             println!("obf={}", if m.is_empty() { "auto" } else { &m });
+            println!("expiry={}", status::account_expiry());
             true
         }
         Cmd::Menu => ui::run(),

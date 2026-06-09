@@ -9,7 +9,7 @@
 //! anti-censorship, and favourites. Right-click toggles the tunnel
 //! (`mvpn toggle`).
 
-use relm4::gtk::prelude::{ButtonExt, GestureSingleExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 
@@ -72,10 +72,22 @@ impl Component for VpnModel {
                     sender.input(VpnInput::OpenMenu);
                 },
 
-                #[name="image"]
-                gtk::Image {
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 4,
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
+
+                    #[name="image"]
+                    gtk::Image {
+                        set_valign: gtk::Align::Center,
+                    },
+                    // Country label — shown only while connected (see apply_visual).
+                    #[name="label"]
+                    gtk::Label {
+                        add_css_class: "vpn-bar-label",
+                        set_valign: gtk::Align::Center,
+                    },
                 }
             }
         }
@@ -118,7 +130,7 @@ impl Component for VpnModel {
             state: VpnState::default(),
         };
         let widgets = view_output!();
-        apply_visual(&widgets.image, &root, &model.state);
+        apply_visual(&widgets.image, &widgets.label, &root, &model.state);
         ComponentParts { model, widgets }
     }
 
@@ -153,20 +165,35 @@ impl Component for VpnModel {
             VpnCommandOutput::Refreshed(state) => {
                 if self.state != state {
                     self.state = state;
-                    apply_visual(&widgets.image, root, &self.state);
+                    apply_visual(&widgets.image, &widgets.label, root, &self.state);
                 }
             }
         }
     }
 }
 
-fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &VpnState) {
+/// The country half of a Mullvad "Visible location" string
+/// ("Sweden, Stockholm. IPv4: …" → "Sweden").
+fn country_of(location: &str) -> &str {
+    location.split(',').next().unwrap_or("").trim()
+}
+
+fn apply_visual(image: &gtk::Image, label: &gtk::Label, root: &gtk::Box, s: &VpnState) {
     let icon = if s.connected {
         "network-vpn-symbolic"
     } else {
         "network-vpn-disconnected-symbolic"
     };
     image.set_icon_name(Some(icon));
+
+    // Country label beside the icon while connected (hidden when down).
+    let country = if s.connected {
+        country_of(&s.location)
+    } else {
+        ""
+    };
+    label.set_label(country);
+    label.set_visible(!country.is_empty());
 
     let tooltip = if s.connected {
         if s.location.is_empty() {
