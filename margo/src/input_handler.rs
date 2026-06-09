@@ -464,6 +464,12 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                             state.overview_cycle_pending = true;
                             state.overview_cycle_modifier_mask = snapshot;
                         }
+                        // Same muscle-memory for the MRU switcher (Super+Tab):
+                        // snapshot the held modifier so the release handler
+                        // knows when to commit the pick.
+                        if matches!(action.as_str(), "mru_next" | "mru_prev" | "mruwindow") {
+                            state.mru_open_mask = smithay_mods_to_margo(modifiers);
+                        }
                         crate::dispatch::dispatch_action(state, &action, &arg);
                         return FilterResult::Intercept(());
                     }
@@ -472,6 +478,12 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                     // keybind claimed the press, so user binds and the
                     // toggle key still win: Esc closes, Up/Down move the
                     // selection, Enter activates the selected tag.
+                    // MRU switcher: Esc cancels (re-focus the original window).
+                    if state.is_mru_open() && keysym.raw() == 0xff1b {
+                        state.mru_cancel();
+                        return FilterResult::Intercept(());
+                    }
+
                     if state.is_scroller_overview_open() {
                         const ESC: u32 = 0xff1b;
                         const UP: u32 = 0xff52;
@@ -535,6 +547,35 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                                 state.overview_activate_styled();
                                 return FilterResult::Intercept(());
                             }
+                        }
+                    }
+                }
+
+                // Same release-to-commit for the MRU window switcher. When the
+                // last held modifier is let go, lock in the highlighted window.
+                if key_state == KeyState::Released
+                    && state.is_mru_open()
+                    && state
+                        .mru_switcher
+                        .as_ref()
+                        .is_some_and(|s| !s.modifier_mask.is_empty())
+                {
+                    let released_bit = handle
+                        .raw_syms()
+                        .iter()
+                        .find_map(|s| released_modifier_bit(s.raw()));
+                    if let Some(bit) = released_bit {
+                        let empty = if let Some(sw) = state.mru_switcher.as_mut() {
+                            if sw.modifier_mask.contains(bit) {
+                                sw.modifier_mask.remove(bit);
+                            }
+                            sw.modifier_mask.is_empty()
+                        } else {
+                            false
+                        };
+                        if empty {
+                            state.mru_confirm();
+                            return FilterResult::Intercept(());
                         }
                     }
                 }

@@ -16,6 +16,7 @@ mod focus_target;
 mod frame_clock_sched;
 mod groups;
 pub(crate) use groups::GroupLock;
+pub mod mru_switcher;
 mod overview;
 mod scratchpad;
 pub(crate) use scratchpad::MatchOp;
@@ -718,6 +719,16 @@ pub struct MargoState {
     pub overview_cycle_pending: bool,
     pub overview_cycle_modifier_mask: margo_config::Modifiers,
 
+    /// niri-style MRU window switcher (Super+Tab). `Some` while open. See
+    /// `state/mru_switcher.rs`.
+    pub mru_switcher: Option<mru_switcher::MruSwitcher>,
+    /// Modifier mask snapshotted by the input handler when an `mru_next/prev`
+    /// keybind fires, consumed when the switcher opens (release-to-commit).
+    pub mru_open_mask: margo_config::Modifiers,
+    /// Monotonic focus counter; each focused client records the current value
+    /// as its `last_focus_serial`, giving a stable MRU order.
+    pub focus_counter: u64,
+
     /// niri-style scroller overview: a zoomed-out, scrollable strip of
     /// per-tag mini-desktops. Entirely separate from the classic grid
     /// overview above (`is_overview` / `overview_*`) — `None` when
@@ -1096,6 +1107,9 @@ impl MargoState {
             config_error_overlay_until: None,
             config_error_overlay: crate::render::config_error_overlay::ConfigErrorOverlay::new(),
             overview_cycle_pending: false,
+            mru_switcher: None,
+            mru_open_mask: margo_config::Modifiers::empty(),
+            focus_counter: 0,
             overview_cycle_modifier_mask: margo_config::Modifiers::empty(),
             scroller_overview: None,
             hot_corner_dwelling: None,
@@ -2543,6 +2557,9 @@ impl MargoState {
         if let Some(FocusTarget::Window(w)) = &target {
             let new_idx = self.clients.iter().position(|c| &c.window == w);
             if let Some(idx) = new_idx {
+                // MRU recency key for the Super+Tab switcher.
+                self.focus_counter += 1;
+                self.clients[idx].last_focus_serial = self.focus_counter;
                 let mon = self.clients[idx].monitor;
                 if mon < self.monitors.len() {
                     let hist = &mut self.monitors[mon].focus_history;
@@ -3893,6 +3910,7 @@ impl MargoState {
             }
             let window = self.clients[idx].window.clone();
             let group = self.group_of(idx);
+            self.mru_remove_window(&window);
             self.space.unmap_elem(&window);
             self.clients.remove(idx);
             self.shift_indices_after_remove(idx);

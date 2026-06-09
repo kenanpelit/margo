@@ -404,6 +404,7 @@ impl XdgShellHandler for MargoState {
             // Capture the group before the client vanishes so we can
             // repair the one-active-member invariant afterwards.
             let group = self.group_of(idx);
+            self.mru_remove_window(&window);
             self.space.unmap_elem(&window);
             self.clients.remove(idx);
             self.shift_indices_after_remove(idx);

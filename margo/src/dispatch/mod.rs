@@ -44,6 +44,7 @@ use tracing::debug;
 
 use crate::layout::LayoutId;
 use crate::state::MargoState;
+use crate::state::mru_switcher::MruDirection;
 
 mod sendkey;
 
@@ -472,6 +473,18 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             }
         }
         "focusstack" | "focusdir" => state.focus_stack(direction_arg(arg)),
+        // niri-style MRU window switcher (Super+Tab). `arg.v` = scope
+        // (all|output|workspace), `arg.v2` = filter (all|appid).
+        "mru_next" | "mruwindow" => state.mru_advance(
+            mru_scope_arg(arg),
+            mru_filter_arg(arg),
+            MruDirection::Forward,
+        ),
+        "mru_prev" => state.mru_advance(
+            mru_scope_arg(arg),
+            mru_filter_arg(arg),
+            MruDirection::Backward,
+        ),
         "exchange_client" | "smartmovewin" => state.exchange_stack(direction_arg(arg)),
         "view" => state.view_tag(tag_arg(arg)),
         "toggleview" => state.toggle_view_tag(tag_arg(arg)),
@@ -771,6 +784,23 @@ fn tag_arg(arg: &Arg) -> u32 {
 
 fn float_arg(arg: &Arg) -> f32 {
     if arg.f != 0.0 { arg.f } else { arg.i as f32 }
+}
+
+fn mru_scope_arg(arg: &Arg) -> crate::state::mru_switcher::MruScope {
+    use crate::state::mru_switcher::MruScope;
+    match arg.v.as_deref() {
+        Some("output") => MruScope::Output,
+        Some("workspace") => MruScope::Workspace,
+        _ => MruScope::All,
+    }
+}
+
+fn mru_filter_arg(arg: &Arg) -> crate::state::mru_switcher::MruFilter {
+    use crate::state::mru_switcher::MruFilter;
+    match arg.v2.as_deref() {
+        Some("appid") => MruFilter::AppId,
+        _ => MruFilter::All,
+    }
 }
 
 fn direction_arg(arg: &Arg) -> i32 {

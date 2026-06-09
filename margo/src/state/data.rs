@@ -112,6 +112,9 @@ pub struct MargoClient {
     pub canvas_geom: [Rect; MAX_TAGS],
     pub tags: u32,
     pub old_tags: u32,
+    /// MRU recency key (monotonic `focus_counter` at last focus). 0 = never
+    /// focused. Drives the Super+Tab window switcher's ordering.
+    pub last_focus_serial: u64,
     pub is_floating: bool,
     /// Whether the client is in any fullscreen mode. Kept as a bool
     /// for backward-compat; the *kind* lives in `fullscreen_mode` and
@@ -229,6 +232,7 @@ impl MargoClient {
             canvas_geom: [Rect::default(); MAX_TAGS],
             tags,
             old_tags: 0,
+            last_focus_serial: 0,
             is_floating: false,
             is_fullscreen: false,
             fullscreen_mode: FullscreenMode::Off,
