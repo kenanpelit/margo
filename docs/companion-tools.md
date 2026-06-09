@@ -8,8 +8,10 @@ Margo ships several binaries that share its workspace:
 | **`mctl`** | IPC + dispatch (Swiss-army CLI) |
 | **`mlayout`** | named monitor profiles |
 | **`mscreenshot`** | screen / region / window capture |
+| **`mvpn`** | native Mullvad VPN control (CLI + the DNS/VPN bar menu) |
 | **`mplay`** | mpv companion — window control, video wallpaper, media keys |
 | **`mpower`** | automatic power-profile daemon + manual `cycle` / `set` |
+| **`mkeys`** | on-screen keyboard (layer-shell, virtual-keyboard protocol) |
 | **`mlogind`** | TUI login / display manager (matugen-themed) |
 
 Run any of them with `--help` for the full command surface.
@@ -197,6 +199,60 @@ Each tick (default 5 s) it reads the active profile, AC/battery from `/sys`, and
 - **Config.** `~/.config/margo/mpower.toml`, re-read every tick — edits (from the settings page or by hand) go live with no restart. A missing or partial file is filled from the defaults, so you only write the keys you want to change. The full key table is in [`mpower/README.md`](https://github.com/kenanpelit/margo/blob/main/mpower/README.md).
 - **margo-only.** The shipped `mpower.service` carries `ConditionEnvironment=XDG_CURRENT_DESKTOP=margo`, so it only runs under a margo session and never fights another compositor's auto-profile tool over `powerprofilesctl`. Other compositors can keep their own daemon with the inverse condition.
 - **Lean.** No D-Bus/UPower client — sysfs polling + a `powerprofilesctl` shell-out, with in-memory state (no state file).
+
+## `mvpn`
+
+Native **Mullvad VPN** control — a GTK-free engine wrapping the `mullvad` CLI
+plus a GTK4 layer-shell panel, replacing the old `osc-mullvad` script and the
+`mullvad` WASM plugin. The daemon + `~/.mullvad/{favorites.txt,slot.state}` are
+the source of truth, so the CLI and the shell both call straight into the same
+engine (no extra service).
+
+```bash
+mvpn                       # connection status (relay · country, city · protocol)
+mvpn status --json         # machine-readable; --pill for the bar feed, -v verbose
+mvpn connect / disconnect / toggle / reconnect
+mvpn de            ;  mvpn us nyc      # connect by country / country+city
+mvpn random [cc]                       # a random relay (optionally in a country)
+mvpn fastest [cc]                      # ping EVERY relay in <cc>, connect to the
+                                       #   genuinely fastest (prints each ping)
+mvpn fastest-fav [cc]                  # same sweep, but also save the winner
+mvpn fav add | remove <relay> | list | connect | refresh [cc]
+mvpn obf [auto|off|udp2tcp|shadowsocks|quic|cycle|hunt443]   # anti-censorship
+mvpn lockdown on|off   ;  mvpn auto-connect on|off  ;  mvpn quantum
+mvpn slot <recycle|status|whoami|list|revoke|disconnect>     # multi-machine slots
+mvpn timer <start N|stop|status>       # auto-switch relay every N minutes
+mvpn test          ;  mvpn split       # leak test · split-tunnel processes
+mvpn ensure                            # drive the blocky DNS guard from VPN state
+```
+
+- **Notifications.** connect / disconnect / toggle / random / fastest raise a
+  desktop toast with the resulting relay + location (silence with
+  `MVPN_NO_NOTIFY=1`).
+- **Bar pill + menu.** The **DNS / VPN** bar pill (`Vpn` widget) is accent-tinted
+  when the tunnel is up; left-click opens the shell's native layer-shell VPN
+  menu (connect / random / fastest / favourites + lockdown / auto-connect /
+  quantum / anti-censorship, plus a collapsible **DNS** section for the Blocky
+  guard and DNS presets), right-click toggles the tunnel. Open it from a
+  terminal with `mshellctl menu vpn`. Full relay management also lives in
+  **Settings → VPN**.
+- **osc-mullvad compatible.** Reads the existing `favorites.txt` / `slot.state`
+  unchanged and honours the `OSC_MULLVAD_*` env overrides.
+
+## `mkeys`
+
+A standalone **on-screen keyboard** (a wkeys-style port): a GTK4 layer-shell
+surface that types into the focused window via `zwp_virtual_keyboard`. Toggled
+over its own socket, themed from the matugen palette, with en/tr layouts.
+
+```bash
+mkeys            # show (or focus) the keyboard
+mkeys toggle     # show / hide — bind this, or use the bar pill / Settings page
+mkeys hide
+```
+
+Config lives in `~/.config/margo/mkeys.toml`; a bar pill and a **Settings →
+On-screen keyboard** page expose the toggle + layout.
 
 ## Shell completions
 
