@@ -194,6 +194,7 @@ pub(crate) enum BarOutput {
     SshSessionsClicked,
     AudioDashboardClicked,
     DnsClicked,
+    VpnClicked,
     PodmanClicked,
     NotesClicked,
     IpClicked,
@@ -1057,14 +1058,14 @@ impl BarModel {
                 },
             )),
             // Mullvad VPN pill — drives the `mvpn` binary for status/toggle,
-            // but its left-click opens the shell's native layer-shell "DNS /
-            // VPN" menu (shared with the DNS pill) instead of a standalone
-            // popup, so it reuses the existing `DnsClicked` frame wiring.
+            // but its left-click opens the shell's own native layer-shell VPN
+            // menu (`MenuType::Vpn`) instead of a standalone popup, so it
+            // routes through `VpnClicked` → `ToggleVpnMenu`.
             BarWidget::Vpn => Box::new(
                 crate::bars::bar_widgets::vpn::VpnModel::builder()
                     .launch(crate::bars::bar_widgets::vpn::VpnInit {})
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::vpn::VpnOutput::Clicked => BarOutput::DnsClicked,
+                        crate::bars::bar_widgets::vpn::VpnOutput::Clicked => BarOutput::VpnClicked,
                     }),
             ),
             BarWidget::Ip => Box::new(IpModel::builder().launch(IpInit {}).forward(

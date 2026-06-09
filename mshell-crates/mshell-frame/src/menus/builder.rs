@@ -102,6 +102,7 @@ use crate::menus::menu_widgets::ufw::ufw_menu_widget::{UfwMenuWidgetInit, UfwMen
 use crate::menus::menu_widgets::valent::valent_menu_widget::{
     ValentMenuWidgetInit, ValentMenuWidgetModel, ValentMenuWidgetOutput,
 };
+use crate::menus::menu_widgets::vpn::vpn_menu_widget::{VpnMenuWidgetInit, VpnMenuWidgetModel};
 use crate::menus::menu_widgets::wallpaper::wallpaper_menu_widget::{
     WallpaperMenuWidgetInit, WallpaperMenuWidgetModel,
 };
@@ -259,6 +260,11 @@ pub fn build_widget(
         MenuWidget::Dns => Box::new(
             DnsMenuWidgetModel::builder()
                 .launch(DnsMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Vpn => Box::new(
+            VpnMenuWidgetModel::builder()
+                .launch(VpnMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::NetworkToggle => Box::new(

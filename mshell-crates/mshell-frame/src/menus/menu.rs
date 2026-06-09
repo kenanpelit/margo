@@ -47,6 +47,7 @@ use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
     TwilightMenuWidgetInput, TwilightMenuWidgetModel,
 };
 use crate::menus::menu_widgets::ufw::ufw_menu_widget::{UfwMenuWidgetInput, UfwMenuWidgetModel};
+use crate::menus::menu_widgets::vpn::vpn_menu_widget::{VpnMenuWidgetInput, VpnMenuWidgetModel};
 use crate::menus::menu_widgets::wallpaper::wallpaper_menu_widget::{
     WallpaperMenuWidgetInput, WallpaperMenuWidgetModel,
 };
@@ -78,6 +79,7 @@ pub(crate) enum MenuType {
     Wizard,
     Ufw,
     Dns,
+    Vpn,
     Podman,
     Notes,
     Ip,
@@ -402,6 +404,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, dns_menu);
                 effect_min_width!(effects, base_config, sender, dns_menu);
                 effect_max_height!(effects, base_config, sender, dns_menu);
+            }
+            MenuType::Vpn => {
+                css_class = "vpn-menu".to_string();
+                effect_widgets!(effects, base_config, sender, vpn_menu);
+                effect_min_width!(effects, base_config, sender, vpn_menu);
+                effect_max_height!(effects, base_config, sender, vpn_menu);
             }
             MenuType::Podman => {
                 css_class = "podman-menu".to_string();
@@ -766,6 +774,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(DnsMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<VpnMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(VpnMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =

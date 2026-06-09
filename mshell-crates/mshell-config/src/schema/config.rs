@@ -811,6 +811,7 @@ pub struct Menus {
     pub screenshare_menu: ScreenshareMenu,
     pub ufw_menu: Menu,
     pub dns_menu: Menu,
+    pub vpn_menu: Menu,
     pub podman_menu: Menu,
     pub notes_menu: Menu,
     pub ip_menu: Menu,
@@ -1084,6 +1085,12 @@ impl Default for Menus {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Dns],
                 minimum_width: 420,
+                maximum_height: 0,
+            },
+            vpn_menu: Menu {
+                position: Position::TopRight,
+                widgets: vec![MenuWidget::Vpn],
+                minimum_width: 430,
                 maximum_height: 0,
             },
             podman_menu: Menu {

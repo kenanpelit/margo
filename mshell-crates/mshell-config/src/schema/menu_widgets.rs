@@ -59,6 +59,11 @@ pub enum MenuWidget {
     MargoDock,
     MediaPlayer,
     Dns,
+    /// VPN menu — the full Mullvad control surface the `mvpn` bar pill
+    /// opens: status hero, connect / random / fastest, lockdown /
+    /// auto-connect / quantum-resistant toggles, anti-censorship mode,
+    /// and the favourites list. Shells out to the `mvpn` binary.
+    Vpn,
     NetworkToggle,
     Ip,
     Network,
@@ -154,6 +159,7 @@ impl MenuWidget {
             MenuWidget::MargoDock => "mdock",
             MenuWidget::MediaPlayer => "Media Player",
             MenuWidget::Dns => "DNS / VPN",
+            MenuWidget::Vpn => "VPN",
             MenuWidget::NetworkToggle => "Network",
             MenuWidget::Ip => "Public IP",
             MenuWidget::Network => "Network Console",
@@ -216,6 +222,7 @@ impl MenuWidget {
             MenuWidget::MargoLayout,
             MenuWidget::MediaPlayer,
             MenuWidget::Dns,
+            MenuWidget::Vpn,
             MenuWidget::NetworkToggle,
             MenuWidget::Ip,
             MenuWidget::Network,

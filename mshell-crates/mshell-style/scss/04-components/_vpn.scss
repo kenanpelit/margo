@@ -1,0 +1,31 @@
+@use "../02-functions/index" as *;
+// VPN menu widget (`MenuType::Vpn`) — the native Mullvad control surface the
+// `mvpn` bar pill opens. Reuses the shared panel-header / card / `ok-button-*`
+// language (DESIGN.md) so it matches the DNS/VPN and other layer-shell menus;
+// only the connection badge is VPN-specific.
+
+.vpn-menu-widget {
+  padding: 0;
+}
+
+// ── Bar pill icon tinting ────────────────────────────────────
+// (the pill carries `.secure` when the tunnel is up — see vpn.rs)
+.vpn-bar-widget.secure image {
+  color: var(--primary);
+}
+
+// ── Connection badge (Connected / Idle) ─────────────────────
+.vpn-badge {
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-pill);
+  font-weight: 600;
+  font-size: 0.85em;
+  background-color: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+}
+.vpn-badge.ok {
+  background-color: var(--primary);
+  color: var(--on-primary);
+  opacity: 1;
+}

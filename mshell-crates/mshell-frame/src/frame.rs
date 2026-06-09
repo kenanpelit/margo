@@ -42,6 +42,7 @@ const DOCK_MENU: &str = "dock";
 const CONTROL_CENTER_MENU: &str = "control_center";
 const SSH_MENU: &str = "ssh_sessions";
 const NDNS_MENU: &str = "dns";
+const NVPN_MENU: &str = "vpn";
 const NPODMAN_MENU: &str = "podman";
 const NNOTES_MENU: &str = "notes";
 const NPLUGIN_PANEL_MENU: &str = "plugin-panel";
@@ -108,6 +109,7 @@ pub struct Frame {
     control_center_menu: Controller<MenuModel>,
     ssh_menu: Controller<MenuModel>,
     dns_menu: Controller<MenuModel>,
+    vpn_menu: Controller<MenuModel>,
     podman_menu: Controller<MenuModel>,
     notes_menu: Controller<MenuModel>,
     /// First-class menu hosting whichever plugin WASM panel is opened.
@@ -217,6 +219,7 @@ pub enum FrameInput {
     ToggleControlCenterMenu,
     ToggleSshSessionsMenu,
     ToggleDnsMenu,
+    ToggleVpnMenu,
     TogglePodmanMenu,
     ToggleNotesMenu,
     /// Open the first-class plugin-panel menu hosting a plugin's WASM panel,
@@ -822,6 +825,7 @@ impl Component for Frame {
         let control_center_menu = Self::build_menu(&sender, MenuType::ControlCenter);
         let ssh_menu = Self::build_menu(&sender, MenuType::SshSessions);
         let dns_menu = Self::build_menu(&sender, MenuType::Dns);
+        let vpn_menu = Self::build_menu(&sender, MenuType::Vpn);
         let podman_menu = Self::build_menu(&sender, MenuType::Podman);
         let notes_menu = Self::build_menu(&sender, MenuType::Notes);
         let plugin_panel_menu = Self::build_menu(&sender, MenuType::PluginPanel);
@@ -922,6 +926,7 @@ impl Component for Frame {
             let _ = pos!(dock_menu);
             let _ = pos!(control_center_menu);
             let _ = pos!(ssh_menu);
+            let _ = pos!(vpn_menu);
             let _ = pos!(margo_layout_menu);
             sender_clone.input(FrameInput::RepositionMenus(
                 clock_menu_position,
@@ -1012,6 +1017,7 @@ impl Component for Frame {
             control_center_menu,
             ssh_menu,
             dns_menu,
+            vpn_menu,
             podman_menu,
             notes_menu,
             plugin_panel_menu,
@@ -1245,6 +1251,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleDnsMenu => {
                 self.toggle_menu(NDNS_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleVpnMenu => {
+                self.toggle_menu(NVPN_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::TogglePodmanMenu => {
@@ -1578,6 +1588,11 @@ impl Component for Frame {
                     .unwrap_or_default();
 
                 self.dns_menu
+                    .sender()
+                    .send(MenuInput::RevealChanged(false))
+                    .unwrap_or_default();
+
+                self.vpn_menu
                     .sender()
                     .send(MenuInput::RevealChanged(false))
                     .unwrap_or_default();
@@ -1972,6 +1987,11 @@ impl Frame {
             .send(MenuInput::RevealChanged(name == NDNS_MENU && now_visible))
             .unwrap_or_default();
 
+        self.vpn_menu
+            .sender()
+            .send(MenuInput::RevealChanged(name == NVPN_MENU && now_visible))
+            .unwrap_or_default();
+
         self.ufw_menu
             .sender()
             .send(MenuInput::RevealChanged(name == NUFW_MENU && now_visible))
@@ -2320,6 +2340,13 @@ impl Frame {
             .position()
             .get();
         let dns_menu_widget: Widget = self.dns_menu.widget().clone().upcast();
+        let vpn_menu_widget: Widget = self.vpn_menu.widget().clone().upcast();
+        let vpn_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .vpn_menu()
+            .position()
+            .get();
         let podman_menu_widget: Widget = self.podman_menu.widget().clone().upcast();
         let notes_menu_widget: Widget = self.notes_menu.widget().clone().upcast();
         let plugin_panel_menu_widget: Widget = self.plugin_panel_menu.widget().clone().upcast();
@@ -2459,6 +2486,7 @@ impl Frame {
         );
         Self::add_to_stack(widgets, &ssh_menu_widget, SSH_MENU, &ssh_menu_position);
         Self::add_to_stack(widgets, &dns_menu_widget, NDNS_MENU, &dns_menu_position);
+        Self::add_to_stack(widgets, &vpn_menu_widget, NVPN_MENU, &vpn_menu_position);
         Self::add_to_stack(
             widgets,
             &podman_menu_widget,
@@ -2604,6 +2632,7 @@ impl Frame {
                 BarOutput::ControlCenterClicked => FrameInput::ToggleControlCenterMenu,
                 BarOutput::SshSessionsClicked => FrameInput::ToggleSshSessionsMenu,
                 BarOutput::DnsClicked => FrameInput::ToggleDnsMenu,
+                BarOutput::VpnClicked => FrameInput::ToggleVpnMenu,
                 BarOutput::PodmanClicked => FrameInput::TogglePodmanMenu,
                 BarOutput::NotesClicked => FrameInput::ToggleNotesMenu,
                 BarOutput::PluginPanelClicked {

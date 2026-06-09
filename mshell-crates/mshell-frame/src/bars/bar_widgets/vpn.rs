@@ -2,11 +2,12 @@
 //!
 //! Polls `mvpn status --json` every few seconds; shows a shield icon tinted
 //! with the accent (`secure` class) when the tunnel is up, with the relay +
-//! location in the tooltip. Left-click opens the native, layer-shell "DNS /
-//! VPN" menu (the frame toggles it via `VpnOutput::Clicked` → just like the
-//! DNS pill — no separate `mvpn menu` popup); right-click toggles the tunnel
-//! (`mvpn toggle`). The richer relay management (favourites, fastest,
-//! anti-censorship, account/device) lives in Settings → VPN.
+//! location in the tooltip. Left-click opens the shell's own native,
+//! layer-shell VPN menu (`MenuType::Vpn` — toggled via `VpnOutput::Clicked`,
+//! no separate `mvpn menu` popup), which carries the full mvpn control set:
+//! connect / random / fastest, lockdown / auto-connect / quantum toggles,
+//! anti-censorship, and favourites. Right-click toggles the tunnel
+//! (`mvpn toggle`).
 
 use relm4::gtk::prelude::{ButtonExt, GestureSingleExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
