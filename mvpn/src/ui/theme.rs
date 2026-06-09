@@ -18,6 +18,8 @@ pub struct Palette {
     pub on_primary: String,
     pub success: String,
     pub danger: String,
+    /// Menu surface opacity (DESIGN.md §5 — menus are translucent).
+    pub menu_opacity: f64,
 }
 
 impl Default for Palette {
@@ -33,6 +35,7 @@ impl Default for Palette {
             on_primary: "#561d2a".into(),
             success: "#a7d18b".into(),
             danger: "#ffb4ab".into(),
+            menu_opacity: 0.96,
         }
     }
 }
@@ -87,6 +90,13 @@ pub fn load() -> Palette {
     if let Some(s) = get(app, "danger_color", None) {
         p.danger = s;
     }
+    if let Some(o) = app
+        .and_then(|a| a.get("menu"))
+        .and_then(|m| m.get("opacity"))
+        .and_then(toml::Value::as_float)
+    {
+        p.menu_opacity = o.clamp(0.5, 1.0);
+    }
     p
 }
 
@@ -96,7 +106,7 @@ pub fn css(p: &Palette) -> String {
         r#"
 window.mvpn {{ background: transparent; }}
 .mvpn-root {{
-    background-color: {bg};
+    background-color: alpha({bg}, {opacity});
     color: {text};
     border-radius: 18px;
     padding: 16px;
@@ -152,5 +162,6 @@ entry.mvpn-search {{ border-radius: 10px; }}
         on_primary = p.on_primary,
         success = p.success,
         danger = p.danger,
+        opacity = p.menu_opacity,
     )
 }
