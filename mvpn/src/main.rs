@@ -98,6 +98,8 @@ enum Cmd {
     Ensure,
     /// Print the bar-pill config snippet to add to your mshell profile.
     InstallPill,
+    /// Print toggle states as key=value lines (for the Settings → VPN page).
+    Toggles,
     /// Open the GTK control panel.
     Menu,
     /// Internal: the detached timer loop (used by `timer start`).
@@ -296,6 +298,15 @@ fn main() {
         }
         Cmd::InstallPill => {
             print_pill_snippet();
+            true
+        }
+        Cmd::Toggles => {
+            let on = |b: bool| if b { "on" } else { "off" };
+            println!("lockdown={}", on(status::setting_on("lockdown-mode")));
+            println!("autoconnect={}", on(status::setting_on("auto-connect")));
+            println!("quantum={}", on(actions::quantum_on()));
+            let m = obf::current();
+            println!("obf={}", if m.is_empty() { "auto" } else { &m });
             true
         }
         Cmd::Menu => ui::run(),
