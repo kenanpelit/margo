@@ -23,12 +23,16 @@ window switcher with a live thumbnail overlay.
   leak-test logic natively in Rust — file-compatible with the existing
   `~/.mullvad/{favorites,slot.state}`. Honours the `OSC_MULLVAD_*` env overrides.
   Replaces the external `mullvad` WASM plugin.
-- **Native "Mullvad VPN" bar pill + Settings → VPN page.** The pill is a real,
+- **Native "DNS / VPN" bar pill + in-shell menu + Settings → VPN page.** One
   widget-picker-selectable `BarWidget` (status icon, accent-tinted when up,
-  left-click → `mvpn menu`, right-click → toggle). The Settings page exposes the
-  full control set — Connect/Disconnect, Random, Fastest, Lockdown,
-  Auto-connect, Quantum-resistant, anti-censorship mode, and favourites
-  (add / remove / connect) — reading live state via `mvpn toggles`.
+  right-click → toggle). Left-click opens a **native layer-shell menu** (not a
+  separate process): the full Mullvad control set — Connect/Disconnect, Random,
+  Fastest, Add-favourite, Lockdown, Auto-connect, Quantum-resistant,
+  anti-censorship, favourites list — plus a collapsible **DNS section** carrying
+  the Blocky guard, system-default reset, and the DNS presets. The standalone
+  DNS pill is folded into this one (old `Dns` bar configs migrate automatically).
+  The Settings → VPN page mirrors the controls, reading live state via
+  `mvpn toggles`.
 - **MRU window switcher (niri-style Super/Alt+Tab).** Hold the modifier, tap Tab
   to walk windows in most-recently-used order, release to commit. A live
   thumbnail-row overlay (scope title + per-thumb app-id labels), separate from
@@ -40,6 +44,18 @@ window switcher with a live thumbnail overlay.
 
 ### Fixed
 
+- **`mvpn fastest` now genuinely finds the fastest relay.** It used to ping a
+  random subset of 8 relays, so a ~10-relay country could miss the actual
+  fastest (connecting to a 350 ms relay over a 60 ms one). It now pings every
+  relay in the requested country (matching osc-mullvad), tries them
+  fastest-first, and prints each result; `fastest` no longer touches favorites
+  while `fastest-fav` saves the winner.
+- **`mvpn` desktop notifications.** connect / disconnect / toggle / random /
+  fastest now raise a `notify-send` toast with the resulting relay + location
+  (silenceable via `MVPN_NO_NOTIFY`).
+- The Mullvad pill opens the shell's **own native layer-shell menu** instead of
+  spawning the standalone `mvpn menu` popup, so it matches the other menus'
+  chrome and DESIGN.md exactly.
 - **`mvpn` Protocol button** repurposed to a working WireGuard
   quantum-resistance toggle (modern Mullvad removed `relay set tunnel-protocol`).
 - **`mvpn menu` is a real layer-shell panel**, not a floating "popup", and Esc
