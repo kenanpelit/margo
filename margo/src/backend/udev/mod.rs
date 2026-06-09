@@ -1322,6 +1322,39 @@ pub(super) fn take_pending_open_close_captures(
     }
 }
 
+/// Capture an off-screen snapshot of each MRU-switcher candidate BEFORE render,
+/// so the thumbnail overlay shows a real preview of every window from the first
+/// frame — including windows on other tags (a live surface element can't, which
+/// is why they used to draw blank until you cycled onto them). Cheap: only runs
+/// while the switcher is open (≤8 windows) and the switcher only repaints on a
+/// selection change. Capturing here (not mid-element-build) keeps the renderer
+/// binding sane — same call site as `take_pending_snapshots`.
+pub(super) fn take_mru_thumbnails(
+    renderer: &mut GlesRenderer,
+    od: &OutputDevice,
+    state: &mut MargoState,
+) {
+    let Some(cands) = state.mru_switcher.as_ref().map(|s| s.candidates.clone()) else {
+        return;
+    };
+    let output_scale = od.output.current_scale().fractional_scale().into();
+    let mut thumbs = Vec::with_capacity(cands.len());
+    for win in cands {
+        let size = win.geometry().size;
+        if size.w <= 0 || size.h <= 0 {
+            continue;
+        }
+        if let Ok(tex) =
+            crate::render::window_capture::capture_window(renderer, &win, size, output_scale)
+        {
+            thumbs.push((win, tex));
+        }
+    }
+    if let Some(sw) = state.mru_switcher.as_mut() {
+        sw.thumbs = thumbs;
+    }
+}
+
 /// What kind of frame the caller is building. Replaces the previous
 /// `(include_cursor: bool, for_screencast: bool)` two-bool parameter
 /// pair on [`build_render_elements_inner`] — same data, but the
@@ -2241,10 +2274,9 @@ fn build_mru_switcher_elements(
     output_geo: Rectangle<i32, Logical>,
     output_scale: f64,
 ) -> Vec<MargoRenderElement> {
-    use smithay::backend::renderer::element::utils::{
-        Relocate, RelocateRenderElement, RescaleRenderElement,
-    };
-    use smithay::backend::renderer::element::{Id, Kind};
+    use crate::render::open_close::{OpenCloseKind, OpenCloseRenderElement};
+    use smithay::backend::renderer::element::Id;
+    use smithay::backend::renderer::utils::CommitCounter;
 
     let Some(sw) = state.mru_switcher.as_ref() else {
         return Vec::new();
@@ -2261,20 +2293,19 @@ fn build_mru_switcher_elements(
     const TITLE_H: i32 = 22;
     let label_h: i32 = if show_labels { 20 } else { 0 };
 
-    // (window, thumb_width, scale_factor, app_id)
-    let mut cells: Vec<(smithay::desktop::Window, i32, f64, String)> = Vec::new();
+    // (window, thumb_width, app_id). Thumb width keeps the window's aspect.
+    let mut cells: Vec<(smithay::desktop::Window, i32, String)> = Vec::new();
     for win in sw.candidates.iter().take(MAX) {
         let g = win.geometry().size;
         let (gw, gh) = (g.w.max(1), g.h.max(1));
-        let sf = f64::from(th) / f64::from(gh);
-        let tw = ((f64::from(gw) * sf).round() as i32).clamp(60, th * 2);
+        let tw = ((f64::from(gw) * f64::from(th) / f64::from(gh)).round() as i32).clamp(60, th * 2);
         let app_id = state
             .clients
             .iter()
             .find(|c| c.window == *win)
             .map(|c| c.app_id.clone())
             .unwrap_or_default();
-        cells.push((win.clone(), tw, sf, app_id));
+        cells.push((win.clone(), tw, app_id));
     }
     if cells.is_empty() {
         return out;
@@ -2283,10 +2314,11 @@ fn build_mru_switcher_elements(
     // Row-relative left edge of each thumbnail (cumulative).
     let mut left_edges: Vec<i32> = Vec::with_capacity(cells.len());
     let mut acc = 0;
-    for (_, tw, _, _) in &cells {
+    for (_, tw, _) in &cells {
         left_edges.push(acc);
         acc += tw + GAP;
     }
+    let inner_w = acc - GAP; // total row width (drop the trailing gap)
     let panel_h = TITLE_H + th + label_h + 2 * PAD;
     let oy = (output_geo.size.h - panel_h) / 2;
     // Carousel: scroll the row so the SELECTED thumbnail is centred on the
@@ -2319,38 +2351,33 @@ fn build_mru_switcher_elements(
 
     // ── Thumbnails (topmost) + labels + per-thumb selection ring ─────
     let row_y = oy + PAD + TITLE_H;
-    for (i, (win, tw, sf, app_id)) in cells.iter().enumerate() {
+    for (i, (win, tw, app_id)) in cells.iter().enumerate() {
         let cell_x = shift + left_edges[i];
         let cell_y = row_y;
 
-        let cell_phys: Point<i32, Physical> =
-            Point::<i32, Logical>::from((cell_x, cell_y)).to_physical_precise_round(scale);
-
-        if let Some(surface) = win.wl_surface() {
-            let geo = win.geometry();
-            let phys_loc: Point<i32, Physical> =
-                Point::<i32, Logical>::from((-geo.loc.x, -geo.loc.y))
-                    .to_physical_precise_round(scale);
-            let surf_elems = render_elements_from_surface_tree::<
-                GlesRenderer,
-                WaylandSurfaceRenderElement<GlesRenderer>,
-            >(
-                renderer,
-                &surface,
-                phys_loc,
-                output_scale,
-                1.0,
-                Kind::Unspecified,
+        // Draw the pre-captured snapshot scaled into the cell. Using a static
+        // OpenCloseRenderElement (Fade, progress=1, alpha=1) just blits the
+        // texture into `geometry` — works for windows on other tags because
+        // the snapshot was taken off-screen before render.
+        if let Some((_, tex)) = sw.thumbs.iter().find(|(w, _)| w == win) {
+            let geom = Rectangle::<i32, Logical>::new(
+                Point::from((cell_x, cell_y)),
+                smithay::utils::Size::from((*tw, th)),
             );
-            for e in surf_elems {
-                // Unique namespace per slot so the damage tracker doesn't
-                // collide a window shown both here and on the desktop.
-                let ns = crate::render::namespaced::NamespacedElement::new(e, 0x4d56_0000 + i);
-                let scaled = RescaleRenderElement::from_element(ns, Point::from((0, 0)), *sf);
-                let placed =
-                    RelocateRenderElement::from_element(scaled, cell_phys, Relocate::Relative);
-                out.push(MargoRenderElement::NamespacedSurface(placed));
-            }
+            out.push(MargoRenderElement::OpenClose(OpenCloseRenderElement::new(
+                Id::new(),
+                tex.clone(),
+                geom,
+                scale,
+                1.0,
+                1.0,
+                OpenCloseKind::Fade,
+                false,
+                1.0,
+                CommitCounter::default(),
+                0.0,
+                None,
+            )));
         }
 
         // app-id label under the thumbnail.
@@ -2396,11 +2423,12 @@ fn build_mru_switcher_elements(
         }
     }
 
-    // ── Backing panel: a full-width band behind the scrolling row ─────
+    // ── Backing panel: hugs the thumbnail row (preview-sized), scrolls
+    //    with it via the same `shift`. Not a full-width band.
     if let Some(p) = prog {
         let panel = Rectangle::<i32, Logical>::new(
-            Point::from((0, oy)),
-            smithay::utils::Size::from((output_geo.size.w, panel_h)),
+            Point::from((shift - PAD, oy)),
+            smithay::utils::Size::from((inner_w + 2 * PAD, panel_h)),
         )
         .to_physical_precise_round(scale);
         out.push(MargoRenderElement::RoundedSolid(

@@ -13,6 +13,7 @@
 //! handles; we resolve them back to a live client index at each step.
 
 use margo_config::Modifiers;
+use smithay::backend::renderer::gles::GlesTexture;
 use smithay::desktop::Window;
 
 use crate::state::MargoState;
@@ -58,6 +59,11 @@ pub struct MruSwitcher {
     /// Scope + filter the switcher opened with (for the overlay title).
     pub scope: MruScope,
     pub filter: MruFilter,
+    /// Off-screen snapshots of each candidate, captured before render (see
+    /// `take_mru_thumbnails`). Keyed by window so even windows on other tags
+    /// show a real preview from the first frame — not a blank that only fills
+    /// in once you cycle onto it.
+    pub thumbs: Vec<(Window, GlesTexture)>,
 }
 
 pub fn parse_scope(s: &str) -> MruScope {
@@ -146,6 +152,7 @@ impl MargoState {
                 modifier_mask: self.mru_open_mask,
                 scope,
                 filter,
+                thumbs: Vec::new(),
             });
         }
         let len = self
@@ -212,6 +219,7 @@ impl MargoState {
         if let Some(sw) = self.mru_switcher.as_mut() {
             if let Some(pos) = sw.candidates.iter().position(|w| w == win) {
                 sw.candidates.remove(pos);
+                sw.thumbs.retain(|(w, _)| w != win);
                 if sw.candidates.len() < 2 {
                     self.mru_switcher = None;
                     self.request_repaint();

@@ -434,6 +434,7 @@ fn render_output(
     }
     take_pending_snapshots(renderer, od, state);
     take_pending_open_close_captures(renderer, od, state);
+    super::take_mru_thumbnails(renderer, od, state);
 
     let mut elements = build_render_elements(renderer, od, state);
     // Wallpaper sits at the *bottom* of the z-order: pushed last so
