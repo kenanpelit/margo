@@ -635,6 +635,11 @@ pub struct MargoState {
     /// the "any input wakes the screen" safety net without touching the
     /// backend, and lets a `dpms toggle` decide direction.
     pub any_dpms_off: bool,
+    /// When the last DPMS-off was requested. `wake_dpms_on_input` ignores
+    /// input within a short grace after this so the very keystroke / click
+    /// that triggered the off (its release event, the Enter that ran `mctl`,
+    /// residual pointer motion) can't immediately wake the panel back up.
+    pub dpms_off_at: Option<std::time::Instant>,
     pub screencopy_state: crate::protocols::screencopy::ScreencopyManagerState,
     pub libinput_devices: Vec<smithay::reexports::input::Device>,
     /// Windows that have been requested to close but are still on screen
@@ -1068,6 +1073,7 @@ impl MargoState {
             pending_gamma: Vec::new(),
             pending_dpms: Vec::new(),
             any_dpms_off: false,
+            dpms_off_at: None,
             screencopy_state,
             libinput_devices: Vec::new(),
             closing_clients: Vec::new(),
@@ -1140,14 +1146,23 @@ impl MargoState {
             self.pending_dpms.push((o.clone(), want_on));
         }
         self.any_dpms_off = !want_on;
+        self.dpms_off_at = if want_on {
+            None
+        } else {
+            Some(std::time::Instant::now())
+        };
         self.request_repaint();
     }
 
     /// Safety net: called from `handle_input` on any real input event. If a
-    /// panel is DPMS-off, wake all outputs — so the user can never get
-    /// stuck on a black screen even if an idle daemon's resume path fails.
+    /// panel is DPMS-off, wake all outputs — so the user can never get stuck
+    /// on a black screen. Ignores input within a short grace after the off so
+    /// the triggering keystroke / click (its release, the Enter that ran
+    /// `mctl`, settling pointer motion) doesn't bounce the panel straight
+    /// back on.
     pub fn wake_dpms_on_input(&mut self) {
-        if self.any_dpms_off {
+        const GRACE: std::time::Duration = std::time::Duration::from_millis(1200);
+        if self.any_dpms_off && self.dpms_off_at.is_none_or(|t| t.elapsed() >= GRACE) {
             self.request_dpms(Some(true), None);
         }
     }
