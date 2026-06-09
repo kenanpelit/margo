@@ -5,7 +5,21 @@
 //! bar does NOT inherit the user's shell-rc env, so anything that needs e.g.
 //! `PASSWORD_STORE_DIR` must set it explicitly (see `slot`).
 
+use std::path::PathBuf;
 use std::process::Command;
+
+/// Mullvad data root, honouring `$OSC_MULLVAD_DIR` (osc-mullvad's root
+/// override), else `~/.mullvad`. Per-file/dir env vars take precedence over
+/// this in the callers.
+pub fn mullvad_dir() -> PathBuf {
+    if let Ok(d) = std::env::var("OSC_MULLVAD_DIR")
+        && !d.is_empty()
+    {
+        return PathBuf::from(d);
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    PathBuf::from(home).join(".mullvad")
+}
 
 /// Run a command, returning trimmed stdout (stderr discarded). Returns an
 /// empty string on spawn failure — callers treat empty as "no data".

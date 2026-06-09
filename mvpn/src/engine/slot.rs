@@ -39,15 +39,18 @@ pub fn state_key() -> String {
     format!("DEV_{}", sanitize(&os_id()))
 }
 
+/// Slot-state path. Precedence (mirrors osc-mullvad):
+/// `$OSC_MULLVAD_SLOT_STATE_FILE` → `$OSC_MULLVAD_STATE_DIR`/slot.state →
+/// `$OSC_MULLVAD_DIR`/slot.state → `~/.mullvad/slot.state`.
 pub fn state_path() -> PathBuf {
-    for var in ["OSC_MULLVAD_SLOT_STATE_FILE", "OSC_MULLVAD_STATE_FILE"] {
-        if let Ok(p) = std::env::var(var) {
-            let p = PathBuf::from(p);
-            return if p.is_dir() { p.join("slot.state") } else { p };
-        }
+    if let Ok(p) = std::env::var("OSC_MULLVAD_SLOT_STATE_FILE") {
+        let p = PathBuf::from(p);
+        return if p.is_dir() { p.join("slot.state") } else { p };
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join(".mullvad/slot.state")
+    let dir = std::env::var("OSC_MULLVAD_STATE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| sys::mullvad_dir());
+    dir.join("slot.state")
 }
 
 /// Parse `DEV_xxx=value` lines → (key, value) pairs.

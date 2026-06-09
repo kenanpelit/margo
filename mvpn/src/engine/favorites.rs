@@ -15,13 +15,17 @@ pub struct Fav {
     pub ping: Option<f64>,
 }
 
-/// Default favorites path: `$OSC_MULLVAD_FAVORITES_FILE` or `~/.mullvad/favorites.txt`.
+/// Favorites path. Precedence (mirrors osc-mullvad): `$OSC_MULLVAD_FAVORITES_FILE`
+/// → `$OSC_MULLVAD_CONFIG_DIR`/favorites.txt → `$OSC_MULLVAD_DIR`/favorites.txt →
+/// `~/.mullvad/favorites.txt`.
 pub fn path() -> PathBuf {
     if let Ok(p) = std::env::var("OSC_MULLVAD_FAVORITES_FILE") {
         return PathBuf::from(p);
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join(".mullvad/favorites.txt")
+    let dir = std::env::var("OSC_MULLVAD_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| sys::mullvad_dir());
+    dir.join("favorites.txt")
 }
 
 fn sort_key(p: Option<f64>) -> f64 {
