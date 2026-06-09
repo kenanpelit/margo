@@ -7,6 +7,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`mvpn` — native Mullvad VPN control.** A new standalone binary: a full CLI
+  (`connect`/`toggle`/`<cc>`/`fastest`/`fav`/`obf`/`slot`/`timer`/`test`/…) and
+  a GTK4 layer-shell control panel (`mvpn menu`) themed from the matugen
+  palette. Ports the favorites (ping-sorted), fastest-relay, obfuscation
+  (`anti-censorship`), device-slot (multi-machine), blocky DNS-guard, timer and
+  leak-test logic natively in Rust — file-compatible with the existing
+  `~/.mullvad/{favorites,slot.state}`. The bar pill is a config-only custom
+  widget (`mvpn install-pill`). Replaces the external `mullvad` WASM plugin.
+
 ## [1.0.2] – 2026-06-09
 
 A compositor-effects + bar-consistency release: opt-in dual-Kawase blur,

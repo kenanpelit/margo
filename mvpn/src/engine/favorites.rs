@@ -179,6 +179,29 @@ pub fn fastest(country: &str, sample: usize, count: u32, timeout: u32) -> Option
     }
 }
 
+/// Seed favorites across many countries: for each code, ping a sample and add
+/// the fastest relay (does not connect). Returns how many were seeded.
+pub fn sweep(codes: &[&str], per: usize, count: u32, timeout: u32) -> usize {
+    let list = sys::mullvad(&["relay", "list"]);
+    let mut seeded = 0;
+    for cc in codes {
+        let ids = relays::pick_relays(&list, cc, "", relays::Ownership::Any);
+        let targets: Vec<(String, String)> = ids
+            .iter()
+            .take(per.max(1))
+            .filter_map(|id| relays::relay_ipv4(&list, id).map(|ip| (id.clone(), ip)))
+            .collect();
+        if let Some((relay, avg)) = latency::ping_many(&targets, count, timeout)
+            .into_iter()
+            .next()
+        {
+            upsert(&relay, Some(avg));
+            seeded += 1;
+        }
+    }
+    seeded
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

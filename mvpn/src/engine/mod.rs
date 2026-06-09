@@ -4,10 +4,6 @@
 //! holds no persistent state of its own (the daemon + files are the source of
 //! truth), so the CLI and GUI can both call straight in.
 
-// Some helpers (settings/expiry/sudo) are consumed by the GUI panel + the
-// favorites/slot/blocky phases that land next; allow until they're wired.
-#![allow(dead_code)]
-
 pub mod actions;
 pub mod blocky;
 pub mod diag;

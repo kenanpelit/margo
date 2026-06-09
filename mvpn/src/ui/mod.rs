@@ -26,6 +26,7 @@ struct Snapshot {
     favs: Vec<favorites::Fav>,
     obf_mode: String,
     device: String,
+    expiry: String,
     lockdown: bool,
     autoconnect: bool,
     /// Only set by the leak-test button; `None` leaves the footer untouched.
@@ -39,6 +40,7 @@ impl Snapshot {
             favs: favorites::load(),
             obf_mode: obf::current(),
             device: slot::current_device(),
+            expiry: status::account_expiry(),
             lockdown: status::setting_on("lockdown-mode"),
             autoconnect: status::setting_on("auto-connect"),
             leak,
@@ -358,7 +360,12 @@ fn build_ui(app: &gtk4::Application) {
                 if let Some(leak) = &s.leak {
                     device_lbl2.set_text(leak);
                 } else if !s.device.is_empty() {
-                    device_lbl2.set_text(&format!("Device: {}", s.device));
+                    let exp = if s.expiry.is_empty() || s.expiry == "—" {
+                        String::new()
+                    } else {
+                        format!(" · exp {}", s.expiry)
+                    };
+                    device_lbl2.set_text(&format!("Device: {}{}", s.device, exp));
                 }
                 rebuild_favs(&fav_box2, &s.favs, &tx2);
                 *up.borrow_mut() = false;

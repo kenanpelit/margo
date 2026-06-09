@@ -52,6 +52,14 @@ enum Cmd {
     /// Alias for `fastest`.
     #[command(name = "fastest-fav")]
     FastestFav { country: Option<String> },
+    /// Seed favorites with the fastest relay across a country group
+    /// (europe|americas|asia|africa|other|all).
+    #[command(name = "fastest-fav-sweep")]
+    FastestFavSweep {
+        group: String,
+        /// Relays to ping per country (default 6).
+        count: Option<usize>,
+    },
     /// Manage favorite relays.
     Fav {
         #[command(subcommand)]
@@ -87,6 +95,8 @@ enum Cmd {
     Split,
     /// Fail-safe: drive the blocky DNS guard from the current VPN state.
     Ensure,
+    /// Print the bar-pill config snippet to add to your mshell profile.
+    InstallPill,
     /// Open the GTK control panel.
     Menu,
     /// Internal: the detached timer loop (used by `timer start`).
@@ -200,6 +210,17 @@ fn main() {
                 }
             }
         }
+        Cmd::FastestFavSweep { group, count } => match relays::group_codes(&group) {
+            Some(codes) => {
+                let n = favorites::sweep(&codes, count.unwrap_or(6), PING_COUNT, PING_TIMEOUT);
+                println!("seeded {n} favorite(s) across {group}");
+                true
+            }
+            None => {
+                eprintln!("mvpn: unknown group '{group}' (europe|americas|asia|africa|other|all)");
+                false
+            }
+        },
         Cmd::Fav { action } => run_fav(action),
         Cmd::Obf { arg } => match arg.as_deref() {
             None => {
@@ -272,6 +293,10 @@ fn main() {
             println!("blocky: {}", blocky::ensure());
             true
         }
+        Cmd::InstallPill => {
+            print_pill_snippet();
+            true
+        }
         Cmd::Menu => ui::run(),
         Cmd::Location(args) => {
             // `mvpn de` / `mvpn us nyc` → pick a random relay there + connect.
@@ -289,6 +314,28 @@ fn main() {
     if !ok {
         std::process::exit(1);
     }
+}
+
+fn print_pill_snippet() {
+    println!(
+        r#"# Add an mvpn pill to your mshell bar — paste under bars.widgets.custom_widgets
+# in your mshell profile, then reference its key in a bar slot.
+#
+# It polls `mvpn status --pill` (emits `#active` when connected → the
+# `.custom-bar-widget.active` accent tint), left-click opens the panel,
+# right-click toggles the tunnel.
+
+[bars.widgets.custom_widgets.mvpn]
+icon            = "network-vpn-symbolic"
+exec            = "mvpn status --pill"
+template        = "{{output}}"
+interval        = 5
+on_click        = "mvpn menu"
+on_click_right  = "mvpn toggle"
+tooltip         = "Mullvad VPN — click for the panel, right-click to toggle"
+
+# Then add "mvpn" to a bar slot (e.g. bars.top.right) in the same profile."#
+    );
 }
 
 fn run_slot(action: SlotCmd) -> bool {
