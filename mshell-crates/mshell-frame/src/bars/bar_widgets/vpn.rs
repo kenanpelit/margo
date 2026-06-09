@@ -2,9 +2,11 @@
 //!
 //! Polls `mvpn status --json` every few seconds; shows a shield icon tinted
 //! with the accent (`secure` class) when the tunnel is up, with the relay +
-//! location in the tooltip. Left-click opens the `mvpn` control panel
-//! (`mvpn menu`); right-click toggles the tunnel (`mvpn toggle`). All actions
-//! are unprivileged shell-outs — no frame menu wiring needed.
+//! location in the tooltip. Left-click opens the native, layer-shell "DNS /
+//! VPN" menu (the frame toggles it via `VpnOutput::Clicked` → just like the
+//! DNS pill — no separate `mvpn menu` popup); right-click toggles the tunnel
+//! (`mvpn toggle`). The richer relay management (favourites, fastest,
+//! anti-censorship, account/device) lives in Settings → VPN.
 
 use relm4::gtk::prelude::{ButtonExt, GestureSingleExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -31,6 +33,13 @@ pub(crate) enum VpnInput {
     Toggle,
 }
 
+/// Emitted to the bar → frame so the native "DNS / VPN" layer-shell menu is
+/// toggled (mirrors `DnsOutput::Clicked`).
+#[derive(Debug)]
+pub(crate) enum VpnOutput {
+    Clicked,
+}
+
 pub(crate) struct VpnInit {}
 
 #[derive(Debug)]
@@ -42,7 +51,7 @@ pub(crate) enum VpnCommandOutput {
 impl Component for VpnModel {
     type CommandOutput = VpnCommandOutput;
     type Input = VpnInput;
-    type Output = ();
+    type Output = VpnOutput;
     type Init = VpnInit;
 
     view! {
@@ -115,7 +124,9 @@ impl Component for VpnModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             VpnInput::OpenMenu => {
-                let _ = std::process::Command::new("mvpn").arg("menu").spawn();
+                // Toggle the shell's native layer-shell DNS/VPN menu rather
+                // than spawning the standalone `mvpn menu` popup.
+                let _ = sender.output(VpnOutput::Clicked);
             }
             VpnInput::Toggle => {
                 // Toggle off-thread, then refresh sooner than the poll cycle.
