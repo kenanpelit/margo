@@ -241,10 +241,14 @@ impl Component for DnsMenuWidgetModel {
             },
 
             // ── Footer ──────────────────────────────────────────
+            // Hidden when embedded in the VPN menu — that menu has its own
+            // Refresh, and the DNS section already refreshes on expand + polls
+            // while open, so a second "Refresh" button would just be confusing.
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 6,
                 set_margin_top: 4,
+                set_visible: !model.embedded,
 
                 gtk::Button {
                     set_css_classes: &["ok-button-surface", "ok-button-cell"],
