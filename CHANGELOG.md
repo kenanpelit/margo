@@ -32,7 +32,10 @@ window switcher with a live thumbnail overlay.
   the Blocky guard, system-default reset, and the DNS presets. The standalone
   DNS pill is folded into this one (old `Dns` bar configs migrate automatically).
   The Settings → VPN page mirrors the controls, reading live state via
-  `mvpn toggles`.
+  `mvpn toggles`. `mshellctl menu vpn` toggles the combined menu from a
+  terminal, and Settings → Widgets lists separate **VPN** (the combined menu)
+  and **DNS** (the standalone `mshellctl menu dns` menu) entries for
+  position/size tuning.
 - **MRU window switcher (niri-style Super/Alt+Tab).** Hold the modifier, tap Tab
   to walk windows in most-recently-used order, release to commit. A live
   thumbnail-row overlay (scope title + per-thumb app-id labels), separate from
