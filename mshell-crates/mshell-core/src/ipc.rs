@@ -198,6 +198,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::SshSessions => {
                     app_sender.emit(ShellInput::ToggleSshSessionsMenu(active_monitor().await));
                 }
+                IPCCommand::Vpn => {
+                    app_sender.emit(ShellInput::ToggleVpnMenu(active_monitor().await));
+                }
                 IPCCommand::Dns => {
                     app_sender.emit(ShellInput::ToggleDnsMenu(active_monitor().await));
                 }
@@ -550,6 +553,7 @@ enum IPCCommand {
     ControlCenter,
     HiddenBar(mshell_common::hidden_bar::HiddenBarVerb),
     SshSessions,
+    Vpn,
     Dns,
     Podman,
     Notes,
@@ -1604,6 +1608,9 @@ impl IPCService {
     }
     async fn ssh_sessions(&self) {
         let _ = self.tx.send(IPCCommand::SshSessions);
+    }
+    async fn vpn(&self) {
+        let _ = self.tx.send(IPCCommand::Vpn);
     }
     async fn dns(&self) {
         let _ = self.tx.send(IPCCommand::Dns);

@@ -94,7 +94,9 @@ pub enum MenuCommands {
     ControlCenter,
     /// Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)
     SshSessions,
-    /// Toggle the DNS / VPN menu
+    /// Toggle the DNS / VPN menu (Mullvad controls + a collapsible DNS section)
+    Vpn,
+    /// Toggle the DNS / VPN menu (alias for `vpn`)
     Dns,
     /// Toggle the Podman menu
     Podman,
@@ -215,6 +217,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::SshSessions => {
             bus_command("SshSessions").await?;
+        }
+        MenuCommands::Vpn => {
+            bus_command("Vpn").await?;
         }
         MenuCommands::Dns => {
             bus_command("Dns").await?;

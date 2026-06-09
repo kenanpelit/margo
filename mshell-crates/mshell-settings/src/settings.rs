@@ -1138,8 +1138,8 @@ impl Component for SettingsWindowModel {
                 icon: "view-grid-symbolic",
             },
             WidgetEntry::Menu {
-                kind: MenuKind::Dns,
-                stack_name: "dns",
+                kind: MenuKind::Vpn,
+                stack_name: "vpn",
                 label: "DNS / VPN",
                 icon: "network-vpn-symbolic",
             },
