@@ -1,4 +1,5 @@
 use crate::about_settings::{AboutSettingsInit, AboutSettingsModel};
+use crate::ai_settings::{AiSettingsInit, AiSettingsModel};
 use crate::animations_settings::{AnimationsSettingsInit, AnimationsSettingsModel};
 use crate::appearance_settings::{AppearanceInit, AppearanceModel};
 use crate::backup_settings::{BackupSettingsInit, BackupSettingsModel};
@@ -86,6 +87,7 @@ pub struct SettingsWindowModel {
     logging_settings_controller: Controller<LoggingModel>,
     overview_settings_controller: Controller<OverviewSettingsModel>,
     vpn_settings_controller: Controller<VpnSettingsModel>,
+    ai_settings_controller: Controller<AiSettingsModel>,
     date_time_settings_controller: Controller<DateTimeSettingsModel>,
     region_settings_controller: Controller<RegionSettingsModel>,
     sound_settings_controller: Controller<SoundSettingsModel>,
@@ -449,6 +451,10 @@ impl Component for SettingsWindowModel {
             .launch(VpnSettingsInit {})
             .detach();
 
+        let ai_settings_controller = AiSettingsModel::builder()
+            .launch(AiSettingsInit {})
+            .detach();
+
         let date_time_settings_controller = DateTimeSettingsModel::builder()
             .launch(DateTimeSettingsInit {})
             .detach();
@@ -594,6 +600,7 @@ impl Component for SettingsWindowModel {
             logging_settings_controller,
             overview_settings_controller,
             vpn_settings_controller,
+            ai_settings_controller,
             date_time_settings_controller,
             region_settings_controller,
             sound_settings_controller,
@@ -742,7 +749,7 @@ impl Component for SettingsWindowModel {
         // Top-level stack pages. Insertion order does not affect display (the
         // sidebar buttons drive visibility) — kept as one table so the page
         // list lives in a single place instead of 36 add_titled blocks.
-        let stack_pages: [(&str, &str, gtk::Widget); 39] = [
+        let stack_pages: [(&str, &str, gtk::Widget); 40] = [
             (
                 "general",
                 "General",
@@ -839,6 +846,11 @@ impl Component for SettingsWindowModel {
                 "vpn",
                 "VPN",
                 model.vpn_settings_controller.widget().clone().into(),
+            ),
+            (
+                "ai",
+                "AI",
+                model.ai_settings_controller.widget().clone().into(),
             ),
             (
                 "date_time",
@@ -2154,6 +2166,11 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "vpn",
         icon: "network-vpn-symbolic",
         label: "VPN",
+    },
+    Page {
+        route: "ai",
+        icon: "starred-symbolic",
+        label: "AI",
     },
     Page {
         route: "tiling_layout",

@@ -196,6 +196,7 @@ mshell-auth = { path = "mshell-crates/mshell-auth" }
 mshell-cache = { path = "mshell-crates/mshell-cache" }
 mshell-cli-style = { path = "mshell-crates/mshell-cli-style" }
 mshell-clipboard = { path = "mshell-crates/mshell-clipboard" }
+mshell-ai = { path = "mshell-crates/mshell-ai" }
 mshell-clut-gen = { path = "mshell-crates/mshell-clut-gen" }
 mshell-common = { path = "mshell-crates/mshell-common" }
 mshell-config = { path = "mshell-crates/mshell-config" }

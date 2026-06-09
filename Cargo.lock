@@ -4722,6 +4722,7 @@ dependencies = [
  "margo-config",
  "margo-logging",
  "mpower",
+ "mshell-ai",
  "mshell-cache",
  "mshell-clipboard",
  "mshell-common",

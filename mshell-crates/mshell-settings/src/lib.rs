@@ -15,6 +15,7 @@
 use std::sync::OnceLock;
 
 mod about_settings;
+mod ai_settings;
 mod animations_settings;
 mod appearance_settings;
 mod backup_settings;
