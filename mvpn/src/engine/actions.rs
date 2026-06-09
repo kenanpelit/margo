@@ -55,16 +55,38 @@ pub fn set_autoconnect(on: bool) -> bool {
     sys::mullvad_ok(&["auto-connect", "set", if on { "on" } else { "off" }])
 }
 
-/// Toggle the tunnel protocol (WireGuard ↔ OpenVPN) and reconnect.
-pub fn toggle_protocol() -> bool {
-    let next = if status::query()
-        .tunnel_type
-        .to_lowercase()
-        .contains("wireguard")
-    {
-        "openvpn"
-    } else {
-        "wireguard"
-    };
-    sys::mullvad_ok(&["relay", "set", "tunnel-protocol", next]) && reconnect()
+/// Whether WireGuard quantum-resistant key exchange is on (`tunnel get`).
+pub fn quantum_on() -> bool {
+    parse_quantum(&sys::mullvad(&["tunnel", "get"]))
+}
+
+pub(crate) fn parse_quantum(s: &str) -> bool {
+    for line in s.lines() {
+        if let Some(v) = line.trim().strip_prefix("Quantum resistance:") {
+            return v.trim().eq_ignore_ascii_case("on");
+        }
+    }
+    false
+}
+
+/// Toggle WireGuard quantum-resistant key exchange and reconnect.
+/// (Modern Mullvad is WireGuard-only — the old OpenVPN protocol toggle is gone,
+/// so this chip now drives the meaningful WG security knob.)
+pub fn toggle_quantum() -> bool {
+    let next = if quantum_on() { "off" } else { "on" };
+    sys::mullvad_ok(&["tunnel", "set", "quantum-resistant", next]) && reconnect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_quantum;
+
+    #[test]
+    fn parses_quantum_state() {
+        assert!(parse_quantum(
+            "Tunnel\n    Quantum resistance:     on\n    DAITA: false"
+        ));
+        assert!(!parse_quantum("    Quantum resistance: off"));
+        assert!(!parse_quantum("nothing"));
+    }
 }

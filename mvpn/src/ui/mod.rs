@@ -153,7 +153,7 @@ fn build_ui(app: &gtk4::Application) {
     chips.set_homogeneous(true);
     let random_btn = chip("Random");
     let fastest_btn = chip("Fastest");
-    let proto_btn = chip("Protocol");
+    let proto_btn = chip("Quantum");
     let obf_btn = chip("Obf");
     chips.append(&random_btn);
     chips.append(&fastest_btn);
@@ -219,7 +219,7 @@ fn build_ui(app: &gtk4::Application) {
         favorites::fastest("", 8, 3, 2);
     });
     wire(&proto_btn, &tx, || {
-        actions::toggle_protocol();
+        actions::toggle_quantum();
     });
     wire(&obf_btn, &tx, || {
         obf::cycle();

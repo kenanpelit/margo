@@ -45,8 +45,9 @@ enum Cmd {
     Owned { country: Option<String> },
     /// Connect to a rented relay (optionally in a country).
     Rented { country: Option<String> },
-    /// Toggle the tunnel protocol (WireGuard ↔ OpenVPN).
-    Protocol,
+    /// Toggle WireGuard quantum-resistant key exchange (`protocol` = alias).
+    #[command(alias = "protocol")]
+    Quantum,
     /// Find the fastest relay (optionally in a country), connect + save to favorites.
     Fastest { country: Option<String> },
     /// Alias for `fastest`.
@@ -192,7 +193,7 @@ fn main() {
             "",
             relays::Ownership::Rented,
         ),
-        Cmd::Protocol => actions::toggle_protocol(),
+        Cmd::Quantum => actions::toggle_quantum(),
         Cmd::Fastest { country } | Cmd::FastestFav { country } => {
             match favorites::fastest(
                 country.as_deref().unwrap_or(""),
