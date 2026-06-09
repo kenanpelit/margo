@@ -36,6 +36,16 @@ window switcher with a live thumbnail overlay.
   terminal, and Settings → Widgets lists separate **VPN** (the combined menu)
   and **DNS** (the standalone `mshellctl menu dns` menu) entries for
   position/size tuning.
+- **Native AI assistant.** The `assistant-panel` WASM plugin is now a
+  first-class core feature: a new GTK-free **`mshell-ai`** engine (Gemini /
+  OpenAI / Anthropic / Ollama / Custom, token-by-token streaming, API key in
+  the keyring) with **live model discovery** — pick a provider and the model
+  dropdown auto-offers its models (fetched from the provider's list-models
+  endpoint, with a curated fallback), no hand-typing. A **Settings → AI** page
+  (provider → model cascade + Refresh + endpoint / temperature / tokens /
+  system prompt), an **AI** bar pill, a native streaming **chat menu**
+  (bubbles, Stop / Retry / New / Copy, persisted history), and
+  `mshellctl menu ai`.
 - **MRU window switcher (niri-style Super/Alt+Tab).** Hold the modifier, tap Tab
   to walk windows in most-recently-used order, release to commit. A live
   thumbnail-row overlay (scope title + per-thumb app-id labels), separate from
@@ -47,6 +57,9 @@ window switcher with a live thumbnail overlay.
 
 ### Fixed
 
+- **VPN menu redesigned** (DESIGN.md): a segmented **Mullvad / Blocky /
+  Default** mode selector on top (active mode accent-filled), with Favourites /
+  Countries / DNS-presets as collapsible sections.
 - **`mvpn fastest` now genuinely finds the fastest relay.** It used to ping a
   random subset of 8 relays, so a ~10-relay country could miss the actual
   fastest (connecting to a 350 ms relay over a 60 ms one). It now pings every
