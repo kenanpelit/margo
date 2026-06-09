@@ -43,11 +43,15 @@ window switcher with a live thumbnail overlay.
 - **`mvpn` Protocol button** repurposed to a working WireGuard
   quantum-resistance toggle (modern Mullvad removed `relay set tunnel-protocol`).
 - **`mvpn menu` is a real layer-shell panel**, not a floating "popup", and Esc
-  closes it (plain `gtk::Window` + exclusive keyboard — `ApplicationWindow`
-  fell back to an xdg-toplevel).
+  closes it. Driven by a raw GLib main loop (no `GtkApplication`, whose window
+  management forced an xdg-toplevel) with exclusive keyboard. The surface is
+  translucent like the shell's native menus (matugen menu opacity).
 - MRU switcher: genuine most-recently-used ordering (cycling no longer
   rewrites the order) and the stuck-modifier bug (the Alt/Super release now
-  reaches the focused window, so it isn't left "held").
+  reaches the focused window, so it isn't left "held"). Thumbnails are
+  off-screen snapshots taken before render, so every window (even on other
+  tags) shows a real preview from the first frame; the backing band is
+  preview-sized and scrolls with the carousel.
 
 ## [1.0.2] – 2026-06-09
 
