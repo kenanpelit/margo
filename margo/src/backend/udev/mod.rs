@@ -2280,29 +2280,37 @@ fn build_mru_switcher_elements(
         return out;
     }
 
-    let inner_w: i32 =
-        cells.iter().map(|c| c.1).sum::<i32>() + GAP * (cells.len().saturating_sub(1) as i32);
-    let panel_w = inner_w + 2 * PAD;
+    // Row-relative left edge of each thumbnail (cumulative).
+    let mut left_edges: Vec<i32> = Vec::with_capacity(cells.len());
+    let mut acc = 0;
+    for (_, tw, _, _) in &cells {
+        left_edges.push(acc);
+        acc += tw + GAP;
+    }
     let panel_h = TITLE_H + th + label_h + 2 * PAD;
-    let ox = (output_geo.size.w - panel_w) / 2;
     let oy = (output_geo.size.h - panel_h) / 2;
+    // Carousel: scroll the row so the SELECTED thumbnail is centred on the
+    // output. Thumbnails left/right of it slide off the edges.
+    let sel = sw.selected.min(cells.len() - 1);
+    let shift = output_geo.size.w / 2 - (left_edges[sel] + cells[sel].1 / 2);
 
     let prog = crate::render::rounded_solid::shader(renderer).map(|p| p.0);
     let radius = (14.0 * output_scale) as f32;
 
-    // Scope title at the panel top (niri shows the active scope).
+    // Scope title, centred at the band top (niri shows the active scope).
     let scope_txt = match sw.scope {
         crate::state::mru_switcher::MruScope::All => "All windows",
         crate::state::mru_switcher::MruScope::Output => "This output",
         crate::state::mru_switcher::MruScope::Workspace => "This workspace",
     };
     let title_pos: Point<i32, Physical> =
-        Point::<i32, Logical>::from((ox + PAD, oy + 4)).to_physical_precise_round(scale);
+        Point::<i32, Logical>::from((output_geo.size.w / 2 - 80, oy + 4))
+            .to_physical_precise_round(scale);
     if let Some(el) = crate::render::text::label_element(
         renderer,
         scope_txt,
         (f64::from(TITLE_H) * output_scale * 0.78) as i32,
-        (f64::from(panel_w) * output_scale) as i32,
+        (320.0 * output_scale) as i32,
         [200, 200, 210],
         title_pos.to_f64(),
     ) {
@@ -2311,11 +2319,9 @@ fn build_mru_switcher_elements(
 
     // ── Thumbnails (topmost) + labels + per-thumb selection ring ─────
     let row_y = oy + PAD + TITLE_H;
-    let mut cursor_x = ox + PAD;
     for (i, (win, tw, sf, app_id)) in cells.iter().enumerate() {
-        let cell_x = cursor_x;
+        let cell_x = shift + left_edges[i];
         let cell_y = row_y;
-        cursor_x += tw + GAP;
 
         let cell_phys: Point<i32, Physical> =
             Point::<i32, Logical>::from((cell_x, cell_y)).to_physical_precise_round(scale);
@@ -2390,11 +2396,11 @@ fn build_mru_switcher_elements(
         }
     }
 
-    // ── Backing panel (bottom of the overlay) ────────────────────────
+    // ── Backing panel: a full-width band behind the scrolling row ─────
     if let Some(p) = prog {
         let panel = Rectangle::<i32, Logical>::new(
-            Point::from((ox, oy)),
-            smithay::utils::Size::from((panel_w, panel_h)),
+            Point::from((0, oy)),
+            smithay::utils::Size::from((output_geo.size.w, panel_h)),
         )
         .to_physical_precise_round(scale);
         out.push(MargoRenderElement::RoundedSolid(
