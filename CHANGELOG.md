@@ -61,6 +61,9 @@ window switcher with a live thumbnail overlay.
   chrome and DESIGN.md exactly.
 - A standalone **DNS** bar pill is available again in the widget picker
   (alongside the combined VPN pill) — it opens the `mshellctl menu dns` menu.
+- The VPN pill shows the connected **country** beside the shield; the menu's
+  favourites list marks the currently-connected relay active ("Connected" +
+  accent); and a small **account-expiry** line sits under the DNS section.
 - Changing a widget's position/config no longer flashes the clock menu over
   whatever menu is open: the per-region stacks' visible child is now preserved
   across the menu restack.
