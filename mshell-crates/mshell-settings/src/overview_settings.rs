@@ -108,6 +108,12 @@ pub struct OverviewSettingsModel {
     backdrop_image: String,
     style_model: gtk::StringList,
     cycle_model: gtk::StringList,
+    mru_thumb: f64,
+    mru_scope_idx: u32,
+    mru_filter_idx: u32,
+    mru_labels: bool,
+    mru_scope_model: gtk::StringList,
+    mru_filter_model: gtk::StringList,
 }
 
 impl OverviewSettingsModel {
@@ -158,6 +164,13 @@ pub enum OverviewSettingsInput {
     SetBackdropImage(String),
     /// Drop the image; fall back to the solid backdrop colour.
     ClearBackdropImage,
+    // MRU window switcher.
+    SetMruThumb(i32),
+    /// 0 = All, 1 = Output, 2 = Workspace.
+    SetMruScope(u32),
+    /// 0 = All, 1 = Same app.
+    SetMruFilter(u32),
+    SetMruLabels(bool),
 }
 
 #[relm4::component(pub)]
@@ -469,6 +482,71 @@ impl Component for OverviewSettingsModel {
                         },
                     },
                 },
+
+                // ════════ MRU window switcher (Super/Alt+Tab) ════════
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Window switcher (Super/Alt+Tab)",
+                    set_halign: gtk::Align::Start,
+                },
+
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Thumbnail size" },
+                    #[template_child] desc { set_label: "Height of each window thumbnail in the switcher, in pixels." },
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (60.0, 600.0),
+                        set_increments: (10.0, 40.0),
+                        set_digits: 0,
+                        set_value: model.mru_thumb,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(OverviewSettingsInput::SetMruThumb(s.value() as i32));
+                        },
+                    },
+                },
+
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Scope" },
+                    #[template_child] desc { set_label: "Which windows the switcher lists (default for binds that pass none)." },
+                    gtk::DropDown {
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&model.mru_scope_model),
+                        set_selected: model.mru_scope_idx,
+                        connect_selected_notify[sender] => move |d| {
+                            sender.input(OverviewSettingsInput::SetMruScope(d.selected()));
+                        },
+                    },
+                },
+
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Filter" },
+                    #[template_child] desc { set_label: "All windows, or only those sharing the focused window's app." },
+                    gtk::DropDown {
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&model.mru_filter_model),
+                        set_selected: model.mru_filter_idx,
+                        connect_selected_notify[sender] => move |d| {
+                            sender.input(OverviewSettingsInput::SetMruFilter(d.selected()));
+                        },
+                    },
+                },
+
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Show labels" },
+                    #[template_child] desc { set_label: "Draw the app-id under each thumbnail." },
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        set_active: model.mru_labels,
+                        connect_state_set[sender] => move |_, on| {
+                            sender.input(OverviewSettingsInput::SetMruLabels(on));
+                            gtk::glib::Propagation::Proceed
+                        },
+                    },
+                },
             }
         }
     }
@@ -503,6 +581,20 @@ impl Component for OverviewSettingsModel {
             backdrop_image: cfg.overview_backdrop_image.clone().unwrap_or_default(),
             style_model: gtk::StringList::new(&["Scroller (Recommended)", "Grid"]),
             cycle_model: gtk::StringList::new(&["Most recent (MRU)", "Tag order", "Mixed"]),
+            mru_thumb: cfg.mru_thumb_height as f64,
+            mru_scope_idx: match cfg.mru_scope.as_str() {
+                "output" => 1,
+                "workspace" => 2,
+                _ => 0,
+            },
+            mru_filter_idx: if cfg.mru_filter == "appid" { 1 } else { 0 },
+            mru_labels: cfg.mru_show_labels,
+            mru_scope_model: gtk::StringList::new(&[
+                "All windows",
+                "This output",
+                "This workspace",
+            ]),
+            mru_filter_model: gtk::StringList::new(&["All windows", "Same app"]),
         };
         let widgets = view_output!();
         ComponentParts { model, widgets }
@@ -591,6 +683,26 @@ impl Component for OverviewSettingsModel {
             OverviewSettingsInput::ClearBackdropImage => {
                 self.backdrop_image.clear();
                 apply("overview_backdrop_image", String::new());
+            }
+            OverviewSettingsInput::SetMruThumb(v) => {
+                apply("mru_thumb_height", v.to_string());
+            }
+            OverviewSettingsInput::SetMruScope(idx) => {
+                let v = match idx {
+                    1 => "output",
+                    2 => "workspace",
+                    _ => "all",
+                };
+                apply("mru_scope", v.to_string());
+            }
+            OverviewSettingsInput::SetMruFilter(idx) => {
+                apply(
+                    "mru_filter",
+                    if idx == 1 { "appid" } else { "all" }.to_string(),
+                );
+            }
+            OverviewSettingsInput::SetMruLabels(on) => {
+                apply("mru_show_labels", if on { "1" } else { "0" }.to_string());
             }
         }
     }
