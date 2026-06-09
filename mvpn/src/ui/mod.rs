@@ -83,7 +83,9 @@ fn build_ui(app: &gtk4::Application) {
     window.set_default_size(420, 720);
 
     window.init_layer_shell();
+    window.set_namespace(Some("mvpn"));
     window.set_layer(Layer::Overlay);
+    window.set_exclusive_zone(0);
     window.set_anchor(Edge::Top, true);
     window.set_anchor(Edge::Right, true);
     window.set_margin(Edge::Top, 8);
