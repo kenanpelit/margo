@@ -622,6 +622,7 @@ pub struct MargoState {
     pub xwayland_shell_state: XWaylandShellState,
     pub libinput: Option<smithay::reexports::input::Libinput>,
     pub gamma_control_manager_state: crate::protocols::gamma_control::GammaControlManagerState,
+    pub output_power_manager_state: crate::protocols::output_power::OutputPowerManagerState,
     /// Pending gamma ramp updates drained by the udev backend each frame.
     /// Tuple is (output, ramp). `None` ramp = restore default. The udev
     /// backend pops these and applies them via DRM `GAMMA_LUT`. Winit just
@@ -943,6 +944,14 @@ impl MargoState {
                 |_client| true,
             );
 
+        // wlr-output-power-management-v1: lets idle daemons (`swayidle`) and
+        // `wlr-randr` power outputs off/on via DPMS. All clients allowed.
+        let output_power_manager_state =
+            crate::protocols::output_power::OutputPowerManagerState::new::<Self, _>(
+                &dh,
+                |_client| true,
+            );
+
         // wlr-screencopy-unstable-v1: lets `grim`, `wf-recorder`, `screen rec`
         // etc. capture compositor outputs.
         let screencopy_state =
@@ -1070,6 +1079,7 @@ impl MargoState {
             xwayland_shell_state,
             libinput: None,
             gamma_control_manager_state,
+            output_power_manager_state,
             pending_gamma: Vec::new(),
             pending_dpms: Vec::new(),
             any_dpms_off: false,
@@ -1144,6 +1154,10 @@ impl MargoState {
         let want_on = on.unwrap_or(self.any_dpms_off);
         for o in &outputs {
             self.pending_dpms.push((o.clone(), want_on));
+            // Tell wlr-output-power clients (swayidle etc.) about the change,
+            // whatever triggered it (protocol, keybind, or mctl).
+            self.output_power_manager_state
+                .output_power_changed(o, want_on);
         }
         self.any_dpms_off = !want_on;
         self.dpms_off_at = if want_on {
@@ -1160,11 +1174,17 @@ impl MargoState {
     /// the triggering keystroke / click (its release, the Enter that ran
     /// `mctl`, settling pointer motion) doesn't bounce the panel straight
     /// back on.
-    pub fn wake_dpms_on_input(&mut self) {
+    /// Returns `true` if this call actually woke a darkened panel — the
+    /// caller then swallows the triggering event so the keystroke / click
+    /// that wakes the screen doesn't also reach the focused surface (e.g. a
+    /// stray newline in the terminal you ran `mctl dispatch dpms off` from).
+    pub fn wake_dpms_on_input(&mut self) -> bool {
         const GRACE: std::time::Duration = std::time::Duration::from_millis(1200);
         if self.any_dpms_off && self.dpms_off_at.is_none_or(|t| t.elapsed() >= GRACE) {
             self.request_dpms(Some(true), None);
+            return true;
         }
+        false
     }
 
     pub fn disable_monitor(&mut self, mon_idx: usize) {
@@ -1290,6 +1310,7 @@ impl MargoState {
         }
 
         self.gamma_control_manager_state.output_removed(output);
+        self.output_power_manager_state.output_removed(output);
         self.screencopy_state.remove_output(output);
 
         if let Some(pos) = self.monitors.iter().position(|m| m.output == *output) {

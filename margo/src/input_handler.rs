@@ -45,8 +45,13 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
         let seat = state.seat.clone();
         state.idle_notifier_state.notify_activity(&seat);
         // Safety net: any real input wakes a DPMS-off panel, so a manual /
-        // idle-daemon screen-off can never strand the user on black.
-        state.wake_dpms_on_input();
+        // idle-daemon screen-off can never strand the user on black. Swallow
+        // the waking event so the keystroke / click that turns the screen
+        // back on doesn't also land on the focused surface (no stray newline
+        // in the terminal you ran `mctl dispatch dpms off` from).
+        if state.wake_dpms_on_input() {
+            return;
+        }
     }
 
     match event {

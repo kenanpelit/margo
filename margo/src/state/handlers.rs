@@ -27,6 +27,7 @@ mod kde_decoration;
 mod keyboard_shortcuts_inhibit;
 mod layer_shell;
 mod output_management;
+mod output_power;
 mod pointer_constraints;
 mod pointer_gestures;
 mod pointer_warp;

@@ -58,9 +58,9 @@ mango got for free — `zwlr_foreign_toplevel_manager_v1` (write-side, P2),
 of the *modern* surface (HDR colour-management, content-type,
 fifo/commit-timing, security-context, pointer-warp, xdg-dialog,
 system-bell, toplevel-icon, toplevel-tag, xwayland-keyboard-grab) that
-mango's wlroots base doesn't expose. The three margo still doesn't
-advertise (`output_power`, `tearing_control`, `drm_lease`) are blocked,
-not just deferred — see "remaining three gaps" below.
+mango's wlroots base doesn't expose. `output_power` now ships (external
+DPMS control). The two margo still doesn't advertise (`tearing_control`,
+`drm_lease`) are blocked, not just deferred — see "remaining gaps" below.
 
 ## Core baseline — present in all four
 
@@ -143,19 +143,21 @@ tag-workspaces (active = bitmask membership); it is the standard bar-state
 protocol now that dwl-ipc has been removed (mctl + mshell use the Unix
 control socket instead). `virtual_pointer` feeds margo's normal input path.
 
-## The remaining three gaps — blocked, not just deferred
+## The remaining gaps — blocked, not just deferred
 
-These three are **not** a matter of effort — each hits a concrete
-upstream or architectural wall (re-confirmed by source audit 2026-05-28):
+These two are **not** a matter of effort — each hits a concrete
+upstream or architectural wall (re-confirmed by source audit 2026-05-28).
+(`output_power` was the third; it shipped in 1.0.2.)
 
 | Protocol | margo | niri | Hyprland | mango | Why margo can't ship it cleanly today |
 |---|---|---|---|---|---|
-| `zwlr_output_power_management_v1` | ❌ | ❌ | ✅ | ✅ | Doable via margo's deferred-queue pattern, but DPMS off/on is an untested DRM-path change with a black-screen failure mode — needs on-hardware iteration |
+| `zwlr_output_power_management_v1` | ✅ | ❌ | ✅ | ✅ | **Shipped (1.0.2).** `set_mode` maps onto the recoverable `request_dpms` deferred-queue path (`DrmCompositor::clear()`); input-wake + VT-switch both guarantee recovery |
 | `wp_tearing_control_v1` | ❌ | ❌ | ✅ | ✅ | **Upstream-blocked**: smithay's `DrmCompositor` exposes no tearing / async page-flip (`FrameFlags` has no tearing variant) and the `wp_tearing_control` bindings aren't in the pinned wayland-protocols. Advertising it would be a no-op lie to clients |
 | `wp_drm_lease_device_v1` | ❌ | ✅ | ✅ | ✅ | **Architecture-blocked**: `lease_request` must synchronously build a `DrmLeaseBuilder` from the live `DrmDevice`, which lives in the udev `BackendData` that `MargoState` deliberately cannot reach (the deferred-queue pattern can't help — the return is synchronous) |
 
-Both niri and margo lack `output_power` + `tearing`; only `drm_lease`
-is something niri has that margo doesn't. None blocks daily-driver use.
+margo now ships `output_power` (niri still lacks it); both margo and niri
+lack `tearing`; only `drm_lease` is something niri has that margo doesn't.
+None blocks daily-driver use.
 
 ## Compositor-specific protocols (informational, not gaps)
 
@@ -175,18 +177,16 @@ Tied to each project's own ecosystem; not counted as margo gaps.
 | `xdg_output_v1` (legacy) | Hyprland **and** mango | Pre-`wl_output v4` HiDPI workaround |
 | `zwlr_export_dmabuf_manager_v1` | mango only | Legacy wlroots screencast (superseded by image-copy-capture) |
 
-## Unblocking the remaining three
+## Unblocking the remaining two
 
-Each needs a prerequisite, not just a coding session:
+`zwlr_output_power_management_v1` shipped in 1.0.2 (DPMS via the recoverable
+`request_dpms` deferred-queue path). The two that remain each need a
+prerequisite, not just a coding session:
 
-1. **`zwlr_output_power_management_v1`** — implementable now via margo's
-   deferred-queue pattern (`pending_output_mode_changes` is the model),
-   but the DPMS apply needs on-hardware iteration before it's safe to
-   ship — a wrong re-enable path black-screens the output.
-2. **`wp_tearing_control_v1`** — wait for smithay's `DrmCompositor` to
+1. **`wp_tearing_control_v1`** — wait for smithay's `DrmCompositor` to
    expose tearing / async page-flip (FrameFlags variant). Until then any
    advertisement is a no-op. Track upstream smithay.
-3. **`wp_drm_lease_device_v1`** — needs `MargoState` to reach the udev
+2. **`wp_drm_lease_device_v1`** — needs `MargoState` to reach the udev
    `DrmDevice` synchronously (a small backend-access change to the
    deliberate State/BackendData split). Lowest value (VR / leased
    connectors), so lowest priority.

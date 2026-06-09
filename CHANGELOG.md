@@ -41,8 +41,14 @@ the same surface, hover, height, and shape.
   and back up — real power saving, not just a dim. Recovery is guaranteed two
   ways: any input wakes a darkened panel, and a VT-switch round-trip always
   restores every output (both force the all-outputs render path so a stalled
-  per-output clock can't keep a panel dark). (External-client control via
-  `zwlr_output_power_management_v1` is the next layer.)
+  per-output clock can't keep a panel dark). The input that wakes a darkened
+  panel is swallowed, so the keystroke that turns the screen back on no longer
+  lands on the focused window (no stray newline in the terminal you ran
+  `mctl dispatch dpms off` from).
+- **External DPMS control (`zwlr_output_power_management_v1`).** Idle daemons
+  (`swayidle`) and `wlr-randr --off/--on` can now power outputs down/up; their
+  `set_mode` maps onto the same recoverable `request_dpms` path, and `mode`
+  events track every power change (whoever triggered it).
 - **Example compositor plugin.** Ships `app-workspaces` under
   `margo/examples/plugins/` (app-id → home tag on open) and documents the
   full `plugin.toml` + `init.rhai` format + `mctl plugin` workflow.
