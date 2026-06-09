@@ -7,7 +7,7 @@
 mod engine;
 
 use clap::{Parser, Subcommand};
-use engine::{actions, favorites, obf, relays, status};
+use engine::{actions, blocky, diag, favorites, obf, relays, slot, status, timer};
 
 #[derive(Parser, Debug)]
 #[command(name = "mvpn", version, about = "Native Mullvad VPN control for margo")]
@@ -70,8 +70,27 @@ enum Cmd {
         #[arg(value_parser = ["on", "off"])]
         state: String,
     },
+    /// Device-slot management (multi-machine 5-device limit).
+    Slot {
+        #[command(subcommand)]
+        action: SlotCmd,
+    },
+    /// Auto-switch to a random relay every N minutes.
+    Timer {
+        #[command(subcommand)]
+        action: TimerCmd,
+    },
+    /// Leak test: confirm traffic exits through Mullvad.
+    Test,
+    /// Show processes excluded from the tunnel (split-tunnel).
+    Split,
+    /// Fail-safe: drive the blocky DNS guard from the current VPN state.
+    Ensure,
     /// Open the GTK control panel.
     Menu,
+    /// Internal: the detached timer loop (used by `timer start`).
+    #[command(name = "__timer-run", hide = true)]
+    TimerRun { minutes: u64 },
     /// Anything else is treated as `<country> [city]` (e.g. `mvpn de`, `mvpn us nyc`).
     #[command(external_subcommand)]
     Location(Vec<String>),
@@ -91,10 +110,41 @@ enum FavCmd {
     Refresh { country: Option<String> },
 }
 
+#[derive(Subcommand, Debug)]
+enum SlotCmd {
+    /// Revoke other machines' devices → log in → connect → record self.
+    Recycle {
+        /// Only report what would be revoked.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Show slot state + current device.
+    Status,
+    /// Print the current Mullvad device name.
+    Whoami,
+    /// List devices on the account.
+    List,
+    /// Revoke a device by name (refuses the current device).
+    Revoke { device: String },
+    /// Disconnect the VPN.
+    Disconnect,
+}
+
+#[derive(Subcommand, Debug)]
+enum TimerCmd {
+    /// Start switching relays every N minutes.
+    Start { minutes: u64 },
+    /// Stop the auto-switch timer.
+    Stop,
+    /// Show whether the timer is running.
+    Status,
+}
+
 // Ping sampling defaults (made configurable via mvpn.toml in a later phase).
 const FASTEST_SAMPLE: usize = 8;
 const PING_COUNT: u32 = 3;
 const PING_TIMEOUT: u32 = 2;
+const PASS_ENTRY: &str = "mullvad/account";
 
 fn main() {
     let cli = Cli::parse();
@@ -162,6 +212,65 @@ fn main() {
         },
         Cmd::Lockdown { state } => actions::set_lockdown(state == "on"),
         Cmd::AutoConnect { state } => actions::set_autoconnect(state == "on"),
+        Cmd::Slot { action } => run_slot(action),
+        Cmd::Timer { action } => match action {
+            TimerCmd::Start { minutes } => match timer::start(minutes) {
+                Ok(()) => {
+                    println!("timer: switching every {minutes} min");
+                    true
+                }
+                Err(e) => {
+                    eprintln!("mvpn timer: {e}");
+                    false
+                }
+            },
+            TimerCmd::Stop => {
+                println!(
+                    "timer: {}",
+                    if timer::stop() {
+                        "stopped"
+                    } else {
+                        "not running"
+                    }
+                );
+                true
+            }
+            TimerCmd::Status => {
+                println!(
+                    "timer: {}",
+                    if timer::is_running() {
+                        "running"
+                    } else {
+                        "stopped"
+                    }
+                );
+                true
+            }
+        },
+        Cmd::TimerRun { minutes } => timer::run(minutes),
+        Cmd::Test => {
+            let r = diag::leak_test();
+            if !r.connected {
+                println!("○ Not connected — exit IP {}", r.exit_ip);
+            } else if r.mullvad_exit {
+                println!(
+                    "✔ Secure · exiting via Mullvad ({}) · {}",
+                    r.exit_ip, r.relay
+                );
+            } else {
+                println!("✘ LEAK · not exiting via Mullvad ({})", r.exit_ip);
+            }
+            r.mullvad_exit || !r.connected
+        }
+        Cmd::Split => {
+            print!("{}", diag::split_tunnel());
+            println!();
+            true
+        }
+        Cmd::Ensure => {
+            println!("blocky: {}", blocky::ensure());
+            true
+        }
         Cmd::Menu => {
             eprintln!("mvpn menu: the GTK panel is not wired up yet (UI phase).");
             false
@@ -181,6 +290,55 @@ fn main() {
 
     if !ok {
         std::process::exit(1);
+    }
+}
+
+fn run_slot(action: SlotCmd) -> bool {
+    match action {
+        SlotCmd::Whoami => {
+            let d = slot::current_device();
+            println!("{}", if d.is_empty() { "(not logged in)" } else { &d });
+            !d.is_empty()
+        }
+        SlotCmd::List => {
+            for d in slot::list_devices() {
+                println!("{d}");
+            }
+            true
+        }
+        SlotCmd::Status => {
+            println!("os-id:   {}", slot::os_id());
+            println!("key:     {}", slot::state_key());
+            println!("device:  {}", slot::current_device());
+            true
+        }
+        SlotCmd::Revoke { device } => match slot::revoke(&device) {
+            Ok(()) => {
+                println!("revoked: {device}");
+                true
+            }
+            Err(e) => {
+                eprintln!("mvpn slot revoke: {e}");
+                false
+            }
+        },
+        SlotCmd::Disconnect => actions::disconnect(),
+        SlotCmd::Recycle { dry_run } => {
+            // Honour OSC_MULLVAD_REVOKE_OTHERS (default true), like osc-mullvad.
+            let revoke_others = std::env::var("OSC_MULLVAD_REVOKE_OTHERS")
+                .map(|v| v != "false")
+                .unwrap_or(true);
+            match slot::recycle(revoke_others, PASS_ENTRY, dry_run) {
+                Ok(dev) => {
+                    println!("slot: {dev}");
+                    true
+                }
+                Err(e) => {
+                    eprintln!("mvpn slot recycle: {e}");
+                    false
+                }
+            }
+        }
     }
 }
 
