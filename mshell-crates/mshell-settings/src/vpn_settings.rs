@@ -6,6 +6,7 @@
 //! Settings. The rich control panel still lives in `mvpn menu`; this page is the
 //! favourites editor the bar pill / menu don't expose for add-remove.
 
+use crate::row::Row;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
@@ -21,7 +22,15 @@ pub struct VpnSettingsModel {
     status: String,
     connected: bool,
     favs: Vec<Fav>,
+    lockdown: bool,
+    autoconnect: bool,
+    quantum: bool,
+    obf: String,
+    obf_model: gtk::StringList,
 }
+
+/// Obfuscation modes offered in the dropdown (index ↔ string).
+const OBF_MODES: &[&str] = &["auto", "off", "udp2tcp", "shadowsocks", "quic"];
 
 #[derive(Debug)]
 pub enum VpnSettingsInput {
@@ -30,6 +39,12 @@ pub enum VpnSettingsInput {
     AddCurrent,
     Connect(String),
     Remove(String),
+    Random,
+    Fastest,
+    SetLockdown(bool),
+    SetAutoconnect(bool),
+    SetQuantum(bool),
+    SetObf(u32),
 }
 
 #[derive(Debug)]
@@ -38,6 +53,10 @@ pub enum VpnSettingsCmd {
         status: String,
         connected: bool,
         favs: Vec<Fav>,
+        lockdown: bool,
+        autoconnect: bool,
+        quantum: bool,
+        obf: String,
     },
 }
 
@@ -101,12 +120,86 @@ impl Component for VpnSettingsModel {
                         connect_clicked => VpnSettingsInput::Toggle,
                     },
                     gtk::Button {
+                        set_label: "Random",
+                        connect_clicked => VpnSettingsInput::Random,
+                    },
+                    gtk::Button {
+                        set_label: "Fastest",
+                        connect_clicked => VpnSettingsInput::Fastest,
+                    },
+                    gtk::Button {
                         set_label: "Add current relay",
                         connect_clicked => VpnSettingsInput::AddCurrent,
                     },
                     gtk::Button {
                         set_icon_name: "view-refresh-symbolic",
                         connect_clicked => VpnSettingsInput::Refresh,
+                    },
+                },
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Settings",
+                    set_halign: gtk::Align::Start,
+                },
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Lockdown mode" },
+                    #[template_child] desc { set_label: "Block all traffic when the VPN drops." },
+                    #[name="lockdown_sw"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_active: model.lockdown,
+                        connect_state_set[sender] => move |_, on| {
+                            sender.input(VpnSettingsInput::SetLockdown(on));
+                            gtk::glib::Propagation::Proceed
+                        },
+                    },
+                },
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Auto-connect" },
+                    #[template_child] desc { set_label: "Bring the tunnel up when the daemon starts." },
+                    #[name="autoconnect_sw"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_active: model.autoconnect,
+                        connect_state_set[sender] => move |_, on| {
+                            sender.input(VpnSettingsInput::SetAutoconnect(on));
+                            gtk::glib::Propagation::Proceed
+                        },
+                    },
+                },
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Quantum-resistant" },
+                    #[template_child] desc { set_label: "WireGuard post-quantum key exchange." },
+                    #[name="quantum_sw"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_active: model.quantum,
+                        connect_state_set[sender] => move |_, on| {
+                            sender.input(VpnSettingsInput::SetQuantum(on));
+                            gtk::glib::Propagation::Proceed
+                        },
+                    },
+                },
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Anti-censorship" },
+                    #[template_child] desc { set_label: "Obfuscation method (auto / off / udp2tcp / shadowsocks / quic)." },
+                    #[name="obf_drop"]
+                    gtk::DropDown {
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&model.obf_model),
+                        #[watch]
+                        set_selected: OBF_MODES.iter().position(|m| *m == model.obf).unwrap_or(0) as u32,
+                        connect_selected_notify[sender] => move |d| {
+                            sender.input(VpnSettingsInput::SetObf(d.selected()));
+                        },
                     },
                 },
 
@@ -134,6 +227,11 @@ impl Component for VpnSettingsModel {
             status: "Loading…".to_string(),
             connected: false,
             favs: Vec::new(),
+            lockdown: false,
+            autoconnect: false,
+            quantum: false,
+            obf: "auto".to_string(),
+            obf_model: gtk::StringList::new(OBF_MODES),
         };
         let widgets = view_output!();
         reload(&sender);
@@ -150,6 +248,32 @@ impl Component for VpnSettingsModel {
                 let _ = r; // `fav connect` picks the fastest; relay arg unused here
             }
             VpnSettingsInput::Remove(r) => act(&sender, vec!["fav".into(), "remove".into(), r]),
+            VpnSettingsInput::Random => act(&sender, vec!["random".into()]),
+            VpnSettingsInput::Fastest => act(&sender, vec!["fastest".into()]),
+            // The compare-guards stop the `#[watch] set_active` refresh from
+            // echoing back into an mvpn command (it sets the switch to the
+            // value we already hold → no change → no-op).
+            VpnSettingsInput::SetLockdown(on) => {
+                if on != self.lockdown {
+                    act(&sender, vec!["lockdown".into(), bool_arg(on)]);
+                }
+            }
+            VpnSettingsInput::SetAutoconnect(on) => {
+                if on != self.autoconnect {
+                    act(&sender, vec!["auto-connect".into(), bool_arg(on)]);
+                }
+            }
+            VpnSettingsInput::SetQuantum(on) => {
+                if on != self.quantum {
+                    act(&sender, vec!["quantum".into()]); // quantum is a toggle
+                }
+            }
+            VpnSettingsInput::SetObf(idx) => {
+                let mode = OBF_MODES.get(idx as usize).copied().unwrap_or("auto");
+                if mode != self.obf {
+                    act(&sender, vec!["obf".into(), mode.into()]);
+                }
+            }
         }
     }
 
@@ -164,12 +288,24 @@ impl Component for VpnSettingsModel {
             status,
             connected,
             favs,
+            lockdown,
+            autoconnect,
+            quantum,
+            obf,
         } = message;
         self.status = status;
         self.connected = connected;
         self.favs = favs;
+        self.lockdown = lockdown;
+        self.autoconnect = autoconnect;
+        self.quantum = quantum;
+        self.obf = obf;
         rebuild_favs(&widgets.fav_box, &self.favs, &sender);
     }
+}
+
+fn bool_arg(on: bool) -> String {
+    if on { "on" } else { "off" }.to_string()
 }
 
 /// Clear + repopulate the favourites list.
@@ -248,10 +384,25 @@ async fn load() -> VpnSettingsCmd {
         "Disconnected".to_string()
     };
     let favs = parse_fav_list(&capture(&["fav", "list"]).await);
+    let toggles = capture(&["toggles"]).await;
+    let kv = |key: &str| -> String {
+        toggles
+            .lines()
+            .find_map(|l| l.trim().strip_prefix(&format!("{key}=")))
+            .unwrap_or("")
+            .to_string()
+    };
     VpnSettingsCmd::Loaded {
         status,
         connected,
         favs,
+        lockdown: kv("lockdown") == "on",
+        autoconnect: kv("autoconnect") == "on",
+        quantum: kv("quantum") == "on",
+        obf: {
+            let m = kv("obf");
+            if m.is_empty() { "auto".to_string() } else { m }
+        },
     }
 }
 
