@@ -4256,6 +4256,7 @@ dependencies = [
 name = "mshell-ai"
 version = "1.0.3"
 dependencies = [
+ "keyring",
  "serde",
  "serde_json",
  "ureq",

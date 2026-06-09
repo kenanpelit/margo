@@ -13,3 +13,4 @@ description = "GTK-free multi-provider AI chat engine for margo — streaming + 
 serde = { workspace = true }
 serde_json = { workspace = true }
 ureq = { workspace = true }
+keyring = { workspace = true }

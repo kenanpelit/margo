@@ -10,6 +10,8 @@
 //! Providers: Gemini · OpenAI-compatible (also LocalAI / LM Studio / vLLM) ·
 //! Anthropic · Ollama · Custom (alias of OpenAI for any compatible endpoint).
 
+pub mod config;
+
 use std::io::{BufRead, BufReader};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
