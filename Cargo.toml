@@ -23,6 +23,7 @@ members = [
     "mshell",
     "mshellctl",
     "mshellshare",
+    "mshell-crates/mshell-ai",
     "mshell-crates/mshell-auth",
     "mshell-crates/mshell-cache",
     "mshell-crates/mshell-clipboard",

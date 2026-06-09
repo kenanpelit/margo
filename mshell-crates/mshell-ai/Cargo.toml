@@ -1,0 +1,15 @@
+[package]
+name = "mshell-ai"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
+description = "GTK-free multi-provider AI chat engine for margo — streaming + live model discovery"
+
+# Shared by the shell's AI bar widget / menu and the Settings → AI page.
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+ureq = { workspace = true }

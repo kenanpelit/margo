@@ -4253,6 +4253,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mshell-ai"
+version = "1.0.3"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
 name = "mshell-auth"
 version = "1.0.3"
 dependencies = [
