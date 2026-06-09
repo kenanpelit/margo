@@ -13,6 +13,7 @@
 use super::super::dns::dns_menu_widget::{
     DnsMenuWidgetInit, DnsMenuWidgetInput, DnsMenuWidgetModel,
 };
+use super::super::dns::state::{Mode, probe_dns_state};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::sync::Arc;
@@ -43,7 +44,12 @@ pub(crate) struct VpnMenuWidgetModel {
     /// the dropdown, and lets the favourites list rebuild in place).
     status_label: gtk::Label,
     badge: gtk::Label,
-    toggle_btn: gtk::Button,
+    /// Mode selector buttons (Mullvad / Blocky / Default) — the active one
+    /// carries `.selected`. Driven from `mode`.
+    mode_mullvad: gtk::Button,
+    mode_blocky: gtk::Button,
+    mode_default: gtk::Button,
+    mode: Mode,
     lockdown_sw: gtk::Switch,
     autoconnect_sw: gtk::Switch,
     quantum_sw: gtk::Switch,
@@ -74,7 +80,9 @@ impl std::fmt::Debug for VpnMenuWidgetModel {
 
 #[derive(Debug)]
 pub(crate) enum VpnMenuWidgetInput {
-    Toggle,
+    /// Pick a network mode — forwards `mullvad`/`blocky`/`default` to the
+    /// embedded DNS widget's privileged `RunAction`.
+    SelectMode(String),
     Random,
     Fastest,
     AddCurrent,
@@ -116,6 +124,8 @@ pub(crate) enum VpnMenuWidgetCommandOutput {
         obf: String,
         /// Account expiry date (`YYYY-MM-DD`), from `mvpn toggles`.
         expiry: String,
+        /// Current network mode (VPN / Blocky / Default) from `probe_dns_state`.
+        mode: Mode,
     },
     /// Mullvad country catalog (code, name, relay-count) — loaded lazily when
     /// the Countries section is first expanded.
@@ -175,16 +185,47 @@ impl Component for VpnMenuWidgetModel {
                 },
             },
 
-            // ── Primary actions ─────────────────────────────────
+            // ── Mode selector (Mullvad / Blocky / Default) ──────
+            // Segmented: the active mode is filled with the accent. Clicks
+            // forward to the embedded DnsMenuWidget's privileged `RunAction`.
             gtk::Box {
+                add_css_class: "vpn-mode-row",
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 6,
                 set_homogeneous: true,
 
                 #[local_ref]
-                toggle_btn_widget -> gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
+                mode_mullvad_widget -> gtk::Button {
+                    set_css_classes: &["ok-button-surface", "dns-action"],
+                    set_label: "Mullvad",
+                    connect_clicked[sender] => move |_| {
+                        sender.input(VpnMenuWidgetInput::SelectMode("mullvad".into()));
+                    },
                 },
+                #[local_ref]
+                mode_blocky_widget -> gtk::Button {
+                    set_css_classes: &["ok-button-surface", "dns-action"],
+                    set_label: "Blocky",
+                    connect_clicked[sender] => move |_| {
+                        sender.input(VpnMenuWidgetInput::SelectMode("blocky".into()));
+                    },
+                },
+                #[local_ref]
+                mode_default_widget -> gtk::Button {
+                    set_css_classes: &["ok-button-surface", "dns-action"],
+                    set_label: "Default",
+                    connect_clicked[sender] => move |_| {
+                        sender.input(VpnMenuWidgetInput::SelectMode("default".into()));
+                    },
+                },
+            },
+
+            // ── Relay actions ───────────────────────────────────
+            gtk::Box {
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 6,
+                set_homogeneous: true,
+
                 gtk::Button {
                     set_css_classes: &["ok-button-surface", "ok-button-cell"],
                     set_label: "Random",
@@ -220,16 +261,23 @@ impl Component for VpnMenuWidgetModel {
 
             gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
 
-            gtk::Label {
-                add_css_class: "label-medium-bold",
-                set_label: "Favourites",
-                set_xalign: 0.0,
-            },
+            // ── Favourites (collapsible) ────────────────────────
+            gtk::Expander {
+                add_css_class: "vpn-dns-expander",
+                set_label: Some("Favourites"),
+                set_expanded: false,
 
-            #[local_ref]
-            fav_box_widget -> gtk::Box {
-                set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 4,
+                #[wrap(Some)]
+                set_child = &gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_margin_top: 6,
+
+                    #[local_ref]
+                    fav_box_widget -> gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 4,
+                    },
+                },
             },
 
             gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
@@ -292,11 +340,11 @@ impl Component for VpnMenuWidgetModel {
     ) -> ComponentParts<Self> {
         let status_label_widget = gtk::Label::new(Some("Loading…"));
         let badge_widget = gtk::Label::new(Some("Idle"));
-        let toggle_btn_widget = gtk::Button::with_label("Connect");
-        {
-            let s = sender.clone();
-            toggle_btn_widget.connect_clicked(move |_| s.input(VpnMenuWidgetInput::Toggle));
-        }
+        // Mode selector buttons — built here so they're local-ref'd into the
+        // segmented row; clicks are wired in the view! macro.
+        let mode_mullvad_widget = gtk::Button::new();
+        let mode_blocky_widget = gtk::Button::new();
+        let mode_default_widget = gtk::Button::new();
 
         // Build the three toggle rows + the anti-censorship dropdown, holding
         // refs so `sync_view` can drive them without `#[watch]`.
@@ -384,7 +432,10 @@ impl Component for VpnMenuWidgetModel {
             favs: Vec::new(),
             status_label: status_label_widget.clone(),
             badge: badge_widget.clone(),
-            toggle_btn: toggle_btn_widget.clone(),
+            mode_mullvad: mode_mullvad_widget.clone(),
+            mode_blocky: mode_blocky_widget.clone(),
+            mode_default: mode_default_widget.clone(),
+            mode: Mode::Idle,
             lockdown_sw: lockdown_sw.clone(),
             autoconnect_sw: autoconnect_sw.clone(),
             quantum_sw: quantum_sw.clone(),
@@ -411,7 +462,15 @@ impl Component for VpnMenuWidgetModel {
 
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
-            VpnMenuWidgetInput::Toggle => act(&sender, vec!["toggle".into()]),
+            VpnMenuWidgetInput::SelectMode(id) => {
+                // Run the privileged DNS-mode action via the embedded widget,
+                // then re-poll shortly after so the selector + status refresh.
+                let _ = self.dns.sender().send(DnsMenuWidgetInput::RunAction(id));
+                sender.command(|out, _shutdown| async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+                    let _ = out.send(load().await);
+                });
+            }
             VpnMenuWidgetInput::Random => act(&sender, vec!["random".into()]),
             VpnMenuWidgetInput::Fastest => act(&sender, vec!["fastest".into()]),
             VpnMenuWidgetInput::AddCurrent => act(&sender, vec!["fav".into(), "add".into()]),
@@ -496,7 +555,7 @@ impl Component for VpnMenuWidgetModel {
         sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
-        let (status, connected, relay, favs, lockdown, autoconnect, quantum, obf, expiry) =
+        let (status, connected, relay, favs, lockdown, autoconnect, quantum, obf, expiry, mode) =
             match message {
                 VpnMenuWidgetCommandOutput::Loaded {
                     status,
@@ -508,6 +567,7 @@ impl Component for VpnMenuWidgetModel {
                     quantum,
                     obf,
                     expiry,
+                    mode,
                 } => (
                     status,
                     connected,
@@ -518,6 +578,7 @@ impl Component for VpnMenuWidgetModel {
                     quantum,
                     obf,
                     expiry,
+                    mode,
                 ),
                 VpnMenuWidgetCommandOutput::CountriesLoaded(list) => {
                     rebuild_countries(&self.countries_box, &list, &sender);
@@ -531,6 +592,7 @@ impl Component for VpnMenuWidgetModel {
         self.quantum = quantum;
         self.obf = obf;
         self.favs = favs;
+        self.mode = mode;
 
         self.status_label.set_label(&status);
         self.badge
@@ -540,8 +602,25 @@ impl Component for VpnMenuWidgetModel {
         } else {
             self.badge.remove_css_class("ok");
         }
-        self.toggle_btn
-            .set_label(if connected { "Disconnect" } else { "Connect" });
+
+        // Highlight the active mode button. Mullvad/Mixed → Mullvad; Blocky →
+        // Blocky; everything else → Default.
+        let (mv, bl, df) = match mode {
+            Mode::Mullvad | Mode::Mixed => (true, false, false),
+            Mode::Blocky => (false, true, false),
+            _ => (false, false, true),
+        };
+        for (btn, on) in [
+            (&self.mode_mullvad, mv),
+            (&self.mode_blocky, bl),
+            (&self.mode_default, df),
+        ] {
+            if on {
+                btn.add_css_class("selected");
+            } else {
+                btn.remove_css_class("selected");
+            }
+        }
         // Each `set_active` fires `connect_state_set` → an input, but the
         // compare-guard there drops it since the field already holds the value.
         self.lockdown_sw.set_active(lockdown);
@@ -762,6 +841,8 @@ async fn load() -> VpnMenuWidgetCommandOutput {
             .unwrap_or("")
             .to_string()
     };
+    // Current network mode for the top selector (VPN / Blocky / Default).
+    let mode = probe_dns_state().await.mode_id();
     VpnMenuWidgetCommandOutput::Loaded {
         status,
         connected,
@@ -775,6 +856,7 @@ async fn load() -> VpnMenuWidgetCommandOutput {
             if m.is_empty() { "auto".to_string() } else { m }
         },
         expiry: kv("expiry"),
+        mode,
     }
 }
 

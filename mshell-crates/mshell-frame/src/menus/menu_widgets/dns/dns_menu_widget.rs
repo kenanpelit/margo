@@ -207,6 +207,7 @@ impl Component for DnsMenuWidgetModel {
                 blocky_line_widget -> gtk::Label {
                     add_css_class: "label-small",
                     set_xalign: 0.0,
+                    set_visible: !model.embedded,
                 },
                 #[local_ref]
                 dns_line_widget -> gtk::Label {
@@ -214,23 +215,30 @@ impl Component for DnsMenuWidgetModel {
                     set_xalign: 0.0,
                     set_wrap: true,
                     set_wrap_mode: gtk::pango::WrapMode::WordChar,
+                    set_visible: !model.embedded,
                 },
             },
 
-            // ── 4 primary actions ───────────────────────────────
+            // ── Primary actions (empty + hidden when embedded — the host VPN
+            //    menu owns the Mullvad/Blocky/Default selector) ──────────────
             #[local_ref]
             actions_box -> gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 6,
                 set_homogeneous: true,
+                set_visible: !model.embedded,
             },
 
-            gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
+            gtk::Separator {
+                set_orientation: gtk::Orientation::Horizontal,
+                set_visible: !model.embedded,
+            },
 
             gtk::Label {
                 add_css_class: "label-medium-bold",
                 set_label: "DNS Presets",
                 set_xalign: 0.0,
+                set_visible: !model.embedded,
             },
 
             // ── 5 preset rows ───────────────────────────────────
@@ -272,15 +280,13 @@ impl Component for DnsMenuWidgetModel {
         let blocky_line_widget = gtk::Label::new(Some("Blocky: inactive"));
         let dns_line_widget = gtk::Label::new(Some("DNS: —"));
 
-        // Build action buttons row. Embedded in the VPN menu, drop the
-        // VPN-redundant `Mullvad` + `Toggle` actions — keep Blocky / Default.
+        // Build action buttons row. Embedded in the VPN menu it renders only
+        // the DNS presets — the Mullvad / Blocky / Default mode selector is
+        // owned by the host VPN menu, which forwards `RunAction` to us.
         let actions_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         let mut action_buttons: Vec<(String, gtk::Button)> = Vec::with_capacity(4);
         let actions: &[(&str, &str, &str)] = if embedded {
-            &[
-                ("blocky", "Blocky", "server-symbolic"),
-                ("default", "Default", "network-wired-symbolic"),
-            ]
+            &[]
         } else {
             &[
                 ("mullvad", "Mullvad", "vpn-symbolic"),
