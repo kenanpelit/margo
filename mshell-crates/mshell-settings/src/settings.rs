@@ -43,6 +43,7 @@ use crate::tag_layout_settings::{TagLayoutSettingsInit, TagLayoutSettingsModel};
 use crate::tag_rules_settings::{TagRulesInit, TagRulesModel};
 use crate::theme_settings::theme_settings::{ThemeSettingsInit, ThemeSettingsModel};
 use crate::users_settings::{UsersSettingsInit, UsersSettingsModel};
+use crate::vpn_settings::{VpnSettingsInit, VpnSettingsModel};
 use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
 use crate::weather_settings::{WeatherSettingsInit, WeatherSettingsModel};
 use crate::widget_menu_settings::{MenuKind, WidgetMenuSettingsInit, WidgetMenuSettingsModel};
@@ -84,6 +85,7 @@ pub struct SettingsWindowModel {
     backup_settings_controller: Controller<BackupSettingsModel>,
     logging_settings_controller: Controller<LoggingModel>,
     overview_settings_controller: Controller<OverviewSettingsModel>,
+    vpn_settings_controller: Controller<VpnSettingsModel>,
     date_time_settings_controller: Controller<DateTimeSettingsModel>,
     region_settings_controller: Controller<RegionSettingsModel>,
     sound_settings_controller: Controller<SoundSettingsModel>,
@@ -443,6 +445,10 @@ impl Component for SettingsWindowModel {
             .launch(OverviewSettingsInit {})
             .detach();
 
+        let vpn_settings_controller = VpnSettingsModel::builder()
+            .launch(VpnSettingsInit {})
+            .detach();
+
         let date_time_settings_controller = DateTimeSettingsModel::builder()
             .launch(DateTimeSettingsInit {})
             .detach();
@@ -587,6 +593,7 @@ impl Component for SettingsWindowModel {
             backup_settings_controller,
             logging_settings_controller,
             overview_settings_controller,
+            vpn_settings_controller,
             date_time_settings_controller,
             region_settings_controller,
             sound_settings_controller,
@@ -735,7 +742,7 @@ impl Component for SettingsWindowModel {
         // Top-level stack pages. Insertion order does not affect display (the
         // sidebar buttons drive visibility) — kept as one table so the page
         // list lives in a single place instead of 36 add_titled blocks.
-        let stack_pages: [(&str, &str, gtk::Widget); 38] = [
+        let stack_pages: [(&str, &str, gtk::Widget); 39] = [
             (
                 "general",
                 "General",
@@ -827,6 +834,11 @@ impl Component for SettingsWindowModel {
                 "overview",
                 "Overview",
                 model.overview_settings_controller.widget().clone().into(),
+            ),
+            (
+                "vpn",
+                "VPN",
+                model.vpn_settings_controller.widget().clone().into(),
             ),
             (
                 "date_time",
@@ -2131,6 +2143,11 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "overview",
         icon: "view-grid-symbolic",
         label: "Overview",
+    },
+    Page {
+        route: "vpn",
+        icon: "network-vpn-symbolic",
+        label: "VPN",
     },
     Page {
         route: "tiling_layout",

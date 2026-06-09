@@ -71,6 +71,7 @@ mod tag_layout_settings;
 mod tag_rules_settings;
 mod theme_settings;
 mod users_settings;
+mod vpn_settings;
 mod wallpaper_settings;
 mod weather_settings;
 mod widget_menu_settings;
