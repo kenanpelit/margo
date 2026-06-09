@@ -799,7 +799,15 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                     let mut bd = backend_data.borrow_mut();
                     apply_pending_mode_changes(&mut bd, state);
                 }
-                if state.per_output_frame_clock_enabled() {
+                // DPMS changes MUST go through the all-outputs path: a
+                // DPMS-off output stops producing vblanks, so its per-output
+                // clock stalls and it never becomes "due" — meaning a wake
+                // queued in `pending_dpms` would never drain on the per-output
+                // path and the panel would stay dark. Forcing the global path
+                // whenever `pending_dpms` is non-empty guarantees the queue is
+                // serviced (and is the recovery path the VT-switch relies on).
+                let force_all_for_dpms = !state.pending_dpms.is_empty();
+                if state.per_output_frame_clock_enabled() && !force_all_for_dpms {
                     // Opt-in per-output path: render ONLY the outputs
                     // whose present timer has come due (dirty + refresh
                     // interval elapsed + not awaiting a vblank). Each
@@ -827,7 +835,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                             "repaint-per-output",
                         );
                     }
-                } else if state.take_repaint_request() {
+                } else if state.take_repaint_request() || force_all_for_dpms {
                     let mut bd = backend_data.borrow_mut();
                     let BackendData {
                         renderer,
@@ -900,6 +908,10 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                         }
                     }
                     state.arrange_all();
+                    // Guaranteed DPMS recovery: a VT-switch back ALWAYS wakes
+                    // every panel, so a stuck DPMS-off can never survive a
+                    // Ctrl+Alt+F-key round-trip. Harmless when nothing is off.
+                    state.request_dpms(Some(true), None);
                 }
             },
         )
