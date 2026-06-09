@@ -1,0 +1,14 @@
+//! mvpn engine — GTK-free Mullvad VPN logic, shared by the CLI and the panel.
+//!
+//! Everything here is a thin layer over the `mullvad` CLI + on-disk files; it
+//! holds no persistent state of its own (the daemon + files are the source of
+//! truth), so the CLI and GUI can both call straight in.
+
+// Some helpers (settings/expiry/sudo) are consumed by the GUI panel + the
+// favorites/slot/blocky phases that land next; allow until they're wired.
+#![allow(dead_code)]
+
+pub mod actions;
+pub mod relays;
+pub mod status;
+pub mod sys;

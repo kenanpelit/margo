@@ -1,0 +1,25 @@
+[package]
+name = "mvpn"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
+description = "Native Mullvad VPN control for margo — CLI + GTK4 layer-shell panel"
+
+[[bin]]
+name = "mvpn"
+path = "src/main.rs"
+
+[dependencies]
+# CLI + config
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+anyhow = { workspace = true }
+# GUI deps (relm4 / gtk4-layer-shell / gdk4 / mshell-matugen / mshell-style)
+# are added in the UI phase.
+
+[lints]
+workspace = true

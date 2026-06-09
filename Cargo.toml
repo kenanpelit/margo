@@ -14,6 +14,7 @@ members = [
     "mplay",
     "mpower",
     "mscreenshot",
+    "mvpn",
     "mvisual",
     "mwizard",
     "start-margo",
