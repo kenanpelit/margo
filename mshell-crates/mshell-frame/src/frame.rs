@@ -2364,6 +2364,23 @@ impl Frame {
         let settings_menu_widget: Widget = self.settings_menu.widget().clone().upcast();
         let dashboard_menu_widget: Widget = self.dashboard_menu.widget().clone().upcast();
 
+        // Snapshot which child each region's stack currently shows. The
+        // `remove_all` + re-add below would otherwise leave every stack
+        // defaulting to its first-added child (clock) — which flashes the
+        // clock menu over whatever menu is actually open whenever a widget's
+        // position/config change triggers a restack. We restore these at the
+        // end so an open menu keeps showing the right child.
+        let prev_visible = [
+            widgets.left_stack.visible_child_name(),
+            widgets.right_stack.visible_child_name(),
+            widgets.top_stack.visible_child_name(),
+            widgets.top_left_stack.visible_child_name(),
+            widgets.top_right_stack.visible_child_name(),
+            widgets.bottom_stack.visible_child_name(),
+            widgets.bottom_left_stack.visible_child_name(),
+            widgets.bottom_right_stack.visible_child_name(),
+        ];
+
         widgets.left_stack.remove_all();
         widgets.right_stack.remove_all();
         widgets.top_stack.remove_all();
@@ -2570,6 +2587,27 @@ impl Frame {
             MARGO_LAYOUT_MENU,
             &margo_layout_menu_position,
         );
+
+        // Restore the pre-restack visible child for each region (see the
+        // `prev_visible` snapshot above) so a re-add doesn't flash the
+        // first-added menu (clock) over the menu that's actually open.
+        let stacks = [
+            &widgets.left_stack,
+            &widgets.right_stack,
+            &widgets.top_stack,
+            &widgets.top_left_stack,
+            &widgets.top_right_stack,
+            &widgets.bottom_stack,
+            &widgets.bottom_left_stack,
+            &widgets.bottom_right_stack,
+        ];
+        for (stack, prev) in stacks.iter().zip(prev_visible.iter()) {
+            if let Some(name) = prev
+                && stack.child_by_name(name.as_str()).is_some()
+            {
+                stack.set_visible_child_full(name.as_str(), gtk::StackTransitionType::None);
+            }
+        }
     }
 
     fn add_to_stack(widgets: &FrameWidgets, widget: &Widget, name: &str, position: &Position) {
