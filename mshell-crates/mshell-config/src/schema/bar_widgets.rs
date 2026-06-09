@@ -163,7 +163,7 @@ impl BarWidget {
             BarWidget::Logout => "Logout",
             BarWidget::Setup => "Setup",
             BarWidget::MediaPlayer => "Media Player",
-            BarWidget::Vpn => "DNS / VPN",
+            BarWidget::Vpn => "VPN",
             BarWidget::Ip => "Public IP",
             BarWidget::Network => "Network Console",
             BarWidget::Custom(_) => "Custom Widget",

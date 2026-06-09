@@ -35,9 +35,12 @@ pub(crate) enum MenuKind {
     Dashboard,
     MargoLayout,
     MediaPlayer,
-    /// The combined DNS / VPN menu (the `mvpn` pill's menu — `vpn_menu`
-    /// config). Carries the VPN controls + the collapsible DNS section.
+    /// The combined VPN menu (the `mvpn` pill's menu — `vpn_menu` config).
+    /// Carries the Mullvad controls + the collapsible DNS section.
     Vpn,
+    /// The standalone DNS menu (`dns_menu`), opened by `mshellctl menu dns`.
+    /// No bar pill — its config is only useful for that terminal verb.
+    Dns,
     Ip,
     Network,
     Notes,
@@ -73,6 +76,7 @@ macro_rules! menu_read {
             MenuKind::Dashboard => m.dashboard_menu().$field().$g(),
             MenuKind::MediaPlayer => m.media_player_menu().$field().$g(),
             MenuKind::Vpn => m.vpn_menu().$field().$g(),
+            MenuKind::Dns => m.dns_menu().$field().$g(),
             MenuKind::Ip => m.ip_menu().$field().$g(),
             MenuKind::Network => m.network_menu().$field().$g(),
             MenuKind::Notes => m.notes_menu().$field().$g(),
@@ -108,6 +112,7 @@ macro_rules! menu_write {
             MenuKind::Dashboard => c.menus.dashboard_menu.$field = $val,
             MenuKind::MediaPlayer => c.menus.media_player_menu.$field = $val,
             MenuKind::Vpn => c.menus.vpn_menu.$field = $val,
+            MenuKind::Dns => c.menus.dns_menu.$field = $val,
             MenuKind::Ip => c.menus.ip_menu.$field = $val,
             MenuKind::Network => c.menus.network_menu.$field = $val,
             MenuKind::Notes => c.menus.notes_menu.$field = $val,
@@ -146,7 +151,8 @@ impl MenuKind {
             Self::Dashboard => "Dashboard",
             Self::MargoLayout => "Margo Layout",
             Self::MediaPlayer => "Media Player",
-            Self::Vpn => "DNS / VPN",
+            Self::Vpn => "VPN",
+            Self::Dns => "DNS",
             Self::Ip => "Public IP",
             Self::Network => "Network Console",
             Self::Notes => "Notes Hub",
@@ -196,6 +202,7 @@ impl MenuKind {
             MenuKind::SshSessions,
             MenuKind::Ufw,
             MenuKind::Vpn,
+            MenuKind::Dns,
             MenuKind::Podman,
             MenuKind::Notes,
             MenuKind::Ip,
