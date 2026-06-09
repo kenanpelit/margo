@@ -233,7 +233,7 @@ fn build_ui(main_loop: &glib::MainLoop) {
         actions::random("", "", relays::Ownership::Any);
     });
     wire(&fastest_btn, &tx, || {
-        favorites::fastest("", 8, 3, 2);
+        favorites::fastest("", 10, 3, 2, true);
     });
     wire(&proto_btn, &tx, || {
         actions::toggle_quantum();

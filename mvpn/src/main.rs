@@ -8,7 +8,7 @@ mod engine;
 mod ui;
 
 use clap::{Parser, Subcommand};
-use engine::{actions, blocky, diag, favorites, obf, relays, slot, status, timer};
+use engine::{actions, blocky, diag, favorites, notify, obf, relays, slot, status, timer};
 
 #[derive(Parser, Debug)]
 #[command(name = "mvpn", version, about = "Native Mullvad VPN control for margo")]
@@ -48,9 +48,10 @@ enum Cmd {
     /// Toggle WireGuard quantum-resistant key exchange (`protocol` = alias).
     #[command(alias = "protocol")]
     Quantum,
-    /// Find the fastest relay (optionally in a country), connect + save to favorites.
+    /// Ping every relay (in a country, or a global sample), connect to the
+    /// genuinely fastest. Does NOT touch favorites.
     Fastest { country: Option<String> },
-    /// Alias for `fastest`.
+    /// Like `fastest`, but also record the winner in favorites.
     #[command(name = "fastest-fav")]
     FastestFav { country: Option<String> },
     /// Seed favorites with the fastest relay across a country group
@@ -155,7 +156,9 @@ enum TimerCmd {
 }
 
 // Ping sampling defaults (made configurable via mvpn.toml in a later phase).
-const FASTEST_SAMPLE: usize = 8;
+/// Worldwide `fastest` sample cap (osc-mullvad's `max_relays`). A specific
+/// country tests *all* its relays — see `favorites::fastest`.
+const FASTEST_SAMPLE: usize = 10;
 const PING_COUNT: u32 = 3;
 const PING_TIMEOUT: u32 = 2;
 const PASS_ENTRY: &str = "mullvad/account";
@@ -178,41 +181,30 @@ fn main() {
             print_status(pill, verbose, json);
             true
         }
-        Cmd::Connect => actions::connect(),
-        Cmd::Disconnect => actions::disconnect(),
-        Cmd::Toggle => actions::toggle(),
-        Cmd::Reconnect => actions::reconnect(),
-        Cmd::Random { country } => {
-            actions::random(country.as_deref().unwrap_or(""), "", relays::Ownership::Any)
-        }
-        Cmd::Owned { country } => actions::random(
+        Cmd::Connect => notify_after(actions::connect()),
+        Cmd::Disconnect => notify_after(actions::disconnect()),
+        Cmd::Toggle => notify_after(actions::toggle()),
+        Cmd::Reconnect => notify_after(actions::reconnect()),
+        Cmd::Random { country } => notify_after(actions::random(
+            country.as_deref().unwrap_or(""),
+            "",
+            relays::Ownership::Any,
+        )),
+        Cmd::Owned { country } => notify_after(actions::random(
             country.as_deref().unwrap_or(""),
             "",
             relays::Ownership::Owned,
-        ),
-        Cmd::Rented { country } => actions::random(
+        )),
+        Cmd::Rented { country } => notify_after(actions::random(
             country.as_deref().unwrap_or(""),
             "",
             relays::Ownership::Rented,
-        ),
+        )),
         Cmd::Quantum => actions::toggle_quantum(),
-        Cmd::Fastest { country } | Cmd::FastestFav { country } => {
-            match favorites::fastest(
-                country.as_deref().unwrap_or(""),
-                FASTEST_SAMPLE,
-                PING_COUNT,
-                PING_TIMEOUT,
-            ) {
-                Some((relay, avg)) => {
-                    println!("→ {relay} · {avg:.0} ms");
-                    true
-                }
-                None => {
-                    eprintln!("mvpn fastest: no responsive relay found");
-                    false
-                }
-            }
-        }
+        // `fastest` leaves favorites untouched; `fastest-fav` records the
+        // winner — same sweep otherwise (osc-mullvad's `add_to_favorites`).
+        Cmd::Fastest { country } => run_fastest(country.as_deref().unwrap_or(""), false),
+        Cmd::FastestFav { country } => run_fastest(country.as_deref().unwrap_or(""), true),
         Cmd::FastestFavSweep { group, count } => match relays::group_codes(&group) {
             Some(codes) => {
                 let n = favorites::sweep(&codes, count.unwrap_or(6), PING_COUNT, PING_TIMEOUT);
@@ -435,6 +427,86 @@ fn run_fav(action: FavCmd) -> bool {
                 }
             }
             true
+        }
+    }
+}
+
+/// Run a connection action, then fire a desktop notification reflecting the
+/// resulting status (connected relay + location, or disconnected). Returns the
+/// action's own success flag unchanged.
+fn notify_after(ok: bool) -> bool {
+    let st = status::query();
+    if st.connected {
+        let loc = if st.location.is_empty() {
+            String::new()
+        } else {
+            format!(" · {}", st.location)
+        };
+        notify::send(
+            "Mullvad connected",
+            &format!("{}{loc}", st.relay),
+            notify::icon_for(true),
+        );
+    } else {
+        notify::send(
+            "Mullvad disconnected",
+            "Tunnel is down",
+            notify::icon_for(false),
+        );
+    }
+    ok
+}
+
+/// `fastest` / `fastest-fav`: sweep relays, print each tested relay's ping
+/// (fastest-first, osc-mullvad style), connect to the genuinely fastest, and
+/// notify. `add_to_fav` records the winner in favorites.
+fn run_fastest(country: &str, add_to_fav: bool) -> bool {
+    let where_ = if country.is_empty() {
+        "globally".to_string()
+    } else {
+        format!("in {}", country.to_uppercase())
+    };
+    notify::send(
+        "Mullvad",
+        &format!("Finding fastest relay {where_}…"),
+        "network-vpn-acquiring-symbolic",
+    );
+    println!("Finding fastest relay {where_}…");
+
+    match favorites::fastest(
+        country,
+        FASTEST_SAMPLE,
+        PING_COUNT,
+        PING_TIMEOUT,
+        add_to_fav,
+    ) {
+        Some(res) => {
+            for (relay, ms) in &res.measured {
+                let mark = if *relay == res.relay { "→" } else { " " };
+                println!("  {mark} {relay}  {ms:.0} ms");
+            }
+            println!("\nConnected: {} · {:.0} ms", res.relay, res.avg);
+            let st = status::query();
+            let loc = if st.location.is_empty() {
+                String::new()
+            } else {
+                format!(" · {}", st.location)
+            };
+            notify::send(
+                "Mullvad connected",
+                &format!("{} · {:.0} ms{loc}", res.relay, res.avg),
+                notify::icon_for(true),
+            );
+            true
+        }
+        None => {
+            eprintln!("mvpn fastest: no responsive relay found");
+            notify::send(
+                "Mullvad",
+                "No responsive relay found",
+                notify::icon_for(false),
+            );
+            false
         }
     }
 }

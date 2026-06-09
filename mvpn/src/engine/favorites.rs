@@ -153,34 +153,81 @@ pub fn refresh(country: &str, count: u32, timeout: u32) -> Vec<Fav> {
     sorted
 }
 
-/// Find the fastest relay among a sampled set in `country` (empty = all),
-/// connect to it, and record it in favorites. Returns (relay, ping_ms).
-pub fn fastest(country: &str, sample: usize, count: u32, timeout: u32) -> Option<(String, f64)> {
+/// Outcome of a `fastest` sweep: every relay that responded (fastest-first)
+/// plus the one we actually connected to.
+pub struct FastestResult {
+    /// The relay we connected to.
+    pub relay: String,
+    /// Its measured average ping (ms).
+    pub avg: f64,
+    /// All responsive (relay, ping_ms) tested, sorted fastest-first — for
+    /// progress output.
+    pub measured: Vec<(String, f64)>,
+}
+
+/// Find + connect to the genuinely fastest relay in `country` (empty = global),
+/// matching osc-mullvad's `find_fastest_relay`:
+///
+/// * a **specific country** pings *every* relay in it (capped at `TEST_MAX` so
+///   one parallel batch covers it) — so a ~10-relay country like Germany tests
+///   all of them and never misses the fast one (the old random sample of 8
+///   could drop it);
+/// * **global** pings a bounded shuffled `sample`;
+/// * candidates are then tried in ping order — the first that actually
+///   connects wins, so a fast-but-unreachable relay falls through to the next;
+/// * `add_to_fav` records the winner in favorites (the `fastest-fav` variant);
+///   plain `fastest` leaves favorites untouched.
+pub fn fastest(
+    country: &str,
+    sample: usize,
+    count: u32,
+    timeout: u32,
+    add_to_fav: bool,
+) -> Option<FastestResult> {
+    /// Hard cap for the per-country sweep — keeps it to a single
+    /// `ping_many` fan-out batch (see `latency::MAX_INFLIGHT`).
+    const TEST_MAX: usize = 16;
+
     let list = sys::mullvad(&["relay", "list"]);
     let mut ids = relays::pick_relays(&list, country, "", relays::Ownership::Any);
     if ids.is_empty() {
         return None;
     }
-    // Cheap shuffle-and-take to bound the ping count.
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.subsec_nanos() as usize)
-        .unwrap_or(0);
-    let len = ids.len();
-    ids.rotate_left(nanos % len);
-    ids.truncate(sample.max(1));
+    if country.is_empty() {
+        // Global: bound the ping count with a cheap time-seeded rotate + take.
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos() as usize)
+            .unwrap_or(0);
+        let len = ids.len();
+        ids.rotate_left(nanos % len);
+        ids.truncate(sample.max(1));
+    } else {
+        // Specific country: test all of them (capped at one batch).
+        ids.truncate(TEST_MAX);
+    }
     let targets: Vec<(String, String)> = ids
         .iter()
         .filter_map(|id| relays::relay_ipv4(&list, id).map(|ip| (id.clone(), ip)))
         .collect();
     let measured = latency::ping_many(&targets, count, timeout);
-    let (relay, avg) = measured.into_iter().next()?; // sorted fastest-first
-    if actions::set_relay(&relay) {
-        upsert(&relay, Some(avg));
-        Some((relay, avg))
-    } else {
-        None
+    if measured.is_empty() {
+        return None;
     }
+    // Try candidates fastest-first; first one that connects wins.
+    for (relay, avg) in &measured {
+        if actions::set_relay(relay) {
+            if add_to_fav {
+                upsert(relay, Some(*avg));
+            }
+            return Some(FastestResult {
+                relay: relay.clone(),
+                avg: *avg,
+                measured,
+            });
+        }
+    }
+    None
 }
 
 /// Seed favorites across many countries: for each code, ping a sample and add
