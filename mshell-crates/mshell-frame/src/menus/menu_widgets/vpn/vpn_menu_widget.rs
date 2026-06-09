@@ -50,6 +50,9 @@ pub(crate) struct VpnMenuWidgetModel {
     obf_drop: gtk::DropDown,
     fav_box: gtk::Box,
     expiry_label: gtk::Label,
+    /// Country picker (lazy): the list box + a one-shot load guard.
+    countries_box: gtk::Box,
+    countries_loaded: bool,
     /// Lazy-poll gates — see `ParentRevealChanged`.
     poll_started: bool,
     visible: Arc<AtomicBool>,
@@ -87,6 +90,10 @@ pub(crate) enum VpnMenuWidgetInput {
     ParentRevealChanged(bool),
     /// The DNS section's expander toggled.
     DnsExpanded(bool),
+    /// The Countries section's expander toggled (loads the list on first open).
+    CountriesExpanded(bool),
+    /// Connect to a country by its code (`mvpn <cc>`).
+    ConnectCountry(String),
 }
 
 #[derive(Debug)]
@@ -110,6 +117,9 @@ pub(crate) enum VpnMenuWidgetCommandOutput {
         /// Account expiry date (`YYYY-MM-DD`), from `mvpn toggles`.
         expiry: String,
     },
+    /// Mullvad country catalog (code, name, relay-count) — loaded lazily when
+    /// the Countries section is first expanded.
+    CountriesLoaded(Vec<(String, String, u32)>),
 }
 
 #[relm4::component(pub(crate))]
@@ -220,6 +230,20 @@ impl Component for VpnMenuWidgetModel {
             fav_box_widget -> gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
                 set_spacing: 4,
+            },
+
+            gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
+
+            // ── Countries (pick a country → connect) ────────────
+            // Lazy: the list is fetched from `mvpn countries` on first expand.
+            #[name = "countries_expander"]
+            gtk::Expander {
+                add_css_class: "vpn-dns-expander",
+                set_label: Some("Countries"),
+                set_expanded: false,
+                connect_expanded_notify[sender] => move |e| {
+                    sender.input(VpnMenuWidgetInput::CountriesExpanded(e.is_expanded()));
+                },
             },
 
             gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
@@ -342,6 +366,8 @@ impl Component for VpnMenuWidgetModel {
         let fav_box_widget = gtk::Box::new(gtk::Orientation::Vertical, 4);
         let expiry_label_widget = gtk::Label::new(None);
         expiry_label_widget.set_visible(false);
+        let countries_box_widget = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        countries_box_widget.set_margin_top(6);
 
         // Embedded DNS section: Blocky / Default / presets, no VPN chrome.
         let dns = DnsMenuWidgetModel::builder()
@@ -365,6 +391,8 @@ impl Component for VpnMenuWidgetModel {
             obf_drop: obf_drop.clone(),
             fav_box: fav_box_widget.clone(),
             expiry_label: expiry_label_widget.clone(),
+            countries_box: countries_box_widget.clone(),
+            countries_loaded: false,
             poll_started: false,
             visible: Arc::new(AtomicBool::new(false)),
             dns,
@@ -375,6 +403,9 @@ impl Component for VpnMenuWidgetModel {
         let widgets = view_output!();
         // Drop the embedded DNS widget into the expander now that both exist.
         widgets.dns_expander.set_child(Some(model.dns.widget()));
+        widgets
+            .countries_expander
+            .set_child(Some(&model.countries_box));
         ComponentParts { model, widgets }
     }
 
@@ -384,10 +415,35 @@ impl Component for VpnMenuWidgetModel {
             VpnMenuWidgetInput::Random => act(&sender, vec!["random".into()]),
             VpnMenuWidgetInput::Fastest => act(&sender, vec!["fastest".into()]),
             VpnMenuWidgetInput::AddCurrent => act(&sender, vec!["fav".into(), "add".into()]),
-            // `mvpn fav connect` picks the fastest favourite (no per-relay
-            // connect in the CLI); the relay arg is kept for clarity.
-            VpnMenuWidgetInput::Connect(_relay) => {
-                act(&sender, vec!["fav".into(), "connect".into()]);
+            // Connect to this specific favourite relay (`mvpn fav connect <relay>`).
+            VpnMenuWidgetInput::Connect(relay) => {
+                act(&sender, vec!["fav".into(), "connect".into(), relay]);
+            }
+            VpnMenuWidgetInput::ConnectCountry(code) => {
+                act(&sender, vec![code]);
+            }
+            VpnMenuWidgetInput::CountriesExpanded(expanded) => {
+                if expanded && !self.countries_loaded {
+                    self.countries_loaded = true;
+                    sender.command(|out, _shutdown| async move {
+                        let raw = capture(&["countries"]).await;
+                        let list = raw
+                            .lines()
+                            .filter_map(|l| {
+                                let mut it = l.splitn(3, '\t');
+                                let code = it.next()?.trim().to_string();
+                                let name = it.next()?.trim().to_string();
+                                let n: u32 = it.next().unwrap_or("0").trim().parse().unwrap_or(0);
+                                if code.is_empty() {
+                                    None
+                                } else {
+                                    Some((code, name, n))
+                                }
+                            })
+                            .collect();
+                        let _ = out.send(VpnMenuWidgetCommandOutput::CountriesLoaded(list));
+                    });
+                }
             }
             VpnMenuWidgetInput::Remove(relay) => {
                 act(&sender, vec!["fav".into(), "remove".into(), relay]);
@@ -440,17 +496,34 @@ impl Component for VpnMenuWidgetModel {
         sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
-        let VpnMenuWidgetCommandOutput::Loaded {
-            status,
-            connected,
-            relay,
-            favs,
-            lockdown,
-            autoconnect,
-            quantum,
-            obf,
-            expiry,
-        } = message;
+        let (status, connected, relay, favs, lockdown, autoconnect, quantum, obf, expiry) =
+            match message {
+                VpnMenuWidgetCommandOutput::Loaded {
+                    status,
+                    connected,
+                    relay,
+                    favs,
+                    lockdown,
+                    autoconnect,
+                    quantum,
+                    obf,
+                    expiry,
+                } => (
+                    status,
+                    connected,
+                    relay,
+                    favs,
+                    lockdown,
+                    autoconnect,
+                    quantum,
+                    obf,
+                    expiry,
+                ),
+                VpnMenuWidgetCommandOutput::CountriesLoaded(list) => {
+                    rebuild_countries(&self.countries_box, &list, &sender);
+                    return;
+                }
+            };
         self.connected = connected;
         self.connected_relay = relay;
         self.lockdown = lockdown;
@@ -528,6 +601,45 @@ fn toggle_row(title: &str, desc: &str, control: &impl gtk::prelude::IsA<gtk::Wid
 
 fn bool_arg(on: bool) -> String {
     if on { "on" } else { "off" }.to_string()
+}
+
+/// Populate the country picker: one row per Mullvad country (name + relay
+/// count + a Connect button that connects to a random relay there).
+fn rebuild_countries(
+    b: &gtk::Box,
+    countries: &[(String, String, u32)],
+    sender: &ComponentSender<VpnMenuWidgetModel>,
+) {
+    while let Some(c) = b.first_child() {
+        b.remove(&c);
+    }
+    if countries.is_empty() {
+        let l = gtk::Label::new(Some("No countries (is the Mullvad daemon running?)"));
+        l.add_css_class("label-small");
+        l.set_xalign(0.0);
+        b.append(&l);
+        return;
+    }
+    for (code, name, count) in countries {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        row.add_css_class("ok-button-surface");
+        let label = gtk::Label::new(Some(name));
+        label.set_xalign(0.0);
+        label.set_hexpand(true);
+        let n = gtk::Label::new(Some(&format!("{count}")));
+        n.add_css_class("label-small");
+        let connect = gtk::Button::with_label("Connect");
+        connect.add_css_class("ok-button-cell");
+        {
+            let (s, c) = (sender.clone(), code.clone());
+            connect
+                .connect_clicked(move |_| s.input(VpnMenuWidgetInput::ConnectCountry(c.clone())));
+        }
+        row.append(&label);
+        row.append(&n);
+        row.append(&connect);
+        b.append(&row);
+    }
 }
 
 /// Clear + repopulate the favourites list (relay + ping, per-row connect/remove).

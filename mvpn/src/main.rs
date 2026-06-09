@@ -67,6 +67,8 @@ enum Cmd {
         #[command(subcommand)]
         action: FavCmd,
     },
+    /// List Mullvad countries as `code<TAB>name<TAB>relay-count` (for the menu).
+    Countries,
     /// Anti-censorship / obfuscation: bare = show; `cycle`, `hunt443`, or a mode
     /// (auto|off|udp2tcp|shadowsocks|quic).
     Obf { arg: Option<String> },
@@ -119,8 +121,8 @@ enum FavCmd {
     Remove { relay: String },
     /// List favorites, fastest-first.
     List,
-    /// Connect to the fastest favorite.
-    Connect,
+    /// Connect to a specific favorite relay (or the fastest, if none given).
+    Connect { relay: Option<String> },
     /// Re-ping favorites (optionally in a country), drop dead ones, re-sort.
     Refresh { country: Option<String> },
 }
@@ -217,6 +219,12 @@ fn main() {
             }
         },
         Cmd::Fav { action } => run_fav(action),
+        Cmd::Countries => {
+            for c in relays::countries() {
+                println!("{}\t{}\t{}", c.code, c.name, c.relays);
+            }
+            true
+        }
         Cmd::Obf { arg } => match arg.as_deref() {
             None => {
                 let m = obf::current();
@@ -408,7 +416,18 @@ fn run_fav(action: FavCmd) -> bool {
             }
             true
         }
-        FavCmd::Connect => match favorites::connect_fastest() {
+        // With a relay arg → connect to that specific favorite; without →
+        // the fastest favorite (the original behaviour).
+        FavCmd::Connect { relay: Some(r) } => {
+            if actions::set_relay(&r) {
+                println!("→ {r}");
+                true
+            } else {
+                eprintln!("mvpn fav connect: failed to connect to {r}");
+                false
+            }
+        }
+        FavCmd::Connect { relay: None } => match favorites::connect_fastest() {
             Some(r) => {
                 println!("→ {r}");
                 true
