@@ -574,8 +574,12 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                             false
                         };
                         if empty {
+                            // Commit, but FORWARD the modifier release (don't
+                            // Intercept): the just-focused window must receive
+                            // the Alt/Super release too, or it thinks the
+                            // modifier is still held (stuck-Alt). xkb updates
+                            // its own modifier state after this filter anyway.
                             state.mru_confirm();
-                            return FilterResult::Intercept(());
                         }
                     }
                 }
