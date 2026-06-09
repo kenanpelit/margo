@@ -38,8 +38,10 @@ the same surface, hover, height, and shape.
   Separator widget's colour (`separator_color`) instead of matugen `--outline`.
 - **Panel power (DPMS) off/on.** A `dpms on|off|toggle [output]` dispatch
   action truly powers monitors down (via smithay's `DrmCompositor::clear()`)
-  and back up — real power saving, not just a dim. Any input wakes a darkened
-  panel, so a screen-off is always recoverable. (External-client control via
+  and back up — real power saving, not just a dim. Recovery is guaranteed two
+  ways: any input wakes a darkened panel, and a VT-switch round-trip always
+  restores every output (both force the all-outputs render path so a stalled
+  per-output clock can't keep a panel dark). (External-client control via
   `zwlr_output_power_management_v1` is the next layer.)
 - **Example compositor plugin.** Ships `app-workspaces` under
   `margo/examples/plugins/` (app-id → home tag on open) and documents the
