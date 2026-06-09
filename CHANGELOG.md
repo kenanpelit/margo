@@ -25,19 +25,26 @@ window switcher with a live thumbnail overlay.
   Replaces the external `mullvad` WASM plugin.
 - **Native "Mullvad VPN" bar pill + Settings → VPN page.** The pill is a real,
   widget-picker-selectable `BarWidget` (status icon, accent-tinted when up,
-  left-click → `mvpn menu`, right-click → toggle). The Settings page manages
-  favourites (add / remove / connect) + connect/disconnect.
+  left-click → `mvpn menu`, right-click → toggle). The Settings page exposes the
+  full control set — Connect/Disconnect, Random, Fastest, Lockdown,
+  Auto-connect, Quantum-resistant, anti-censorship mode, and favourites
+  (add / remove / connect) — reading live state via `mvpn toggles`.
 - **MRU window switcher (niri-style Super/Alt+Tab).** Hold the modifier, tap Tab
   to walk windows in most-recently-used order, release to commit. A live
   thumbnail-row overlay (scope title + per-thumb app-id labels), separate from
-  the grid overview. Dispatch `mru_next` / `mru_prev` (`arg.v` = scope, `arg.v2`
-  = filter); knobs `mru_thumb_height` / `mru_scope` / `mru_filter` /
-  `mru_show_labels`, also editable under Settings → Overview.
+  the grid overview. The row is a **carousel** — the selected window's
+  thumbnail is centred on the output and the strip scrolls as you cycle.
+  Dispatch `mru_next` / `mru_prev` (`arg.v` = scope, `arg.v2` = filter); knobs
+  `mru_thumb_height` / `mru_scope` / `mru_filter` / `mru_show_labels`, also
+  editable under Settings → Overview.
 
 ### Fixed
 
 - **`mvpn` Protocol button** repurposed to a working WireGuard
   quantum-resistance toggle (modern Mullvad removed `relay set tunnel-protocol`).
+- **`mvpn menu` is a real layer-shell panel**, not a floating "popup", and Esc
+  closes it (plain `gtk::Window` + exclusive keyboard — `ApplicationWindow`
+  fell back to an xdg-toplevel).
 - MRU switcher: genuine most-recently-used ordering (cycling no longer
   rewrites the order) and the stuck-modifier bug (the Alt/Super release now
   reaches the focused window, so it isn't left "held").
