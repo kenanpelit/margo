@@ -78,7 +78,13 @@ fn build_ui(app: &gtk4::Application) {
         );
     }
 
-    let window = gtk4::ApplicationWindow::new(app);
+    // A PLAIN gtk::Window (not ApplicationWindow): ApplicationWindow's
+    // GtkApplication window-management fights gtk4-layer-shell and the surface
+    // ends up a normal xdg-toplevel ("popup"). mkeys/mlock use a plain Window
+    // for exactly this reason. We register it with the app so the GApplication
+    // stays alive, and quit when it closes.
+    let window = gtk4::Window::new();
+    app.add_window(&window);
     window.add_css_class("mvpn");
     window.set_default_size(420, 720);
 
@@ -90,7 +96,15 @@ fn build_ui(app: &gtk4::Application) {
     window.set_anchor(Edge::Right, true);
     window.set_margin(Edge::Top, 8);
     window.set_margin(Edge::Right, 8);
-    window.set_keyboard_mode(KeyboardMode::OnDemand);
+    // Exclusive keyboard while open so Esc closes immediately (no click needed).
+    window.set_keyboard_mode(KeyboardMode::Exclusive);
+    {
+        let app = app.clone();
+        window.connect_close_request(move |_| {
+            app.quit();
+            glib::Propagation::Proceed
+        });
+    }
 
     let key = gtk4::EventControllerKey::new();
     let win_for_key = window.clone();
