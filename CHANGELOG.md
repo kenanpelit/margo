@@ -36,6 +36,14 @@ the same surface, hover, height, and shape.
   default-shortcuts cheat-sheet on the Review step, and centred footer nav.
 - **Configurable bar separator colour.** Settings → Bar can override the
   Separator widget's colour (`separator_color`) instead of matugen `--outline`.
+- **Panel power (DPMS) off/on.** A `dpms on|off|toggle [output]` dispatch
+  action truly powers monitors down (via smithay's `DrmCompositor::clear()`)
+  and back up — real power saving, not just a dim. Any input wakes a darkened
+  panel, so a screen-off is always recoverable. (External-client control via
+  `zwlr_output_power_management_v1` is the next layer.)
+- **Example compositor plugin.** Ships `app-workspaces` under
+  `margo/examples/plugins/` (app-id → home tag on open) and documents the
+  full `plugin.toml` + `init.rhai` format + `mctl plugin` workflow.
 
 ### Changed
 
