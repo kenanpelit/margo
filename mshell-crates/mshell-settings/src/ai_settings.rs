@@ -31,6 +31,8 @@ pub enum AiSettingsInput {
     TokensChanged(u32),
     PromptChanged(String),
     PersistToggled(bool),
+    FontSizeChanged(u32),
+    FontFamilyChanged(String),
     RefreshModels,
 }
 
@@ -239,6 +241,40 @@ impl Component for AiSettingsModel {
                         },
                     },
                 },
+
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Chat font size" },
+                    #[template_child] desc { set_label: "Transcript text size in the AI menu (px)." },
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (8.0, 32.0),
+                        set_increments: (1.0, 2.0),
+                        set_digits: 0,
+                        #[watch]
+                        set_value: model.settings.font_size as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(AiSettingsInput::FontSizeChanged(s.value() as u32));
+                        },
+                    },
+                },
+
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Chat font family" },
+                    #[template_child] desc { set_label: "Font for the AI transcript; blank = inherit the shell font." },
+                    #[name="font_entry"]
+                    gtk::Entry {
+                        set_valign: gtk::Align::Center,
+                        set_width_request: 240,
+                        set_placeholder_text: Some("e.g. monospace"),
+                        #[watch]
+                        set_text: &model.settings.font_family,
+                        connect_changed[sender] => move |e| {
+                            sender.input(AiSettingsInput::FontFamilyChanged(e.text().to_string()));
+                        },
+                    },
+                },
             }
         }
     }
@@ -333,6 +369,18 @@ impl Component for AiSettingsModel {
             AiSettingsInput::PersistToggled(on) => {
                 if on != self.settings.persist_history {
                     self.settings.persist_history = on;
+                    self.save();
+                }
+            }
+            AiSettingsInput::FontSizeChanged(n) => {
+                if n != self.settings.font_size {
+                    self.settings.font_size = n;
+                    self.save();
+                }
+            }
+            AiSettingsInput::FontFamilyChanged(f) => {
+                if f != self.settings.font_family {
+                    self.settings.font_family = f;
                     self.save();
                 }
             }

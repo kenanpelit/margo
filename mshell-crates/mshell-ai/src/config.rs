@@ -26,6 +26,10 @@ pub struct AiSettings {
     pub system_prompt: String,
     /// Persist the conversation across restarts.
     pub persist_history: bool,
+    /// Chat transcript font size in px (UI only; not sent to the API).
+    pub font_size: u32,
+    /// Chat transcript font family; blank = inherit the shell font.
+    pub font_family: String,
 }
 
 impl Default for AiSettings {
@@ -38,6 +42,8 @@ impl Default for AiSettings {
             max_tokens: 2048,
             system_prompt: String::new(),
             persist_history: true,
+            font_size: 14,
+            font_family: String::new(),
         }
     }
 }

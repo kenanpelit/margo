@@ -29,6 +29,8 @@ pub(crate) struct AiMenuWidgetModel {
     stop_btn: gtk::Button,
     /// "Provider · model" line under the title; refreshed on open.
     meta_label: gtk::Label,
+    /// Runtime CSS provider that applies the configurable transcript font.
+    font_provider: gtk::CssProvider,
     /// Label of the assistant bubble being streamed into.
     current_ai: Option<gtk::Label>,
     /// History restored from disk yet? (lazy, on first reveal.)
@@ -195,9 +197,20 @@ impl Component for AiMenuWidgetModel {
             send_btn: widgets.send_btn.clone(),
             stop_btn: widgets.stop_btn.clone(),
             meta_label: meta_label_widget.clone(),
+            font_provider: gtk::CssProvider::new(),
             current_ai: None,
             loaded: false,
         };
+        // Register the transcript-font provider on the display (USER priority so
+        // it overrides the baked `.ai-bubble-text` rule) and apply the saved font.
+        if let Some(display) = gtk::gdk::Display::default() {
+            gtk::style_context_add_provider_for_display(
+                &display,
+                &model.font_provider,
+                gtk::STYLE_PROVIDER_PRIORITY_USER,
+            );
+        }
+        apply_chat_font(&model.font_provider);
         ComponentParts { model, widgets }
     }
 
@@ -209,8 +222,9 @@ impl Component for AiMenuWidgetModel {
                         self.loaded = true;
                         self.restore_history();
                     }
-                    // Reflect any provider/model change from Settings.
+                    // Reflect any provider/model/font change from Settings.
                     self.meta_label.set_label(&provider_model_label());
+                    apply_chat_font(&self.font_provider);
                     // Focus the prompt so you can type immediately on open
                     // (`mshellctl menu ai` / the pill). Deferred to idle so the
                     // entry is mapped + the layer surface has keyboard focus.
@@ -479,6 +493,20 @@ fn provider_model_label() -> String {
         s.model
     };
     format!("{} · {}", provider.label(), model)
+}
+
+/// Load the configured transcript font (size + optional family) into the
+/// runtime CSS provider, overriding the baked `.ai-bubble-text` rule.
+fn apply_chat_font(provider: &gtk::CssProvider) {
+    let s = config::load();
+    let size = s.font_size.clamp(8, 48);
+    let fam = s.font_family.trim();
+    let css = if fam.is_empty() {
+        format!(".ai-bubble-text {{ font-size: {size}px; }}")
+    } else {
+        format!(".ai-bubble-text {{ font-size: {size}px; font-family: {fam}; }}")
+    };
+    provider.load_from_string(&css);
 }
 
 fn clear_box(b: &gtk::Box) {
