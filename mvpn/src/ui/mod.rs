@@ -4,6 +4,11 @@
 //! from the matugen palette cache. All `mullvad`-touching work runs on a worker
 //! thread and is delivered back to the GTK main loop over an async-channel, so
 //! the panel never blocks on a subprocess (no frozen UI, no main-loop `recv`).
+//!
+//! The layout deliberately mirrors the in-shell native VPN menu
+//! (`mshellctl menu vpn`): a Mullvad / Blocky / Default mode selector on top,
+//! a Random / Fastest / Add relay-action row, Lockdown / Auto-connect / Quantum
+//! switches, an anti-censorship dropdown, then collapsing Favourites + Locations.
 
 mod theme;
 
@@ -16,7 +21,7 @@ use gtk4::prelude::*;
 
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 
-use crate::engine::{actions, diag, favorites, obf, relays, slot, status};
+use crate::engine::{actions, blocky, diag, favorites, obf, relays, slot, status};
 
 /// A consistent snapshot of everything the panel shows, built off-thread.
 struct Snapshot {
@@ -27,6 +32,8 @@ struct Snapshot {
     expiry: String,
     lockdown: bool,
     autoconnect: bool,
+    quantum: bool,
+    blocky: bool,
     /// Only set by the leak-test button; `None` leaves the footer untouched.
     leak: Option<String>,
 }
@@ -41,6 +48,8 @@ impl Snapshot {
             expiry: status::account_expiry(),
             lockdown: status::setting_on("lockdown-mode"),
             autoconnect: status::setting_on("auto-connect"),
+            quantum: actions::quantum_on(),
+            blocky: blocky::is_active(),
             leak,
         }
     }
@@ -87,7 +96,7 @@ fn build_ui(main_loop: &glib::MainLoop) {
     // A plain gtk::Window driven by a raw main loop — no GtkApplication.
     let window = gtk4::Window::new();
     window.add_css_class("mvpn");
-    window.set_default_size(420, 720);
+    window.set_default_size(420, 760);
 
     window.init_layer_shell();
     window.set_namespace(Some("mvpn"));
@@ -122,15 +131,19 @@ fn build_ui(main_loop: &glib::MainLoop) {
     let root = gtk4::Box::new(gtk4::Orientation::Vertical, 12);
     root.add_css_class("mvpn-root");
 
-    let (tx, rx) = async_channel::unbounded::<Snapshot>();
+    // Guards the snapshot→widget write so programmatic `set_active`/`set_selected`
+    // don't re-trigger the switch/dropdown handlers (a feedback loop).
     let updating = Rc::new(RefCell::new(false));
+
+    // Worker threads push fresh snapshots; the main loop drains them.
+    let (tx, rx) = async_channel::unbounded::<Snapshot>();
 
     // ── Header ────────────────────────────────────────────────────────
     let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
     let title = gtk4::Label::new(Some("Mullvad VPN"));
     title.add_css_class("mvpn-title");
-    title.set_halign(gtk4::Align::Start);
     title.set_hexpand(true);
+    title.set_halign(gtk4::Align::Start);
     let badge = gtk4::Label::new(Some("…"));
     badge.add_css_class("mvpn-badge");
     let refresh_btn = gtk4::Button::from_icon_name("view-refresh-symbolic");
@@ -140,7 +153,7 @@ fn build_ui(main_loop: &glib::MainLoop) {
     header.append(&refresh_btn);
     root.append(&header);
 
-    // ── Hero ──────────────────────────────────────────────────────────
+    // ── Hero (current relay + location) ───────────────────────────────
     let hero = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
     hero.add_css_class("mvpn-hero");
     let relay_lbl = gtk4::Label::new(Some("—"));
@@ -153,39 +166,55 @@ fn build_ui(main_loop: &glib::MainLoop) {
     hero.append(&where_lbl);
     root.append(&hero);
 
-    // ── Primary actions ───────────────────────────────────────────────
-    let actions_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
-    actions_row.set_homogeneous(true);
-    let connect_btn = gtk4::Button::with_label("Connect");
-    connect_btn.add_css_class("mvpn-action");
-    connect_btn.add_css_class("mvpn-primary");
-    let reconnect_btn = gtk4::Button::with_label("Reconnect");
-    reconnect_btn.add_css_class("mvpn-action");
-    actions_row.append(&connect_btn);
-    actions_row.append(&reconnect_btn);
-    root.append(&actions_row);
+    // ── Mode selector: Mullvad / Blocky / Default ─────────────────────
+    let mode_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
+    mode_row.set_homogeneous(true);
+    let mullvad_btn = mode_btn("Mullvad");
+    let blocky_btn = mode_btn("Blocky");
+    let default_btn = mode_btn("Default");
+    mode_row.append(&mullvad_btn);
+    mode_row.append(&blocky_btn);
+    mode_row.append(&default_btn);
+    root.append(&mode_row);
 
-    // ── Quick chips ───────────────────────────────────────────────────
-    let chips = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
-    chips.set_homogeneous(true);
-    let random_btn = chip("Random");
-    let fastest_btn = chip("Fastest");
-    let proto_btn = chip("Quantum");
-    let obf_btn = chip("Obf");
-    chips.append(&random_btn);
-    chips.append(&fastest_btn);
-    chips.append(&proto_btn);
-    chips.append(&obf_btn);
-    root.append(&chips);
+    // ── Relay actions: Random / Fastest / Add ─────────────────────────
+    let actions_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
+    actions_row.set_homogeneous(true);
+    let random_btn = mode_btn("Random");
+    let fastest_btn = mode_btn("Fastest");
+    let add_btn = mode_btn("Add");
+    actions_row.append(&random_btn);
+    actions_row.append(&fastest_btn);
+    actions_row.append(&add_btn);
+    root.append(&actions_row);
 
     // ── Toggles ───────────────────────────────────────────────────────
     let lockdown_sw = toggle_row(&root, "Lockdown mode", "Block traffic when the VPN drops");
     let autoconnect_sw = toggle_row(&root, "Auto-connect", "Bring the tunnel up on daemon start");
+    let quantum_sw = toggle_row(&root, "Quantum-resistant", "Post-quantum key exchange");
+
+    // ── Anti-censorship (obfuscation) ─────────────────────────────────
+    let obf_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+    obf_row.add_css_class("mvpn-card");
+    let obf_texts = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
+    obf_texts.set_hexpand(true);
+    let obf_title = gtk4::Label::new(Some("Anti-censorship"));
+    obf_title.set_halign(gtk4::Align::Start);
+    let obf_desc = gtk4::Label::new(Some("Obfuscate the tunnel on hostile networks"));
+    obf_desc.add_css_class("mvpn-dim");
+    obf_desc.set_halign(gtk4::Align::Start);
+    obf_texts.append(&obf_title);
+    obf_texts.append(&obf_desc);
+    let obf_drop = gtk4::DropDown::from_strings(obf::CYCLE);
+    obf_drop.set_valign(gtk4::Align::Center);
+    obf_row.append(&obf_texts);
+    obf_row.append(&obf_drop);
+    root.append(&obf_row);
 
     // ── Favorites ─────────────────────────────────────────────────────
     root.append(&section_label("Favorites"));
     let fav_box = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
-    root.append(&scroller(&fav_box, 150));
+    root.append(&scroller(&fav_box, 130));
 
     // ── Country search ────────────────────────────────────────────────
     root.append(&section_label("Locations"));
@@ -193,7 +222,7 @@ fn build_ui(main_loop: &glib::MainLoop) {
     search.add_css_class("mvpn-search");
     root.append(&search);
     let country_box = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
-    let country_scroll = scroller(&country_box, 220);
+    let country_scroll = scroller(&country_box, 200);
     country_scroll.set_vexpand(true);
     root.append(&country_scroll);
 
@@ -213,36 +242,34 @@ fn build_ui(main_loop: &glib::MainLoop) {
 
     let countries: Rc<RefCell<Vec<relays::Country>>> = Rc::new(RefCell::new(Vec::new()));
 
-    // ── Wire actions ──────────────────────────────────────────────────
-    {
-        let tx2 = tx.clone();
-        connect_btn.connect_clicked(move |_| {
-            kick(&tx2, || {
-                if status::query().connected {
-                    actions::disconnect();
-                } else {
-                    actions::connect();
-                }
-            });
-        });
-    }
-    wire(&reconnect_btn, &tx, || {
-        actions::reconnect();
+    // ── Wire mode selector ────────────────────────────────────────────
+    // Mullvad = bring the tunnel up; Blocky = start the DNS guard; Default =
+    // drop the tunnel and stop blocky (back to the plain system path).
+    wire(&mullvad_btn, &tx, || {
+        actions::connect();
     });
+    wire(&blocky_btn, &tx, || {
+        blocky::ensure();
+        blocky::start();
+    });
+    wire(&default_btn, &tx, || {
+        actions::disconnect();
+        blocky::stop();
+    });
+
+    // ── Wire relay actions ────────────────────────────────────────────
     wire(&random_btn, &tx, || {
         actions::random("", "", relays::Ownership::Any);
     });
     wire(&fastest_btn, &tx, || {
         favorites::fastest("", 10, 3, 2, true);
     });
-    wire(&proto_btn, &tx, || {
-        actions::toggle_quantum();
-    });
-    wire(&obf_btn, &tx, || {
-        obf::cycle();
+    wire(&add_btn, &tx, || {
+        favorites::add_current();
     });
     wire(&refresh_btn, &tx, || {});
 
+    // ── Leak test (separate channel, doesn't disturb the rest) ────────
     {
         let tx2 = tx.clone();
         test_btn.connect_clicked(move |_| {
@@ -261,6 +288,7 @@ fn build_ui(main_loop: &glib::MainLoop) {
         });
     }
 
+    // ── Wire switches ─────────────────────────────────────────────────
     {
         let (tx2, up) = (tx.clone(), updating.clone());
         lockdown_sw.connect_state_set(move |_, on| {
@@ -283,7 +311,39 @@ fn build_ui(main_loop: &glib::MainLoop) {
             glib::Propagation::Proceed
         });
     }
+    {
+        let (tx2, up) = (tx.clone(), updating.clone());
+        quantum_sw.connect_state_set(move |_, on| {
+            if !*up.borrow() {
+                kick(&tx2, move || {
+                    // No direct setter — flip only when it differs.
+                    if on != actions::quantum_on() {
+                        actions::toggle_quantum();
+                    }
+                });
+            }
+            glib::Propagation::Proceed
+        });
+    }
 
+    // ── Wire anti-censorship dropdown ─────────────────────────────────
+    {
+        let (tx2, up) = (tx.clone(), updating.clone());
+        obf_drop.connect_selected_notify(move |d| {
+            if *up.borrow() {
+                return;
+            }
+            let idx = d.selected() as usize;
+            if let Some(mode) = obf::CYCLE.get(idx) {
+                let mode = mode.to_string();
+                kick(&tx2, move || {
+                    obf::set(&mode);
+                });
+            }
+        });
+    }
+
+    // ── Wire country search ───────────────────────────────────────────
     {
         let (cs, cb, tx2) = (countries.clone(), country_box.clone(), tx.clone());
         search.connect_search_changed(move |e| {
@@ -315,14 +375,15 @@ fn build_ui(main_loop: &glib::MainLoop) {
     {
         let up = updating.clone();
         let tx2 = tx.clone();
-        let (badge, relay_lbl, where_lbl, connect_btn2) = (
-            badge.clone(),
-            relay_lbl.clone(),
-            where_lbl.clone(),
-            connect_btn.clone(),
+        let (badge, relay_lbl, where_lbl) = (badge.clone(), relay_lbl.clone(), where_lbl.clone());
+        let (mullvad_btn, blocky_btn, default_btn) =
+            (mullvad_btn.clone(), blocky_btn.clone(), default_btn.clone());
+        let (lockdown_sw2, autoconnect_sw2, quantum_sw2, obf_drop2) = (
+            lockdown_sw.clone(),
+            autoconnect_sw.clone(),
+            quantum_sw.clone(),
+            obf_drop.clone(),
         );
-        let (lockdown_sw2, autoconnect_sw2, obf_btn2) =
-            (lockdown_sw.clone(), autoconnect_sw.clone(), obf_btn.clone());
         let (fav_box2, device_lbl2) = (fav_box.clone(), device_lbl.clone());
         glib::spawn_future_local(async move {
             while let Ok(s) = rx.recv().await {
@@ -356,33 +417,41 @@ fn build_ui(main_loop: &glib::MainLoop) {
                     sub = format!("{sub} · {}", s.status.tunnel_type);
                 }
                 where_lbl.set_text(&sub);
-                connect_btn2.set_label(if connected { "Disconnect" } else { "Connect" });
-                if connected {
-                    connect_btn2.add_css_class("mvpn-danger");
-                    connect_btn2.remove_css_class("mvpn-primary");
-                } else {
-                    connect_btn2.add_css_class("mvpn-primary");
-                    connect_btn2.remove_css_class("mvpn-danger");
+
+                // Highlight the active mode: Blocky wins (it implies a DNS
+                // override on top), else Mullvad when connected, else Default.
+                for b in [&mullvad_btn, &blocky_btn, &default_btn] {
+                    b.remove_css_class("selected");
                 }
+                let active = if s.blocky {
+                    &blocky_btn
+                } else if connected {
+                    &mullvad_btn
+                } else {
+                    &default_btn
+                };
+                active.add_css_class("selected");
+
                 lockdown_sw2.set_active(s.lockdown);
                 autoconnect_sw2.set_active(s.autoconnect);
-                obf_btn2.set_label(&format!(
-                    "Obf: {}",
-                    if s.obf_mode.is_empty() {
-                        "?"
-                    } else {
-                        &s.obf_mode
-                    }
-                ));
+                quantum_sw2.set_active(s.quantum);
+                if let Some(i) = obf::CYCLE.iter().position(|m| *m == s.obf_mode) {
+                    obf_drop2.set_selected(i as u32);
+                }
+
                 if let Some(leak) = &s.leak {
                     device_lbl2.set_text(leak);
-                } else if !s.device.is_empty() {
+                } else {
                     let exp = if s.expiry.is_empty() || s.expiry == "—" {
                         String::new()
                     } else {
-                        format!(" · exp {}", s.expiry)
+                        format!(" · expires {}", s.expiry)
                     };
-                    device_lbl2.set_text(&format!("Device: {}{}", s.device, exp));
+                    if s.device.is_empty() {
+                        device_lbl2.set_text(exp.trim_start_matches(" · "));
+                    } else {
+                        device_lbl2.set_text(&format!("Device: {}{}", s.device, exp));
+                    }
                 }
                 rebuild_favs(&fav_box2, &s.favs, &tx2);
                 *up.borrow_mut() = false;
@@ -408,10 +477,10 @@ fn wire(btn: &gtk4::Button, tx: &Tx, op: fn()) {
     btn.connect_clicked(move |_| kick(&tx2, op));
 }
 
-fn chip(label: &str) -> gtk4::Button {
+fn mode_btn(label: &str) -> gtk4::Button {
     let b = gtk4::Button::with_label(label);
     b.add_css_class("mvpn-action");
-    b.add_css_class("mvpn-chip");
+    b.add_css_class("mvpn-mode");
     b
 }
 
@@ -484,7 +553,7 @@ fn relay_row(main: &str, key: &str, trailing: &str) -> gtk4::Button {
 fn rebuild_favs(b: &gtk4::Box, favs: &[favorites::Fav], tx: &Tx) {
     clear_box(b);
     if favs.is_empty() {
-        let l = gtk4::Label::new(Some("No favorites yet — connect, then ‘fav add’."));
+        let l = gtk4::Label::new(Some("No favorites yet — connect, then ‘Add’."));
         l.add_css_class("mvpn-dim");
         b.append(&l);
         return;

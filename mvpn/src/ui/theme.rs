@@ -140,6 +140,14 @@ button.mvpn-action {{
 button.mvpn-action:hover {{ background-color: alpha({primary}, 0.18); }}
 button.mvpn-primary {{ background-color: {primary}; color: {on_primary}; font-weight: 700; }}
 button.mvpn-danger {{ background-color: alpha({danger}, 0.22); color: {danger}; }}
+/* Segmented mode/action buttons (Mullvad / Blocky / Default, Random / … ). */
+button.mvpn-mode {{ padding: 8px 6px; font-weight: 600; }}
+button.mvpn-mode.selected {{
+    background-color: {primary};
+    color: {on_primary};
+    font-weight: 700;
+}}
+button.mvpn-mode.selected:hover {{ background-color: {primary}; }}
 .mvpn-chip {{ border-radius: 999px; padding: 6px 12px; }}
 row.mvpn-row {{ border-radius: 10px; padding: 2px 4px; }}
 row.mvpn-row:hover {{ background-color: alpha({primary}, 0.12); }}
