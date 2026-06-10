@@ -1,4 +1,4 @@
-use crate::css_mapping::{to_css, to_margo_colors, to_mlogind_variables};
+use crate::css_mapping::{to_css, to_margo_colors, to_mlogind_variables, to_mshell_colors};
 use crate::json_struct::{MatugenTheme, MatugenThemeCustomOnly};
 use mshell_config::schema::config::Matugen;
 use relm4::gtk::glib;
@@ -322,6 +322,7 @@ fn read_json_from_child(mut child: std::process::Child) -> MatugenResult {
         Ok(theme) => {
             write_margo_colors(&theme);
             write_mlogind_variables(&theme);
+            write_mshell_colors(&theme);
             Ok(to_css(&theme))
         }
         Err(e) => Err(e.into()),
@@ -402,5 +403,29 @@ fn write_mlogind_variables(theme: &MatugenTheme) {
     }
     if let Err(e) = std::fs::write(&path, &body) {
         debug!(error = %e, "matugen: failed to write mlogind-variables.toml");
+    }
+}
+
+/// Mirror the palette into `~/.cache/margo/mshell-colors.toml`, the sidecar
+/// that out-of-process panels (today: the standalone `mvpn menu`) read so
+/// they track the wallpaper scheme without linking to mshell. Previously
+/// nothing wrote this file, so panels rendered whatever stale palette was
+/// last hand-placed there. Best-effort + idempotent, like the siblings.
+fn write_mshell_colors(theme: &MatugenTheme) {
+    let cache = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")));
+    let Some(cache) = cache else {
+        return;
+    };
+    let dir = cache.join("margo");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("mshell-colors.toml");
+    let body = to_mshell_colors(theme);
+    if std::fs::read_to_string(&path).ok().as_deref() == Some(body.as_str()) {
+        return;
+    }
+    if let Err(e) = std::fs::write(&path, &body) {
+        debug!(error = %e, "matugen: failed to write mshell-colors.toml");
     }
 }
