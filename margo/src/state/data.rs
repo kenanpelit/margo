@@ -203,6 +203,13 @@ pub struct MargoClient {
     /// post-app_id commit. Prevents Qt-style "appears then snaps"
     /// flicker for rules keyed on app_id.
     pub is_initial_map_pending: bool,
+    /// When the client finished its initial map. Used to keep delivering
+    /// frame callbacks to a freshly-mapped window even while it sits on a
+    /// hidden tag, so frame-throttled clients (Electron / CEF: Spotify,
+    /// Webcord, Ferdium…) finish initialising at login instead of stalling
+    /// until their tag is first visited. See `warmup_hidden_ms` in the config
+    /// + the warm-up nudge in `send_frame_callbacks`.
+    pub mapped_at: Option<std::time::Instant>,
     pub opening_animation: Option<crate::animation::OpenCloseClientAnim>,
     pub opening_texture: Option<smithay::backend::renderer::gles::GlesTexture>,
     pub opening_capture_pending: bool,
@@ -289,6 +296,7 @@ impl MargoClient {
             resize_snapshot: None,
             snapshot_pending: false,
             is_initial_map_pending: false,
+            mapped_at: None,
             opening_animation: None,
             opening_texture: None,
             opening_capture_pending: false,

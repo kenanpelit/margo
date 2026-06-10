@@ -2777,6 +2777,43 @@ impl MargoState {
             }
         });
 
+        // Warm-up nudge: for `warmup_hidden_ms` after a window first maps, keep
+        // delivering frame callbacks to it even while it sits on a hidden tag
+        // (it isn't in `space.elements()` above). Frame-throttled clients —
+        // Electron / CEF (Spotify, Webcord, Ferdium, …) — stall their renderer
+        // when no frames arrive, so apps launched at login onto a background
+        // tag never finish initialising until the tag is first visited. This
+        // lets them warm up regardless. The sequence-based `should_send` dedup
+        // keeps current-tag windows already served above from a double send.
+        let warmup = self.config.warmup_hidden_ms;
+        if warmup > 0
+            && let Some(mon_idx) = self.monitors.iter().position(|m| &m.output == output)
+        {
+            let now = std::time::Instant::now();
+            let window = std::time::Duration::from_millis(warmup as u64);
+            let tagset = self.monitors[mon_idx].current_tagset();
+            for c in &mut self.clients {
+                let Some(mapped_at) = c.mapped_at else {
+                    continue;
+                };
+
+                if now.saturating_duration_since(mapped_at) >= window {
+                    c.mapped_at = None;
+                    continue;
+                }
+
+                if c.monitor == mon_idx
+                    && !c.is_initial_map_pending
+                    && !c.is_visible_on(mon_idx, tagset)
+                    && !c.is_minimized
+                    && !c.is_killing
+                    && !c.is_in_scratchpad
+                {
+                    c.window.send_frame(output, time, throttle, should_send);
+                }
+            }
+        }
+
         // While the scroller overview is open it renders EVERY tag's
         // windows live — including ones unmapped from `space` (off-screen
         // tags). Those never appear in `space.elements()`, so without

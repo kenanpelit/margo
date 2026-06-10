@@ -58,6 +58,23 @@ source  = ~/.config/margo/conf.d/*.conf
 
 Both `include = …` (single file) and `source = …` (glob; matches in lex order) are supported. Re-applying via `mctl reload` re-reads the entire tree.
 
+## Startup apps on background tags
+
+Windows on hidden tags normally receive no frame callbacks until their tag is
+visited. That is intentional compositor throttling, but Electron / CEF apps
+launched from session start scripts can treat this as "backgrounded" and stall
+half-drawn until you switch to their tag.
+
+`warmup_hidden_ms` keeps sending frame callbacks to a freshly mapped hidden-tag
+window for a short startup window, then returns to strict visible-window
+throttling:
+
+```ini
+# 10 seconds is enough for Spotify, Webcord, Ferdium, Discord-style clients.
+# Set 0 to disable and only frame currently visible windows.
+warmup_hidden_ms = 10000
+```
+
 ## Layouts
 
 margo ships **15 tiling layouts**. Each tag remembers its own layout choice. Set one by name with the `setlayout` action, or cycle with `switch_layout`.

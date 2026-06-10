@@ -1290,6 +1290,11 @@ impl MargoState {
         // Mark the client mapped BEFORE arrange so the layout pass
         // sees it as a real participant.
         self.clients[idx].is_initial_map_pending = false;
+        // Stamp the map time so `send_frame_callbacks` can keep nudging this
+        // window for `warmup_hidden_ms` even on a hidden tag (lets Electron /
+        // CEF apps launched at login finish initialising without visiting
+        // their tag).
+        self.clients[idx].mapped_at = Some(std::time::Instant::now());
 
         // Auto-group by `group:1` windowrule (no-op unless a rule
         // matched). Runs before the arrange below so the collapse to a

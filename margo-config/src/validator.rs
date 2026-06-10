@@ -602,6 +602,7 @@ const UINT_KEYS: &[&str] = &[
     "hotarea_size",
     "ov_tab_mode",
     "overview_transition_ms",
+    "warmup_hidden_ms",
     "scroll_button",
     "send_events_mode",
     "shadows_size",

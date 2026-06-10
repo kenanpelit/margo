@@ -335,6 +335,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "overviewgappo" => cfg.overview_gap_outer = parse_i32(val),
         "overview_zoom" => cfg.overview_zoom = parse_f32(val).clamp(0.1, 1.0),
         "overview_transition_ms" => cfg.overview_transition_ms = parse_u32(val),
+        "warmup_hidden_ms" => cfg.warmup_hidden_ms = parse_u32(val),
         "overview_selected_border_multiplier" => {
             cfg.overview_selected_border_multiplier = parse_f32(val).clamp(1.0, 4.0)
         }
@@ -1557,6 +1558,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "overview_selected_border_multiplier",
     "overview_style",
     "overview_transition_ms",
+    "warmup_hidden_ms",
     "overview_zoom",
     "ov_tab_mode",
     "scroller_overview_gap",
@@ -1722,6 +1724,12 @@ mod tests {
         assert!(cfg.tag_carousel);
         assert_eq!(cfg.edge_scroller_focus_allow_speed, 40.0);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parses_hidden_warmup_ms() {
+        let cfg = parse_conf("warmup", "warmup_hidden_ms = 2500\n");
+        assert_eq!(cfg.warmup_hidden_ms, 2500);
     }
 
     #[test]

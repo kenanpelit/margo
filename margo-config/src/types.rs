@@ -714,6 +714,13 @@ pub struct Config {
     /// Snappy overview open/close transition duration (ms). Falls
     /// back to a hard-coded 180ms when 0.
     pub overview_transition_ms: u32,
+    /// "Warm-up" window: for this many ms after a window first maps, keep
+    /// delivering frame callbacks to it even while it sits on a hidden tag.
+    /// Lets frame-throttled clients (Electron / CEF — Spotify, Webcord,
+    /// Ferdium…) launched at login finish initialising instead of stalling
+    /// half-drawn until their tag is first visited. 0 disables (strict
+    /// "frames only when visible"). Default 10000 (10s).
+    pub warmup_hidden_ms: u32,
     /// Border-width multiplier for the keyboard-cycle / pointer-hover
     /// "selected" thumbnail in overview. 1.0 = same as normal border;
     /// 1.5–2.0 makes the selection pop visually without resorting to
@@ -1104,6 +1111,7 @@ impl Default for Config {
             overview_gap_outer: 30,
             overview_zoom: 0.5,
             overview_transition_ms: 180,
+            warmup_hidden_ms: 10000,
             overview_selected_border_multiplier: 1.6,
             overview_dim_alpha: 0.6,
             overview_cycle_order: OverviewCycleOrder::Mru,
