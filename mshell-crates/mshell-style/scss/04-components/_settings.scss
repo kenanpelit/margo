@@ -151,6 +151,12 @@
         label {
             font-size: calc(15px * var(--font-scale-settings, 1.0));
             font-weight: 500;
+            // Some user fonts have tall ascenders that clip when GTK allocates
+            // the label at the exact 15px text height (Settings font scale
+            // 1.00). Pin an explicit line box so 1.00 has the same headroom
+            // users accidentally get by nudging the scale to 1.05.
+            line-height: 1.25;
+            min-height: calc(19px * var(--font-scale-settings, 1.0));
         }
 
         image {
@@ -172,6 +178,8 @@
 .settings-sidebar-section {
     font-size: var(--font-2xs);
     font-weight: 600;
+    line-height: 1.25;
+    min-height: calc(14px * var(--font-scale));
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--on-surface-variant);
