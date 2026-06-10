@@ -140,6 +140,11 @@ enum SlotCmd {
         /// Only report what would be revoked.
         #[arg(long)]
         dry_run: bool,
+        /// Run inside a held kitty window so the output stays visible (for
+        /// keybind / menu triggers). Falls back to inline if kitty is missing.
+        /// Mirrors `osc-mullvad slot --hold recycle`.
+        #[arg(long)]
+        hold: bool,
     },
     /// Show slot state + current device.
     Status,
@@ -364,6 +369,21 @@ tooltip         = "Mullvad VPN — click for the panel, right-click to toggle"
     );
 }
 
+/// Relaunch `mvpn slot recycle` inside a held kitty window (output stays
+/// visible after the command exits). Returns true if kitty was spawned; false
+/// when kitty is missing so the caller can run the recycle inline instead.
+fn spawn_held_recycle(dry_run: bool) -> bool {
+    let exe = std::env::current_exe().unwrap_or_else(|_| "mvpn".into());
+    let mut cmd = std::process::Command::new("kitty");
+    cmd.args(["--hold", "--class", "mvpn", "-T", "mvpn"])
+        .arg(exe)
+        .args(["slot", "recycle"]);
+    if dry_run {
+        cmd.arg("--dry-run");
+    }
+    cmd.spawn().is_ok()
+}
+
 fn run_slot(action: SlotCmd) -> bool {
     match action {
         SlotCmd::Whoami => {
@@ -394,7 +414,13 @@ fn run_slot(action: SlotCmd) -> bool {
             }
         },
         SlotCmd::Disconnect => actions::disconnect(),
-        SlotCmd::Recycle { dry_run } => {
+        SlotCmd::Recycle { dry_run, hold } => {
+            // `--hold`: relaunch the recycle inside a held kitty window so the
+            // output stays readable from a keybind / menu. If kitty spawns we're
+            // done; otherwise fall through and run inline.
+            if hold && spawn_held_recycle(dry_run) {
+                return true;
+            }
             // Honour OSC_MULLVAD_REVOKE_OTHERS (default true), like osc-mullvad.
             let revoke_others = std::env::var("OSC_MULLVAD_REVOKE_OTHERS")
                 .map(|v| v != "false")
