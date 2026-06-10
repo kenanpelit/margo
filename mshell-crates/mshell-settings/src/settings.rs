@@ -2287,9 +2287,13 @@ const SIDEBAR: &[SidebarEntry] = &[
     },
 ];
 
-const SETTINGS_SIDEBAR_LABEL_MIN_HEIGHT: i32 = 24;
-const SETTINGS_SIDEBAR_TITLE_MIN_HEIGHT: i32 = 24;
-const SETTINGS_SIDEBAR_SECTION_MIN_HEIGHT: i32 = 18;
+// Vertical floors matched to the SCSS `min-height`s for the sidebar labels.
+// Generous enough to absorb Pango's ink rounding at an integer font size
+// (Settings scale 1.00 → exactly 15px), which otherwise clips ascenders /
+// descenders on some fonts until the scale is nudged off the integer.
+const SETTINGS_SIDEBAR_LABEL_MIN_HEIGHT: i32 = 28;
+const SETTINGS_SIDEBAR_TITLE_MIN_HEIGHT: i32 = 28;
+const SETTINGS_SIDEBAR_SECTION_MIN_HEIGHT: i32 = 24;
 
 fn settings_sidebar_label(label: &str) -> gtk::Label {
     use gtk::prelude::*;

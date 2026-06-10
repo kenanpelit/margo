@@ -152,15 +152,18 @@
         label.settings-sidebar-label {
             font-size: calc(15px * var(--font-scale-settings, 1.0));
             font-weight: 500;
-            // CSS line-height alone is not enough for GTK/Pango font metrics:
-            // at Settings font scale 1.00 some fonts round the label's natural
-            // height too tightly and clip ascenders. The Rust sidebar helper
-            // also gives these labels an explicit height request; this line box
-            // is the matching style-side headroom.
-            line-height: 1.35;
-            min-height: calc(22px * var(--font-scale-settings, 1.0));
-            padding-top: 1px;
-            padding-bottom: 1px;
+            // At Settings font scale exactly 1.00 the font-size lands on an
+            // integer pixel (15px), where Pango's ink rounding clips some
+            // fonts' ascenders/descenders by ~1–2px — nudging the scale to
+            // 1.05 lands on a fractional size and the clip vanishes. CSS
+            // line-height / min-height alone (tried before) didn't give
+            // enough slack to absorb the rounding, so pin a generous line box
+            // + several px of vertical padding: the headroom swallows the
+            // worst-case rounding at any scale, integer or not.
+            line-height: 1.5;
+            min-height: calc(28px * var(--font-scale-settings, 1.0));
+            padding-top: 4px;
+            padding-bottom: 4px;
         }
 
         label:not(.settings-sidebar-label) {
@@ -188,25 +191,28 @@
 .settings-sidebar-section {
     font-size: calc(11px * var(--font-scale-settings, 1.0));
     font-weight: 600;
-    line-height: 1.35;
-    min-height: calc(18px * var(--font-scale-settings, 1.0));
+    line-height: 1.5;
+    min-height: calc(24px * var(--font-scale-settings, 1.0));
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--on-surface-variant);
     margin-top: var(--space-3);
     margin-bottom: var(--space-1);
-    padding-top: 1px;
-    padding-bottom: 1px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+    // letter-spacing makes Pango under-measure the trailing glyph's width;
+    // a little right padding stops the last uppercase letter clipping.
+    padding-right: 4px;
     padding-left: var(--space-2);
 }
 
 .settings-sidebar-title {
     font-size: calc(15px * var(--font-scale-settings, 1.0));
     font-weight: 600;
-    line-height: 1.35;
-    min-height: calc(22px * var(--font-scale-settings, 1.0));
-    padding-top: 1px;
-    padding-bottom: 1px;
+    line-height: 1.5;
+    min-height: calc(28px * var(--font-scale-settings, 1.0));
+    padding-top: 4px;
+    padding-bottom: 4px;
 }
 
 .settings-stack {
