@@ -18,6 +18,10 @@ pub struct AiSettingsModel {
     settings: AiSettings,
     provider_list: gtk::StringList,
     model_list: gtk::StringList,
+    /// Dropdown strings for the chat font (index 0 = inherit) + the matching
+    /// family names (index 0 = "" / inherit) for save-back.
+    font_list: gtk::StringList,
+    font_families: Vec<String>,
     status: String,
 }
 
@@ -32,7 +36,8 @@ pub enum AiSettingsInput {
     PromptChanged(String),
     PersistToggled(bool),
     FontSizeChanged(u32),
-    FontFamilyChanged(String),
+    /// Font family picked from the dropdown (index 0 = inherit).
+    FontFamilyPicked(u32),
     RefreshModels,
 }
 
@@ -262,16 +267,16 @@ impl Component for AiSettingsModel {
                 #[template]
                 Row {
                     #[template_child] title { set_label: "Chat font family" },
-                    #[template_child] desc { set_label: "Font for the AI transcript; blank = inherit the shell font." },
-                    #[name="font_entry"]
-                    gtk::Entry {
+                    #[template_child] desc { set_label: "Font for the AI transcript; “Inherit” uses the shell font." },
+                    gtk::DropDown {
                         set_valign: gtk::Align::Center,
                         set_width_request: 240,
-                        set_placeholder_text: Some("e.g. monospace"),
+                        set_enable_search: true,
+                        set_model: Some(&model.font_list),
                         #[watch]
-                        set_text: &model.settings.font_family,
-                        connect_changed[sender] => move |e| {
-                            sender.input(AiSettingsInput::FontFamilyChanged(e.text().to_string()));
+                        set_selected: font_index(&model.font_families, &model.settings.font_family),
+                        connect_selected_notify[sender] => move |d| {
+                            sender.input(AiSettingsInput::FontFamilyPicked(d.selected()));
                         },
                     },
                 },
@@ -286,9 +291,18 @@ impl Component for AiSettingsModel {
     ) -> ComponentParts<Self> {
         let settings = config::load();
         let provider_labels: Vec<&str> = providers().iter().map(|p| p.label()).collect();
+        // Font dropdown: "Inherit" at index 0, then every installed family.
+        // `font_families[0]` is the empty sentinel so indices line up.
+        let mut font_families = vec![String::new()];
+        font_families.extend(crate::fonts_settings::available_fonts());
+        let font_labels: Vec<&str> = std::iter::once("Inherit (shell font)")
+            .chain(font_families.iter().skip(1).map(String::as_str))
+            .collect();
         let model = AiSettingsModel {
             provider_list: gtk::StringList::new(&provider_labels),
             model_list: gtk::StringList::new(&[]),
+            font_list: gtk::StringList::new(&font_labels),
+            font_families,
             settings,
             status: String::new(),
         };
@@ -378,9 +392,18 @@ impl Component for AiSettingsModel {
                     self.save();
                 }
             }
-            AiSettingsInput::FontFamilyChanged(f) => {
-                if f != self.settings.font_family {
-                    self.settings.font_family = f;
+            AiSettingsInput::FontFamilyPicked(idx) => {
+                // Index 0 = "Inherit" → empty; otherwise the family name.
+                let fam = if idx == 0 {
+                    String::new()
+                } else {
+                    self.font_families
+                        .get(idx as usize)
+                        .cloned()
+                        .unwrap_or_default()
+                };
+                if fam != self.settings.font_family {
+                    self.settings.font_family = fam;
                     self.save();
                 }
             }
@@ -426,6 +449,14 @@ impl AiSettingsModel {
     fn save(&self) {
         config::save(&self.settings);
     }
+}
+
+/// Dropdown index for the saved font family (0 = inherit / not found).
+fn font_index(families: &[String], current: &str) -> u32 {
+    if current.is_empty() {
+        return 0;
+    }
+    families.iter().position(|f| f == current).unwrap_or(0) as u32
 }
 
 /// Refill the model dropdown's `StringList` in place (splice, never

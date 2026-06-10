@@ -21,6 +21,11 @@ pub(crate) struct VpnState {
     pub(crate) connected: bool,
     pub(crate) relay: String,
     pub(crate) location: String,
+    /// Blocky DNS guard active (systemctl `is-active blocky.service`).
+    pub(crate) blocky: bool,
+    /// Short upstream-resolver name (Google / Cloudflare / Quad9 / …) when a
+    /// known DNS is set and the tunnel is down; empty otherwise.
+    pub(crate) dns_label: String,
 }
 
 #[derive(Debug)]
@@ -186,14 +191,18 @@ fn apply_visual(image: &gtk::Image, label: &gtk::Label, root: &gtk::Box, s: &Vpn
     };
     image.set_icon_name(Some(icon));
 
-    // Country label beside the icon while connected (hidden when down).
-    let country = if s.connected {
-        country_of(&s.location)
+    // Beside-icon label: country while on Mullvad; "Blocky" when the DNS guard
+    // is up; the upstream resolver's short name when a known DNS is set; else
+    // hidden.
+    let label_text = if s.connected {
+        country_of(&s.location).to_string()
+    } else if s.blocky {
+        "Blocky".to_string()
     } else {
-        ""
+        s.dns_label.clone()
     };
-    label.set_label(country);
-    label.set_visible(!country.is_empty());
+    label.set_label(&label_text);
+    label.set_visible(!label_text.is_empty());
 
     let tooltip = if s.connected {
         if s.location.is_empty() {
@@ -201,6 +210,10 @@ fn apply_visual(image: &gtk::Image, label: &gtk::Label, root: &gtk::Box, s: &Vpn
         } else {
             format!("Mullvad VPN · {} · {}", s.relay, s.location)
         }
+    } else if s.blocky {
+        "Blocky DNS guard active · VPN disconnected".to_string()
+    } else if !s.dns_label.is_empty() {
+        format!("DNS: {} · VPN disconnected", s.dns_label)
     } else {
         "Mullvad VPN · disconnected".to_string()
     };
@@ -216,15 +229,26 @@ fn apply_visual(image: &gtk::Image, label: &gtk::Label, root: &gtk::Box, s: &Vpn
 /// `mvpn status --json` → VpnState. Field scan avoids a serde dependency for
 /// three values; missing `mvpn` leaves the state disconnected.
 async fn probe() -> VpnState {
-    let out = tokio::process::Command::new("mvpn")
+    let mut state = match tokio::process::Command::new("mvpn")
         .args(["status", "--json"])
         .output()
-        .await;
-    let Ok(out) = out else {
-        return VpnState::default();
+        .await
+    {
+        Ok(out) => parse(&String::from_utf8_lossy(&out.stdout)),
+        Err(_) => VpnState::default(),
     };
-    let body = String::from_utf8_lossy(&out.stdout);
-    parse(&body)
+    // Blocky DNS guard state — cheap, unprivileged.
+    state.blocky = tokio::process::Command::new("systemctl")
+        .args(["is-active", "--quiet", "blocky.service"])
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false);
+    // Only surface a plain-DNS label when neither Mullvad nor blocky owns DNS.
+    if !state.connected && !state.blocky {
+        state.dns_label = dns_short(&resolv_nameservers());
+    }
+    state
 }
 
 fn parse(json: &str) -> VpnState {
@@ -232,7 +256,39 @@ fn parse(json: &str) -> VpnState {
         connected: json.contains("\"connected\":true"),
         relay: json_str(json, "relay"),
         location: json_str(json, "location"),
+        blocky: false,
+        dns_label: String::new(),
     }
+}
+
+/// Nameserver IPs from `/etc/resolv.conf`, space-joined. Empty on any error.
+fn resolv_nameservers() -> String {
+    std::fs::read_to_string("/etc/resolv.conf")
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("nameserver"))
+        .map(|ip| ip.trim().to_string())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Map a resolver IP set to a well-known provider's short name (empty if none).
+fn dns_short(ips: &str) -> String {
+    const TABLE: &[(&str, &str)] = &[
+        ("Cloudflare", "1.1.1.1 1.0.0.1 2606:4700:4700::1111"),
+        ("Google", "8.8.8.8 8.8.4.4 2001:4860:4860::8888"),
+        ("Quad9", "9.9.9.9 149.112.112.112 2620:fe::fe"),
+        ("AdGuard", "94.140.14.14 94.140.15.15"),
+        ("OpenDNS", "208.67.222.222 208.67.220.220"),
+        ("NextDNS", "45.90.28.0 45.90.30.0"),
+    ];
+    let have: std::collections::HashSet<&str> = ips.split_whitespace().collect();
+    for (name, list) in TABLE {
+        if list.split_whitespace().any(|ip| have.contains(ip)) {
+            return (*name).to_string();
+        }
+    }
+    String::new()
 }
 
 /// Extract `"<key>":"<value>"` from a flat JSON object.

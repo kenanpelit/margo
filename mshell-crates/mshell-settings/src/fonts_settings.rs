@@ -699,7 +699,7 @@ fn font_preview_markup(family: &str) -> String {
     }
 }
 
-fn available_fonts() -> Vec<String> {
+pub(crate) fn available_fonts() -> Vec<String> {
     let Some(fc) = fontconfig::Fontconfig::new() else {
         return vec![];
     };

@@ -731,6 +731,7 @@ fn toggle_row(title: &str, desc: &str, control: &impl gtk::prelude::IsA<gtk::Wid
     t.set_xalign(0.0);
     let d = gtk::Label::new(Some(desc));
     d.add_css_class("label-small");
+    d.add_css_class("dim-label");
     d.set_xalign(0.0);
     d.set_wrap(true);
     d.set_wrap_mode(gtk::pango::WrapMode::WordChar);

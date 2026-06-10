@@ -6,7 +6,7 @@
 //! `PASSWORD_STORE_DIR` must set it explicitly (see `slot`).
 
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// Mullvad data root, honouring `$OSC_MULLVAD_DIR` (osc-mullvad's root
 /// override), else `~/.mullvad`. Per-file/dir env vars take precedence over
@@ -31,10 +31,14 @@ pub fn out(program: &str, args: &[&str]) -> String {
         .unwrap_or_default()
 }
 
-/// Run a command for its side effect; returns true on exit-success.
+/// Run a command for its side effect; returns true on exit-success. Output is
+/// silenced so probe commands (e.g. `systemctl list-unit-files`) don't leak
+/// their tables onto the terminal when mvpn is run interactively.
 pub fn ok(program: &str, args: &[&str]) -> bool {
     Command::new(program)
         .args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
