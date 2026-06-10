@@ -467,8 +467,23 @@ fn run_fav(action: FavCmd) -> bool {
 /// Run a connection action, then fire a desktop notification reflecting the
 /// resulting status (connected relay + location, or disconnected). Returns the
 /// action's own success flag unchanged.
+/// Poll status until the tunnel settles (no longer "Connecting"), bounded to
+/// ~4s. `mullvad connect` returns *before* the tunnel is actually up, so a
+/// bare post-action `status::query()` can read the transient state and notify
+/// the wrong direction ("Tunnel is down" right after a successful connect).
+fn settle() -> status::Status {
+    for _ in 0..20 {
+        let st = status::query();
+        if !st.connecting {
+            return st;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    status::query()
+}
+
 fn notify_after(ok: bool) -> bool {
-    let st = status::query();
+    let st = settle();
     if st.connected {
         let loc = if st.location.is_empty() {
             String::new()
