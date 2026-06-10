@@ -152,15 +152,17 @@
         label.settings-sidebar-label {
             font-size: calc(15px * var(--font-scale-settings, 1.0));
             font-weight: 500;
-            // CSS line-height alone is not enough for GTK/Pango font metrics:
-            // at Settings font scale 1.00 some fonts round the label's natural
-            // height too tightly and clip ascenders. The Rust sidebar helper
-            // also gives these labels an explicit height request; this line box
-            // is the matching style-side headroom.
-            line-height: 1.35;
+            // GTK clips the label's draw to its border-box; a font whose
+            // cap-ink overshoots the logical top edge gets shaved (the tops
+            // of "General", "Appearance", … were cut). Vertical padding opens
+            // a safe overshoot zone inside the border-box — same fix that
+            // cleared the section captions. Kept modest (min-height unchanged,
+            // and the button's own 34px min-height still drives the row
+            // height) so it adds headroom without opening row gaps.
+            line-height: 1.4;
             min-height: calc(22px * var(--font-scale-settings, 1.0));
-            padding-top: 1px;
-            padding-bottom: 1px;
+            padding-top: 3px;
+            padding-bottom: 2px;
         }
 
         label:not(.settings-sidebar-label) {
@@ -203,10 +205,11 @@
 .settings-sidebar-title {
     font-size: calc(15px * var(--font-scale-settings, 1.0));
     font-weight: 600;
-    line-height: 1.35;
+    line-height: 1.4;
     min-height: calc(22px * var(--font-scale-settings, 1.0));
-    padding-top: 1px;
-    padding-bottom: 1px;
+    // Same top-clip headroom as the nav labels.
+    padding-top: 3px;
+    padding-bottom: 2px;
 }
 
 .settings-stack {
