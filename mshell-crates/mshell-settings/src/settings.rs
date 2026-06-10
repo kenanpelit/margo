@@ -2287,14 +2287,28 @@ const SIDEBAR: &[SidebarEntry] = &[
     },
 ];
 
-const SETTINGS_SIDEBAR_LABEL_MIN_HEIGHT: i32 = 24;
-const SETTINGS_SIDEBAR_TITLE_MIN_HEIGHT: i32 = 24;
-const SETTINGS_SIDEBAR_SECTION_MIN_HEIGHT: i32 = 18;
+const SETTINGS_SIDEBAR_LABEL_MIN_HEIGHT: i32 = 28;
+const SETTINGS_SIDEBAR_TITLE_MIN_HEIGHT: i32 = 28;
+const SETTINGS_SIDEBAR_SECTION_MIN_HEIGHT: i32 = 22;
+const SETTINGS_SIDEBAR_TEXT_RISE: i32 = -1024;
+
+fn settings_sidebar_markup(label: &str) -> String {
+    // Maple Mono / Nerd Font metrics can put ink right on the label's top
+    // edge at certain hinted sizes. GTK clips label drawing to the widget box,
+    // so a 1 device-pixel downward Pango rise gives the glyph ink
+    // deterministic headroom independent of CSS/font rounding.
+    format!(
+        "<span rise=\"{}\">{}</span>",
+        SETTINGS_SIDEBAR_TEXT_RISE,
+        gtk::glib::markup_escape_text(label)
+    )
+}
 
 fn settings_sidebar_label(label: &str) -> gtk::Label {
     use gtk::prelude::*;
 
-    let lbl = gtk::Label::new(Some(label));
+    let lbl = gtk::Label::new(None);
+    lbl.set_markup(&settings_sidebar_markup(label));
     lbl.add_css_class("label-medium");
     lbl.add_css_class("settings-sidebar-label");
     lbl.set_halign(gtk::Align::Start);
@@ -2304,6 +2318,7 @@ fn settings_sidebar_label(label: &str) -> gtk::Label {
     lbl.set_hexpand(true);
     lbl.set_vexpand(false);
     lbl.set_wrap(false);
+    lbl.set_single_line_mode(true);
     lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
     lbl.set_height_request(SETTINGS_SIDEBAR_LABEL_MIN_HEIGHT);
     lbl
@@ -2312,7 +2327,8 @@ fn settings_sidebar_label(label: &str) -> gtk::Label {
 fn settings_sidebar_title_label(label: &str) -> gtk::Label {
     use gtk::prelude::*;
 
-    let lbl = gtk::Label::new(Some(label));
+    let lbl = gtk::Label::new(None);
+    lbl.set_markup(&settings_sidebar_markup(label));
     lbl.add_css_class("label-medium-bold");
     lbl.add_css_class("settings-sidebar-title");
     lbl.set_halign(gtk::Align::Start);
@@ -2322,6 +2338,7 @@ fn settings_sidebar_title_label(label: &str) -> gtk::Label {
     lbl.set_hexpand(true);
     lbl.set_vexpand(false);
     lbl.set_wrap(false);
+    lbl.set_single_line_mode(true);
     lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
     lbl.set_height_request(SETTINGS_SIDEBAR_TITLE_MIN_HEIGHT);
     lbl
@@ -2330,7 +2347,8 @@ fn settings_sidebar_title_label(label: &str) -> gtk::Label {
 fn settings_sidebar_section_label(label: &str) -> gtk::Label {
     use gtk::prelude::*;
 
-    let lbl = gtk::Label::new(Some(label));
+    let lbl = gtk::Label::new(None);
+    lbl.set_markup(&settings_sidebar_markup(label));
     lbl.add_css_class("settings-sidebar-section");
     lbl.set_halign(gtk::Align::Start);
     lbl.set_valign(gtk::Align::Center);
@@ -2339,6 +2357,7 @@ fn settings_sidebar_section_label(label: &str) -> gtk::Label {
     lbl.set_hexpand(true);
     lbl.set_vexpand(false);
     lbl.set_wrap(false);
+    lbl.set_single_line_mode(true);
     // NO ellipsize: these are short fixed headers ("APPEARANCE", "SHELL", …).
     // `letter-spacing` makes Pango under-report the label's natural width by
     // the trailing letter-space, so with ellipsize on, GTK thinks the text

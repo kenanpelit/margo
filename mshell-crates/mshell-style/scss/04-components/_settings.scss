@@ -124,7 +124,7 @@
     .sidebar-button {
         @include buttons.button-base("--surface", "--on-surface");
         @include buttons.state-layers("--surface", "--on-surface");
-        min-height: calc(34px * var(--font-scale-settings, 1.0));
+        min-height: calc(38px * var(--font-scale-settings, 1.0));
 
         &:checked {
             @include buttons.button-base("--primary", "--on-primary");
@@ -150,23 +150,27 @@
         }
 
         label.settings-sidebar-label {
-            font-size: calc(15px * var(--font-scale-settings, 1.0));
+            // Match the Settings page's +1pt baseline (15.5px), and avoid
+            // exact integer px sizes at scale 1.00. Maple Mono NF with hinting
+            // can overshoot/clamp glyph tops at exactly 15px; the fractional
+            // base keeps Pango off that bad rounding cliff.
+            font-size: calc(15.5px * var(--font-scale-settings, 1.0));
             font-weight: 500;
             // GTK clips the label's draw to its border-box; a font whose
             // cap-ink overshoots the logical top edge gets shaved (the tops
             // of "General", "Appearance", … were cut). Vertical padding opens
             // a safe overshoot zone inside the border-box — same fix that
             // cleared the section captions. Kept modest (min-height unchanged,
-            // and the button's own 34px min-height still drives the row
+            // and the button's own 38px min-height still drives the row
             // height) so it adds headroom without opening row gaps.
             line-height: 1.4;
-            min-height: calc(22px * var(--font-scale-settings, 1.0));
+            min-height: calc(26px * var(--font-scale-settings, 1.0));
             padding-top: 3px;
-            padding-bottom: 2px;
+            padding-bottom: 3px;
         }
 
         label:not(.settings-sidebar-label) {
-            font-size: calc(15px * var(--font-scale-settings, 1.0));
+            font-size: calc(15.5px * var(--font-scale-settings, 1.0));
             font-weight: 500;
             line-height: 1.3;
         }
@@ -188,28 +192,28 @@
 // DESIGN.md §1 section-label: dim, uppercase, letter-spaced; sits a
 // notch above its buttons. Non-interactive — just structures the list.
 .settings-sidebar-section {
-    font-size: calc(11px * var(--font-scale-settings, 1.0));
+    font-size: calc(11.5px * var(--font-scale-settings, 1.0));
     font-weight: 600;
-    line-height: 1.35;
-    min-height: calc(18px * var(--font-scale-settings, 1.0));
+    line-height: 1.45;
+    min-height: calc(22px * var(--font-scale-settings, 1.0));
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--on-surface-variant);
     margin-top: var(--space-3);
     margin-bottom: var(--space-1);
-    padding-top: 1px;
-    padding-bottom: 1px;
+    padding-top: 3px;
+    padding-bottom: 2px;
     padding-left: var(--space-2);
 }
 
 .settings-sidebar-title {
-    font-size: calc(15px * var(--font-scale-settings, 1.0));
+    font-size: calc(15.5px * var(--font-scale-settings, 1.0));
     font-weight: 600;
     line-height: 1.4;
-    min-height: calc(22px * var(--font-scale-settings, 1.0));
+    min-height: calc(26px * var(--font-scale-settings, 1.0));
     // Same top-clip headroom as the nav labels.
     padding-top: 3px;
-    padding-bottom: 2px;
+    padding-bottom: 3px;
 }
 
 .settings-stack {
