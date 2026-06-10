@@ -429,7 +429,11 @@ impl Default for Sizing {
             radius_window: 18,
             border_width: 2,
             bar_hover_strength: 14,
-            settings_font_scale: 1.0,
+            // 1.05 (not 1.0) by default: at exactly 1.00 the sidebar label
+            // font lands on an integer pixel (15px) where Pango's ink rounding
+            // clips some fonts' glyphs; a hair over keeps the size fractional
+            // and sidesteps the rounding entirely.
+            settings_font_scale: 1.05,
             font_scale: 1.0,
             bar_font_scale: 1.0,
             surface_opacity: 100,
