@@ -2339,7 +2339,12 @@ fn settings_sidebar_section_label(label: &str) -> gtk::Label {
     lbl.set_hexpand(true);
     lbl.set_vexpand(false);
     lbl.set_wrap(false);
-    lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    // NO ellipsize: these are short fixed headers ("APPEARANCE", "SHELL", …).
+    // `letter-spacing` makes Pango under-report the label's natural width by
+    // the trailing letter-space, so with ellipsize on, GTK thinks the text
+    // doesn't fit and truncates it ("SHELL" → "SHE…") even though it does.
+    // Without ellipsize the (invisible) trailing space is all that's ever
+    // clipped, never a glyph.
     lbl.set_height_request(SETTINGS_SIDEBAR_SECTION_MIN_HEIGHT);
     lbl
 }
