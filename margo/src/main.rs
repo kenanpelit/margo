@@ -50,6 +50,9 @@ mod wallpaper;
 #[cfg(test)]
 mod tests;
 
+use std::ffi::OsStr;
+use std::io;
+use std::os::unix::ffi::OsStrExt;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -216,6 +219,109 @@ struct Args {
 /// whole process.
 pub static LOG_HANDLE: std::sync::OnceLock<margo_logging::LogHandle> = std::sync::OnceLock::new();
 
+fn notify_sockaddr(socket_path: &OsStr) -> io::Result<(libc::sockaddr_un, libc::socklen_t)> {
+    let bytes = socket_path.as_bytes();
+    if bytes.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "empty NOTIFY_SOCKET",
+        ));
+    }
+
+    // SAFETY: all-zero is a valid initial sockaddr_un before we fill family
+    // and path bytes.
+    let mut addr: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+    addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
+    let offset = (&addr.sun_path as *const _ as usize) - (&addr as *const _ as usize);
+
+    let len = if bytes[0] == b'@' {
+        let name = &bytes[1..];
+        if name.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "empty abstract NOTIFY_SOCKET",
+            ));
+        }
+        if name.len() + 1 > addr.sun_path.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "abstract NOTIFY_SOCKET too long",
+            ));
+        }
+        addr.sun_path[0] = 0;
+        for (dst, src) in addr.sun_path[1..].iter_mut().zip(name) {
+            *dst = *src as libc::c_char;
+        }
+        offset + 1 + name.len()
+    } else {
+        if bytes.len() + 1 > addr.sun_path.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "NOTIFY_SOCKET path too long",
+            ));
+        }
+        for (dst, src) in addr.sun_path.iter_mut().zip(bytes) {
+            *dst = *src as libc::c_char;
+        }
+        offset + bytes.len() + 1
+    };
+
+    Ok((addr, len as libc::socklen_t))
+}
+
+fn send_notify_message(socket_path: &OsStr, state: &str) -> io::Result<()> {
+    let (addr, len) = notify_sockaddr(socket_path)?;
+    // SAFETY: socket(2) returns a new fd or -1 with errno set.
+    let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    // SAFETY: fd is valid, addr points at a sockaddr_un initialised by
+    // notify_sockaddr, and state.as_ptr/len describe a live byte slice.
+    let sent = unsafe {
+        libc::sendto(
+            fd,
+            state.as_ptr().cast(),
+            state.len(),
+            0,
+            (&addr as *const libc::sockaddr_un).cast(),
+            len,
+        )
+    };
+    let result = if sent < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    };
+    // SAFETY: fd was returned by socket above.
+    unsafe {
+        libc::close(fd);
+    }
+    result
+}
+
+fn signal_session_ready(ready_fd: Option<libc::c_int>) {
+    if let Some(fd) = ready_fd {
+        let msg = b"READY=1\n";
+        // SAFETY: fd is inherited from start-margo and points at a pipe
+        // write end. A failed write only means the supervisor is gone or
+        // no longer waiting.
+        unsafe {
+            libc::write(fd, msg.as_ptr().cast(), msg.len());
+            libc::close(fd);
+        }
+        return;
+    }
+
+    if let Some(socket_path) = std::env::var_os("NOTIFY_SOCKET")
+        && let Err(e) =
+            send_notify_message(socket_path.as_os_str(), "READY=1\nSTATUS=margo ready\n")
+    {
+        warn!(?socket_path, "sd_notify READY failed: {e}");
+    }
+}
+
 fn main() -> Result<()> {
     // Logging is brought up a few lines down — *after* the config parse — so
     // the file sink (~/.local/state/margo/logs/margo-*.log) honours the
@@ -253,6 +359,12 @@ fn main() -> Result<()> {
     }));
 
     let args = Args::parse();
+    let ready_fd = std::env::var_os("MARGO_READY_FD")
+        .and_then(|raw| raw.to_string_lossy().parse::<libc::c_int>().ok());
+    if ready_fd.is_some() {
+        // SAFETY: still single-threaded during argument/config bootstrap.
+        unsafe { std::env::remove_var("MARGO_READY_FD") };
+    }
 
     let (config, config_err) =
         match margo_config::parse_config_with_defaults(args.config.as_deref()) {
@@ -856,6 +968,13 @@ fn main() -> Result<()> {
             },
         }
     }
+
+    // Tell start-margo / systemd that the compositor is genuinely usable:
+    // Wayland socket is open, backend is ready, compositor env is imported,
+    // and XWayland / portal services have been attempted. Do this before
+    // exec_once/startup commands so dependent services do not race a half-built
+    // compositor.
+    signal_session_ready(ready_fd);
 
     // ── exec_once commands ────────────────────────────────────────────────────
     for cmd in margo.config.exec_once.clone() {

@@ -11,7 +11,7 @@ install, copy the ones you want.
 | File | Install path | Packaged? | Purpose |
 |---|---|---|---|
 | `margo-uwsm.desktop` | `/usr/share/wayland-sessions/` | yes | Wayland session entry — picked up by gdm / sddm / ly / greetd-tuigreet. References `margo-uwsm-session` (Exec rewritten to `/usr/bin` by the package). |
-| `margo-uwsm-session` | `/usr/bin/` (`/usr/local/bin/` for manual installs), `chmod +x` | yes | UWSM-first wrapper. Sets the standard XDG env vars, resolves the best compositor command (`margo-session` > `start-margo` > `margo`), and hands control to `uwsm start` for a transient-scope session. |
+| `margo-uwsm-session` | `/usr/bin/` (`/usr/local/bin/` for manual installs), `chmod +x` | yes | UWSM-first wrapper. Sets the standard XDG env vars, optionally sources `margo-session-common(.sh)` for richer env cleanup / manager-env sync, resolves the best compositor command (`margo-session` > `start-margo` > `margo`), and hands control to `uwsm start` for a transient-scope session. |
 | `margo-session` | `/usr/bin/` (`/usr/local/bin/` for manual installs), `chmod +x` | yes | Minimal compositor launcher. Prefers `start-margo` (the watchdog supervisor) when installed; falls back to bare `margo`. Pass-through for extra arguments. |
 | `uwsm-env-margo` | `/etc/xdg/uwsm/env-margo` | yes | uwsm env file sourced for margo sessions (uwsm scans `XDG_CONFIG_DIRS` → `/etc/xdg`). Restores the standard XDG user-bin dirs (`~/.local/bin`, `~/bin`) onto PATH that uwsm's login-shell env rebuild drops, so `uwsm app` keybinds/autostarts can find user-local tools. Per-user overrides go in `~/.config/uwsm/env`. |
 | `systemd/user/wayland-wm@margo-session.service.d/10-session-lifecycle.conf` | `~/.config/systemd/user/wayland-wm@margo\x2dsession.service.d/10-session-lifecycle.conf` | no (copy-in) | UWSM `wayland-wm@.service` drop-in: sets `MARGO_LOG`, fires the session-target fan-out, bumps Nice/CPUWeight. |
@@ -42,7 +42,7 @@ chooser. The chain that runs once you authenticate:
 ```
 DM
  └─ /usr/local/bin/margo-uwsm-session     ← env setup + session_cmd pick
-      └─ uwsm start -D margo:mango -e -- margo-session
+      └─ uwsm start -D margo -e -- margo-session
            └─ /usr/local/bin/margo-session
                 └─ exec start-margo -- -c ~/.config/margo/config.conf
                      └─ fork+exec margo  (PR_SET_PDEATHSIG, watchdog loop)
@@ -50,10 +50,12 @@ DM
 
 ## Tailoring
 
-Distros that ship a richer integration (theme defaults, manager-env
-scrubbing, helper-script sourcing) should treat `margo-uwsm-session`
-as a starter and layer their logic on top. The other three files are
-small enough to use verbatim in nearly every setup.
+Distros that ship a richer integration can provide `margo-session-common`
+or `margo-session-common.sh` in `~/.local/bin`, `/usr/local/bin`, or
+`/usr/bin`. When present, `margo-uwsm-session` uses it for runtime-dir
+setup, environment.d loading, foreign compositor env scrubbing, PATH /
+XDG_DATA_DIRS normalisation, and systemd user-manager env sync. Without
+that helper, the wrapper stays minimal and works like the plain template.
 
 If you don't want the watchdog at all (rare — useful only for
 profiling a single session), point the `.desktop` `Exec=` line

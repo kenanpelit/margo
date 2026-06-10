@@ -1,32 +1,96 @@
 #!/usr/bin/env bash
-# margo-uwsm-session — UWSM wrapper for margo, called from a
-# display-manager .desktop entry.
+# margo-uwsm-session — UWSM-first wrapper for display-manager logins.
 #
-# What this script does:
-#   1. Sets the standard XDG session env vars (DESKTOP, TYPE, …).
-#   2. Resolves the best compositor command in order of preference:
-#         margo-session  →  start-margo  →  margo
-#      (margo-session and start-margo absorb the config path
-#      themselves; bare margo gets `-c <config>` explicitly.)
-#   3. Hands control to `uwsm start` when uwsm is on PATH so the
-#      compositor runs inside a transient systemd scope that gets
-#      cleaned up at logout. Falls back to a plain exec otherwise.
-#
-# Distros that ship a richer integration (theme defaults, manager-env
-# scrubbing, helper sourcing) should layer their logic on top of this
-# template rather than editing it in place.
+# Minimal installs work without helper scripts. Rich Cachy-style setups can
+# install `margo-session-common(.sh)` in ~/.local/bin, /usr/local/bin or
+# /usr/bin; when present it is used to scrub foreign compositor variables,
+# load environment.d fragments, normalise PATH/XDG_DATA_DIRS and synchronise
+# the systemd user manager environment before uwsm starts the compositor.
 set -euo pipefail
 
-# Standard XDG env for a margo session. `margo` extends DesktopNames
-# with `mango;wlroots;` for portal / Qt theme compatibility.
-export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-margo:mango}"
+find_margo_helper() {
+  local candidate
+  for candidate in \
+    "${HOME}/.local/bin/margo-session-common.sh" \
+    "${HOME}/.local/bin/margo-session-common" \
+    "/usr/local/bin/margo-session-common.sh" \
+    "/usr/local/bin/margo-session-common" \
+    "/usr/bin/margo-session-common.sh" \
+    "/usr/bin/margo-session-common"; do
+    [[ -r "${candidate}" ]] && {
+      printf '%s\n' "${candidate}"
+      return 0
+    }
+  done
+  return 1
+}
+
+helper_path="$(find_margo_helper || true)"
+if [[ -n "${helper_path}" ]]; then
+  # shellcheck source=/dev/null
+  source "${helper_path}"
+  declare -F margo_ensure_runtime_dir >/dev/null 2>&1 && margo_ensure_runtime_dir
+  declare -F margo_clear_foreign_session_env >/dev/null 2>&1 && margo_clear_foreign_session_env
+  declare -F margo_load_session_env >/dev/null 2>&1 && margo_load_session_env
+  declare -F margo_normalize_session_paths >/dev/null 2>&1 && margo_normalize_session_paths
+fi
+
+export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-margo}"
 export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
 export XDG_SESSION_DESKTOP="${XDG_SESSION_DESKTOP:-margo}"
+export DESKTOP_SESSION="${DESKTOP_SESSION:-margo-uwsm}"
+export GTK_USE_PORTAL="${GTK_USE_PORTAL:-1}"
+export SYSTEMD_OFFLINE="${SYSTEMD_OFFLINE:-0}"
 
-# Compositor command resolution. Preference order:
-#   1) margo-session  — canonical wrapper, also pulls in start-margo.
-#   2) start-margo    — watchdog supervisor, direct call.
-#   3) margo          — bare compositor binary, last resort.
+if declare -F session_common_backfill_visual_env >/dev/null 2>&1; then
+  session_common_backfill_visual_env
+fi
+
+if declare -F session_common_unset_manager_env >/dev/null 2>&1 \
+  && declare -F session_common_set_manager_env >/dev/null 2>&1; then
+  session_common_unset_manager_env \
+    GDK_BACKEND \
+    WAYLAND_DISPLAY \
+    DISPLAY \
+    NIRI_SOCKET \
+    HYPRLAND_INSTANCE_SIGNATURE \
+    HYPRLAND_SOCKET \
+    HYPRLAND_CMD \
+    HYPRCURSOR_THEME \
+    HYPRCURSOR_SIZE \
+    NOCTALIA_STARTUP_HINT \
+    UWSM_WAIT_VARNAMES \
+    UWSM_FINALIZE_VARNAMES \
+    XDG_CURRENT_DESKTOP \
+    XDG_SESSION_TYPE \
+    XDG_SESSION_DESKTOP \
+    DESKTOP_SESSION
+
+  session_common_set_manager_env \
+    "XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP}" \
+    "XDG_SESSION_TYPE=${XDG_SESSION_TYPE}" \
+    "XDG_SESSION_DESKTOP=${XDG_SESSION_DESKTOP}" \
+    "DESKTOP_SESSION=${DESKTOP_SESSION}" \
+    "PATH=${PATH}" \
+    "XDG_DATA_DIRS=${XDG_DATA_DIRS:-}" \
+    "XDG_CONFIG_DIRS=${XDG_CONFIG_DIRS:-/etc/xdg}" \
+    "GTK_THEME=${GTK_THEME:-}" \
+    "XDG_ICON_THEME=${XDG_ICON_THEME:-}" \
+    "ICON_THEME=${ICON_THEME:-${XDG_ICON_THEME:-}}" \
+    "QT_ICON_THEME=${QT_ICON_THEME:-${XDG_ICON_THEME:-}}" \
+    "QT_QPA_PLATFORMTHEME=${QT_QPA_PLATFORMTHEME:-}" \
+    "QT_QPA_PLATFORMTHEME_QT6=${QT_QPA_PLATFORMTHEME_QT6:-}" \
+    "QT_STYLE_OVERRIDE=${QT_STYLE_OVERRIDE:-}" \
+    "XCURSOR_THEME=${XCURSOR_THEME:-}" \
+    "XCURSOR_SIZE=${XCURSOR_SIZE:-}" \
+    "GTK_USE_PORTAL=${GTK_USE_PORTAL}" \
+    "SYSTEMD_OFFLINE=${SYSTEMD_OFFLINE}"
+fi
+
+# Compositor command resolution — preference order:
+#   1) margo-session helper (canonical config path + start-margo watchdog)
+#   2) start-margo direct (watchdog, no wrapper)
+#   3) bare margo (last-resort partial install fallback)
 session_cmd=""
 if command -v margo-session >/dev/null 2>&1; then
   session_cmd="margo-session"
@@ -39,10 +103,10 @@ fi
 if command -v uwsm >/dev/null 2>&1; then
   case "${session_cmd}" in
     margo-session|start-margo)
-      exec uwsm start -D margo:mango -e -- "${session_cmd}"
+      exec uwsm start -D margo -e -- "${session_cmd}"
       ;;
     margo)
-      exec uwsm start -D margo:mango -e -- \
+      exec uwsm start -D margo -e -- \
         margo -c "${HOME}/.config/margo/config.conf"
       ;;
     *)
