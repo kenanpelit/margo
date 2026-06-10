@@ -3,6 +3,13 @@
   color: var(--on-surface);
 }
 
+// Muted/secondary text. Used widely across menus + settings as the subtitle
+// under a title (e.g. the VPN toggle-row descriptions). Opacity-based so it
+// composes with whatever colour class the label already carries.
+.dim-label {
+  opacity: 0.6;
+}
+
 .label-small-bold {
   font-size: var(--font-sm);
   color: var(--on-surface);
