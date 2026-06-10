@@ -36,7 +36,13 @@ enum Cmd {
     /// Disconnect the tunnel.
     Disconnect,
     /// Toggle the connection on/off.
-    Toggle,
+    Toggle {
+        /// Also reconcile the blocky DNS guard to the new VPN state
+        /// (VPN up → blocky off; VPN down → blocky on), like
+        /// `osc-mullvad toggle --with-blocky`.
+        #[arg(long)]
+        with_blocky: bool,
+    },
     /// Reconnect (re-establish the tunnel).
     Reconnect,
     /// Connect to a random relay (optionally in a country).
@@ -185,7 +191,14 @@ fn main() {
         }
         Cmd::Connect => notify_after(actions::connect()),
         Cmd::Disconnect => notify_after(actions::disconnect()),
-        Cmd::Toggle => notify_after(actions::toggle()),
+        Cmd::Toggle { with_blocky } => {
+            let r = actions::toggle();
+            if with_blocky {
+                // Drive blocky to match the new VPN state (best-effort).
+                let _ = blocky::ensure();
+            }
+            notify_after(r)
+        }
         Cmd::Reconnect => notify_after(actions::reconnect()),
         Cmd::Random { country } => notify_after(actions::random(
             country.as_deref().unwrap_or(""),
