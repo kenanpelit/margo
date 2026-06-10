@@ -594,7 +594,14 @@ impl Component for MenuModel {
             weather_all_in_one: matches!(params.menu_type, MenuType::Weather),
             built: false,
             lazy_wizard: matches!(params.menu_type, MenuType::Wizard),
-            fixed_height: matches!(params.menu_type, MenuType::PluginPanel | MenuType::Wizard),
+            // AI joins the fixed-height menus: its chat content is short/dynamic,
+            // so a plain `maximum_height` cap does nothing — pinning the height
+            // (min == max) makes the configured size a real target the transcript
+            // fills, so Settings → Widgets → AI actually resizes the menu.
+            fixed_height: matches!(
+                params.menu_type,
+                MenuType::PluginPanel | MenuType::Wizard | MenuType::Ai
+            ),
             _effects: effects,
         };
 

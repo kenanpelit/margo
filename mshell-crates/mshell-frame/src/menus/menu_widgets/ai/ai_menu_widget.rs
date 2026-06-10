@@ -115,7 +115,10 @@ impl Component for AiMenuWidgetModel {
                 set_vscrollbar_policy: gtk::PolicyType::Automatic,
                 set_hscrollbar_policy: gtk::PolicyType::Never,
                 set_vexpand: true,
-                set_min_content_height: 320,
+                // Small floor only — the menu is fixed-height, so its config
+                // `maximum_height` (Settings → Widgets → AI) governs the real
+                // size and the transcript vexpands to fill it.
+                set_min_content_height: 80,
 
                 #[name = "messages_box"]
                 gtk::Box {
