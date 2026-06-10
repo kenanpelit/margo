@@ -334,16 +334,34 @@ impl AiMenuWidgetModel {
         } else {
             "ai-bubble-ai"
         });
-        let who = gtk::Label::new(Some(if role == Role::User { "You" } else { "AI" }));
-        who.add_css_class("ai-bubble-role");
-        who.set_xalign(0.0);
         let body = gtk::Label::new(Some(text));
         body.add_css_class("ai-bubble-text");
         body.set_xalign(0.0);
         body.set_wrap(true);
         body.set_wrap_mode(gtk::pango::WrapMode::WordChar);
         body.set_selectable(true);
-        row.append(&who);
+
+        // Header row: role label + a small copy button in the top-right corner.
+        // The button copies this bubble's *current* text (works mid-stream too).
+        let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let who = gtk::Label::new(Some(if role == Role::User { "You" } else { "AI" }));
+        who.add_css_class("ai-bubble-role");
+        who.set_xalign(0.0);
+        who.set_hexpand(true);
+        let copy = gtk::Button::from_icon_name("edit-copy-symbolic");
+        copy.set_css_classes(&["ai-bubble-copy", "flat"]);
+        copy.set_valign(gtk::Align::Start);
+        copy.set_tooltip_text(Some("Copy"));
+        {
+            let body = body.clone();
+            copy.connect_clicked(move |b| {
+                b.clipboard().set_text(body.text().as_str());
+            });
+        }
+        header.append(&who);
+        header.append(&copy);
+
+        row.append(&header);
         row.append(&body);
         self.messages_box.append(&row);
         body

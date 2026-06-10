@@ -38,3 +38,20 @@
 .ai-bubble-text {
   font-size: var(--font-sm);
 }
+// Small per-bubble copy button, top-right. Subtle until the bubble is hovered.
+.ai-bubble-copy {
+  min-width: 22px;
+  min-height: 22px;
+  padding: 2px;
+  opacity: 0;
+  background: transparent;
+  border: none;
+}
+.ai-bubble:hover .ai-bubble-copy,
+.ai-bubble-copy:hover,
+.ai-bubble-copy:focus {
+  opacity: 0.75;
+}
+.ai-bubble-copy:hover {
+  background-color: var(--surface-container-highest);
+}
