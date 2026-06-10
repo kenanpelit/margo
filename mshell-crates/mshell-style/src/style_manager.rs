@@ -418,9 +418,14 @@ impl Component for StyleManagerModel {
                         --radius-window: {}px;
                         --border-width: {}px;
                         --bar-hover-strength: {}%;
-                        --font-scale-settings: {};
-                        --font-scale: {};
-                        --font-bar-scale: {};
+                        // Forced 4-decimal precision: Rust prints 1.0 as the
+                        // bare integer 1, and GTK4's calc(px * 1) rounds the
+                        // computed font-size differently than calc(px * 1.05),
+                        // clipping some fixed-width sidebar labels at exactly
+                        // 1.00. A decimal scale keeps the multiplier fractional.
+                        --font-scale-settings: {:.4};
+                        --font-scale: {:.4};
+                        --font-bar-scale: {:.4};
                         --surface-opacity: {}%;
                         {}
                     }}"#,
