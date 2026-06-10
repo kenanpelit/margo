@@ -124,6 +124,7 @@
     .sidebar-button {
         @include buttons.button-base("--surface", "--on-surface");
         @include buttons.state-layers("--surface", "--on-surface");
+        min-height: calc(34px * var(--font-scale-settings, 1.0));
 
         &:checked {
             @include buttons.button-base("--primary", "--on-primary");
@@ -148,15 +149,24 @@
             }
         }
 
-        label {
+        label.settings-sidebar-label {
             font-size: calc(15px * var(--font-scale-settings, 1.0));
             font-weight: 500;
-            // Some user fonts have tall ascenders that clip when GTK allocates
-            // the label at the exact 15px text height (Settings font scale
-            // 1.00). Pin an explicit line box so 1.00 has the same headroom
-            // users accidentally get by nudging the scale to 1.05.
-            line-height: 1.25;
-            min-height: calc(19px * var(--font-scale-settings, 1.0));
+            // CSS line-height alone is not enough for GTK/Pango font metrics:
+            // at Settings font scale 1.00 some fonts round the label's natural
+            // height too tightly and clip ascenders. The Rust sidebar helper
+            // also gives these labels an explicit height request; this line box
+            // is the matching style-side headroom.
+            line-height: 1.35;
+            min-height: calc(22px * var(--font-scale-settings, 1.0));
+            padding-top: 1px;
+            padding-bottom: 1px;
+        }
+
+        label:not(.settings-sidebar-label) {
+            font-size: calc(15px * var(--font-scale-settings, 1.0));
+            font-weight: 500;
+            line-height: 1.3;
         }
 
         image {
@@ -176,16 +186,27 @@
 // DESIGN.md §1 section-label: dim, uppercase, letter-spaced; sits a
 // notch above its buttons. Non-interactive — just structures the list.
 .settings-sidebar-section {
-    font-size: var(--font-2xs);
+    font-size: calc(11px * var(--font-scale-settings, 1.0));
     font-weight: 600;
-    line-height: 1.25;
-    min-height: calc(14px * var(--font-scale));
+    line-height: 1.35;
+    min-height: calc(18px * var(--font-scale-settings, 1.0));
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--on-surface-variant);
     margin-top: var(--space-3);
     margin-bottom: var(--space-1);
+    padding-top: 1px;
+    padding-bottom: 1px;
     padding-left: var(--space-2);
+}
+
+.settings-sidebar-title {
+    font-size: calc(15px * var(--font-scale-settings, 1.0));
+    font-weight: 600;
+    line-height: 1.35;
+    min-height: calc(22px * var(--font-scale-settings, 1.0));
+    padding-top: 1px;
+    padding-bottom: 1px;
 }
 
 .settings-stack {

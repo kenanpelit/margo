@@ -1003,9 +1003,7 @@ impl Component for SettingsWindowModel {
         widgets_sub_sidebar.set_child(Some(&widgets_sub_sidebar_box));
 
         widgets_sub_sidebar_box.append(&{
-            let l = gtk::Label::new(Some("Widgets"));
-            l.add_css_class("label-medium-bold");
-            l.set_halign(gtk::Align::Start);
+            let l = settings_sidebar_title_label("Widgets");
             l.set_margin_start(8);
             l.set_margin_top(12);
             l.set_margin_bottom(6);
@@ -1037,11 +1035,9 @@ impl Component for SettingsWindowModel {
             }
             let btn = builder.build();
             let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+            row.set_valign(gtk::Align::Center);
             row.append(&gtk::Image::from_icon_name(icon));
-            let lbl = gtk::Label::new(Some(label));
-            lbl.add_css_class("label-medium");
-            lbl.set_halign(gtk::Align::Start);
-            lbl.set_hexpand(true);
+            let lbl = settings_sidebar_label(label);
             row.append(&lbl);
             btn.set_child(Some(&row));
             let sub_stack = widgets_sub_stack.clone();
@@ -1817,11 +1813,7 @@ impl Component for SettingsWindowModel {
                         let title = titles.get(route).cloned().unwrap_or_else(|| route.clone());
                         let btn = gtk::Button::new();
                         btn.add_css_class("sidebar-button");
-                        let lbl = gtk::Label::new(Some(&title));
-                        lbl.set_halign(gtk::Align::Start);
-                        lbl.set_xalign(0.0);
-                        lbl.set_hexpand(true);
-                        lbl.add_css_class("label-medium");
+                        let lbl = settings_sidebar_label(&title);
                         btn.set_child(Some(&lbl));
                         let route = route.clone();
                         let s = sender.clone();
@@ -2295,6 +2287,63 @@ const SIDEBAR: &[SidebarEntry] = &[
     },
 ];
 
+const SETTINGS_SIDEBAR_LABEL_MIN_HEIGHT: i32 = 24;
+const SETTINGS_SIDEBAR_TITLE_MIN_HEIGHT: i32 = 24;
+const SETTINGS_SIDEBAR_SECTION_MIN_HEIGHT: i32 = 18;
+
+fn settings_sidebar_label(label: &str) -> gtk::Label {
+    use gtk::prelude::*;
+
+    let lbl = gtk::Label::new(Some(label));
+    lbl.add_css_class("label-medium");
+    lbl.add_css_class("settings-sidebar-label");
+    lbl.set_halign(gtk::Align::Start);
+    lbl.set_valign(gtk::Align::Center);
+    lbl.set_xalign(0.0);
+    lbl.set_yalign(0.5);
+    lbl.set_hexpand(true);
+    lbl.set_vexpand(false);
+    lbl.set_wrap(false);
+    lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    lbl.set_height_request(SETTINGS_SIDEBAR_LABEL_MIN_HEIGHT);
+    lbl
+}
+
+fn settings_sidebar_title_label(label: &str) -> gtk::Label {
+    use gtk::prelude::*;
+
+    let lbl = gtk::Label::new(Some(label));
+    lbl.add_css_class("label-medium-bold");
+    lbl.add_css_class("settings-sidebar-title");
+    lbl.set_halign(gtk::Align::Start);
+    lbl.set_valign(gtk::Align::Center);
+    lbl.set_xalign(0.0);
+    lbl.set_yalign(0.5);
+    lbl.set_hexpand(true);
+    lbl.set_vexpand(false);
+    lbl.set_wrap(false);
+    lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    lbl.set_height_request(SETTINGS_SIDEBAR_TITLE_MIN_HEIGHT);
+    lbl
+}
+
+fn settings_sidebar_section_label(label: &str) -> gtk::Label {
+    use gtk::prelude::*;
+
+    let lbl = gtk::Label::new(Some(label));
+    lbl.add_css_class("settings-sidebar-section");
+    lbl.set_halign(gtk::Align::Start);
+    lbl.set_valign(gtk::Align::Center);
+    lbl.set_xalign(0.0);
+    lbl.set_yalign(0.5);
+    lbl.set_hexpand(true);
+    lbl.set_vexpand(false);
+    lbl.set_wrap(false);
+    lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    lbl.set_height_request(SETTINGS_SIDEBAR_SECTION_MIN_HEIGHT);
+    lbl
+}
+
 /// Build the sidebar buttons + section headers from [`SIDEBAR`] into
 /// `sidebar_box`, wiring each page button to flip `stack` to its route. The
 /// first button is the radio-group anchor (active by default); every other
@@ -2309,10 +2358,7 @@ fn build_sidebar(
     for entry in SIDEBAR {
         match entry {
             Section(name) => {
-                let lbl = gtk::Label::new(Some(name));
-                lbl.add_css_class("settings-sidebar-section");
-                lbl.set_halign(gtk::Align::Start);
-                lbl.set_xalign(0.0);
+                let lbl = settings_sidebar_section_label(name);
                 sidebar_box.append(&lbl);
             }
             Page { route, icon, label } => {
@@ -2326,11 +2372,9 @@ fn build_sidebar(
                     }
                 }
                 let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+                hbox.set_valign(gtk::Align::Center);
                 hbox.append(&gtk::Image::from_icon_name(icon));
-                let text = gtk::Label::new(Some(label));
-                text.add_css_class("label-medium");
-                text.set_halign(gtk::Align::Start);
-                text.set_hexpand(true);
+                let text = settings_sidebar_label(label);
                 hbox.append(&text);
                 btn.set_child(Some(&hbox));
                 let stack = stack.clone();
