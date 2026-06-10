@@ -14,7 +14,7 @@ use super::super::dns::dns_menu_widget::{
     DnsMenuWidgetInit, DnsMenuWidgetInput, DnsMenuWidgetModel,
 };
 use super::super::dns::state::{Mode, probe_dns_state};
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -59,6 +59,11 @@ pub(crate) struct VpnMenuWidgetModel {
     /// Country picker (lazy): the list box + a one-shot load guard.
     countries_box: gtk::Box,
     countries_loaded: bool,
+    /// Full country catalog (filtered into `countries_box` by `country_filter`).
+    countries: Vec<(String, String, u32)>,
+    /// Live search terms for the Countries / Favourites lists.
+    country_filter: String,
+    fav_filter: String,
     /// Lazy-poll gates — see `ParentRevealChanged`.
     poll_started: bool,
     visible: Arc<AtomicBool>,
@@ -102,6 +107,10 @@ pub(crate) enum VpnMenuWidgetInput {
     CountriesExpanded(bool),
     /// Connect to a country by its code (`mvpn <cc>`).
     ConnectCountry(String),
+    /// Filter the country list (search entry in the Countries section).
+    CountryFilter(String),
+    /// Filter the favourites list (search entry in the Favourites section).
+    FavFilter(String),
 }
 
 #[derive(Debug)]
@@ -271,6 +280,14 @@ impl Component for VpnMenuWidgetModel {
                 set_child = &gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_margin_top: 6,
+                    set_spacing: 6,
+
+                    gtk::SearchEntry {
+                        set_placeholder_text: Some("Search favourites…"),
+                        connect_search_changed[sender] => move |e| {
+                            sender.input(VpnMenuWidgetInput::FavFilter(e.text().to_string()));
+                        },
+                    },
 
                     #[local_ref]
                     fav_box_widget -> gtk::Box {
@@ -444,6 +461,9 @@ impl Component for VpnMenuWidgetModel {
             expiry_label: expiry_label_widget.clone(),
             countries_box: countries_box_widget.clone(),
             countries_loaded: false,
+            countries: Vec::new(),
+            country_filter: String::new(),
+            fav_filter: String::new(),
             poll_started: false,
             visible: Arc::new(AtomicBool::new(false)),
             dns,
@@ -454,9 +474,22 @@ impl Component for VpnMenuWidgetModel {
         let widgets = view_output!();
         // Drop the embedded DNS widget into the expander now that both exist.
         widgets.dns_expander.set_child(Some(model.dns.widget()));
+        // Countries section = a search entry above the (filtered) list box.
+        let country_search = gtk::SearchEntry::new();
+        country_search.set_placeholder_text(Some("Search countries…"));
+        {
+            let s = sender.clone();
+            country_search.connect_search_changed(move |e| {
+                s.input(VpnMenuWidgetInput::CountryFilter(e.text().to_string()));
+            });
+        }
+        let countries_container = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        countries_container.set_margin_top(6);
+        countries_container.append(&country_search);
+        countries_container.append(&model.countries_box);
         widgets
             .countries_expander
-            .set_child(Some(&model.countries_box));
+            .set_child(Some(&countries_container));
         ComponentParts { model, widgets }
     }
 
@@ -480,6 +513,25 @@ impl Component for VpnMenuWidgetModel {
             }
             VpnMenuWidgetInput::ConnectCountry(code) => {
                 act(&sender, vec![code]);
+            }
+            VpnMenuWidgetInput::CountryFilter(text) => {
+                self.country_filter = text;
+                rebuild_countries(
+                    &self.countries_box,
+                    &self.countries,
+                    &self.country_filter,
+                    &sender,
+                );
+            }
+            VpnMenuWidgetInput::FavFilter(text) => {
+                self.fav_filter = text;
+                rebuild_favs(
+                    &self.fav_box,
+                    &self.favs,
+                    &self.connected_relay,
+                    &self.fav_filter,
+                    &sender,
+                );
             }
             VpnMenuWidgetInput::CountriesExpanded(expanded) => {
                 if expanded && !self.countries_loaded {
@@ -581,7 +633,13 @@ impl Component for VpnMenuWidgetModel {
                     mode,
                 ),
                 VpnMenuWidgetCommandOutput::CountriesLoaded(list) => {
-                    rebuild_countries(&self.countries_box, &list, &sender);
+                    self.countries = list;
+                    rebuild_countries(
+                        &self.countries_box,
+                        &self.countries,
+                        &self.country_filter,
+                        &sender,
+                    );
                     return;
                 }
             };
@@ -639,7 +697,13 @@ impl Component for VpnMenuWidgetModel {
         }
         self.expiry_label.set_visible(show_expiry);
 
-        rebuild_favs(&self.fav_box, &self.favs, &self.connected_relay, &sender);
+        rebuild_favs(
+            &self.fav_box,
+            &self.favs,
+            &self.connected_relay,
+            &self.fav_filter,
+            &sender,
+        );
     }
 }
 
@@ -687,19 +751,34 @@ fn bool_arg(on: bool) -> String {
 fn rebuild_countries(
     b: &gtk::Box,
     countries: &[(String, String, u32)],
+    filter: &str,
     sender: &ComponentSender<VpnMenuWidgetModel>,
 ) {
     while let Some(c) = b.first_child() {
         b.remove(&c);
     }
-    if countries.is_empty() {
-        let l = gtk::Label::new(Some("No countries (is the Mullvad daemon running?)"));
+    let needle = filter.trim().to_lowercase();
+    let matches: Vec<&(String, String, u32)> = countries
+        .iter()
+        .filter(|(code, name, _)| {
+            needle.is_empty()
+                || name.to_lowercase().contains(&needle)
+                || code.to_lowercase().contains(&needle)
+        })
+        .collect();
+    if matches.is_empty() {
+        let msg = if countries.is_empty() {
+            "No countries (is the Mullvad daemon running?)"
+        } else {
+            "No matches."
+        };
+        let l = gtk::Label::new(Some(msg));
         l.add_css_class("label-small");
         l.set_xalign(0.0);
         b.append(&l);
         return;
     }
-    for (code, name, count) in countries {
+    for (code, name, count) in matches {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         row.add_css_class("ok-button-surface");
         let label = gtk::Label::new(Some(name));
@@ -728,19 +807,30 @@ fn rebuild_favs(
     b: &gtk::Box,
     favs: &[Fav],
     connected_relay: &str,
+    filter: &str,
     sender: &ComponentSender<VpnMenuWidgetModel>,
 ) {
     while let Some(c) = b.first_child() {
         b.remove(&c);
     }
-    if favs.is_empty() {
-        let l = gtk::Label::new(Some("No favourites yet — connect, then “Add”."));
+    let needle = filter.trim().to_lowercase();
+    let matches: Vec<&Fav> = favs
+        .iter()
+        .filter(|f| needle.is_empty() || f.relay.to_lowercase().contains(&needle))
+        .collect();
+    if matches.is_empty() {
+        let msg = if favs.is_empty() {
+            "No favourites yet — connect, then “Add”."
+        } else {
+            "No matches."
+        };
+        let l = gtk::Label::new(Some(msg));
         l.add_css_class("label-small");
         l.set_xalign(0.0);
         b.append(&l);
         return;
     }
-    for f in favs {
+    for f in matches {
         let is_active = !connected_relay.is_empty() && f.relay == connected_relay;
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         row.add_css_class("ok-button-surface");
