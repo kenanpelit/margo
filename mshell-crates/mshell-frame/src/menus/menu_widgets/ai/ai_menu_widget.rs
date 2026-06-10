@@ -6,7 +6,7 @@
 //! and appended to the in-progress assistant bubble. Stop flips a shared
 //! cancel flag. History is persisted (when enabled) to the state dir.
 
-use mshell_ai::{Message, Role, config};
+use mshell_ai::{Message, Provider, Role, config};
 use relm4::gtk::prelude::{
     AdjustmentExt, BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, WidgetExt,
 };
@@ -27,6 +27,8 @@ pub(crate) struct AiMenuWidgetModel {
     input: gtk::Entry,
     send_btn: gtk::Button,
     stop_btn: gtk::Button,
+    /// "Provider · model" line under the title; refreshed on open.
+    meta_label: gtk::Label,
     /// Label of the assistant bubble being streamed into.
     current_ai: Option<gtk::Label>,
     /// History restored from disk yet? (lazy, on first reveal.)
@@ -88,11 +90,23 @@ impl Component for AiMenuWidgetModel {
                     set_icon_name: Some("starred-symbolic"),
                     set_valign: gtk::Align::Center,
                 },
-                gtk::Label {
-                    add_css_class: "panel-title",
-                    set_label: "AI",
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
                     set_hexpand: true,
-                    set_xalign: 0.0,
+                    set_valign: gtk::Align::Center,
+
+                    gtk::Label {
+                        add_css_class: "panel-title",
+                        set_label: "AI",
+                        set_xalign: 0.0,
+                    },
+                    // Active provider · model (small, refreshed on open).
+                    #[local_ref]
+                    meta_label_widget -> gtk::Label {
+                        add_css_class: "label-small",
+                        add_css_class: "dim-label",
+                        set_xalign: 0.0,
+                    },
                 },
                 gtk::Button {
                     set_css_classes: &["ok-button-surface", "dns-action"],
@@ -169,6 +183,7 @@ impl Component for AiMenuWidgetModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let meta_label_widget = gtk::Label::new(Some(&provider_model_label()));
         let widgets = view_output!();
         let model = AiMenuWidgetModel {
             messages: Vec::new(),
@@ -179,6 +194,7 @@ impl Component for AiMenuWidgetModel {
             input: widgets.input.clone(),
             send_btn: widgets.send_btn.clone(),
             stop_btn: widgets.stop_btn.clone(),
+            meta_label: meta_label_widget.clone(),
             current_ai: None,
             loaded: false,
         };
@@ -193,6 +209,8 @@ impl Component for AiMenuWidgetModel {
                         self.loaded = true;
                         self.restore_history();
                     }
+                    // Reflect any provider/model change from Settings.
+                    self.meta_label.set_label(&provider_model_label());
                     // Focus the prompt so you can type immediately on open
                     // (`mshellctl menu ai` / the pill). Deferred to idle so the
                     // entry is mapped + the layer surface has keyboard focus.
@@ -431,6 +449,18 @@ fn history_path() -> PathBuf {
             PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join(".local/state")
         })
         .join("mshell/ai-session.json")
+}
+
+/// "Provider · model" for the header subtitle, from the live config.
+fn provider_model_label() -> String {
+    let s = config::load();
+    let provider = Provider::parse(&s.provider);
+    let model = if s.model.trim().is_empty() {
+        provider.default_model().to_string()
+    } else {
+        s.model
+    };
+    format!("{} · {}", provider.label(), model)
 }
 
 fn clear_box(b: &gtk::Box) {
