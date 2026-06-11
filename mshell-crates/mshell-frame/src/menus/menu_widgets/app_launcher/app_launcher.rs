@@ -230,6 +230,8 @@ impl Component for AppLauncherModel {
             // the details.
             set_hexpand: true,
             set_halign: gtk::Align::Fill,
+            set_vexpand: true,
+            set_valign: gtk::Align::Fill,
 
             gtk::Box {
                 add_css_class: "app-launcher-search-row",

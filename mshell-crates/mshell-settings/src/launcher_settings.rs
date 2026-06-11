@@ -9,15 +9,25 @@
 //! Layout follows the Apple-style hero + section-heading pattern
 //! the rest of Settings already uses (idle / theme / wallpaper).
 
+use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, LauncherStoreFields, PassStoreFields};
+use mshell_config::schema::config::{
+    ConfigStoreFields, LauncherStoreFields, MenuStoreFields, MenusStoreFields, PassStoreFields,
+};
+use mshell_config::schema::position::Position;
 use mshell_launcher::{frecency, history};
-use reactive_graph::traits::GetUntracked;
+use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 #[derive(Debug)]
-pub(crate) struct LauncherSettingsModel {}
+pub(crate) struct LauncherSettingsModel {
+    menu_position: Position,
+    menu_min_width: i32,
+    menu_max_height: i32,
+    position_model: gtk::StringList,
+    _effects: EffectScope,
+}
 
 #[derive(Debug)]
 pub(crate) enum LauncherSettingsInput {
@@ -33,6 +43,12 @@ pub(crate) enum LauncherSettingsInput {
     /// Set the GNU pass store directory (`config.pass.store_path`).
     /// Empty falls back to $PASSWORD_STORE_DIR / ~/.password-store.
     SetPassStorePath(String),
+    PositionPicked(u32),
+    MinWidthChanged(i32),
+    MaxHeightChanged(i32),
+    PositionEffect(Position),
+    MinWidthEffect(i32),
+    MaxHeightEffect(i32),
 }
 
 #[derive(Debug)]
@@ -96,6 +112,117 @@ impl Component for LauncherSettingsModel {
                             set_xalign: 0.0,
                             set_wrap: true,
                         },
+                    },
+                },
+
+                // Panel layout ────────────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Panel layout",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    add_css_class: "settings-row",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium",
+                            set_label: "Position",
+                            set_halign: gtk::Align::Start,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Screen edge where the launcher panel opens.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+                    gtk::DropDown {
+                        set_width_request: 180,
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&model.position_model),
+                        #[watch]
+                        #[block_signal(position_handler)]
+                        set_selected: model.menu_position.to_index(),
+                        connect_selected_notify[sender] => move |dd| {
+                            sender.input(LauncherSettingsInput::PositionPicked(dd.selected()));
+                        } @position_handler,
+                    },
+                },
+
+                gtk::Box {
+                    add_css_class: "settings-row",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium",
+                            set_label: "Minimum width",
+                            set_halign: gtk::Align::Start,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Panel width in pixels.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (300.0, 2000.0),
+                        set_increments: (10.0, 50.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(min_width_handler)]
+                        set_value: model.menu_min_width as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(LauncherSettingsInput::MinWidthChanged(s.value() as i32));
+                        } @min_width_handler,
+                    },
+                },
+
+                gtk::Box {
+                    add_css_class: "settings-row",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium",
+                            set_label: "Height",
+                            set_halign: gtk::Align::Start,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Visible panel height in pixels. 0 lets GTK choose.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (0.0, 2000.0),
+                        set_increments: (10.0, 50.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(max_height_handler)]
+                        set_value: model.menu_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(LauncherSettingsInput::MaxHeightChanged(s.value() as i32));
+                        } @max_height_handler,
                     },
                 },
 
@@ -299,7 +426,64 @@ impl Component for LauncherSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = LauncherSettingsModel {};
+        let position_refs: Vec<&str> = Position::all().iter().map(|p| p.display_name()).collect();
+        let position_model = gtk::StringList::new(&position_refs);
+
+        let mut effects = EffectScope::new();
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let p = config_manager()
+                .config()
+                .menus()
+                .app_launcher_menu()
+                .position()
+                .get();
+            sender_clone.input(LauncherSettingsInput::PositionEffect(p));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let w = config_manager()
+                .config()
+                .menus()
+                .app_launcher_menu()
+                .minimum_width()
+                .get();
+            sender_clone.input(LauncherSettingsInput::MinWidthEffect(w));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let h = config_manager()
+                .config()
+                .menus()
+                .app_launcher_menu()
+                .maximum_height()
+                .get();
+            sender_clone.input(LauncherSettingsInput::MaxHeightEffect(h));
+        });
+
+        let model = LauncherSettingsModel {
+            menu_position: config_manager()
+                .config()
+                .menus()
+                .app_launcher_menu()
+                .position()
+                .get_untracked(),
+            menu_min_width: config_manager()
+                .config()
+                .menus()
+                .app_launcher_menu()
+                .minimum_width()
+                .get_untracked(),
+            menu_max_height: config_manager()
+                .config()
+                .menus()
+                .app_launcher_menu()
+                .maximum_height()
+                .get_untracked(),
+            position_model,
+            _effects: effects,
+        };
 
         let widgets = view_output!();
 
@@ -353,6 +537,34 @@ impl Component for LauncherSettingsModel {
                     config.pass.store_path = path;
                 });
             }
+            LauncherSettingsInput::PositionPicked(idx) => {
+                let p = Position::from_index(idx);
+                if self.menu_position != p {
+                    self.menu_position = p.clone();
+                    config_manager().update_config(move |config| {
+                        config.menus.app_launcher_menu.position = p;
+                    });
+                }
+            }
+            LauncherSettingsInput::MinWidthChanged(w) => {
+                if self.menu_min_width != w {
+                    self.menu_min_width = w;
+                    config_manager().update_config(move |config| {
+                        config.menus.app_launcher_menu.minimum_width = w;
+                    });
+                }
+            }
+            LauncherSettingsInput::MaxHeightChanged(h) => {
+                if self.menu_max_height != h {
+                    self.menu_max_height = h;
+                    config_manager().update_config(move |config| {
+                        config.menus.app_launcher_menu.maximum_height = h;
+                    });
+                }
+            }
+            LauncherSettingsInput::PositionEffect(p) => self.menu_position = p,
+            LauncherSettingsInput::MinWidthEffect(w) => self.menu_min_width = w,
+            LauncherSettingsInput::MaxHeightEffect(h) => self.menu_max_height = h,
         }
         self.update_view(widgets, sender);
     }

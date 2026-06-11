@@ -977,12 +977,9 @@ impl Component for SettingsWindowModel {
         *section_buttons.borrow_mut() = build_sidebar(&widgets.sidebar_box, &widgets.stack);
 
         // ── Widgets group ──────────────────────────────────────
-        // Owns the per-menu settings pages (Layout + each menu's
-        // own position / min-width tab). Layout is the existing
-        // menu_settings controller — the cross-cutting widget-
-        // list editor. The per-menu tabs use one tiny generic
-        // component (`WidgetMenuSettingsModel`) instantiated 11
-        // times to give every menu its own focused page.
+        // Owns per-widget pages. The launcher has its own top-level
+        // "Launcher" page, so it intentionally does not appear in this
+        // widget catalogue.
         let widgets_page = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
             .hexpand(true)
@@ -1125,13 +1122,6 @@ impl Component for SettingsWindowModel {
         }
 
         let mut entries: Vec<WidgetEntry> = vec![
-            // Menu surfaces (own their own widget_menu_settings page).
-            WidgetEntry::Menu {
-                kind: MenuKind::AppLauncher,
-                stack_name: "app_launcher",
-                label: "App Launcher",
-                icon: "view-grid-symbolic",
-            },
             // Clipboard owns a richer page (menu size + history
             // behaviour), so it's a dedicated entry rather than the
             // generic per-menu settings.

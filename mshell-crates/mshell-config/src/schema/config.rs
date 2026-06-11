@@ -1064,8 +1064,8 @@ impl Default for Menus {
             app_launcher_menu: Menu {
                 position: Position::TopLeft,
                 widgets: vec![MenuWidget::AppLauncher],
-                minimum_width: 410,
-                maximum_height: 0,
+                minimum_width: 800,
+                maximum_height: 1080,
             },
             wallpaper_menu: Menu {
                 position: Position::Top,

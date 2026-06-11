@@ -602,7 +602,11 @@ impl Component for MenuModel {
             // the VPN menu with its collapsible sections, the plugin panel).
             fixed_height: matches!(
                 params.menu_type,
-                MenuType::PluginPanel | MenuType::Wizard | MenuType::Ai | MenuType::Vpn
+                MenuType::PluginPanel
+                    | MenuType::Wizard
+                    | MenuType::Ai
+                    | MenuType::Vpn
+                    | MenuType::AppLauncher
             ),
             _effects: effects,
         };
