@@ -1,17 +1,3 @@
-# ╭───────────────────────────────────────────────────────────────────────╮
-# │ margo — the full-featured shell profile                                 │
-# │                                                                         │
-# │ The curated "everything on" showcase: rich top bar, every menu wired    │
-# │ up, Material-You theming, dock, control center, bluetooth auto-connect,  │
-# │ and sensible idle / clipboard / session defaults. Pick it in the setup   │
-# │ wizard, then tune anything from Settings.                               │
-# │                                                                         │
-# │ Edits made through Settings are re-serialised by the shell, so this      │
-# │ shipped copy documents the schema, not your saved state. Machine-        │
-# │ specific bits (wallpaper folder, weather location, autostart, alarms,    │
-# │ password-store, bluetooth devices, custom session commands) are          │
-# │ intentionally left blank/neutral here.                                  │
-# ╰───────────────────────────────────────────────────────────────────────╯
 general:
   clock_format_24_h: true
   weather_location_query:
@@ -20,11 +6,15 @@ general:
     lon: 0.0
   weather_saved_locations: []
   temperature_unit: Metric
+  weather_poll_minutes: 180
+  weather_retry_minutes: 60
   show_screen_corners: false
   screen_corner_radius: 24
   network_osd_enabled: false
   media_seek_step_seconds: 10
   media_large_album_art: true
+  settings_panel_width: 1440
+  settings_panel_height: 1080
 theme:
   icons:
     shell_icon_theme: MargoMaterial
@@ -46,15 +36,19 @@ theme:
       primary: Maple Mono NF
       secondary: Maple Mono NF
       tertiary: Maple Mono NF
-      monospace: ''
+      monospace: Maple Mono NF
     sizing:
       radius_widget: 12
       radius_window: 12
       border_width: 2
-      bar_hover_strength: 14
-      settings_font_scale: 1.05
+      bar_hover_strength: 32
+      settings_font_scale: 1.0
       font_scale: 1.0
-      bar_font_scale: 0.9
+      bar_font_scale: 1.0
+      surface_opacity: 100
+      frame_color: '#1f1f2eff'
+      frame_border_color: '#303345ff'
+      separator_color: ''
     window_opacity: 1.0
 bars:
   frame:
@@ -62,10 +56,10 @@ bars:
     monitor_filter: []
   widgets:
     system_update:
-      check_interval_minutes: 180
+      check_interval_minutes: 720
       check_repo: true
       check_aur: true
-      check_flatpak: true
+      check_flatpak: false
     hidden_bar:
       start_expanded: false
       auto_expand: true
@@ -73,8 +67,18 @@ bars:
       auto_collapse: true
       collapse_delay_ms: 1000
     catwalk:
-      minimum_threshold: 10
+      minimum_threshold: 20
       hide_background: false
+    privacy:
+      hide_inactive: true
+      enable_toast: true
+      track_mic: true
+      track_camera: true
+      detect_screen_share: true
+      mic_filter: ''
+      cam_filter: ''
+      accent: Error
+      history_limit: 50
     custom_widgets: []
   top_bar:
     enabled: true
@@ -94,6 +98,7 @@ bars:
     - Separator
     - Dashboard
     - Separator
+    - RecordingIndicator
     - Catwalk
     - Separator
     - Notifications
@@ -106,34 +111,37 @@ bars:
     - Separator
     - AudioDashboard
     - Separator
-    - RecordingIndicator
-    - Privacy
     - Bluetooth
     - Separator
-    - VpnIndicator
     - Valent
     - Separator
     - Clipboard
+    - Separator
     - Podman
+    - Separator
     - Vpn
+    - Separator
     - Ufw
+    - Separator
     - Power
+    - Separator
     - ControlCenter
+    - Privacy
     - Separator
     - Tray
     hidden_widgets:
     - Twilight
+    - Screenshot
     - AlarmClock
     - KeepAwake
     - Notes
-    - !Custom plugin:ambient-sound:ambient
-    - !Custom plugin:breathing:breathing
-    - !Custom plugin:musiclyrics:lyrics
+    - SystemUpdate
     - Keybinds
+    - Ai
   bottom_bar:
     enabled: false
     minimum_height: 28
-    reveal_by_default: true
+    reveal_by_default: false
     auto_hide_delay_ms: 400
     left_widgets:
     - Separator
@@ -153,6 +161,7 @@ bars:
     - Separator
     hidden_widgets: []
   islands: false
+  slide_duration_ms: 500
 menus:
   clock_menu:
     position: Top
@@ -167,8 +176,8 @@ menus:
     position: TopRight
     widgets:
     - Clipboard
-    minimum_width: 550
-    maximum_height: 890
+    minimum_width: 620
+    maximum_height: 1080
   notification_menu:
     position: TopRight
     widgets:
@@ -207,12 +216,24 @@ menus:
   dns_menu:
     position: TopRight
     widgets:
-    - Vpn
+    - Dns
     - !Spacer
       size: 16
     - Ip
     minimum_width: 420
     maximum_height: 0
+  vpn_menu:
+    position: TopRight
+    widgets:
+    - Vpn
+    minimum_width: 520
+    maximum_height: 720
+  ai_menu:
+    position: TopRight
+    widgets:
+    - Ai
+    minimum_width: 520
+    maximum_height: 920
   podman_menu:
     position: TopRight
     widgets:
@@ -303,18 +324,30 @@ menus:
     - AlarmClock
     minimum_width: 420
     maximum_height: 640
+  dock_menu:
+    position: Bottom
+    widgets:
+    - MargoDock
+    minimum_width: 0
+    maximum_height: 0
   control_center_menu:
     position: TopRight
     widgets:
     - ControlCenter
     minimum_width: 460
-    maximum_height: 920
+    maximum_height: 1080
   ssh_menu:
     position: TopRight
     widgets:
     - SshSessions
     minimum_width: 460
     maximum_height: 720
+  privacy_menu:
+    position: TopRight
+    widgets:
+    - Privacy
+    minimum_width: 380
+    maximum_height: 560
   media_player_menu:
     position: TopLeft
     widgets:
@@ -322,7 +355,7 @@ menus:
     minimum_width: 460
     maximum_height: 0
   session_menu:
-    position: Top
+    position: Bottom
     widgets:
     - Session
     minimum_width: 420
@@ -403,6 +436,8 @@ notifications:
   group_notifications: false
   popup_width: 460
   history_limit: 200
+  show_timeout_bar: true
+  popup_duration_ms: 5000
 wallpaper:
   wallpaper_dir: ''
   content_fit: Cover
@@ -432,7 +467,7 @@ session:
   lock_command: ''
   logout_command: ''
   suspend_command: systemctl suspend -i
-  reboot_command: ''
+  reboot_command: osc-safe-reboot
   shutdown_command: systemctl poweroff -i
 clipboard:
   max_entries: 1000
@@ -441,20 +476,36 @@ clipboard:
   clear_after_hours: 24
   skip_sensitive: true
   image_history: true
+  image_max_kb: 0
   density: Comfortable
 launcher:
   autostart_scripts: []
+  show_preview: false
+  compact_rows: true
+  large_app_icons: true
 valent:
   main_device_id: ''
 dock:
-  icon_size: 24
+  icon_size: 32
   show_tooltips: true
   show_running: true
   icon_overrides: []
+  in_bar: true
+  standalone: true
+  style: popup
+  behavior: toggle
+  position: right
+  ignore: []
+  spacing: 6
+  hover_preview: true
+  separator: true
+  launcher_enabled: true
+  launcher_icon: view-app-grid-symbolic
+  launcher_command: ''
 system_tray:
   default_expanded: false
 pass:
-  store_path: ''
+  store_path: ~/.pass
 alarm:
   alarms: []
   snooze_minutes: 5
@@ -467,10 +518,20 @@ network:
   proxy_socks: ''
   proxy_ignore: ''
   proxy_pac_url: ''
+login_network:
+  enabled: true
+  wifi_connection: Ken_5
+  connect_vpn: true
+  couple_blocky: true
+  delay_secs: 6
 bluetooth:
-  autoconnect_enabled: false
+  autoconnect_enabled: true
   autoconnect_delay_secs: 10
-  devices: []
+  devices:
+  - mac: F4:9D:8A:3D:CB:30
+    name: SLP4
+  - mac: E8:EE:CC:4D:29:00
+    name: SL4
   route_audio_output: true
   route_audio_input: false
   notifications: true
@@ -481,6 +542,9 @@ privacy:
   remember_recent: true
 audio:
   hide_hdmi_outputs: true
+  restore_volume_on_start: true
+  default_output_volume: 30
+  default_input_volume: 5
 control_center:
   wifi: true
   bluetooth: true
@@ -488,10 +552,10 @@ control_center:
   mic: true
   battery: true
   keep_awake: true
-  dnd: false
-  dark_mode: false
+  dnd: true
+  dark_mode: true
   night_light: true
-  color_picker: false
+  color_picker: true
   disk: true
   airplane_mode: true
   vpn: true
@@ -515,5 +579,11 @@ control_center:
   - dnd
   - dark_mode
   - color_picker
-  wide_tiles:
-  - disk
+  wide_tiles: []
+  show_battery_chip: true
+  show_power_profile: true
+  show_media: true
+logging:
+  enabled: true
+  level: info
+  keep_sessions: 3
