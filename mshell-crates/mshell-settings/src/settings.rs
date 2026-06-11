@@ -995,7 +995,10 @@ impl Component for SettingsWindowModel {
             .build();
         let widgets_sub_sidebar_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
-            .width_request(160)
+            // Wide enough for the longest widget names (icon + "Screen
+            // Recording" / "System Bluetooth" / "Valent Connect") so the
+            // sub-sidebar labels stop ellipsizing to "Notifica…" etc.
+            .width_request(200)
             .spacing(4)
             .hexpand(false)
             .css_classes(["settings-subsidebar"])
