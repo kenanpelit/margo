@@ -322,29 +322,33 @@ fn signal_session_ready(ready_fd: Option<libc::c_int>) {
     }
 }
 
-/// First-run config bootstrap. When there's no config at the default location
-/// (`~/.config/margo/config.conf`), write a complete, valid, usable default —
-/// `config.conf` + a starter `binds.conf` + a `conf.d/colors.conf` placeholder
-/// — so a brand-new session comes up working instead of with bare built-in
-/// defaults (which have no keybinds or shell autostart). Skipped when an
-/// explicit `--config` is passed (the user owns that path) or when the file
-/// already exists. Best-effort: failures are reported and ignored — margo
-/// still falls back to built-in defaults. Runs before logging is up, so it
-/// reports via stderr.
+/// First-run config bootstrap. When the config file margo is about to load
+/// doesn't exist, write a complete, valid, usable default — `config.conf` + a
+/// starter `binds.conf` + a `conf.d/colors.conf` placeholder — so a brand-new
+/// session comes up working instead of with bare built-in defaults (which have
+/// no keybinds or shell autostart). Best-effort: failures are reported and
+/// ignored — margo still falls back to built-in defaults. Runs before logging
+/// is up, so it reports via stderr.
 fn ensure_default_config(config_override: Option<&std::path::Path>) {
-    // An explicit `--config` means the user manages config; don't write into a
-    // path we were merely told to read.
-    if config_override.is_some() {
-        return;
-    }
-    let Some(home) = std::env::var_os("HOME") else {
-        return;
+    // Bootstrap whatever path margo will actually load. The session launcher
+    // always passes the default path explicitly (`margo -c …/config.conf`), so
+    // we must NOT skip just because `--config` is set — only an *existing* file
+    // is left untouched.
+    let config = match config_override {
+        Some(p) => p.to_path_buf(),
+        None => {
+            let Some(home) = std::env::var_os("HOME") else {
+                return;
+            };
+            std::path::PathBuf::from(home).join(".config/margo/config.conf")
+        }
     };
-    let dir = std::path::PathBuf::from(home).join(".config/margo");
-    let config = dir.join("config.conf");
     if config.exists() {
         return;
     }
+    let Some(dir) = config.parent().map(std::path::Path::to_path_buf) else {
+        return;
+    };
     if let Err(e) = std::fs::create_dir_all(&dir) {
         eprintln!("margo: first-run: could not create {}: {e}", dir.display());
         return;
