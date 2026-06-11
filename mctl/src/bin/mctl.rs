@@ -1982,8 +1982,15 @@ fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
     });
 
     if !cfg_path.exists() {
-        eprintln!("error: config file not found: {}", cfg_path.display());
-        std::process::exit(2);
+        // A missing config is NOT an error — margo falls back to built-in
+        // defaults. Treat it as a clean pass so the start-margo preflight
+        // doesn't refuse to launch on a first login (before any config or
+        // dotfiles exist). Only a config that *exists but is broken* fails.
+        println!(
+            "config OK: no file at {} — margo will use built-in defaults",
+            cfg_path.display()
+        );
+        return Ok(());
     }
 
     // Pass 1 — structured validator. Picks up trailing/leading/doubled
