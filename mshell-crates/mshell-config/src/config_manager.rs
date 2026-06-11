@@ -29,7 +29,23 @@ pub fn config_manager() -> &'static ConfigManager {
 impl ConfigManager {
     fn new() -> Self {
         info!("Creating new ConfigManager");
-        let active_profile = read_active_profile_from_cache();
+        let mut active_profile = read_active_profile_from_cache();
+        // Drop a stale cached name whose profile file no longer exists. The
+        // cache lives in ~/.cache/mshell, so it survives a `~/.config/margo`
+        // wipe — without this, a leftover name (e.g. "Nova" from an earlier
+        // setup) pins a ghost profile and mshell regenerates an empty YAML
+        // under it instead of falling back to the default. Clear it so a fresh
+        // config dir really starts fresh.
+        if let Some(name) = active_profile.as_deref()
+            && !profile_path(name).exists()
+        {
+            info!(
+                profile = name,
+                "cached active profile has no file; clearing stale cache"
+            );
+            write_active_profile_to_cache(None);
+            active_profile = None;
+        }
         let config = ArcStore::new(
             load_effective_config(active_profile.as_deref()).unwrap_or_else(|e| {
                 error!("Error loading config: {}", e);
