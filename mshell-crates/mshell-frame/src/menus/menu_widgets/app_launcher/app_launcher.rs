@@ -1114,9 +1114,7 @@ impl AppLauncherModel {
         } else {
             (item_clone.on_activate)();
         }
-        // Same auto-close-skip as before: Settings owns its own
-        // visibility transition via the section-nav chain.
-        let auto_close = !id.starts_with("settings:");
+        let auto_close = should_auto_close_after_activation(id);
         if auto_close {
             let _ = self.close_sender.borrow().as_ref().map(|s| s());
         }
@@ -1412,6 +1410,21 @@ fn clone_display_item(src: &DisplayItem) -> DisplayItem {
     }
 }
 
+fn should_auto_close_after_activation(id: &str) -> bool {
+    // Rows that seed the search entry are not final actions. Keep the
+    // launcher open so selecting "player", "audio", "bt", "tag", "ssh",
+    // "Google search", etc. immediately reveals the real result set.
+    if id.starts_with("providers:")
+        || id.starts_with("websearch:engine:")
+        || id == "archpkgs:engine"
+    {
+        return false;
+    }
+
+    // Settings owns its own visibility transition via the section-nav chain.
+    !id.starts_with("settings:")
+}
+
 /// Thin newtype wrapper that lets us hand a shared `Rc<AppsProvider>`
 /// to the runtime (which wants `Box<dyn Provider>`) while keeping
 /// our own clone for `show_hidden` toggling.
@@ -1446,5 +1459,31 @@ impl mshell_launcher::Provider for AppsProviderHandle {
 
     fn category(&self) -> &str {
         "Apps"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_auto_close_after_activation;
+
+    #[test]
+    fn prefix_seed_rows_keep_launcher_open() {
+        assert!(!should_auto_close_after_activation("providers:14"));
+        assert!(!should_auto_close_after_activation("websearch:engine:g"));
+        assert!(!should_auto_close_after_activation("archpkgs:engine"));
+    }
+
+    #[test]
+    fn final_action_rows_still_close_launcher() {
+        assert!(should_auto_close_after_activation("player:transport:next"));
+        assert!(should_auto_close_after_activation("audio:sink:62"));
+        assert!(should_auto_close_after_activation("bt:AA:BB:CC:DD:EE:FF"));
+        assert!(should_auto_close_after_activation("tags:3"));
+        assert!(should_auto_close_after_activation("ssh:vhay"));
+    }
+
+    #[test]
+    fn settings_rows_keep_existing_no_close_behavior() {
+        assert!(!should_auto_close_after_activation("settings:launcher"));
     }
 }

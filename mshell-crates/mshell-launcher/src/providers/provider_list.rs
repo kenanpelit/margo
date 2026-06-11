@@ -318,6 +318,24 @@ mod tests {
     }
 
     #[test]
+    fn activation_writes_system_and_connect_prefixes_to_search() {
+        for (prefix, expected) in [
+            ("audio", "audio"),
+            ("bt", "bt"),
+            ("player", "player"),
+            ("ssh <host>", "ssh vhay"),
+            ("tag [N]", "tag 3"),
+        ] {
+            let captured = Rc::new(RefCell::new(String::new()));
+            let p = make(captured.clone());
+            let items = p.search(";");
+            let row = items.iter().find(|i| i.name.starts_with(prefix)).unwrap();
+            (row.on_activate)();
+            assert_eq!(*captured.borrow(), expected);
+        }
+    }
+
+    #[test]
     fn filter_narrows_results() {
         let captured = Rc::new(RefCell::new(String::new()));
         let p = make(captured);
