@@ -184,10 +184,12 @@
 // keeps the same calendar-grid-card "tile inside the panel" shape
 // while feeling distinctly margo (the Dracula-style dark cool
 // palette) rather than the previous mid-grey wash.
-.app-launcher-menu-widget > scrolledwindow {
+.app-launcher-menu-widget > scrolledwindow,
+.app-launcher-content > scrolledwindow {
   background-color: var(--surface-container-lowest);
   border-radius: var(--radius-md);
   padding: var(--space-2);
+  min-height: 180px;
   // Surfaces over borders (DESIGN.md §0/§1): the darker well + a faint
   // inset shadow read as a recessed list without a hard outline. At
   // runtime matugen makes surface-container-lowest distinctly darker

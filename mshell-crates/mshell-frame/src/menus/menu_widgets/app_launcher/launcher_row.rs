@@ -42,6 +42,10 @@ pub(crate) struct LauncherRowModel {
 
 #[derive(Debug)]
 pub(crate) enum LauncherRowInput {
+    /// DynamicBox kept this row controller because the result id is stable,
+    /// but the backing item changed (e.g. `websearch:g` for a new query).
+    /// Refresh every displayed field and activation closure in place.
+    DisplayChanged(DisplayItem),
     /// Sent by the parent on arrow-key nav. The row compares
     /// against `self.item.id` and toggles its highlight class.
     SelectionChanged(String),
@@ -156,6 +160,7 @@ impl Component for LauncherRowModel {
                     set_valign: gtk::Align::Center,
                     set_hexpand: true,
 
+                    #[name = "title_label"]
                     gtk::Label {
                         add_css_class: "label-medium-bold",
                         add_css_class: "app-launcher-item-title",
@@ -164,6 +169,7 @@ impl Component for LauncherRowModel {
                         set_ellipsize: pango::EllipsizeMode::End,
                     },
 
+                    #[name = "subtitle_label"]
                     gtk::Label {
                         add_css_class: "label-small",
                         add_css_class: "app-launcher-item-sub",
@@ -217,12 +223,7 @@ impl Component for LauncherRowModel {
         let has_usage_key = item.usage_key.is_some();
         // Per-provider styling hook: `.row-apps`, `.row-calc`, … —
         // lowercased + sanitised so the class is a valid CSS ident.
-        let variant = format!(
-            "row-{}",
-            item.provider_name
-                .to_ascii_lowercase()
-                .replace(|c: char| !c.is_ascii_alphanumeric(), "-")
-        );
+        let variant = row_variant(&item.provider_name);
         let model = LauncherRowModel {
             item,
             pinned,
@@ -283,6 +284,30 @@ impl Component for LauncherRowModel {
         _root: &Self::Root,
     ) {
         match message {
+            LauncherRowInput::DisplayChanged(display) => {
+                let DisplayItem {
+                    item,
+                    pinned,
+                    quick_key,
+                    hidden,
+                } = display;
+                self.variant = row_variant(&item.provider_name);
+                self.item = item;
+                self.pinned = pinned;
+                self.quick_key = quick_key;
+                self.hidden = hidden;
+
+                widgets.title_label.set_label(&self.item.name);
+                widgets.subtitle_label.set_label(&self.item.description);
+                widgets
+                    .subtitle_label
+                    .set_visible(!self.item.description.is_empty());
+                widgets.quick_key_label.set_label(&self.quick_key);
+                widgets
+                    .quick_key_label
+                    .set_visible(!self.quick_key.is_empty());
+                apply_icon(&widgets.image, &self.item);
+            }
             LauncherRowInput::SelectionChanged(selected_id) => {
                 self.is_selected = selected_id == self.item.id;
             }
@@ -295,6 +320,15 @@ impl Component for LauncherRowModel {
         }
         self.update_view(widgets, sender);
     }
+}
+
+fn row_variant(provider_name: &str) -> String {
+    format!(
+        "row-{}",
+        provider_name
+            .to_ascii_lowercase()
+            .replace(|c: char| !c.is_ascii_alphanumeric(), "-")
+    )
 }
 
 /// Resolve the right icon for a launcher item. App entries get the

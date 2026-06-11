@@ -322,7 +322,9 @@ impl Component for AppLauncherModel {
                 ScrolledWindow {
                     set_vscrollbar_policy: gtk::PolicyType::Automatic,
                     set_hscrollbar_policy: gtk::PolicyType::Never,
-                    set_propagate_natural_height: true,
+                    set_propagate_natural_height: false,
+                    set_min_content_height: 180,
+                    set_vexpand: true,
                     // Don't let an extra-long row name push the
                     // launcher wider than the parent's allocation —
                     // labels inside each row already ellipsize, so
@@ -497,7 +499,13 @@ impl Component for AppLauncherModel {
                     });
                 Box::new(controller) as Box<dyn GenericWidgetController>
             }),
-            update: None,
+            update: Some(Box::new(|controller, d| {
+                if let Some(ctrl) = controller.downcast_ref::<Controller<LauncherRowModel>>() {
+                    let _ = ctrl
+                        .sender()
+                        .send(LauncherRowInput::DisplayChanged(clone_display_item(d)));
+                }
+            })),
         };
 
         let dynamic: Controller<DynamicBoxModel<DisplayItem, String>> = DynamicBoxModel::builder()
@@ -772,6 +780,7 @@ impl Component for AppLauncherModel {
                 self.recompute_results();
                 self.push_results_to_dynamic_box();
                 self.broadcast_selection();
+                reset_scroll_to_top(&widgets.scrolled_window);
             }
             AppLauncherInput::Activate => {
                 if let Some(id) = &self.selected_id.clone() {
@@ -804,6 +813,7 @@ impl Component for AppLauncherModel {
                 self.recompute_results();
                 self.push_results_to_dynamic_box();
                 self.broadcast_selection();
+                reset_scroll_to_top(&widgets.scrolled_window);
             }
             AppLauncherInput::SelectCategory(label) => {
                 let new_label = self.runtime.borrow_mut().select_category(&label);
@@ -812,6 +822,7 @@ impl Component for AppLauncherModel {
                 self.recompute_results();
                 self.push_results_to_dynamic_box();
                 self.broadcast_selection();
+                reset_scroll_to_top(&widgets.scrolled_window);
             }
             AppLauncherInput::TogglePin => {
                 // Pin operates on the selected item's usage_key —
@@ -1263,6 +1274,10 @@ fn rebuild_binds_strip(strip: &gtk::FlowBox, model: &AppLauncherModel) {
 
         strip.append(&chip);
     }
+}
+
+fn reset_scroll_to_top(scrolled_window: &ScrolledWindow) {
+    scrolled_window.vadjustment().set_value(0.0);
 }
 
 /// Icon name for a category pill. Maps each category label to a

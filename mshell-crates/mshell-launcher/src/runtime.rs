@@ -364,46 +364,76 @@ impl LauncherRuntime {
         let active = self.active_category.as_deref();
         let in_specific_category = matches!(active, Some(c) if c != "All");
 
+        let mut explicit_provider_names = std::collections::HashSet::new();
+
         let mut results: Vec<LauncherItem> = if in_specific_category {
             let cat = active.unwrap();
-            self.providers
+            let mut category_results: Vec<LauncherItem> = self
+                .providers
                 .iter()
                 .filter(|p| p.category() == cat)
                 .flat_map(|p| p.browse(trimmed))
-                .collect()
+                .collect();
+
+            // Category-tab filter fallback. When the user is on a
+            // specific category and typing, providers *should* filter
+            // their `browse(filter)` output themselves. Some don't —
+            // PlayerctlProvider returns its full transport/player list
+            // regardless of the rest of the query, for instance.
+            // Apply a uniform name-substring post-filter here so the
+            // user's typing always narrows results visually, even
+            // when the provider's own filter is a no-op.
+            if !trimmed.is_empty() {
+                let needle = trimmed.to_ascii_lowercase();
+                category_results.retain(|item| {
+                    item.name.to_ascii_lowercase().contains(&needle)
+                        || item.description.to_ascii_lowercase().contains(&needle)
+                });
+
+                // Explicit provider invocations should still work from
+                // any tab. Example: the user can be sitting on "Run"
+                // and type `g pardus`; that is unambiguously a
+                // Websearch query and must not be swallowed by the Run
+                // category filter.
+                for p in self
+                    .providers
+                    .iter()
+                    .filter(|p| p.category() != cat && p.bypasses_category_for_query(trimmed))
+                {
+                    explicit_provider_names.insert(p.name().to_string());
+                    category_results.extend(p.search(query));
+                }
+            }
+
+            category_results
         } else {
             self.providers
                 .iter()
                 .filter(|p| p.handles_search())
-                .flat_map(|p| p.search(query))
+                .flat_map(|p| {
+                    if p.bypasses_category_for_query(trimmed) {
+                        explicit_provider_names.insert(p.name().to_string());
+                    }
+                    p.search(query)
+                })
                 .collect()
         };
-
-        // Category-tab filter fallback. When the user is on a
-        // specific category and typing, providers *should* filter
-        // their `browse(filter)` output themselves. Some don't —
-        // PlayerctlProvider returns its full transport/player list
-        // regardless of the rest of the query, for instance.
-        // Apply a uniform name-substring post-filter here so the
-        // user's typing always narrows results visually, even
-        // when the provider's own filter is a no-op.
-        if in_specific_category && !trimmed.is_empty() {
-            let needle = trimmed.to_ascii_lowercase();
-            results.retain(|item| {
-                item.name.to_ascii_lowercase().contains(&needle)
-                    || item.description.to_ascii_lowercase().contains(&needle)
-            });
-        }
 
         // Exact-search mode (Ctrl+E): post-filter to rows whose
         // *name* contains the trimmed query as a contiguous
         // case-insensitive substring. Stacks with the category
         // filter above — both are name-substring narrowing, so
         // running both is idempotent (the category filter already
-        // covers the exact-search semantics within a tab).
+        // covers the exact-search semantics within a tab). Explicit
+        // provider invocations are exempt: `g pardus` intentionally
+        // produces `Google: pardus`, whose display name should not
+        // have to contain the provider prefix token.
         if self.exact_search && !trimmed.is_empty() {
             let needle = trimmed.to_ascii_lowercase();
-            results.retain(|item| item.name.to_ascii_lowercase().contains(&needle));
+            results.retain(|item| {
+                item.name.to_ascii_lowercase().contains(&needle)
+                    || explicit_provider_names.contains(&item.provider_name)
+            });
         }
 
         // Browse-mode hidden filter. When the query is empty the
@@ -509,6 +539,39 @@ mod tests {
     impl Provider for StubProvider {
         fn name(&self) -> &str {
             &self.name
+        }
+
+        fn search(&self, _query: &str) -> Vec<LauncherItem> {
+            self.items
+                .iter()
+                .map(|(n, s)| LauncherItem {
+                    id: format!("{}:{}", self.name, n),
+                    name: n.clone(),
+                    description: String::new(),
+                    icon: String::new(),
+                    icon_is_path: false,
+                    score: *s,
+                    provider_name: self.name.clone(),
+                    usage_key: Some(format!("{}:{}", self.name, n)),
+                    on_activate: Rc::new(|| {}),
+                })
+                .collect()
+        }
+    }
+
+    struct CategorizedProvider {
+        name: String,
+        cat: String,
+        items: Vec<(String, f64)>,
+    }
+
+    impl Provider for CategorizedProvider {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        fn category(&self) -> &str {
+            &self.cat
         }
 
         fn search(&self, _query: &str) -> Vec<LauncherItem> {
@@ -702,5 +765,36 @@ mod tests {
         assert_eq!(rt.cycle_category(1), "All");
         // Cycle back: All → Insert
         assert_eq!(rt.cycle_category(-1), "Insert");
+    }
+
+    #[test]
+    fn explicit_websearch_prefix_bypasses_active_category_filter() {
+        let mut rt = LauncherRuntime::with_stores(ephemeral_frecency(), ephemeral_pins());
+        rt.register(Box::new(CategorizedProvider {
+            name: "run".into(),
+            cat: "Run".into(),
+            items: vec![("Run: irrelevant".into(), 1.0)],
+        }));
+        rt.register(Box::new(crate::providers::WebsearchProvider::new()));
+
+        rt.select_category("Run");
+        let out = rt.query("g pardus");
+
+        assert!(out.iter().any(|d| d.item.name == "Google: pardus"));
+        assert!(
+            out.iter()
+                .all(|d| d.item.provider_name == "Web search" || d.item.name.contains("g pardus"))
+        );
+    }
+
+    #[test]
+    fn explicit_websearch_prefix_survives_exact_search_filter() {
+        let mut rt = LauncherRuntime::with_stores(ephemeral_frecency(), ephemeral_pins());
+        rt.register(Box::new(crate::providers::WebsearchProvider::new()));
+
+        rt.toggle_exact_search();
+        let out = rt.query("g pardus");
+
+        assert!(out.iter().any(|d| d.item.name == "Google: pardus"));
     }
 }

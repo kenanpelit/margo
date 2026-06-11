@@ -32,6 +32,16 @@ pub trait Provider {
         false
     }
 
+    /// Return true when `query` is an explicit, provider-owned
+    /// invocation that should still work while the UI is filtered
+    /// to a different category tab. Example: Websearch owns
+    /// `g <query>`, so typing `g pardus` from the Run tab should
+    /// produce the Google row instead of being swallowed by the
+    /// active Run-category filter. Default: false.
+    fn bypasses_category_for_query(&self, _query: &str) -> bool {
+        false
+    }
+
     /// Slash-style commands the provider advertises. The runtime
     /// concatenates these from every provider when the query is
     /// exactly `>`, so the user can see what's available.

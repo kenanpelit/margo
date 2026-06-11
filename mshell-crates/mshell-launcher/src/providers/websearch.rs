@@ -139,6 +139,14 @@ impl Provider for WebsearchProvider {
         "Search"
     }
 
+    fn bypasses_category_for_query(&self, query: &str) -> bool {
+        let trimmed = query.trim();
+        let Some((keyword, rest)) = trimmed.split_once(' ') else {
+            return false;
+        };
+        !rest.trim().is_empty() && self.engines.iter().any(|e| e.keyword == keyword)
+    }
+
     fn search(&self, query: &str) -> Vec<LauncherItem> {
         let trimmed = query.trim();
         // We need at least "<keyword> something". A keyword
