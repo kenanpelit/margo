@@ -882,12 +882,13 @@ impl SimpleComponent for WizardMenuWidgetModel {
             }
             WizardMenuWidgetInput::Reboot => run_session_action(SessionAction::Reboot),
             WizardMenuWidgetInput::BaseProfileSelected(name) => {
+                // Remember the choice + seed the bundled profile, but do NOT
+                // activate it live: a `set_active_profile` swaps the whole
+                // config (different bar widgets) and rebuilds the bar, which
+                // tears down this open wizard menu. Activation is deferred to
+                // `apply()` (the final step) so the wizard survives the flow.
                 self.base_profile = name.to_string();
-                // Seed the bundled starter profile if the user has none of
-                // that name yet (never clobbers a customised one), then make
-                // it active live so the choice is visible immediately.
                 mshell_config::config_utils::seed_bundled_profile(name);
-                config_manager().set_active_profile(Some(name.to_string()));
             }
             // Appearance picks apply LIVE (like Settings → Theme), not only at
             // "Apply & finish" — otherwise selecting a theme / mode / font in
@@ -1012,6 +1013,17 @@ impl WizardMenuWidgetModel {
     }
 
     fn apply(&self) {
+        // Activate the chosen base profile here, at the end — NOT live on the
+        // profile step. A live `set_active_profile` swaps the whole config
+        // (different bar widget list), which rebuilds the bar and tears down
+        // this open wizard menu, so picking a profile used to close the wizard
+        // mid-flow. Deferring it to apply means the wizard survives every step;
+        // the appearance picks below then re-apply on top of the base profile.
+        if !self.base_profile.is_empty() {
+            mshell_config::config_utils::seed_bundled_profile(&self.base_profile);
+            config_manager().set_active_profile(Some(self.base_profile.clone()));
+        }
+
         let mode = self.mode;
         let theme = self.theme_scheme;
         let scale = self.font_scale;
