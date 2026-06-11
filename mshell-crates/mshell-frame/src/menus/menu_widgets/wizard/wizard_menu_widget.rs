@@ -709,7 +709,7 @@ impl SimpleComponent for WizardMenuWidgetModel {
                         set_spacing: 8,
                         gtk::Label {
                             set_css_classes: &["keybind-chip", "keybind-mod", "mod-super"],
-                            set_label: "Super + Space",
+                            set_label: "Super + D",
                         },
                         gtk::Label {
                             add_css_class: "keybinds-desc",
@@ -735,7 +735,7 @@ impl SimpleComponent for WizardMenuWidgetModel {
                         set_spacing: 8,
                         gtk::Label {
                             set_css_classes: &["keybind-chip", "keybind-mod", "mod-super"],
-                            set_label: "Super + D",
+                            set_label: "Super + G",
                         },
                         gtk::Label {
                             add_css_class: "keybinds-desc",
