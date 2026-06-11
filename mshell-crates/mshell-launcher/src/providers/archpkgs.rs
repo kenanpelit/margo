@@ -23,6 +23,12 @@ pub struct ArchLinuxPkgsProvider {
     /// `foot` in that order. Falls back to `kitty` and lets the
     /// shell discover failures.
     terminal: String,
+    /// Optional UI hook used by category browse rows. Activating
+    /// the "Arch / AUR package search" row should seed `p ` into
+    /// the launcher entry so the user can continue typing; actual
+    /// package lookups still require an explicit prefix to avoid
+    /// running pacman on every generic Search-tab keystroke.
+    set_search: Option<Rc<dyn Fn(&str) + 'static>>,
 }
 
 impl ArchLinuxPkgsProvider {
@@ -40,7 +46,16 @@ impl ArchLinuxPkgsProvider {
                     .map(|t| t.to_string())
             })
             .unwrap_or_else(|| "kitty".into());
-        Self { helper, terminal }
+        Self {
+            helper,
+            terminal,
+            set_search: None,
+        }
+    }
+
+    pub fn with_search_setter(mut self, set_search: Rc<dyn Fn(&str) + 'static>) -> Self {
+        self.set_search = Some(set_search);
+        self
     }
 }
 
@@ -145,6 +160,14 @@ impl Provider for ArchLinuxPkgsProvider {
             || q.starts_with("aur ")
     }
 
+    fn bypasses_category_for_query(&self, query: &str) -> bool {
+        let q = query.trim_start();
+        (q.starts_with("p ") || q.starts_with("pacman ") || q.starts_with("aur "))
+            && q.split_once(' ')
+                .map(|(_, rest)| rest.trim().len() >= 3)
+                .unwrap_or(false)
+    }
+
     fn commands(&self) -> Vec<LauncherItem> {
         vec![LauncherItem {
             id: "archpkgs:palette".into(),
@@ -229,6 +252,49 @@ impl Provider for ArchLinuxPkgsProvider {
             })
             .collect()
     }
+
+    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
+        let trimmed = filter.trim();
+        if self.bypasses_category_for_query(trimmed) {
+            return self.search(trimmed);
+        }
+
+        let needle = trimmed.to_ascii_lowercase();
+        let matches = needle.is_empty()
+            || "p".contains(&needle)
+            || "arch".contains(&needle)
+            || "aur".contains(&needle)
+            || "package".contains(&needle)
+            || "packages".contains(&needle)
+            || "pacman".contains(&needle);
+        if !matches {
+            return Vec::new();
+        }
+
+        let setter = self.set_search.clone();
+        vec![LauncherItem {
+            id: "archpkgs:engine".into(),
+            name: "Arch / AUR package search".into(),
+            description: format!(
+                "p <query>{}",
+                if self.helper.is_some() {
+                    " — AUR helper found"
+                } else {
+                    ""
+                }
+            ),
+            icon: "package-x-generic-symbolic".into(),
+            icon_is_path: false,
+            score: 205.0,
+            provider_name: "Arch packages".into(),
+            usage_key: None,
+            on_activate: Rc::new(move || {
+                if let Some(setter) = &setter {
+                    setter("p ");
+                }
+            }),
+        }]
+    }
 }
 
 /// Spawn `<terminal> -e <helper> -S <pkg>` so the user sees the
@@ -267,6 +333,7 @@ fn spawn_install(terminal: &str, helper: &str, pkg: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{cell::RefCell, rc::Rc};
 
     #[test]
     fn does_not_handle_regular_search() {
@@ -279,6 +346,35 @@ mod tests {
         let p = ArchLinuxPkgsProvider::new();
         assert!(p.search("p ab").is_empty());
         assert!(p.search("p").is_empty());
+    }
+
+    #[test]
+    fn browse_lists_package_search_entry_for_search_tab() {
+        let p = ArchLinuxPkgsProvider::new();
+        let items = p.browse("");
+        assert!(
+            items
+                .iter()
+                .any(|i| i.name == "Arch / AUR package search" && i.description.starts_with("p "))
+        );
+    }
+
+    #[test]
+    fn browse_package_entry_activation_seeds_prefix() {
+        let captured = Rc::new(RefCell::new(String::new()));
+        let setter_capture = captured.clone();
+        let p = ArchLinuxPkgsProvider::new().with_search_setter(Rc::new(move |text| {
+            *setter_capture.borrow_mut() = text.to_string();
+        }));
+
+        let items = p.browse("");
+        let arch = items
+            .iter()
+            .find(|i| i.name == "Arch / AUR package search")
+            .unwrap();
+        (arch.on_activate)();
+
+        assert_eq!(*captured.borrow(), "p ");
     }
 
     #[test]

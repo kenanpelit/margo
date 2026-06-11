@@ -385,9 +385,17 @@ impl LauncherRuntime {
             // when the provider's own filter is a no-op.
             if !trimmed.is_empty() {
                 let needle = trimmed.to_ascii_lowercase();
+                for p in self
+                    .providers
+                    .iter()
+                    .filter(|p| p.category() == cat && p.bypasses_category_for_query(trimmed))
+                {
+                    explicit_provider_names.insert(p.name().to_string());
+                }
                 category_results.retain(|item| {
                     item.name.to_ascii_lowercase().contains(&needle)
                         || item.description.to_ascii_lowercase().contains(&needle)
+                        || explicit_provider_names.contains(&item.provider_name)
                 });
 
                 // Explicit provider invocations should still work from
@@ -785,6 +793,41 @@ mod tests {
             out.iter()
                 .all(|d| d.item.provider_name == "Web search" || d.item.name.contains("g pardus"))
         );
+    }
+
+    #[test]
+    fn explicit_websearch_prefix_survives_search_category_filter() {
+        let mut rt = LauncherRuntime::with_stores(ephemeral_frecency(), ephemeral_pins());
+        rt.register(Box::new(crate::providers::WebsearchProvider::new()));
+
+        rt.select_category("Search");
+        let out = rt.query("g pardus");
+
+        assert!(out.iter().any(|d| d.item.name == "Google: pardus"));
+    }
+
+    #[test]
+    fn search_category_contains_search_providers_not_help_cheatsheet() {
+        let mut rt = LauncherRuntime::with_stores(ephemeral_frecency(), ephemeral_pins());
+        rt.register(Box::new(crate::providers::WebsearchProvider::new()));
+        rt.register(Box::new(crate::providers::ArchLinuxPkgsProvider::new()));
+        rt.register(Box::new(crate::providers::ProviderListProvider::new(
+            Rc::new(|_| {}),
+        )));
+
+        rt.select_category("Search");
+        let search = rt.query("");
+        assert!(search.iter().any(|d| d.item.name == "Google search"));
+        assert!(
+            search
+                .iter()
+                .any(|d| d.item.name == "Arch / AUR package search")
+        );
+        assert!(search.iter().all(|d| d.item.provider_name != "Providers"));
+
+        rt.select_category("Help");
+        let help = rt.query("");
+        assert!(help.iter().any(|d| d.item.name.starts_with("g <query>")));
     }
 
     #[test]

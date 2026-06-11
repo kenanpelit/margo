@@ -106,6 +106,7 @@ pub fn default_engines() -> Vec<Engine> {
 
 pub struct WebsearchProvider {
     engines: Vec<Engine>,
+    set_search: Option<Rc<dyn Fn(&str) + 'static>>,
 }
 
 impl WebsearchProvider {
@@ -114,7 +115,18 @@ impl WebsearchProvider {
     }
 
     pub fn with_engines(engines: Vec<Engine>) -> Self {
-        Self { engines }
+        Self {
+            engines,
+            set_search: None,
+        }
+    }
+
+    /// Wire the UI search entry setter used by the Search tab browse rows.
+    /// Activating "Google" there should put `g ` into the entry so the user
+    /// can continue typing the query, not launch an empty web search.
+    pub fn with_search_setter(mut self, set_search: Rc<dyn Fn(&str) + 'static>) -> Self {
+        self.set_search = Some(set_search);
+        self
     }
 
     /// Read-only access to the configured engine list — useful
@@ -211,6 +223,48 @@ impl Provider for WebsearchProvider {
             .collect()
     }
 
+    /// Search tab browse mode: show the actual web engines as first-class
+    /// providers. The regular `search()` path intentionally requires
+    /// `<keyword> <query>`, but an empty Search tab should still advertise
+    /// "Google", "DuckDuckGo", etc. Activating a row seeds the entry with
+    /// the matching prefix.
+    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
+        let trimmed = filter.trim();
+        if self.bypasses_category_for_query(trimmed) {
+            return self.search(trimmed);
+        }
+
+        let needle = trimmed.to_ascii_lowercase();
+        self.engines
+            .iter()
+            .filter(|engine| {
+                needle.is_empty()
+                    || engine.keyword.to_ascii_lowercase().contains(&needle)
+                    || engine.label.to_ascii_lowercase().contains(&needle)
+            })
+            .enumerate()
+            .map(|(idx, engine)| {
+                let keyword = engine.keyword.clone();
+                let setter = self.set_search.clone();
+                LauncherItem {
+                    id: format!("websearch:engine:{}", engine.keyword),
+                    name: format!("{} search", engine.label),
+                    description: format!("{} <query>", engine.keyword),
+                    icon: engine.icon.clone(),
+                    icon_is_path: false,
+                    score: 210.0 - idx as f64,
+                    provider_name: "Web search".into(),
+                    usage_key: None,
+                    on_activate: Rc::new(move || {
+                        if let Some(setter) = &setter {
+                            setter(&format!("{keyword} "));
+                        }
+                    }),
+                }
+            })
+            .collect()
+    }
+
     /// Ctrl+Enter on a websearch row → copy the URL to the
     /// clipboard instead of opening the browser. Useful for
     /// "share this link" style flows or pasting into a different
@@ -249,6 +303,7 @@ impl Provider for WebsearchProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{cell::RefCell, rc::Rc};
 
     #[test]
     fn keyword_alone_does_not_match() {
@@ -268,6 +323,33 @@ mod tests {
     fn unknown_keyword_returns_empty() {
         let p = WebsearchProvider::new();
         assert!(p.search("zz foo bar").is_empty());
+    }
+
+    #[test]
+    fn browse_lists_engines_for_search_tab() {
+        let p = WebsearchProvider::new();
+        let items = p.browse("");
+        assert!(items.iter().any(|i| i.name == "Google search"));
+        assert!(
+            items
+                .iter()
+                .any(|i| i.description == "ddg <query>" && i.name == "DuckDuckGo search")
+        );
+    }
+
+    #[test]
+    fn browse_engine_activation_seeds_prefix() {
+        let captured = Rc::new(RefCell::new(String::new()));
+        let setter_capture = captured.clone();
+        let p = WebsearchProvider::new().with_search_setter(Rc::new(move |text| {
+            *setter_capture.borrow_mut() = text.to_string();
+        }));
+
+        let items = p.browse("");
+        let google = items.iter().find(|i| i.name == "Google search").unwrap();
+        (google.on_activate)();
+
+        assert_eq!(*captured.borrow(), "g ");
     }
 
     #[test]

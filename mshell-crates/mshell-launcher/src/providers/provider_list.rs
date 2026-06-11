@@ -191,7 +191,7 @@ impl Provider for ProviderListProvider {
     }
 
     fn category(&self) -> &str {
-        "Search"
+        "Help"
     }
 
     fn handles_search(&self) -> bool {
@@ -259,7 +259,7 @@ impl Provider for ProviderListProvider {
             .collect()
     }
 
-    /// Search tab — surface the cheatsheet without the `;`
+    /// Help tab — surface the cheatsheet without the `;`
     /// prefix; `filter` narrows by provider name / description.
     fn browse(&self, filter: &str) -> Vec<LauncherItem> {
         if filter.is_empty() {
@@ -295,6 +295,13 @@ mod tests {
         let captured = Rc::new(RefCell::new(String::new()));
         let p = make(captured);
         assert!(p.search("firefox").is_empty());
+    }
+
+    #[test]
+    fn lives_in_help_category_not_search() {
+        let captured = Rc::new(RefCell::new(String::new()));
+        let p = make(captured);
+        assert_eq!(p.category(), "Help");
     }
 
     #[test]

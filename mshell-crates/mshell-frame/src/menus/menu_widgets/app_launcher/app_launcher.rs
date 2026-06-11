@@ -435,12 +435,24 @@ impl Component for AppLauncherModel {
         }));
 
         let mut runtime = LauncherRuntime::new(FrecencyStore::load());
-        let sender_for_search = sender.clone();
+        let sender_for_provider_list = sender.clone();
         let provider_list_provider = ProviderListProvider::new(Rc::new(move |text: &str| {
-            let _ = sender_for_search
+            let _ = sender_for_provider_list
                 .input_sender()
                 .send(AppLauncherInput::SetSearchText(text.to_string()));
         }));
+        let sender_for_search = sender.clone();
+        let make_search_setter = move || {
+            let s = sender_for_search.clone();
+            Rc::new(move |text: &str| {
+                let _ = s
+                    .input_sender()
+                    .send(AppLauncherInput::SetSearchText(text.to_string()));
+            }) as Rc<dyn Fn(&str) + 'static>
+        };
+        let websearch_provider = WebsearchProvider::new().with_search_setter(make_search_setter());
+        let archpkgs_provider =
+            ArchLinuxPkgsProvider::new().with_search_setter(make_search_setter());
 
         runtime.register(Box::new(AppsProviderHandle(apps_provider.clone())));
         runtime.register(Box::new(WindowsProvider::new()));
@@ -453,10 +465,10 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(ScriptsProvider::new()));
         runtime.register(Box::new(SymbolsProvider::new()));
         runtime.register(Box::new(EmojiProvider::new()));
-        runtime.register(Box::new(WebsearchProvider::new()));
+        runtime.register(Box::new(websearch_provider));
         runtime.register(Box::new(provider_list_provider));
         runtime.register(Box::new(PlayerctlProvider::new()));
-        runtime.register(Box::new(ArchLinuxPkgsProvider::new()));
+        runtime.register(Box::new(archpkgs_provider));
         runtime.register(Box::new(WireplumberProvider::new()));
         runtime.register(Box::new(BluetoothProvider::new()));
         runtime.register(Box::new(SshProvider::new()));
@@ -1306,6 +1318,7 @@ fn category_icon(label: &str) -> &'static str {
         // MargoMaterial and rendered as a missing-icon glyph.
         "Insert" => "input-keyboard-symbolic",
         "Search" => "system-search-symbolic",
+        "Help" => "help-browser-symbolic",
         "Connect" => "network-server-symbolic",
         _ => "view-list-symbolic",
     }
