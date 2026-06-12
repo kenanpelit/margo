@@ -20,9 +20,11 @@ hierarchy pass, and CI gained a panic-count ratchet.
   the search separator gained breathing room). The Widgets sub-sidebar
   now fits its longest names ("Screen Recording", "System Bluetooth")
   via a 216 px column + density overrides instead of ellipsizing. Page
-  descriptions (`label-small`) re-toned to the muted on-surface-variant
-  tier so section titles carry the contrast; boxed-list cards gained a
-  1 px hairline edge for low-contrast palettes.
+  descriptions (`label-small`, action-row subtitles, hero subtitle) are
+  re-toned with a palette-proof surface blend (`color-mix` 62–70 % toward
+  the page surface) so section titles carry the contrast even on schemes
+  where `--on-surface-variant` equals `--on-surface`; boxed-list cards
+  gained a 1 px hairline edge for low-contrast palettes.
 
 ### Added
 
