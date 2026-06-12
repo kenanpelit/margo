@@ -3,9 +3,9 @@
 //!
 //! Walker calls this "providerlist". When the user types `;` the
 //! provider shows one row per known launcher prefix with a short
-//! example query. Activating a row sets the search text to that
-//! prefix (UI hooks the row's `on_activate` to forward a callback
-//! the widget supplies on construction).
+//! example query. Activating a row seeds the search text with a
+//! working example (UI hooks the row's `on_activate` to forward a
+//! callback the widget supplies on construction).
 //!
 //! Note that this provider *cannot* introspect the runtime's
 //! registered providers — that would require a back-reference
@@ -28,6 +28,13 @@ struct Entry {
     description: &'static str,
     /// Icon name.
     icon: &'static str,
+}
+
+fn activation_example(example: &str) -> &str {
+    // Rows like "lock / reboot / shutdown" are documentation, not a literal
+    // query. Activation should seed the first concrete query so the row always
+    // produces real results.
+    example.split(" / ").next().unwrap_or(example)
 }
 
 /// Static catalogue. Order is "most commonly reached for" —
@@ -236,7 +243,7 @@ impl Provider for ProviderListProvider {
             })
             .map(|(idx, entry)| {
                 let setter = self.set_search.clone();
-                let target = entry.example.to_string();
+                let target = activation_example(entry.example).to_string();
                 LauncherItem {
                     id: format!("providers:{idx}"),
                     name: if entry.prefix.is_empty() {
@@ -315,6 +322,33 @@ mod tests {
             .unwrap();
         (google.on_activate)();
         assert_eq!(*captured.borrow(), "g rust async");
+    }
+
+    #[test]
+    fn activation_uses_first_concrete_example_for_alternatives() {
+        let captured = Rc::new(RefCell::new(String::new()));
+        let p = make(captured.clone());
+        let items = p.search(";");
+        let session = items
+            .iter()
+            .find(|i| i.description.starts_with("Session"))
+            .unwrap();
+        (session.on_activate)();
+        assert_eq!(*captured.borrow(), "lock");
+
+        let margo = items
+            .iter()
+            .find(|i| i.description.starts_with("Margo"))
+            .unwrap();
+        (margo.on_activate)();
+        assert_eq!(*captured.borrow(), "wallpaper next");
+
+        let settings = items
+            .iter()
+            .find(|i| i.description.starts_with("Settings"))
+            .unwrap();
+        (settings.on_activate)();
+        assert_eq!(*captured.borrow(), "display");
     }
 
     #[test]

@@ -888,6 +888,10 @@ impl Component for AppLauncherModel {
                 }
             }
             AppLauncherInput::SetSearchText(text) => {
+                if should_switch_to_all_for_seeded_text(&self.active_category, &text) {
+                    self.active_category = self.runtime.borrow_mut().select_category("All");
+                    rebuild_category_strip(&widgets.category_strip, self, &sender);
+                }
                 widgets.search_entry.set_text(&text);
                 widgets.search_entry.set_position(-1);
                 widgets.search_entry.grab_focus();
@@ -1425,6 +1429,49 @@ fn should_auto_close_after_activation(id: &str) -> bool {
     !id.starts_with("settings:")
 }
 
+fn should_switch_to_all_for_seeded_text(active_category: &str, text: &str) -> bool {
+    active_category == "Help" && !seeded_text_uses_explicit_provider(text)
+}
+
+fn seeded_text_uses_explicit_provider(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.starts_with('>')
+        || trimmed.starts_with('.')
+        || trimmed.starts_with(':')
+        || trimmed.starts_with(';')
+    {
+        return true;
+    }
+    matches!(
+        trimmed.split_whitespace().next(),
+        Some(
+            "g" | "y"
+                | "ddg"
+                | "gh"
+                | "aur"
+                | "arch"
+                | "wiki"
+                | "p"
+                | "pacman"
+                | "audio"
+                | "sink"
+                | "bt"
+                | "bluetooth"
+                | "ssh"
+                | "pass"
+                | "tag"
+                | "tags"
+                | "win"
+                | "windows"
+                | "player"
+                | "play"
+        )
+    )
+}
+
 /// Thin newtype wrapper that lets us hand a shared `Rc<AppsProvider>`
 /// to the runtime (which wants `Box<dyn Provider>`) while keeping
 /// our own clone for `show_hidden` toggling.
@@ -1464,7 +1511,8 @@ impl mshell_launcher::Provider for AppsProviderHandle {
 
 #[cfg(test)]
 mod tests {
-    use super::should_auto_close_after_activation;
+    use super::should_switch_to_all_for_seeded_text;
+    use super::{seeded_text_uses_explicit_provider, should_auto_close_after_activation};
 
     #[test]
     fn prefix_seed_rows_keep_launcher_open() {
@@ -1485,5 +1533,25 @@ mod tests {
     #[test]
     fn settings_rows_keep_existing_no_close_behavior() {
         assert!(!should_auto_close_after_activation("settings:launcher"));
+    }
+
+    #[test]
+    fn help_no_prefix_seed_switches_to_all() {
+        assert!(should_switch_to_all_for_seeded_text("Help", "firefox"));
+        assert!(should_switch_to_all_for_seeded_text("Help", "kitty"));
+        assert!(should_switch_to_all_for_seeded_text("Help", "2+2"));
+        assert!(should_switch_to_all_for_seeded_text("Help", "lock"));
+        assert!(should_switch_to_all_for_seeded_text("Help", "display"));
+    }
+
+    #[test]
+    fn help_explicit_prefix_seed_stays_in_current_category() {
+        assert!(!should_switch_to_all_for_seeded_text("Help", "g rust"));
+        assert!(!should_switch_to_all_for_seeded_text("Help", "audio"));
+        assert!(!should_switch_to_all_for_seeded_text("Help", "bt"));
+        assert!(!should_switch_to_all_for_seeded_text("Help", "ssh vhay"));
+        assert!(!should_switch_to_all_for_seeded_text("Help", "tag 3"));
+        assert!(!should_switch_to_all_for_seeded_text("Help", "player"));
+        assert!(!seeded_text_uses_explicit_provider("firefox"));
     }
 }
