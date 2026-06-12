@@ -271,14 +271,16 @@
     // Pages set titles in label-{medium,large}-bold and the explanatory
     // line under them in plain label-small — but the primitive paints
     // BOTH in --on-surface, so heading and description read at the same
-    // strength. Re-tone descriptions to the muted on-surface-variant
-    // (the same tier action-row subtitles and hero subtitles already
-    // use) so titles carry the contrast and descriptions sit back.
-    // Scoped to settings pages; -bold/-primary/-error label-small
-    // variants keep their own explicit colours.
+    // strength. NOTE: --on-surface-variant is NOT a reliable muted tier —
+    // several shipped schemes (e.g. Margo) map it to the exact same hex
+    // as --on-surface. Blend toward the page surface instead: a 62% mix
+    // is a guaranteed step down in contrast on every palette, light or
+    // dark, while still tracking the theme. Scoped to settings pages;
+    // -bold/-primary/-error label-small variants keep their own colours.
     label.label-small {
-        color: var(--on-surface-variant);
-        opacity: 0.9;
+        color: unquote(
+            "color-mix(in srgb, var(--on-surface-variant) 62%, var(--surface))"
+        );
     }
 }
 
@@ -341,8 +343,13 @@
     .settings-hero-subtitle {
         font-size: calc(15.5px * var(--font-scale-settings, 1.0));
         font-weight: 400;
-        color: var(--on-surface-variant);
-        opacity: 0.85;
+        // Surface-blend instead of variant+opacity: --on-surface-variant
+        // equals --on-surface on some schemes, so opacity alone barely
+        // registered. 70% keeps the hero line a notch stronger than the
+        // 62% body descriptions.
+        color: unquote(
+            "color-mix(in srgb, var(--on-surface-variant) 70%, var(--surface))"
+        );
     }
 }
 
@@ -457,8 +464,12 @@
     .action-row-subtitle {
         font-size: calc(15px * var(--font-scale-settings, 1.0));
         font-weight: 400;
-        color: var(--on-surface-variant);
-        opacity: 0.75;
+        // Same surface-blend tier as the page descriptions (see
+        // .settings-page label.label-small) — variant+opacity was
+        // invisible on schemes where variant == on-surface.
+        color: unquote(
+            "color-mix(in srgb, var(--on-surface-variant) 62%, var(--surface-container))"
+        );
         margin-top: 2px;
     }
 
