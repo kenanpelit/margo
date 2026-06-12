@@ -7,6 +7,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.0.5] – 2026-06-12
+
+The design-language release: one central geometry source, GNOME metrics
+everywhere.
+
 ### Changed
 
 - **GNOME/libadwaita visual overhaul.** The whole shell moved to Adwaita
@@ -26,6 +31,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   to the new language (incl. stale doc↔token drift), with the design-lint
   CI gate unchanged and green. Spec:
   `docs/superpowers/specs/2026-06-12-gnome-visual-overhaul-design.md`.
+- **Standalone binaries follow the same metrics.** mvpn's layer-shell
+  panel (embedded CSS) and mkeys' key buttons align to the Adwaita scale
+  (window 15 / card 12 / button 9 px · 34 px targets), and the
+  theme/bar/menu/network-editor Settings sub-pages got the same
+  boxed-list rows as the main pages.
 
 ## [1.0.4] – 2026-06-12
 
