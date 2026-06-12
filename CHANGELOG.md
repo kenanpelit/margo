@@ -15,6 +15,11 @@ hierarchy pass, and CI gained a panic-count ratchet.
 
 ### Changed
 
+- **`mvpn fav` got pick numbers.** `fav list` (and `fav refresh`) now
+  number the favorites; `fav connect 2` connects to the 2nd entry (relay
+  names still work); bare `fav connect` on a terminal shows the numbered
+  list and asks (Enter = fastest, q = cancel) — when piped or bound to a
+  key it keeps the old "fastest favorite" behaviour.
 - **Settings panel polish.** Sidebar nav rows tightened (38 → 33 px, 2 px
   list spacing, group headers pulled in and aligned to the icon column;
   the search separator gained breathing room). The Widgets sub-sidebar

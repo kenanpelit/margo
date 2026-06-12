@@ -125,9 +125,10 @@ enum FavCmd {
     Add,
     /// Remove a relay from favorites.
     Remove { relay: String },
-    /// List favorites, fastest-first.
+    /// List favorites, fastest-first, with their pick numbers.
     List,
-    /// Connect to a specific favorite relay (or the fastest, if none given).
+    /// Connect to a favorite: by list number (`fav connect 2`), by relay
+    /// name, or with no argument an interactive pick (fastest when piped).
     Connect { relay: Option<String> },
     /// Re-ping favorites (optionally in a country), drop dead ones, re-sort.
     Refresh { country: Option<String> },
@@ -439,6 +440,17 @@ fn run_slot(action: SlotCmd) -> bool {
     }
 }
 
+/// Print favorites with their 1-based pick numbers — the same ordering
+/// `fav connect <n>` indexes into.
+fn print_fav_list(favs: &[favorites::Fav]) {
+    for (i, f) in favs.iter().enumerate() {
+        match f.ping {
+            Some(p) => println!("{:>3}) {:>5.0} ms  {}", i + 1, p, f.relay),
+            None => println!("{:>3})   N/A    {}", i + 1, f.relay),
+        }
+    }
+}
+
 fn run_fav(action: FavCmd) -> bool {
     match action {
         FavCmd::Add => favorites::add_current(),
@@ -447,44 +459,91 @@ fn run_fav(action: FavCmd) -> bool {
             true
         }
         FavCmd::List => {
-            for f in favorites::load() {
-                match f.ping {
-                    Some(p) => println!("{:>7.0} ms  {}", p, f.relay),
-                    None => println!("    N/A    {}", f.relay),
-                }
-            }
+            print_fav_list(&favorites::load());
             true
         }
-        // With a relay arg → connect to that specific favorite; without →
-        // the fastest favorite (the original behaviour).
+        // With an arg → a 1-based index into the `fav list` ordering, or a
+        // relay name. Without → interactive pick on a TTY, fastest favorite
+        // otherwise (keybind/script-safe: the original behaviour).
         FavCmd::Connect { relay: Some(r) } => {
-            if actions::set_relay(&r) {
-                println!("→ {r}");
+            let target = match r.parse::<usize>() {
+                Ok(n) if n >= 1 => {
+                    let favs = favorites::load();
+                    match favs.get(n - 1) {
+                        Some(f) => f.relay.clone(),
+                        None => {
+                            eprintln!(
+                                "mvpn fav connect: index {n} out of range (favorites: 1-{})",
+                                favs.len()
+                            );
+                            return false;
+                        }
+                    }
+                }
+                _ => r,
+            };
+            if actions::set_relay(&target) {
+                println!("→ {target}");
                 true
             } else {
-                eprintln!("mvpn fav connect: failed to connect to {r}");
+                eprintln!("mvpn fav connect: failed to connect to {target}");
                 false
             }
         }
-        FavCmd::Connect { relay: None } => match favorites::connect_fastest() {
-            Some(r) => {
-                println!("→ {r}");
-                true
+        FavCmd::Connect { relay: None } => {
+            use std::io::IsTerminal;
+            // Non-interactive caller (keybind, script, pipe): keep the
+            // original "connect to the fastest favorite" contract.
+            if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+                return match favorites::connect_fastest() {
+                    Some(r) => {
+                        println!("→ {r}");
+                        true
+                    }
+                    None => {
+                        eprintln!("mvpn fav connect: no favorites (add one with `mvpn fav add`)");
+                        false
+                    }
+                };
             }
-            None => {
+            let favs = favorites::load();
+            if favs.is_empty() {
                 eprintln!("mvpn fav connect: no favorites (add one with `mvpn fav add`)");
+                return false;
+            }
+            print_fav_list(&favs);
+            eprint!("connect [1-{}] (Enter = fastest, q = cancel): ", favs.len());
+            let mut line = String::new();
+            if std::io::stdin().read_line(&mut line).is_err() {
+                return false;
+            }
+            let pick = line.trim();
+            let target = match pick {
+                "" => favs[0].relay.clone(),
+                "q" | "Q" => return true,
+                _ => match pick.parse::<usize>() {
+                    Ok(n) if (1..=favs.len()).contains(&n) => favs[n - 1].relay.clone(),
+                    _ => {
+                        eprintln!(
+                            "mvpn fav connect: pick a number between 1 and {}",
+                            favs.len()
+                        );
+                        return false;
+                    }
+                },
+            };
+            if actions::set_relay(&target) {
+                println!("→ {target}");
+                true
+            } else {
+                eprintln!("mvpn fav connect: failed to connect to {target}");
                 false
             }
-        },
+        }
         FavCmd::Refresh { country } => {
             let favs =
                 favorites::refresh(country.as_deref().unwrap_or(""), PING_COUNT, PING_TIMEOUT);
-            for f in &favs {
-                match f.ping {
-                    Some(p) => println!("{:>7.0} ms  {}", p, f.relay),
-                    None => println!("    N/A    {}", f.relay),
-                }
-            }
+            print_fav_list(&favs);
             true
         }
     }
