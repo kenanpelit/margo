@@ -96,6 +96,13 @@ jobs:
         # lints. `--all-targets` so tests/examples are linted too.
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: panic ratchet (gate)
+        # Non-test .unwrap()/.expect()/panic!() count may only go down.
+        # Baseline lives in scripts/panic-baseline.txt; the script fails in
+        # BOTH directions (up = regression, down = please lock the cleanup
+        # in by lowering the baseline).
+        run: ./scripts/panic-ratchet.sh
+
       - name: mctl check-config (bundled example)
         # Validates that an example user config parses without unknown
         # fields, regex compile errors, or duplicate binds. Falls back to

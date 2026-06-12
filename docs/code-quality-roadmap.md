@@ -67,10 +67,14 @@ files, and overlapping feature mechanisms.**
   (fair), but `mplugin-sdk`, `mshell-plugin-host` (capability/path-sandbox —
   a security boundary!), `mshell-core` (D-Bus/IPC), `mshell-services` are pure
   logic and currently have zero tests.
-- [ ] **Reduce `unwrap`/`expect`/`panic` on external input.** ~563 total. In a
-  compositor a panic kills the whole desktop; in mshell it kills the bar.
-  Sweep hot paths (render, input, IPC handlers, config/file I/O) toward
-  `Result` + graceful degrade.
+- [ ] **Reduce `unwrap`/`expect`/`panic` on external input.** 334 in
+  non-test code (2026-06-12). In a compositor a panic kills the whole
+  desktop; in mshell it kills the bar. Sweep hot paths (render, input, IPC
+  handlers, config/file I/O) toward `Result` + graceful degrade.
+  **The count is now CI-ratcheted**: `scripts/panic-ratchet.sh` +
+  `scripts/panic-baseline.txt` gate every push — the number can only go
+  down (raising it needs an explicit baseline bump with rationale; lowering
+  it requires locking the new floor in).
 
 ## Low priority / quick wins
 
