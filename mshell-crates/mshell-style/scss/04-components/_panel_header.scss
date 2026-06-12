@@ -38,8 +38,8 @@
 // Mirrors the clipboard panel's .clipboard-action-btn.
 .panel-action-btn {
   all: unset;
-  min-width: 40px;
-  min-height: 40px;
+  min-width: var(--button-circle-size);
+  min-height: var(--button-circle-size);
   border-radius: var(--radius-pill);
   background-color: transparent;
   transition: background-color var(--motion-fast) var(--ease-standard);

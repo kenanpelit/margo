@@ -88,10 +88,10 @@
     //
     // Padding pulled in slightly (12 vs 14) so the dashboard's
     // 2-col layout doesn't feel sprawling.
-    background-color: var(--surface-container);
+    background-color: var(--card-bg);
     color: var(--on-surface);
-    // Tile = card → --radius-md (16) from the M3 shape scale.
-    border-radius: var(--radius-md);
+    // Tile = card → the central --card-radius (12, Adwaita card).
+    border-radius: var(--card-radius);
     padding: var(--space-3) var(--space-4);
     margin: var(--space-1) 0;
     // Calm motion: tonal/seam changes (e.g. severity-driven
@@ -135,10 +135,10 @@
       padding: var(--space-2);
       min-width: 36px;
       min-height: 36px;
-      // Buttons are list-item shaped (--radius-sm = 12). The shared
-      // canonical state-layer (DESIGN.md §7) gives the same primary
-      // hover/press wash every bar pill and menu row uses.
-      border-radius: var(--radius-sm);
+      // Buttons take the central button corner (--button-radius, 9).
+      // The shared canonical state-layer (DESIGN.md §7) gives the same
+      // primary hover/press wash every bar pill and menu row uses.
+      border-radius: var(--button-radius);
       @include state-layer();
     }
   }
