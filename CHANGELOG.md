@@ -7,6 +7,42 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.0.4] – 2026-06-12
+
+A housekeeping release: the project's ledgers now match 1.0 reality, a
+long-stubbed Settings button works, and CI gained a panic-count ratchet.
+
+### Added
+
+- **CI panic ratchet.** New `scripts/panic-ratchet.sh` +
+  `scripts/panic-baseline.txt` gate in `ci.yml`: the number of
+  `.unwrap()` / `.expect()` / `panic!()` calls in non-test code (334 at
+  seed) can only go **down**. A rise fails CI as a regression; a drop
+  fails too until the baseline is lowered, so every cleanup is locked in.
+
+### Fixed
+
+- **Settings → Network: wired "Edit connection" button now works.** It was
+  a stub since the connection-editor task landed — it sent an empty UUID
+  and just toasted "no connection UUID". It now resolves the ethernet
+  profile (active one preferred, falling back to any saved ethernet
+  profile) and opens it in the embedded connection editor; the toast only
+  remains for the genuine "no wired profile exists" case.
+
+### Documentation
+
+- **Roadmaps + readiness ledgers synced to v1.0.3 reality.** `road_map.md`
+  header/TL;DR updated (1.0 shipped 2026-06-09; protocol score 14/17 →
+  **15/17** with `output_power`; socket-IPC supersession note on the
+  dwl-ipc section). `road_map_mshell.md` finally marks
+  A2/A3/A4/A5/A8/A9/B4/B5/B9 and D3/D5/D6/D7/D9 as **shipped**, replaces
+  dwl-ipc-v2 references with the Unix control socket, and ledgers the
+  beyond-roadmap additions (control center, AI assistant, mvpn, mkeys,
+  mplay, dock, …). `docs/1.0-readiness.md` got a "Resolved — 1.0 shipped"
+  banner; `docs/protocol-comparison.md` re-audits margo's column at
+  v1.0.3 (~60 globals); `docs/code-quality-roadmap.md` metrics refreshed
+  (765 test fns; `state.rs` regrew to 4045 — flagged as the next ratchet).
+
 ## [1.0.3] – 2026-06-09
 
 A VPN + window-switcher release: a native Mullvad VPN tool (CLI + GTK panel +
