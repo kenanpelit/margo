@@ -96,6 +96,13 @@ jobs:
         # lints. `--all-targets` so tests/examples are linted too.
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: design lint (gate)
+        # DESIGN.md §15 L1–L7: no hardcoded hex, no raw ≥4px
+        # spacing/radius/font, --radius-widget only in bar/frame styles,
+        # no literal transition durations, no Popover primary surfaces,
+        # no add_css_class(""), no DragSource/DropTarget row reorder.
+        run: ./scripts/design-lint.sh
+
       - name: panic ratchet (gate)
         # Non-test .unwrap()/.expect()/panic!() count may only go down.
         # Baseline lives in scripts/panic-baseline.txt; the script fails in

@@ -367,8 +367,9 @@
   // Compromise padding: middle ground between the original 6 px
   // (~720 floor) and the aggressive 4 px (~590 floor). 5 px lands
   // near ~620 — visually balanced and still leaves headroom for
-  // the Settings spinner. Deliberate off-scale tuning, not the scale.
-  padding: 1px 5px 1px 1px;
+  // the Settings spinner. Expressed as scale + 1px micro-adjust so
+  // the deliberate off-scale tuning stays anchored to the token.
+  padding: 1px calc(var(--space-1) + 1px) 1px 1px;
   font-family: monospace;
   // Keycap = dimmest/smallest tier on the scale (§1.6); FlowBox wraps,
   // so the token value is safe for the tuned footer width.
@@ -385,8 +386,9 @@
   // Compromise padding between original (8 px → ~720 floor) and
   // aggressive (4 px → ~590). 5 px keeps the label visually
   // separated from the next chip while preserving most of the
-  // narrowing headroom. Deliberate off-scale tuning, not the scale.
-  padding-right: 5px;
+  // narrowing headroom. Expressed as scale + 1px micro-adjust so the
+  // deliberate off-scale tuning stays anchored to the spacing token.
+  padding-right: calc(var(--space-1) + 1px);
   letter-spacing: 0.01em;
 }
 

@@ -60,7 +60,7 @@
   .privacy-live {
     .privacy-live-row {
       padding: var(--space-2);
-      border-radius: var(--radius-widget, 10px);
+      border-radius: var(--radius-sm);
       background: var(--surface-container-high);
 
       .privacy-live-icon.active {
@@ -84,7 +84,7 @@
     }
     .privacy-log-row {
       padding: var(--space-2);
-      border-radius: var(--radius-widget, 10px);
+      border-radius: var(--radius-sm);
 
       &:hover {
         background: var(--surface-container);

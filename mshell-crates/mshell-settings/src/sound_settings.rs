@@ -242,7 +242,7 @@ impl Component for SoundSettingsModel {
                 #[template]
                 Row {
                     #[template_child] title { set_label: "Restore volume on startup" },
-                    #[template_child] desc { set_label: "Pin the output + mic to the levels below at each login. PipeWire forgets volumes across reboots." },
+                    #[template_child] desc { set_label: "Pin the output + mic to the levels below at each login and after every device switch. PipeWire forgets volumes across reboots, and each device carries its own last level." },
                     #[local_ref] restore_switch_w -> gtk::Switch {},
                 },
                 #[template]

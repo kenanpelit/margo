@@ -346,6 +346,16 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     if let Some(i) = pick_device(&names, cur.as_deref(), &target)
                         && devs[i].set_as_default().await.is_ok()
                     {
+                        // Re-pin the configured default level on the device we
+                        // just promoted (same opt-in as the startup restore).
+                        // WirePlumber carries each device's own last volume, so
+                        // without this a switch can land on e.g. a 100% mic
+                        // even though Settings → Sound pins 50%.
+                        let audio_cfg = config_manager().config().audio().get_untracked();
+                        if audio_cfg.restore_volume_on_start {
+                            let v = (audio_cfg.default_output_volume.clamp(0, 100) as f64) / 100.0;
+                            let _ = devs[i].set_volume(Volume::stereo(v, v)).await;
+                        }
                         notify_audio("Audio output", &devs[i].description.get());
                     }
                 }
@@ -359,6 +369,13 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     if let Some(i) = pick_device(&names, cur.as_deref(), &target)
                         && devs[i].set_as_default().await.is_ok()
                     {
+                        // Same re-pin as SwitchOutput — this is the path where
+                        // the "mic jumps to 100% after switch-mic" bug lived.
+                        let audio_cfg = config_manager().config().audio().get_untracked();
+                        if audio_cfg.restore_volume_on_start {
+                            let v = (audio_cfg.default_input_volume.clamp(0, 100) as f64) / 100.0;
+                            let _ = devs[i].set_volume(Volume::stereo(v, v)).await;
+                        }
                         notify_audio("Audio input", &devs[i].description.get());
                     }
                 }

@@ -28,6 +28,14 @@ hierarchy pass, and CI gained a panic-count ratchet.
 
 ### Added
 
+- **CI design-lint gate (W1.7).** New `scripts/design-lint.sh` enforces
+  `DESIGN.md §15` L1–L7 as hard gates in `ci.yml`: no hardcoded hex, no
+  raw ≥4 px spacing/radius/font, `--radius-widget` only in bar/frame
+  styles, no literal transition durations, no `gtk::Popover` as a
+  bar-widget primary surface, no `add_css_class("")`, no
+  `DragSource`/`DropTarget` row reorder. The pre-flip audit's three real
+  hits (privacy-menu rows on the bar-pill radius token; two deliberate
+  5 px launcher paddings) were fixed in the same commit.
 - **CI panic ratchet.** New `scripts/panic-ratchet.sh` +
   `scripts/panic-baseline.txt` gate in `ci.yml`: the number of
   `.unwrap()` / `.expect()` / `panic!()` calls in non-test code (334 at
@@ -36,6 +44,12 @@ hierarchy pass, and CI gained a panic-count ratchet.
 
 ### Fixed
 
+- **Mic no longer jumps to 100 % after `mshellctl audio switch-mic`.**
+  With "Restore volume on startup" enabled, the configured default
+  output/input level is now re-applied to the newly promoted device
+  after every `audio switch` / `switch-mic`, not just at login —
+  WirePlumber carries each device's own last volume, so a switch could
+  land on a 100 % mic even though Settings → Sound pins 50 %.
 - **Settings → Network: wired "Edit connection" button now works.** It was
   a stub since the connection-editor task landed — it sent an empty UUID
   and just toasted "no connection UUID". It now resolves the ethernet
