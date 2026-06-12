@@ -108,7 +108,8 @@ window.mvpn {{ background: transparent; }}
 .mvpn-root {{
     background-color: alpha({bg}, {opacity});
     color: {text};
-    border-radius: 18px;
+    /* Adwaita window corner — matches the shell's --radius-lg (DESIGN.md §1). */
+    border-radius: 15px;
     padding: 16px;
     border: 1px solid alpha({surface_hi}, 0.8);
 }}
@@ -116,7 +117,8 @@ window.mvpn {{ background: transparent; }}
 .mvpn-dim {{ color: {text}; opacity: 0.6; font-size: 12px; }}
 .mvpn-hero {{
     background-color: {surface};
-    border-radius: 14px;
+    /* Adwaita card corner (--radius-md). */
+    border-radius: 12px;
     padding: 14px;
 }}
 .mvpn-hero-on {{ border-left: 3px solid {primary}; }}
@@ -131,8 +133,10 @@ window.mvpn {{ background: transparent; }}
 .mvpn-badge.ok {{ background-color: alpha({success}, 0.25); color: {success}; }}
 .mvpn-card {{ background-color: {surface}; border-radius: 12px; padding: 10px; }}
 button.mvpn-action {{
-    border-radius: 10px;
-    padding: 8px 12px;
+    /* Adwaita button corner + target (--button-radius/--button-min-height). */
+    border-radius: 9px;
+    min-height: 34px;
+    padding: 4px 12px;
     background-color: {surface_hi};
     color: {text};
     border: none;
@@ -149,7 +153,7 @@ button.mvpn-mode.selected {{
 }}
 button.mvpn-mode.selected:hover {{ background-color: {primary}; }}
 .mvpn-chip {{ border-radius: 999px; padding: 6px 12px; }}
-row.mvpn-row {{ border-radius: 10px; padding: 2px 4px; }}
+row.mvpn-row {{ border-radius: 9px; padding: 2px 4px; }}
 row.mvpn-row:hover {{ background-color: alpha({primary}, 0.12); }}
 .mvpn-key {{
     background-color: {surface_hi};
@@ -160,7 +164,7 @@ row.mvpn-row:hover {{ background-color: alpha({primary}, 0.12); }}
 }}
 list.mvpn-list {{ background: transparent; }}
 .mvpn-ping {{ color: {success}; font-family: monospace; font-size: 12px; }}
-entry.mvpn-search {{ border-radius: 10px; }}
+entry.mvpn-search {{ border-radius: 9px; }}
 "#,
         bg = p.bg,
         text = p.text,

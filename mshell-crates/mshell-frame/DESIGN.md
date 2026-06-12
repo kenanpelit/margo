@@ -398,8 +398,10 @@ children are the rows):
   `--surface-container-high` + check glyph (above).
 
 Use it whenever rows form a related group; a lone row or a free-form
-tile is not a boxed-list. Don't hand-roll separators or per-row card
-chrome.
+tile is not a boxed-list. Rows already *inside* a card (a revealer-row's
+revealed device list, a menu tile's body) keep the flat device-row
+treatment — a card-in-card is wrong. Don't hand-roll separators or
+per-row card chrome.
 
 ### Scrollable lists & footers (the "dark band" rule)
 A `gtk::ListBox` inside a `gtk::ScrolledWindow` (ufw rules, podman

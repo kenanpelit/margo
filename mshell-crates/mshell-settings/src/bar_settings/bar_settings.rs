@@ -209,197 +209,209 @@ impl Component for BarSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Enable frame drawing.",
-                        set_hexpand: true,
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Enable frame drawing.",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Switch {
+                            #[watch]
+                            #[block_signal(enable_frame_handler)]
+                            set_active: model.enable_frame,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(BarSettingsInput::EnableFrameToggled(enabled));
+                                glib::Propagation::Proceed
+                            } @enable_frame_handler,
+                        }
                     },
 
-                    gtk::Switch {
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Custom frame colour — override the wallpaper-derived (matugen) frame fill + border with fixed colours. Off = follow the theme.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(frame_color_custom_handler)]
+                            set_active: model.frame_color_custom,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(BarSettingsInput::FrameColorCustomToggled(enabled));
+                                glib::Propagation::Proceed
+                            } @frame_color_custom_handler,
+                        }
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 8,
                         #[watch]
-                        #[block_signal(enable_frame_handler)]
-                        set_active: model.enable_frame,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(BarSettingsInput::EnableFrameToggled(enabled));
-                            glib::Propagation::Proceed
-                        } @enable_frame_handler,
-                    }
-                },
+                        set_sensitive: model.frame_color_custom,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Custom frame colour — override the wallpaper-derived (matugen) frame fill + border with fixed colours. Off = follow the theme.",
-                        set_hexpand: true,
-                        set_xalign: 0.0,
-                        set_wrap: true,
-                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                    },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(frame_color_custom_handler)]
-                        set_active: model.frame_color_custom,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(BarSettingsInput::FrameColorCustomToggled(enabled));
-                            glib::Propagation::Proceed
-                        } @frame_color_custom_handler,
-                    }
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 8,
-                    #[watch]
-                    set_sensitive: model.frame_color_custom,
-
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_label: "Frame fill / border",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: true,
-                        set_xalign: 0.0,
-                    },
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_label: "Fill",
-                        set_halign: gtk::Align::End,
-                    },
-                    gtk::ColorDialogButton {
-                        set_valign: gtk::Align::Center,
-                        set_dialog: &gtk::ColorDialog::builder().with_alpha(true).build(),
-                        #[watch]
-                        set_rgba: &model.frame_color,
-                        connect_rgba_notify[sender] => move |b| {
-                            sender.input(BarSettingsInput::FrameFillColorSet(b.rgba()));
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Frame fill / border",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Fill",
+                            set_halign: gtk::Align::End,
+                        },
+                        gtk::ColorDialogButton {
+                            set_valign: gtk::Align::Center,
+                            set_dialog: &gtk::ColorDialog::builder().with_alpha(true).build(),
+                            #[watch]
+                            set_rgba: &model.frame_color,
+                            connect_rgba_notify[sender] => move |b| {
+                                sender.input(BarSettingsInput::FrameFillColorSet(b.rgba()));
+                            },
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Border",
+                            set_halign: gtk::Align::End,
+                        },
+                        gtk::ColorDialogButton {
+                            set_valign: gtk::Align::Center,
+                            set_dialog: &gtk::ColorDialog::builder().with_alpha(true).build(),
+                            #[watch]
+                            set_rgba: &model.frame_border_color,
+                            connect_rgba_notify[sender] => move |b| {
+                                sender.input(BarSettingsInput::FrameBorderColorSet(b.rgba()));
+                            },
                         },
                     },
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_label: "Border",
-                        set_halign: gtk::Align::End,
+
+                    // ── Separator colour ────────────────────────────────────
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Custom separator colour — the thin divider pills (Separator widget). Off = follow the theme (matugen outline).",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(separator_color_custom_handler)]
+                            set_active: model.separator_color_custom,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(BarSettingsInput::SeparatorColorCustomToggled(enabled));
+                                glib::Propagation::Proceed
+                            } @separator_color_custom_handler,
+                        }
                     },
-                    gtk::ColorDialogButton {
-                        set_valign: gtk::Align::Center,
-                        set_dialog: &gtk::ColorDialog::builder().with_alpha(true).build(),
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 8,
                         #[watch]
-                        set_rgba: &model.frame_border_color,
-                        connect_rgba_notify[sender] => move |b| {
-                            sender.input(BarSettingsInput::FrameBorderColorSet(b.rgba()));
+                        set_sensitive: model.separator_color_custom,
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Separator",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                        },
+                        gtk::ColorDialogButton {
+                            set_valign: gtk::Align::Center,
+                            set_dialog: &gtk::ColorDialog::builder().with_alpha(true).build(),
+                            #[watch]
+                            set_rgba: &model.separator_color,
+                            connect_rgba_notify[sender] => move |b| {
+                                sender.input(BarSettingsInput::SeparatorColorSet(b.rgba()));
+                            },
                         },
                     },
-                },
 
-                // ── Separator colour ────────────────────────────────────
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Custom separator colour — the thin divider pills (Separator widget). Off = follow the theme (matugen outline).",
-                        set_hexpand: true,
-                        set_xalign: 0.0,
-                        set_wrap: true,
-                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                    },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(separator_color_custom_handler)]
-                        set_active: model.separator_color_custom,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(BarSettingsInput::SeparatorColorCustomToggled(enabled));
-                            glib::Propagation::Proceed
-                        } @separator_color_custom_handler,
-                    }
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 8,
-                    #[watch]
-                    set_sensitive: model.separator_color_custom,
-
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_label: "Separator",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: true,
-                        set_xalign: 0.0,
-                    },
-                    gtk::ColorDialogButton {
-                        set_valign: gtk::Align::Center,
-                        set_dialog: &gtk::ColorDialog::builder().with_alpha(true).build(),
-                        #[watch]
-                        set_rgba: &model.separator_color,
-                        connect_rgba_notify[sender] => move |b| {
-                            sender.input(BarSettingsInput::SeparatorColorSet(b.rgba()));
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Islands: a transparent bar where each pill floats as its own rounded surface (instead of one continuous strip). Applies immediately.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
                         },
-                    },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Islands: a transparent bar where each pill floats as its own rounded surface (instead of one continuous strip). Applies immediately.",
-                        set_hexpand: true,
-                        set_xalign: 0.0,
-                        set_wrap: true,
-                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(islands_handler)]
+                            set_active: model.islands,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(BarSettingsInput::IslandsToggled(enabled));
+                                glib::Propagation::Proceed
+                            } @islands_handler,
+                        }
                     },
 
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(islands_handler)]
-                        set_active: model.islands,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(BarSettingsInput::IslandsToggled(enabled));
-                            glib::Propagation::Proceed
-                        } @islands_handler,
-                    }
-                },
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Bar slide animation (ms). Match the compositor's window move-animation (margo animation_duration_move) so a bar toggle stays glued to the windows. 0 = instant. Applies immediately.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
 
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Bar slide animation (ms). Match the compositor's window move-animation (margo animation_duration_move) so a bar toggle stays glued to the windows. 0 = instant. Applies immediately.",
-                        set_hexpand: true,
-                        set_xalign: 0.0,
-                        set_wrap: true,
-                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                    },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 2000.0),
-                        set_increments: (50.0, 100.0),
-                        #[watch]
-                        #[block_signal(slide_duration_handler)]
-                        set_value: model.slide_duration as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(BarSettingsInput::SlideDurationSet(s.value() as i32));
-                        } @slide_duration_handler,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 2000.0),
+                            set_increments: (50.0, 100.0),
+                            #[watch]
+                            #[block_signal(slide_duration_handler)]
+                            set_value: model.slide_duration as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(BarSettingsInput::SlideDurationSet(s.value() as i32));
+                            } @slide_duration_handler,
+                        },
                     },
                 },
 
@@ -461,38 +473,45 @@ impl Component for BarSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Hover strength (%)",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Tint opacity of every bar pill's hover — one value for all widgets so they highlight identically.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 60.0),
-                        set_increments: (1.0, 5.0),
-                        #[watch]
-                        #[block_signal(bar_hover_handler)]
-                        set_value: model.bar_hover_strength as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(BarSettingsInput::BarHoverStrengthChanged(s.value() as i32));
-                        } @bar_hover_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Hover strength (%)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Tint opacity of every bar pill's hover — one value for all widgets so they highlight identically.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 60.0),
+                            set_increments: (1.0, 5.0),
+                            #[watch]
+                            #[block_signal(bar_hover_handler)]
+                            set_value: model.bar_hover_strength as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(BarSettingsInput::BarHoverStrengthChanged(s.value() as i32));
+                            } @bar_hover_handler,
+                        },
                     },
                 },
 
@@ -505,123 +524,134 @@ impl Component for BarSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Show this bar",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Show this bar",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Off turns the bar off entirely — it never appears, not even on hover.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Off turns the bar off entirely — it never appears, not even on hover.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(top_enabled_handler)]
+                            set_active: model.top_enabled,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(BarSettingsInput::TopEnabledToggled(enabled));
+                                glib::Propagation::Proceed
+                            } @top_enabled_handler,
+                        }
                     },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(top_enabled_handler)]
-                        set_active: model.top_enabled,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(BarSettingsInput::TopEnabledToggled(enabled));
-                            glib::Propagation::Proceed
-                        } @top_enabled_handler,
-                    }
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Minimum Height",
-                        set_hexpand: true,
-                    },
-
-                    gtk::SpinButton {
-                        set_range: (0.0, 500.0),
-                        set_increments: (1.0, 10.0),
-                        #[watch]
-                        #[block_signal(top_min_handler)]
-                        set_value: model.top_min_height as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(BarSettingsInput::TopMinHeightChanged(s.value() as i32));
-                        } @top_min_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Auto-hide",
-                            set_hexpand: true,
-                        },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "Hide the bar; it slides in when you move the pointer to its screen edge.",
+                            set_label: "Minimum Height",
                             set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+
+                        gtk::SpinButton {
+                            set_range: (0.0, 500.0),
+                            set_increments: (1.0, 10.0),
+                            #[watch]
+                            #[block_signal(top_min_handler)]
+                            set_value: model.top_min_height as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(BarSettingsInput::TopMinHeightChanged(s.value() as i32));
+                            } @top_min_handler,
                         },
                     },
 
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        // Auto-hide is the inverse of reveal_by_default.
-                        #[watch]
-                        #[block_signal(top_reveal_by_default_handler)]
-                        set_active: !model.top_reveal_by_default,
-                        connect_state_set[sender] => move |_, auto_hide| {
-                            sender.input(BarSettingsInput::TopRevealByDefaultChanged(!auto_hide));
-                            glib::Propagation::Proceed
-                        } @top_reveal_by_default_handler,
-                    }
-                },
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    #[watch]
-                    set_sensitive: !model.top_reveal_by_default,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
 
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Auto-hide delay (ms)",
-                        set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Auto-hide",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Hide the bar; it slides in when you move the pointer to its screen edge.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            // Auto-hide is the inverse of reveal_by_default.
+                            #[watch]
+                            #[block_signal(top_reveal_by_default_handler)]
+                            set_active: !model.top_reveal_by_default,
+                            connect_state_set[sender] => move |_, auto_hide| {
+                                sender.input(BarSettingsInput::TopRevealByDefaultChanged(!auto_hide));
+                                glib::Propagation::Proceed
+                            } @top_reveal_by_default_handler,
+                        }
                     },
 
-                    gtk::SpinButton {
-                        set_range: (0.0, 5000.0),
-                        set_increments: (50.0, 250.0),
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
                         #[watch]
-                        #[block_signal(top_auto_hide_delay_handler)]
-                        set_value: model.top_auto_hide_delay as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(BarSettingsInput::TopAutoHideDelayChanged(s.value() as i32));
-                        } @top_auto_hide_delay_handler,
+                        set_sensitive: !model.top_reveal_by_default,
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Auto-hide delay (ms)",
+                            set_hexpand: true,
+                        },
+
+                        gtk::SpinButton {
+                            set_range: (0.0, 5000.0),
+                            set_increments: (50.0, 250.0),
+                            #[watch]
+                            #[block_signal(top_auto_hide_delay_handler)]
+                            set_value: model.top_auto_hide_delay as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(BarSettingsInput::TopAutoHideDelayChanged(s.value() as i32));
+                            } @top_auto_hide_delay_handler,
+                        },
                     },
                 },
 
@@ -638,123 +668,134 @@ impl Component for BarSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Show this bar",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Show this bar",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Off turns the bar off entirely — it never appears, not even on hover.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Off turns the bar off entirely — it never appears, not even on hover.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(bottom_enabled_handler)]
+                            set_active: model.bottom_enabled,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(BarSettingsInput::BottomEnabledToggled(enabled));
+                                glib::Propagation::Proceed
+                            } @bottom_enabled_handler,
+                        }
                     },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(bottom_enabled_handler)]
-                        set_active: model.bottom_enabled,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(BarSettingsInput::BottomEnabledToggled(enabled));
-                            glib::Propagation::Proceed
-                        } @bottom_enabled_handler,
-                    }
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Minimum Height",
-                        set_hexpand: true,
-                    },
-
-                    gtk::SpinButton {
-                        set_range: (0.0, 500.0),
-                        set_increments: (1.0, 10.0),
-                        #[watch]
-                        #[block_signal(bottom_min_handler)]
-                        set_value: model.bottom_min_height as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(BarSettingsInput::BottomMinHeightChanged(s.value() as i32));
-                        } @bottom_min_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Auto-hide",
-                            set_hexpand: true,
-                        },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "Hide the bar; it slides in when you move the pointer to its screen edge.",
+                            set_label: "Minimum Height",
                             set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+
+                        gtk::SpinButton {
+                            set_range: (0.0, 500.0),
+                            set_increments: (1.0, 10.0),
+                            #[watch]
+                            #[block_signal(bottom_min_handler)]
+                            set_value: model.bottom_min_height as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(BarSettingsInput::BottomMinHeightChanged(s.value() as i32));
+                            } @bottom_min_handler,
                         },
                     },
 
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        // Auto-hide is the inverse of reveal_by_default.
-                        #[watch]
-                        #[block_signal(bottom_reveal_by_default_handler)]
-                        set_active: !model.bottom_reveal_by_default,
-                        connect_state_set[sender] => move |_, auto_hide| {
-                            sender.input(BarSettingsInput::BottomRevealByDefaultChanged(!auto_hide));
-                            glib::Propagation::Proceed
-                        } @bottom_reveal_by_default_handler,
-                    }
-                },
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    #[watch]
-                    set_sensitive: !model.bottom_reveal_by_default,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
 
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Auto-hide delay (ms)",
-                        set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Auto-hide",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Hide the bar; it slides in when you move the pointer to its screen edge.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            // Auto-hide is the inverse of reveal_by_default.
+                            #[watch]
+                            #[block_signal(bottom_reveal_by_default_handler)]
+                            set_active: !model.bottom_reveal_by_default,
+                            connect_state_set[sender] => move |_, auto_hide| {
+                                sender.input(BarSettingsInput::BottomRevealByDefaultChanged(!auto_hide));
+                                glib::Propagation::Proceed
+                            } @bottom_reveal_by_default_handler,
+                        }
                     },
 
-                    gtk::SpinButton {
-                        set_range: (0.0, 5000.0),
-                        set_increments: (50.0, 250.0),
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
                         #[watch]
-                        #[block_signal(bottom_auto_hide_delay_handler)]
-                        set_value: model.bottom_auto_hide_delay as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(BarSettingsInput::BottomAutoHideDelayChanged(s.value() as i32));
-                        } @bottom_auto_hide_delay_handler,
+                        set_sensitive: !model.bottom_reveal_by_default,
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Auto-hide delay (ms)",
+                            set_hexpand: true,
+                        },
+
+                        gtk::SpinButton {
+                            set_range: (0.0, 5000.0),
+                            set_increments: (50.0, 250.0),
+                            #[watch]
+                            #[block_signal(bottom_auto_hide_delay_handler)]
+                            set_value: model.bottom_auto_hide_delay as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(BarSettingsInput::BottomAutoHideDelayChanged(s.value() as i32));
+                            } @bottom_auto_hide_delay_handler,
+                        },
                     },
                 },
 

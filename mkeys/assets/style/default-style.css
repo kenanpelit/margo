@@ -10,7 +10,8 @@ button {
     background-image: none;
     color: #cdd6f4;
     border: none;
-    border-radius: 8px;
+    /* Adwaita button corner — matches the shell's --button-radius (DESIGN.md §1). */
+    border-radius: 9px;
     margin: 3px;
     padding: 10px;
     font-size: 15px;

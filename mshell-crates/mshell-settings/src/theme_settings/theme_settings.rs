@@ -155,244 +155,261 @@ impl Component for ThemeSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Shell",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Shell",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "The icons used in MShell.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "The icons used in MShell.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        #[name = "shell_icons_dropdown"]
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.available_shell_icon_themes),
+                            #[watch]
+                            #[block_signal(shell_handler)]
+                            set_selected: (0..model.available_shell_icon_themes.n_items())
+                                .find(|&i| model.available_shell_icon_themes.string(i).as_deref() == Some(model.active_shell_theme.as_str()))
+                                .unwrap_or(0),
+                            connect_selected_notify[sender] => move |dd| {
+                                let selected = dd.selected_item()
+                                    .and_downcast::<gtk::StringObject>()
+                                    .map(|s| s.string().to_string());
+                                sender.input(ThemeSettingsInput::ShellIconThemeSelected(selected));
+                            } @shell_handler,
                         },
                     },
-
-                    #[name = "shell_icons_dropdown"]
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.available_shell_icon_themes),
-                        #[watch]
-                        #[block_signal(shell_handler)]
-                        set_selected: (0..model.available_shell_icon_themes.n_items())
-                            .find(|&i| model.available_shell_icon_themes.string(i).as_deref() == Some(model.active_shell_theme.as_str()))
-                            .unwrap_or(0),
-                        connect_selected_notify[sender] => move |dd| {
-                            let selected = dd.selected_item()
-                                .and_downcast::<gtk::StringObject>()
-                                .map(|s| s.string().to_string());
-                            sender.input(ThemeSettingsInput::ShellIconThemeSelected(selected));
-                        } @shell_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Apps",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Apps",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "The icons used to represent apps.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "The icons used to represent apps.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        #[name = "app_icons_dropdown"]
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.available_app_icon_themes),
+                            #[watch]
+                            #[block_signal(app_handler)]
+                            set_selected: (0..model.available_app_icon_themes.n_items())
+                                .find(|&i| model.available_app_icon_themes.string(i).as_deref() == Some(model.active_apps_theme.as_str()))
+                                .unwrap_or(0),
+                            connect_selected_notify[sender] => move |dd| {
+                                let selected = dd.selected_item()
+                                    .and_downcast::<gtk::StringObject>()
+                                    .map(|s| s.string().to_string());
+                                sender.input(ThemeSettingsInput::AppIconThemeSelected(selected));
+                            } @app_handler,
                         },
                     },
-
-                    #[name = "app_icons_dropdown"]
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.available_app_icon_themes),
-                        #[watch]
-                        #[block_signal(app_handler)]
-                        set_selected: (0..model.available_app_icon_themes.n_items())
-                            .find(|&i| model.available_app_icon_themes.string(i).as_deref() == Some(model.active_apps_theme.as_str()))
-                            .unwrap_or(0),
-                        connect_selected_notify[sender] => move |dd| {
-                            let selected = dd.selected_item()
-                                .and_downcast::<gtk::StringObject>()
-                                .map(|s| s.string().to_string());
-                            sender.input(ThemeSettingsInput::AppIconThemeSelected(selected));
-                        } @app_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Theme filter",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Theme filter",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Apply a filter to app icons when a static theme is selected.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Apply a filter to app icons when a static theme is selected.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(apply_theme_filter_handler)]
+                            set_active: model.apply_theme_filter,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(ThemeSettingsInput::ThemeFilterChanged(enabled));
+                                glib::Propagation::Proceed
+                            } @apply_theme_filter_handler,
+                        }
                     },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(apply_theme_filter_handler)]
-                        set_active: model.apply_theme_filter,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(ThemeSettingsInput::ThemeFilterChanged(enabled));
-                            glib::Propagation::Proceed
-                        } @apply_theme_filter_handler,
-                    }
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Theme filter strength",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Theme filter strength",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "A higher value will more aggressively apply theme colors.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "A higher value will more aggressively apply theme colors.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 1.0),
+                            set_increments: (0.1, 0.1),
+                            set_digits: 2,
+                            #[watch]
+                            #[block_signal(filter_strength_handler)]
+                            set_value: model.filter_strength,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ThemeSettingsInput::FilterStrengthChanged(s.value()));
+                            } @filter_strength_handler,
                         },
                     },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 1.0),
-                        set_increments: (0.1, 0.1),
-                        set_digits: 2,
-                        #[watch]
-                        #[block_signal(filter_strength_handler)]
-                        set_value: model.filter_strength,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ThemeSettingsInput::FilterStrengthChanged(s.value()));
-                        } @filter_strength_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Monochrome filter strength",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Monochrome filter strength",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "A higher value will more aggressively apply a monochrome filter.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "A higher value will more aggressively apply a monochrome filter.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 1.0),
+                            set_increments: (0.1, 0.1),
+                            set_digits: 2,
+                            #[watch]
+                            #[block_signal(monochrome_strength_handler)]
+                            set_value: model.monochrome_strength,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ThemeSettingsInput::MonochromeStrengthChanged(s.value()));
+                            } @monochrome_strength_handler,
                         },
                     },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 1.0),
-                        set_increments: (0.1, 0.1),
-                        set_digits: 2,
-                        #[watch]
-                        #[block_signal(monochrome_strength_handler)]
-                        set_value: model.monochrome_strength,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ThemeSettingsInput::MonochromeStrengthChanged(s.value()));
-                        } @monochrome_strength_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Contrast adjustment",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Contrast adjustment",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "A value > 1 will add more contrast. A value < 1 will reduce contrast.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "A value > 1 will add more contrast. A value < 1 will reduce contrast.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 2.0),
+                            set_increments: (0.1, 0.1),
+                            set_digits: 2,
+                            #[watch]
+                            #[block_signal(contrast_strength_handler)]
+                            set_value: model.contrast_strength,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ThemeSettingsInput::ContrastStrengthChanged(s.value()));
+                            } @contrast_strength_handler,
                         },
-                    },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 2.0),
-                        set_increments: (0.1, 0.1),
-                        set_digits: 2,
-                        #[watch]
-                        #[block_signal(contrast_strength_handler)]
-                        set_value: model.contrast_strength,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ThemeSettingsInput::ContrastStrengthChanged(s.value()));
-                        } @contrast_strength_handler,
                     },
                 },
 
@@ -405,151 +422,164 @@ impl Component for ThemeSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Widget corner radius (px)",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Widget corner radius (px)",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Rounds the bar pills and the screen-frame chrome (token --radius-widget). Live — every bar widget updates as you change it. Default 12.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Rounds the bar pills and the screen-frame chrome (token --radius-widget). Live — every bar widget updates as you change it. Default 12.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 1000.0),
+                            set_increments: (1.0, 10.0),
+                            #[watch]
+                            #[block_signal(radius_small_handler)]
+                            set_value: model.radius_widget as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ThemeSettingsInput::RadiusWidgetSelected(s.value() as i32));
+                            } @radius_small_handler,
                         },
                     },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 1000.0),
-                        set_increments: (1.0, 10.0),
-                        #[watch]
-                        #[block_signal(radius_small_handler)]
-                        set_value: model.radius_widget as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ThemeSettingsInput::RadiusWidgetSelected(s.value() as i32));
-                        } @radius_small_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Window corner radius (px)",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Window corner radius (px)",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Rounds menus, dialogs, OSDs and the Settings panel itself (token --radius-window). Live. Default 12.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Rounds menus, dialogs, OSDs and the Settings panel itself (token --radius-window). Live. Default 12.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 1000.0),
+                            set_increments: (1.0, 10.0),
+                            #[watch]
+                            #[block_signal(radius_medium_handler)]
+                            set_value: model.radius_window as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ThemeSettingsInput::RadiusWindowSelected(s.value() as i32));
+                            } @radius_medium_handler,
                         },
                     },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 1000.0),
-                        set_increments: (1.0, 10.0),
-                        #[watch]
-                        #[block_signal(radius_medium_handler)]
-                        set_value: model.radius_window as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ThemeSettingsInput::RadiusWindowSelected(s.value() as i32));
-                        } @radius_medium_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Border width (px)",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Border width (px)",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Thickness of window and popover borders (token --border-width). Default 2.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Thickness of window and popover borders (token --border-width). Default 2.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 20.0),
+                            set_increments: (1.0, 10.0),
+                            #[watch]
+                            #[block_signal(border_width_handler)]
+                            set_value: model.border_width as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ThemeSettingsInput::BorderWidthSelected(s.value() as i32));
+                            } @border_width_handler,
                         },
                     },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 20.0),
-                        set_increments: (1.0, 10.0),
-                        #[watch]
-                        #[block_signal(border_width_handler)]
-                        set_value: model.border_width as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ThemeSettingsInput::BorderWidthSelected(s.value() as i32));
-                        } @border_width_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Reset to defaults",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Restore the house defaults: widget & window radius 12 px, border width 2 px, bar hover 14 %, Settings font scale 1.0.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Button {
+                            add_css_class: "ok-button-surface",
+                            set_valign: gtk::Align::Center,
                             set_label: "Reset to defaults",
-                            set_hexpand: true,
-                        },
-
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Restore the house defaults: widget & window radius 12 px, border width 2 px, bar hover 14 %, Settings font scale 1.0.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    gtk::Button {
-                        add_css_class: "ok-button-surface",
-                        set_valign: gtk::Align::Center,
-                        set_label: "Reset to defaults",
-                        connect_clicked[sender] => move |_| {
-                            sender.input(ThemeSettingsInput::ResetSizing);
+                            connect_clicked[sender] => move |_| {
+                                sender.input(ThemeSettingsInput::ResetSizing);
+                            },
                         },
                     },
                 },
@@ -563,45 +593,52 @@ impl Component for ThemeSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "CSS file",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "CSS file",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Custom styles sheets go in ~/.config/margo/mshell/styles/",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Custom styles sheets go in ~/.config/margo/mshell/styles/",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.available_css),
+                            #[watch]
+                            #[block_signal(css_handler)]
+                            set_selected: (0..model.available_css.n_items())
+                                .find(|&i| model.available_css.string(i).as_deref() == Some(model.active_css.as_str()))
+                                .unwrap_or(0),
+                            connect_selected_notify[sender] => move |dd| {
+                                let selected = dd.selected_item()
+                                    .and_downcast::<gtk::StringObject>()
+                                    .map(|s| s.string().to_string());
+                                sender.input(ThemeSettingsInput::CssFileSelected(selected));
+                            } @css_handler,
                         },
-                    },
-
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.available_css),
-                        #[watch]
-                        #[block_signal(css_handler)]
-                        set_selected: (0..model.available_css.n_items())
-                            .find(|&i| model.available_css.string(i).as_deref() == Some(model.active_css.as_str()))
-                            .unwrap_or(0),
-                        connect_selected_notify[sender] => move |dd| {
-                            let selected = dd.selected_item()
-                                .and_downcast::<gtk::StringObject>()
-                                .map(|s| s.string().to_string());
-                            sender.input(ThemeSettingsInput::CssFileSelected(selected));
-                        } @css_handler,
                     },
                 },
 
@@ -614,80 +651,89 @@ impl Component for ThemeSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Opacity",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Opacity",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Value from 0.5 to 1 where 1 is fully opaque. Sent to Matugen as mshell.opacity",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Value from 0.5 to 1 where 1 is fully opaque. Sent to Matugen as mshell.opacity",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.5, 1.0),
+                            set_increments: (0.1, 0.1),
+                            set_digits: 2,
+                            #[watch]
+                            #[block_signal(window_opacity_handler)]
+                            set_value: model.window_opacity,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ThemeSettingsInput::WindowOpacitySelected(s.value()));
+                            } @window_opacity_handler,
                         },
                     },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.5, 1.0),
-                        set_increments: (0.1, 0.1),
-                        set_digits: 2,
-                        #[watch]
-                        #[block_signal(window_opacity_handler)]
-                        set_value: model.window_opacity,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ThemeSettingsInput::WindowOpacitySelected(s.value()));
-                        } @window_opacity_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Surface opacity",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Surface opacity",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Frost the bar + menu/panel surfaces so the wallpaper shows through. 100 = fully opaque (60–100%).",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Frost the bar + menu/panel surfaces so the wallpaper shows through. 100 = fully opaque (60–100%).",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (60.0, 100.0),
+                            set_increments: (5.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(surface_opacity_handler)]
+                            set_value: model.surface_opacity as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ThemeSettingsInput::SurfaceOpacitySelected(s.value() as i32));
+                            } @surface_opacity_handler,
                         },
-                    },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (60.0, 100.0),
-                        set_increments: (5.0, 5.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(surface_opacity_handler)]
-                        set_value: model.surface_opacity as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ThemeSettingsInput::SurfaceOpacitySelected(s.value() as i32));
-                        } @surface_opacity_handler,
                     },
                 },
 
@@ -710,213 +756,228 @@ impl Component for ThemeSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Type",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Type",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Sets a custom color scheme type.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Sets a custom color scheme type.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        #[name = "matugen_type_dropdown"]
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.matugen_types),
+                            #[watch]
+                            #[block_signal(type_handler)]
+                            set_selected: MatugenType::all()
+                                .iter()
+                                .position(|k| k == &model.active_matugen_type)
+                                .unwrap_or(0) as u32,
+                            connect_selected_notify[sender] => move |dd| {
+                                let idx = dd.selected() as usize;
+                                if let Some(kind) = MatugenType::all().get(idx) {
+                                    sender.input(ThemeSettingsInput::MatugenTypeSelected(*kind));
+                                }
+                            } @type_handler,
                         },
                     },
-
-                    #[name = "matugen_type_dropdown"]
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.matugen_types),
-                        #[watch]
-                        #[block_signal(type_handler)]
-                        set_selected: MatugenType::all()
-                            .iter()
-                            .position(|k| k == &model.active_matugen_type)
-                            .unwrap_or(0) as u32,
-                        connect_selected_notify[sender] => move |dd| {
-                            let idx = dd.selected() as usize;
-                            if let Some(kind) = MatugenType::all().get(idx) {
-                                sender.input(ThemeSettingsInput::MatugenTypeSelected(*kind));
-                            }
-                        } @type_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Preference",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Preference",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "When multiple colors can be extracted from an image, this will decide which to pick.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "When multiple colors can be extracted from an image, this will decide which to pick.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        #[name = "matugen_preference_dropdown"]
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.matugen_preferences),
+                            #[watch]
+                            #[block_signal(preference_handler)]
+                            set_selected: MatugenPreference::all()
+                                .iter()
+                                .position(|k| k == &model.active_matugen_preference)
+                                .unwrap_or(0) as u32,
+                            connect_selected_notify[sender] => move |dd| {
+                                let idx = dd.selected() as usize;
+                                if let Some(kind) = MatugenPreference::all().get(idx) {
+                                    sender.input(ThemeSettingsInput::MatugenPreferenceSelected(*kind));
+                                }
+                            } @preference_handler,
                         },
                     },
-
-                    #[name = "matugen_preference_dropdown"]
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.matugen_preferences),
-                        #[watch]
-                        #[block_signal(preference_handler)]
-                        set_selected: MatugenPreference::all()
-                            .iter()
-                            .position(|k| k == &model.active_matugen_preference)
-                            .unwrap_or(0) as u32,
-                        connect_selected_notify[sender] => move |dd| {
-                            let idx = dd.selected() as usize;
-                            if let Some(kind) = MatugenPreference::all().get(idx) {
-                                sender.input(ThemeSettingsInput::MatugenPreferenceSelected(*kind));
-                            }
-                        } @preference_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Mode",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Mode",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Light or dark mode.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Light or dark mode.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        #[name = "matugen_mode_dropdown"]
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.matugen_modes),
+                            #[watch]
+                            #[block_signal(mode_handler)]
+                            set_selected: MatugenMode::all()
+                                .iter()
+                                .position(|k| k == &model.active_matugen_mode)
+                                .unwrap_or(0) as u32,
+                            connect_selected_notify[sender] => move |dd| {
+                                let idx = dd.selected() as usize;
+                                if let Some(kind) = MatugenMode::all().get(idx) {
+                                    sender.input(ThemeSettingsInput::MatugenModeSelected(*kind));
+                                }
+                            } @mode_handler,
                         },
                     },
-
-                    #[name = "matugen_mode_dropdown"]
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.matugen_modes),
-                        #[watch]
-                        #[block_signal(mode_handler)]
-                        set_selected: MatugenMode::all()
-                            .iter()
-                            .position(|k| k == &model.active_matugen_mode)
-                            .unwrap_or(0) as u32,
-                        connect_selected_notify[sender] => move |dd| {
-                            let idx = dd.selected() as usize;
-                            if let Some(kind) = MatugenMode::all().get(idx) {
-                                sender.input(ThemeSettingsInput::MatugenModeSelected(*kind));
-                            }
-                        } @mode_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Auto light/dark from wallpaper",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Auto light/dark from wallpaper",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Pick the Mode automatically from the wallpaper's brightness — a bright wallpaper goes Light, a dark one goes Dark. Overrides the Mode above while on.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Pick the Mode automatically from the wallpaper's brightness — a bright wallpaper goes Light, a dark one goes Dark. Overrides the Mode above while on.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(auto_polarity_handler)]
+                            set_active: model.auto_polarity,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(ThemeSettingsInput::AutoPolarityChanged(enabled));
+                                glib::Propagation::Proceed
+                            } @auto_polarity_handler,
                         },
                     },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(auto_polarity_handler)]
-                        set_active: model.auto_polarity,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(ThemeSettingsInput::AutoPolarityChanged(enabled));
-                            glib::Propagation::Proceed
-                        } @auto_polarity_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Contrast",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Contrast",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Value from -1 to 1. -1 represents minimum contrast, 0 represents standard (i.e. the design as spec'd), and 1 represents maximum contrast.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Value from -1 to 1. -1 represents minimum contrast, 0 represents standard (i.e. the design as spec'd), and 1 represents maximum contrast.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (-1.0, 1.0),
+                            set_increments: (0.1, 0.1),
+                            set_digits: 2,
+                            #[watch]
+                            #[block_signal(matugen_contrast_handler)]
+                            set_value: model.matugen_contrast,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ThemeSettingsInput::MatugenContrastSelected(s.value()));
+                            } @matugen_contrast_handler,
                         },
-                    },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (-1.0, 1.0),
-                        set_increments: (0.1, 0.1),
-                        set_digits: 2,
-                        #[watch]
-                        #[block_signal(matugen_contrast_handler)]
-                        set_value: model.matugen_contrast,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ThemeSettingsInput::MatugenContrastSelected(s.value()));
-                        } @matugen_contrast_handler,
                     },
                 },
 

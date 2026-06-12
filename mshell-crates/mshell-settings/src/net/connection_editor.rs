@@ -288,69 +288,78 @@ impl Component for ConnectionEditorModel {
 
                     // Autoconnect row
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 20,
+                        add_css_class: "boxed-list",
+                        set_orientation: gtk::Orientation::Vertical,
 
                         gtk::Box {
-                            set_orientation: gtk::Orientation::Vertical,
-                            set_hexpand: true,
-                            gtk::Label {
-                                add_css_class: "label-medium-bold",
-                                set_halign: gtk::Align::Start,
-                                set_label: "Autoconnect",
+                            add_css_class: "action-row",
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
+
+                            gtk::Box {
+                                set_orientation: gtk::Orientation::Vertical,
+                                set_valign: gtk::Align::Center,
+                                set_hexpand: true,
+                                gtk::Label {
+                                    add_css_class: "label-medium-bold",
+                                    set_halign: gtk::Align::Start,
+                                    set_label: "Autoconnect",
+                                },
+                                gtk::Label {
+                                    add_css_class: "label-small",
+                                    set_halign: gtk::Align::Start,
+                                    set_label: "Automatically connect when available.",
+                                    set_xalign: 0.0,
+                                    set_wrap: true,
+                                },
                             },
-                            gtk::Label {
-                                add_css_class: "label-small",
-                                set_halign: gtk::Align::Start,
-                                set_label: "Automatically connect when available.",
-                                set_xalign: 0.0,
-                                set_wrap: true,
+
+                            gtk::Switch {
+                                set_valign: gtk::Align::Center,
+                                #[watch]
+                                #[block_signal(autoconnect_handler)]
+                                set_active: model.autoconnect,
+                                connect_state_set[sender] => move |_, v| {
+                                    sender.input(ConnectionEditorInput::AutoconnectChanged(v));
+                                    glib::Propagation::Proceed
+                                } @autoconnect_handler,
                             },
                         },
 
-                        gtk::Switch {
-                            set_valign: gtk::Align::Center,
-                            #[watch]
-                            #[block_signal(autoconnect_handler)]
-                            set_active: model.autoconnect,
-                            connect_state_set[sender] => move |_, v| {
-                                sender.input(ConnectionEditorInput::AutoconnectChanged(v));
-                                glib::Propagation::Proceed
-                            } @autoconnect_handler,
-                        },
-                    },
-
-                    // Metered row
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 20,
-
+                        // Metered row
                         gtk::Box {
-                            set_orientation: gtk::Orientation::Vertical,
-                            set_hexpand: true,
-                            gtk::Label {
-                                add_css_class: "label-medium-bold",
-                                set_halign: gtk::Align::Start,
-                                set_label: "Metered",
-                            },
-                            gtk::Label {
-                                add_css_class: "label-small",
-                                set_halign: gtk::Align::Start,
-                                set_label: "Whether this connection counts against a data cap.",
-                                set_xalign: 0.0,
-                                set_wrap: true,
-                            },
-                        },
+                            add_css_class: "action-row",
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
 
-                        gtk::DropDown {
-                            set_valign: gtk::Align::Center,
-                            set_model: Some(&gtk::StringList::new(METERED_OPTIONS)),
-                            #[watch]
-                            #[block_signal(metered_handler)]
-                            set_selected: model.metered_idx,
-                            connect_selected_notify[sender] => move |dd| {
-                                sender.input(ConnectionEditorInput::MeteredChanged(dd.selected()));
-                            } @metered_handler,
+                            gtk::Box {
+                                set_orientation: gtk::Orientation::Vertical,
+                                set_valign: gtk::Align::Center,
+                                set_hexpand: true,
+                                gtk::Label {
+                                    add_css_class: "label-medium-bold",
+                                    set_halign: gtk::Align::Start,
+                                    set_label: "Metered",
+                                },
+                                gtk::Label {
+                                    add_css_class: "label-small",
+                                    set_halign: gtk::Align::Start,
+                                    set_label: "Whether this connection counts against a data cap.",
+                                    set_xalign: 0.0,
+                                    set_wrap: true,
+                                },
+                            },
+
+                            gtk::DropDown {
+                                set_valign: gtk::Align::Center,
+                                set_model: Some(&gtk::StringList::new(METERED_OPTIONS)),
+                                #[watch]
+                                #[block_signal(metered_handler)]
+                                set_selected: model.metered_idx,
+                                connect_selected_notify[sender] => move |dd| {
+                                    sender.input(ConnectionEditorInput::MeteredChanged(dd.selected()));
+                                } @metered_handler,
+                            },
                         },
                     },
                 },
@@ -366,26 +375,32 @@ impl Component for ConnectionEditorModel {
 
                     // Method row
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 20,
+                        add_css_class: "boxed-list",
+                        set_orientation: gtk::Orientation::Vertical,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_hexpand: true,
-                            set_halign: gtk::Align::Start,
-                            set_valign: gtk::Align::Center,
-                            set_label: "Method",
-                        },
+                        gtk::Box {
+                            add_css_class: "action-row",
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
 
-                        gtk::DropDown {
-                            set_valign: gtk::Align::Center,
-                            set_model: Some(&gtk::StringList::new(IPV4_METHODS)),
-                            #[watch]
-                            #[block_signal(ipv4_method_handler)]
-                            set_selected: model.ipv4_method_idx,
-                            connect_selected_notify[sender] => move |dd| {
-                                sender.input(ConnectionEditorInput::Ipv4MethodChanged(dd.selected()));
-                            } @ipv4_method_handler,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_hexpand: true,
+                                set_halign: gtk::Align::Start,
+                                set_valign: gtk::Align::Center,
+                                set_label: "Method",
+                            },
+
+                            gtk::DropDown {
+                                set_valign: gtk::Align::Center,
+                                set_model: Some(&gtk::StringList::new(IPV4_METHODS)),
+                                #[watch]
+                                #[block_signal(ipv4_method_handler)]
+                                set_selected: model.ipv4_method_idx,
+                                connect_selected_notify[sender] => move |dd| {
+                                    sender.input(ConnectionEditorInput::Ipv4MethodChanged(dd.selected()));
+                                } @ipv4_method_handler,
+                            },
                         },
                     },
 
@@ -534,26 +549,32 @@ impl Component for ConnectionEditorModel {
                     set_margin_end: 8,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 20,
+                        add_css_class: "boxed-list",
+                        set_orientation: gtk::Orientation::Vertical,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_hexpand: true,
-                            set_halign: gtk::Align::Start,
-                            set_valign: gtk::Align::Center,
-                            set_label: "Method",
-                        },
+                        gtk::Box {
+                            add_css_class: "action-row",
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
 
-                        gtk::DropDown {
-                            set_valign: gtk::Align::Center,
-                            set_model: Some(&gtk::StringList::new(IPV6_METHODS)),
-                            #[watch]
-                            #[block_signal(ipv6_method_handler)]
-                            set_selected: model.ipv6_method_idx,
-                            connect_selected_notify[sender] => move |dd| {
-                                sender.input(ConnectionEditorInput::Ipv6MethodChanged(dd.selected()));
-                            } @ipv6_method_handler,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_hexpand: true,
+                                set_halign: gtk::Align::Start,
+                                set_valign: gtk::Align::Center,
+                                set_label: "Method",
+                            },
+
+                            gtk::DropDown {
+                                set_valign: gtk::Align::Center,
+                                set_model: Some(&gtk::StringList::new(IPV6_METHODS)),
+                                #[watch]
+                                #[block_signal(ipv6_method_handler)]
+                                set_selected: model.ipv6_method_idx,
+                                connect_selected_notify[sender] => move |dd| {
+                                    sender.input(ConnectionEditorInput::Ipv6MethodChanged(dd.selected()));
+                                } @ipv6_method_handler,
+                            },
                         },
                     },
 

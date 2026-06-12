@@ -113,78 +113,87 @@ impl Component for MenuSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Left Menu Expansion",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Left Menu Expansion",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "How left-anchored menus expand vertically — always full-height or only as tall as their contents.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "How left-anchored menus expand vertically — always full-height or only as tall as their contents.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&VerticalMenuExpansion::display_names())),
+                            #[watch]
+                            #[block_signal(left_exp_handler)]
+                            set_selected: model.left_menu_expansion_type.to_index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(MenuSettingsInput::LeftMenuExpansionChanged(
+                                    VerticalMenuExpansion::from_index(dd.selected())
+                                ));
+                            } @left_exp_handler,
                         },
                     },
-
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&gtk::StringList::new(&VerticalMenuExpansion::display_names())),
-                        #[watch]
-                        #[block_signal(left_exp_handler)]
-                        set_selected: model.left_menu_expansion_type.to_index(),
-                        connect_selected_notify[sender] => move |dd| {
-                            sender.input(MenuSettingsInput::LeftMenuExpansionChanged(
-                                VerticalMenuExpansion::from_index(dd.selected())
-                            ));
-                        } @left_exp_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Right Menu Expansion",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "How right-anchored menus expand vertically.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&gtk::StringList::new(&VerticalMenuExpansion::display_names())),
-                        #[watch]
-                        #[block_signal(right_exp_handler)]
-                        set_selected: model.right_menu_expansion_type.to_index(),
-                        connect_selected_notify[sender] => move |dd| {
-                            sender.input(MenuSettingsInput::RightMenuExpansionChanged(
-                                VerticalMenuExpansion::from_index(dd.selected())
-                            ));
-                        } @right_exp_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Right Menu Expansion",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "How right-anchored menus expand vertically.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&VerticalMenuExpansion::display_names())),
+                            #[watch]
+                            #[block_signal(right_exp_handler)]
+                            set_selected: model.right_menu_expansion_type.to_index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(MenuSettingsInput::RightMenuExpansionChanged(
+                                    VerticalMenuExpansion::from_index(dd.selected())
+                                ));
+                            } @right_exp_handler,
+                        },
                     },
                 },
 
@@ -339,14 +348,22 @@ fn build_screenshare_section(
         .build();
     section.append(&title);
 
+    let boxed_list = gtk::Box::builder()
+        .css_classes(["boxed-list"])
+        .orientation(gtk::Orientation::Vertical)
+        .build();
+    section.append(&boxed_list);
+
     let row = gtk::Box::builder()
+        .css_classes(["action-row"])
         .orientation(gtk::Orientation::Horizontal)
         .spacing(20)
         .build();
-    section.append(&row);
+    boxed_list.append(&row);
 
     let labels = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
+        .valign(gtk::Align::Center)
         .build();
     row.append(&labels);
 
