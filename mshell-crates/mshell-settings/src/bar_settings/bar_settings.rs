@@ -225,6 +225,7 @@ impl Component for BarSettingsModel {
                         },
 
                         gtk::Switch {
+                            set_valign: gtk::Align::Center,
                             #[watch]
                             #[block_signal(enable_frame_handler)]
                             set_active: model.enable_frame,
