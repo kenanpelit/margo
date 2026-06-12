@@ -32,8 +32,8 @@
 // Mirrors .panel-action-btn and .audio-dashboard-mute-button.
 .clipboard-action-btn {
   all: unset;
-  min-width: 40px;
-  min-height: 40px;
+  min-width: var(--button-circle-size);
+  min-height: var(--button-circle-size);
   border-radius: var(--radius-pill);
   background-color: transparent;
   transition: background-color var(--motion-fast) var(--ease-standard);
@@ -90,9 +90,11 @@
 }
 
 // ── Search entry ──────────────────────────────────────────────────
-// Calm pill query surface. .ok-entry zeroes GTK chrome; this gives
-// it the panel pill shape + quiet tonal fill. Focus ring is the ONLY
-// visible border — idle reads borderless.
+// Calm pill query surface — the DELIBERATE panel-scoped pill exception
+// (DESIGN.md §12; every other search is an --entry-radius Adwaita
+// entry). .ok-entry zeroes GTK chrome; this gives it the panel pill
+// shape + quiet tonal fill. Focus ring is the ONLY visible border —
+// idle reads borderless.
 .clipboard-search {
   margin: var(--space-2) 0;
   background-color: var(--surface-container);
@@ -128,7 +130,8 @@
 .clipboard-item {
   all: unset;
   padding: var(--space-3) var(--space-3);
-  border-radius: var(--radius-sm);
+  // Panel content rows take the card corner (DESIGN.md §12).
+  border-radius: var(--card-radius);
   font-size: var(--font-xs);
   font-family: var(--font-family-monospace);
   color: var(--on-surface);
