@@ -274,10 +274,12 @@ fn object_child<'a>(parent: &'a mut Map<String, Value>, key: &str) -> &'a mut Ma
     let entry = parent
         .entry(key.to_string())
         .or_insert_with(|| Value::Object(Map::new()));
-    if !entry.is_object() {
+    loop {
+        if let Value::Object(map) = entry {
+            return map;
+        }
         *entry = Value::Object(Map::new());
     }
-    entry.as_object_mut().expect("object inserted above")
 }
 
 fn read_matugen_primary() -> Option<String> {
