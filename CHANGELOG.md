@@ -41,6 +41,13 @@ hierarchy pass, and CI gained a panic-count ratchet.
   `DragSource`/`DropTarget` row reorder. The pre-flip audit's three real
   hits (privacy-menu rows on the bar-pill radius token; two deliberate
   5 px launcher paddings) were fixed in the same commit.
+- **Plugin-host path-sandbox tests.** The WASM tier's only filesystem
+  boundary (`resolve_scoped` behind the `read-file`/`write-file`
+  capabilities) moved into an unconditionally-compiled `sandbox` module
+  with 10 unit tests (traversal matrix incl. `..`/absolute/CurDir/
+  percent-encoding cases, scoped write/read round-trip, no-escape
+  guarantees) — they run on every `cargo test --workspace`, even in
+  builds that never link wasmtime. No behaviour change.
 - **CI panic ratchet.** New `scripts/panic-ratchet.sh` +
   `scripts/panic-baseline.txt` gate in `ci.yml`: the number of
   `.unwrap()` / `.expect()` / `panic!()` calls in non-test code (334 at

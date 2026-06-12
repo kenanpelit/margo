@@ -288,21 +288,11 @@ impl Host for HostState {
     }
 
     fn read_file(&mut self, rel_path: String) -> Result<Vec<u8>, String> {
-        let path = resolve_scoped(&self.data_dir, &rel_path)?;
-        std::fs::read(&path).map_err(|e| e.to_string())
+        crate::sandbox::read_scoped(&self.data_dir, &rel_path)
     }
 
     fn write_file(&mut self, rel_path: String, bytes: Vec<u8>) -> Result<(), String> {
-        let path = resolve_scoped(&self.data_dir, &rel_path)?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-        // Atomic-ish: write tmp + rename, so a crash mid-write doesn't corrupt
-        // the existing file.
-        let tmp = path.with_extension("mplugin-tmp");
-        std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
-        Ok(())
+        crate::sandbox::write_scoped(&self.data_dir, &rel_path, &bytes)
     }
 
     fn media_now_playing(&mut self) -> WitMediaInfo {
@@ -522,25 +512,6 @@ fn host_http(req: HttpRequest) -> Result<HttpResponse, String> {
 // The `types` interface is types-only, but the generated linker bound still
 // requires its (empty) host trait.
 impl margo::plugin::types::Host for HostState {}
-
-/// Resolve `rel_path` against `root` and reject any traversal: rejects empty,
-/// absolute, or `..`-bearing paths. The returned path is always inside `root`.
-fn resolve_scoped(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
-    if rel_path.is_empty() {
-        return Err("path is empty".to_string());
-    }
-    let candidate = Path::new(rel_path);
-    if candidate.is_absolute() {
-        return Err("absolute paths are not allowed".to_string());
-    }
-    for component in candidate.components() {
-        match component {
-            std::path::Component::Normal(_) => {}
-            _ => return Err(format!("disallowed path component in `{rel_path}`")),
-        }
-    }
-    Ok(root.join(candidate))
-}
 
 /// A wasmtime engine, reused across plugin instantiations.
 pub struct PluginRuntime {
