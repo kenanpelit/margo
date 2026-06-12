@@ -124,7 +124,10 @@
     .sidebar-button {
         @include buttons.button-base("--surface", "--on-surface");
         @include buttons.state-layers("--surface", "--on-surface");
-        min-height: calc(38px * var(--font-scale-settings, 1.0));
+        // 33px row (was 38): with the box's 2px spacing this gives the nav
+        // list a compact, GNOME-Settings-like rhythm instead of gapped
+        // free-floating rows. The labels' own padding keeps glyph headroom.
+        min-height: calc(33px * var(--font-scale-settings, 1.0));
 
         &:checked {
             @include buttons.button-base("--primary", "--on-primary");
@@ -188,6 +191,34 @@
     border-right: solid 1px var(--outline-variant);
 }
 
+// ── Widgets sub-sidebar density overrides ──────────────────────
+// The widget catalogue has the longest names in the whole Settings
+// surface ("Screen Recording", "System Bluetooth", …) inside the
+// narrowest column. Trade a step of type size + button padding for
+// fitting the full names — placed after the shared block above so
+// these equal-specificity rules win by order.
+.settings-subsidebar {
+    .sidebar-button {
+        min-height: calc(31px * var(--font-scale-settings, 1.0));
+
+        // Tighter content padding than button-base's space-2/space-3:
+        // every horizontal pixel goes to the label.
+        > * {
+            padding: var(--space-1) var(--space-2);
+        }
+
+        label.settings-sidebar-label {
+            // Fractional size on purpose — exact integer px sizes sit on a
+            // Maple Mono hinting cliff that clips cap-height tops.
+            font-size: calc(14.5px * var(--font-scale-settings, 1.0));
+        }
+
+        image {
+            -gtk-icon-size: 14px;
+        }
+    }
+}
+
 // Group header in the sidebar (Appearance / Shell / System / …).
 // DESIGN.md §1 section-label: dim, uppercase, letter-spaced; sits a
 // notch above its buttons. Non-interactive — just structures the list.
@@ -195,15 +226,21 @@
     font-size: calc(11.5px * var(--font-scale-settings, 1.0));
     font-weight: 600;
     line-height: 1.45;
-    min-height: calc(22px * var(--font-scale-settings, 1.0));
+    min-height: calc(20px * var(--font-scale-settings, 1.0));
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--on-surface-variant);
-    margin-top: var(--space-3);
+    opacity: 0.8;
+    // space-2 top (was space-3): enough to break the groups apart without
+    // the "double gap" the old margin made on top of the buttons' spacing.
+    margin-top: var(--space-2);
     margin-bottom: var(--space-1);
     padding-top: 3px;
     padding-bottom: 2px;
-    padding-left: var(--space-2);
+    // Align the header's left edge with the button icons below it
+    // (button content padding is space-3), so the groups scan as one
+    // column instead of a staggered zig-zag.
+    padding-left: var(--space-3);
 }
 
 .settings-sidebar-title {
@@ -229,6 +266,20 @@
     // overrides below still win where we set explicit sizes (hero
     // title 23px, section caption 11.5px, etc.).
     font-size: calc(15.5px * var(--font-scale-settings, 1.0));
+
+    // ── Typographic hierarchy: title vs description ────────────
+    // Pages set titles in label-{medium,large}-bold and the explanatory
+    // line under them in plain label-small — but the primitive paints
+    // BOTH in --on-surface, so heading and description read at the same
+    // strength. Re-tone descriptions to the muted on-surface-variant
+    // (the same tier action-row subtitles and hero subtitles already
+    // use) so titles carry the contrast and descriptions sit back.
+    // Scoped to settings pages; -bold/-primary/-error label-small
+    // variants keep their own explicit colours.
+    label.label-small {
+        color: var(--on-surface-variant);
+        opacity: 0.9;
+    }
 }
 
 // Secondary action buttons (.ok-button-surface) share the page's
@@ -366,6 +417,10 @@
     background-color: var(--surface-container);
     border-radius: var(--radius-md);
     padding: 0;
+    // Hairline edge so the card reads as a crisp plate against the
+    // --surface page even on low-contrast palettes where the tonal
+    // step alone almost vanishes (DESIGN.md §0.1 fallback separator).
+    border: 1px solid var(--outline-variant);
 
     // Internal row separator: a 2px --outline-variant hairline, the
     // shared divider treatment (DESIGN.md §1). overflow:hidden clips

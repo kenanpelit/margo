@@ -267,7 +267,10 @@ impl Component for SettingsWindowModel {
                             #[name = "sidebar_box"]
                             gtk::Box {
                                 set_orientation: gtk::Orientation::Vertical,
-                                set_spacing: 4,
+                                // Tight nav rhythm: the buttons carry their own
+                                // min-height; 2px keeps rows visually grouped
+                                // without reading as a gapped list.
+                                set_spacing: 2,
                             },
 
                             // Flat search results (page name → navigate), shown
@@ -995,8 +998,10 @@ impl Component for SettingsWindowModel {
             // Wide enough for the longest widget names (icon + "Screen
             // Recording" / "System Bluetooth" / "Valent Connect") so the
             // sub-sidebar labels stop ellipsizing to "Notifica…" etc.
-            .width_request(200)
-            .spacing(4)
+            // Paired with the .settings-subsidebar density overrides
+            // (smaller label + tighter button padding) in _settings.scss.
+            .width_request(216)
+            .spacing(2)
             .hexpand(false)
             .css_classes(["settings-subsidebar"])
             .build();
@@ -1034,7 +1039,9 @@ impl Component for SettingsWindowModel {
                 builder = builder.active(true);
             }
             let btn = builder.build();
-            let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+            // 8px icon→label gap (not the top-level sidebar's 12): the
+            // sub-sidebar trades air for fitting the long widget names.
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
             row.set_valign(gtk::Align::Center);
             row.append(&gtk::Image::from_icon_name(icon));
             let lbl = settings_sidebar_label(label);
