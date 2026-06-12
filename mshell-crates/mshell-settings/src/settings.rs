@@ -254,7 +254,13 @@ impl Component for SettingsWindowModel {
                         // doesn't inject `sender` into its closures).
                     },
 
-                    gtk::Separator {},
+                    gtk::Separator {
+                        // Breathing room so the search pill and the first
+                        // nav row ("General") don't sit flush against the
+                        // rule from either side.
+                        set_margin_top: 2,
+                        set_margin_bottom: 2,
+                    },
 
                     gtk::ScrolledWindow {
                         set_hscrollbar_policy: gtk::PolicyType::Never,
