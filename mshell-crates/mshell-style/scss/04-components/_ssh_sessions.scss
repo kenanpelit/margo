@@ -35,7 +35,8 @@
 }
 
 .ssh-sessions-search {
-  border-radius: var(--radius-xl);
+  // Compact menu search = Adwaita entry (DESIGN.md §1; pill is panel-only).
+  border-radius: var(--entry-radius);
   background-color: var(--surface-container-highest);
   padding: var(--space-1) var(--space-3);
 }

@@ -7,6 +7,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **GNOME/libadwaita visual overhaul.** The whole shell moved to Adwaita
+  metrics, driven from a new central component-token layer
+  (`01-tokens/_components.scss`) — buttons pull shape, size and colour
+  roles from one place (`--button-*`, `--row-*`, `--card-*`,
+  `--entry-*`). Radius scale 10/16/20/28/32 → **6/9/12/15/18** (Adwaita
+  button/card/window); every button is now 9 px / ≥34 px with size
+  equality across a row; the pill shape is reserved for switches,
+  progress, chips, the clipboard panel search and prominent CTAs (action
+  buttons are never pills anymore — power/session/DNS rows demoted).
+  New shared **boxed-list** primitive (hairline-separated grouped rows,
+  Adwaita ActionRow anatomy) adopted across ~45 Settings pages; compact
+  searches (settings sidebar, keybinds, SSH) dropped from pill/xl to the
+  Adwaita entry corner; control-center tiles, dashboard tiles and mdock
+  take the card/window corners. DESIGN.md §0/§1/§5/§12/§21/§22 rewritten
+  to the new language (incl. stale doc↔token drift), with the design-lint
+  CI gate unchanged and green. Spec:
+  `docs/superpowers/specs/2026-06-12-gnome-visual-overhaul-design.md`.
+
 ## [1.0.4] – 2026-06-12
 
 A notification-center deepening on top of housekeeping: notifications go

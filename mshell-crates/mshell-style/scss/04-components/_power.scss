@@ -35,13 +35,13 @@
 // (non-selected) state carries a calm tonal hover (DESIGN.md
 // §7 state-on-interactive / §Motion).
 .power-profile-button {
-  // Slim fully-rounded pill (DESIGN.md §21). A touch smaller than the generic
-  // action pill — the power widget stacks three of these in a row, so 34px +
-  // tighter vertical padding keeps the row compact.
+  // The uniform Adwaita action button (DESIGN.md §21) — geometry from the
+  // central component tokens so the three profile buttons in the row are
+  // exact size-equal siblings.
   padding: var(--space-1) var(--space-3);
-  min-width: 84px;
-  min-height: 34px;
-  border-radius: var(--radius-pill);
+  min-width: var(--button-min-width);
+  min-height: var(--button-min-height);
+  border-radius: var(--button-radius);
   transition: background-color var(--motion-medium) var(--ease-standard),
               color var(--motion-medium) var(--ease-standard);
 }
@@ -53,12 +53,12 @@
 // Plain surface buttons; `.selected` (from `ok-button-surface`)
 // carries the active-state tint for Lock Auto / Idle Toggle.
 .power-control-button {
-  // Same compact pill as .power-profile-button so the whole power widget stays
-  // uniform (DESIGN.md §21).
+  // Same central button geometry as .power-profile-button so the whole
+  // power widget stays one size-equal family (DESIGN.md §21).
   padding: var(--space-1) var(--space-3);
-  min-width: 84px;
-  min-height: 34px;
-  border-radius: var(--radius-pill);
+  min-width: var(--button-min-width);
+  min-height: var(--button-min-height);
+  border-radius: var(--button-radius);
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
@@ -68,7 +68,7 @@
 // --primary when selected (via .ok-button-surface.selected).
 .power-charge-preset {
   background-color: var(--surface-container);
-  border-radius: var(--radius-lg);
+  border-radius: var(--button-radius);
   padding: var(--space-2) var(--space-3);
   min-width: 0;
   min-height: 0;

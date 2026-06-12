@@ -275,7 +275,8 @@
     background-color: var(--surface-container);
     color: var(--on-surface);
     border: none;
-    border-radius: var(--radius-pill);
+    // Adwaita entry corner (DESIGN.md §1; the pill is panel-search only).
+    border-radius: var(--entry-radius);
     padding: var(--space-1) var(--space-3);
     caret-color: var(--primary);
     transition: box-shadow var(--motion-fast) var(--ease-standard);

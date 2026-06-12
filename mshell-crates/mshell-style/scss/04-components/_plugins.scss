@@ -358,7 +358,7 @@ button.plugin-bubble-copy {
 }
 
 .plugin-menu-row {
-  min-height: 40px; // §0.9 interactive target
+  min-height: var(--row-min-height-compact);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   transition: background-color var(--motion-fast) var(--ease-standard);
@@ -427,8 +427,8 @@ button.plugin-bubble-copy {
 
 // Primary action button — filled accent (Connect).
 .plugin-action {
-  min-height: 40px; // §0.9 interactive target
-  border-radius: var(--radius-sm);
+  min-height: var(--button-min-height);
+  border-radius: var(--button-radius);
   transition: background-color var(--motion-fast) var(--ease-standard);
 
   &.plugin-action-primary {
@@ -498,7 +498,7 @@ button.plugin-bubble-copy {
 
 // One selectable list row — calm card with the standard hover/press tints.
 .plugin-row {
-  min-height: 40px;
+  min-height: var(--row-min-height-compact);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   transition: background-color var(--motion-fast) var(--ease-standard);
