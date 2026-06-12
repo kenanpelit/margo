@@ -24,7 +24,7 @@
 //! | `Ctrl+Enter`         | provider's alt action (if any)      |
 //! | `Ctrl+1` .. `Ctrl+9` | activate the Nth result             |
 //! | `Ctrl+Shift+P`       | toggle pin on selected (★)          |
-//! | `Delete`             | delete frecency/history entry       |
+//! | `Ctrl+Delete`        | delete frecency/history entry       |
 //! | `Ctrl+E`             | toggle fuzzy / exact-substring mode |
 //! | `Ctrl+R`             | resume last query                   |
 //! | `Esc`                | close                               |
@@ -148,7 +148,7 @@ pub(crate) enum AppLauncherInput {
     SelectCategory(String),
     /// Ctrl+Shift+P — toggle pin on the selected item.
     TogglePin,
-    /// Delete — remove the selected item from its provider's
+    /// Ctrl+Delete — remove the selected item from its provider's
     /// frecency / history store (provider must opt in via
     /// `can_delete`).
     DeleteEntry,
@@ -610,8 +610,10 @@ impl Component for AppLauncherModel {
                 return glib::Propagation::Stop;
             }
 
-            // Delete → remove the selected frecency / history entry.
-            if matches!(key, gdk::Key::Delete) && !ctrl && !alt {
+            // Ctrl+Delete → remove the selected frecency / history entry.
+            // Bare Delete must keep flowing to the GtkEntry so forward-delete
+            // edits the query text like Backspace already does.
+            if matches!(key, gdk::Key::Delete) && ctrl && !shift && !alt {
                 sender_clone.input(AppLauncherInput::DeleteEntry);
                 return glib::Propagation::Stop;
             }
@@ -1239,7 +1241,7 @@ fn rebuild_binds_strip(strip: &gtk::FlowBox, model: &AppLauncherModel) {
             applicable: has_pin,
         },
         BindHint {
-            key: "Del",
+            key: "Ctrl Del",
             label: "Remove",
             applicable: has_delete,
         },
