@@ -7,8 +7,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-A notification-center deepening: notifications go from "informing" to
-"acting" — reply from the toast, hear it, watch it progress, find it later.
+## [1.0.4] – 2026-06-12
+
+A notification-center deepening on top of housekeeping: notifications go
+from "informing" to "acting" — reply from the toast, hear it, watch it
+progress, find it later. Plus ledger sync, Settings polish, and two new
+CI gates.
+
+### Changed
+
+- **`mvpn fav` got pick numbers.** `fav list` (and `fav refresh`) now
+  number the favorites; `fav connect 2` connects to the 2nd entry (relay
+  names still work); bare `fav connect` on a terminal shows the numbered
+  list and asks (Enter = fastest, q = cancel) — when piped or bound to a
+  key it keeps the old "fastest favorite" behaviour.
+- **Settings panel polish.** Sidebar nav rows tightened (38 → 33 px, 2 px
+  list spacing, group headers pulled in and aligned to the icon column;
+  the search separator gained breathing room). The Widgets sub-sidebar
+  now fits its longest names ("Screen Recording", "System Bluetooth")
+  via a 216 px column + density overrides instead of ellipsizing. Page
+  descriptions (`label-small`, action-row subtitles, hero subtitle) are
+  re-toned with a palette-proof surface blend (`color-mix` 62–70 % toward
+  the page surface) so section titles carry the contrast even on schemes
+  where `--on-surface-variant` equals `--on-surface`; boxed-list cards
+  gained a 1 px hairline edge for low-contrast palettes.
 
 ### Added
 
@@ -36,33 +58,6 @@ A notification-center deepening: notifications go from "informing" to
 - **History search.** The notification history menu gained a search box
   filtering app name + summary + body as you type, with a proper
   "No matches" empty state.
-
-## [1.0.4] – 2026-06-12
-
-A housekeeping release: the project's ledgers now match 1.0 reality, a
-long-stubbed Settings button works, the Settings panel got a visual
-hierarchy pass, and CI gained a panic-count ratchet.
-
-### Changed
-
-- **`mvpn fav` got pick numbers.** `fav list` (and `fav refresh`) now
-  number the favorites; `fav connect 2` connects to the 2nd entry (relay
-  names still work); bare `fav connect` on a terminal shows the numbered
-  list and asks (Enter = fastest, q = cancel) — when piped or bound to a
-  key it keeps the old "fastest favorite" behaviour.
-- **Settings panel polish.** Sidebar nav rows tightened (38 → 33 px, 2 px
-  list spacing, group headers pulled in and aligned to the icon column;
-  the search separator gained breathing room). The Widgets sub-sidebar
-  now fits its longest names ("Screen Recording", "System Bluetooth")
-  via a 216 px column + density overrides instead of ellipsizing. Page
-  descriptions (`label-small`, action-row subtitles, hero subtitle) are
-  re-toned with a palette-proof surface blend (`color-mix` 62–70 % toward
-  the page surface) so section titles carry the contrast even on schemes
-  where `--on-surface-variant` equals `--on-surface`; boxed-list cards
-  gained a 1 px hairline edge for low-contrast palettes.
-
-### Added
-
 - **CI design-lint gate (W1.7).** New `scripts/design-lint.sh` enforces
   `DESIGN.md §15` L1–L7 as hard gates in `ci.yml`: no hardcoded hex, no
   raw ≥4 px spacing/radius/font, `--radius-widget` only in bar/frame
