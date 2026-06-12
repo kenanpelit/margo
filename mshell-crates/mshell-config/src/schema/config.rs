@@ -1664,6 +1664,54 @@ pub struct Notifications {
     /// Also the duration the timeout bar animates over.
     #[serde(default = "default_popup_duration_ms")]
     pub popup_duration_ms: u32,
+    /// Render a reply entry on popups whose notification carries an
+    /// `"inline-reply"` action (KDE-style; Valent / KDE apps / chat
+    /// clients). Sending emits `NotificationReplied(id, text)` back to
+    /// the app. On by default — it only appears when an app asks for it.
+    #[serde(default = "default_true")]
+    pub inline_reply: bool,
+    /// Master switch for notification sounds (played when a popup toast
+    /// appears; DND already suppresses the popups themselves). Off by
+    /// default to preserve the silent out-of-the-box behaviour.
+    #[serde(default)]
+    pub sound_enabled: bool,
+    /// Play a sound for low-urgency notifications.
+    #[serde(default)]
+    pub sound_low: bool,
+    /// Play a sound for normal-urgency notifications.
+    #[serde(default = "default_true")]
+    pub sound_normal: bool,
+    /// Play a sound for critical-urgency notifications (brighter tone).
+    #[serde(default = "default_true")]
+    pub sound_critical: bool,
+    /// Honour the spec's `sound-file` hint: when an app supplies its own
+    /// sound, play that instead of the built-in chime. The
+    /// `suppress-sound` hint is always honoured regardless.
+    #[serde(default = "default_true")]
+    pub sound_from_client: bool,
+    /// Quiet hours: suppress notification sounds (popups still show)
+    /// inside the window below.
+    #[serde(default)]
+    pub quiet_hours_enabled: bool,
+    /// Quiet-hours window start, `HH:MM` (24-hour).
+    #[serde(default = "default_quiet_start")]
+    pub quiet_hours_start: String,
+    /// Quiet-hours window end, `HH:MM` (24-hour). An end before the
+    /// start wraps past midnight (22:00–08:00).
+    #[serde(default = "default_quiet_end")]
+    pub quiet_hours_end: String,
+    /// Render a progress bar on notifications carrying the spec's
+    /// `value` hint (downloads, file transfers, backups).
+    #[serde(default = "default_true")]
+    pub show_progress: bool,
+}
+
+fn default_quiet_start() -> String {
+    "22:00".to_string()
+}
+
+fn default_quiet_end() -> String {
+    "08:00".to_string()
 }
 
 fn default_history_limit() -> u32 {
@@ -1686,6 +1734,16 @@ impl Default for Notifications {
             history_limit: default_history_limit(),
             show_timeout_bar: true,
             popup_duration_ms: default_popup_duration_ms(),
+            inline_reply: true,
+            sound_enabled: false,
+            sound_low: false,
+            sound_normal: true,
+            sound_critical: true,
+            sound_from_client: true,
+            quiet_hours_enabled: false,
+            quiet_hours_start: default_quiet_start(),
+            quiet_hours_end: default_quiet_end(),
+            show_progress: true,
         }
     }
 }

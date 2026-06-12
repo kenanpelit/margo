@@ -10,6 +10,10 @@ const POWER_UNPLUG_SOUND: &[u8] = include_bytes!("../assets/power-unplug.ogg");
 /// Alarm tone (converted from the DMS alarmClock plugin's `alarm.wav` to ogg
 /// so it decodes with rodio's vorbis feature).
 const ALARM_SOUND: &[u8] = include_bytes!("../assets/alarm.ogg");
+/// Default notification chime (gentle two-tone, synthesized in-tree).
+const NOTIFICATION_SOUND: &[u8] = include_bytes!("../assets/notification.wav");
+/// Critical-urgency notification tone (three rising tones, brighter).
+const NOTIFICATION_CRITICAL_SOUND: &[u8] = include_bytes!("../assets/notification-critical.wav");
 
 /// Whether the looping alarm tone is currently ringing. Drives both the loop
 /// thread and `alarm_is_ringing()`.
@@ -49,6 +53,51 @@ pub fn stop_alarm() {
 /// Whether the alarm tone is currently ringing.
 pub fn alarm_is_ringing() -> bool {
     ALARM_PLAYING.load(Ordering::SeqCst)
+}
+
+/// Play the default notification chime (normal urgency).
+pub fn play_notification() {
+    play_embedded(NOTIFICATION_SOUND);
+}
+
+/// Play the critical-urgency notification tone.
+pub fn play_notification_critical() {
+    play_embedded(NOTIFICATION_CRITICAL_SOUND);
+}
+
+/// Play a client-supplied sound file (the spec's `sound-file` hint).
+/// Decode failures and missing files degrade silently — a bad hint must
+/// never take the shell down or block the toast.
+pub fn play_notification_file(path: &str) {
+    let path = path.trim().to_string();
+    if path.is_empty() {
+        return;
+    }
+    std::thread::spawn(move || {
+        let Ok(bytes) = std::fs::read(&path) else {
+            return;
+        };
+        let Ok(mut handle) = rodio::DeviceSinkBuilder::open_default_sink() else {
+            return;
+        };
+        handle.log_on_drop(false);
+        if let Ok(player) = rodio::play(handle.mixer(), Cursor::new(bytes)) {
+            player.sleep_until_end();
+        }
+    });
+}
+
+/// Fire-and-forget playback of an embedded clip on its own thread.
+fn play_embedded(bytes: &'static [u8]) {
+    std::thread::spawn(move || {
+        let Ok(mut handle) = rodio::DeviceSinkBuilder::open_default_sink() else {
+            return;
+        };
+        handle.log_on_drop(false);
+        if let Ok(player) = rodio::play(handle.mixer(), Cursor::new(bytes)) {
+            player.sleep_until_end();
+        }
+    });
 }
 
 pub fn play_shutter() {

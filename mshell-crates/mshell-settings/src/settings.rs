@@ -1961,7 +1961,7 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
     ("menus", "menu popup dashboard"),
     (
         "notifications",
-        "notification toast popup do-not-disturb dnd",
+        "notification toast popup do-not-disturb dnd inline reply sound chime quiet hours progress history search",
     ),
     ("general", "avatar profile name user greeting"),
     (

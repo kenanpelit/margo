@@ -23,6 +23,16 @@ pub(crate) struct NotificationSettingsModel {
     menu_min_width: i32,
     menu_max_height: i32,
     blocklist: Vec<String>,
+    inline_reply: bool,
+    show_progress: bool,
+    sound_enabled: bool,
+    sound_low: bool,
+    sound_normal: bool,
+    sound_critical: bool,
+    sound_from_client: bool,
+    quiet_enabled: bool,
+    quiet_start: String,
+    quiet_end: String,
     _effects: EffectScope,
 }
 
@@ -49,6 +59,30 @@ pub(crate) enum NotificationSettingsInput {
     BlocklistAdd(String),
     BlocklistRemove(String),
     BlocklistEffect(Vec<String>),
+    InlineReplyChanged(bool),
+    ShowProgressChanged(bool),
+    SoundEnabledChanged(bool),
+    SoundLowChanged(bool),
+    SoundNormalChanged(bool),
+    SoundCriticalChanged(bool),
+    SoundFromClientChanged(bool),
+    QuietEnabledChanged(bool),
+    QuietStartChanged(String),
+    QuietEndChanged(String),
+    /// One grouped mirror of the reply/progress/sound block — fired by a
+    /// single effect subscribed to all ten fields.
+    ReplySoundEffect {
+        inline_reply: bool,
+        show_progress: bool,
+        sound_enabled: bool,
+        sound_low: bool,
+        sound_normal: bool,
+        sound_critical: bool,
+        sound_from_client: bool,
+        quiet_enabled: bool,
+        quiet_start: String,
+        quiet_end: String,
+    },
 }
 
 #[derive(Debug)]
@@ -102,7 +136,7 @@ impl Component for NotificationSettingsModel {
                         },
                         gtk::Label {
                             add_css_class: "settings-hero-subtitle",
-                            set_label: "Toast geometry, history retention, urgency bar, do-not-disturb.",
+                            set_label: "Toast geometry, inline reply, sounds & quiet hours, progress bars, history retention.",
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -340,6 +374,340 @@ impl Component for NotificationSettingsModel {
                         connect_value_changed[sender] => move |s| {
                             sender.input(NotificationSettingsInput::PopupDurationChanged(s.value() as u32));
                         } @popup_duration_handler,
+                    },
+                },
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Reply, progress & sound",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Inline reply",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Show a reply box on notifications that support it (chat apps, Valent SMS). Sending answers straight from the toast.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "inline_reply_switch"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(inline_reply_handler)]
+                        set_active: model.inline_reply,
+                        connect_active_notify[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::InlineReplyChanged(s.is_active()));
+                        } @inline_reply_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Progress bars",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Render a progress bar on notifications that report one (downloads, file transfers, backups).",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "show_progress_switch"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(progress_handler)]
+                        set_active: model.show_progress,
+                        connect_active_notify[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::ShowProgressChanged(s.is_active()));
+                        } @progress_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Notification sounds",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Play a chime when a popup appears. Do Not Disturb always silences (it suppresses the popups themselves).",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "sound_enabled_switch"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(snd_en_handler)]
+                        set_active: model.sound_enabled,
+                        connect_active_notify[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::SoundEnabledChanged(s.is_active()));
+                        } @snd_en_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Low urgency",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Sound for low-urgency notifications.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "sound_low_switch"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_sensitive: model.sound_enabled,
+                        #[watch]
+                        #[block_signal(snd_low_handler)]
+                        set_active: model.sound_low,
+                        connect_active_notify[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::SoundLowChanged(s.is_active()));
+                        } @snd_low_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Normal urgency",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Sound for normal-urgency notifications.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "sound_normal_switch"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_sensitive: model.sound_enabled,
+                        #[watch]
+                        #[block_signal(snd_norm_handler)]
+                        set_active: model.sound_normal,
+                        connect_active_notify[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::SoundNormalChanged(s.is_active()));
+                        } @snd_norm_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Critical urgency",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Sound for critical notifications (a brighter, rising tone).",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "sound_critical_switch"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_sensitive: model.sound_enabled,
+                        #[watch]
+                        #[block_signal(snd_crit_handler)]
+                        set_active: model.sound_critical,
+                        connect_active_notify[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::SoundCriticalChanged(s.is_active()));
+                        } @snd_crit_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "App-provided sounds",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "When an app supplies its own sound file, play that instead of the built-in chime.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "sound_client_switch"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_sensitive: model.sound_enabled,
+                        #[watch]
+                        #[block_signal(snd_client_handler)]
+                        set_active: model.sound_from_client,
+                        connect_active_notify[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::SoundFromClientChanged(s.is_active()));
+                        } @snd_client_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Quiet hours",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Mute notification sounds inside the window below (popups still show). An end before the start wraps past midnight.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "quiet_enabled_switch"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_sensitive: model.sound_enabled,
+                        #[watch]
+                        #[block_signal(quiet_handler)]
+                        set_active: model.quiet_enabled,
+                        connect_active_notify[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::QuietEnabledChanged(s.is_active()));
+                        } @quiet_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
+                    #[watch]
+                    set_sensitive: model.sound_enabled && model.quiet_enabled,
+
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_halign: gtk::Align::Start,
+                        set_label: "From",
+                    },
+                    #[name = "quiet_start_entry"]
+                    gtk::Entry {
+                        add_css_class: "ok-entry-with-border",
+                        set_width_chars: 6,
+                        set_max_length: 5,
+                        set_placeholder_text: Some("22:00"),
+                        connect_changed[sender] => move |e| {
+                            sender.input(NotificationSettingsInput::QuietStartChanged(e.text().to_string()));
+                        },
+                    },
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_halign: gtk::Align::Start,
+                        set_label: "to",
+                    },
+                    #[name = "quiet_end_entry"]
+                    gtk::Entry {
+                        add_css_class: "ok-entry-with-border",
+                        set_width_chars: 6,
+                        set_max_length: 5,
+                        set_placeholder_text: Some("08:00"),
+                        connect_changed[sender] => move |e| {
+                            sender.input(NotificationSettingsInput::QuietEndChanged(e.text().to_string()));
+                        },
                     },
                 },
 
@@ -636,6 +1004,26 @@ impl Component for NotificationSettingsModel {
             sender_clone.input(NotificationSettingsInput::MenuMaxHeightEffect(v));
         });
 
+        // One grouped mirror for the reply/progress/sound block: reading
+        // all ten fields subscribes this effect to each, so any external
+        // change re-sends the whole snapshot.
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let c = config_manager().config();
+            sender_clone.input(NotificationSettingsInput::ReplySoundEffect {
+                inline_reply: c.clone().notifications().inline_reply().get(),
+                show_progress: c.clone().notifications().show_progress().get(),
+                sound_enabled: c.clone().notifications().sound_enabled().get(),
+                sound_low: c.clone().notifications().sound_low().get(),
+                sound_normal: c.clone().notifications().sound_normal().get(),
+                sound_critical: c.clone().notifications().sound_critical().get(),
+                sound_from_client: c.clone().notifications().sound_from_client().get(),
+                quiet_enabled: c.clone().notifications().quiet_hours_enabled().get(),
+                quiet_start: c.clone().notifications().quiet_hours_start().get(),
+                quiet_end: c.notifications().quiet_hours_end().get(),
+            });
+        });
+
         let model = NotificationSettingsModel {
             position: config_manager()
                 .config()
@@ -694,10 +1082,66 @@ impl Component for NotificationSettingsModel {
                 .notifications()
                 .blocklist()
                 .get_untracked(),
+            inline_reply: config_manager()
+                .config()
+                .notifications()
+                .inline_reply()
+                .get_untracked(),
+            show_progress: config_manager()
+                .config()
+                .notifications()
+                .show_progress()
+                .get_untracked(),
+            sound_enabled: config_manager()
+                .config()
+                .notifications()
+                .sound_enabled()
+                .get_untracked(),
+            sound_low: config_manager()
+                .config()
+                .notifications()
+                .sound_low()
+                .get_untracked(),
+            sound_normal: config_manager()
+                .config()
+                .notifications()
+                .sound_normal()
+                .get_untracked(),
+            sound_critical: config_manager()
+                .config()
+                .notifications()
+                .sound_critical()
+                .get_untracked(),
+            sound_from_client: config_manager()
+                .config()
+                .notifications()
+                .sound_from_client()
+                .get_untracked(),
+            quiet_enabled: config_manager()
+                .config()
+                .notifications()
+                .quiet_hours_enabled()
+                .get_untracked(),
+            quiet_start: config_manager()
+                .config()
+                .notifications()
+                .quiet_hours_start()
+                .get_untracked(),
+            quiet_end: config_manager()
+                .config()
+                .notifications()
+                .quiet_hours_end()
+                .get_untracked(),
             _effects: effects,
         };
 
         let widgets = view_output!();
+
+        // Seed the quiet-hours entries once. They are deliberately not
+        // #[watch]-bound: re-setting the text on every model change would
+        // fight the user's in-progress typing.
+        widgets.quiet_start_entry.set_text(&model.quiet_start);
+        widgets.quiet_end_entry.set_text(&model.quiet_end);
 
         // Wire the add entry + button, and paint the initial rows.
         let entry = widgets.blocklist_entry.clone();
@@ -823,6 +1267,75 @@ impl Component for NotificationSettingsModel {
             NotificationSettingsInput::MenuMaxHeightEffect(h) => {
                 self.menu_max_height = h;
             }
+            NotificationSettingsInput::InlineReplyChanged(v) => {
+                self.inline_reply = v;
+                config_manager().update_config(|c| c.notifications.inline_reply = v);
+            }
+            NotificationSettingsInput::ShowProgressChanged(v) => {
+                self.show_progress = v;
+                config_manager().update_config(|c| c.notifications.show_progress = v);
+            }
+            NotificationSettingsInput::SoundEnabledChanged(v) => {
+                self.sound_enabled = v;
+                config_manager().update_config(|c| c.notifications.sound_enabled = v);
+            }
+            NotificationSettingsInput::SoundLowChanged(v) => {
+                self.sound_low = v;
+                config_manager().update_config(|c| c.notifications.sound_low = v);
+            }
+            NotificationSettingsInput::SoundNormalChanged(v) => {
+                self.sound_normal = v;
+                config_manager().update_config(|c| c.notifications.sound_normal = v);
+            }
+            NotificationSettingsInput::SoundCriticalChanged(v) => {
+                self.sound_critical = v;
+                config_manager().update_config(|c| c.notifications.sound_critical = v);
+            }
+            NotificationSettingsInput::SoundFromClientChanged(v) => {
+                self.sound_from_client = v;
+                config_manager().update_config(|c| c.notifications.sound_from_client = v);
+            }
+            NotificationSettingsInput::QuietEnabledChanged(v) => {
+                self.quiet_enabled = v;
+                config_manager().update_config(|c| c.notifications.quiet_hours_enabled = v);
+            }
+            NotificationSettingsInput::QuietStartChanged(v) => {
+                // Commit only well-formed HH:MM values; partial input while
+                // typing stays local to the entry.
+                if parse_hhmm(&v) {
+                    self.quiet_start = v.clone();
+                    config_manager().update_config(|c| c.notifications.quiet_hours_start = v);
+                }
+            }
+            NotificationSettingsInput::QuietEndChanged(v) => {
+                if parse_hhmm(&v) {
+                    self.quiet_end = v.clone();
+                    config_manager().update_config(|c| c.notifications.quiet_hours_end = v);
+                }
+            }
+            NotificationSettingsInput::ReplySoundEffect {
+                inline_reply,
+                show_progress,
+                sound_enabled,
+                sound_low,
+                sound_normal,
+                sound_critical,
+                sound_from_client,
+                quiet_enabled,
+                quiet_start,
+                quiet_end,
+            } => {
+                self.inline_reply = inline_reply;
+                self.show_progress = show_progress;
+                self.sound_enabled = sound_enabled;
+                self.sound_low = sound_low;
+                self.sound_normal = sound_normal;
+                self.sound_critical = sound_critical;
+                self.sound_from_client = sound_from_client;
+                self.quiet_enabled = quiet_enabled;
+                self.quiet_start = quiet_start;
+                self.quiet_end = quiet_end;
+            }
             NotificationSettingsInput::BlocklistAdd(name) => {
                 let exists = self.blocklist.iter().any(|e| e.eq_ignore_ascii_case(&name));
                 if !exists {
@@ -887,4 +1400,15 @@ fn rebuild_blocklist_rows(
 
         list.append(&row);
     }
+}
+
+/// Whether `s` is a well-formed `HH:MM` (24-hour) clock string.
+fn parse_hhmm(s: &str) -> bool {
+    let Some((h, m)) = s.split_once(':') else {
+        return false;
+    };
+    let (Ok(h), Ok(m)) = (h.trim().parse::<u8>(), m.trim().parse::<u8>()) else {
+        return false;
+    };
+    h < 24 && m < 60
 }

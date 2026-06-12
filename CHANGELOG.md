@@ -7,6 +7,36 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+A notification-center deepening: notifications go from "informing" to
+"acting" — reply from the toast, hear it, watch it progress, find it later.
+
+### Added
+
+- **Inline reply (KDE-style).** Notifications that carry an
+  `"inline-reply"` action (chat apps, Valent SMS, KDE apps) now render a
+  reply entry right on the popup toast; Enter or the send button emits
+  the `NotificationReplied(id, text)` signal back to the app. The daemon
+  advertises the `inline-reply` capability so clients light the feature
+  up. Implemented by vendoring `wayle-notification` 0.1.3 with a
+  contained, upstreamable extension (`vendor/wayle-notification` +
+  `[patch.crates-io]`); the popup layer-shell surface switches to
+  on-demand keyboard so the entry can type. Toggle: Settings → Widgets →
+  Notifications → "Inline reply".
+- **Notification sounds.** A synthesized in-tree chime (gentle two-tone;
+  brighter rising tone for critical) plays when a popup appears —
+  per-urgency toggles, an "app-provided sounds" switch honouring the
+  spec's `sound-file` hint, the `suppress-sound` hint always respected,
+  and a **quiet hours** window (wraps past midnight). Off by default;
+  everything under Settings → Widgets → Notifications. The daemon now
+  advertises the `sound` capability.
+- **Progress bars.** Notifications carrying the spec's `value` hint
+  (downloads, transfers, backups) render a real progress bar on the
+  popup **and** in the history; `replaces_id` re-sends now update the
+  live toast in place (text + bar) instead of freezing the first frame.
+- **History search.** The notification history menu gained a search box
+  filtering app name + summary + body as you type, with a proper
+  "No matches" empty state.
+
 ## [1.0.4] – 2026-06-12
 
 A housekeeping release: the project's ledgers now match 1.0 reality, a

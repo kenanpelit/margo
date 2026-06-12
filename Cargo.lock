@@ -4569,6 +4569,7 @@ dependencies = [
  "mshell-common",
  "mshell-config",
  "mshell-services",
+ "mshell-sounds",
  "mshell-style",
  "mshell-utils",
  "reactive_graph",
@@ -8987,8 +8988,6 @@ dependencies = [
 [[package]]
 name = "wayle-notification"
 version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3ba2fb081f8e54cf5772929c95b263230f2f5842b87f5359a01bfbe520a9c19"
 dependencies = [
  "async-trait",
  "chrono",

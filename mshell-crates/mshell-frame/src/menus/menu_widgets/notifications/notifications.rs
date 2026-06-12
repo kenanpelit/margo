@@ -15,8 +15,8 @@
 //! expansion and re-splices the store (cheap; widgets stay virtualized).
 
 use mshell_common::notification::{
-    APP_ICON_SIZE, BODY_IMAGE_SIZE, apply_body_text, build_image, detect_code,
-    format_notification_time,
+    APP_ICON_SIZE, BODY_IMAGE_SIZE, INLINE_REPLY_KEY, apply_body_text, apply_progress, build_image,
+    detect_code, format_notification_time,
 };
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
@@ -85,6 +85,7 @@ struct RowWidgets {
     thumb_box: gtk::Box,
     summary: gtk::Label,
     body: gtk::Label,
+    progress: gtk::ProgressBar,
     code_container: gtk::Box,
     actions_container: gtk::Box,
     /// Live state read by the (once-wired) gesture / click handlers so
@@ -110,6 +111,8 @@ pub(crate) struct NotificationsModel {
     /// Flattened rows (headers + notifications), newest first.
     store: gio::ListStore,
     empty_label_visible: bool,
+    /// Live history-search query (lowercased); empty = no filter.
+    query: String,
     dnd: bool,
     /// App names whose group is expanded. Persists across store rebuilds.
     expanded: Rc<RefCell<HashSet<String>>>,
@@ -141,6 +144,8 @@ pub(crate) enum NotificationsInput {
     ToggleGroup(String),
     /// Inner-list max-height config changed.
     SetMaxHeight(i32),
+    /// The history-search box text changed.
+    SearchChanged(String),
     /// The frame's notifications menu was revealed (`true`) or hidden
     /// (`false`). Rebuilds happen only while revealed; a notification
     /// arriving while hidden just flips `dirty`.
@@ -219,11 +224,22 @@ impl Component for NotificationsModel {
                 },
             },
 
+            // History search (DESIGN.md §12 pill query surface): filters
+            // app name + summary + body as you type.
+            gtk::SearchEntry {
+                add_css_class: "settings-search",
+                set_placeholder_text: Some("Search notifications…"),
+                connect_search_changed[sender] => move |e| {
+                    sender.input(NotificationsInput::SearchChanged(e.text().to_string()));
+                },
+            },
+
             gtk::Label {
                 add_css_class: "label-medium",
                 #[watch]
                 set_visible: model.empty_label_visible,
-                set_label: "Empty",
+                #[watch]
+                set_label: if model.query.is_empty() { "Empty" } else { "No matches" },
             },
 
             gtk::ScrolledWindow {
@@ -312,6 +328,7 @@ impl Component for NotificationsModel {
             list_view: list_view.clone(),
             store,
             empty_label_visible: true,
+            query: String::new(),
             dnd: false,
             expanded,
             list_max_height: 0,
@@ -367,6 +384,11 @@ impl Component for NotificationsModel {
             NotificationsInput::SetMaxHeight(h) => {
                 self.list_max_height = h;
             }
+            NotificationsInput::SearchChanged(q) => {
+                self.query = q.trim().to_lowercase();
+                // The menu is open while typing — refresh immediately.
+                self.refresh();
+            }
             NotificationsInput::ParentRevealChanged(revealed) => {
                 self.revealed = revealed;
                 // Only rebuild on open if something changed since last time
@@ -409,10 +431,28 @@ impl Component for NotificationsModel {
 }
 
 impl NotificationsModel {
-    /// Pull current history, refresh the empty-state flag, and re-splice
-    /// the lightweight row model. The single rebuild entry point.
+    /// Pull current history, apply the search filter, refresh the
+    /// empty-state flag, and re-splice the lightweight row model. The
+    /// single rebuild entry point.
     fn refresh(&mut self) {
         let notifications = notification_service().notifications.get();
+        let notifications: Vec<Arc<Notification>> = if self.query.is_empty() {
+            notifications
+        } else {
+            notifications
+                .into_iter()
+                .filter(|n| {
+                    let q = &self.query;
+                    n.app_name
+                        .get()
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .contains(q)
+                        || n.summary.get().to_lowercase().contains(q)
+                        || n.body.get().unwrap_or_default().to_lowercase().contains(q)
+                })
+                .collect()
+        };
         self.empty_label_visible = notifications.is_empty();
         self.rebuild_store(&notifications);
         self.built = true;
@@ -648,11 +688,17 @@ impl NotificationsModel {
                     content.add_controller(drag);
                 }
 
+                let progress = gtk::ProgressBar::new();
+                progress.add_css_class("notification-progress");
+                progress.set_show_text(true);
+                progress.set_visible(false);
+
                 let code_container = gtk::Box::new(gtk::Orientation::Horizontal, 0);
                 let actions_container = gtk::Box::new(gtk::Orientation::Vertical, 4);
 
                 card.append(&header_row);
                 card.append(&content);
+                card.append(&progress);
                 card.append(&code_container);
                 card.append(&actions_container);
 
@@ -674,6 +720,7 @@ impl NotificationsModel {
                     thumb_box,
                     summary,
                     body,
+                    progress,
                     code_container,
                     actions_container,
                     ctx,
@@ -738,6 +785,7 @@ impl NotificationsModel {
                 clear_box(&rw.thumb_box);
                 clear_box(&rw.code_container);
                 clear_box(&rw.actions_container);
+                rw.progress.set_visible(false);
                 rw.card.set_opacity(1.0);
                 let mut c = rw.ctx.borrow_mut();
                 c.notification = None;
@@ -784,6 +832,18 @@ fn bind_card(
 
     let body = notification.body.get().unwrap_or_default();
     apply_body_text(&rw.body, &body);
+
+    // Spec `value` hint (downloads / transfers) → progress bar.
+    let show_progress = config_manager()
+        .config()
+        .notifications()
+        .show_progress()
+        .get_untracked();
+    if show_progress {
+        apply_progress(&rw.progress, notification);
+    } else {
+        rw.progress.set_visible(false);
+    }
 
     // App icon (header leading glyph).
     clear_box(&rw.app_icon_box);
@@ -833,10 +893,17 @@ fn bind_card(
         rw.code_container.append(&btn);
     }
 
-    // Explicit action buttons.
+    // Explicit action buttons. The "inline-reply" pseudo-action is a
+    // popup-side reply entry, never a button — invoking it without text
+    // would be a no-op for the app.
     clear_box(&rw.actions_container);
     let action_icons = notification.action_icons.get();
-    let actions = notification.actions.get();
+    let actions: Vec<_> = notification
+        .actions
+        .get()
+        .into_iter()
+        .filter(|a| a.id != INLINE_REPLY_KEY)
+        .collect();
     if show_actions && !actions.is_empty() {
         for action in &actions {
             let btn = if action_icons {

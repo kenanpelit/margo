@@ -1,9 +1,11 @@
-use gtk4_layer_shell::{Edge, Layer, LayerShell};
+use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use mshell_common::dynamic_box::dynamic_box::{
     DynamicBoxFactory, DynamicBoxInit, DynamicBoxInput, DynamicBoxModel,
 };
-use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
-use mshell_common::notification::{NotificationInit, NotificationModel};
+use mshell_common::dynamic_box::generic_widget_controller::{
+    GenericWidgetController, GenericWidgetControllerExtSafe,
+};
+use mshell_common::notification::{NotificationInit, NotificationInput, NotificationModel};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, NotificationsStoreFields};
@@ -99,6 +101,9 @@ impl Component for PopupNotificationsModel {
         root.set_namespace(Some("mshell-notifications"));
         root.set_layer(Layer::Overlay);
         root.set_exclusive_zone(0);
+        // On-demand keyboard: the surface never grabs by itself, but a
+        // click into an inline-reply entry can request focus to type.
+        root.set_keyboard_mode(KeyboardMode::OnDemand);
         set_position(position.clone(), &root);
 
         debug!(
@@ -113,6 +118,11 @@ impl Component for PopupNotificationsModel {
         let notifications_dynamic_box_factory = DynamicBoxFactory::<Arc<Notification>, u32> {
             id: Box::new(|item| item.id),
             create: Box::new(move |item| {
+                // A fresh toast id — the moment a sound (if configured)
+                // belongs. Replaces of the same id reuse the widget via
+                // `update` below and stay silent.
+                maybe_play_sound(item);
+
                 let notification = item.clone();
                 let id = notification.id;
                 let svc = notification_service();
@@ -160,7 +170,17 @@ impl Component for PopupNotificationsModel {
 
                 Box::new(notification_controller) as Box<dyn GenericWidgetController>
             }),
-            update: None,
+            // `replaces_id` re-sends arrive as a NEW Arc under the same id
+            // (wayle swaps the list entry). Route the fresh snapshot into
+            // the existing card so progress bars / body text update live
+            // instead of showing the first frame forever.
+            update: Some(Box::new(|controller, item| {
+                if let Some(c) =
+                    (**controller).downcast_ref::<relm4::Controller<NotificationModel>>()
+                {
+                    c.emit(NotificationInput::Replaced(item.clone()));
+                }
+            })),
         };
 
         let notifications_dynamic_box_controller: Controller<
@@ -251,6 +271,96 @@ impl Component for PopupNotificationsModel {
     }
 }
 
+/// Play the notification sound for a freshly-shown toast, honouring the
+/// whole decision ladder: master toggle → spec `suppress-sound` hint →
+/// quiet hours → per-urgency toggles → client `sound-file` hint (when
+/// allowed) or the built-in chime. DND never reaches here — wayle drops
+/// the popup itself.
+fn maybe_play_sound(n: &Notification) {
+    let cfg = config_manager().config();
+    if !cfg.clone().notifications().sound_enabled().get_untracked() {
+        return;
+    }
+    if n.suppress_sound.get() {
+        return;
+    }
+    if cfg
+        .clone()
+        .notifications()
+        .quiet_hours_enabled()
+        .get_untracked()
+    {
+        let start = cfg
+            .clone()
+            .notifications()
+            .quiet_hours_start()
+            .get_untracked();
+        let end = cfg
+            .clone()
+            .notifications()
+            .quiet_hours_end()
+            .get_untracked();
+        if in_quiet_hours(&start, &end) {
+            return;
+        }
+    }
+    use wayle_notification::types::Urgency;
+    let urgency = n.urgency.get();
+    let allowed = match urgency {
+        Urgency::Low => cfg.clone().notifications().sound_low().get_untracked(),
+        Urgency::Normal => cfg.clone().notifications().sound_normal().get_untracked(),
+        Urgency::Critical => cfg.clone().notifications().sound_critical().get_untracked(),
+    };
+    if !allowed {
+        return;
+    }
+    let from_client = cfg
+        .clone()
+        .notifications()
+        .sound_from_client()
+        .get_untracked();
+    if from_client && let Some(file) = n.sound_file.get() {
+        let file = file.trim().to_string();
+        if !file.is_empty() {
+            mshell_sounds::play_notification_file(&file);
+            return;
+        }
+    }
+    if matches!(urgency, Urgency::Critical) {
+        mshell_sounds::play_notification_critical();
+    } else {
+        mshell_sounds::play_notification();
+    }
+}
+
+/// Whether the local wall-clock time falls inside the `HH:MM`–`HH:MM`
+/// window. An end before the start wraps past midnight (22:00–08:00).
+/// Malformed strings disable the window (sounds keep playing).
+fn in_quiet_hours(start: &str, end: &str) -> bool {
+    fn mins(s: &str) -> Option<i32> {
+        let (h, m) = s.split_once(':')?;
+        let h: i32 = h.trim().parse().ok()?;
+        let m: i32 = m.trim().parse().ok()?;
+        if (0..24).contains(&h) && (0..60).contains(&m) {
+            Some(h * 60 + m)
+        } else {
+            None
+        }
+    }
+    let (Some(s), Some(e)) = (mins(start), mins(end)) else {
+        return false;
+    };
+    let Ok(now) = relm4::gtk::glib::DateTime::now_local() else {
+        return false;
+    };
+    let n = now.hour() * 60 + now.minute();
+    if s <= e {
+        n >= s && n < e
+    } else {
+        n >= s || n < e
+    }
+}
+
 fn set_position(position: NotificationPosition, root: &gtk::Window) {
     match position {
         NotificationPosition::Left => {
@@ -271,5 +381,27 @@ fn set_position(position: NotificationPosition, root: &gtk::Window) {
             root.set_anchor(Edge::Left, false);
             root.set_anchor(Edge::Right, false);
         }
+    }
+}
+
+#[cfg(test)]
+mod quiet_hours_tests {
+    use super::in_quiet_hours;
+
+    // `in_quiet_hours` reads the live clock; the parse/shape cases are
+    // what's deterministic to test.
+    #[test]
+    fn malformed_windows_never_mute() {
+        assert!(!in_quiet_hours("", ""));
+        assert!(!in_quiet_hours("22", "08:00"));
+        assert!(!in_quiet_hours("25:00", "08:00"));
+        assert!(!in_quiet_hours("22:00", "08:61"));
+    }
+
+    #[test]
+    fn degenerate_equal_window_is_empty() {
+        // start == end → `n >= s && n < e` can never hold, whatever the
+        // wall clock says.
+        assert!(!in_quiet_hours("10:00", "10:00"));
     }
 }

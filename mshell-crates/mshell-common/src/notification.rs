@@ -28,6 +28,41 @@ static TIME_FORMAT_12: once_cell::sync::Lazy<Vec<time::format_description::Forma
 pub const BODY_IMAGE_SIZE: i32 = 72;
 /// Pixel size for the per-app icon in the header.
 pub const APP_ICON_SIZE: i32 = 16;
+/// The KDE-style inline-reply pseudo-action key. A notification carrying
+/// an action with this id wants a reply entry, not a button; the typed
+/// text goes back via `Notification::reply` → `NotificationReplied`.
+pub const INLINE_REPLY_KEY: &str = "inline-reply";
+
+/// `Some(label)` when the notification carries an inline-reply action.
+pub fn inline_reply_label(n: &Notification) -> Option<String> {
+    n.actions
+        .get()
+        .into_iter()
+        .find(|a| a.id == INLINE_REPLY_KEY)
+        .map(|a| a.label)
+}
+
+/// The spec `value` hint (0–100, downloads/transfers) as a `0.0–1.0`
+/// fraction, if the notification carries one.
+pub fn progress_fraction(n: &Notification) -> Option<f64> {
+    let hints = n.hints.get()?;
+    let v = hints.get("value")?;
+    let raw = i32::try_from(v.clone()).ok()?;
+    Some(f64::from(raw.clamp(0, 100)) / 100.0)
+}
+
+/// Show + fill `bar` from the notification's `value` hint, or hide it.
+/// Shared by the popup card and the history list.
+pub fn apply_progress(bar: &gtk::ProgressBar, n: &Notification) {
+    match progress_fraction(n) {
+        Some(f) => {
+            bar.set_fraction(f);
+            bar.set_text(Some(&format!("{:.0}%", f * 100.0)));
+            bar.set_visible(true);
+        }
+        None => bar.set_visible(false),
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct NotificationModel {
@@ -44,6 +79,12 @@ pub struct NotificationModel {
 pub enum NotificationInput {
     CloseClicked,
     ChangeTimeFormat(bool),
+    /// The app re-sent this notification id (`replaces_id`) — refresh the
+    /// live parts (summary/body/progress) in place. Wayle swaps in a new
+    /// `Arc<Notification>`, so the popup layer routes the fresh one here.
+    Replaced(Arc<Notification>),
+    /// The reply entry was submitted (Enter or the send button).
+    ReplySubmitted,
 }
 
 #[derive(Debug)]
@@ -146,6 +187,7 @@ impl Component for NotificationModel {
                     set_spacing: 4,
                     set_hexpand: true,
 
+                    #[name = "summary_label"]
                     gtk::Label {
                         add_css_class: "label-medium-bold",
                         set_label: model.notification.summary.get().as_str(),
@@ -168,6 +210,14 @@ impl Component for NotificationModel {
                 },
             },
 
+            // Spec `value` hint (downloads / transfers) → live progress bar.
+            #[name = "progress_bar"]
+            gtk::ProgressBar {
+                add_css_class: "notification-progress",
+                set_visible: false,
+                set_show_text: true,
+            },
+
             // Detected 2FA / OTP code → one-click copy (filled in init).
             #[name = "code_container"]
             gtk::Box {
@@ -178,6 +228,38 @@ impl Component for NotificationModel {
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
                 set_spacing: 4,
+            },
+
+            // KDE-style inline reply (only when the notification carries an
+            // "inline-reply" action and the config toggle is on).
+            #[name = "reply_box"]
+            gtk::Box {
+                add_css_class: "notification-reply",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 6,
+                set_visible: false,
+
+                #[name = "reply_entry"]
+                gtk::Entry {
+                    set_hexpand: true,
+                    set_placeholder_text: Some("Reply…"),
+                    connect_activate[sender] => move |_| {
+                        sender.input(NotificationInput::ReplySubmitted);
+                    },
+                },
+
+                #[name = "reply_send"]
+                gtk::Button {
+                    add_css_class: "ok-button-primary",
+                    set_tooltip_text: Some("Send reply"),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(NotificationInput::ReplySubmitted);
+                    },
+
+                    gtk::Image {
+                        set_icon_name: Some("go-next-symbolic"),
+                    },
+                },
             }
         }
     }
@@ -394,10 +476,34 @@ impl Component for NotificationModel {
             widgets.code_container.append(&btn);
         }
 
+        // ── Spec `value` hint → progress bar (downloads / transfers).
+        // (Re-fetch the store: `base_config` was moved into the
+        // time-format effect above.)
+        let cfg = mshell_config::config_manager::config_manager();
+        if cfg.config().notifications().show_progress().get_untracked() {
+            apply_progress(&widgets.progress_bar, &model.notification);
+        }
+
+        // ── KDE-style inline reply: show the entry when the app asked for
+        // it (an "inline-reply" action) and the config toggle is on.
+        let inline_reply_on = cfg.config().notifications().inline_reply().get_untracked();
+        if inline_reply_on && inline_reply_label(&model.notification).is_some() {
+            widgets.reply_box.set_visible(true);
+        }
+
         // ── Explicit action buttons. With the action-icons capability,
-        // the action id is an icon name rather than a label.
+        // the action id is an icon name rather than a label. The
+        // "inline-reply" pseudo-action is rendered as the reply entry
+        // above, never as a dead button.
         let action_icons = model.notification.action_icons.get();
-        let actions = &model.notification.actions.get();
+        let actions: Vec<_> = model
+            .notification
+            .actions
+            .get()
+            .into_iter()
+            .filter(|a| a.id != INLINE_REPLY_KEY)
+            .collect();
+        let actions = &actions;
         if show_action_buttons && !actions.is_empty() {
             for action in actions {
                 let btn = if action_icons {
@@ -441,6 +547,38 @@ impl Component for NotificationModel {
             NotificationInput::CloseClicked => {
                 let notification = self.notification.clone();
                 notification.dismiss();
+            }
+            NotificationInput::Replaced(fresh) => {
+                self.notification = fresh;
+                widgets
+                    .summary_label
+                    .set_label(self.notification.summary.get().as_str());
+                let body = self.notification.body.get().unwrap_or_default();
+                apply_body_text(&widgets.body_label, &body);
+                let show_progress = mshell_config::config_manager::config_manager()
+                    .config()
+                    .notifications()
+                    .show_progress()
+                    .get_untracked();
+                if show_progress {
+                    apply_progress(&widgets.progress_bar, &self.notification);
+                }
+            }
+            NotificationInput::ReplySubmitted => {
+                let text = widgets.reply_entry.text().to_string();
+                if text.trim().is_empty() {
+                    return;
+                }
+                // One shot: freeze the entry so a double-Enter can't send
+                // twice; the reply dismisses the (non-resident) toast.
+                widgets.reply_entry.set_sensitive(false);
+                widgets.reply_send.set_sensitive(false);
+                let notification = self.notification.clone();
+                let sender_done = sender.clone();
+                tokio::spawn(async move {
+                    let _ = notification.reply(&text).await;
+                    let _ = sender_done.output(NotificationOutput::ActionActivated);
+                });
             }
             NotificationInput::ChangeTimeFormat(format_24_h) => {
                 let timestamp = self.notification.timestamp.get();

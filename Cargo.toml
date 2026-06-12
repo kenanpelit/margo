@@ -239,3 +239,13 @@ lto = "thin"
 # trigger) can be symbolized via `addr2line -e /usr/bin/margo …`.
 # Default `cargo install` strips; this prevents that.
 strip = "none"
+
+# ── Vendored patches ─────────────────────────────────────────────────
+# wayle-notification is vendored (verbatim copy of 0.1.3 + a contained
+# margo extension): KDE-style inline reply — the `inline-reply`
+# capability, `Notification::reply(text)` and the
+# `NotificationReplied(id, text)` signal — plus advertising `sound`
+# (the shell plays notification sounds + honours sound hints). Upstream
+# PR-able; drop the patch when wayle grows the capability natively.
+[patch.crates-io]
+wayle-notification = { path = "vendor/wayle-notification" }
