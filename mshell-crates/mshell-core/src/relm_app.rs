@@ -119,7 +119,7 @@ pub(crate) enum ShellInput {
     Quit,
     ToggleAppLauncher(Option<String>),
     /// Open the app launcher AND pre-select the named category
-    /// tab. The String carries the tab label (e.g. "Run",
+    /// tab. The String carries the tab label (e.g. "Actions",
     /// "Insert"). Unknown labels silently fall back to "All"
     /// once the launcher's `select_category` runs.
     ToggleAppLauncherWithTab(Option<String>, String),

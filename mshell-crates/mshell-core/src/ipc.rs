@@ -493,24 +493,16 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
 }
 
 /// Tabs the app launcher renders in the category strip, in the
-/// order the AppLauncherModel registers its providers. Kept here
+/// order the launcher runtime exposes display categories. Kept here
 /// — rather than asking the launcher runtime at IPC-query time
 /// — because the runtime only exists while the launcher panel is
 /// open; the wizard / CLI consumer wants the list any time
 /// mshell is running.
 ///
-/// If you add a new provider whose `category()` returns a fresh
-/// string, append it here so `mshellctl menu app-launcher
-/// --list-tabs` stays accurate.
-pub const APP_LAUNCHER_TABS: &[&str] = &[
-    "All",
-    "Run",
-    "System",
-    "Insert",
-    "Search",
-    "Compositor",
-    "Connect",
-];
+/// If you add a new display category in `mshell-launcher::runtime`,
+/// append it here so `mshellctl menu app-launcher --list-tabs` stays
+/// accurate.
+pub const APP_LAUNCHER_TABS: &[&str] = &["All", "Apps", "Actions", "Insert", "Search", "Help"];
 
 enum IPCCommand {
     Quit,

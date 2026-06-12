@@ -1309,9 +1309,7 @@ fn category_icon(label: &str) -> &'static str {
     match label {
         "All" => "view-grid-symbolic",
         "Apps" => "view-app-grid-symbolic",
-        "Compositor" => "preferences-desktop-display-symbolic",
-        "System" => "preferences-system-symbolic",
-        "Run" => "utilities-terminal-symbolic",
+        "Actions" => "preferences-system-symbolic",
         // input-keyboard-symbolic is the cross-theme name that
         // exists in MargoMaterial, kora, breeze, and Adwaita —
         // semantically a good fit for "type a character to

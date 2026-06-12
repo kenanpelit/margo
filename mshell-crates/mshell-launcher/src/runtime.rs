@@ -59,15 +59,29 @@ const PIN_BONUS: f64 = 10_000.0;
 /// result list.
 ///
 /// Built once during [`LauncherRuntime::categories()`] from the
-/// distinct strings each provider's [`Provider::category`] returns,
-/// in registration order. `"All"` is implicit and always available
-/// even if no provider declares it explicitly — selecting it lets
-/// every provider contribute, which is the default state when the
-/// launcher opens.
+/// distinct display groups each provider maps to, in registration
+/// order. `"All"` is implicit and always available even if no
+/// provider declares it explicitly — selecting it lets every provider
+/// contribute, which is the default state when the launcher opens.
 #[derive(Debug, Clone)]
 pub struct ProviderCategory {
     /// User-facing label drawn on the tab pill.
     pub label: String,
+}
+
+fn display_category_for(provider_category: &str) -> &str {
+    match provider_category {
+        // Keep provider ownership precise internally, but collapse the UI
+        // strip: compositor actions, shell/system actions, command runners,
+        // and connections are all "things to do", not separate top-level
+        // launcher modes.
+        "Compositor" | "Run" | "System" | "Connect" => "Actions",
+        other => other,
+    }
+}
+
+fn provider_matches_display_category(provider: &dyn Provider, display_category: &str) -> bool {
+    display_category_for(provider.category()) == display_category
 }
 
 /// Owns the provider list + the frecency store + the pin set +
@@ -80,7 +94,7 @@ pub struct LauncherRuntime {
     frecency: FrecencyStore,
     pins: PinStore,
     hidden: HiddenStore,
-    /// When `Some`, only providers whose `category()` matches this
+    /// When `Some`, only providers whose display category matches this
     /// label contribute to empty-browse + regular-search results.
     /// `None` ("All" tab) lets every provider participate. Cycled
     /// by `cycle_category` / `cycle_category_back` (Tab /
@@ -227,7 +241,7 @@ impl LauncherRuntime {
     pub fn categories(&self) -> Vec<ProviderCategory> {
         let mut seen: Vec<String> = vec!["All".into()];
         for p in &self.providers {
-            let cat = p.category().to_string();
+            let cat = display_category_for(p.category()).to_string();
             if !seen.iter().any(|c| c == &cat) {
                 seen.push(cat);
             }
@@ -371,7 +385,7 @@ impl LauncherRuntime {
             let mut category_results: Vec<LauncherItem> = self
                 .providers
                 .iter()
-                .filter(|p| p.category() == cat)
+                .filter(|p| provider_matches_display_category(p.as_ref(), cat))
                 .flat_map(|p| p.browse(trimmed))
                 .collect();
 
@@ -385,11 +399,10 @@ impl LauncherRuntime {
             // when the provider's own filter is a no-op.
             if !trimmed.is_empty() {
                 let needle = trimmed.to_ascii_lowercase();
-                for p in self
-                    .providers
-                    .iter()
-                    .filter(|p| p.category() == cat && p.bypasses_category_for_query(trimmed))
-                {
+                for p in self.providers.iter().filter(|p| {
+                    provider_matches_display_category(p.as_ref(), cat)
+                        && p.bypasses_category_for_query(trimmed)
+                }) {
                     explicit_provider_names.insert(p.name().to_string());
                 }
                 category_results.retain(|item| {
@@ -399,15 +412,14 @@ impl LauncherRuntime {
                 });
 
                 // Explicit provider invocations should still work from
-                // any tab. Example: the user can be sitting on "Run"
+                // any tab. Example: the user can be sitting on "Actions"
                 // and type `g pardus`; that is unambiguously a
-                // Websearch query and must not be swallowed by the Run
+                // Websearch query and must not be swallowed by the Actions
                 // category filter.
-                for p in self
-                    .providers
-                    .iter()
-                    .filter(|p| p.category() != cat && p.bypasses_category_for_query(trimmed))
-                {
+                for p in self.providers.iter().filter(|p| {
+                    !provider_matches_display_category(p.as_ref(), cat)
+                        && p.bypasses_category_for_query(trimmed)
+                }) {
                     explicit_provider_names.insert(p.name().to_string());
                     category_results.extend(p.search(query));
                 }
@@ -759,20 +771,79 @@ mod tests {
         }));
         rt.register(Box::new(CatProvider {
             name: "b".into(),
+            cat: "Compositor".into(),
+        }));
+        rt.register(Box::new(CatProvider {
+            name: "c".into(),
+            cat: "Run".into(),
+        }));
+        rt.register(Box::new(CatProvider {
+            name: "d".into(),
+            cat: "System".into(),
+        }));
+        rt.register(Box::new(CatProvider {
+            name: "e".into(),
             cat: "Insert".into(),
         }));
-        // Categories include implicit "All" prepended.
+        rt.register(Box::new(CatProvider {
+            name: "f".into(),
+            cat: "Search".into(),
+        }));
+        rt.register(Box::new(CatProvider {
+            name: "g".into(),
+            cat: "Help".into(),
+        }));
+        rt.register(Box::new(CatProvider {
+            name: "h".into(),
+            cat: "Connect".into(),
+        }));
+        // Categories include implicit "All" prepended and collapse
+        // Compositor / Run / System / Connect into one Actions tab.
         let cats = rt.categories();
         assert_eq!(
             cats.iter().map(|c| c.label.as_str()).collect::<Vec<_>>(),
-            vec!["All", "Apps", "Insert"]
+            vec!["All", "Apps", "Actions", "Insert", "Search", "Help"]
         );
-        // Cycle forward: All → Apps → Insert → All
+        // Cycle forward: All → Apps → Actions → Insert → Search → Help → All
         assert_eq!(rt.cycle_category(1), "Apps");
+        assert_eq!(rt.cycle_category(1), "Actions");
         assert_eq!(rt.cycle_category(1), "Insert");
+        assert_eq!(rt.cycle_category(1), "Search");
+        assert_eq!(rt.cycle_category(1), "Help");
         assert_eq!(rt.cycle_category(1), "All");
-        // Cycle back: All → Insert
-        assert_eq!(rt.cycle_category(-1), "Insert");
+        // Cycle back: All → Help
+        assert_eq!(rt.cycle_category(-1), "Help");
+    }
+
+    #[test]
+    fn actions_category_merges_action_like_provider_categories() {
+        let mut rt = LauncherRuntime::with_stores(ephemeral_frecency(), ephemeral_pins());
+        for (name, cat) in [
+            ("compositor", "Compositor"),
+            ("run", "Run"),
+            ("system", "System"),
+            ("connect", "Connect"),
+        ] {
+            rt.register(Box::new(CategorizedProvider {
+                name: name.into(),
+                cat: cat.into(),
+                items: vec![(format!("{name} item"), 1.0)],
+            }));
+        }
+        rt.register(Box::new(CategorizedProvider {
+            name: "insert".into(),
+            cat: "Insert".into(),
+            items: vec![("insert item".into(), 1.0)],
+        }));
+
+        rt.select_category("Actions");
+        let out = rt.query("");
+        let names: Vec<_> = out.iter().map(|d| d.item.name.as_str()).collect();
+        assert!(names.contains(&"compositor item"));
+        assert!(names.contains(&"run item"));
+        assert!(names.contains(&"system item"));
+        assert!(names.contains(&"connect item"));
+        assert!(!names.contains(&"insert item"));
     }
 
     #[test]
@@ -785,7 +856,7 @@ mod tests {
         }));
         rt.register(Box::new(crate::providers::WebsearchProvider::new()));
 
-        rt.select_category("Run");
+        rt.select_category("Actions");
         let out = rt.query("g pardus");
 
         assert!(out.iter().any(|d| d.item.name == "Google: pardus"));
