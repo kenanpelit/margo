@@ -10,7 +10,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [1.0.4] – 2026-06-12
 
 A housekeeping release: the project's ledgers now match 1.0 reality, a
-long-stubbed Settings button works, and CI gained a panic-count ratchet.
+long-stubbed Settings button works, the Settings panel got a visual
+hierarchy pass, and CI gained a panic-count ratchet.
+
+### Changed
+
+- **Settings panel polish.** Sidebar nav rows tightened (38 → 33 px, 2 px
+  list spacing, group headers pulled in and aligned to the icon column;
+  the search separator gained breathing room). The Widgets sub-sidebar
+  now fits its longest names ("Screen Recording", "System Bluetooth")
+  via a 216 px column + density overrides instead of ellipsizing. Page
+  descriptions (`label-small`) re-toned to the muted on-surface-variant
+  tier so section titles carry the contrast; boxed-list cards gained a
+  1 px hairline edge for low-contrast palettes.
 
 ### Added
 
