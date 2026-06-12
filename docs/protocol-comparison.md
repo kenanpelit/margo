@@ -1,6 +1,11 @@
 # Wayland Protocol Surface — margo vs niri vs Hyprland vs mango
 
-> **Last refreshed:** 2026-05-28
+> **Last refreshed:** 2026-05-28 (full four-way walk); **margo column
+> re-audited 2026-06-12 at `v1.0.3`** — since the walk, margo **removed**
+> the custom dwl-ipc-v2 global (replaced by the Unix control socket, not a
+> Wayland protocol) and **added** `zwlr_foreign_toplevel_manager_v1`
+> (write-side), `ext_workspace_v1`, `zwlr_virtual_pointer_manager_v1` and
+> `zwlr_output_power_management_v1` (1.0.2) → **~60 globals**.
 > **Sources walked (all at that day's `HEAD`):**
 > - **margo** `0.8.8` (`6738494`) — this repo (smithay `delegate_*!` macros + hand-rolled `GlobalDispatch`).
 > - **niri** `26.04` (`v26.04-23-g9a6f310`) — same smithay method.
@@ -37,7 +42,7 @@ numbers are comparable.
 | Compositor | Protocols (approx.) | Stack | Note |
 |---|---|---|---|
 | **Hyprland** `0.55.0` | **~68** | C++ (hand-rolled) | Widest surface — 62 protocol modules + 6 core, plus Hyprland-only extensions |
-| **margo** `0.8.8` | **~57** | Rust / smithay | Modern surface; **ahead of niri and mango**; pursuing Hyprland |
+| **margo** `1.0.3` | **~60** | Rust / smithay | Modern surface; **ahead of niri and mango**; pursuing Hyprland (was ~57 at the 0.8.8 walk; +output_power, +foreign-toplevel write-side, +ext_workspace, +virtual_pointer, −dwl-ipc-v2) |
 | **mango** `0.13.1` | **~53** | C / wlroots | Broad-but-legacy: wlroots hands it everything for free |
 | **niri** `26.04` | **~41** | Rust / smithay | Tightest surface; deliberately minimal |
 
