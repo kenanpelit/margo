@@ -21,7 +21,9 @@ use reactive_graph::traits::GetUntracked;
 use relm4::gtk::gio::DesktopAppInfo;
 use relm4::gtk::prelude::*;
 use relm4::gtk::{gio, pango};
-use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
+use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, Sender, gtk};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// One row in the result list.
 pub(crate) struct LauncherRowModel {
@@ -31,6 +33,17 @@ pub(crate) struct LauncherRowModel {
     /// Hidden flag stamped by the runtime — flips the
     /// right-click context menu label between "Hide" / "Unhide".
     hidden: bool,
+    /// Current persistence key for Pin/Hide actions. DynamicBox can keep
+    /// this row controller alive while changing the displayed item, so
+    /// right-click callbacks must not capture the init-time value.
+    usage_key: Rc<RefCell<Option<String>>>,
+    /// Context popover is intentionally built outside the declarative
+    /// GtkButton child tree. GtkButton is single-child; making Popover a
+    /// sibling inside it can leave GTK with an invalid popup parent and
+    /// crash on right-click under Wayland.
+    context_menu: gtk::Popover,
+    pin_button: gtk::Button,
+    hide_button: gtk::Button,
     /// `"1".."9"` quick-activate digit, or empty string for rows
     /// past the first nine.
     quick_key: String,
@@ -99,39 +112,6 @@ impl Component for LauncherRowModel {
             set_can_focus: false,
             connect_clicked[sender] => move |_| {
                 sender.input(LauncherRowInput::Activate);
-            },
-
-            // The popover anchors against `button` (parent) so it
-            // pops down right under the row. Items emit input
-            // messages that the row forwards to the parent
-            // launcher widget for runtime mutation.
-            #[name = "context_menu"]
-            gtk::Popover {
-                set_position: gtk::PositionType::Bottom,
-                set_has_arrow: false,
-                set_autohide: true,
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 2,
-                    set_margin_all: 4,
-
-                    #[name = "pin_button"]
-                    gtk::Button {
-                        add_css_class: "flat",
-                        #[watch]
-                        set_label: if model.pinned { "Unpin" } else { "Pin" },
-                        set_halign: gtk::Align::Fill,
-                    },
-
-                    #[name = "hide_button"]
-                    gtk::Button {
-                        add_css_class: "flat",
-                        #[watch]
-                        set_label: if model.hidden { "Unhide" } else { "Hide" },
-                        set_halign: gtk::Align::Fill,
-                    },
-                },
             },
 
             gtk::Box {
@@ -217,10 +197,10 @@ impl Component for LauncherRowModel {
         // Hide the context menu entirely for rows without a
         // usage_key — those are synthetic (commands palette, etc.)
         // and the Pin/Hide actions would have nothing to persist
-        // against. Capture this before moving `item` into the
-        // model so the gesture closure can check it without a
-        // second clone.
-        let has_usage_key = item.usage_key.is_some();
+        // against. Keep it in shared state because DynamicBox can
+        // reuse this controller for updated display items.
+        let usage_key = Rc::new(RefCell::new(item.usage_key.clone()));
+        let (context_menu, pin_button, hide_button) = build_context_menu(pinned, hidden);
         // Per-provider styling hook: `.row-apps`, `.row-calc`, … —
         // lowercased + sanitised so the class is a valid CSS ident.
         let variant = row_variant(&item.provider_name);
@@ -228,6 +208,10 @@ impl Component for LauncherRowModel {
             item,
             pinned,
             hidden,
+            usage_key,
+            context_menu,
+            pin_button,
+            hide_button,
             quick_key,
             is_selected: false,
             variant,
@@ -236,15 +220,19 @@ impl Component for LauncherRowModel {
         let widgets = view_output!();
 
         apply_icon(&widgets.image, &model.item);
+        model.context_menu.set_parent(&widgets.button);
 
         // Right-click → open the context popover anchored on the
         // button. SECONDARY gesture so it doesn't collide with
         // the left-click Activate signal on the same button.
         let gesture = gtk::GestureClick::new();
         gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
-        let popover = widgets.context_menu.clone();
-        gesture.connect_pressed(move |_, _, _, _| {
-            if has_usage_key {
+        let popover = model.context_menu.clone();
+        let usage_key_for_menu = model.usage_key.clone();
+        gesture.connect_pressed(move |_, _, x, y| {
+            if usage_key_for_menu.borrow().is_some() {
+                let rect = gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1);
+                popover.set_pointing_to(Some(&rect));
                 popover.popup();
             }
         });
@@ -253,20 +241,23 @@ impl Component for LauncherRowModel {
         // Wire the popover buttons here (rather than in the
         // declarative view) so we capture the usage_key once and
         // dodge the partial-move-of-model issue inside view! closures.
-        let usage_key = model.item.usage_key.clone().unwrap_or_default();
-        let popdown = widgets.context_menu.clone();
+        let popdown = model.context_menu.clone();
         let sender_pin = sender.clone();
-        let key_pin = usage_key.clone();
-        widgets.pin_button.connect_clicked(move |_| {
+        let key_pin = model.usage_key.clone();
+        model.pin_button.connect_clicked(move |_| {
             popdown.popdown();
-            let _ = sender_pin.output(LauncherRowOutput::TogglePin(key_pin.clone()));
+            if let Some(key) = key_pin.borrow().clone() {
+                let _ = sender_pin.output(LauncherRowOutput::TogglePin(key));
+            }
         });
-        let popdown = widgets.context_menu.clone();
+        let popdown = model.context_menu.clone();
         let sender_hide = sender.clone();
-        let key_hide = usage_key;
-        widgets.hide_button.connect_clicked(move |_| {
+        let key_hide = model.usage_key.clone();
+        model.hide_button.connect_clicked(move |_| {
             popdown.popdown();
-            let _ = sender_hide.output(LauncherRowOutput::ToggleHidden(key_hide.clone()));
+            if let Some(key) = key_hide.borrow().clone() {
+                let _ = sender_hide.output(LauncherRowOutput::ToggleHidden(key));
+            }
         });
 
         // `root` is held by the view's `#[root]` reference; the
@@ -296,6 +287,7 @@ impl Component for LauncherRowModel {
                 self.pinned = pinned;
                 self.quick_key = quick_key;
                 self.hidden = hidden;
+                *self.usage_key.borrow_mut() = self.item.usage_key.clone();
 
                 widgets.title_label.set_label(&self.item.name);
                 widgets.subtitle_label.set_label(&self.item.description);
@@ -318,7 +310,24 @@ impl Component for LauncherRowModel {
                 let _ = sender.output(LauncherRowOutput::Activated(self.item.id.clone()));
             }
         }
+        self.update_context_menu_labels();
         self.update_view(widgets, sender);
+    }
+
+    fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: Sender<Self::Output>) {
+        self.context_menu.popdown();
+        if self.context_menu.parent().is_some() {
+            self.context_menu.unparent();
+        }
+    }
+}
+
+impl LauncherRowModel {
+    fn update_context_menu_labels(&self) {
+        self.pin_button
+            .set_label(if self.pinned { "Unpin" } else { "Pin" });
+        self.hide_button
+            .set_label(if self.hidden { "Unhide" } else { "Hide" });
     }
 }
 
@@ -329,6 +338,30 @@ fn row_variant(provider_name: &str) -> String {
             .to_ascii_lowercase()
             .replace(|c: char| !c.is_ascii_alphanumeric(), "-")
     )
+}
+
+fn build_context_menu(pinned: bool, hidden: bool) -> (gtk::Popover, gtk::Button, gtk::Button) {
+    let popover = gtk::Popover::new();
+    popover.set_position(gtk::PositionType::Bottom);
+    popover.set_has_arrow(false);
+    popover.set_autohide(true);
+
+    let container = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    container.set_margin_all(4);
+
+    let pin_button = gtk::Button::with_label(if pinned { "Unpin" } else { "Pin" });
+    pin_button.add_css_class("flat");
+    pin_button.set_halign(gtk::Align::Fill);
+
+    let hide_button = gtk::Button::with_label(if hidden { "Unhide" } else { "Hide" });
+    hide_button.add_css_class("flat");
+    hide_button.set_halign(gtk::Align::Fill);
+
+    container.append(&pin_button);
+    container.append(&hide_button);
+    popover.set_child(Some(&container));
+
+    (popover, pin_button, hide_button)
 }
 
 /// Resolve the right icon for a launcher item. App entries get the
