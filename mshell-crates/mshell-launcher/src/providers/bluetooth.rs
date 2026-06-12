@@ -11,14 +11,38 @@
 //! settings panel is the right tool.
 
 use crate::{item::LauncherItem, notify::toast, provider::Provider};
+use std::cell::RefCell;
 use std::process::Command;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
-pub struct BluetoothProvider;
+const SNAPSHOT_TTL: Duration = Duration::from_secs(2);
+
+pub struct BluetoothProvider {
+    cache: RefCell<Option<CachedSnapshot<Vec<Device>>>>,
+}
 
 impl BluetoothProvider {
     pub fn new() -> Self {
-        Self
+        Self {
+            cache: RefCell::new(None),
+        }
+    }
+
+    fn cached_snapshot(&self) -> Vec<Device> {
+        let now = Instant::now();
+        if let Some(cached) = self.cache.borrow().as_ref()
+            && now.duration_since(cached.captured_at) < SNAPSHOT_TTL
+        {
+            return cached.value.clone();
+        }
+
+        let value = snapshot();
+        *self.cache.borrow_mut() = Some(CachedSnapshot {
+            captured_at: now,
+            value: value.clone(),
+        });
+        value
     }
 }
 
@@ -34,6 +58,11 @@ struct Device {
     mac: String,
     name: String,
     connected: bool,
+}
+
+struct CachedSnapshot<T> {
+    captured_at: Instant,
+    value: T,
 }
 
 /// Parse `bluetoothctl paired-devices` output. Each line is:
@@ -151,7 +180,7 @@ impl Provider for BluetoothProvider {
             .trim()
             .to_ascii_lowercase();
 
-        let mut devices = snapshot();
+        let mut devices = self.cached_snapshot();
         if devices.is_empty() {
             return vec![LauncherItem {
                 id: "bt:none".into(),

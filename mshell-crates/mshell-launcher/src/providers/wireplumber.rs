@@ -10,14 +10,38 @@
 //! Activation runs `wpctl set-default <id>`.
 
 use crate::{item::LauncherItem, notify::toast, provider::Provider};
+use std::cell::RefCell;
 use std::process::Command;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
-pub struct WireplumberProvider;
+const SNAPSHOT_TTL: Duration = Duration::from_secs(2);
+
+pub struct WireplumberProvider {
+    cache: RefCell<Option<CachedSnapshot<Vec<Device>>>>,
+}
 
 impl WireplumberProvider {
     pub fn new() -> Self {
-        Self
+        Self {
+            cache: RefCell::new(None),
+        }
+    }
+
+    fn cached_snapshot(&self) -> Vec<Device> {
+        let now = Instant::now();
+        if let Some(cached) = self.cache.borrow().as_ref()
+            && now.duration_since(cached.captured_at) < SNAPSHOT_TTL
+        {
+            return cached.value.clone();
+        }
+
+        let value = snapshot();
+        *self.cache.borrow_mut() = Some(CachedSnapshot {
+            captured_at: now,
+            value: value.clone(),
+        });
+        value
     }
 }
 
@@ -38,6 +62,11 @@ struct Device {
     is_default: bool,
     /// "sink" or "source".
     kind: &'static str,
+}
+
+struct CachedSnapshot<T> {
+    captured_at: Instant,
+    value: T,
 }
 
 /// Parse `wpctl status` output. Indented lines under each
@@ -168,7 +197,7 @@ impl Provider for WireplumberProvider {
             .trim()
             .to_ascii_lowercase();
 
-        let mut devices = snapshot();
+        let mut devices = self.cached_snapshot();
         if !filter.is_empty() {
             devices.retain(|d| d.name.to_ascii_lowercase().contains(&filter));
         }

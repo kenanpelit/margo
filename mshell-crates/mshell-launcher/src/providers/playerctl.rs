@@ -14,14 +14,38 @@
 //!      it.
 
 use crate::{item::LauncherItem, notify::toast, provider::Provider};
+use std::cell::RefCell;
 use std::process::Command;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
-pub struct PlayerctlProvider;
+const SNAPSHOT_TTL: Duration = Duration::from_secs(2);
+
+pub struct PlayerctlProvider {
+    cache: RefCell<Option<CachedSnapshot<PlayerSnapshot>>>,
+}
 
 impl PlayerctlProvider {
     pub fn new() -> Self {
-        Self
+        Self {
+            cache: RefCell::new(None),
+        }
+    }
+
+    fn cached_snapshot(&self) -> PlayerSnapshot {
+        let now = Instant::now();
+        if let Some(cached) = self.cache.borrow().as_ref()
+            && now.duration_since(cached.captured_at) < SNAPSHOT_TTL
+        {
+            return cached.value.clone();
+        }
+
+        let value = snapshot();
+        *self.cache.borrow_mut() = Some(CachedSnapshot {
+            captured_at: now,
+            value: value.clone(),
+        });
+        value
     }
 }
 
@@ -32,13 +56,27 @@ impl Default for PlayerctlProvider {
 }
 
 /// Snapshot of currently-registered MPRIS players.
+#[derive(Clone)]
 struct PlayerSnapshot {
-    /// `playerctl --list-all` output: one player name per line.
-    names: Vec<String>,
+    players: Vec<PlayerInfo>,
+}
+
+#[derive(Clone)]
+struct PlayerInfo {
+    /// `playerctl --list-all` output entry.
+    name: String,
+    /// Cached metadata so Actions typing does not fork one
+    /// `playerctl metadata` per player on every recompute.
+    track: Option<String>,
+}
+
+struct CachedSnapshot<T> {
+    captured_at: Instant,
+    value: T,
 }
 
 fn snapshot() -> PlayerSnapshot {
-    let names = Command::new("playerctl")
+    let players = Command::new("playerctl")
         .arg("--list-all")
         .output()
         .ok()
@@ -50,8 +88,14 @@ fn snapshot() -> PlayerSnapshot {
                 .filter(|l| !l.is_empty())
                 .collect::<Vec<_>>()
         })
-        .unwrap_or_default();
-    PlayerSnapshot { names }
+        .unwrap_or_default()
+        .into_iter()
+        .map(|name| {
+            let track = current_track(&name);
+            PlayerInfo { name, track }
+        })
+        .collect();
+    PlayerSnapshot { players }
 }
 
 fn current_track(player: &str) -> Option<String> {
@@ -120,8 +164,8 @@ impl Provider for PlayerctlProvider {
             return Vec::new();
         }
 
-        let snap = snapshot();
-        if snap.names.is_empty() {
+        let snap = self.cached_snapshot();
+        if snap.players.is_empty() {
             return vec![LauncherItem {
                 id: "player:none".into(),
                 name: "No MPRIS players running".into(),
@@ -172,19 +216,19 @@ impl Provider for PlayerctlProvider {
         }
 
         // One row per player — picks the player + plays it.
-        for (idx, player) in snap.names.iter().enumerate() {
-            let track = current_track(player).unwrap_or_else(|| "(no track)".into());
-            let player_clone = player.clone();
-            let player_label = player.clone();
+        for (idx, player) in snap.players.iter().enumerate() {
+            let track = player.track.as_deref().unwrap_or("(no track)");
+            let player_clone = player.name.clone();
+            let player_label = player.name.clone();
             results.push(LauncherItem {
-                id: format!("player:select:{player}"),
-                name: format!("{player} — {track}"),
+                id: format!("player:select:{}", player.name),
+                name: format!("{} — {track}", player.name),
                 description: "Make this the focused player + play".into(),
                 icon: "audio-x-generic-symbolic".into(),
                 icon_is_path: false,
                 score: 180.0 - idx as f64,
                 provider_name: "Player".into(),
-                usage_key: Some(format!("player:select:{player}")),
+                usage_key: Some(format!("player:select:{}", player.name)),
                 on_activate: Rc::new(move || {
                     spawn_player_cmd(&["--player", &player_clone, "play"]);
                     toast("Now playing", player_label.clone());
