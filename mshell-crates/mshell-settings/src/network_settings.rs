@@ -76,6 +76,9 @@ pub(crate) enum NetworkSettingsInput {
     ForgetConn(String),
     /// Open the connection editor for the given UUID.
     OpenEditor(String),
+    /// Open the editor for the wired connection (active one preferred) —
+    /// the UUID is resolved from `all_connections` at click time.
+    OpenWiredEditor,
     /// Editor closed (Back or successful Apply) — switch back to the list.
     EditorClosed,
     UpConn(String),
@@ -328,10 +331,9 @@ impl Component for NetworkSettingsModel {
                         add_css_class: "ok-button-primary",
                         set_icon_name: "emblem-system-symbolic",
                         set_valign: gtk::Align::Center,
-                        set_tooltip_text: Some("Edit connection (coming soon)"),
+                        set_tooltip_text: Some("Edit wired connection"),
                         connect_clicked[sender] => move |_| {
-                            // TODO(task4): pass the active wired connection UUID
-                            sender.input(NetworkSettingsInput::OpenEditor(String::new()));
+                            sender.input(NetworkSettingsInput::OpenWiredEditor);
                         },
                     },
                 },
@@ -1082,6 +1084,24 @@ impl Component for NetworkSettingsModel {
                         .send(ConnectionEditorInput::Load(uuid, conn_name, is_wifi))
                         .ok();
                     widgets.page_stack.set_visible_child_name("editor");
+                }
+            }
+
+            // ── Open editor for the wired connection ──────────────────────
+            NetworkSettingsInput::OpenWiredEditor => {
+                let wired = self
+                    .all_connections
+                    .iter()
+                    .filter(|r| r.kind == "802-3-ethernet")
+                    .max_by_key(|r| r.active);
+                match wired {
+                    Some(row) => {
+                        sender.input(NetworkSettingsInput::OpenEditor(row.uuid.clone()));
+                    }
+                    None => mshell_launcher::notify::toast(
+                        "Network",
+                        "No wired connection profile found.",
+                    ),
                 }
             }
 
