@@ -1,0 +1,41 @@
+// Boxed-list (Adwaita .boxed-list, DESIGN.md §5): related rows grouped
+// in ONE --card-bg card at --list-radius, separated by hairlines;
+// first/last row inherit the card corners, middle rows are square.
+// Apply .ok-boxed-list to the row container (a gtk::ListBox or a
+// vertical gtk::Box whose direct children are the rows). Add .compact
+// for menu density. Geometry comes from 01-tokens/_components.scss.
+.ok-boxed-list {
+  background-color: var(--card-bg);
+  border-radius: var(--list-radius);
+
+  > * {
+    border-radius: 0;
+    min-height: var(--row-min-height);
+    padding: var(--row-padding);
+    // 1px hairline — the sanctioned sub-token micro-inset (§15 L2).
+    border-bottom: 1px solid var(--list-separator);
+    background-color: transparent;
+    transition: background-color var(--motion-fast) var(--ease-standard);
+  }
+
+  > *:first-child {
+    border-top-left-radius: var(--list-radius);
+    border-top-right-radius: var(--list-radius);
+  }
+
+  > *:last-child {
+    border-bottom-left-radius: var(--list-radius);
+    border-bottom-right-radius: var(--list-radius);
+    border-bottom: none;
+  }
+
+  // The canonical 14% primary wash on interactive rows (§5).
+  > button:hover,
+  > row:hover {
+    background-color: color-mix(in srgb, var(--primary) 14%, transparent);
+  }
+}
+
+.ok-boxed-list.compact > * {
+  min-height: var(--row-min-height-compact);
+}

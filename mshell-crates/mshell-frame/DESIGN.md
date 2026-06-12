@@ -50,8 +50,11 @@ layout** in §8b; **config migration** in §9; **performance budget**,
 
 Margo should feel **calm, intelligent, adaptive, composable, and
 keyboard-first** — workstation-grade, not flashy. Fast and breathable;
-focused and distraction-free. It is uniquely Margo: not a clone of
-GNOME, KDE, macOS, or Raycast, but it respects Linux/Wayland workflows.
+focused and distraction-free. Margo **adopts GNOME HIG / libadwaita
+metrics and component anatomy** — a proven, calm system — as its
+geometric language; its identity lives in matugen adaptivity, the
+severity ladder, keyboard-first interaction, and layer-shell surfaces,
+not in bespoke geometry.
 
 Guiding rules (these set the *intent*; §1–§14 are the binding details):
 
@@ -77,7 +80,8 @@ Guiding rules (these set the *intent*; §1–§14 are the binding details):
 8. **Spacing scale: 4 / 8 / 12 / 16 / 24 / 32 / 48.** Use it
    consistently; align content; avoid floating, uneven, crowded
    layouts.
-9. **Accessibility:** ≥40px interactive targets, WCAG-AA text contrast,
+9. **Accessibility:** ≥34px interactive targets (the Adwaita standard;
+   icon-only circular actions ≥40px), WCAG-AA text contrast,
    keyboard-first is mandatory.
 
 The launcher is the heart of the desktop: it must open instantly, feel
@@ -136,7 +140,7 @@ adding `--outline-variant`).
 
 There are **two corner systems and they don't overlap.** Don't mix them.
 
-**1. Widget interiors → the fixed Material-3 scale.** Everything you see
+**1. Widget interiors → the fixed Adwaita scale.** Everything you see
 *inside* a menu / dashboard / popup — buttons, rows, cards, tiles,
 entries, the menu surface itself — picks one of these by component
 kind. These are fixed (not config-driven); they are the design
@@ -144,17 +148,39 @@ language and never change at runtime:
 
 | Token | px | Use |
 |---|---|---|
-| `--radius-xs` | 10 | nested image/thumb inside a card, inline badge |
-| `--radius-sm` | 16 | **buttons, list rows, entries, spins, dropdowns, calendar cells** |
-| `--radius-md` | 20 | cards, tiles, hero panels, generic surfaces |
-| `--radius-lg` | 28 | launcher / large menu surfaces |
-| `--radius-xl` | 32 | search field, hero toggles (a *panel* search is a pill — §12) |
-| `--radius-pill` | 999 | toggles/switches, progress bars, category chips |
+| `--radius-xs` | 6 | nested image/thumb inside a card, inline badge, inner segment |
+| `--radius-sm` | 9 | **buttons, list rows, entries, spins, dropdowns, calendar cells** (= Adwaita `$button_radius`) |
+| `--radius-md` | 12 | cards, tiles, boxed-lists, hero panels (= Adwaita `$card_radius`) |
+| `--radius-lg` | 15 | menu / panel surfaces (= Adwaita `$window_radius`) |
+| `--radius-xl` | 18 | the launcher window / largest hero surfaces only |
+| `--radius-pill` | 999 | switches, progress bars, category chips, the *panel* search (§12), prominent CTAs |
 
-The scale is intentionally soft (GNOME / ashell-style rounding) — buttons
-read as gently-rounded, cards/tiles clearly so. `button-base` is
-`--radius-sm`, so **every `.ok-button-*` is 16 by default** — don't
-re-declare a button radius per component.
+The scale is Adwaita-tight: buttons read compact and precise, cards
+clearly rounded, large surfaces calm. A compact menu / launcher search
+field is a `--radius-sm` entry like every Adwaita entry — only the §12
+*panel* search is a pill. `button-base` reads the central component
+layer (below), so **every `.ok-button-*` is 9px / 34px by default** —
+don't re-declare button geometry per component.
+
+### Component tokens (`01-tokens/_components.scss`) — THE central source
+
+Component *geometry and colour roles* live in one place. Primitives
+(`03-primitives/`) read **only** these tokens; widgets read primitives.
+Tune a component here — never per-widget — and every surface follows:
+
+| Token | Value | Drives |
+|---|---|---|
+| `--button-radius` | `--radius-sm` (9) | every `.ok-button-*` corner |
+| `--button-min-height` | 34px | every button's target height |
+| `--button-min-width` | 80px | labelled action buttons in a row (**size equality**: buttons sharing a row share exactly this geometry) |
+| `--button-padding` | `--space-1 --space-3` | button inner padding |
+| `--button-bg` / `--button-fg` | surface-container-high / on-surface | resting fill on page surfaces |
+| `--button-circle-size` | 40px | icon-only circular actions (panel header, media) |
+| `--row-min-height` / `-compact` | 48 / 40 | boxed-list rows (relaxed / compact density) |
+| `--row-padding` | `--space-2 --space-3` | boxed-list row inset |
+| `--list-radius` / `--list-separator` | `--radius-md` / `--outline-variant` | boxed-list card corner + hairlines |
+| `--card-radius` / `--card-bg` / `--card-padding` | `--radius-md` / surface-container / `--space-4` | cards & tiles |
+| `--entry-radius` / `--entry-min-height` | `--radius-sm` / 34px | entries, spins |
 
 **Nesting (concentric corners).** Two boxes are only stepped down a
 notch when one is *physically inside* the other with padding (e.g. a
@@ -352,6 +378,28 @@ for instance, is just AudioOut + AudioIn revealer rows stacked.
   14% primary wash, `all: unset` base.
 - The **active** entry shows a `check-symbolic` in `--primary`.
   Clicking a row makes it the active one.
+
+### Boxed-lists (the Adwaita grouped-row standard)
+A set of *related* rows (form rows, switch rows, device lists, revealer
+details) is grouped in **one** card, not floated as N separate cards —
+the Adwaita `.boxed-list`. Shared primitive:
+`03-primitives/_boxed_list.scss`, class **`.ok-boxed-list`** on the row
+container (a `gtk::ListBox` or vertical `gtk::Box` whose direct
+children are the rows):
+
+- The container is one `--card-bg` card at `--list-radius` (12).
+- Rows inside are **square-cornered**, separated by 1px
+  `--list-separator` hairlines; the first/last row inherit the card's
+  top/bottom corners automatically (`:first-child`/`:last-child`).
+- Row anatomy = Adwaita ActionRow: SemiBold title `--on-surface`, dim
+  subtitle `--on-surface-variant`, control trailing,
+  `--row-min-height` 48 (Settings, relaxed) or `.compact` 40 (menus).
+- Hover keeps the canonical 14% primary wash; selected keeps
+  `--surface-container-high` + check glyph (above).
+
+Use it whenever rows form a related group; a lone row or a free-form
+tile is not a boxed-list. Don't hand-roll separators or per-row card
+chrome.
 
 ### Scrollable lists & footers (the "dark band" rule)
 A `gtk::ListBox` inside a `gtk::ScrolledWindow` (ufw rules, podman
@@ -672,7 +720,7 @@ radius / motion scales (§1), same severity (§2), same active-tint rule
 ### Panel surface
 - Background: `--surface` — the panel reads as one calm tonal sheet.
   Never pure black, never a hardcoded hex (§1).
-- Outer radius: `--radius-lg` (24), the large-menu corner (§1).
+- Outer radius: `--radius-lg` (15), the menu/panel-surface corner (§1).
 - Outer padding: `--padding-xl` (24) on the content box.
 - Elevation: one soft, wide, low-opacity shadow ("hovering surface").
   Never a hard drop shadow, glow, or neumorphism (§0, §14).
@@ -696,7 +744,8 @@ A panel opens with a real header, not just a section label:
 - **Leading icon**: symbolic, outline family, same stroke as the rest
   (§0.6) — never a filled glyph.
 - **Action buttons** (trailing): icon-only, **perfect circle**
-  (`--radius-pill`, equal padding, ≥40×40 — §9 target), resting
+  (`--radius-pill`, equal padding, `--button-circle-size` ≥40×40 —
+  §0.9 target), resting
   transparent, hover = the canonical 14% primary state-layer (§4/§5).
   Never a naked floating icon, never raised button chrome.
 - **Reuse the widget, don't rebuild it.** This header ships as the
@@ -723,7 +772,7 @@ track**, not N separate buttons.
   are too close" case. The 4px inset keeps the active fill clear of the
   ring.
 - **Active segment**: `--secondary-container` fill +
-  `--on-secondary-container` text, inner radius `--radius-sm` (12).
+  `--on-secondary-container` text, inner radius `--radius-sm` (9).
   This is the soft-toggle tier §1 already sanctions — a calm filled
   selection, **not** a `--primary` flood (controlled saturation, no
   neon) and **not** the §3 live-state icon tint (that's for
@@ -740,9 +789,11 @@ track**, not N separate buttons.
 ### Panel search (pill query surface)
 A panel's search reads as a calm query surface, not a utility input.
 
-- Shape: **`--radius-pill`** (999) — *panel-scoped*. Compact menu /
-  launcher search keeps `--radius-xl` (28) per §1; the pill is the
-  panel archetype's larger, more inviting field.
+- Shape: **`--radius-pill`** (999) — *panel-scoped*, the deliberate
+  pill exception (GNOME Shell's overview search precedent). Compact
+  menu / launcher search is a plain `--radius-sm` (9) Adwaita entry
+  per §1; the pill is the panel archetype's larger, more inviting
+  field.
 - Height: ~52px (`min-height`) with `--padding-lg` (16) horizontal
   inner padding — tune the control's padding, don't chase a magic
   height (§1 density).
@@ -760,7 +811,7 @@ a full card:
 - Tier: `--surface-container` — one step above the panel `--surface`,
   *not* the `--surface-container-high` "raised card" tier (reserved
   for hover / selected lift).
-- Radius: `--radius-md` (16) — content cards take the card corner, not
+- Radius: `--radius-md` (12) — content cards take the card corner, not
   the `--radius-sm` list-row corner.
 - Hover: the canonical 14% primary state-layer (tonal lift, never a
   bright swap). **Selected** = inset 2px `--primary` ring (the
@@ -1136,6 +1187,7 @@ existing part. Reuse keeps the system coherent (§0) and is faster.
 | **Panel search** | §12 pill search | browse-and-filter panel | a compact menu (use `--radius-xl` search) |
 | **Reorder DnD** | `mshell-settings/src/reorder_dnd.rs` | any user-reorderable list (§5) | non-reorderable list |
 | **Device / list row** | §5 row pattern | selectable item in a list | expandable row (use RevealerRow) |
+| **Boxed-list** | `03-primitives/_boxed_list.scss` (`.ok-boxed-list[.compact]`) | a group of related form/switch/device rows (§5) | a lone row or a free-form tile |
 | **Dynamic box** | `mshell-common/.../dynamic_box` | animated add/remove/reorder in a `Box` (dock) | a static or relm4-factory list |
 | **Severity class** | Rust `severity_class` + §2 SCSS | any thresholded metric | binary on/off (use §3 active tint) |
 | **Managed `.conf` fragment** | §8b pattern (`tag_layout_settings`) | a Settings page writing compositor config | a shell-owned setting (use the store) |
@@ -1208,27 +1260,31 @@ Every button resolves on three axes — don't invent one-off button styles:
   → active/pressed → disabled (drop to ~30 % alpha, never a new grey). All four
   transition with `--motion-fast` `--ease-standard`; never snap.
 
-Radius + size: a **menu action button** (the `.ok-button-cell` family — power
-profile/control, session, DNS, UFW footer, network, …) is a **slim fully-rounded
-pill**: `--radius-pill`, `--space-2 × --space-4` padding, 84 px min-width, 40 px
-min-height. Thin so it never reads as a chunky block; fully rounded for the
-GNOME/ashell look. Do **not** reach for `--radius-xl` here — a big radius only
-reads as a rounded *square* on a tall, content-filled toggle **tile** (the
-control center, §22), not on a slim button, where it just forces an ugly chunky
-height. Compact secondary selectors (e.g. the charge-limit % presets) are a
-notch slimmer (≈30 px) but the same pill. Pill toggles / category chips also use
-`--radius-pill`; tiny inline icon buttons and bar pills (§4) keep their own
-radii. One pill family across menus + plugin selectors; tall toggle tiles are a
-separate kind (§22).
+Radius + size — **all from the central component tokens (§1), never
+re-declared per widget.** Every button is the Adwaita button:
+`--button-radius` (9), `--button-min-height` (34), `--button-padding`.
+A **menu action button** (the `.ok-button-cell` family — power
+profile/control, session, DNS, UFW footer, network, …) additionally
+pins `--button-min-width` (80) so a short label never shrinks to a
+sliver. **Size equality is the contract:** buttons sharing a row share
+*exactly* this geometry — one family, no per-widget sizes; a row of
+Apply / Cancel / Refresh always reads as equal siblings. The pill shape
+(`--radius-pill`) is reserved for: switches, progress bars, category
+chips, the §12 panel search, and **prominent CTAs** (the Adwaita
+`.pill` — e.g. `wizard-button` onboarding nav). An action button is
+never a pill. Tall content-filled toggle **tiles** (control center,
+§22) are a separate kind at `--card-radius`; tiny inline icon buttons
+and bar pills (§4) keep their own radii.
 
-**Settings-window buttons are NOT this pill.** The Settings pages
-(`mshell-settings`) use the **compact** button — plain `.ok-button-surface` /
-`.ok-button-primary` with **no** `.ok-button-cell` (button-base default:
-`--radius-sm`, `--space-2 × --space-3` padding, content width). Reference: the
-Privacy page's "Open Lock settings". Do not put `.ok-button-cell` on a Settings
-action button — it makes it a chunky 84×40 menu pill, out of scale with the
-dense Settings rows. (The one exception is the Users page's selectable user
-*card*, which uses `.ok-button-cell` as a card shape, not as a button.)
+**Settings-window buttons skip the min-width pin.** The Settings pages
+(`mshell-settings`) use the plain button — `.ok-button-surface` /
+`.ok-button-primary` with **no** `.ok-button-cell` (button-base
+default: `--button-radius`, `--button-padding`, content width).
+Reference: the Privacy page's "Open Lock settings". Do not put
+`.ok-button-cell` on a Settings action button — the 80px min-width is
+a menu-row convention, out of place in dense Settings rows. (The one
+exception is the Users page's selectable user *card*, which uses
+`.ok-button-cell` as a card shape, not as a button.)
 
 **Surface buttons on a settings page are outlined + elevated.** A plain
 `.ok-button-surface` is filled with `--surface` — the same colour as the
@@ -1296,7 +1352,8 @@ one exists. Reuse this tile for any new quick toggle — don't hand-roll a butto
 points → §8 register as Menu → §10 IPC verb → §11 build+verify.
 
 **New menu content:** §5 reuse revealer-row / quick-settings card →
-§3 active tint if stateful → §1 tokens only. Scrollable list? §5 keep
+§3 active tint if stateful → §1 tokens only. Related rows? group them
+in a `.ok-boxed-list.compact` (§5). Scrollable list? §5 keep
 the ListBox + scroller transparent and size-to-content (no dark band).
 Async data? define all five §17 states (loading/empty/error/no-perm/
 no-service). Define every §16 state (esp. focus + disabled).
@@ -1320,7 +1377,8 @@ layer-shell menu (§5); tokens only (§1); keep list density medium —
 don't balloon rows.
 
 **New Settings page (a sidebar entry):** §8b — copy `idle_settings.rs`
-for the component shape (`settings-hero` header, §1 tokens); wire all 9
+for the component shape (`settings-hero` header, §1 tokens); group
+form/switch rows in `.ok-boxed-list` cards (§5); wire all 9
 points (`mod` in `lib.rs` + use / field / sidebar `ToggleButton` /
 builder / section-table row / `ComponentParts` assign / `add_titled` /
 `ActivateSection` arm in `settings.rs`). Backend: shell-owned setting →

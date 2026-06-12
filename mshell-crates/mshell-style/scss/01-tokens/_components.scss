@@ -1,0 +1,31 @@
+// Component tokens — THE central geometry + colour-role source
+// (DESIGN.md §1/§21/§5). Primitives (03-primitives) read these; widgets
+// read primitives. Tune a component HERE, never per-widget: change one
+// value and every button / row / card in the shell follows.
+:root {
+  // ── Buttons (Adwaita anatomy) ──────────────────────────────
+  --button-radius: var(--radius-sm);      // 9px — Adwaita button corner
+  --button-min-height: 34px;              // Adwaita standard target
+  --button-min-width: 80px;               // labelled action buttons match in a row
+  --button-padding: var(--space-1) var(--space-3);
+  --button-bg: var(--surface-container-high); // resting fill on page surfaces
+  --button-fg: var(--on-surface);
+  // Icon-only circular actions (panel-header ⌫ / ⚙, media controls).
+  --button-circle-size: 40px;
+
+  // ── Rows / boxed-lists ─────────────────────────────────────
+  --row-min-height: 48px;                 // relaxed density (Settings)
+  --row-min-height-compact: 40px;         // compact density (menus)
+  --row-padding: var(--space-2) var(--space-3);
+  --list-radius: var(--radius-md);        // the boxed-list card corner
+  --list-separator: var(--outline-variant);
+
+  // ── Cards / tiles ──────────────────────────────────────────
+  --card-radius: var(--radius-md);
+  --card-bg: var(--surface-container);
+  --card-padding: var(--space-4);
+
+  // ── Entries ────────────────────────────────────────────────
+  --entry-radius: var(--radius-sm);
+  --entry-min-height: 34px;
+}

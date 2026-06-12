@@ -7,16 +7,17 @@
   // style manager from config. 100% = fully opaque.
   --surface-opacity: 100%;
 
-  // Semantic shape scale — soft, GNOME/ashell-style rounding. Components
-  // share one corner language instead of every surface using
+  // Semantic shape scale — GNOME/libadwaita metrics (DESIGN.md §1).
+  // Adwaita: $button_radius 9, $card_radius 12, $window_radius 15.
+  // Components share one corner language instead of every surface using
   // --radius-widget. Fixed (not config-driven): corner geometry is part of
   // the design language, not a per-user knob — see DESIGN.md §Shape language.
-  --radius-xs: 10px;    // small chips, inline badges
-  --radius-sm: 16px;    // buttons, list items
-  --radius-md: 20px;    // cards, tiles
-  --radius-lg: 28px;    // launcher / menu surfaces
-  --radius-xl: 32px;    // search field, hero toggles
-  --radius-pill: 999px; // fully-rounded pills (category chips)
+  --radius-xs: 6px;     // nested thumb in a card, inline badge, inner segment
+  --radius-sm: 9px;     // buttons, entries, list rows, dropdowns (Adwaita button)
+  --radius-md: 12px;    // cards, tiles, boxed-lists (Adwaita card)
+  --radius-lg: 15px;    // menu / panel surfaces (Adwaita window)
+  --radius-xl: 18px;    // launcher window / largest hero only
+  --radius-pill: 999px; // switches, progress, chips, panel search, CTAs
 
   /* Spacing scale (DESIGN.md §1) — never hardcode raw px for gaps/padding. */
   --space-1: 4px;

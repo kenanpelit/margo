@@ -1,6 +1,7 @@
 .ok-entry {
   all: unset;
   padding: var(--space-1) var(--space-2);
+  min-height: var(--entry-min-height);
   box-shadow: none;
   background-color: transparent;
   color: var(--on-surface);
@@ -19,11 +20,12 @@
 .ok-entry-with-border {
   all: unset;
   padding: var(--space-1) var(--space-2);
+  min-height: var(--entry-min-height);
   box-shadow: none;
   background-color: transparent;
   border-style: solid;
   border-width: var(--border-width);
-  border-radius: var(--radius-sm);
+  border-radius: var(--entry-radius);
   border-color: var(--outline);
   color: var(--on-surface);
   caret-color: var(--on-surface);
