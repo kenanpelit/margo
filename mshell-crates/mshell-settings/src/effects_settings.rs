@@ -84,60 +84,65 @@ impl Component for EffectsModel {
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Shadows", set_halign: gtk::Align::Start },
 
-                #[template] Row {
-                    #[template_child] title { set_label: "Drop shadows" },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.shadows,
-                        connect_active_notify[sender] => move |s| sender.input(EffectsInput::SetBool("shadows", s.is_active())),
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Drop shadows" },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.shadows,
+                            connect_active_notify[sender] => move |s| sender.input(EffectsInput::SetBool("shadows", s.is_active())),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Only on floating windows" },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.shadow_only_floating,
-                        connect_active_notify[sender] => move |s| sender.input(EffectsInput::SetBool("shadow_only_floating", s.is_active())),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Only on floating windows" },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.shadow_only_floating,
+                            connect_active_notify[sender] => move |s| sender.input(EffectsInput::SetBool("shadow_only_floating", s.is_active())),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Shadows on layer surfaces (bar/menus)" },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.layer_shadows,
-                        connect_active_notify[sender] => move |s| sender.input(EffectsInput::SetBool("layer_shadows", s.is_active())),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Shadows on layer surfaces (bar/menus)" },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.layer_shadows,
+                            connect_active_notify[sender] => move |s| sender.input(EffectsInput::SetBool("layer_shadows", s.is_active())),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Shadow size" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &adj(model.shadows_size, 0.0, 64.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("shadows_size", s.value() as i64)),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Shadow size" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &adj(model.shadows_size, 0.0, 64.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("shadows_size", s.value() as i64)),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Shadow blur" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &adj(model.shadows_blur, 0.0, 64.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("shadows_blur", s.value() as i64)),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Shadow blur" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &adj(model.shadows_blur, 0.0, 64.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("shadows_blur", s.value() as i64)),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Shadow offset X" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &adj(model.shadows_position_x, -32.0, 32.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("shadows_position_x", s.value() as i64)),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Shadow offset X" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &adj(model.shadows_position_x, -32.0, 32.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("shadows_position_x", s.value() as i64)),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Shadow offset Y" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &adj(model.shadows_position_y, -32.0, 32.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("shadows_position_y", s.value() as i64)),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Shadow offset Y" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &adj(model.shadows_position_y, -32.0, 32.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("shadows_position_y", s.value() as i64)),
+                        },
                     },
                 },
 
@@ -150,44 +155,49 @@ impl Component for EffectsModel {
                     set_label: "Dual-Kawase blur behind translucent surfaces. It only shows where a window is actually translucent — lower its opacity (Appearance / a window rule). Strength = passes (1 is barely visible; 3 is a good default); radius widens the sample.",
                 },
 
-                #[template] Row {
-                    #[template_child] title { set_label: "Window blur" },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.blur,
-                        connect_active_notify[sender] => move |s| sender.input(EffectsInput::SetBool("blur", s.is_active())),
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Window blur" },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.blur,
+                            connect_active_notify[sender] => move |s| sender.input(EffectsInput::SetBool("blur", s.is_active())),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Layer-surface blur" },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.blur_layer,
-                        connect_active_notify[sender] => move |s| sender.input(EffectsInput::SetBool("blur_layer", s.is_active())),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Layer-surface blur" },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.blur_layer,
+                            connect_active_notify[sender] => move |s| sender.input(EffectsInput::SetBool("blur_layer", s.is_active())),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Optimized blur" },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.blur_optimized,
-                        connect_active_notify[sender] => move |s| sender.input(EffectsInput::SetBool("blur_optimized", s.is_active())),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Optimized blur" },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.blur_optimized,
+                            connect_active_notify[sender] => move |s| sender.input(EffectsInput::SetBool("blur_optimized", s.is_active())),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Blur strength (passes)" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &adj(model.blur_params_num_passes, 0.0, 6.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("blur_params_num_passes", s.value() as i64)),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Blur strength (passes)" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &adj(model.blur_params_num_passes, 0.0, 6.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("blur_params_num_passes", s.value() as i64)),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Blur radius" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &adj(model.blur_params_radius, 1.0, 24.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("blur_params_radius", s.value() as i64)),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Blur radius" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &adj(model.blur_params_radius, 1.0, 24.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(EffectsInput::SetInt("blur_params_radius", s.value() as i64)),
+                        },
                     },
                 },
             }

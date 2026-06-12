@@ -87,153 +87,168 @@ impl Component for HiddenBarSettingsModel {
                 },
             },
 
-            // Reveal on hover
             gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 20,
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_hexpand: true,
-                    gtk::Label {
-                        add_css_class: "label-medium-bold",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Reveal on hover",
-                        set_hexpand: true,
-                    },
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Expand the drawer when the pointer hovers the trigger (in addition to clicking).",
-                        set_xalign: 0.0,
-                        set_wrap: true,
-                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                    },
-                },
-                gtk::Switch {
-                    set_valign: gtk::Align::Center,
-                    #[watch]
-                    #[block_signal(auto_expand_handler)]
-                    set_active: model.auto_expand,
-                    connect_state_set[sender] => move |_, v| {
-                        sender.input(HiddenBarSettingsInput::AutoExpandChanged(v));
-                        glib::Propagation::Proceed
-                    } @auto_expand_handler,
-                },
-            },
+                add_css_class: "boxed-list",
+                set_orientation: gtk::Orientation::Vertical,
 
-            // Hover delay
-            gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 20,
+                // Reveal on hover
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_hexpand: true,
-                    gtk::Label {
-                        add_css_class: "label-medium-bold",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Hover delay (ms)",
+                    add_css_class: "action-row",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
                         set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Reveal on hover",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Expand the drawer when the pointer hovers the trigger (in addition to clicking).",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(auto_expand_handler)]
+                        set_active: model.auto_expand,
+                        connect_state_set[sender] => move |_, v| {
+                            sender.input(HiddenBarSettingsInput::AutoExpandChanged(v));
+                            glib::Propagation::Proceed
+                        } @auto_expand_handler,
                     },
                 },
-                gtk::SpinButton {
-                    set_valign: gtk::Align::Center,
-                    set_range: (0.0, 5000.0),
-                    set_increments: (50.0, 250.0),
-                    set_digits: 0,
-                    #[watch]
-                    #[block_signal(hover_delay_handler)]
-                    set_value: model.hover_delay_ms as f64,
-                    connect_value_changed[sender] => move |s| {
-                        sender.input(HiddenBarSettingsInput::HoverDelayChanged(s.value() as u32));
-                    } @hover_delay_handler,
-                },
-            },
 
-            // Auto-collapse
-            gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 20,
+                // Hover delay
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_hexpand: true,
-                    gtk::Label {
-                        add_css_class: "label-medium-bold",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Auto-collapse",
+                    add_css_class: "action-row",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
                         set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Hover delay (ms)",
+                            set_hexpand: true,
+                        },
                     },
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Collapse again after the pointer leaves (unless pinned with right-click).",
-                        set_xalign: 0.0,
-                        set_wrap: true,
-                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (0.0, 5000.0),
+                        set_increments: (50.0, 250.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(hover_delay_handler)]
+                        set_value: model.hover_delay_ms as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(HiddenBarSettingsInput::HoverDelayChanged(s.value() as u32));
+                        } @hover_delay_handler,
                     },
                 },
-                gtk::Switch {
-                    set_valign: gtk::Align::Center,
-                    #[watch]
-                    #[block_signal(auto_collapse_handler)]
-                    set_active: model.auto_collapse,
-                    connect_state_set[sender] => move |_, v| {
-                        sender.input(HiddenBarSettingsInput::AutoCollapseChanged(v));
-                        glib::Propagation::Proceed
-                    } @auto_collapse_handler,
-                },
-            },
 
-            // Collapse delay
-            gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 20,
+                // Auto-collapse
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_hexpand: true,
-                    gtk::Label {
-                        add_css_class: "label-medium-bold",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Collapse delay (ms)",
+                    add_css_class: "action-row",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
                         set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Auto-collapse",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Collapse again after the pointer leaves (unless pinned with right-click).",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(auto_collapse_handler)]
+                        set_active: model.auto_collapse,
+                        connect_state_set[sender] => move |_, v| {
+                            sender.input(HiddenBarSettingsInput::AutoCollapseChanged(v));
+                            glib::Propagation::Proceed
+                        } @auto_collapse_handler,
                     },
                 },
-                gtk::SpinButton {
-                    set_valign: gtk::Align::Center,
-                    set_range: (0.0, 10000.0),
-                    set_increments: (100.0, 500.0),
-                    set_digits: 0,
-                    #[watch]
-                    #[block_signal(collapse_delay_handler)]
-                    set_value: model.collapse_delay_ms as f64,
-                    connect_value_changed[sender] => move |s| {
-                        sender.input(HiddenBarSettingsInput::CollapseDelayChanged(s.value() as u32));
-                    } @collapse_delay_handler,
-                },
-            },
 
-            // Start expanded
-            gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 20,
+                // Collapse delay
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_hexpand: true,
-                    gtk::Label {
-                        add_css_class: "label-medium-bold",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Start expanded",
+                    add_css_class: "action-row",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
                         set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Collapse delay (ms)",
+                            set_hexpand: true,
+                        },
+                    },
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (0.0, 10000.0),
+                        set_increments: (100.0, 500.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(collapse_delay_handler)]
+                        set_value: model.collapse_delay_ms as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(HiddenBarSettingsInput::CollapseDelayChanged(s.value() as u32));
+                        } @collapse_delay_handler,
                     },
                 },
-                gtk::Switch {
-                    set_valign: gtk::Align::Center,
-                    #[watch]
-                    #[block_signal(start_expanded_handler)]
-                    set_active: model.start_expanded,
-                    connect_state_set[sender] => move |_, v| {
-                        sender.input(HiddenBarSettingsInput::StartExpandedChanged(v));
-                        glib::Propagation::Proceed
-                    } @start_expanded_handler,
+
+                // Start expanded
+                gtk::Box {
+                    add_css_class: "action-row",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Start expanded",
+                            set_hexpand: true,
+                        },
+                    },
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(start_expanded_handler)]
+                        set_active: model.start_expanded,
+                        connect_state_set[sender] => move |_, v| {
+                            sender.input(HiddenBarSettingsInput::StartExpandedChanged(v));
+                            glib::Propagation::Proceed
+                        } @start_expanded_handler,
+                    },
                 },
             },
         }

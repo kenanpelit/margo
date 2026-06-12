@@ -231,18 +231,23 @@ impl Component for OverviewSettingsModel {
                     set_halign: gtk::Align::Start,
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Preferred overview" },
-                    #[template_child] desc {
-                        set_label: "Which overview the toggle_overview keybind opens. The grid and scroller can also be bound directly (toggle_grid_overview / toggle_scroller_overview).",
-                    },
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.style_model),
-                        set_selected: if model.style_is_scroller { 0 } else { 1 },
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(OverviewSettingsInput::SetStyle(d.selected()));
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Preferred overview" },
+                        #[template_child] desc {
+                            set_label: "Which overview the toggle_overview keybind opens. The grid and scroller can also be bound directly (toggle_grid_overview / toggle_scroller_overview).",
+                        },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.style_model),
+                            set_selected: if model.style_is_scroller { 0 } else { 1 },
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(OverviewSettingsInput::SetStyle(d.selected()));
+                            },
                         },
                     },
                 },
@@ -254,52 +259,57 @@ impl Component for OverviewSettingsModel {
                     set_halign: gtk::Align::Start,
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Zoom" },
-                    #[template_child] desc {
-                        set_label: "Mini-desktop size = screen × zoom. Lower fits more tags on screen.",
-                    },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.1, 1.0),
-                        set_increments: (0.05, 0.1),
-                        set_digits: 2,
-                        set_value: model.scroller_zoom as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(OverviewSettingsInput::SetScrollerZoom(s.value()));
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Zoom" },
+                        #[template_child] desc {
+                            set_label: "Mini-desktop size = screen × zoom. Lower fits more tags on screen.",
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.1, 1.0),
+                            set_increments: (0.05, 0.1),
+                            set_digits: 2,
+                            set_value: model.scroller_zoom as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(OverviewSettingsInput::SetScrollerZoom(s.value()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Gap" },
-                    #[template_child] desc { set_label: "Vertical gap between tag cells, in pixels." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 300.0),
-                        set_increments: (4.0, 20.0),
-                        set_digits: 0,
-                        set_value: model.scroller_gap as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(OverviewSettingsInput::SetScrollerGap(s.value() as i32));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Gap" },
+                        #[template_child] desc { set_label: "Vertical gap between tag cells, in pixels." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 300.0),
+                            set_increments: (4.0, 20.0),
+                            set_digits: 0,
+                            set_value: model.scroller_gap as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(OverviewSettingsInput::SetScrollerGap(s.value() as i32));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Loop" },
-                    #[template_child] desc {
-                        set_label: "Wrap around: scrolling past the last tag continues to the first (and back), instead of stopping at the ends.",
-                    },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.scroller_loop,
-                        connect_state_set[sender] => move |_, on| {
-                            sender.input(OverviewSettingsInput::SetScrollerLoop(on));
-                            gtk::glib::Propagation::Proceed
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Loop" },
+                        #[template_child] desc {
+                            set_label: "Wrap around: scrolling past the last tag continues to the first (and back), instead of stopping at the ends.",
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.scroller_loop,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(OverviewSettingsInput::SetScrollerLoop(on));
+                                gtk::glib::Propagation::Proceed
+                            },
                         },
                     },
                 },
@@ -311,44 +321,49 @@ impl Component for OverviewSettingsModel {
                     set_halign: gtk::Align::Start,
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Backdrop colour" },
-                    #[template_child] desc {
-                        set_label: "Solid colour painted behind the scroller-overview cells (used when no backdrop image is set).",
-                    },
-                    gtk::ColorDialogButton {
-                        set_valign: gtk::Align::Center,
-                        set_dialog: &gtk::ColorDialog::builder().with_alpha(true).build(),
-                        set_rgba: &model.backdrop_color,
-                        connect_rgba_notify[sender] => move |b| {
-                            sender.input(OverviewSettingsInput::SetBackdropColor(b.rgba()));
-                        },
-                    },
-                },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Backdrop image" },
-                    #[template_child] desc {
-                        #[watch]
-                        set_label: &model.image_desc(),
-                        set_wrap: true,
-                        set_xalign: 0.0,
-                    },
-                    gtk::Box {
-                        set_valign: gtk::Align::Center,
-                        set_spacing: 6,
-                        gtk::Button {
-                            set_label: "Choose…",
-                            connect_clicked => OverviewSettingsInput::OpenBackdropImage,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Backdrop colour" },
+                        #[template_child] desc {
+                            set_label: "Solid colour painted behind the scroller-overview cells (used when no backdrop image is set).",
                         },
-                        gtk::Button {
-                            add_css_class: "destructive-action",
-                            set_label: "Clear",
+                        gtk::ColorDialogButton {
+                            set_valign: gtk::Align::Center,
+                            set_dialog: &gtk::ColorDialog::builder().with_alpha(true).build(),
+                            set_rgba: &model.backdrop_color,
+                            connect_rgba_notify[sender] => move |b| {
+                                sender.input(OverviewSettingsInput::SetBackdropColor(b.rgba()));
+                            },
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Backdrop image" },
+                        #[template_child] desc {
                             #[watch]
-                            set_sensitive: !model.backdrop_image.is_empty(),
-                            connect_clicked => OverviewSettingsInput::ClearBackdropImage,
+                            set_label: &model.image_desc(),
+                            set_wrap: true,
+                            set_xalign: 0.0,
+                        },
+                        gtk::Box {
+                            set_valign: gtk::Align::Center,
+                            set_spacing: 6,
+                            gtk::Button {
+                                set_label: "Choose…",
+                                connect_clicked => OverviewSettingsInput::OpenBackdropImage,
+                            },
+                            gtk::Button {
+                                add_css_class: "destructive-action",
+                                set_label: "Clear",
+                                #[watch]
+                                set_sensitive: !model.backdrop_image.is_empty(),
+                                connect_clicked => OverviewSettingsInput::ClearBackdropImage,
+                            },
                         },
                     },
                 },
@@ -360,125 +375,130 @@ impl Component for OverviewSettingsModel {
                     set_halign: gtk::Align::Start,
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Zoom" },
-                    #[template_child] desc { set_label: "Centered sub-rect the flattened grid arranges into." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.1, 1.0),
-                        set_increments: (0.05, 0.1),
-                        set_digits: 2,
-                        set_value: model.grid_zoom as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(OverviewSettingsInput::SetGridZoom(s.value()));
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Zoom" },
+                        #[template_child] desc { set_label: "Centered sub-rect the flattened grid arranges into." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.1, 1.0),
+                            set_increments: (0.05, 0.1),
+                            set_digits: 2,
+                            set_value: model.grid_zoom as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(OverviewSettingsInput::SetGridZoom(s.value()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Inner gap" },
-                    #[template_child] desc { set_label: "Gap between grid thumbnails, in pixels." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 200.0),
-                        set_increments: (1.0, 10.0),
-                        set_digits: 0,
-                        set_value: model.grid_gap_inner as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(OverviewSettingsInput::SetGridGapInner(s.value() as i32));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Inner gap" },
+                        #[template_child] desc { set_label: "Gap between grid thumbnails, in pixels." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 200.0),
+                            set_increments: (1.0, 10.0),
+                            set_digits: 0,
+                            set_value: model.grid_gap_inner as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(OverviewSettingsInput::SetGridGapInner(s.value() as i32));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Outer gap" },
-                    #[template_child] desc { set_label: "Margin around the grid, in pixels." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 200.0),
-                        set_increments: (1.0, 10.0),
-                        set_digits: 0,
-                        set_value: model.grid_gap_outer as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(OverviewSettingsInput::SetGridGapOuter(s.value() as i32));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Outer gap" },
+                        #[template_child] desc { set_label: "Margin around the grid, in pixels." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 200.0),
+                            set_increments: (1.0, 10.0),
+                            set_digits: 0,
+                            set_value: model.grid_gap_outer as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(OverviewSettingsInput::SetGridGapOuter(s.value() as i32));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Dim" },
-                    #[template_child] desc { set_label: "Opacity of non-selected thumbnails (1.0 = no dim)." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.1, 1.0),
-                        set_increments: (0.05, 0.1),
-                        set_digits: 2,
-                        set_value: model.grid_dim as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(OverviewSettingsInput::SetGridDim(s.value()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Dim" },
+                        #[template_child] desc { set_label: "Opacity of non-selected thumbnails (1.0 = no dim)." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.1, 1.0),
+                            set_increments: (0.05, 0.1),
+                            set_digits: 2,
+                            set_value: model.grid_dim as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(OverviewSettingsInput::SetGridDim(s.value()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Transition" },
-                    #[template_child] desc { set_label: "Open / close duration, in milliseconds." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 2000.0),
-                        set_increments: (10.0, 50.0),
-                        set_digits: 0,
-                        set_value: model.grid_transition as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(OverviewSettingsInput::SetGridTransition(s.value() as i32));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Transition" },
+                        #[template_child] desc { set_label: "Open / close duration, in milliseconds." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 2000.0),
+                            set_increments: (10.0, 50.0),
+                            set_digits: 0,
+                            set_value: model.grid_transition as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(OverviewSettingsInput::SetGridTransition(s.value() as i32));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Selected thumbnail border" },
-                    #[template_child] desc { set_label: "Border thickness multiplier for the hovered/selected thumbnail." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1.0, 4.0),
-                        set_increments: (0.1, 0.5),
-                        set_digits: 1,
-                        set_value: model.selected_border_mult,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(OverviewSettingsInput::SetSelectedBorderMult(s.value()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Selected thumbnail border" },
+                        #[template_child] desc { set_label: "Border thickness multiplier for the hovered/selected thumbnail." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 4.0),
+                            set_increments: (0.1, 0.5),
+                            set_digits: 1,
+                            set_value: model.selected_border_mult,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(OverviewSettingsInput::SetSelectedBorderMult(s.value()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Tab mode" },
-                    #[template_child] desc { set_label: "Alternate overview tab layout." },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.tab_mode,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(OverviewSettingsInput::SetTabMode(s.is_active()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Tab mode" },
+                        #[template_child] desc { set_label: "Alternate overview tab layout." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.tab_mode,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(OverviewSettingsInput::SetTabMode(s.is_active()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Cycle order" },
-                    #[template_child] desc { set_label: "Order alt+Tab walks the grid thumbnails." },
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.cycle_model),
-                        set_selected: model.cycle_order_idx,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(OverviewSettingsInput::SetCycleOrder(d.selected()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Cycle order" },
+                        #[template_child] desc { set_label: "Order alt+Tab walks the grid thumbnails." },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.cycle_model),
+                            set_selected: model.cycle_order_idx,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(OverviewSettingsInput::SetCycleOrder(d.selected()));
+                            },
                         },
                     },
                 },
@@ -490,60 +510,65 @@ impl Component for OverviewSettingsModel {
                     set_halign: gtk::Align::Start,
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Thumbnail size" },
-                    #[template_child] desc { set_label: "Height of each window thumbnail in the switcher, in pixels." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (60.0, 600.0),
-                        set_increments: (10.0, 40.0),
-                        set_digits: 0,
-                        set_value: model.mru_thumb,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(OverviewSettingsInput::SetMruThumb(s.value() as i32));
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Thumbnail size" },
+                        #[template_child] desc { set_label: "Height of each window thumbnail in the switcher, in pixels." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (60.0, 600.0),
+                            set_increments: (10.0, 40.0),
+                            set_digits: 0,
+                            set_value: model.mru_thumb,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(OverviewSettingsInput::SetMruThumb(s.value() as i32));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Scope" },
-                    #[template_child] desc { set_label: "Which windows the switcher lists (default for binds that pass none)." },
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.mru_scope_model),
-                        set_selected: model.mru_scope_idx,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(OverviewSettingsInput::SetMruScope(d.selected()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Scope" },
+                        #[template_child] desc { set_label: "Which windows the switcher lists (default for binds that pass none)." },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.mru_scope_model),
+                            set_selected: model.mru_scope_idx,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(OverviewSettingsInput::SetMruScope(d.selected()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Filter" },
-                    #[template_child] desc { set_label: "All windows, or only those sharing the focused window's app." },
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.mru_filter_model),
-                        set_selected: model.mru_filter_idx,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(OverviewSettingsInput::SetMruFilter(d.selected()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Filter" },
+                        #[template_child] desc { set_label: "All windows, or only those sharing the focused window's app." },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.mru_filter_model),
+                            set_selected: model.mru_filter_idx,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(OverviewSettingsInput::SetMruFilter(d.selected()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Show labels" },
-                    #[template_child] desc { set_label: "Draw the app-id under each thumbnail." },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.mru_labels,
-                        connect_state_set[sender] => move |_, on| {
-                            sender.input(OverviewSettingsInput::SetMruLabels(on));
-                            gtk::glib::Propagation::Proceed
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Show labels" },
+                        #[template_child] desc { set_label: "Draw the app-id under each thumbnail." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.mru_labels,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(OverviewSettingsInput::SetMruLabels(on));
+                                gtk::glib::Propagation::Proceed
+                            },
                         },
                     },
                 },

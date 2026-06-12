@@ -142,63 +142,68 @@ impl Component for VpnSettingsModel {
                     set_label: "Settings",
                     set_halign: gtk::Align::Start,
                 },
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Lockdown mode" },
-                    #[template_child] desc { set_label: "Block all traffic when the VPN drops." },
-                    #[name="lockdown_sw"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        set_active: model.lockdown,
-                        connect_state_set[sender] => move |_, on| {
-                            sender.input(VpnSettingsInput::SetLockdown(on));
-                            gtk::glib::Propagation::Proceed
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Lockdown mode" },
+                        #[template_child] desc { set_label: "Block all traffic when the VPN drops." },
+                        #[name="lockdown_sw"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_active: model.lockdown,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(VpnSettingsInput::SetLockdown(on));
+                                gtk::glib::Propagation::Proceed
+                            },
                         },
                     },
-                },
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Auto-connect" },
-                    #[template_child] desc { set_label: "Bring the tunnel up when the daemon starts." },
-                    #[name="autoconnect_sw"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        set_active: model.autoconnect,
-                        connect_state_set[sender] => move |_, on| {
-                            sender.input(VpnSettingsInput::SetAutoconnect(on));
-                            gtk::glib::Propagation::Proceed
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Auto-connect" },
+                        #[template_child] desc { set_label: "Bring the tunnel up when the daemon starts." },
+                        #[name="autoconnect_sw"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_active: model.autoconnect,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(VpnSettingsInput::SetAutoconnect(on));
+                                gtk::glib::Propagation::Proceed
+                            },
                         },
                     },
-                },
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Quantum-resistant" },
-                    #[template_child] desc { set_label: "WireGuard post-quantum key exchange." },
-                    #[name="quantum_sw"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        set_active: model.quantum,
-                        connect_state_set[sender] => move |_, on| {
-                            sender.input(VpnSettingsInput::SetQuantum(on));
-                            gtk::glib::Propagation::Proceed
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Quantum-resistant" },
+                        #[template_child] desc { set_label: "WireGuard post-quantum key exchange." },
+                        #[name="quantum_sw"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_active: model.quantum,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(VpnSettingsInput::SetQuantum(on));
+                                gtk::glib::Propagation::Proceed
+                            },
                         },
                     },
-                },
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Anti-censorship" },
-                    #[template_child] desc { set_label: "Obfuscation method (auto / off / udp2tcp / shadowsocks / quic)." },
-                    #[name="obf_drop"]
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.obf_model),
-                        #[watch]
-                        set_selected: OBF_MODES.iter().position(|m| *m == model.obf).unwrap_or(0) as u32,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(VpnSettingsInput::SetObf(d.selected()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Anti-censorship" },
+                        #[template_child] desc { set_label: "Obfuscation method (auto / off / udp2tcp / shadowsocks / quic)." },
+                        #[name="obf_drop"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.obf_model),
+                            #[watch]
+                            set_selected: OBF_MODES.iter().position(|m| *m == model.obf).unwrap_or(0) as u32,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(VpnSettingsInput::SetObf(d.selected()));
+                            },
                         },
                     },
                 },

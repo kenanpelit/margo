@@ -189,91 +189,96 @@ impl Component for KeyboardSettingsModel {
                     set_halign: gtk::Align::Start,
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Keyboard layout" },
-                    #[template_child] desc { set_label: "Turkish-Q needs margo's xkb layout set to tr." },
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 180,
-                        set_model: Some(&model.layouts),
-                        #[block_signal(layout_handler)]
-                        set_selected: model.layout_index,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(KeyboardSettingsInput::SetLayout(d.selected()));
-                        } @layout_handler,
-                    },
-                },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Position" },
-                    #[template_child] desc { set_label: "Which screen edge the keyboard docks to." },
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 180,
-                        set_model: Some(&model.positions),
-                        #[block_signal(position_handler)]
-                        set_selected: model.position_index,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(KeyboardSettingsInput::SetPosition(d.selected()));
-                        } @position_handler,
-                    },
-                },
-
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Key size" },
-                    #[template_child] desc { set_label: "Scale of each key (1.0 = default)." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_digits: 2,
-                        set_adjustment: &gtk::Adjustment::new(model.cfg.scale as f64, 0.5, 2.0, 0.1, 0.1, 0.0),
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(KeyboardSettingsInput::SetScale(s.value()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Keyboard layout" },
+                        #[template_child] desc { set_label: "Turkish-Q needs margo's xkb layout set to tr." },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 180,
+                            set_model: Some(&model.layouts),
+                            #[block_signal(layout_handler)]
+                            set_selected: model.layout_index,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(KeyboardSettingsInput::SetLayout(d.selected()));
+                            } @layout_handler,
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Opacity" },
-                    #[template_child] desc { set_label: "Keyboard transparency (1.0 = opaque)." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_digits: 2,
-                        set_adjustment: &gtk::Adjustment::new(model.cfg.opacity as f64, 0.5, 1.0, 0.05, 0.05, 0.0),
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(KeyboardSettingsInput::SetOpacity(s.value()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Position" },
+                        #[template_child] desc { set_label: "Which screen edge the keyboard docks to." },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 180,
+                            set_model: Some(&model.positions),
+                            #[block_signal(position_handler)]
+                            set_selected: model.position_index,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(KeyboardSettingsInput::SetPosition(d.selected()));
+                            } @position_handler,
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Edge margin" },
-                    #[template_child] desc { set_label: "Gap from the screen edge, in pixels." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_digits: 0,
-                        set_adjustment: &gtk::Adjustment::new(model.cfg.margin as f64, 0.0, 64.0, 1.0, 4.0, 0.0),
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(KeyboardSettingsInput::SetMargin(s.value()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Key size" },
+                        #[template_child] desc { set_label: "Scale of each key (1.0 = default)." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_digits: 2,
+                            set_adjustment: &gtk::Adjustment::new(model.cfg.scale as f64, 0.5, 2.0, 0.1, 0.1, 0.0),
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(KeyboardSettingsInput::SetScale(s.value()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Show bar pill" },
-                    #[template_child] desc { set_label: "Hint for the keyboard bar pill (add it to a bar slot in Bar settings)." },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(pill_handler)]
-                        set_active: model.cfg.show_pill,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(KeyboardSettingsInput::SetShowPill(s.is_active()));
-                        } @pill_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Opacity" },
+                        #[template_child] desc { set_label: "Keyboard transparency (1.0 = opaque)." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_digits: 2,
+                            set_adjustment: &gtk::Adjustment::new(model.cfg.opacity as f64, 0.5, 1.0, 0.05, 0.05, 0.0),
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(KeyboardSettingsInput::SetOpacity(s.value()));
+                            },
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Edge margin" },
+                        #[template_child] desc { set_label: "Gap from the screen edge, in pixels." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_digits: 0,
+                            set_adjustment: &gtk::Adjustment::new(model.cfg.margin as f64, 0.0, 64.0, 1.0, 4.0, 0.0),
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(KeyboardSettingsInput::SetMargin(s.value()));
+                            },
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Show bar pill" },
+                        #[template_child] desc { set_label: "Hint for the keyboard bar pill (add it to a bar slot in Bar settings)." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(pill_handler)]
+                            set_active: model.cfg.show_pill,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(KeyboardSettingsInput::SetShowPill(s.is_active()));
+                            } @pill_handler,
+                        },
                     },
                 },
             }

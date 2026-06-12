@@ -151,6 +151,10 @@ impl Component for SoundSettingsModel {
                     set_label: "Output",
                     set_halign: gtk::Align::Start,
                 },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
                 #[template]
                 Row {
                     #[template_child] title { set_label: "Device" },
@@ -172,11 +176,13 @@ impl Component for SoundSettingsModel {
 
                 // ── Output filter ────────────────────────────────
                 gtk::Box {
+                    add_css_class: "action-row",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
 
                     gtk::Box {
                         set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
                         set_hexpand: true,
                         gtk::Label {
                             add_css_class: "label-medium-bold",
@@ -206,6 +212,7 @@ impl Component for SoundSettingsModel {
                         } @hide_hdmi_handler,
                     },
                 },
+                },
 
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -213,6 +220,10 @@ impl Component for SoundSettingsModel {
                     set_halign: gtk::Align::Start,
                     set_margin_top: 12,
                 },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
                 #[template]
                 Row {
                     #[template_child] title { set_label: "Device" },
@@ -231,6 +242,7 @@ impl Component for SoundSettingsModel {
                     #[template_child] desc { set_label: "Silence the input." },
                     #[local_ref] in_mute_w -> gtk::Switch {},
                 },
+                },
 
                 // ── Startup defaults ──
                 gtk::Label {
@@ -239,6 +251,10 @@ impl Component for SoundSettingsModel {
                     set_margin_top: 8,
                     set_label: "Startup defaults",
                 },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
                 #[template]
                 Row {
                     #[template_child] title { set_label: "Restore volume on startup" },
@@ -256,6 +272,7 @@ impl Component for SoundSettingsModel {
                     #[template_child] title { set_label: "Default input level" },
                     #[template_child] desc { set_label: "Microphone level applied at startup." },
                     #[local_ref] def_in_scale_w -> gtk::Scale {},
+                },
                 },
             }
         }

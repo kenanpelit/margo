@@ -393,71 +393,80 @@ impl Component for DisplaySettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Enabled",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Master switch. Off ⇒ no gamma writes at all.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(enabled_handler)]
-                        set_active: model.state.enabled,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(DisplaySettingsInput::EnabledChanged(v));
-                            glib::Propagation::Proceed
-                        } @enabled_handler,
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Mode",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Enabled",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Master switch. Off ⇒ no gamma writes at all.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Geo: derive sunrise / sunset from lat/lng. Manual: explicit clock times. Static: hold one fixed sample 24/7.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(enabled_handler)]
+                            set_active: model.state.enabled,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(DisplaySettingsInput::EnabledChanged(v));
+                                glib::Propagation::Proceed
+                            } @enabled_handler,
                         },
                     },
-                    gtk::DropDown {
-                        set_width_request: 220,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.mode_model),
-                        #[watch]
-                        #[block_signal(mode_handler)]
-                        set_selected: model.state.mode.index(),
-                        connect_selected_notify[sender] => move |dd| {
-                            sender.input(DisplaySettingsInput::ModeChanged(
-                                ModeKey::from_index(dd.selected())
-                            ));
-                        } @mode_handler,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Mode",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Geo: derive sunrise / sunset from lat/lng. Manual: explicit clock times. Static: hold one fixed sample 24/7.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::DropDown {
+                            set_width_request: 220,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.mode_model),
+                            #[watch]
+                            #[block_signal(mode_handler)]
+                            set_selected: model.state.mode.index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(DisplaySettingsInput::ModeChanged(
+                                    ModeKey::from_index(dd.selected())
+                                ));
+                            } @mode_handler,
+                        },
                     },
                 },
 
@@ -471,142 +480,155 @@ impl Component for DisplaySettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Day temperature (K)",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "6500 K = D65 daylight reference.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1000.0, 25000.0),
-                        set_increments: (100.0, 500.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(day_temp_handler)]
-                        set_value: model.state.day_temp as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(DisplaySettingsInput::DayTempChanged(s.value() as u32));
-                        } @day_temp_handler,
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Night temperature (K)",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Day temperature (K)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "6500 K = D65 daylight reference.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Warm evening; typical 2800–3500 K.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1000.0, 25000.0),
+                            set_increments: (100.0, 500.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(day_temp_handler)]
+                            set_value: model.state.day_temp as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(DisplaySettingsInput::DayTempChanged(s.value() as u32));
+                            } @day_temp_handler,
                         },
                     },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1000.0, 25000.0),
-                        set_increments: (100.0, 500.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(night_temp_handler)]
-                        set_value: model.state.night_temp as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(DisplaySettingsInput::NightTempChanged(s.value() as u32));
-                        } @night_temp_handler,
-                    },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Day gamma (%)",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Night temperature (K)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Warm evening; typical 2800–3500 K.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "100 = pass-through brightness.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1000.0, 25000.0),
+                            set_increments: (100.0, 500.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(night_temp_handler)]
+                            set_value: model.state.night_temp as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(DisplaySettingsInput::NightTempChanged(s.value() as u32));
+                            } @night_temp_handler,
                         },
                     },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (10.0, 200.0),
-                        set_increments: (1.0, 5.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(day_gamma_handler)]
-                        set_value: model.state.day_gamma as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(DisplaySettingsInput::DayGammaChanged(s.value() as u32));
-                        } @day_gamma_handler,
-                    },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Night gamma (%)",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Day gamma (%)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "100 = pass-through brightness.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Slight dim at night reduces eye strain.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (10.0, 200.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(day_gamma_handler)]
+                            set_value: model.state.day_gamma as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(DisplaySettingsInput::DayGammaChanged(s.value() as u32));
+                            } @day_gamma_handler,
                         },
                     },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (10.0, 200.0),
-                        set_increments: (1.0, 5.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(night_gamma_handler)]
-                        set_value: model.state.night_gamma as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(DisplaySettingsInput::NightGammaChanged(s.value() as u32));
-                        } @night_gamma_handler,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Night gamma (%)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Slight dim at night reduces eye strain.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (10.0, 200.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(night_gamma_handler)]
+                            set_value: model.state.night_gamma as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(DisplaySettingsInput::NightGammaChanged(s.value() as u32));
+                            } @night_gamma_handler,
+                        },
                     },
                 },
 
@@ -620,72 +642,81 @@ impl Component for DisplaySettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Transition (s)",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Total day↔night ramp window. 2700 = 45 min.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (30.0, 7200.0),
-                        set_increments: (30.0, 300.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(transition_handler)]
-                        set_value: model.state.transition_s as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(DisplaySettingsInput::TransitionChanged(s.value() as u32));
-                        } @transition_handler,
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Idle update interval (s)",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Transition (s)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Total day↔night ramp window. 2700 = 45 min.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "How often to wake at stable Day/Night phases. Transitions tick every 250 ms regardless.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (30.0, 7200.0),
+                            set_increments: (30.0, 300.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(transition_handler)]
+                            set_value: model.state.transition_s as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(DisplaySettingsInput::TransitionChanged(s.value() as u32));
+                            } @transition_handler,
                         },
                     },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (10.0, 300.0),
-                        set_increments: (5.0, 30.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(interval_handler)]
-                        set_value: model.state.update_interval as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(DisplaySettingsInput::UpdateIntervalChanged(s.value() as u32));
-                        } @interval_handler,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Idle update interval (s)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "How often to wake at stable Day/Night phases. Transitions tick every 250 ms regardless.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (10.0, 300.0),
+                            set_increments: (5.0, 30.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(interval_handler)]
+                            set_value: model.state.update_interval as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(DisplaySettingsInput::UpdateIntervalChanged(s.value() as u32));
+                            } @interval_handler,
+                        },
                     },
                 },
 
@@ -699,72 +730,81 @@ impl Component for DisplaySettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Latitude (°)",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "North positive. Used by Geo mode's sun-elevation math.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (-90.0, 90.0),
-                        set_increments: (0.1, 1.0),
-                        set_digits: 4,
-                        #[watch]
-                        #[block_signal(lat_handler)]
-                        set_value: model.state.latitude as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(DisplaySettingsInput::LatitudeChanged(s.value() as f32));
-                        } @lat_handler,
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Longitude (°)",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Latitude (°)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "North positive. Used by Geo mode's sun-elevation math.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "East positive.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (-90.0, 90.0),
+                            set_increments: (0.1, 1.0),
+                            set_digits: 4,
+                            #[watch]
+                            #[block_signal(lat_handler)]
+                            set_value: model.state.latitude as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(DisplaySettingsInput::LatitudeChanged(s.value() as f32));
+                            } @lat_handler,
                         },
                     },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (-180.0, 180.0),
-                        set_increments: (0.1, 1.0),
-                        set_digits: 4,
-                        #[watch]
-                        #[block_signal(lon_handler)]
-                        set_value: model.state.longitude as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(DisplaySettingsInput::LongitudeChanged(s.value() as f32));
-                        } @lon_handler,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Longitude (°)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "East positive.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (-180.0, 180.0),
+                            set_increments: (0.1, 1.0),
+                            set_digits: 4,
+                            #[watch]
+                            #[block_signal(lon_handler)]
+                            set_value: model.state.longitude as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(DisplaySettingsInput::LongitudeChanged(s.value() as f32));
+                            } @lon_handler,
+                        },
                     },
                 },
 
@@ -778,72 +818,81 @@ impl Component for DisplaySettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Sunrise",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "HH:MM, local clock. Manual mode only.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-                    #[name = "sunrise_entry"]
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 100,
-                        #[watch]
-                        #[block_signal(sunrise_handler)]
-                        set_text: &hhmm_from_seconds(model.state.sunrise_sec),
-                        set_placeholder_text: Some("06:30"),
-                        connect_changed[sender] => move |e| {
-                            sender.input(DisplaySettingsInput::SunriseChanged(e.text().to_string()));
-                        } @sunrise_handler,
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Sunset",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Sunrise",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "HH:MM, local clock. Manual mode only.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "HH:MM, local clock.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        #[name = "sunrise_entry"]
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 100,
+                            #[watch]
+                            #[block_signal(sunrise_handler)]
+                            set_text: &hhmm_from_seconds(model.state.sunrise_sec),
+                            set_placeholder_text: Some("06:30"),
+                            connect_changed[sender] => move |e| {
+                                sender.input(DisplaySettingsInput::SunriseChanged(e.text().to_string()));
+                            } @sunrise_handler,
                         },
                     },
-                    #[name = "sunset_entry"]
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 100,
-                        #[watch]
-                        #[block_signal(sunset_handler)]
-                        set_text: &hhmm_from_seconds(model.state.sunset_sec),
-                        set_placeholder_text: Some("19:00"),
-                        connect_changed[sender] => move |e| {
-                            sender.input(DisplaySettingsInput::SunsetChanged(e.text().to_string()));
-                        } @sunset_handler,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Sunset",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "HH:MM, local clock.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        #[name = "sunset_entry"]
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 100,
+                            #[watch]
+                            #[block_signal(sunset_handler)]
+                            set_text: &hhmm_from_seconds(model.state.sunset_sec),
+                            set_placeholder_text: Some("19:00"),
+                            connect_changed[sender] => move |e| {
+                                sender.input(DisplaySettingsInput::SunsetChanged(e.text().to_string()));
+                            } @sunset_handler,
+                        },
                     },
                 },
 
@@ -857,63 +906,72 @@ impl Component for DisplaySettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Static temperature (K)",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "One sample held 24/7 in Static mode.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1000.0, 25000.0),
-                        set_increments: (100.0, 500.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(static_temp_handler)]
-                        set_value: model.state.static_temp as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(DisplaySettingsInput::StaticTempChanged(s.value() as u32));
-                        } @static_temp_handler,
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Static gamma (%)",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Static temperature (K)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "One sample held 24/7 in Static mode.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1000.0, 25000.0),
+                            set_increments: (100.0, 500.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(static_temp_handler)]
+                            set_value: model.state.static_temp as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(DisplaySettingsInput::StaticTempChanged(s.value() as u32));
+                            } @static_temp_handler,
                         },
                     },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (10.0, 200.0),
-                        set_increments: (1.0, 5.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(static_gamma_handler)]
-                        set_value: model.state.static_gamma as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(DisplaySettingsInput::StaticGammaChanged(s.value() as u32));
-                        } @static_gamma_handler,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Static gamma (%)",
+                                set_hexpand: true,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (10.0, 200.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(static_gamma_handler)]
+                            set_value: model.state.static_gamma as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(DisplaySettingsInput::StaticGammaChanged(s.value() as u32));
+                            } @static_gamma_handler,
+                        },
                     },
                 },
 

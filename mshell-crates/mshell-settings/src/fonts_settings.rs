@@ -127,45 +127,52 @@ impl Component for FontsSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Primary font",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Primary font",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "The primary font in mshell. Sent to matugen as mshell.font.primary.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "The primary font in mshell. Sent to matugen as mshell.font.primary.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.available_fonts),
+                            #[watch]
+                            #[block_signal(primary_font_handler)]
+                            set_selected: (0..model.available_fonts.n_items())
+                                .find(|&i| model.available_fonts.string(i).as_deref() == Some(model.active_primary_font.as_str()))
+                                .unwrap_or(0),
+                            connect_selected_notify[sender] => move |dd| {
+                                let selected = dd.selected_item()
+                                    .and_downcast::<gtk::StringObject>()
+                                    .map(|s| s.string().to_string());
+                                sender.input(FontsSettingsInput::PrimaryFontSelected(selected));
+                            } @primary_font_handler,
                         },
-                    },
-
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.available_fonts),
-                        #[watch]
-                        #[block_signal(primary_font_handler)]
-                        set_selected: (0..model.available_fonts.n_items())
-                            .find(|&i| model.available_fonts.string(i).as_deref() == Some(model.active_primary_font.as_str()))
-                            .unwrap_or(0),
-                        connect_selected_notify[sender] => move |dd| {
-                            let selected = dd.selected_item()
-                                .and_downcast::<gtk::StringObject>()
-                                .map(|s| s.string().to_string());
-                            sender.input(FontsSettingsInput::PrimaryFontSelected(selected));
-                        } @primary_font_handler,
                     },
                 },
 
@@ -189,45 +196,52 @@ impl Component for FontsSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Secondary font",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Secondary font",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Sent to matugen as mshell.font.secondary.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Sent to matugen as mshell.font.secondary.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.available_fonts),
+                            #[watch]
+                            #[block_signal(secondary_font_handler)]
+                            set_selected: (0..model.available_fonts.n_items())
+                                .find(|&i| model.available_fonts.string(i).as_deref() == Some(model.active_secondary_font.as_str()))
+                                .unwrap_or(0),
+                            connect_selected_notify[sender] => move |dd| {
+                                let selected = dd.selected_item()
+                                    .and_downcast::<gtk::StringObject>()
+                                    .map(|s| s.string().to_string());
+                                sender.input(FontsSettingsInput::SecondaryFontSelected(selected));
+                            } @secondary_font_handler,
                         },
-                    },
-
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.available_fonts),
-                        #[watch]
-                        #[block_signal(secondary_font_handler)]
-                        set_selected: (0..model.available_fonts.n_items())
-                            .find(|&i| model.available_fonts.string(i).as_deref() == Some(model.active_secondary_font.as_str()))
-                            .unwrap_or(0),
-                        connect_selected_notify[sender] => move |dd| {
-                            let selected = dd.selected_item()
-                                .and_downcast::<gtk::StringObject>()
-                                .map(|s| s.string().to_string());
-                            sender.input(FontsSettingsInput::SecondaryFontSelected(selected));
-                        } @secondary_font_handler,
                     },
                 },
 
@@ -251,45 +265,52 @@ impl Component for FontsSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Tertiary font",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Tertiary font",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Sent to matugen as mshell.font.tertiary.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Sent to matugen as mshell.font.tertiary.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.available_fonts),
+                            #[watch]
+                            #[block_signal(tertiary_font_handler)]
+                            set_selected: (0..model.available_fonts.n_items())
+                                .find(|&i| model.available_fonts.string(i).as_deref() == Some(model.active_tertiary_font.as_str()))
+                                .unwrap_or(0),
+                            connect_selected_notify[sender] => move |dd| {
+                                let selected = dd.selected_item()
+                                    .and_downcast::<gtk::StringObject>()
+                                    .map(|s| s.string().to_string());
+                                sender.input(FontsSettingsInput::TertiaryFontSelected(selected));
+                            } @tertiary_font_handler,
                         },
-                    },
-
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.available_fonts),
-                        #[watch]
-                        #[block_signal(tertiary_font_handler)]
-                        set_selected: (0..model.available_fonts.n_items())
-                            .find(|&i| model.available_fonts.string(i).as_deref() == Some(model.active_tertiary_font.as_str()))
-                            .unwrap_or(0),
-                        connect_selected_notify[sender] => move |dd| {
-                            let selected = dd.selected_item()
-                                .and_downcast::<gtk::StringObject>()
-                                .map(|s| s.string().to_string());
-                            sender.input(FontsSettingsInput::TertiaryFontSelected(selected));
-                        } @tertiary_font_handler,
                     },
                 },
 
@@ -313,45 +334,52 @@ impl Component for FontsSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Monospace font",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Monospace font",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Fixed-width family for clipboard entries, detected codes and other tabular text. Empty = the system monospace.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Fixed-width family for clipboard entries, detected codes and other tabular text. Empty = the system monospace.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.available_fonts),
+                            #[watch]
+                            #[block_signal(monospace_font_handler)]
+                            set_selected: (0..model.available_fonts.n_items())
+                                .find(|&i| model.available_fonts.string(i).as_deref() == Some(model.active_monospace_font.as_str()))
+                                .unwrap_or(0),
+                            connect_selected_notify[sender] => move |dd| {
+                                let selected = dd.selected_item()
+                                    .and_downcast::<gtk::StringObject>()
+                                    .map(|s| s.string().to_string());
+                                sender.input(FontsSettingsInput::MonospaceFontSelected(selected));
+                            } @monospace_font_handler,
                         },
-                    },
-
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.available_fonts),
-                        #[watch]
-                        #[block_signal(monospace_font_handler)]
-                        set_selected: (0..model.available_fonts.n_items())
-                            .find(|&i| model.available_fonts.string(i).as_deref() == Some(model.active_monospace_font.as_str()))
-                            .unwrap_or(0),
-                        connect_selected_notify[sender] => move |dd| {
-                            let selected = dd.selected_item()
-                                .and_downcast::<gtk::StringObject>()
-                                .map(|s| s.string().to_string());
-                            sender.input(FontsSettingsInput::MonospaceFontSelected(selected));
-                        } @monospace_font_handler,
                     },
                 },
 
@@ -375,119 +403,130 @@ impl Component for FontsSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Global UI font size",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Global UI font size",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Multiplier on every font across the shell — bar, menus, dashboard. 1.0 = the designed sizes; raise it on hi-DPI displays. (The Settings panel has its own scale below.)",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Multiplier on every font across the shell — bar, menus, dashboard. 1.0 = the designed sizes; raise it on hi-DPI displays. (The Settings panel has its own scale below.)",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.5, 2.0),
+                            set_increments: (0.05, 0.1),
+                            set_digits: 2,
+                            #[watch]
+                            #[block_signal(font_scale_handler)]
+                            set_value: model.font_scale,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(FontsSettingsInput::FontScaleChanged(s.value()));
+                            } @font_scale_handler,
                         },
                     },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.5, 2.0),
-                        set_increments: (0.05, 0.1),
-                        set_digits: 2,
-                        #[watch]
-                        #[block_signal(font_scale_handler)]
-                        set_value: model.font_scale,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(FontsSettingsInput::FontScaleChanged(s.value()));
-                        } @font_scale_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Bar pill font size",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Bar pill font size",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Multiplier on the bar pill labels (clock, battery, media, network) on top of the global scale. Useful to nudge just the bar without resizing menus.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Multiplier on the bar pill labels (clock, battery, media, network) on top of the global scale. Useful to nudge just the bar without resizing menus.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.5, 2.0),
+                            set_increments: (0.05, 0.1),
+                            set_digits: 2,
+                            #[watch]
+                            #[block_signal(bar_font_scale_handler)]
+                            set_value: model.bar_font_scale,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(FontsSettingsInput::BarFontScaleChanged(s.value()));
+                            } @bar_font_scale_handler,
                         },
                     },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.5, 2.0),
-                        set_increments: (0.05, 0.1),
-                        set_digits: 2,
-                        #[watch]
-                        #[block_signal(bar_font_scale_handler)]
-                        set_value: model.bar_font_scale,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(FontsSettingsInput::BarFontScaleChanged(s.value()));
-                        } @bar_font_scale_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Settings panel font scale",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Settings panel font scale",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Multiplier applied to every font-size inside the Settings panel only (this window). 1.0 keeps the +1pt-bumped defaults (~15.5 px); 1.1 for ~17 px on hi-DPI, 0.9 to shrink for tight screens.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Multiplier applied to every font-size inside the Settings panel only (this window). 1.0 keeps the +1pt-bumped defaults (~15.5 px); 1.1 for ~17 px on hi-DPI, 0.9 to shrink for tight screens.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.5, 2.0),
+                            set_increments: (0.05, 0.1),
+                            set_digits: 2,
+                            #[watch]
+                            #[block_signal(settings_font_scale_handler)]
+                            set_value: model.settings_font_scale,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(FontsSettingsInput::SettingsFontScaleChanged(s.value()));
+                            } @settings_font_scale_handler,
                         },
-                    },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.5, 2.0),
-                        set_increments: (0.05, 0.1),
-                        set_digits: 2,
-                        #[watch]
-                        #[block_signal(settings_font_scale_handler)]
-                        set_value: model.settings_font_scale,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(FontsSettingsInput::SettingsFontScaleChanged(s.value()));
-                        } @settings_font_scale_handler,
                     },
                 },
             },

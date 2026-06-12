@@ -114,235 +114,252 @@ impl Component for WeatherSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Location Query Type",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "How to determine the location.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    #[name = "location_query_type_dropdown"]
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.location_query_types),
-                        #[watch]
-                        #[block_signal(lqt_handler)]
-                        set_selected: LocationQueryType::all()
-                            .iter()
-                            .position(|k| k == &model.active_location_query_type)
-                            .unwrap_or(0) as u32,
-                        connect_selected_notify[sender] => move |dd| {
-                            let idx = dd.selected() as usize;
-                            if let Some(kind) = LocationQueryType::all().get(idx) {
-                                sender.input(WeatherSettingsInput::LocationQueryTypeSelected(*kind));
-                            }
-                        } @lqt_handler,
-                    },
-                },
-
-                gtk::Box {
-                    #[watch]
-                    set_visible: model.active_location_query_type == LocationQueryType::Coordinates,
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Lat Lon",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Location Query Type",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "How to determine the location.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
+
+                        #[name = "location_query_type_dropdown"]
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.location_query_types),
                             #[watch]
-                            set_label: model.location_lat_lon.as_str(),
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            #[block_signal(lqt_handler)]
+                            set_selected: LocationQueryType::all()
+                                .iter()
+                                .position(|k| k == &model.active_location_query_type)
+                                .unwrap_or(0) as u32,
+                            connect_selected_notify[sender] => move |dd| {
+                                let idx = dd.selected() as usize;
+                                if let Some(kind) = LocationQueryType::all().get(idx) {
+                                    sender.input(WeatherSettingsInput::LocationQueryTypeSelected(*kind));
+                                }
+                            } @lqt_handler,
                         },
                     },
-
-                    gtk::Button {
-                        set_css_classes: &["ok-button-primary"],
-                        set_label: "Change Coordinates",
-                        set_halign: gtk::Align::Start,
-                        set_valign: gtk::Align::Center,
-                        set_hexpand: false,
-                        connect_clicked[sender] => move |_| {
-                            sender.input(WeatherSettingsInput::ChangeCoordinatesClicked);
-                        },
-                    },
-                },
-
-                gtk::Box {
-                    #[watch]
-                    set_visible: model.active_location_query_type == LocationQueryType::City,
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "City / district, Country",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            #[watch]
-                            set_label: model.location_city.as_str(),
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    gtk::Button {
-                        set_css_classes: &["ok-button-primary"],
-                        set_label: "Change Location",
-                        set_halign: gtk::Align::Start,
-                        set_valign: gtk::Align::Center,
-                        set_hexpand: false,
-                        connect_clicked[sender] => move |_| {
-                            sender.input(WeatherSettingsInput::ChangeCityClicked);
-                        },
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Weather units",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Units in which weather information should be displayed.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    #[name = "weather_unit_type_dropdown"]
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.weather_unit_types),
+                        add_css_class: "action-row",
                         #[watch]
-                        #[block_signal(unit_handler)]
-                        set_selected: TemperatureUnitConfig::all()
-                            .iter()
-                            .position(|k| k == &model.active_weather_unit_type)
-                            .unwrap_or(0) as u32,
-                        connect_selected_notify[sender] => move |dd| {
-                            let idx = dd.selected() as usize;
-                            if let Some(kind) = TemperatureUnitConfig::all().get(idx) {
-                                sender.input(WeatherSettingsInput::WeatherUnitTypeSelected(*kind));
-                            }
-                        } @unit_handler,
-                    },
-                },
+                        set_visible: model.active_location_query_type == LocationQueryType::Coordinates,
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Lat Lon",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                #[watch]
+                                set_label: model.location_lat_lon.as_str(),
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Button {
+                            set_css_classes: &["ok-button-primary"],
+                            set_label: "Change Coordinates",
+                            set_halign: gtk::Align::Start,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: false,
+                            connect_clicked[sender] => move |_| {
+                                sender.input(WeatherSettingsInput::ChangeCoordinatesClicked);
+                            },
+                        },
+                    },
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Update interval",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        #[watch]
+                        set_visible: model.active_location_query_type == LocationQueryType::City,
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "City / district, Country",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                #[watch]
+                                set_label: model.location_city.as_str(),
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
+
+                        gtk::Button {
+                            set_css_classes: &["ok-button-primary"],
+                            set_label: "Change Location",
                             set_halign: gtk::Align::Start,
-                            set_label: "Minutes between weather refreshes. On a failed fetch the shell retries faster until it recovers.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: false,
+                            connect_clicked[sender] => move |_| {
+                                sender.input(WeatherSettingsInput::ChangeCityClicked);
+                            },
                         },
                     },
-
-                    #[name = "poll_minutes_spin"]
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1.0, 180.0),
-                        set_increments: (1.0, 5.0),
-                        set_digits: 0,
-                        set_value: model.poll_minutes as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(WeatherSettingsInput::SetPollMinutes(s.value() as u32));
-                        },
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Backoff on failure",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Weather units",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Units in which weather information should be displayed.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Minutes to wait before retrying while fetches keep failing (rate-limit / offline). Set it high — e.g. 720 = 12 h — so it stops hammering. Returns to the normal interval once it recovers.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "weather_unit_type_dropdown"]
+                        gtk::DropDown {
+                            set_width_request: 200,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.weather_unit_types),
+                            #[watch]
+                            #[block_signal(unit_handler)]
+                            set_selected: TemperatureUnitConfig::all()
+                                .iter()
+                                .position(|k| k == &model.active_weather_unit_type)
+                                .unwrap_or(0) as u32,
+                            connect_selected_notify[sender] => move |dd| {
+                                let idx = dd.selected() as usize;
+                                if let Some(kind) = TemperatureUnitConfig::all().get(idx) {
+                                    sender.input(WeatherSettingsInput::WeatherUnitTypeSelected(*kind));
+                                }
+                            } @unit_handler,
                         },
                     },
 
-                    #[name = "retry_minutes_spin"]
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1.0, 1440.0),
-                        set_increments: (5.0, 60.0),
-                        set_digits: 0,
-                        set_value: model.retry_minutes as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(WeatherSettingsInput::SetRetryMinutes(s.value() as u32));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Update interval",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Minutes between weather refreshes. On a failed fetch the shell retries faster until it recovers.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        #[name = "poll_minutes_spin"]
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 180.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            set_value: model.poll_minutes as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(WeatherSettingsInput::SetPollMinutes(s.value() as u32));
+                            },
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Backoff on failure",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Minutes to wait before retrying while fetches keep failing (rate-limit / offline). Set it high — e.g. 720 = 12 h — so it stops hammering. Returns to the normal interval once it recovers.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        #[name = "retry_minutes_spin"]
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 1440.0),
+                            set_increments: (5.0, 60.0),
+                            set_digits: 0,
+                            set_value: model.retry_minutes as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(WeatherSettingsInput::SetRetryMinutes(s.value() as u32));
+                            },
                         },
                     },
                 },
@@ -350,35 +367,42 @@ impl Component for WeatherSettingsModel {
                 // ── Saved locations: bookmark the current location under a
                 //    name; the weather menu's switcher flips between them. ──
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Saved Locations",
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Bookmark the current location, then switch between bookmarks from the weather menu.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    gtk::Button {
-                        set_css_classes: &["ok-button-primary"],
-                        set_label: "Save current as…",
-                        set_halign: gtk::Align::Start,
-                        set_valign: gtk::Align::Center,
-                        set_hexpand: false,
-                        connect_clicked[sender] => move |_| {
-                            sender.input(WeatherSettingsInput::SaveCurrentClicked);
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Saved Locations",
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Bookmark the current location, then switch between bookmarks from the weather menu.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Button {
+                            set_css_classes: &["ok-button-primary"],
+                            set_label: "Save current as…",
+                            set_halign: gtk::Align::Start,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: false,
+                            connect_clicked[sender] => move |_| {
+                                sender.input(WeatherSettingsInput::SaveCurrentClicked);
+                            },
                         },
                     },
                 },

@@ -216,104 +216,115 @@ impl Component for LockSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Mode",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Desktop wallpaper, a flat colour, or a fixed image. A slight dim + vignette is always applied so the clock and prompt stay legible.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-                    #[name = "mode_dd"]
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_model: Some(&model.mode_model),
-                        #[block_signal(mode_handler)]
-                        set_selected: model.mode,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(LockSettingsInput::SetMode(d.selected()));
-                        } @mode_handler,
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Solid colour",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Mode",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Desktop wallpaper, a flat colour, or a fixed image. A slight dim + vignette is always applied so the clock and prompt stay legible.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Hex colour for the “Solid colour” mode.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        #[name = "mode_dd"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_model: Some(&model.mode_model),
+                            #[block_signal(mode_handler)]
+                            set_selected: model.mode,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(LockSettingsInput::SetMode(d.selected()));
+                            } @mode_handler,
                         },
                     },
-                    #[name = "color_entry"]
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_placeholder_text: Some("#1e1e2e"),
-                        #[block_signal(color_handler)]
-                        set_text: &model.color,
-                        connect_changed[sender] => move |e| {
-                            sender.input(LockSettingsInput::SetColor(e.text().to_string()));
-                        } @color_handler,
-                    },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Custom image",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Solid colour",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Hex colour for the “Solid colour” mode.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Image path for the “Custom image” mode. Falls back to the desktop wallpaper if missing.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        #[name = "color_entry"]
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_placeholder_text: Some("#1e1e2e"),
+                            #[block_signal(color_handler)]
+                            set_text: &model.color,
+                            connect_changed[sender] => move |e| {
+                                sender.input(LockSettingsInput::SetColor(e.text().to_string()));
+                            } @color_handler,
                         },
                     },
-                    #[name = "image_entry"]
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_placeholder_text: Some("~/Pictures/lock.jpg"),
-                        #[block_signal(image_handler)]
-                        set_text: &model.image,
-                        connect_changed[sender] => move |e| {
-                            sender.input(LockSettingsInput::SetImage(e.text().to_string()));
-                        } @image_handler,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Custom image",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Image path for the “Custom image” mode. Falls back to the desktop wallpaper if missing.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        #[name = "image_entry"]
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_placeholder_text: Some("~/Pictures/lock.jpg"),
+                            #[block_signal(image_handler)]
+                            set_text: &model.image,
+                            connect_changed[sender] => move |e| {
+                                sender.input(LockSettingsInput::SetImage(e.text().to_string()));
+                            } @image_handler,
+                        },
                     },
                 },
 
@@ -335,8 +346,8 @@ impl Component for LockSettingsModel {
 
                 #[name = "toggles_box"]
                 gtk::Box {
+                    add_css_class: "boxed-list",
                     set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 10,
                 },
 
                 gtk::Label {
@@ -419,8 +430,10 @@ fn toggle_row(
     sender: &ComponentSender<LockSettingsModel>,
 ) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 20);
+    row.add_css_class("action-row");
     let text = gtk::Box::new(gtk::Orientation::Vertical, 0);
     text.set_hexpand(true);
+    text.set_valign(gtk::Align::Center);
     let title = gtk::Label::new(Some(label));
     title.add_css_class("label-medium-bold");
     title.set_halign(gtk::Align::Start);

@@ -87,21 +87,26 @@ impl Component for RegionSettingsModel {
                     set_halign: gtk::Align::Start,
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "System language (LANG)" },
-                    #[template_child] desc { set_label: "Type to search. Takes effect on the next login." },
-                    #[name = "locale_dd"]
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 260,
-                        set_enable_search: true,
-                        set_model: Some(&model.locales),
-                        #[block_signal(locale_handler)]
-                        set_selected: model.locale_index,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(RegionSettingsInput::SetLocale(d.selected()));
-                        } @locale_handler,
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "System language (LANG)" },
+                        #[template_child] desc { set_label: "Type to search. Takes effect on the next login." },
+                        #[name = "locale_dd"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 260,
+                            set_enable_search: true,
+                            set_model: Some(&model.locales),
+                            #[block_signal(locale_handler)]
+                            set_selected: model.locale_index,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(RegionSettingsInput::SetLocale(d.selected()));
+                            } @locale_handler,
+                        },
                     },
                 },
 

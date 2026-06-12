@@ -216,37 +216,44 @@ impl Component for GeneralSettingsModel {
 
                 // ── Network OSD ────────────────────────────────
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Network change OSD",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Flash a 2-second popup at the bottom of the screen whenever the primary connection changes — \"Connected: <SSID>\", \"Ethernet connected\", \"Disconnected\". Fires only on transitions. Off by default because NetworkManager often shows the same information as a desktop notification — turn this on if you don't have NM notifications, or just prefer the in-shell OSD.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(network_osd_handler)]
-                        set_active: model.network_osd_enabled,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(GeneralSettingsInput::NetworkOsdEnabledToggled(v));
-                            glib::Propagation::Proceed
-                        } @network_osd_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Network change OSD",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Flash a 2-second popup at the bottom of the screen whenever the primary connection changes — \"Connected: <SSID>\", \"Ethernet connected\", \"Disconnected\". Fires only on transitions. Off by default because NetworkManager often shows the same information as a desktop notification — turn this on if you don't have NM notifications, or just prefer the in-shell OSD.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(network_osd_handler)]
+                            set_active: model.network_osd_enabled,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(GeneralSettingsInput::NetworkOsdEnabledToggled(v));
+                                glib::Propagation::Proceed
+                            } @network_osd_handler,
+                        },
                     },
                 },
 
@@ -272,67 +279,75 @@ impl Component for GeneralSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Label {
-                        add_css_class: "label-medium-bold",
-                        set_label: "Position",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: true,
-                    },
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.position_model),
-                        #[watch]
-                        #[block_signal(settings_pos_handler)]
-                        set_selected: model.settings_position.to_index(),
-                        connect_selected_notify[sender] => move |dd| {
-                            sender.input(GeneralSettingsInput::SettingsPositionPicked(dd.selected()));
-                        } @settings_pos_handler,
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Label {
-                        add_css_class: "label-medium-bold",
-                        set_label: "Width (px, 0 = auto)",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: true,
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_label: "Position",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.position_model),
+                            #[watch]
+                            #[block_signal(settings_pos_handler)]
+                            set_selected: model.settings_position.to_index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(GeneralSettingsInput::SettingsPositionPicked(dd.selected()));
+                            } @settings_pos_handler,
+                        },
                     },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &gtk::Adjustment::new(0.0, 0.0, 7680.0, 10.0, 100.0, 0.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(settings_w_handler)]
-                        set_value: model.settings_width as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(GeneralSettingsInput::SettingsWidthChanged(s.value() as i32));
-                        } @settings_w_handler,
-                    },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Label {
-                        add_css_class: "label-medium-bold",
-                        set_label: "Height (px, 0 = auto)",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: true,
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_label: "Width (px, 0 = auto)",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &gtk::Adjustment::new(0.0, 0.0, 7680.0, 10.0, 100.0, 0.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(settings_w_handler)]
+                            set_value: model.settings_width as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(GeneralSettingsInput::SettingsWidthChanged(s.value() as i32));
+                            } @settings_w_handler,
+                        },
                     },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &gtk::Adjustment::new(0.0, 0.0, 4320.0, 10.0, 100.0, 0.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(settings_h_handler)]
-                        set_value: model.settings_height as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(GeneralSettingsInput::SettingsHeightChanged(s.value() as i32));
-                        } @settings_h_handler,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_label: "Height (px, 0 = auto)",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &gtk::Adjustment::new(0.0, 0.0, 4320.0, 10.0, 100.0, 0.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(settings_h_handler)]
+                            set_value: model.settings_height as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(GeneralSettingsInput::SettingsHeightChanged(s.value() as i32));
+                            } @settings_h_handler,
+                        },
                     },
                 },
             }

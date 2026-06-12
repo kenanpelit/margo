@@ -123,106 +123,117 @@ impl Component for LauncherSettingsModel {
                 },
 
                 gtk::Box {
-                    add_css_class: "settings-row",
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium",
-                            set_label: "Position",
-                            set_halign: gtk::Align::Start,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_label: "Screen edge where the launcher panel opens.",
-                            set_halign: gtk::Align::Start,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-                    gtk::DropDown {
-                        set_width_request: 180,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.position_model),
-                        #[watch]
-                        #[block_signal(position_handler)]
-                        set_selected: model.menu_position.to_index(),
-                        connect_selected_notify[sender] => move |dd| {
-                            sender.input(LauncherSettingsInput::PositionPicked(dd.selected()));
-                        } @position_handler,
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                gtk::Box {
-                    add_css_class: "settings-row",
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium",
-                            set_label: "Minimum width",
-                            set_halign: gtk::Align::Start,
+                        add_css_class: "settings-row",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Position",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Screen edge where the launcher panel opens.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_label: "Panel width in pixels.",
-                            set_halign: gtk::Align::Start,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::DropDown {
+                            set_width_request: 180,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.position_model),
+                            #[watch]
+                            #[block_signal(position_handler)]
+                            set_selected: model.menu_position.to_index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(LauncherSettingsInput::PositionPicked(dd.selected()));
+                            } @position_handler,
                         },
                     },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (300.0, 2000.0),
-                        set_increments: (10.0, 50.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(min_width_handler)]
-                        set_value: model.menu_min_width as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(LauncherSettingsInput::MinWidthChanged(s.value() as i32));
-                        } @min_width_handler,
-                    },
-                },
 
-                gtk::Box {
-                    add_css_class: "settings-row",
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium",
-                            set_label: "Height",
-                            set_halign: gtk::Align::Start,
+                        add_css_class: "settings-row",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Minimum width",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Panel width in pixels.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_label: "Visible panel height in pixels. 0 lets GTK choose.",
-                            set_halign: gtk::Align::Start,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (300.0, 2000.0),
+                            set_increments: (10.0, 50.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(min_width_handler)]
+                            set_value: model.menu_min_width as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(LauncherSettingsInput::MinWidthChanged(s.value() as i32));
+                            } @min_width_handler,
                         },
                     },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 2000.0),
-                        set_increments: (10.0, 50.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(max_height_handler)]
-                        set_value: model.menu_max_height as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(LauncherSettingsInput::MaxHeightChanged(s.value() as i32));
-                        } @max_height_handler,
+
+                    gtk::Box {
+                        add_css_class: "settings-row",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Height",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Visible panel height in pixels. 0 lets GTK choose.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 2000.0),
+                            set_increments: (10.0, 50.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(max_height_handler)]
+                            set_value: model.menu_max_height as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(LauncherSettingsInput::MaxHeightChanged(s.value() as i32));
+                            } @max_height_handler,
+                        },
                     },
                 },
 
@@ -234,91 +245,102 @@ impl Component for LauncherSettingsModel {
                 },
 
                 gtk::Box {
-                    add_css_class: "settings-row",
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium",
-                            set_label: "Preview pane",
-                            set_halign: gtk::Align::Start,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_label: "Show a detail pane beside the results for the selected item.",
-                            set_halign: gtk::Align::Start,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                        },
-                    },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: config_manager().config().launcher().show_preview().get_untracked(),
-                        connect_active_notify => move |sw| {
-                            let v = sw.is_active();
-                            config_manager().update_config(move |c| c.launcher.show_preview = v);
-                        },
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                gtk::Box {
-                    add_css_class: "settings-row",
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium",
-                            set_label: "Compact rows",
-                            set_halign: gtk::Align::Start,
+                        add_css_class: "settings-row",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Preview pane",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Show a detail pane beside the results for the selected item.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_label: "Tighter row spacing to fit more results on screen.",
-                            set_halign: gtk::Align::Start,
-                            set_xalign: 0.0,
-                            set_wrap: true,
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: config_manager().config().launcher().show_preview().get_untracked(),
+                            connect_active_notify => move |sw| {
+                                let v = sw.is_active();
+                                config_manager().update_config(move |c| c.launcher.show_preview = v);
+                            },
                         },
                     },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: config_manager().config().launcher().compact_rows().get_untracked(),
-                        connect_active_notify => move |sw| {
-                            let v = sw.is_active();
-                            config_manager().update_config(move |c| c.launcher.compact_rows = v);
-                        },
-                    },
-                },
 
-                gtk::Box {
-                    add_css_class: "settings-row",
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium",
-                            set_label: "Large app icons",
-                            set_halign: gtk::Align::Start,
+                        add_css_class: "settings-row",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Compact rows",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Tighter row spacing to fit more results on screen.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_label: "Lead app and window rows with a bigger icon.",
-                            set_halign: gtk::Align::Start,
-                            set_xalign: 0.0,
-                            set_wrap: true,
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: config_manager().config().launcher().compact_rows().get_untracked(),
+                            connect_active_notify => move |sw| {
+                                let v = sw.is_active();
+                                config_manager().update_config(move |c| c.launcher.compact_rows = v);
+                            },
                         },
                     },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: config_manager().config().launcher().large_app_icons().get_untracked(),
-                        connect_active_notify => move |sw| {
-                            let v = sw.is_active();
-                            config_manager().update_config(move |c| c.launcher.large_app_icons = v);
+
+                    gtk::Box {
+                        add_css_class: "settings-row",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Large app icons",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Lead app and window rows with a bigger icon.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: config_manager().config().launcher().large_app_icons().get_untracked(),
+                            connect_active_notify => move |sw| {
+                                let v = sw.is_active();
+                                config_manager().update_config(move |c| c.launcher.large_app_icons = v);
+                            },
                         },
                     },
                 },

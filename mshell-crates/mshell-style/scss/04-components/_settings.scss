@@ -378,11 +378,12 @@
 }
 
 // ── Sidebar search box ─────────────────────────────────────────
-// A calm pill query surface (DESIGN.md §12): quiet tonal fill at rest,
-// the focus ring as the only border.
+// A calm Adwaita entry (DESIGN.md §1: compact search = --entry-radius;
+// the pill is panel-scoped only): quiet tonal fill at rest, the focus
+// ring as the only border.
 .settings-search {
     background-color: var(--surface-container);
-    border-radius: var(--radius-pill);
+    border-radius: var(--entry-radius);
     transition: box-shadow var(--motion-medium) var(--ease-standard);
 
     &:focus-within {
@@ -420,20 +421,40 @@
 // card reads as distinct from the page surface; rounded corners,
 // internal padding zero (the rows handle their own padding so
 // dividers can run edge-to-edge).
+// Geometry comes from the central component-token layer (DESIGN.md §1
+// "Component tokens") — the Settings flavour of the shared boxed-list
+// (03-primitives/_boxed_list.scss). Works on a gtk::ListBox (children
+// are `row` nodes) or a plain vertical gtk::Box whose children are
+// `.action-row`s; rows carry their own padding so the hairline
+// separators run edge-to-edge.
 .boxed-list {
-    background-color: var(--surface-container);
-    border-radius: var(--radius-md);
+    background-color: var(--card-bg);
+    border-radius: var(--list-radius);
     padding: 0;
     // Hairline edge so the card reads as a crisp plate against the
     // --surface page even on low-contrast palettes where the tonal
     // step alone almost vanishes (DESIGN.md §0.1 fallback separator).
-    border: 1px solid var(--outline-variant);
+    border: 1px solid var(--list-separator);
 
-    // Internal row separator: a 2px --outline-variant hairline, the
-    // shared divider treatment (DESIGN.md §1). overflow:hidden clips
-    // the first/last row corners so hover backgrounds round naturally.
-    > .action-row + .action-row {
-        border-top: 1px solid var(--outline-variant);
+    // Internal row separator: the shared hairline treatment
+    // (DESIGN.md §1/§5) between ANY two adjacent rows.
+    > * + * {
+        border-top: 1px solid var(--list-separator);
+    }
+
+    // Rows paint no background of their own (the card is the surface);
+    // first/last inherit the card corners so hover washes clip clean.
+    > * {
+        background-color: transparent;
+        border-radius: 0;
+    }
+    > *:first-child {
+        border-top-left-radius: var(--list-radius);
+        border-top-right-radius: var(--list-radius);
+    }
+    > *:last-child {
+        border-bottom-left-radius: var(--list-radius);
+        border-bottom-right-radius: var(--list-radius);
     }
 }
 
@@ -445,7 +466,7 @@
 // rows just have a label.
 .action-row {
     padding: var(--space-3) var(--space-4);
-    min-height: 44px;
+    min-height: var(--row-min-height);
     // Canonical primary state-layer over the boxed-list's
     // surface-container base — identical hover identity to every
     // other row in the shell (DESIGN.md §7), eased on motion tokens.

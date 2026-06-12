@@ -356,27 +356,34 @@ impl Component for TagLayoutSettingsModel {
 
                 // ── Default layout ──
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Default layout",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Default layout",
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Used by every tag without an override below.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Used by every tag without an override below.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
+                        #[name = "default_dd_slot"]
+                        gtk::Box {
+                            set_valign: gtk::Align::Center,
                         },
-                    },
-                    #[name = "default_dd_slot"]
-                    gtk::Box {
-                        set_valign: gtk::Align::Center,
                     },
                 },
 
@@ -405,33 +412,40 @@ impl Component for TagLayoutSettingsModel {
                 gtk::Separator {},
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Force on startup",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Force on startup",
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Re-apply these layouts on every start, overriding live changes.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Re-apply these layouts on every start, overriding live changes.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(force_handler)]
+                            set_active: model.force,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(TagLayoutSettingsInput::ForceChanged(v));
+                                glib::Propagation::Proceed
+                            } @force_handler,
                         },
-                    },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(force_handler)]
-                        set_active: model.force,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(TagLayoutSettingsInput::ForceChanged(v));
-                            glib::Propagation::Proceed
-                        } @force_handler,
                     },
                 },
 

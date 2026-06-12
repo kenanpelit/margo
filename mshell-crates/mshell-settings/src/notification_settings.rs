@@ -151,42 +151,49 @@ impl Component for NotificationSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Position",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Position",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Where popup notifications should be positioned.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Where popup notifications should be positioned.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::DropDown {
+                            set_width_request: 150,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&NotificationPosition::display_names())),
+                            #[watch]
+                            #[block_signal(handler)]
+                            set_selected: model.position.to_index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(NotificationSettingsInput::PositionChanged(
+                                    NotificationPosition::from_index(dd.selected())
+                                ));
+                            } @handler,
                         },
-                    },
-
-                    gtk::DropDown {
-                        set_width_request: 150,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&gtk::StringList::new(&NotificationPosition::display_names())),
-                        #[watch]
-                        #[block_signal(handler)]
-                        set_selected: model.position.to_index(),
-                        connect_selected_notify[sender] => move |dd| {
-                            sender.input(NotificationSettingsInput::PositionChanged(
-                                NotificationPosition::from_index(dd.selected())
-                            ));
-                        } @handler,
                     },
                 },
 
@@ -197,183 +204,198 @@ impl Component for NotificationSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Close button",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Close button",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Show the small ✕ button on each notification (swipe also dismisses).",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Show the small ✕ button on each notification (swipe also dismisses).",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "show_close_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(close_handler)]
+                            set_active: model.show_close_button,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::ShowCloseChanged(s.is_active()));
+                            } @close_handler,
                         },
                     },
-
-                    #[name = "show_close_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(close_handler)]
-                        set_active: model.show_close_button,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::ShowCloseChanged(s.is_active()));
-                        } @close_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Action buttons",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Action buttons",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Show app-provided buttons (View / Open / Reply / …). Off keeps toasts clean.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Show app-provided buttons (View / Open / Reply / …). Off keeps toasts clean.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "show_actions_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(actions_handler)]
+                            set_active: model.show_action_buttons,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::ShowActionsChanged(s.is_active()));
+                            } @actions_handler,
                         },
                     },
-
-                    #[name = "show_actions_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(actions_handler)]
-                        set_active: model.show_action_buttons,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::ShowActionsChanged(s.is_active()));
-                        } @actions_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Popup width",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Popup width",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Width (px) of the corner popup toasts. Separate from the history menu width in Widgets → Notifications.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Width (px) of the corner popup toasts. Separate from the history menu width in Widgets → Notifications.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "popup_width_spin"]
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (200.0, 1200.0),
+                            set_increments: (10.0, 50.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(popup_width_handler)]
+                            set_value: model.popup_width as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::PopupWidthChanged(s.value() as i32));
+                            } @popup_width_handler,
                         },
                     },
-
-                    #[name = "popup_width_spin"]
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (200.0, 1200.0),
-                        set_increments: (10.0, 50.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(popup_width_handler)]
-                        set_value: model.popup_width as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::PopupWidthChanged(s.value() as i32));
-                        } @popup_width_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Timeout bar",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Timeout bar",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Show a shrinking bar across the top of each popup counting down its on-screen time.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Show a shrinking bar across the top of each popup counting down its on-screen time.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "timeout_bar_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(timeout_bar_handler)]
+                            set_active: model.show_timeout_bar,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::ShowTimeoutBarChanged(s.is_active()));
+                            } @timeout_bar_handler,
                         },
                     },
-
-                    #[name = "timeout_bar_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(timeout_bar_handler)]
-                        set_active: model.show_timeout_bar,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::ShowTimeoutBarChanged(s.is_active()));
-                        } @timeout_bar_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Popup duration",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "How long (ms) a popup stays on screen. A shorter app-supplied timeout still wins.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    #[name = "popup_duration_spin"]
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1000.0, 60000.0),
-                        set_increments: (500.0, 2000.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(popup_duration_handler)]
-                        set_value: model.popup_duration_ms as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::PopupDurationChanged(s.value() as u32));
-                        } @popup_duration_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Popup duration",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "How long (ms) a popup stays on screen. A shorter app-supplied timeout still wins.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        #[name = "popup_duration_spin"]
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1000.0, 60000.0),
+                            set_increments: (500.0, 2000.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(popup_duration_handler)]
+                            set_value: model.popup_duration_ms as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::PopupDurationChanged(s.value() as u32));
+                            } @popup_duration_handler,
+                        },
                     },
                 },
 
@@ -384,292 +406,313 @@ impl Component for NotificationSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Inline reply",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Inline reply",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Show a reply box on notifications that support it (chat apps, Valent SMS). Sending answers straight from the toast.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Show a reply box on notifications that support it (chat apps, Valent SMS). Sending answers straight from the toast.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "inline_reply_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(inline_reply_handler)]
+                            set_active: model.inline_reply,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::InlineReplyChanged(s.is_active()));
+                            } @inline_reply_handler,
                         },
                     },
-
-                    #[name = "inline_reply_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(inline_reply_handler)]
-                        set_active: model.inline_reply,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::InlineReplyChanged(s.is_active()));
-                        } @inline_reply_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Progress bars",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Progress bars",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Render a progress bar on notifications that report one (downloads, file transfers, backups).",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Render a progress bar on notifications that report one (downloads, file transfers, backups).",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "show_progress_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(progress_handler)]
+                            set_active: model.show_progress,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::ShowProgressChanged(s.is_active()));
+                            } @progress_handler,
                         },
                     },
-
-                    #[name = "show_progress_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(progress_handler)]
-                        set_active: model.show_progress,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::ShowProgressChanged(s.is_active()));
-                        } @progress_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Notification sounds",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Notification sounds",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Play a chime when a popup appears. Do Not Disturb always silences (it suppresses the popups themselves).",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Play a chime when a popup appears. Do Not Disturb always silences (it suppresses the popups themselves).",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "sound_enabled_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(snd_en_handler)]
+                            set_active: model.sound_enabled,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::SoundEnabledChanged(s.is_active()));
+                            } @snd_en_handler,
                         },
                     },
-
-                    #[name = "sound_enabled_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(snd_en_handler)]
-                        set_active: model.sound_enabled,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::SoundEnabledChanged(s.is_active()));
-                        } @snd_en_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Low urgency",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Low urgency",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Sound for low-urgency notifications.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Sound for low-urgency notifications.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "sound_low_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_sensitive: model.sound_enabled,
+                            #[watch]
+                            #[block_signal(snd_low_handler)]
+                            set_active: model.sound_low,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::SoundLowChanged(s.is_active()));
+                            } @snd_low_handler,
                         },
                     },
-
-                    #[name = "sound_low_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        set_sensitive: model.sound_enabled,
-                        #[watch]
-                        #[block_signal(snd_low_handler)]
-                        set_active: model.sound_low,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::SoundLowChanged(s.is_active()));
-                        } @snd_low_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Normal urgency",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Normal urgency",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Sound for normal-urgency notifications.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Sound for normal-urgency notifications.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "sound_normal_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_sensitive: model.sound_enabled,
+                            #[watch]
+                            #[block_signal(snd_norm_handler)]
+                            set_active: model.sound_normal,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::SoundNormalChanged(s.is_active()));
+                            } @snd_norm_handler,
                         },
                     },
-
-                    #[name = "sound_normal_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        set_sensitive: model.sound_enabled,
-                        #[watch]
-                        #[block_signal(snd_norm_handler)]
-                        set_active: model.sound_normal,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::SoundNormalChanged(s.is_active()));
-                        } @snd_norm_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Critical urgency",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Critical urgency",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Sound for critical notifications (a brighter, rising tone).",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Sound for critical notifications (a brighter, rising tone).",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "sound_critical_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_sensitive: model.sound_enabled,
+                            #[watch]
+                            #[block_signal(snd_crit_handler)]
+                            set_active: model.sound_critical,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::SoundCriticalChanged(s.is_active()));
+                            } @snd_crit_handler,
                         },
                     },
-
-                    #[name = "sound_critical_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        set_sensitive: model.sound_enabled,
-                        #[watch]
-                        #[block_signal(snd_crit_handler)]
-                        set_active: model.sound_critical,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::SoundCriticalChanged(s.is_active()));
-                        } @snd_crit_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "App-provided sounds",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "App-provided sounds",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "When an app supplies its own sound file, play that instead of the built-in chime.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "When an app supplies its own sound file, play that instead of the built-in chime.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "sound_client_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_sensitive: model.sound_enabled,
+                            #[watch]
+                            #[block_signal(snd_client_handler)]
+                            set_active: model.sound_from_client,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::SoundFromClientChanged(s.is_active()));
+                            } @snd_client_handler,
                         },
                     },
-
-                    #[name = "sound_client_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        set_sensitive: model.sound_enabled,
-                        #[watch]
-                        #[block_signal(snd_client_handler)]
-                        set_active: model.sound_from_client,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::SoundFromClientChanged(s.is_active()));
-                        } @snd_client_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Quiet hours",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Mute notification sounds inside the window below (popups still show). An end before the start wraps past midnight.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    #[name = "quiet_enabled_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        set_sensitive: model.sound_enabled,
-                        #[watch]
-                        #[block_signal(quiet_handler)]
-                        set_active: model.quiet_enabled,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::QuietEnabledChanged(s.is_active()));
-                        } @quiet_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Quiet hours",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Mute notification sounds inside the window below (popups still show). An end before the start wraps past midnight.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        #[name = "quiet_enabled_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_sensitive: model.sound_enabled,
+                            #[watch]
+                            #[block_signal(quiet_handler)]
+                            set_active: model.quiet_enabled,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::QuietEnabledChanged(s.is_active()));
+                            } @quiet_handler,
+                        },
                     },
                 },
 
@@ -720,151 +763,164 @@ impl Component for NotificationSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Width",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Width",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Width (px) of the notification history menu — the panel that opens when you click the bar pill. Separate from the popup toast width above.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Width (px) of the notification history menu — the panel that opens when you click the bar pill. Separate from the popup toast width above.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "menu_width_spin"]
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (280.0, 1200.0),
+                            set_increments: (10.0, 50.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(menu_width_handler)]
+                            set_value: model.menu_min_width as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::MenuMinWidthChanged(s.value() as i32));
+                            } @menu_width_handler,
                         },
                     },
-
-                    #[name = "menu_width_spin"]
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (280.0, 1200.0),
-                        set_increments: (10.0, 50.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(menu_width_handler)]
-                        set_value: model.menu_min_width as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::MenuMinWidthChanged(s.value() as i32));
-                        } @menu_width_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Max height",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Max height",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Maximum height (px) before the history scrolls. 0 = grow to fit (no cap).",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_label: "Maximum height (px) before the history scrolls. 0 = grow to fit (no cap).",
-                            set_halign: gtk::Align::Start,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "menu_height_spin"]
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 2000.0),
+                            set_increments: (20.0, 100.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(menu_height_handler)]
+                            set_value: model.menu_max_height as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::MenuMaxHeightChanged(s.value() as i32));
+                            } @menu_height_handler,
                         },
                     },
-
-                    #[name = "menu_height_spin"]
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 2000.0),
-                        set_increments: (20.0, 100.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(menu_height_handler)]
-                        set_value: model.menu_max_height as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::MenuMaxHeightChanged(s.value() as i32));
-                        } @menu_height_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "History limit",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "History limit",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Max number of recent notifications the history renders. A large persisted history slows the first open; lower this if it lags. 0 = unlimited.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_label: "Max number of recent notifications the history renders. A large persisted history slows the first open; lower this if it lags. 0 = unlimited.",
-                            set_halign: gtk::Align::Start,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        #[name = "history_limit_spin"]
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 250.0),
+                            set_increments: (10.0, 50.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(history_limit_handler)]
+                            set_value: model.history_limit as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::HistoryLimitChanged(s.value() as u32));
+                            } @history_limit_handler,
                         },
                     },
-
-                    #[name = "history_limit_spin"]
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 250.0),
-                        set_increments: (10.0, 50.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(history_limit_handler)]
-                        set_value: model.history_limit as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::HistoryLimitChanged(s.value() as u32));
-                        } @history_limit_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Group by app",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Collapse 2+ notifications from the same app into an expandable group in the history. Off = flat list.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    #[name = "group_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(group_handler)]
-                        set_active: model.group_notifications,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(NotificationSettingsInput::GroupChanged(s.is_active()));
-                        } @group_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Group by app",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Collapse 2+ notifications from the same app into an expandable group in the history. Off = flat list.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        #[name = "group_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(group_handler)]
+                            set_active: model.group_notifications,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(NotificationSettingsInput::GroupChanged(s.is_active()));
+                            } @group_handler,
+                        },
                     },
                 },
 

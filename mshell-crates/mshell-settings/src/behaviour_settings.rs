@@ -100,122 +100,142 @@ impl Component for BehaviourModel {
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Focus", set_halign: gtk::Align::Start },
 
-                #[template] Row {
-                    #[template_child] title { set_label: "Sloppy focus (focus follows cursor)" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.sloppyfocus,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("sloppyfocus", s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Warp cursor to focused window" },
-                    #[template_child] desc { set_label: "Avoid with sloppy focus on — they can ping-pong." },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.warpcursor,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("warpcursor", s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Focus a window on activation request" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.focus_on_activate,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("focus_on_activate", s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Let focus cross the monitor edge" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.focus_cross_monitor,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("focus_cross_monitor", s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Let window-exchange cross the monitor edge" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.exchange_cross_monitor,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("exchange_cross_monitor", s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Let focus cross tags" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.focus_cross_tag,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("focus_cross_tag", s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Super+N on the same tag returns to previous" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.view_current_to_back,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("view_current_to_back", s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Hide cursor after inactivity (seconds, 0 = never)" },
-                    gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.cursor_hide_timeout, 0.0, 30.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("cursor_hide_timeout", s.value() as i64)) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "XWayland resize persistence (no flicker)" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.xwayland_persistence,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("xwayland_persistence", s.is_active())) } },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Sloppy focus (focus follows cursor)" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.sloppyfocus,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("sloppyfocus", s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Warp cursor to focused window" },
+                        #[template_child] desc { set_label: "Avoid with sloppy focus on — they can ping-pong." },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.warpcursor,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("warpcursor", s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Focus a window on activation request" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.focus_on_activate,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("focus_on_activate", s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Let focus cross the monitor edge" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.focus_cross_monitor,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("focus_cross_monitor", s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Let window-exchange cross the monitor edge" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.exchange_cross_monitor,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("exchange_cross_monitor", s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Let focus cross tags" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.focus_cross_tag,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("focus_cross_tag", s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Super+N on the same tag returns to previous" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.view_current_to_back,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("view_current_to_back", s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Hide cursor after inactivity (seconds, 0 = never)" },
+                        gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.cursor_hide_timeout, 0.0, 30.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("cursor_hide_timeout", s.value() as i64)) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "XWayland resize persistence (no flicker)" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.xwayland_persistence,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("xwayland_persistence", s.is_active())) } },
+                },
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Drag to rearrange", set_halign: gtk::Align::Start },
 
-                #[template] Row {
-                    #[template_child] title { set_label: "Drag a tile onto another to swap" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.drag_tile_to_tile,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("drag_tile_to_tile", s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Grab corner" },
-                    gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,
-                        set_model: Some(&model.corners5),
-                        #[block_signal(drag_corner_h)]
-                        set_selected: model.drag_corner_idx,
-                        connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetInt("drag_corner", d.selected() as i64)) @drag_corner_h } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Warp cursor while dragging" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.drag_warp_cursor,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("drag_warp_cursor", s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Tile drag refresh interval (ms)" },
-                    gtk::SpinButton { set_valign: gtk::Align::Center, set_digits: 1, set_adjustment: &adj(model.drag_tile_refresh_interval, 1.0, 60.0, 0.5),
-                        connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetF("drag_tile_refresh_interval", s.value(), 1)) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Floating drag refresh interval (ms)" },
-                    gtk::SpinButton { set_valign: gtk::Align::Center, set_digits: 1, set_adjustment: &adj(model.drag_floating_refresh_interval, 1.0, 60.0, 0.5),
-                        connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetF("drag_floating_refresh_interval", s.value(), 1)) } },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Drag a tile onto another to swap" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.drag_tile_to_tile,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("drag_tile_to_tile", s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Grab corner" },
+                        gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,
+                            set_model: Some(&model.corners5),
+                            #[block_signal(drag_corner_h)]
+                            set_selected: model.drag_corner_idx,
+                            connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetInt("drag_corner", d.selected() as i64)) @drag_corner_h } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Warp cursor while dragging" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.drag_warp_cursor,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("drag_warp_cursor", s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Tile drag refresh interval (ms)" },
+                        gtk::SpinButton { set_valign: gtk::Align::Center, set_digits: 1, set_adjustment: &adj(model.drag_tile_refresh_interval, 1.0, 60.0, 0.5),
+                            connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetF("drag_tile_refresh_interval", s.value(), 1)) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Floating drag refresh interval (ms)" },
+                        gtk::SpinButton { set_valign: gtk::Align::Center, set_digits: 1, set_adjustment: &adj(model.drag_floating_refresh_interval, 1.0, 60.0, 0.5),
+                            connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetF("drag_floating_refresh_interval", s.value(), 1)) } },
+                },
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Snapping & hot corner", set_halign: gtk::Align::Start },
 
-                #[template] Row {
-                    #[template_child] title { set_label: "Floating window snapping" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.enable_floating_snap,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("enable_floating_snap", s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Snap distance (px)" },
-                    gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.snap_distance, 0.0, 128.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("snap_distance", s.value() as i64)) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Hot corner (overview trigger)" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.enable_hotarea,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("enable_hotarea", s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Hot corner size (px)" },
-                    gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.hotarea_size, 1.0, 64.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("hotarea_size", s.value() as i64)) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Hot corner location" },
-                    gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,
-                        set_model: Some(&model.corners4),
-                        #[block_signal(hotarea_corner_h)]
-                        set_selected: model.hotarea_corner_idx,
-                        connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetInt("hotarea_corner", d.selected() as i64)) @hotarea_corner_h } },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Floating window snapping" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.enable_floating_snap,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("enable_floating_snap", s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Snap distance (px)" },
+                        gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.snap_distance, 0.0, 128.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("snap_distance", s.value() as i64)) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Hot corner (overview trigger)" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.enable_hotarea,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("enable_hotarea", s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Hot corner size (px)" },
+                        gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.hotarea_size, 1.0, 64.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("hotarea_size", s.value() as i64)) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Hot corner location" },
+                        gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,
+                            set_model: Some(&model.corners4),
+                            #[block_signal(hotarea_corner_h)]
+                            set_selected: model.hotarea_corner_idx,
+                            connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetInt("hotarea_corner", d.selected() as i64)) @hotarea_corner_h } },
+                },
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Scroll & scratchpad", set_halign: gtk::Align::Start },
 
-                #[template] Row {
-                    #[template_child] title { set_label: "Axis-bind apply timeout (ms)" },
-                    gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.axis_bind_apply_timeout, 0.0, 1000.0, 10.0),
-                        connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("axis_bind_apply_timeout", s.value() as i64)) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Scroll factor" },
-                    gtk::SpinButton { set_valign: gtk::Align::Center, set_digits: 2, set_adjustment: &adj(model.axis_scroll_factor, 0.1, 5.0, 0.05),
-                        connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetF("axis_scroll_factor", s.value(), 2)) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Scratchpad follows cursor across monitors" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.scratchpad_cross_monitor,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("scratchpad_cross_monitor", s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Auto-hide other scratchpads" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.single_scratchpad,
-                        connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("single_scratchpad", s.is_active())) } },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Axis-bind apply timeout (ms)" },
+                        gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.axis_bind_apply_timeout, 0.0, 1000.0, 10.0),
+                            connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("axis_bind_apply_timeout", s.value() as i64)) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Scroll factor" },
+                        gtk::SpinButton { set_valign: gtk::Align::Center, set_digits: 2, set_adjustment: &adj(model.axis_scroll_factor, 0.1, 5.0, 0.05),
+                            connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetF("axis_scroll_factor", s.value(), 2)) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Scratchpad follows cursor across monitors" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.scratchpad_cross_monitor,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("scratchpad_cross_monitor", s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Auto-hide other scratchpads" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.single_scratchpad,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("single_scratchpad", s.is_active())) } },
+                },
 
                 gtk::Expander {
                     set_label: Some("Advanced — sync, tearing, inhibitors"),
                     set_margin_top: 8,
 
                     gtk::Box {
+                        add_css_class: "boxed-list",
                         set_orientation: gtk::Orientation::Vertical,
-                        set_spacing: 8,
                         set_margin_top: 8,
 
                         #[template] Row {

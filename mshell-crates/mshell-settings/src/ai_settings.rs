@@ -101,40 +101,45 @@ impl Component for AiSettingsModel {
                     },
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Provider" },
-                    #[template_child] desc { set_label: "Gemini · OpenAI · Anthropic · Ollama · Custom (OpenAI-compatible)." },
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.provider_list),
-                        #[watch]
-                        set_selected: providers().iter().position(|p| p.id() == model.settings.provider).unwrap_or(0) as u32,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(AiSettingsInput::ProviderPicked(d.selected()));
-                        },
-                    },
-                },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Model" },
-                    #[template_child] desc { set_label: "Auto-offered for the provider. Refresh pulls the live list." },
-                    gtk::Box {
-                        set_spacing: 6,
-                        set_valign: gtk::Align::Center,
-                        #[name="model_drop"]
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Provider" },
+                        #[template_child] desc { set_label: "Gemini · OpenAI · Anthropic · Ollama · Custom (OpenAI-compatible)." },
                         gtk::DropDown {
-                            set_width_request: 240,
-                            set_model: Some(&model.model_list),
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.provider_list),
+                            #[watch]
+                            set_selected: providers().iter().position(|p| p.id() == model.settings.provider).unwrap_or(0) as u32,
                             connect_selected_notify[sender] => move |d| {
-                                sender.input(AiSettingsInput::ModelPicked(d.selected()));
+                                sender.input(AiSettingsInput::ProviderPicked(d.selected()));
                             },
                         },
-                        gtk::Button {
-                            set_icon_name: "view-refresh-symbolic",
-                            set_tooltip_text: Some("Fetch the live model list from the provider"),
-                            connect_clicked => AiSettingsInput::RefreshModels,
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Model" },
+                        #[template_child] desc { set_label: "Auto-offered for the provider. Refresh pulls the live list." },
+                        gtk::Box {
+                            set_spacing: 6,
+                            set_valign: gtk::Align::Center,
+                            #[name="model_drop"]
+                            gtk::DropDown {
+                                set_width_request: 240,
+                                set_model: Some(&model.model_list),
+                                connect_selected_notify[sender] => move |d| {
+                                    sender.input(AiSettingsInput::ModelPicked(d.selected()));
+                                },
+                            },
+                            gtk::Button {
+                                set_icon_name: "view-refresh-symbolic",
+                                set_tooltip_text: Some("Fetch the live model list from the provider"),
+                                connect_clicked => AiSettingsInput::RefreshModels,
+                            },
                         },
                     },
                 },
@@ -151,132 +156,137 @@ impl Component for AiSettingsModel {
                     set_visible: !model.status.is_empty(),
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "API key" },
-                    #[template_child] desc { set_label: "Stored in the keyring. Not needed for Ollama / local endpoints." },
-                    #[name="key_entry"]
-                    gtk::PasswordEntry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 240,
-                        set_show_peek_icon: true,
-                        connect_changed[sender] => move |e| {
-                            sender.input(AiSettingsInput::KeyChanged(e.text().to_string()));
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "API key" },
+                        #[template_child] desc { set_label: "Stored in the keyring. Not needed for Ollama / local endpoints." },
+                        #[name="key_entry"]
+                        gtk::PasswordEntry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 240,
+                            set_show_peek_icon: true,
+                            connect_changed[sender] => move |e| {
+                                sender.input(AiSettingsInput::KeyChanged(e.text().to_string()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Endpoint override" },
-                    #[template_child] desc { set_label: "Proxy / LocalAI / LM Studio / vLLM base URL. Blank = provider default." },
-                    #[name="endpoint_entry"]
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 240,
-                        #[watch]
-                        set_text: &model.settings.endpoint,
-                        connect_changed[sender] => move |e| {
-                            sender.input(AiSettingsInput::EndpointChanged(e.text().to_string()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Endpoint override" },
+                        #[template_child] desc { set_label: "Proxy / LocalAI / LM Studio / vLLM base URL. Blank = provider default." },
+                        #[name="endpoint_entry"]
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 240,
+                            #[watch]
+                            set_text: &model.settings.endpoint,
+                            connect_changed[sender] => move |e| {
+                                sender.input(AiSettingsInput::EndpointChanged(e.text().to_string()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Temperature" },
-                    #[template_child] desc { set_label: "0 = focused / deterministic, 2 = creative." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 2.0),
-                        set_increments: (0.1, 0.5),
-                        set_digits: 2,
-                        #[watch]
-                        set_value: model.settings.temperature,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(AiSettingsInput::TempChanged(s.value()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Temperature" },
+                        #[template_child] desc { set_label: "0 = focused / deterministic, 2 = creative." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 2.0),
+                            set_increments: (0.1, 0.5),
+                            set_digits: 2,
+                            #[watch]
+                            set_value: model.settings.temperature,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(AiSettingsInput::TempChanged(s.value()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Max tokens" },
-                    #[template_child] desc { set_label: "Upper bound on the reply length." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (16.0, 32768.0),
-                        set_increments: (64.0, 512.0),
-                        set_digits: 0,
-                        #[watch]
-                        set_value: model.settings.max_tokens as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(AiSettingsInput::TokensChanged(s.value() as u32));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Max tokens" },
+                        #[template_child] desc { set_label: "Upper bound on the reply length." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (16.0, 32768.0),
+                            set_increments: (64.0, 512.0),
+                            set_digits: 0,
+                            #[watch]
+                            set_value: model.settings.max_tokens as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(AiSettingsInput::TokensChanged(s.value() as u32));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "System prompt" },
-                    #[template_child] desc { set_label: "Optional message prepended to every conversation." },
-                    #[name="prompt_entry"]
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 240,
-                        #[watch]
-                        set_text: &model.settings.system_prompt,
-                        connect_changed[sender] => move |e| {
-                            sender.input(AiSettingsInput::PromptChanged(e.text().to_string()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "System prompt" },
+                        #[template_child] desc { set_label: "Optional message prepended to every conversation." },
+                        #[name="prompt_entry"]
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 240,
+                            #[watch]
+                            set_text: &model.settings.system_prompt,
+                            connect_changed[sender] => move |e| {
+                                sender.input(AiSettingsInput::PromptChanged(e.text().to_string()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Persist history" },
-                    #[template_child] desc { set_label: "Keep the conversation across restarts." },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        set_active: model.settings.persist_history,
-                        connect_state_set[sender] => move |_, on| {
-                            sender.input(AiSettingsInput::PersistToggled(on));
-                            gtk::glib::Propagation::Proceed
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Persist history" },
+                        #[template_child] desc { set_label: "Keep the conversation across restarts." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_active: model.settings.persist_history,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(AiSettingsInput::PersistToggled(on));
+                                gtk::glib::Propagation::Proceed
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Chat font size" },
-                    #[template_child] desc { set_label: "Transcript text size in the AI menu (px)." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (8.0, 32.0),
-                        set_increments: (1.0, 2.0),
-                        set_digits: 0,
-                        #[watch]
-                        set_value: model.settings.font_size as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(AiSettingsInput::FontSizeChanged(s.value() as u32));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Chat font size" },
+                        #[template_child] desc { set_label: "Transcript text size in the AI menu (px)." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (8.0, 32.0),
+                            set_increments: (1.0, 2.0),
+                            set_digits: 0,
+                            #[watch]
+                            set_value: model.settings.font_size as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(AiSettingsInput::FontSizeChanged(s.value() as u32));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Chat font family" },
-                    #[template_child] desc { set_label: "Font for the AI transcript; “Inherit” uses the shell font." },
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 240,
-                        set_enable_search: true,
-                        set_model: Some(&model.font_list),
-                        #[watch]
-                        set_selected: font_index(&model.font_families, &model.settings.font_family),
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(AiSettingsInput::FontFamilyPicked(d.selected()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Chat font family" },
+                        #[template_child] desc { set_label: "Font for the AI transcript; “Inherit” uses the shell font." },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 240,
+                            set_enable_search: true,
+                            set_model: Some(&model.font_list),
+                            #[watch]
+                            set_selected: font_index(&model.font_families, &model.settings.font_family),
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(AiSettingsInput::FontFamilyPicked(d.selected()));
+                            },
                         },
                     },
                 },

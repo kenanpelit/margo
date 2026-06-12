@@ -82,73 +82,82 @@ impl Component for CatwalkSettingsModel {
                     },
                 },
 
-                // CPU threshold
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Run threshold (CPU %)",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Below this the cat idles; above it walks, speeding up with load.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1.0, 90.0),
-                        set_increments: (1.0, 5.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(threshold_handler)]
-                        set_value: model.minimum_threshold as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(CatwalkSettingsInput::ThresholdChanged(s.value() as u32));
-                        } @threshold_handler,
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                // Hide background
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    // CPU threshold
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Hide background",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Run threshold (CPU %)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Below this the cat idles; above it walks, speeding up with load.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Drop the pill background so the cat floats on the bar.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 90.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(threshold_handler)]
+                            set_value: model.minimum_threshold as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(CatwalkSettingsInput::ThresholdChanged(s.value() as u32));
+                            } @threshold_handler,
                         },
                     },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(hide_bg_handler)]
-                        set_active: model.hide_background,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(CatwalkSettingsInput::HideBackgroundChanged(v));
-                            glib::Propagation::Proceed
-                        } @hide_bg_handler,
+
+                    // Hide background
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Hide background",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Drop the pill background so the cat floats on the bar.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(hide_bg_handler)]
+                            set_active: model.hide_background,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(CatwalkSettingsInput::HideBackgroundChanged(v));
+                                glib::Propagation::Proceed
+                            } @hide_bg_handler,
+                        },
                     },
                 },
 

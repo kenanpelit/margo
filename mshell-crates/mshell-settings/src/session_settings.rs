@@ -110,42 +110,50 @@ impl Component for SessionSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Position", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "pos_dd"]
-                    gtk::DropDown {
-                        set_model: Some(&model.position_model),
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(SessionSettingsInput::SetPosition(d.selected()));
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Position", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "pos_dd"]
+                        gtk::DropDown {
+                            set_model: Some(&model.position_model),
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(SessionSettingsInput::SetPosition(d.selected()));
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Width (px)", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "width_spin"]
-                    gtk::SpinButton {
-                        set_adjustment: &gtk::Adjustment::new(360.0, 200.0, 1200.0, 10.0, 50.0, 0.0),
-                        set_digits: 0,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(SessionSettingsInput::SetMinWidth(s.value() as i32));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Width (px)", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "width_spin"]
+                        gtk::SpinButton {
+                            set_adjustment: &gtk::Adjustment::new(360.0, 200.0, 1200.0, 10.0, 50.0, 0.0),
+                            set_digits: 0,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(SessionSettingsInput::SetMinWidth(s.value() as i32));
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Max height (px, 0 = no cap)", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "height_spin"]
-                    gtk::SpinButton {
-                        set_adjustment: &gtk::Adjustment::new(0.0, 0.0, 2000.0, 20.0, 100.0, 0.0),
-                        set_digits: 0,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(SessionSettingsInput::SetMaxHeight(s.value() as i32));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Max height (px, 0 = no cap)", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "height_spin"]
+                        gtk::SpinButton {
+                            set_adjustment: &gtk::Adjustment::new(0.0, 0.0, 2000.0, 20.0, 100.0, 0.0),
+                            set_digits: 0,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(SessionSettingsInput::SetMaxHeight(s.value() as i32));
+                            },
                         },
                     },
                 },
@@ -167,12 +175,18 @@ impl Component for SessionSettingsModel {
                     set_natural_wrap_mode: gtk::NaturalWrapMode::None,
                 },
 
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
                 // ── Lock ────────────────────────────────────────
                 gtk::Box {
+                    add_css_class: "action-row",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
                     gtk::Box {
                         set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
                         set_hexpand: true,
                         gtk::Label {
                             add_css_class: "label-medium-bold",
@@ -199,10 +213,12 @@ impl Component for SessionSettingsModel {
 
                 // ── Logout ──────────────────────────────────────
                 gtk::Box {
+                    add_css_class: "action-row",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
                     gtk::Box {
                         set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
                         set_hexpand: true,
                         gtk::Label {
                             add_css_class: "label-medium-bold",
@@ -229,10 +245,12 @@ impl Component for SessionSettingsModel {
 
                 // ── Suspend ─────────────────────────────────────
                 gtk::Box {
+                    add_css_class: "action-row",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
                     gtk::Box {
                         set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
                         set_hexpand: true,
                         gtk::Label {
                             add_css_class: "label-medium-bold",
@@ -259,10 +277,12 @@ impl Component for SessionSettingsModel {
 
                 // ── Reboot ──────────────────────────────────────
                 gtk::Box {
+                    add_css_class: "action-row",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
                     gtk::Box {
                         set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
                         set_hexpand: true,
                         gtk::Label {
                             add_css_class: "label-medium-bold",
@@ -289,10 +309,12 @@ impl Component for SessionSettingsModel {
 
                 // ── Shutdown ────────────────────────────────────
                 gtk::Box {
+                    add_css_class: "action-row",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
                     gtk::Box {
                         set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
                         set_hexpand: true,
                         gtk::Label {
                             add_css_class: "label-medium-bold",
@@ -317,6 +339,7 @@ impl Component for SessionSettingsModel {
                             ));
                         },
                     },
+                },
                 },
             }
         }

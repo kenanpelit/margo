@@ -385,113 +385,124 @@ impl Component for WidgetMenuSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Position",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Position",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Which screen edge this menu anchors to.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Which screen edge this menu anchors to.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        gtk::DropDown {
+                            set_width_request: 180,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.position_model),
+                            #[watch]
+                            #[block_signal(position_handler)]
+                            set_selected: model.position.to_index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(WidgetMenuSettingsInput::PositionPicked(dd.selected()));
+                            } @position_handler,
                         },
                     },
-
-                    gtk::DropDown {
-                        set_width_request: 180,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.position_model),
-                        #[watch]
-                        #[block_signal(position_handler)]
-                        set_selected: model.position.to_index(),
-                        connect_selected_notify[sender] => move |dd| {
-                            sender.input(WidgetMenuSettingsInput::PositionPicked(dd.selected()));
-                        } @position_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Minimum Width",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Minimum Width",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Width floor in pixels. The menu may grow past this for long content.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Width floor in pixels. The menu may grow past this for long content.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (200.0, 2000.0),
+                            set_increments: (10.0, 50.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(min_width_handler)]
+                            set_value: model.minimum_width as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(WidgetMenuSettingsInput::MinWidthChanged(s.value() as i32));
+                            } @min_width_handler,
                         },
                     },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (200.0, 2000.0),
-                        set_increments: (10.0, 50.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(min_width_handler)]
-                        set_value: model.minimum_width as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(WidgetMenuSettingsInput::MinWidthChanged(s.value() as i32));
-                        } @min_width_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Maximum Height",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this height. Set to 0 to disable the cap and let the menu grow to fit its contents.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        // 0 = uncapped; otherwise reasonable monitor-sized range.
-                        set_range: (0.0, 2000.0),
-                        set_increments: (10.0, 50.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(max_height_handler)]
-                        set_value: model.maximum_height as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(WidgetMenuSettingsInput::MaxHeightChanged(s.value() as i32));
-                        } @max_height_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Maximum Height",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Viewport cap in pixels. The menu scrolls vertically past this height. Set to 0 to disable the cap and let the menu grow to fit its contents.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            // 0 = uncapped; otherwise reasonable monitor-sized range.
+                            set_range: (0.0, 2000.0),
+                            set_increments: (10.0, 50.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(max_height_handler)]
+                            set_value: model.maximum_height as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(WidgetMenuSettingsInput::MaxHeightChanged(s.value() as i32));
+                            } @max_height_handler,
+                        },
                     },
                 },
 
@@ -507,41 +518,48 @@ impl Component for WidgetMenuSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
                     #[watch]
                     set_visible: model.kind == MenuKind::SystemUpdate,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Check interval (minutes)",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "How often the pill re-checks pending upgrades. Default 180 (3 h). Right-click the pill for an immediate manual re-check. Which sources to probe (Repo / AUR / Flatpak) is toggled inside the panel itself.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1.0, 1440.0),
-                        set_increments: (5.0, 30.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(interval_handler)]
-                        set_value: model.check_interval_minutes as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(WidgetMenuSettingsInput::CheckIntervalChanged(s.value() as u32));
-                        } @interval_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Check interval (minutes)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "How often the pill re-checks pending upgrades. Default 180 (3 h). Right-click the pill for an immediate manual re-check. Which sources to probe (Repo / AUR / Flatpak) is toggled inside the panel itself.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 1440.0),
+                            set_increments: (5.0, 30.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(interval_handler)]
+                            set_value: model.check_interval_minutes as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(WidgetMenuSettingsInput::CheckIntervalChanged(s.value() as u32));
+                            } @interval_handler,
+                        },
                     },
                 },
             }

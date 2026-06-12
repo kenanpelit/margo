@@ -108,105 +108,116 @@ impl Component for PrivacyPillSettingsModel {
                     set_halign: gtk::Align::Start,
                 },
 
-                // Track microphone
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Microphone",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Apps recording audio (via PipeWire's capture-stream list — no overhead).",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(mic_handler)]
-                        set_active: model.track_mic,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(PrivacyPillSettingsInput::TrackMic(v));
-                            glib::Propagation::Proceed
-                        } @mic_handler,
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                // Track camera
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    // Track microphone
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Camera",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Microphone",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Apps recording audio (via PipeWire's capture-stream list — no overhead).",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Apps holding a /dev/video* capture node open (polled via /proc).",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(mic_handler)]
+                            set_active: model.track_mic,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(PrivacyPillSettingsInput::TrackMic(v));
+                                glib::Propagation::Proceed
+                            } @mic_handler,
                         },
                     },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(cam_handler)]
-                        set_active: model.track_camera,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(PrivacyPillSettingsInput::TrackCamera(v));
-                            glib::Propagation::Proceed
-                        } @cam_handler,
-                    },
-                },
 
-                // Track screen sharing
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    // Track camera
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Screen sharing",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Camera",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Apps holding a /dev/video* capture node open (polled via /proc).",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Screencast sessions (polls `pw-dump` every 2 s). The heaviest check — turn it off on weak machines.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(cam_handler)]
+                            set_active: model.track_camera,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(PrivacyPillSettingsInput::TrackCamera(v));
+                                glib::Propagation::Proceed
+                            } @cam_handler,
                         },
                     },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(scr_handler)]
-                        set_active: model.track_screen,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(PrivacyPillSettingsInput::TrackScreen(v));
-                            glib::Propagation::Proceed
-                        } @scr_handler,
+
+                    // Track screen sharing
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Screen sharing",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Screencast sessions (polls `pw-dump` every 2 s). The heaviest check — turn it off on weak machines.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(scr_handler)]
+                            set_active: model.track_screen,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(PrivacyPillSettingsInput::TrackScreen(v));
+                                glib::Propagation::Proceed
+                            } @scr_handler,
+                        },
                     },
                 },
 
@@ -218,105 +229,116 @@ impl Component for PrivacyPillSettingsModel {
                     set_halign: gtk::Align::Start,
                 },
 
-                // Hide when idle
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Hide when idle",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Hide the pill entirely while nothing is in use. Off keeps it visible but dimmed.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(hide_handler)]
-                        set_active: model.hide_inactive,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(PrivacyPillSettingsInput::HideInactive(v));
-                            glib::Propagation::Proceed
-                        } @hide_handler,
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                // Activation toast
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    // Hide when idle
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Activation toast",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Hide when idle",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Hide the pill entirely while nothing is in use. Off keeps it visible but dimmed.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Send a notification when a sensor first goes active.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(hide_handler)]
+                            set_active: model.hide_inactive,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(PrivacyPillSettingsInput::HideInactive(v));
+                                glib::Propagation::Proceed
+                            } @hide_handler,
                         },
                     },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(toast_handler)]
-                        set_active: model.enable_toast,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(PrivacyPillSettingsInput::EnableToast(v));
-                            glib::Propagation::Proceed
-                        } @toast_handler,
-                    },
-                },
 
-                // Accent
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    // Activation toast
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Active colour",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Activation toast",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Send a notification when a sensor first goes active.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Themed accent the glyphs light up with when a sensor is in use.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(toast_handler)]
+                            set_active: model.enable_toast,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(PrivacyPillSettingsInput::EnableToast(v));
+                                glib::Propagation::Proceed
+                            } @toast_handler,
                         },
                     },
-                    #[name = "accent_dd"]
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(accent_handler)]
-                        set_selected: accent_index(model.accent),
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(PrivacyPillSettingsInput::Accent(d.selected()));
-                        } @accent_handler,
+
+                    // Accent
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Active colour",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Themed accent the glyphs light up with when a sensor is in use.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        #[name = "accent_dd"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(accent_handler)]
+                            set_selected: accent_index(model.accent),
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(PrivacyPillSettingsInput::Accent(d.selected()));
+                            } @accent_handler,
+                        },
                     },
                 },
 
@@ -382,37 +404,44 @@ impl Component for PrivacyPillSettingsModel {
 
                 // History limit
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Access-log entries",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Access-log entries",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "How many recent started/stopped events to keep (and persist). 0 disables the log.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "How many recent started/stopped events to keep (and persist). 0 disables the log.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 500.0),
+                            set_increments: (10.0, 50.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(limit_handler)]
+                            set_value: model.history_limit as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(PrivacyPillSettingsInput::HistoryLimit(s.value() as u32));
+                            } @limit_handler,
                         },
-                    },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 500.0),
-                        set_increments: (10.0, 50.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(limit_handler)]
-                        set_value: model.history_limit as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(PrivacyPillSettingsInput::HistoryLimit(s.value() as u32));
-                        } @limit_handler,
                     },
                 },
             },

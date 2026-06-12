@@ -116,12 +116,17 @@ impl Component for AboutSettingsModel {
                     set_halign: gtk::Align::Start,
                 },
 
-                #[template] InfoRow { #[template_child] name { set_label: "Operating system" }, #[template_child] value { #[watch] set_label: &model.os } },
-                #[template] InfoRow { #[template_child] name { set_label: "Kernel" }, #[template_child] value { #[watch] set_label: &model.kernel } },
-                #[template] InfoRow { #[template_child] name { set_label: "Hostname" }, #[template_child] value { #[watch] set_label: &model.host } },
-                #[template] InfoRow { #[template_child] name { set_label: "Desktop" }, #[template_child] value { #[watch] set_label: &model.desktop } },
-                #[template] InfoRow { #[template_child] name { set_label: "margo version" }, #[template_child] value { #[watch] set_label: &model.version } },
-                #[template] InfoRow { #[template_child] name { set_label: "Uptime" }, #[template_child] value { #[watch] set_label: &model.uptime } },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] InfoRow { #[template_child] name { set_label: "Operating system" }, #[template_child] value { #[watch] set_label: &model.os } },
+                    #[template] InfoRow { #[template_child] name { set_label: "Kernel" }, #[template_child] value { #[watch] set_label: &model.kernel } },
+                    #[template] InfoRow { #[template_child] name { set_label: "Hostname" }, #[template_child] value { #[watch] set_label: &model.host } },
+                    #[template] InfoRow { #[template_child] name { set_label: "Desktop" }, #[template_child] value { #[watch] set_label: &model.desktop } },
+                    #[template] InfoRow { #[template_child] name { set_label: "margo version" }, #[template_child] value { #[watch] set_label: &model.version } },
+                    #[template] InfoRow { #[template_child] name { set_label: "Uptime" }, #[template_child] value { #[watch] set_label: &model.uptime } },
+                },
 
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -130,9 +135,14 @@ impl Component for AboutSettingsModel {
                     set_margin_top: 12,
                 },
 
-                #[template] InfoRow { #[template_child] name { set_label: "Processor" }, #[template_child] value { #[watch] set_label: &model.cpu } },
-                #[template] InfoRow { #[template_child] name { set_label: "Graphics" }, #[template_child] value { #[watch] set_label: &model.gpu } },
-                #[template] InfoRow { #[template_child] name { set_label: "Memory" }, #[template_child] value { #[watch] set_label: &model.memory } },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] InfoRow { #[template_child] name { set_label: "Processor" }, #[template_child] value { #[watch] set_label: &model.cpu } },
+                    #[template] InfoRow { #[template_child] name { set_label: "Graphics" }, #[template_child] value { #[watch] set_label: &model.gpu } },
+                    #[template] InfoRow { #[template_child] name { set_label: "Memory" }, #[template_child] value { #[watch] set_label: &model.memory } },
+                },
 
                 gtk::Button {
                     add_css_class: "ok-button-surface",
@@ -285,6 +295,7 @@ fn uptime() -> String {
 impl relm4::WidgetTemplate for InfoRow {
     view! {
         gtk::Box {
+            add_css_class: "action-row",
             set_orientation: gtk::Orientation::Horizontal,
             set_spacing: 16,
             #[name = "name"]

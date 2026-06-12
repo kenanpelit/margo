@@ -124,6 +124,10 @@ impl Component for LayerRulesModel {
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Add a rule", set_halign: gtk::Align::Start },
 
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
                 #[template] Row {
                     #[template_child] title { set_label: "Match namespace (regex)" },
                     gtk::Entry {
@@ -145,9 +149,10 @@ impl Component for LayerRulesModel {
                     #[template_child] title { set_label: "No shadow" },
                     gtk::Switch { set_valign: gtk::Align::Center,
                         connect_active_notify[sender] => move |s| sender.input(LayerRulesInput::SetNoShadow(s.is_active())) } },
+                },
                 gtk::Button {
                     set_halign: gtk::Align::Start,
-                    add_css_class: "suggested-action",
+                    add_css_class: "ok-button-primary",
                     set_label: "Add rule",
                     connect_clicked[sender] => move |_| sender.input(LayerRulesInput::Add),
                 },

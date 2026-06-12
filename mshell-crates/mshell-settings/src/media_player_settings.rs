@@ -81,75 +81,84 @@ impl Component for MediaPlayerSettingsModel {
                     },
                 },
 
-                // Seek step (seconds)
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Seek step (seconds)",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "How far the − / + buttons in the media-player menu jump.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1.0, 120.0),
-                        set_increments: (1.0, 5.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(seek_handler)]
-                        set_value: model.seek_step as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(MediaPlayerSettingsInput::SeekStepChanged(s.value() as u32));
-                        } @seek_handler,
-                    },
-                },
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                // Large album art
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    // Seek step (seconds)
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Large album art",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Seek step (seconds)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "How far the − / + buttons in the media-player menu jump.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Show a bigger album cover in the media-player menu.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 120.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(seek_handler)]
+                            set_value: model.seek_step as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(MediaPlayerSettingsInput::SeekStepChanged(s.value() as u32));
+                            } @seek_handler,
                         },
                     },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(art_handler)]
-                        set_active: model.large_art,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(MediaPlayerSettingsInput::LargeArtChanged(v));
-                            glib::Propagation::Proceed
-                        } @art_handler,
+
+                    // Large album art
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Large album art",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Show a bigger album cover in the media-player menu.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(art_handler)]
+                            set_active: model.large_art,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(MediaPlayerSettingsInput::LargeArtChanged(v));
+                                glib::Propagation::Proceed
+                            } @art_handler,
+                        },
                     },
                 },
 

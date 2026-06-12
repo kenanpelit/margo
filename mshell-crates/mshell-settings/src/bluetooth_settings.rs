@@ -153,39 +153,46 @@ impl Component for BluetoothSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
                     #[watch]
                     set_visible: model.available,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Enabled",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Power the Bluetooth adapter on or off.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(bt_enabled_handler)]
-                        set_active: model.enabled,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(BluetoothSettingsInput::SetEnabled(enabled));
-                            glib::Propagation::Proceed
-                        } @bt_enabled_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Enabled",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Power the Bluetooth adapter on or off.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(bt_enabled_handler)]
+                            set_active: model.enabled,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(BluetoothSettingsInput::SetEnabled(enabled));
+                                glib::Propagation::Proceed
+                            } @bt_enabled_handler,
+                        },
                     },
                 },
 
@@ -212,125 +219,137 @@ impl Component for BluetoothSettingsModel {
                         set_natural_wrap_mode: gtk::NaturalWrapMode::None,
                     },
 
-                    // Master switch
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 20,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_label: "Auto-connect at login",
-                            set_halign: gtk::Align::Start,
-                            set_hexpand: true,
-                        },
-                        gtk::Switch {
-                            set_valign: gtk::Align::Center,
-                            set_active: model.ac.autoconnect_enabled,
-                            connect_active_notify[sender] => move |sw| {
-                                sender.input(BluetoothSettingsInput::AcToggleEnabled(sw.is_active()));
-                            },
-                        },
-                    },
+                        add_css_class: "boxed-list",
+                        set_orientation: gtk::Orientation::Vertical,
 
-                    // Delay
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 20,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_label: "Delay after login (seconds)",
-                            set_halign: gtk::Align::Start,
-                            set_hexpand: true,
-                        },
-                        gtk::SpinButton {
-                            set_valign: gtk::Align::Center,
-                            set_digits: 0,
-                            set_range: (0.0, 120.0),
-                            set_increments: (1.0, 5.0),
-                            set_value: model.ac.autoconnect_delay_secs as f64,
-                            set_tooltip_text: Some("Wait this long before the first connect attempt"),
-                            connect_value_changed[sender] => move |s| {
-                                sender.input(BluetoothSettingsInput::AcSetDelay(s.value().max(0.0) as u32));
-                            },
-                        },
-                    },
-
-                    // Route audio output
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 20,
+                        // Master switch
                         gtk::Box {
-                            set_orientation: gtk::Orientation::Vertical,
-                            set_hexpand: true,
+                            add_css_class: "action-row",
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
                             gtk::Label {
                                 add_css_class: "label-medium-bold",
-                                set_label: "Use as audio output",
+                                set_label: "Auto-connect at login",
                                 set_halign: gtk::Align::Start,
+                                set_hexpand: true,
                             },
-                            gtk::Label {
-                                add_css_class: "label-small",
-                                set_label: "Make it the default speaker when it connects.",
-                                set_halign: gtk::Align::Start,
-                                set_xalign: 0.0,
-                                set_wrap: true,
-                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            gtk::Switch {
+                                set_valign: gtk::Align::Center,
+                                set_active: model.ac.autoconnect_enabled,
+                                connect_active_notify[sender] => move |sw| {
+                                    sender.input(BluetoothSettingsInput::AcToggleEnabled(sw.is_active()));
+                                },
                             },
                         },
-                        gtk::Switch {
-                            set_valign: gtk::Align::Center,
-                            set_active: model.ac.route_audio_output,
-                            connect_active_notify[sender] => move |sw| {
-                                sender.input(BluetoothSettingsInput::AcToggleRouteOutput(sw.is_active()));
-                            },
-                        },
-                    },
 
-                    // Route audio input (mic)
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 20,
+                        // Delay
                         gtk::Box {
-                            set_orientation: gtk::Orientation::Vertical,
-                            set_hexpand: true,
+                            add_css_class: "action-row",
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
                             gtk::Label {
                                 add_css_class: "label-medium-bold",
-                                set_label: "Use as microphone",
+                                set_label: "Delay after login (seconds)",
                                 set_halign: gtk::Align::Start,
+                                set_hexpand: true,
                             },
-                            gtk::Label {
-                                add_css_class: "label-small",
-                                set_label: "Also set it as the default mic. Off by default: a \
-                                            headset mic forces the low-quality HSP/HFP codec and \
-                                            degrades playback.",
-                                set_halign: gtk::Align::Start,
-                                set_xalign: 0.0,
-                                set_wrap: true,
-                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            gtk::SpinButton {
+                                set_valign: gtk::Align::Center,
+                                set_digits: 0,
+                                set_range: (0.0, 120.0),
+                                set_increments: (1.0, 5.0),
+                                set_value: model.ac.autoconnect_delay_secs as f64,
+                                set_tooltip_text: Some("Wait this long before the first connect attempt"),
+                                connect_value_changed[sender] => move |s| {
+                                    sender.input(BluetoothSettingsInput::AcSetDelay(s.value().max(0.0) as u32));
+                                },
                             },
                         },
-                        gtk::Switch {
-                            set_valign: gtk::Align::Center,
-                            set_active: model.ac.route_audio_input,
-                            connect_active_notify[sender] => move |sw| {
-                                sender.input(BluetoothSettingsInput::AcToggleRouteInput(sw.is_active()));
-                            },
-                        },
-                    },
 
-                    // Notifications
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 20,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_label: "Notifications",
-                            set_halign: gtk::Align::Start,
-                            set_hexpand: true,
+                        // Route audio output
+                        gtk::Box {
+                            add_css_class: "action-row",
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
+                            gtk::Box {
+                                set_orientation: gtk::Orientation::Vertical,
+                                set_valign: gtk::Align::Center,
+                                set_hexpand: true,
+                                gtk::Label {
+                                    add_css_class: "label-medium-bold",
+                                    set_label: "Use as audio output",
+                                    set_halign: gtk::Align::Start,
+                                },
+                                gtk::Label {
+                                    add_css_class: "label-small",
+                                    set_label: "Make it the default speaker when it connects.",
+                                    set_halign: gtk::Align::Start,
+                                    set_xalign: 0.0,
+                                    set_wrap: true,
+                                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                                },
+                            },
+                            gtk::Switch {
+                                set_valign: gtk::Align::Center,
+                                set_active: model.ac.route_audio_output,
+                                connect_active_notify[sender] => move |sw| {
+                                    sender.input(BluetoothSettingsInput::AcToggleRouteOutput(sw.is_active()));
+                                },
+                            },
                         },
-                        gtk::Switch {
-                            set_valign: gtk::Align::Center,
-                            set_active: model.ac.notifications,
-                            connect_active_notify[sender] => move |sw| {
-                                sender.input(BluetoothSettingsInput::AcToggleNotify(sw.is_active()));
+
+                        // Route audio input (mic)
+                        gtk::Box {
+                            add_css_class: "action-row",
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
+                            gtk::Box {
+                                set_orientation: gtk::Orientation::Vertical,
+                                set_valign: gtk::Align::Center,
+                                set_hexpand: true,
+                                gtk::Label {
+                                    add_css_class: "label-medium-bold",
+                                    set_label: "Use as microphone",
+                                    set_halign: gtk::Align::Start,
+                                },
+                                gtk::Label {
+                                    add_css_class: "label-small",
+                                    set_label: "Also set it as the default mic. Off by default: a \
+                                                headset mic forces the low-quality HSP/HFP codec and \
+                                                degrades playback.",
+                                    set_halign: gtk::Align::Start,
+                                    set_xalign: 0.0,
+                                    set_wrap: true,
+                                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                                },
+                            },
+                            gtk::Switch {
+                                set_valign: gtk::Align::Center,
+                                set_active: model.ac.route_audio_input,
+                                connect_active_notify[sender] => move |sw| {
+                                    sender.input(BluetoothSettingsInput::AcToggleRouteInput(sw.is_active()));
+                                },
+                            },
+                        },
+
+                        // Notifications
+                        gtk::Box {
+                            add_css_class: "action-row",
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_label: "Notifications",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                            gtk::Switch {
+                                set_valign: gtk::Align::Center,
+                                set_active: model.ac.notifications,
+                                connect_active_notify[sender] => move |sw| {
+                                    sender.input(BluetoothSettingsInput::AcToggleNotify(sw.is_active()));
+                                },
                             },
                         },
                     },
@@ -365,9 +384,8 @@ impl Component for BluetoothSettingsModel {
                     // The configured device list (rebuilt in update_with_view)
                     #[name = "ac_list_box"]
                     gtk::Box {
-                        add_css_class: "settings-boxed-list",
+                        add_css_class: "boxed-list",
                         set_orientation: gtk::Orientation::Vertical,
-                        set_spacing: 2,
                     },
 
                     // Toggle-now button
@@ -731,6 +749,7 @@ impl BluetoothSettingsModel {
                 .spacing(8)
                 .build();
             row.add_css_class("launcher-script-row");
+            row.add_css_class("action-row");
 
             let grip = gtk::Image::from_icon_name("list-drag-handle-symbolic");
             grip.add_css_class("reorder-grip");

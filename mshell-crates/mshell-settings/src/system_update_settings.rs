@@ -104,42 +104,50 @@ impl Component for SystemUpdateSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Position", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "pos_dd"]
-                    gtk::DropDown {
-                        set_model: Some(&model.position_model),
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(SystemUpdateSettingsInput::SetPosition(d.selected()));
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Position", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "pos_dd"]
+                        gtk::DropDown {
+                            set_model: Some(&model.position_model),
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(SystemUpdateSettingsInput::SetPosition(d.selected()));
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Width (px)", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "width_spin"]
-                    gtk::SpinButton {
-                        set_adjustment: &gtk::Adjustment::new(420.0, 280.0, 1200.0, 10.0, 50.0, 0.0),
-                        set_digits: 0,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(SystemUpdateSettingsInput::SetMinWidth(s.value() as i32));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Width (px)", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "width_spin"]
+                        gtk::SpinButton {
+                            set_adjustment: &gtk::Adjustment::new(420.0, 280.0, 1200.0, 10.0, 50.0, 0.0),
+                            set_digits: 0,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(SystemUpdateSettingsInput::SetMinWidth(s.value() as i32));
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Max height (px, 0 = no cap)", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "height_spin"]
-                    gtk::SpinButton {
-                        set_adjustment: &gtk::Adjustment::new(600.0, 0.0, 2000.0, 20.0, 100.0, 0.0),
-                        set_digits: 0,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(SystemUpdateSettingsInput::SetMaxHeight(s.value() as i32));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Max height (px, 0 = no cap)", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "height_spin"]
+                        gtk::SpinButton {
+                            set_adjustment: &gtk::Adjustment::new(600.0, 0.0, 2000.0, 20.0, 100.0, 0.0),
+                            set_digits: 0,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(SystemUpdateSettingsInput::SetMaxHeight(s.value() as i32));
+                            },
                         },
                     },
                 },
@@ -153,57 +161,66 @@ impl Component for SystemUpdateSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Check every (hours)", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "interval_spin"]
-                    gtk::SpinButton {
-                        set_adjustment: &gtk::Adjustment::new(3.0, 1.0, 48.0, 1.0, 6.0, 0.0),
-                        set_digits: 0,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(SystemUpdateSettingsInput::SetIntervalHours(s.value() as i32));
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Check every (hours)", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "interval_spin"]
+                        gtk::SpinButton {
+                            set_adjustment: &gtk::Adjustment::new(3.0, 1.0, 48.0, 1.0, 6.0, 0.0),
+                            set_digits: 0,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(SystemUpdateSettingsInput::SetIntervalHours(s.value() as i32));
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Official repo updates", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "su_repo"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        connect_state_set[sender] => move |_, state| {
-                            sender.input(SystemUpdateSettingsInput::SetCheckRepo(state));
-                            glib::Propagation::Proceed
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Official repo updates", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "su_repo"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            connect_state_set[sender] => move |_, state| {
+                                sender.input(SystemUpdateSettingsInput::SetCheckRepo(state));
+                                glib::Propagation::Proceed
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "AUR updates (paru / yay)", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "su_aur"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        connect_state_set[sender] => move |_, state| {
-                            sender.input(SystemUpdateSettingsInput::SetCheckAur(state));
-                            glib::Propagation::Proceed
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "AUR updates (paru / yay)", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "su_aur"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            connect_state_set[sender] => move |_, state| {
+                                sender.input(SystemUpdateSettingsInput::SetCheckAur(state));
+                                glib::Propagation::Proceed
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Flatpak updates", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "su_flatpak"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        connect_state_set[sender] => move |_, state| {
-                            sender.input(SystemUpdateSettingsInput::SetCheckFlatpak(state));
-                            glib::Propagation::Proceed
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Flatpak updates", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "su_flatpak"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            connect_state_set[sender] => move |_, state| {
+                                sender.input(SystemUpdateSettingsInput::SetCheckFlatpak(state));
+                                glib::Propagation::Proceed
+                            },
                         },
                     },
                 },

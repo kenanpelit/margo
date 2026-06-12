@@ -202,39 +202,48 @@ impl Component for NetworkSettingsModel {
 
                 // Enable toggle row
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
                     #[watch]
                     set_visible: model.wifi_available,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Enabled",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Turn Wi-Fi hardware on or off.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
                         #[watch]
-                        #[block_signal(wifi_enabled_handler)]
-                        set_active: model.wifi_enabled,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(NetworkSettingsInput::SetWifiEnabled(enabled));
-                            glib::Propagation::Proceed
-                        } @wifi_enabled_handler,
+                        set_visible: model.wifi_available,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Enabled",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Turn Wi-Fi hardware on or off.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(wifi_enabled_handler)]
+                            set_active: model.wifi_enabled,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(NetworkSettingsInput::SetWifiEnabled(enabled));
+                                glib::Propagation::Proceed
+                            } @wifi_enabled_handler,
+                        },
                     },
                 },
 
@@ -382,36 +391,43 @@ impl Component for NetworkSettingsModel {
 
                 // Mode row
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Mode",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "None disables the proxy. Manual writes host:port env vars. Automatic stores a PAC URL for reference.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    #[name = "proxy_mode_dropdown"]
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&gtk::StringList::new(&["None", "Manual", "Automatic (PAC)"])),
-                        #[watch]
-                        set_selected: model.proxy_mode.to_index(),
-                        connect_selected_notify[sender] => move |dd| {
-                            sender.input(NetworkSettingsInput::ProxyModeChanged(dd.selected()));
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Mode",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "None disables the proxy. Manual writes host:port env vars. Automatic stores a PAC URL for reference.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        #[name = "proxy_mode_dropdown"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&["None", "Manual", "Automatic (PAC)"])),
+                            #[watch]
+                            set_selected: model.proxy_mode.to_index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(NetworkSettingsInput::ProxyModeChanged(dd.selected()));
+                            },
                         },
                     },
                 },
@@ -590,99 +606,109 @@ impl Component for NetworkSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Label {
-                        add_css_class: "label-medium-bold",
-                        set_label: "Enable at login",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: true,
-                    },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.login_enabled,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(NetworkSettingsInput::SetLoginEnabled(v));
-                            glib::Propagation::Proceed
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_label: "Enable at login",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.login_enabled,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(NetworkSettingsInput::SetLoginEnabled(v));
+                                glib::Propagation::Proceed
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Label {
-                        add_css_class: "label-medium-bold",
-                        set_label: "Wi-Fi connection",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: true,
-                    },
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_text: model.login_wifi.as_str(),
-                        set_placeholder_text: Some("NetworkManager name, e.g. Ken_5"),
-                        connect_changed[sender] => move |e| {
-                            sender.input(NetworkSettingsInput::SetLoginWifi(e.text().to_string()));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_label: "Wi-Fi connection",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_text: model.login_wifi.as_str(),
+                            set_placeholder_text: Some("NetworkManager name, e.g. Ken_5"),
+                            connect_changed[sender] => move |e| {
+                                sender.input(NetworkSettingsInput::SetLoginWifi(e.text().to_string()));
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Label {
-                        add_css_class: "label-medium-bold",
-                        set_label: "Connect Mullvad",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: true,
-                    },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.login_connect_vpn,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(NetworkSettingsInput::SetLoginVpn(v));
-                            glib::Propagation::Proceed
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_label: "Connect Mullvad",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.login_connect_vpn,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(NetworkSettingsInput::SetLoginVpn(v));
+                                glib::Propagation::Proceed
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Label {
-                        add_css_class: "label-medium-bold",
-                        set_label: "Couple Blocky (stop while VPN up)",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: true,
-                    },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.login_couple_blocky,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(NetworkSettingsInput::SetLoginBlocky(v));
-                            glib::Propagation::Proceed
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_label: "Couple Blocky (stop while VPN up)",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.login_couple_blocky,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(NetworkSettingsInput::SetLoginBlocky(v));
+                                glib::Propagation::Proceed
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    gtk::Label {
-                        add_css_class: "label-medium-bold",
-                        set_label: "Delay after login (seconds)",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: true,
-                    },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 120.0),
-                        set_increments: (1.0, 5.0),
-                        set_digits: 0,
-                        set_value: model.login_delay as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(NetworkSettingsInput::SetLoginDelay(s.value() as u32));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_label: "Delay after login (seconds)",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 120.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            set_value: model.login_delay as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(NetworkSettingsInput::SetLoginDelay(s.value() as u32));
+                            },
                         },
                     },
                 },

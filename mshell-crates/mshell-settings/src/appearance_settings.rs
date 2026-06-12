@@ -86,108 +86,123 @@ impl Component for AppearanceModel {
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Border", set_halign: gtk::Align::Start },
 
-                #[template] Row {
-                    #[template_child] title { set_label: "Border thickness (px)" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &adj(model.borderpx, 0.0, 32.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("borderpx", s.value() as i64)),
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Border thickness (px)" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &adj(model.borderpx, 0.0, 32.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("borderpx", s.value() as i64)),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Corner radius (px)" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &adj(model.border_radius, 0.0, 32.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("border_radius", s.value() as i64)),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Corner radius (px)" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &adj(model.border_radius, 0.0, 32.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("border_radius", s.value() as i64)),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "No border when single window" },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.no_border_when_single,
-                        connect_active_notify[sender] => move |s| sender.input(AppearanceInput::SetBool("no_border_when_single", s.is_active())),
+                    #[template] Row {
+                        #[template_child] title { set_label: "No border when single window" },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.no_border_when_single,
+                            connect_active_notify[sender] => move |s| sender.input(AppearanceInput::SetBool("no_border_when_single", s.is_active())),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "No corner radius when single window" },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.no_radius_when_single,
-                        connect_active_notify[sender] => move |s| sender.input(AppearanceInput::SetBool("no_radius_when_single", s.is_active())),
+                    #[template] Row {
+                        #[template_child] title { set_label: "No corner radius when single window" },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.no_radius_when_single,
+                            connect_active_notify[sender] => move |s| sender.input(AppearanceInput::SetBool("no_radius_when_single", s.is_active())),
+                        },
                     },
                 },
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Gaps", set_halign: gtk::Align::Start },
 
-                #[template] Row {
-                    #[template_child] title { set_label: "Inner gap — horizontal" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &adj(model.gappih, 0.0, 64.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("gappih", s.value() as i64)),
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Inner gap — horizontal" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &adj(model.gappih, 0.0, 64.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("gappih", s.value() as i64)),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Inner gap — vertical" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &adj(model.gappiv, 0.0, 64.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("gappiv", s.value() as i64)),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Inner gap — vertical" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &adj(model.gappiv, 0.0, 64.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("gappiv", s.value() as i64)),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Outer gap — horizontal" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &adj(model.gappoh, 0.0, 64.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("gappoh", s.value() as i64)),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Outer gap — horizontal" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &adj(model.gappoh, 0.0, 64.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("gappoh", s.value() as i64)),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Outer gap — vertical" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &adj(model.gappov, 0.0, 64.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("gappov", s.value() as i64)),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Outer gap — vertical" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &adj(model.gappov, 0.0, 64.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("gappov", s.value() as i64)),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Smart gaps (drop gaps with one window)" },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        set_active: model.smartgaps,
-                        connect_active_notify[sender] => move |s| sender.input(AppearanceInput::SetBool("smartgaps", s.is_active())),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Smart gaps (drop gaps with one window)" },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.smartgaps,
+                            connect_active_notify[sender] => move |s| sender.input(AppearanceInput::SetBool("smartgaps", s.is_active())),
+                        },
                     },
                 },
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Opacity & cursor", set_halign: gtk::Align::Start },
 
-                #[template] Row {
-                    #[template_child] title { set_label: "Focused window opacity" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_digits: 2,
-                        set_adjustment: &adj(model.focused_opacity, 0.1, 1.0, 0.05),
-                        connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetF("focused_opacity", s.value(), 2)),
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Focused window opacity" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_digits: 2,
+                            set_adjustment: &adj(model.focused_opacity, 0.1, 1.0, 0.05),
+                            connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetF("focused_opacity", s.value(), 2)),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Unfocused window opacity" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_digits: 2,
-                        set_adjustment: &adj(model.unfocused_opacity, 0.1, 1.0, 0.05),
-                        connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetF("unfocused_opacity", s.value(), 2)),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Unfocused window opacity" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_digits: 2,
+                            set_adjustment: &adj(model.unfocused_opacity, 0.1, 1.0, 0.05),
+                            connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetF("unfocused_opacity", s.value(), 2)),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Cursor size (px)" },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_adjustment: &adj(model.cursor_size, 8.0, 96.0, 1.0),
-                        connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("cursor_size", s.value() as i64)),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Cursor size (px)" },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_adjustment: &adj(model.cursor_size, 8.0, 96.0, 1.0),
+                            connect_value_changed[sender] => move |s| sender.input(AppearanceInput::SetInt("cursor_size", s.value() as i64)),
+                        },
                     },
                 },
             }

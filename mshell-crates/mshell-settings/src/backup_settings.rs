@@ -248,7 +248,7 @@ impl Component for BackupSettingsModel {
                         connect_activate[sender] => move |_| sender.input(BackupSettingsInput::NewProfile),
                     },
                     gtk::Button {
-                        add_css_class: "suggested-action",
+                        add_css_class: "ok-button-primary",
                         set_label: "Save as",
                         connect_clicked[sender] => move |_| sender.input(BackupSettingsInput::NewProfile),
                     },
@@ -268,7 +268,7 @@ impl Component for BackupSettingsModel {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 8,
                     gtk::Button {
-                        add_css_class: "suggested-action",
+                        add_css_class: "ok-button-primary",
                         set_label: "Export…",
                         connect_clicked[sender] => move |_| sender.input(BackupSettingsInput::ExportClicked),
                     },

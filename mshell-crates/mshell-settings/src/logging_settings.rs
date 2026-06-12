@@ -91,35 +91,45 @@ impl Component for LoggingModel {
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Shell (mshell)", set_halign: gtk::Align::Start },
 
-                #[template] Row {
-                    #[template_child] title { set_label: "Write shell log files" },
-                    #[template_child] desc { set_label: "mshell-*.log" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.shell_enabled,
-                        connect_active_notify[sender] => move |s| sender.input(LoggingInput::SetShellEnabled(s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Shell log level" },
-                    #[template_child] desc { set_label: "debug / trace = deeper diagnostics" },
-                    gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,
-                        set_model: Some(&model.levels),
-                        #[block_signal(shell_level_h)]
-                        set_selected: model.shell_level_idx,
-                        connect_selected_notify[sender] => move |d| sender.input(LoggingInput::SetShellLevel(d.selected())) @shell_level_h } },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Write shell log files" },
+                        #[template_child] desc { set_label: "mshell-*.log" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.shell_enabled,
+                            connect_active_notify[sender] => move |s| sender.input(LoggingInput::SetShellEnabled(s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Shell log level" },
+                        #[template_child] desc { set_label: "debug / trace = deeper diagnostics" },
+                        gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,
+                            set_model: Some(&model.levels),
+                            #[block_signal(shell_level_h)]
+                            set_selected: model.shell_level_idx,
+                            connect_selected_notify[sender] => move |d| sender.input(LoggingInput::SetShellLevel(d.selected())) @shell_level_h } },
+                },
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Compositor (margo)", set_halign: gtk::Align::Start, set_margin_top: 8 },
 
-                #[template] Row {
-                    #[template_child] title { set_label: "Write compositor log files" },
-                    #[template_child] desc { set_label: "margo-*.log — applied via mctl reload" },
-                    gtk::Switch { set_valign: gtk::Align::Center, set_active: model.comp_enabled,
-                        connect_active_notify[sender] => move |s| sender.input(LoggingInput::SetCompEnabled(s.is_active())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Compositor log level" },
-                    #[template_child] desc { set_label: "debug / trace = deeper diagnostics" },
-                    gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,
-                        set_model: Some(&model.levels),
-                        #[block_signal(comp_level_h)]
-                        set_selected: model.comp_level_idx,
-                        connect_selected_notify[sender] => move |d| sender.input(LoggingInput::SetCompLevel(d.selected())) @comp_level_h } },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Write compositor log files" },
+                        #[template_child] desc { set_label: "margo-*.log — applied via mctl reload" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.comp_enabled,
+                            connect_active_notify[sender] => move |s| sender.input(LoggingInput::SetCompEnabled(s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Compositor log level" },
+                        #[template_child] desc { set_label: "debug / trace = deeper diagnostics" },
+                        gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,
+                            set_model: Some(&model.levels),
+                            #[block_signal(comp_level_h)]
+                            set_selected: model.comp_level_idx,
+                            connect_selected_notify[sender] => move |d| sender.input(LoggingInput::SetCompLevel(d.selected())) @comp_level_h } },
+                },
 
                 gtk::Button {
                     add_css_class: "ok-button-surface",

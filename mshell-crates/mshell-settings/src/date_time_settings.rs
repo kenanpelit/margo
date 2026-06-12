@@ -94,51 +94,56 @@ impl Component for DateTimeSettingsModel {
                     set_halign: gtk::Align::Start,
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Automatic time (NTP)" },
-                    #[template_child] desc { set_label: "Sync the clock from the network. Turn off to set the time manually (timedatectl)." },
-                    #[name = "ntp_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(ntp_handler)]
-                        set_active: model.ntp,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(DateTimeSettingsInput::SetNtp(s.is_active()));
-                        } @ntp_handler,
-                    },
-                },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Time zone" },
-                    #[template_child] desc { set_label: "Type to search. Applied via timedatectl." },
-                    #[name = "tz_dd"]
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 260,
-                        set_enable_search: true,
-                        set_model: Some(&model.timezones),
-                        #[block_signal(tz_handler)]
-                        set_selected: model.tz_index,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(DateTimeSettingsInput::SetTimezone(d.selected()));
-                        } @tz_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Automatic time (NTP)" },
+                        #[template_child] desc { set_label: "Sync the clock from the network. Turn off to set the time manually (timedatectl)." },
+                        #[name = "ntp_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(ntp_handler)]
+                            set_active: model.ntp,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(DateTimeSettingsInput::SetNtp(s.is_active()));
+                            } @ntp_handler,
+                        },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "24-hour clock" },
-                    #[template_child] desc { set_label: "Show the shell clock in 24-hour format." },
-                    #[name = "clock_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(clock_handler)]
-                        set_active: model.clock_24h,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(DateTimeSettingsInput::SetClock24h(s.is_active()));
-                        } @clock_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Time zone" },
+                        #[template_child] desc { set_label: "Type to search. Applied via timedatectl." },
+                        #[name = "tz_dd"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 260,
+                            set_enable_search: true,
+                            set_model: Some(&model.timezones),
+                            #[block_signal(tz_handler)]
+                            set_selected: model.tz_index,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(DateTimeSettingsInput::SetTimezone(d.selected()));
+                            } @tz_handler,
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "24-hour clock" },
+                        #[template_child] desc { set_label: "Show the shell clock in 24-hour format." },
+                        #[name = "clock_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(clock_handler)]
+                            set_active: model.clock_24h,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(DateTimeSettingsInput::SetClock24h(s.is_active()));
+                            } @clock_handler,
+                        },
                     },
                 },
             }

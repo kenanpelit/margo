@@ -156,144 +156,159 @@ impl Component for DockSettingsModel {
                 // ── Modes ───────────────────────────────────────────
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Modes", set_halign: gtk::Align::Start },
 
-                #[template] DockRow {
-                    #[template_child] title { set_label: "Show in the bar" },
-                    #[template_child] desc { set_label: "The classic dock pill inside an mshell bar." },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(in_bar_h)]
-                        set_active: model.in_bar,
-                        connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetInBar(s.is_active())) @in_bar_h,
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] DockRow {
+                        #[template_child] title { set_label: "Show in the bar" },
+                        #[template_child] desc { set_label: "The classic dock pill inside an mshell bar." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(in_bar_h)]
+                            set_active: model.in_bar,
+                            connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetInBar(s.is_active())) @in_bar_h,
+                        },
                     },
-                },
-                #[template] DockRow {
-                    #[template_child] title { set_label: "Standalone dock surface" },
-                    #[template_child] desc { set_label: "A floating dock window on its own (independent of the bar)." },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(standalone_h)]
-                        set_active: model.standalone,
-                        connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetStandalone(s.is_active())) @standalone_h,
+                    #[template] DockRow {
+                        #[template_child] title { set_label: "Standalone dock surface" },
+                        #[template_child] desc { set_label: "A floating dock window on its own (independent of the bar)." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(standalone_h)]
+                            set_active: model.standalone,
+                            connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetStandalone(s.is_active())) @standalone_h,
+                        },
                     },
-                },
-                #[template] DockRow {
-                    #[template_child] title { set_label: "Standalone style" },
-                    #[template_child] desc { set_label: "Layer-shell = bar-attached, opens inside the bar like the session menu. Popup = its own floating window pinned to a screen edge (Always / Auto-hide / Toggle)." },
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 160,
-                        set_model: Some(&model.styles),
-                        #[block_signal(style_h)]
-                        set_selected: model.style_idx,
-                        connect_selected_notify[sender] => move |d| sender.input(DockSettingsInput::SetStyle(d.selected())) @style_h,
+                    #[template] DockRow {
+                        #[template_child] title { set_label: "Standalone style" },
+                        #[template_child] desc { set_label: "Layer-shell = bar-attached, opens inside the bar like the session menu. Popup = its own floating window pinned to a screen edge (Always / Auto-hide / Toggle)." },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 160,
+                            set_model: Some(&model.styles),
+                            #[block_signal(style_h)]
+                            set_selected: model.style_idx,
+                            connect_selected_notify[sender] => move |d| sender.input(DockSettingsInput::SetStyle(d.selected())) @style_h,
+                        },
                     },
-                },
-                #[template] DockRow {
-                    #[template_child] title { set_label: "Standalone behaviour (layer-shell)" },
-                    #[template_child] desc { set_label: "Always visible, auto-hide on the edge, or toggle on demand (mshellctl dock toggle)." },
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 160,
-                        set_model: Some(&model.behaviors),
-                        #[block_signal(behavior_h)]
-                        set_selected: model.behavior_idx,
-                        connect_selected_notify[sender] => move |d| sender.input(DockSettingsInput::SetBehavior(d.selected())) @behavior_h,
+                    #[template] DockRow {
+                        #[template_child] title { set_label: "Standalone behaviour (layer-shell)" },
+                        #[template_child] desc { set_label: "Always visible, auto-hide on the edge, or toggle on demand (mshellctl dock toggle)." },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 160,
+                            set_model: Some(&model.behaviors),
+                            #[block_signal(behavior_h)]
+                            set_selected: model.behavior_idx,
+                            connect_selected_notify[sender] => move |d| sender.input(DockSettingsInput::SetBehavior(d.selected())) @behavior_h,
+                        },
                     },
-                },
-                #[template] DockRow {
-                    #[template_child] title { set_label: "Standalone position" },
-                    #[template_child] desc { set_label: "Which screen edge the standalone dock anchors to." },
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 160,
-                        set_model: Some(&model.positions),
-                        #[block_signal(position_h)]
-                        set_selected: model.position_idx,
-                        connect_selected_notify[sender] => move |d| sender.input(DockSettingsInput::SetPosition(d.selected())) @position_h,
+                    #[template] DockRow {
+                        #[template_child] title { set_label: "Standalone position" },
+                        #[template_child] desc { set_label: "Which screen edge the standalone dock anchors to." },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 160,
+                            set_model: Some(&model.positions),
+                            #[block_signal(position_h)]
+                            set_selected: model.position_idx,
+                            connect_selected_notify[sender] => move |d| sender.input(DockSettingsInput::SetPosition(d.selected())) @position_h,
+                        },
                     },
                 },
 
                 // ── Contents ────────────────────────────────────────
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Contents", set_halign: gtk::Align::Start, set_margin_top: 12 },
 
-                #[template] DockRow {
-                    #[template_child] title { set_label: "Show running apps" },
-                    #[template_child] desc { set_label: "Include running apps that aren't pinned. Off = a pinned-only launcher dock." },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(show_running_h)]
-                        set_active: model.show_running,
-                        connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetShowRunning(s.is_active())) @show_running_h,
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] DockRow {
+                        #[template_child] title { set_label: "Show running apps" },
+                        #[template_child] desc { set_label: "Include running apps that aren't pinned. Off = a pinned-only launcher dock." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(show_running_h)]
+                            set_active: model.show_running,
+                            connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetShowRunning(s.is_active())) @show_running_h,
+                        },
                     },
-                },
-                #[template] DockRow {
-                    #[template_child] title { set_label: "App-launcher button" },
-                    #[template_child] desc { set_label: "A launcher button at the end of the dock." },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(launcher_h)]
-                        set_active: model.launcher_enabled,
-                        connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetLauncherEnabled(s.is_active())) @launcher_h,
+                    #[template] DockRow {
+                        #[template_child] title { set_label: "App-launcher button" },
+                        #[template_child] desc { set_label: "A launcher button at the end of the dock." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(launcher_h)]
+                            set_active: model.launcher_enabled,
+                            connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetLauncherEnabled(s.is_active())) @launcher_h,
+                        },
                     },
-                },
-                #[template] DockRow {
-                    #[template_child] title { set_label: "Separator" },
-                    #[template_child] desc { set_label: "A divider between the apps and the launcher button." },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(separator_h)]
-                        set_active: model.separator,
-                        connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetSeparator(s.is_active())) @separator_h,
+                    #[template] DockRow {
+                        #[template_child] title { set_label: "Separator" },
+                        #[template_child] desc { set_label: "A divider between the apps and the launcher button." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(separator_h)]
+                            set_active: model.separator,
+                            connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetSeparator(s.is_active())) @separator_h,
+                        },
                     },
                 },
 
                 // ── Appearance / hover ──────────────────────────────
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Appearance", set_halign: gtk::Align::Start, set_margin_top: 12 },
 
-                #[template] DockRow {
-                    #[template_child] title { set_label: "Icon size" },
-                    #[template_child] desc { set_label: "App-icon pixel size in the dock." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (16.0, 96.0),
-                        set_increments: (2.0, 8.0),
-                        set_digits: 0,
-                        #[block_signal(icon_size_h)]
-                        set_value: model.icon_size as f64,
-                        connect_value_changed[sender] => move |s| sender.input(DockSettingsInput::SetIconSize(s.value() as i32)) @icon_size_h,
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] DockRow {
+                        #[template_child] title { set_label: "Icon size" },
+                        #[template_child] desc { set_label: "App-icon pixel size in the dock." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (16.0, 96.0),
+                            set_increments: (2.0, 8.0),
+                            set_digits: 0,
+                            #[block_signal(icon_size_h)]
+                            set_value: model.icon_size as f64,
+                            connect_value_changed[sender] => move |s| sender.input(DockSettingsInput::SetIconSize(s.value() as i32)) @icon_size_h,
+                        },
                     },
-                },
-                #[template] DockRow {
-                    #[template_child] title { set_label: "Item spacing" },
-                    #[template_child] desc { set_label: "Pixels between dock items." },
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 32.0),
-                        set_increments: (1.0, 4.0),
-                        set_digits: 0,
-                        #[block_signal(spacing_h)]
-                        set_value: model.spacing as f64,
-                        connect_value_changed[sender] => move |s| sender.input(DockSettingsInput::SetSpacing(s.value() as i32)) @spacing_h,
+                    #[template] DockRow {
+                        #[template_child] title { set_label: "Item spacing" },
+                        #[template_child] desc { set_label: "Pixels between dock items." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 32.0),
+                            set_increments: (1.0, 4.0),
+                            set_digits: 0,
+                            #[block_signal(spacing_h)]
+                            set_value: model.spacing as f64,
+                            connect_value_changed[sender] => move |s| sender.input(DockSettingsInput::SetSpacing(s.value() as i32)) @spacing_h,
+                        },
                     },
-                },
-                #[template] DockRow {
-                    #[template_child] title { set_label: "Hover preview" },
-                    #[template_child] desc { set_label: "A rich hover card: app name + its open window titles." },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(hover_h)]
-                        set_active: model.hover_preview,
-                        connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetHoverPreview(s.is_active())) @hover_h,
+                    #[template] DockRow {
+                        #[template_child] title { set_label: "Hover preview" },
+                        #[template_child] desc { set_label: "A rich hover card: app name + its open window titles." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(hover_h)]
+                            set_active: model.hover_preview,
+                            connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetHoverPreview(s.is_active())) @hover_h,
+                        },
                     },
-                },
-                #[template] DockRow {
-                    #[template_child] title { set_label: "Window tooltips" },
-                    #[template_child] desc { set_label: "Plain hover tooltip listing window titles (used when Hover preview is off)." },
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(show_tooltips_h)]
-                        set_active: model.show_tooltips,
-                        connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetShowTooltips(s.is_active())) @show_tooltips_h,
+                    #[template] DockRow {
+                        #[template_child] title { set_label: "Window tooltips" },
+                        #[template_child] desc { set_label: "Plain hover tooltip listing window titles (used when Hover preview is off)." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(show_tooltips_h)]
+                            set_active: model.show_tooltips,
+                            connect_active_notify[sender] => move |s| sender.input(DockSettingsInput::SetShowTooltips(s.is_active())) @show_tooltips_h,
+                        },
                     },
                 },
 
@@ -415,10 +430,12 @@ impl Component for DockSettingsModel {
 impl relm4::WidgetTemplate for DockRow {
     view! {
         gtk::Box {
+            add_css_class: "action-row",
             set_orientation: gtk::Orientation::Horizontal,
             set_spacing: 20,
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
+                set_valign: gtk::Align::Center,
                 set_hexpand: true,
                 #[name = "title"]
                 gtk::Label {

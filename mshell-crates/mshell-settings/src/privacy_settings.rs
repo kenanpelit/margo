@@ -174,42 +174,51 @@ impl Component for PrivacySettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
                     #[watch]
                     set_visible: model.location_installed,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Enabled",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Controls the system geoclue location provider.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        #[watch]
+                        set_visible: model.location_installed,
 
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(location_toggle_handler)]
-                        set_active: model.location_enabled,
-                        #[watch]
-                        set_sensitive: model.location_installed,
-                        connect_state_set[sender] => move |_, on| {
-                            sender.input(PrivacySettingsInput::SetLocation(on));
-                            glib::Propagation::Proceed
-                        } @location_toggle_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Enabled",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Controls the system geoclue location provider.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(location_toggle_handler)]
+                            set_active: model.location_enabled,
+                            #[watch]
+                            set_sensitive: model.location_installed,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(PrivacySettingsInput::SetLocation(on));
+                                glib::Propagation::Proceed
+                            } @location_toggle_handler,
+                        },
                     },
                 },
 
@@ -288,36 +297,42 @@ impl Component for PrivacySettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        set_valign: gtk::Align::Center,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Automatic lock",
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            #[watch]
-                            set_label: &lock_summary(model.lock_enabled, model.lock_timeout),
-                        },
-                    },
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            set_valign: gtk::Align::Center,
 
-                    gtk::Button {
-                        add_css_class: "ok-button-primary",
-                        set_label: "Open Lock settings",
-                        set_valign: gtk::Align::Center,
-                        connect_clicked[sender] => move |_| {
-                            let _ = sender.clone();
-                            crate::open_settings_at_section("widgets/lock");
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Automatic lock",
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                #[watch]
+                                set_label: &lock_summary(model.lock_enabled, model.lock_timeout),
+                            },
+                        },
+
+                        gtk::Button {
+                            add_css_class: "ok-button-primary",
+                            set_label: "Open Lock settings",
+                            set_valign: gtk::Align::Center,
+                            connect_clicked[sender] => move |_| {
+                                let _ = sender.clone();
+                                crate::open_settings_at_section("widgets/lock");
+                            },
                         },
                     },
                 },
@@ -331,29 +346,36 @@ impl Component for PrivacySettingsModel {
 
                 // Remember recently-used files row
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Remember recently-used files",
-                            set_hexpand: true,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(remember_handler)]
-                        set_active: model.remember_recent,
-                        connect_state_set[sender] => move |_, on| {
-                            sender.input(PrivacySettingsInput::SetRememberRecent(on));
-                            glib::Propagation::Proceed
-                        } @remember_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Remember recently-used files",
+                                set_hexpand: true,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(remember_handler)]
+                            set_active: model.remember_recent,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(PrivacySettingsInput::SetRememberRecent(on));
+                                glib::Propagation::Proceed
+                            } @remember_handler,
+                        },
                     },
                 },
 

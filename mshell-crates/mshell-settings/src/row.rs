@@ -20,6 +20,10 @@ use relm4::{WidgetTemplate, gtk};
 impl WidgetTemplate for Row {
     view! {
         gtk::Box {
+            // The Adwaita action-row chrome (padding + hover wash +
+            // boxed-list separators) — geometry from the central
+            // component tokens (DESIGN.md §1/§5).
+            add_css_class: "action-row",
             set_orientation: gtk::Orientation::Horizontal,
             set_spacing: 20,
             gtk::Box {

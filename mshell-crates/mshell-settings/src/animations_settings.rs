@@ -348,34 +348,39 @@ impl Component for AnimationsSettingsModel {
                     set_label: "General",
                     set_halign: gtk::Align::Start,
                 },
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Animations" },
-                    #[template_child] desc { set_label: "Master switch. Off = instant transitions." },
-                    #[name = "anim_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(anim_handler)]
-                        set_active: model.animations,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(AnimationsSettingsInput::SetAnimations(s.is_active()));
-                        } @anim_handler,
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Animations" },
+                        #[template_child] desc { set_label: "Master switch. Off = instant transitions." },
+                        #[name = "anim_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(anim_handler)]
+                            set_active: model.animations,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(AnimationsSettingsInput::SetAnimations(s.is_active()));
+                            } @anim_handler,
+                        },
                     },
-                },
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Layer animations" },
-                    #[template_child] desc { set_label: "Bars, launchers and menus animate in/out." },
-                    #[name = "layer_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(layer_handler)]
-                        set_active: model.layer_animations,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(AnimationsSettingsInput::SetLayerAnimations(s.is_active()));
-                        } @layer_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Layer animations" },
+                        #[template_child] desc { set_label: "Bars, launchers and menus animate in/out." },
+                        #[name = "layer_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(layer_handler)]
+                            set_active: model.layer_animations,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(AnimationsSettingsInput::SetLayerAnimations(s.is_active()));
+                            } @layer_handler,
+                        },
                     },
                 },
 

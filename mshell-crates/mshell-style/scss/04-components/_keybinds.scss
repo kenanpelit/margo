@@ -19,9 +19,10 @@
   color: var(--primary);
 }
 
-// Filter field — search-pill idiom (DESIGN.md §1 radius-xl).
+// Filter field — compact Adwaita entry (DESIGN.md §1: --entry-radius;
+// the pill / xl idiom is panel-scoped only).
 .keybinds-search {
-  border-radius: var(--radius-xl);
+  border-radius: var(--entry-radius);
   background-color: var(--surface-container-highest);
   padding: var(--space-1) var(--space-3);
 }

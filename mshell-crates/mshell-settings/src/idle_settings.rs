@@ -97,15 +97,6 @@ impl Component for IdleSettingsModel {
                     },
                 },
 
-                gtk::Label {
-                    add_css_class: "label-small",
-                    set_label: "Staged actions as the session sits idle. Each stage's timeout is measured from the last input — keep them ordered dim < lock < suspend. Any activity resets all stages.",
-                    set_halign: gtk::Align::Start,
-                    set_xalign: 0.0,
-                    set_wrap: true,
-                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                },
-
                 // ── Dim ─────────────────────────────────────────
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -114,65 +105,74 @@ impl Component for IdleSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Enabled",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Enabled",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Dim the screen with a translucent overlay.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Dim the screen with a translucent overlay.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(dim_enabled_handler)]
+                            set_active: model.dim_enabled,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(IdleSettingsInput::DimEnabledChanged(enabled));
+                                glib::Propagation::Proceed
+                            } @dim_enabled_handler,
                         },
                     },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(dim_enabled_handler)]
-                        set_active: model.dim_enabled,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(IdleSettingsInput::DimEnabledChanged(enabled));
-                            glib::Propagation::Proceed
-                        } @dim_enabled_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Timeout (minutes)",
-                            set_hexpand: true,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1.0, 1440.0),
-                        set_increments: (1.0, 5.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(dim_timeout_handler)]
-                        set_value: model.dim_timeout as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(IdleSettingsInput::DimTimeoutChanged(s.value() as u32));
-                        } @dim_timeout_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Timeout (minutes)",
+                                set_hexpand: true,
+                            },
+                        },
+
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 1440.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(dim_timeout_handler)]
+                            set_value: model.dim_timeout as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(IdleSettingsInput::DimTimeoutChanged(s.value() as u32));
+                            } @dim_timeout_handler,
+                        },
                     },
                 },
 
@@ -184,65 +184,74 @@ impl Component for IdleSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Enabled",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Enabled",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Activate the lock screen.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Activate the lock screen.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(lock_enabled_handler)]
+                            set_active: model.lock_enabled,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(IdleSettingsInput::LockEnabledChanged(enabled));
+                                glib::Propagation::Proceed
+                            } @lock_enabled_handler,
                         },
                     },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(lock_enabled_handler)]
-                        set_active: model.lock_enabled,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(IdleSettingsInput::LockEnabledChanged(enabled));
-                            glib::Propagation::Proceed
-                        } @lock_enabled_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Timeout (minutes)",
-                            set_hexpand: true,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1.0, 1440.0),
-                        set_increments: (1.0, 5.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(lock_timeout_handler)]
-                        set_value: model.lock_timeout as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(IdleSettingsInput::LockTimeoutChanged(s.value() as u32));
-                        } @lock_timeout_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Timeout (minutes)",
+                                set_hexpand: true,
+                            },
+                        },
+
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 1440.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(lock_timeout_handler)]
+                            set_value: model.lock_timeout as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(IdleSettingsInput::LockTimeoutChanged(s.value() as u32));
+                            } @lock_timeout_handler,
+                        },
                     },
                 },
 
@@ -254,65 +263,74 @@ impl Component for IdleSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Enabled",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Enabled",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Suspend the system (systemctl suspend).",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Suspend the system (systemctl suspend).",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(suspend_enabled_handler)]
+                            set_active: model.suspend_enabled,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(IdleSettingsInput::SuspendEnabledChanged(enabled));
+                                glib::Propagation::Proceed
+                            } @suspend_enabled_handler,
                         },
                     },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(suspend_enabled_handler)]
-                        set_active: model.suspend_enabled,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(IdleSettingsInput::SuspendEnabledChanged(enabled));
-                            glib::Propagation::Proceed
-                        } @suspend_enabled_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Timeout (minutes)",
-                            set_hexpand: true,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1.0, 1440.0),
-                        set_increments: (1.0, 5.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(suspend_timeout_handler)]
-                        set_value: model.suspend_timeout as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(IdleSettingsInput::SuspendTimeoutChanged(s.value() as u32));
-                        } @suspend_timeout_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Timeout (minutes)",
+                                set_hexpand: true,
+                            },
+                        },
+
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 1440.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(suspend_timeout_handler)]
+                            set_value: model.suspend_timeout as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(IdleSettingsInput::SuspendTimeoutChanged(s.value() as u32));
+                            } @suspend_timeout_handler,
+                        },
                     },
                 },
             }

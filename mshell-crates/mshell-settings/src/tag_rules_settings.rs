@@ -127,6 +127,10 @@ impl Component for TagRulesModel {
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Add a rule", set_halign: gtk::Align::Start },
 
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
                 #[template] Row {
                     #[template_child] title { set_label: "Tag" },
                     gtk::DropDown {
@@ -170,9 +174,10 @@ impl Component for TagRulesModel {
                         connect_value_changed[sender] => move |s| sender.input(TagRulesInput::SetNmaster(s.value())),
                     },
                 },
+                },
                 gtk::Button {
                     set_halign: gtk::Align::Start,
-                    add_css_class: "suggested-action",
+                    add_css_class: "ok-button-primary",
                     set_label: "Add rule",
                     connect_clicked[sender] => move |_| sender.input(TagRulesInput::Add),
                 },

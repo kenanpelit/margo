@@ -178,7 +178,7 @@ impl Component for MonitorsModel {
                         connect_active_notify[sender] => move |s| sender.input(MonitorsInput::SetVrr(s.is_active())) } },
                 gtk::Button {
                     set_halign: gtk::Align::Start,
-                    add_css_class: "suggested-action",
+                    add_css_class: "ok-button-primary",
                     set_label: "Add monitor rule",
                     connect_clicked[sender] => move |_| sender.input(MonitorsInput::Add),
                 },

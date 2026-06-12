@@ -514,7 +514,7 @@ impl Component for StartupEnvModel {
                         connect_activate[sender] => move |_| sender.input(StartupEnvInput::AddScript),
                     },
                     gtk::Button {
-                        add_css_class: "suggested-action",
+                        add_css_class: "ok-button-primary",
                         set_label: "Add",
                         connect_clicked[sender] => move |_| sender.input(StartupEnvInput::AddScript),
                     },
@@ -531,18 +531,23 @@ impl Component for StartupEnvModel {
                     set_label: "Compositor `exec` — run once when margo launches, before the shell. For a delay or a Login-only / Every-start trigger, use Autostart above instead.",
                 },
 
-                #[template] Row {
-                    #[template_child] title { set_label: "Command" },
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_hexpand: true,
-                        set_placeholder_text: Some("e.g. wl-paste --watch cliphist store"),
-                        connect_changed[sender] => move |e| sender.input(StartupEnvInput::SetExec(e.text().to_string())),
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Command" },
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            set_placeholder_text: Some("e.g. wl-paste --watch cliphist store"),
+                            connect_changed[sender] => move |e| sender.input(StartupEnvInput::SetExec(e.text().to_string())),
+                        },
                     },
                 },
                 gtk::Button {
                     set_halign: gtk::Align::Start,
-                    add_css_class: "suggested-action",
+                    add_css_class: "ok-button-primary",
                     set_label: "Add command",
                     connect_clicked[sender] => move |_| sender.input(StartupEnvInput::AddExec),
                 },
@@ -555,26 +560,31 @@ impl Component for StartupEnvModel {
                 // ════════ Environment variables ════════
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Environment variables", set_halign: gtk::Align::Start, set_margin_top: 8 },
 
-                #[template] Row {
-                    #[template_child] title { set_label: "Name" },
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_placeholder_text: Some("e.g. GDK_BACKEND"),
-                        connect_changed[sender] => move |e| sender.input(StartupEnvInput::SetEnvKey(e.text().to_string())),
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Name" },
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_placeholder_text: Some("e.g. GDK_BACKEND"),
+                            connect_changed[sender] => move |e| sender.input(StartupEnvInput::SetEnvKey(e.text().to_string())),
+                        },
                     },
-                },
-                #[template] Row {
-                    #[template_child] title { set_label: "Value" },
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_hexpand: true,
-                        set_placeholder_text: Some("e.g. wayland,x11"),
-                        connect_changed[sender] => move |e| sender.input(StartupEnvInput::SetEnvVal(e.text().to_string())),
+                    #[template] Row {
+                        #[template_child] title { set_label: "Value" },
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            set_placeholder_text: Some("e.g. wayland,x11"),
+                            connect_changed[sender] => move |e| sender.input(StartupEnvInput::SetEnvVal(e.text().to_string())),
+                        },
                     },
                 },
                 gtk::Button {
                     set_halign: gtk::Align::Start,
-                    add_css_class: "suggested-action",
+                    add_css_class: "ok-button-primary",
                     set_label: "Add variable",
                     connect_clicked[sender] => move |_| sender.input(StartupEnvInput::AddEnv),
                 },

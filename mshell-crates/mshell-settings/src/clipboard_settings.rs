@@ -133,42 +133,50 @@ impl Component for ClipboardSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Position", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "pos_dd"]
-                    gtk::DropDown {
-                        set_model: Some(&model.position_model),
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(ClipboardSettingsInput::SetPosition(d.selected()));
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Position", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "pos_dd"]
+                        gtk::DropDown {
+                            set_model: Some(&model.position_model),
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(ClipboardSettingsInput::SetPosition(d.selected()));
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Width (px)", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "width_spin"]
-                    gtk::SpinButton {
-                        set_adjustment: &gtk::Adjustment::new(420.0, 280.0, 1200.0, 10.0, 50.0, 0.0),
-                        set_digits: 0,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ClipboardSettingsInput::SetMinWidth(s.value() as i32));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Width (px)", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "width_spin"]
+                        gtk::SpinButton {
+                            set_adjustment: &gtk::Adjustment::new(420.0, 280.0, 1200.0, 10.0, 50.0, 0.0),
+                            set_digits: 0,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ClipboardSettingsInput::SetMinWidth(s.value() as i32));
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Max height (px, 0 = no cap)", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "height_spin"]
-                    gtk::SpinButton {
-                        set_adjustment: &gtk::Adjustment::new(600.0, 0.0, 2000.0, 20.0, 100.0, 0.0),
-                        set_digits: 0,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ClipboardSettingsInput::SetMaxHeight(s.value() as i32));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Max height (px, 0 = no cap)", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "height_spin"]
+                        gtk::SpinButton {
+                            set_adjustment: &gtk::Adjustment::new(600.0, 0.0, 2000.0, 20.0, 100.0, 0.0),
+                            set_digits: 0,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ClipboardSettingsInput::SetMaxHeight(s.value() as i32));
+                            },
                         },
                     },
                 },
@@ -182,111 +190,124 @@ impl Component for ClipboardSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "History size", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "cb_max"]
-                    gtk::SpinButton {
-                        set_adjustment: &gtk::Adjustment::new(100.0, 5.0, 10000.0, 5.0, 100.0, 0.0),
-                        set_digits: 0,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ClipboardSettingsInput::SetMaxEntries(s.value() as i32));
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "History size", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "cb_max"]
+                        gtk::SpinButton {
+                            set_adjustment: &gtk::Adjustment::new(100.0, 5.0, 10000.0, 5.0, 100.0, 0.0),
+                            set_digits: 0,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ClipboardSettingsInput::SetMaxEntries(s.value() as i32));
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Persist to disk", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "cb_persist"]
-                    gtk::DropDown {
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(ClipboardSettingsInput::SetPersist(d.selected()));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Persist to disk", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "cb_persist"]
+                        gtk::DropDown {
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(ClipboardSettingsInput::SetPersist(d.selected()));
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Panel density", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "cb_density"]
-                    gtk::DropDown {
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(ClipboardSettingsInput::SetDensity(d.selected()));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Panel density", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "cb_density"]
+                        gtk::DropDown {
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(ClipboardSettingsInput::SetDensity(d.selected()));
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Auto-clear", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "cb_clear"]
-                    gtk::DropDown {
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(ClipboardSettingsInput::SetClearPolicy(d.selected()));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Auto-clear", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "cb_clear"]
+                        gtk::DropDown {
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(ClipboardSettingsInput::SetClearPolicy(d.selected()));
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Clear after (hours)", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "cb_hours"]
-                    gtk::SpinButton {
-                        set_adjustment: &gtk::Adjustment::new(24.0, 1.0, 720.0, 1.0, 6.0, 0.0),
-                        set_digits: 0,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ClipboardSettingsInput::SetClearHours(s.value() as i32));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Clear after (hours)", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "cb_hours"]
+                        gtk::SpinButton {
+                            set_adjustment: &gtk::Adjustment::new(24.0, 1.0, 720.0, 1.0, 6.0, 0.0),
+                            set_digits: 0,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ClipboardSettingsInput::SetClearHours(s.value() as i32));
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Skip password-manager copies", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "cb_sensitive"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        connect_state_set[sender] => move |_, state| {
-                            sender.input(ClipboardSettingsInput::SetSkipSensitive(state));
-                            glib::Propagation::Proceed
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Skip password-manager copies", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "cb_sensitive"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            connect_state_set[sender] => move |_, state| {
+                                sender.input(ClipboardSettingsInput::SetSkipSensitive(state));
+                                glib::Propagation::Proceed
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Keep image copies", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "cb_images"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        connect_state_set[sender] => move |_, state| {
-                            sender.input(ClipboardSettingsInput::SetImageHistory(state));
-                            glib::Propagation::Proceed
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label { set_label: "Keep image copies", set_hexpand: true, set_halign: gtk::Align::Start },
+                        #[name = "cb_images"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            connect_state_set[sender] => move |_, state| {
+                                sender.input(ClipboardSettingsInput::SetImageHistory(state));
+                                glib::Propagation::Proceed
+                            },
                         },
                     },
-                },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label {
-                        set_label: "Max image size (KB, 0 = no limit)",
-                        set_hexpand: true,
-                        set_halign: gtk::Align::Start,
-                    },
-                    #[name = "cb_image_max"]
-                    gtk::SpinButton {
-                        set_adjustment: &gtk::Adjustment::new(0.0, 0.0, 102_400.0, 64.0, 512.0, 0.0),
-                        set_valign: gtk::Align::Center,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(ClipboardSettingsInput::SetImageMaxKb(s.value() as u32));
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Label {
+                            set_label: "Max image size (KB, 0 = no limit)",
+                            set_hexpand: true,
+                            set_halign: gtk::Align::Start,
+                        },
+                        #[name = "cb_image_max"]
+                        gtk::SpinButton {
+                            set_adjustment: &gtk::Adjustment::new(0.0, 0.0, 102_400.0, 64.0, 512.0, 0.0),
+                            set_valign: gtk::Align::Center,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ClipboardSettingsInput::SetImageMaxKb(s.value() as u32));
+                            },
                         },
                     },
                 },

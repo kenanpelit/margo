@@ -409,108 +409,113 @@ impl Component for InputSettingsModel {
                     set_halign: gtk::Align::Start,
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Layout" },
-                    #[template_child] desc {
-                        set_label: "xkb layout the compositor loads (e.g. tr, us). Press Enter to apply.",
-                    },
-                    #[name = "layout_entry"]
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_placeholder_text: Some("us"),
-                        set_text: &model.xkb_layout,
-                        connect_activate[sender] => move |e| {
-                            sender.input(InputSettingsInput::SetLayout(e.text().to_string()));
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Layout" },
+                        #[template_child] desc {
+                            set_label: "xkb layout the compositor loads (e.g. tr, us). Press Enter to apply.",
+                        },
+                        #[name = "layout_entry"]
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_placeholder_text: Some("us"),
+                            set_text: &model.xkb_layout,
+                            connect_activate[sender] => move |e| {
+                                sender.input(InputSettingsInput::SetLayout(e.text().to_string()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Variant" },
-                    #[template_child] desc {
-                        set_label: "xkb variant (e.g. f for Turkish-F). Blank for none. Enter to apply.",
-                    },
-                    #[name = "variant_entry"]
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_placeholder_text: Some("(none)"),
-                        set_text: &model.xkb_variant,
-                        connect_activate[sender] => move |e| {
-                            sender.input(InputSettingsInput::SetVariant(e.text().to_string()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Variant" },
+                        #[template_child] desc {
+                            set_label: "xkb variant (e.g. f for Turkish-F). Blank for none. Enter to apply.",
+                        },
+                        #[name = "variant_entry"]
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_placeholder_text: Some("(none)"),
+                            set_text: &model.xkb_variant,
+                            connect_activate[sender] => move |e| {
+                                sender.input(InputSettingsInput::SetVariant(e.text().to_string()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Options" },
-                    #[template_child] desc {
-                        set_label: "xkb_rules_options, e.g. ctrl:nocaps (Caps→Ctrl). Enter to apply.",
-                    },
-                    #[name = "options_entry"]
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_placeholder_text: Some("ctrl:nocaps"),
-                        set_text: &model.xkb_options,
-                        connect_activate[sender] => move |e| {
-                            sender.input(InputSettingsInput::SetOptions(e.text().to_string()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Options" },
+                        #[template_child] desc {
+                            set_label: "xkb_rules_options, e.g. ctrl:nocaps (Caps→Ctrl). Enter to apply.",
+                        },
+                        #[name = "options_entry"]
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_placeholder_text: Some("ctrl:nocaps"),
+                            set_text: &model.xkb_options,
+                            connect_activate[sender] => move |e| {
+                                sender.input(InputSettingsInput::SetOptions(e.text().to_string()));
+                            },
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Repeat rate" },
-                    #[template_child] desc { set_label: "Key repeats per second once held." },
-                    #[name = "repeat_rate_spin"]
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1.0, 100.0),
-                        set_increments: (1.0, 5.0),
-                        set_digits: 0,
-                        #[block_signal(repeat_rate_handler)]
-                        set_value: model.repeat_rate as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetRepeatRate(s.value() as i32));
-                        } @repeat_rate_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Repeat rate" },
+                        #[template_child] desc { set_label: "Key repeats per second once held." },
+                        #[name = "repeat_rate_spin"]
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 100.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[block_signal(repeat_rate_handler)]
+                            set_value: model.repeat_rate as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetRepeatRate(s.value() as i32));
+                            } @repeat_rate_handler,
+                        },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Repeat delay" },
-                    #[template_child] desc { set_label: "Milliseconds held before key repeat starts." },
-                    #[name = "repeat_delay_spin"]
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (100.0, 2000.0),
-                        set_increments: (10.0, 50.0),
-                        set_digits: 0,
-                        #[block_signal(repeat_delay_handler)]
-                        set_value: model.repeat_delay as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetRepeatDelay(s.value() as i32));
-                        } @repeat_delay_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Repeat delay" },
+                        #[template_child] desc { set_label: "Milliseconds held before key repeat starts." },
+                        #[name = "repeat_delay_spin"]
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (100.0, 2000.0),
+                            set_increments: (10.0, 50.0),
+                            set_digits: 0,
+                            #[block_signal(repeat_delay_handler)]
+                            set_value: model.repeat_delay as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetRepeatDelay(s.value() as i32));
+                            } @repeat_delay_handler,
+                        },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Num Lock on start" },
-                    #[template_child] desc { set_label: "Enable Num Lock when the session starts." },
-                    #[name = "numlock_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(numlock_handler)]
-                        set_active: model.numlock_on,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetNumlock(s.is_active()));
-                        } @numlock_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Num Lock on start" },
+                        #[template_child] desc { set_label: "Enable Num Lock when the session starts." },
+                        #[name = "numlock_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(numlock_handler)]
+                            set_active: model.numlock_on,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetNumlock(s.is_active()));
+                            } @numlock_handler,
+                        },
                     },
                 },
 
@@ -522,177 +527,182 @@ impl Component for InputSettingsModel {
                     set_margin_top: 12,
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Tap to click" },
-                    #[template_child] desc { set_label: "Register a tap as a click." },
-                    #[name = "tap_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(tap_handler)]
-                        set_active: model.tap_to_click,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetTapToClick(s.is_active()));
-                        } @tap_handler,
-                    },
-                },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Tap and drag" },
-                    #[template_child] desc { set_label: "Tap then slide to drag without holding the button." },
-                    #[name = "tap_drag_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(tap_drag_handler)]
-                        set_active: model.tap_and_drag,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetTapAndDrag(s.is_active()));
-                        } @tap_drag_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Tap to click" },
+                        #[template_child] desc { set_label: "Register a tap as a click." },
+                        #[name = "tap_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(tap_handler)]
+                            set_active: model.tap_to_click,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetTapToClick(s.is_active()));
+                            } @tap_handler,
+                        },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Drag lock" },
-                    #[template_child] desc { set_label: "Keep dragging after lifting the finger until the next tap." },
-                    #[name = "drag_lock_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(drag_lock_handler)]
-                        set_active: model.drag_lock,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetDragLock(s.is_active()));
-                        } @drag_lock_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Tap and drag" },
+                        #[template_child] desc { set_label: "Tap then slide to drag without holding the button." },
+                        #[name = "tap_drag_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(tap_drag_handler)]
+                            set_active: model.tap_and_drag,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetTapAndDrag(s.is_active()));
+                            } @tap_drag_handler,
+                        },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Natural scrolling" },
-                    #[template_child] desc { set_label: "Content follows the fingers (reverse of the classic direction)." },
-                    #[name = "natural_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(natural_handler)]
-                        set_active: model.natural_scroll,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetNaturalScroll(s.is_active()));
-                        } @natural_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Drag lock" },
+                        #[template_child] desc { set_label: "Keep dragging after lifting the finger until the next tap." },
+                        #[name = "drag_lock_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(drag_lock_handler)]
+                            set_active: model.drag_lock,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetDragLock(s.is_active()));
+                            } @drag_lock_handler,
+                        },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Disable while typing" },
-                    #[template_child] desc { set_label: "Ignore the touchpad briefly after a keypress." },
-                    #[name = "dwt_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(dwt_handler)]
-                        set_active: model.disable_while_typing,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetDisableWhileTyping(s.is_active()));
-                        } @dwt_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Natural scrolling" },
+                        #[template_child] desc { set_label: "Content follows the fingers (reverse of the classic direction)." },
+                        #[name = "natural_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(natural_handler)]
+                            set_active: model.natural_scroll,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetNaturalScroll(s.is_active()));
+                            } @natural_handler,
+                        },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Left-handed" },
-                    #[template_child] desc { set_label: "Swap the primary and secondary buttons." },
-                    #[name = "lefthand_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(lefthand_handler)]
-                        set_active: model.left_handed,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetLeftHanded(s.is_active()));
-                        } @lefthand_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Disable while typing" },
+                        #[template_child] desc { set_label: "Ignore the touchpad briefly after a keypress." },
+                        #[name = "dwt_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(dwt_handler)]
+                            set_active: model.disable_while_typing,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetDisableWhileTyping(s.is_active()));
+                            } @dwt_handler,
+                        },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Middle-button emulation" },
-                    #[template_child] desc { set_label: "Press left + right together to emulate the middle button." },
-                    #[name = "middle_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(middle_handler)]
-                        set_active: model.middle_emulation,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetMiddleEmulation(s.is_active()));
-                        } @middle_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Left-handed" },
+                        #[template_child] desc { set_label: "Swap the primary and secondary buttons." },
+                        #[name = "lefthand_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(lefthand_handler)]
+                            set_active: model.left_handed,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetLeftHanded(s.is_active()));
+                            } @lefthand_handler,
+                        },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Click method" },
-                    #[template_child] desc { set_label: "How button clicks are detected (clickfinger = tap zones by finger count)." },
-                    #[name = "click_dd"]
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_model: Some(&model.click_model),
-                        #[block_signal(click_handler)]
-                        set_selected: model.click_method,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(InputSettingsInput::SetClickMethod(d.selected()));
-                        } @click_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Middle-button emulation" },
+                        #[template_child] desc { set_label: "Press left + right together to emulate the middle button." },
+                        #[name = "middle_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(middle_handler)]
+                            set_active: model.middle_emulation,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetMiddleEmulation(s.is_active()));
+                            } @middle_handler,
+                        },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Scroll method" },
-                    #[template_child] desc { set_label: "How scrolling is detected." },
-                    #[name = "scroll_dd"]
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_model: Some(&model.scroll_model),
-                        #[block_signal(scroll_handler)]
-                        set_selected: model.scroll_method,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(InputSettingsInput::SetScrollMethod(d.selected()));
-                        } @scroll_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Click method" },
+                        #[template_child] desc { set_label: "How button clicks are detected (clickfinger = tap zones by finger count)." },
+                        #[name = "click_dd"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_model: Some(&model.click_model),
+                            #[block_signal(click_handler)]
+                            set_selected: model.click_method,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(InputSettingsInput::SetClickMethod(d.selected()));
+                            } @click_handler,
+                        },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Scroll button" },
-                    #[template_child] desc { set_label: "Button code used for on-button scrolling (e.g. 274 = middle)." },
-                    #[name = "scroll_button_spin"]
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 400.0),
-                        set_increments: (1.0, 10.0),
-                        set_digits: 0,
-                        #[block_signal(scroll_button_handler)]
-                        set_value: model.scroll_button as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetScrollButton(s.value() as i32));
-                        } @scroll_button_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Scroll method" },
+                        #[template_child] desc { set_label: "How scrolling is detected." },
+                        #[name = "scroll_dd"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_model: Some(&model.scroll_model),
+                            #[block_signal(scroll_handler)]
+                            set_selected: model.scroll_method,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(InputSettingsInput::SetScrollMethod(d.selected()));
+                            } @scroll_handler,
+                        },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Send events" },
-                    #[template_child] desc { set_label: "Whether the touchpad sends events (e.g. disable when an external mouse is plugged in)." },
-                    #[name = "sendevents_dd"]
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_model: Some(&model.sendevents_model),
-                        #[block_signal(sendevents_handler)]
-                        set_selected: model.send_events,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(InputSettingsInput::SetSendEvents(d.selected()));
-                        } @sendevents_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Scroll button" },
+                        #[template_child] desc { set_label: "Button code used for on-button scrolling (e.g. 274 = middle)." },
+                        #[name = "scroll_button_spin"]
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 400.0),
+                            set_increments: (1.0, 10.0),
+                            set_digits: 0,
+                            #[block_signal(scroll_button_handler)]
+                            set_value: model.scroll_button as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetScrollButton(s.value() as i32));
+                            } @scroll_button_handler,
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Send events" },
+                        #[template_child] desc { set_label: "Whether the touchpad sends events (e.g. disable when an external mouse is plugged in)." },
+                        #[name = "sendevents_dd"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_model: Some(&model.sendevents_model),
+                            #[block_signal(sendevents_handler)]
+                            set_selected: model.send_events,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(InputSettingsInput::SetSendEvents(d.selected()));
+                            } @sendevents_handler,
+                        },
                     },
                 },
 
@@ -704,53 +714,58 @@ impl Component for InputSettingsModel {
                     set_margin_top: 12,
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Natural scrolling" },
-                    #[template_child] desc { set_label: "Reverse the mouse-wheel scroll direction." },
-                    #[name = "mouse_natural_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(mouse_natural_handler)]
-                        set_active: model.mouse_natural,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetMouseNatural(s.is_active()));
-                        } @mouse_natural_handler,
-                    },
-                },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Acceleration profile" },
-                    #[template_child] desc { set_label: "Pointer acceleration curve (applies to mouse + touchpad)." },
-                    #[name = "accel_dd"]
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_model: Some(&model.accel_model),
-                        #[block_signal(accel_handler)]
-                        set_selected: model.accel_profile,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(InputSettingsInput::SetAccelProfile(d.selected()));
-                        } @accel_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Natural scrolling" },
+                        #[template_child] desc { set_label: "Reverse the mouse-wheel scroll direction." },
+                        #[name = "mouse_natural_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(mouse_natural_handler)]
+                            set_active: model.mouse_natural,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetMouseNatural(s.is_active()));
+                            } @mouse_natural_handler,
+                        },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Acceleration speed" },
-                    #[template_child] desc { set_label: "-1.0 (slowest) … 1.0 (fastest)." },
-                    #[name = "accel_speed_spin"]
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (-1.0, 1.0),
-                        set_increments: (0.05, 0.25),
-                        set_digits: 2,
-                        #[block_signal(accel_speed_handler)]
-                        set_value: model.accel_speed,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetAccelSpeed(s.value()));
-                        } @accel_speed_handler,
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Acceleration profile" },
+                        #[template_child] desc { set_label: "Pointer acceleration curve (applies to mouse + touchpad)." },
+                        #[name = "accel_dd"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_model: Some(&model.accel_model),
+                            #[block_signal(accel_handler)]
+                            set_selected: model.accel_profile,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(InputSettingsInput::SetAccelProfile(d.selected()));
+                            } @accel_handler,
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Acceleration speed" },
+                        #[template_child] desc { set_label: "-1.0 (slowest) … 1.0 (fastest)." },
+                        #[name = "accel_speed_spin"]
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (-1.0, 1.0),
+                            set_increments: (0.05, 0.25),
+                            set_digits: 2,
+                            #[block_signal(accel_speed_handler)]
+                            set_value: model.accel_speed,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetAccelSpeed(s.value()));
+                            } @accel_speed_handler,
+                        },
                     },
                 },
 
@@ -762,21 +777,26 @@ impl Component for InputSettingsModel {
                     set_margin_top: 12,
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Swipe sensitivity" },
-                    #[template_child] desc { set_label: "Minimum travel before a multi-finger swipe fires. Lower = more sensitive." },
-                    #[name = "threshold_spin"]
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1.0, 100.0),
-                        set_increments: (1.0, 5.0),
-                        set_digits: 0,
-                        #[block_signal(threshold_handler)]
-                        set_value: model.swipe_threshold as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(InputSettingsInput::SetSwipeThreshold(s.value() as i32));
-                        } @threshold_handler,
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Swipe sensitivity" },
+                        #[template_child] desc { set_label: "Minimum travel before a multi-finger swipe fires. Lower = more sensitive." },
+                        #[name = "threshold_spin"]
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 100.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[block_signal(threshold_handler)]
+                            set_value: model.swipe_threshold as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(InputSettingsInput::SetSwipeThreshold(s.value() as i32));
+                            } @threshold_handler,
+                        },
                     },
                 },
 
@@ -808,81 +828,86 @@ impl Component for InputSettingsModel {
                     set_margin_top: 8,
                 },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Direction" },
-                    #[template_child] desc { set_label: "Swipe direction." },
-                    #[name = "motion_dd"]
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_model: Some(&model.motion_model),
-                        #[block_signal(motion_handler)]
-                        set_selected: model.b_motion,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(InputSettingsInput::SetBMotion(d.selected()));
-                        } @motion_handler,
-                    },
-                },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Fingers" },
-                    #[template_child] desc { set_label: "Number of fingers on the swipe." },
-                    #[name = "fingers_dd"]
-                    gtk::DropDown {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_model: Some(&model.fingers_model),
-                        #[block_signal(fingers_handler)]
-                        set_selected: model.b_fingers,
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(InputSettingsInput::SetBFingers(d.selected()));
-                        } @fingers_handler,
-                    },
-                },
-
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Action" },
-                    #[template_child] desc { set_label: "Dispatch name, e.g. focusstack, spawn, view, togglefloating." },
-                    #[name = "action_entry"]
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_placeholder_text: Some("focusstack"),
-                        connect_changed[sender] => move |e| {
-                            sender.input(InputSettingsInput::SetBAction(e.text().to_string()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Direction" },
+                        #[template_child] desc { set_label: "Swipe direction." },
+                        #[name = "motion_dd"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_model: Some(&model.motion_model),
+                            #[block_signal(motion_handler)]
+                            set_selected: model.b_motion,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(InputSettingsInput::SetBMotion(d.selected()));
+                            } @motion_handler,
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Argument" },
-                    #[template_child] desc { set_label: "Optional argument for the action (e.g. +1, or a command for spawn)." },
-                    #[name = "arg_entry"]
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_placeholder_text: Some("(optional)"),
-                        connect_changed[sender] => move |e| {
-                            sender.input(InputSettingsInput::SetBArg(e.text().to_string()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Fingers" },
+                        #[template_child] desc { set_label: "Number of fingers on the swipe." },
+                        #[name = "fingers_dd"]
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_model: Some(&model.fingers_model),
+                            #[block_signal(fingers_handler)]
+                            set_selected: model.b_fingers,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(InputSettingsInput::SetBFingers(d.selected()));
+                            } @fingers_handler,
                         },
                     },
-                },
 
-                #[template]
-                Row {
-                    #[template_child] title { set_label: "Modifiers" },
-                    #[template_child] desc { set_label: "Held key(s); usually none (e.g. super)." },
-                    #[name = "modifiers_entry"]
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 200,
-                        set_text: "none",
-                        connect_changed[sender] => move |e| {
-                            sender.input(InputSettingsInput::SetBModifiers(e.text().to_string()));
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Action" },
+                        #[template_child] desc { set_label: "Dispatch name, e.g. focusstack, spawn, view, togglefloating." },
+                        #[name = "action_entry"]
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_placeholder_text: Some("focusstack"),
+                            connect_changed[sender] => move |e| {
+                                sender.input(InputSettingsInput::SetBAction(e.text().to_string()));
+                            },
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Argument" },
+                        #[template_child] desc { set_label: "Optional argument for the action (e.g. +1, or a command for spawn)." },
+                        #[name = "arg_entry"]
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_placeholder_text: Some("(optional)"),
+                            connect_changed[sender] => move |e| {
+                                sender.input(InputSettingsInput::SetBArg(e.text().to_string()));
+                            },
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Modifiers" },
+                        #[template_child] desc { set_label: "Held key(s); usually none (e.g. super)." },
+                        #[name = "modifiers_entry"]
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 200,
+                            set_text: "none",
+                            connect_changed[sender] => move |e| {
+                                sender.input(InputSettingsInput::SetBModifiers(e.text().to_string()));
+                            },
                         },
                     },
                 },
@@ -923,25 +948,30 @@ impl Component for InputSettingsModel {
                 #[local_ref]
                 mbinds_box -> gtk::Box { set_orientation: gtk::Orientation::Vertical, set_spacing: 6 },
                 gtk::Label { add_css_class: "label-medium-bold", set_label: "Add a binding", set_halign: gtk::Align::Start, set_margin_top: 8 },
-                #[template] Row {
-                    #[template_child] title { set_label: "Button" },
-                    gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 200, set_model: Some(&model.button_model),
-                        connect_selected_notify[sender] => move |d| sender.input(InputSettingsInput::SetMbButton(d.selected())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Action" },
-                    #[template_child] desc { set_label: "Dispatch name, e.g. killclient, togglefloating, spawn." },
-                    gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_placeholder_text: Some("killclient"),
-                        connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetMbAction(e.text().to_string())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Argument" },
-                    #[template_child] desc { set_label: "Optional argument for the action." },
-                    gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_placeholder_text: Some("(optional)"),
-                        connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetMbArg(e.text().to_string())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Modifiers" },
-                    #[template_child] desc { set_label: "Held key(s), e.g. super (use none with care — it grabs every click)." },
-                    gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_text: "super",
-                        connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetMbModifiers(e.text().to_string())) } },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Button" },
+                        gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 200, set_model: Some(&model.button_model),
+                            connect_selected_notify[sender] => move |d| sender.input(InputSettingsInput::SetMbButton(d.selected())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Action" },
+                        #[template_child] desc { set_label: "Dispatch name, e.g. killclient, togglefloating, spawn." },
+                        gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_placeholder_text: Some("killclient"),
+                            connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetMbAction(e.text().to_string())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Argument" },
+                        #[template_child] desc { set_label: "Optional argument for the action." },
+                        gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_placeholder_text: Some("(optional)"),
+                            connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetMbArg(e.text().to_string())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Modifiers" },
+                        #[template_child] desc { set_label: "Held key(s), e.g. super (use none with care — it grabs every click)." },
+                        gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_text: "super",
+                            connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetMbModifiers(e.text().to_string())) } },
+                },
                 gtk::Button { add_css_class: "ok-button-surface", set_label: "Add mouse binding", set_margin_top: 4,
                     set_halign: gtk::Align::Start,
                     connect_clicked[sender] => move |_| sender.input(InputSettingsInput::AddMbind) },
@@ -959,25 +989,30 @@ impl Component for InputSettingsModel {
                 #[local_ref]
                 abinds_box -> gtk::Box { set_orientation: gtk::Orientation::Vertical, set_spacing: 6 },
                 gtk::Label { add_css_class: "label-medium-bold", set_label: "Add a binding", set_halign: gtk::Align::Start, set_margin_top: 8 },
-                #[template] Row {
-                    #[template_child] title { set_label: "Direction" },
-                    gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 200, set_model: Some(&model.axis_dir_model),
-                        connect_selected_notify[sender] => move |d| sender.input(InputSettingsInput::SetAbDirection(d.selected())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Action" },
-                    #[template_child] desc { set_label: "Dispatch name, e.g. focusstack, view." },
-                    gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_placeholder_text: Some("focusstack"),
-                        connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetAbAction(e.text().to_string())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Argument" },
-                    #[template_child] desc { set_label: "Optional argument." },
-                    gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_placeholder_text: Some("(optional)"),
-                        connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetAbArg(e.text().to_string())) } },
-                #[template] Row {
-                    #[template_child] title { set_label: "Modifiers" },
-                    #[template_child] desc { set_label: "Held key(s), e.g. super (or none)." },
-                    gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_text: "super",
-                        connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetAbModifiers(e.text().to_string())) } },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template] Row {
+                        #[template_child] title { set_label: "Direction" },
+                        gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 200, set_model: Some(&model.axis_dir_model),
+                            connect_selected_notify[sender] => move |d| sender.input(InputSettingsInput::SetAbDirection(d.selected())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Action" },
+                        #[template_child] desc { set_label: "Dispatch name, e.g. focusstack, view." },
+                        gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_placeholder_text: Some("focusstack"),
+                            connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetAbAction(e.text().to_string())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Argument" },
+                        #[template_child] desc { set_label: "Optional argument." },
+                        gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_placeholder_text: Some("(optional)"),
+                            connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetAbArg(e.text().to_string())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Modifiers" },
+                        #[template_child] desc { set_label: "Held key(s), e.g. super (or none)." },
+                        gtk::Entry { set_valign: gtk::Align::Center, set_width_request: 200, set_text: "super",
+                            connect_changed[sender] => move |e| sender.input(InputSettingsInput::SetAbModifiers(e.text().to_string())) } },
+                },
                 gtk::Button { add_css_class: "ok-button-surface", set_label: "Add scroll binding", set_margin_top: 4,
                     set_halign: gtk::Align::Start,
                     connect_clicked[sender] => move |_| sender.input(InputSettingsInput::AddAbind) },

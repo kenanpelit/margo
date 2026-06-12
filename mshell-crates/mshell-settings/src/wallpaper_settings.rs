@@ -125,145 +125,157 @@ impl Component for WallpaperSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        #[watch]
-                        set_label: model.wallpaper_directory.as_str(),
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: true,
-                        set_xalign: 0.0,
-                        set_wrap: true,
-                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                    },
-
-                    gtk::Button {
-                        set_css_classes: &["ok-button-primary"],
-                        set_label: "Change Directory",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: false,
-                        connect_clicked[sender] => move |_| {
-                            sender.input(WallpaperSettingsInput::ChangeWallpaperDirectoryClicked);
-                        },
-                    },
-
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Content fit",
-                            set_hexpand: true,
-                        },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
                         gtk::Label {
                             add_css_class: "label-small",
+                            #[watch]
+                            set_label: model.wallpaper_directory.as_str(),
                             set_halign: gtk::Align::Start,
-                            set_label: "How the wallpaper should fit into the space.",
                             set_hexpand: true,
                             set_xalign: 0.0,
                             set_wrap: true,
                             set_natural_wrap_mode: gtk::NaturalWrapMode::None,
                         },
-                    },
 
-                    gtk::DropDown {
-                        set_width_request: 150,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&gtk::StringList::new(&ContentFit::display_names())),
-                        #[watch]
-                        #[block_signal(handler)]
-                        set_selected: model.content_fit.to_index(),
-                        connect_selected_notify[sender] => move |dd| {
-                            sender.input(WallpaperSettingsInput::ContentFitChanged(
-                                ContentFit::from_index(dd.selected())
-                            ));
-                        } @handler,
-                    },
-                },
+                        gtk::Button {
+                            set_css_classes: &["ok-button-primary"],
+                            set_label: "Change Directory",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: false,
+                            connect_clicked[sender] => move |_| {
+                                sender.input(WallpaperSettingsInput::ChangeWallpaperDirectoryClicked);
+                            },
+                        },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    },
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Theme filter",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Content fit",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "How the wallpaper should fit into the space.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Apply a filter to the wallpaper when a static theme is selected. Wallpaper transitions may take longer with this enabled.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::DropDown {
+                            set_width_request: 150,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&ContentFit::display_names())),
+                            #[watch]
+                            #[block_signal(handler)]
+                            set_selected: model.content_fit.to_index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(WallpaperSettingsInput::ContentFitChanged(
+                                    ContentFit::from_index(dd.selected())
+                                ));
+                            } @handler,
                         },
                     },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(apply_theme_filter_handler)]
-                        set_active: model.apply_theme_filter,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(WallpaperSettingsInput::ThemeFilterChanged(enabled));
-                            glib::Propagation::Proceed
-                        } @apply_theme_filter_handler,
-                    }
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Theme filter strength",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Theme filter",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Apply a filter to the wallpaper when a static theme is selected. Wallpaper transitions may take longer with this enabled.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "A higher value will more aggressively apply theme colors.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(apply_theme_filter_handler)]
+                            set_active: model.apply_theme_filter,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(WallpaperSettingsInput::ThemeFilterChanged(enabled));
+                                glib::Propagation::Proceed
+                            } @apply_theme_filter_handler,
+                        }
                     },
 
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 1.0),
-                        set_increments: (0.1, 0.1),
-                        set_digits: 2,
-                        #[watch]
-                        #[block_signal(filter_strength_handler)]
-                        set_value: model.filter_strength,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(WallpaperSettingsInput::FilterStrengthChanged(s.value()));
-                        } @filter_strength_handler,
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Theme filter strength",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "A higher value will more aggressively apply theme colors.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 1.0),
+                            set_increments: (0.1, 0.1),
+                            set_digits: 2,
+                            #[watch]
+                            #[block_signal(filter_strength_handler)]
+                            set_value: model.filter_strength,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(WallpaperSettingsInput::FilterStrengthChanged(s.value()));
+                            } @filter_strength_handler,
+                        },
                     },
                 },
 
@@ -274,120 +286,131 @@ impl Component for WallpaperSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Auto-rotate",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Auto-rotate",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Automatically change the wallpaper on a timer.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Automatically change the wallpaper on a timer.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(rotation_enabled_handler)]
+                            set_active: model.rotation_enabled,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(WallpaperSettingsInput::RotationEnabledChanged(enabled));
+                                glib::Propagation::Proceed
+                            } @rotation_enabled_handler,
                         },
                     },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(rotation_enabled_handler)]
-                        set_active: model.rotation_enabled,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(WallpaperSettingsInput::RotationEnabledChanged(enabled));
-                            glib::Propagation::Proceed
-                        } @rotation_enabled_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Interval (minutes)",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Interval (minutes)",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "How long to wait between automatic wallpaper changes.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "How long to wait between automatic wallpaper changes.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 1440.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(rotation_interval_handler)]
+                            set_value: model.rotation_interval_minutes as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(WallpaperSettingsInput::RotationIntervalChanged(
+                                    s.value() as u32,
+                                ));
+                            } @rotation_interval_handler,
                         },
                     },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1.0, 1440.0),
-                        set_increments: (1.0, 5.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(rotation_interval_handler)]
-                        set_value: model.rotation_interval_minutes as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(WallpaperSettingsInput::RotationIntervalChanged(
-                                s.value() as u32,
-                            ));
-                        } @rotation_interval_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Order",
-                            set_hexpand: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Order",
+                                set_hexpand: true,
+                            },
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Walk the directory in order, or pick a random wallpaper each time.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Walk the directory in order, or pick a random wallpaper each time.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        gtk::DropDown {
+                            set_width_request: 150,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&WallpaperRotationMode::display_names())),
+                            #[watch]
+                            #[block_signal(rotation_mode_handler)]
+                            set_selected: model.rotation_mode.to_index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(WallpaperSettingsInput::RotationModeChanged(
+                                    WallpaperRotationMode::from_index(dd.selected())
+                                ));
+                            } @rotation_mode_handler,
                         },
-                    },
-
-                    gtk::DropDown {
-                        set_width_request: 150,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&gtk::StringList::new(&WallpaperRotationMode::display_names())),
-                        #[watch]
-                        #[block_signal(rotation_mode_handler)]
-                        set_selected: model.rotation_mode.to_index(),
-                        connect_selected_notify[sender] => move |dd| {
-                            sender.input(WallpaperSettingsInput::RotationModeChanged(
-                                WallpaperRotationMode::from_index(dd.selected())
-                            ));
-                        } @rotation_mode_handler,
                     },
                 },
 
@@ -398,109 +421,120 @@ impl Component for WallpaperSettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Fetch daily",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Fetch daily",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Download a fresh Bing or NASA image-of-the-day on login and periodically. Saved under ~/Pictures/Wallpapers; downloads older than 5 days are pruned.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Download a fresh Bing or NASA image-of-the-day on login and periodically. Saved under ~/Pictures/Wallpapers; downloads older than 5 days are pruned.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(daily_enabled_handler)]
+                            set_active: model.daily_enabled,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(WallpaperSettingsInput::DailyEnabledChanged(enabled));
+                                glib::Propagation::Proceed
+                            } @daily_enabled_handler,
                         },
                     },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(daily_enabled_handler)]
-                        set_active: model.daily_enabled,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(WallpaperSettingsInput::DailyEnabledChanged(enabled));
-                            glib::Propagation::Proceed
-                        } @daily_enabled_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Source",
-                            set_hexpand: true,
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Source",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Bing's daily photo or NASA's Astronomy Picture of the Day.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Bing's daily photo or NASA's Astronomy Picture of the Day.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+
+                        gtk::DropDown {
+                            set_width_request: 150,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&["Bing", "NASA"])),
+                            #[watch]
+                            #[block_signal(daily_source_handler)]
+                            set_selected: if model.daily_source.eq_ignore_ascii_case("nasa") { 1 } else { 0 },
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(WallpaperSettingsInput::DailySourceChanged(dd.selected()));
+                            } @daily_source_handler,
                         },
                     },
-
-                    gtk::DropDown {
-                        set_width_request: 150,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&gtk::StringList::new(&["Bing", "NASA"])),
-                        #[watch]
-                        #[block_signal(daily_source_handler)]
-                        set_selected: if model.daily_source.eq_ignore_ascii_case("nasa") { 1 } else { 0 },
-                        connect_selected_notify[sender] => move |dd| {
-                            sender.input(WallpaperSettingsInput::DailySourceChanged(dd.selected()));
-                        } @daily_source_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
 
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Bing region",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Market locale for Bing (e.g. en-US, de-DE). Empty = en-US. Unused for NASA.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
 
-                    gtk::Entry {
-                        set_valign: gtk::Align::Center,
-                        set_width_request: 150,
-                        set_placeholder_text: Some("en-US"),
-                        #[watch]
-                        #[block_signal(daily_locale_handler)]
-                        set_text: &model.daily_locale,
-                        connect_changed[sender] => move |e| {
-                            sender.input(WallpaperSettingsInput::DailyLocaleChanged(e.text().to_string()));
-                        } @daily_locale_handler,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Bing region",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Market locale for Bing (e.g. en-US, de-DE). Empty = en-US. Unused for NASA.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            set_width_request: 150,
+                            set_placeholder_text: Some("en-US"),
+                            #[watch]
+                            #[block_signal(daily_locale_handler)]
+                            set_text: &model.daily_locale,
+                            connect_changed[sender] => move |e| {
+                                sender.input(WallpaperSettingsInput::DailyLocaleChanged(e.text().to_string()));
+                            } @daily_locale_handler,
+                        },
                     },
                 },
 

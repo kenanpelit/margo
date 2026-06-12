@@ -88,34 +88,41 @@ impl Component for SystemTraySettingsModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Expanded by default",
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Expanded by default",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "On = the tray comes up with its icons revealed. Off = the icons start collapsed behind the tray button (click to reveal). You can still toggle them at runtime either way.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "On = the tray comes up with its icons revealed. Off = the icons start collapsed behind the tray button (click to reveal). You can still toggle them at runtime either way.",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        #[name = "default_expanded_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(default_expanded_handler)]
+                            set_active: model.default_expanded,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(SystemTraySettingsInput::SetDefaultExpanded(s.is_active()));
+                            } @default_expanded_handler,
                         },
-                    },
-                    #[name = "default_expanded_switch"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[block_signal(default_expanded_handler)]
-                        set_active: model.default_expanded,
-                        connect_active_notify[sender] => move |s| {
-                            sender.input(SystemTraySettingsInput::SetDefaultExpanded(s.is_active()));
-                        } @default_expanded_handler,
                     },
                 },
             },
