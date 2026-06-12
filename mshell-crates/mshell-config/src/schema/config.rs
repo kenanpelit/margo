@@ -302,6 +302,7 @@ pub struct Theme {
     pub icons: Icons,
     pub theme: Themes,
     pub matugen: Matugen,
+    pub apps: ThemeApps,
     pub css_file: String,
     pub attributes: ThemeAttributes,
 }
@@ -312,8 +313,104 @@ impl Default for Theme {
             icons: Icons::default(),
             theme: Themes::Margo,
             matugen: Matugen::default(),
+            apps: ThemeApps::default(),
             css_file: String::new(),
             attributes: ThemeAttributes::default(),
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct ThemeApps {
+    pub helium: HeliumTheme,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Store, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum HeliumTargetMode {
+    /// Apply to every real Chromium profile found below `isolated_root`.
+    All,
+    /// Apply to the `profile.last_used` profile of each isolated Helium root.
+    #[default]
+    LastUsed,
+    /// Apply only to the explicit instance/profile rows enabled below.
+    Selected,
+}
+
+impl PatchField for HeliumTargetMode {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
+}
+
+impl HeliumTargetMode {
+    pub fn all() -> &'static [Self] {
+        &[Self::LastUsed, Self::Selected, Self::All]
+    }
+
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::LastUsed => "Last used profiles",
+            Self::Selected => "Selected profiles",
+            Self::All => "All profiles",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct HeliumProfileTarget {
+    pub instance: String,
+    pub profile: String,
+    pub enabled: bool,
+}
+
+impl Default for HeliumProfileTarget {
+    fn default() -> Self {
+        Self {
+            instance: String::new(),
+            profile: String::new(),
+            enabled: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct HeliumTheme {
+    /// Follow margo/matugen by writing Helium's Chromium user-colour theme.
+    pub enabled: bool,
+    /// Root containing Helium isolated browser instances. Each child with a
+    /// `Local State` file is treated as one isolated Chromium user-data-dir.
+    pub isolated_root: String,
+    /// Which discovered profiles receive the generated colour seed.
+    pub target_mode: HeliumTargetMode,
+    /// Apply automatically after every successful matugen/theme regeneration.
+    pub apply_on_theme_change: bool,
+    /// Explicit rows used when `target_mode = selected`.
+    pub targets: Vec<HeliumProfileTarget>,
+}
+
+impl Default for HeliumTheme {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            isolated_root: "~/.helium/isolated".to_string(),
+            target_mode: HeliumTargetMode::default(),
+            apply_on_theme_change: true,
+            targets: Vec::new(),
         }
     }
 }

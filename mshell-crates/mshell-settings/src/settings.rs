@@ -18,6 +18,7 @@ use crate::display_settings::{DisplaySettingsInit, DisplaySettingsModel};
 use crate::effects_settings::{EffectsInit, EffectsModel};
 use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
+use crate::helium_theme_settings::{HeliumThemeSettingsInit, HeliumThemeSettingsModel};
 use crate::hidden_bar_settings::{HiddenBarSettingsInit, HiddenBarSettingsModel};
 use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
 use crate::input_settings::{InputSettingsInit, InputSettingsModel};
@@ -74,6 +75,7 @@ pub struct SettingsWindowModel {
     wallpaper_settings_controller: Controller<WallpaperSettingsModel>,
     theme_settings_controller: Controller<ThemeSettingsModel>,
     fonts_settings_controller: Controller<FontsSettingsModel>,
+    helium_theme_settings_controller: Controller<HeliumThemeSettingsModel>,
     about_settings_controller: Controller<AboutSettingsModel>,
     animations_settings_controller: Controller<AnimationsSettingsModel>,
     appearance_settings_controller: Controller<AppearanceModel>,
@@ -421,6 +423,10 @@ impl Component for SettingsWindowModel {
             .launch(FontsSettingsInit {})
             .detach();
 
+        let helium_theme_settings_controller = HeliumThemeSettingsModel::builder()
+            .launch(HeliumThemeSettingsInit {})
+            .detach();
+
         let about_settings_controller = AboutSettingsModel::builder()
             .launch(AboutSettingsInit {})
             .detach();
@@ -596,6 +602,7 @@ impl Component for SettingsWindowModel {
             wallpaper_settings_controller,
             theme_settings_controller,
             fonts_settings_controller,
+            helium_theme_settings_controller,
             about_settings_controller,
             animations_settings_controller,
             appearance_settings_controller,
@@ -755,10 +762,128 @@ impl Component for SettingsWindowModel {
 
         // widgets.sidebar.set_stack(&widgets.stack);
 
+        // ── Theme group ───────────────────────────────────────
+        // Theme owns related pages (scheme, fonts, wallpaper, app themes)
+        // under one top-level sidebar entry. This keeps the main nav compact
+        // and makes external-app theming feel like part of the matugen chain.
+        let theme_page = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .hexpand(true)
+            .vexpand(true)
+            .build();
+
+        let theme_sub_sidebar = gtk::ScrolledWindow::builder()
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .build();
+        let theme_sub_sidebar_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .width_request(180)
+            .spacing(2)
+            .hexpand(false)
+            .css_classes(["settings-subsidebar"])
+            .build();
+        theme_sub_sidebar.set_child(Some(&theme_sub_sidebar_box));
+
+        theme_sub_sidebar_box.append(&{
+            let l = settings_sidebar_title_label("Theme");
+            l.set_margin_start(8);
+            l.set_margin_top(12);
+            l.set_margin_bottom(6);
+            l.set_margin_end(8);
+            l
+        });
+        theme_sub_sidebar_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+
+        let theme_sub_stack = gtk::Stack::builder()
+            .transition_type(gtk::StackTransitionType::Crossfade)
+            .transition_duration(50)
+            .hexpand(true)
+            .vexpand(true)
+            .hhomogeneous(false)
+            .build();
+
+        let make_theme_sub_btn = |label: &str,
+                                  icon: &str,
+                                  stack_name: &'static str,
+                                  first: Option<&gtk::ToggleButton>|
+         -> gtk::ToggleButton {
+            let mut builder = gtk::ToggleButton::builder().css_classes(["sidebar-button"]);
+            if let Some(g) = first {
+                builder = builder.group(g);
+            } else {
+                builder = builder.active(true);
+            }
+            let btn = builder.build();
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            row.set_valign(gtk::Align::Center);
+            row.append(&gtk::Image::from_icon_name(icon));
+            row.append(&settings_sidebar_label(label));
+            btn.set_child(Some(&row));
+            let sub_stack = theme_sub_stack.clone();
+            btn.connect_toggled(move |b| {
+                if b.is_active() {
+                    sub_stack.set_visible_child_name(stack_name);
+                }
+            });
+            let route = format!("theme/{stack_name}");
+            subsection_buttons
+                .borrow_mut()
+                .insert(route.clone(), btn.clone());
+            search_index
+                .borrow_mut()
+                .push((label.to_lowercase(), route.clone()));
+            search_titles.borrow_mut().insert(route, label.to_string());
+            btn
+        };
+
+        let theme_entries: [(&str, &str, &'static str, gtk::Widget); 4] = [
+            (
+                "Scheme",
+                "palette-symbolic",
+                "scheme",
+                model.theme_settings_controller.widget().clone().into(),
+            ),
+            (
+                "Fonts",
+                "xsi-font-symbolic",
+                "fonts",
+                model.fonts_settings_controller.widget().clone().into(),
+            ),
+            (
+                "Wallpaper",
+                "wallpaper-symbolic",
+                "wallpaper",
+                model.wallpaper_settings_controller.widget().clone().into(),
+            ),
+            (
+                "Apps",
+                "web-browser-symbolic",
+                "apps",
+                model
+                    .helium_theme_settings_controller
+                    .widget()
+                    .clone()
+                    .into(),
+            ),
+        ];
+        let mut theme_anchor: Option<gtk::ToggleButton> = None;
+        for (label, icon, stack_name, widget) in theme_entries {
+            let btn = make_theme_sub_btn(label, icon, stack_name, theme_anchor.as_ref());
+            if theme_anchor.is_none() {
+                theme_anchor = Some(btn.clone());
+            }
+            theme_sub_sidebar_box.append(&btn);
+            theme_sub_stack.add_named(&widget, Some(stack_name));
+        }
+        theme_sub_stack.set_visible_child_name("scheme");
+        theme_page.append(&theme_sub_sidebar);
+        theme_page.append(&theme_sub_stack);
+
         // Top-level stack pages. Insertion order does not affect display (the
         // sidebar buttons drive visibility) — kept as one table so the page
         // list lives in a single place instead of 36 add_titled blocks.
-        let stack_pages: [(&str, &str, gtk::Widget); 40] = [
+        let stack_pages: Vec<(&str, &str, gtk::Widget)> = vec![
             (
                 "general",
                 "General",
@@ -769,16 +894,7 @@ impl Component for SettingsWindowModel {
                 "Setup",
                 model.setup_settings_controller.widget().clone().into(),
             ),
-            (
-                "theme",
-                "Theme",
-                model.theme_settings_controller.widget().clone().into(),
-            ),
-            (
-                "fonts",
-                "Fonts",
-                model.fonts_settings_controller.widget().clone().into(),
-            ),
+            ("theme", "Theme", theme_page.into()),
             (
                 "about",
                 "About",
@@ -895,11 +1011,6 @@ impl Component for SettingsWindowModel {
                 "summon",
                 "Tags",
                 model.summon_settings_controller.widget().clone().into(),
-            ),
-            (
-                "wallpaper",
-                "Wallpaper",
-                model.wallpaper_settings_controller.widget().clone().into(),
             ),
             (
                 "display",
@@ -1735,6 +1846,14 @@ impl Component for SettingsWindowModel {
         use relm4::gtk::prelude::ToggleButtonExt;
         match message {
             SettingsWindowInput::ActivateSection(name) => {
+                let name = match name.as_str() {
+                    // Backwards-compatible routes used by older settings
+                    // buttons / search aliases before Fonts and Wallpaper
+                    // moved under the Theme sub-sidebar.
+                    "fonts" => "theme/fonts".to_string(),
+                    "wallpaper" => "theme/wallpaper".to_string(),
+                    _ => name,
+                };
                 // Activating a sidebar button fires its
                 // `connect_toggled` handler which in turn updates
                 // the stack — radio-group cascade does the rest
@@ -1760,10 +1879,12 @@ impl Component for SettingsWindowModel {
                 // (its toggle cascades the sub-stack). Cloned out so the
                 // RefCell borrow isn't held across `set_active`.
                 if let Some(sub) = sub {
-                    let sub_btn = self.subsection_buttons.borrow().get(sub).cloned();
+                    let sub_btn = self.subsection_buttons.borrow().get(&name).cloned();
+                    let sub_btn =
+                        sub_btn.or_else(|| self.subsection_buttons.borrow().get(sub).cloned());
                     match sub_btn {
                         Some(b) => b.set_active(true),
-                        None => tracing::warn!(%sub, "settings: unknown widgets sub-page"),
+                        None => tracing::warn!(%sub, route = %name, "settings: unknown sub-page"),
                     }
                 }
                 // Clear the search box so a results-list click (or a deep link)
@@ -1866,7 +1987,19 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
         "theme",
         "color colour palette matugen accent scheme dark light mode tint",
     ),
+    (
+        "scheme",
+        "color colour palette matugen accent scheme dark light mode tint",
+    ),
     ("wallpaper", "background image picture slideshow rotation"),
+    (
+        "apps",
+        "app apps external browser chromium helium isolated profile matugen theme",
+    ),
+    (
+        "helium",
+        "app apps external browser chromium helium isolated profile matugen theme",
+    ),
     (
         "sound",
         "audio volume output input microphone speaker mute device sink source",
@@ -2008,7 +2141,7 @@ const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("bluetooth", "bluetooth"),
     ("default apps", "default_apps"),
     ("display", "display"),
-    ("fonts", "fonts"),
+    ("fonts", "theme/fonts"),
     ("idle", "idle"),
     ("on-screen keyboard", "keyboard"),
     ("keyboard", "keyboard"),
@@ -2059,7 +2192,15 @@ const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("power", "power"),
     ("privacy", "privacy"),
     ("theme", "theme"),
-    ("wallpaper", "wallpaper"),
+    ("theme scheme", "theme/scheme"),
+    ("scheme", "theme/scheme"),
+    ("wallpaper", "theme/wallpaper"),
+    ("theme wallpaper", "theme/wallpaper"),
+    ("app themes", "theme/apps"),
+    ("apps theme", "theme/apps"),
+    ("theme apps", "theme/apps"),
+    ("helium", "theme/apps"),
+    ("browser theme", "theme/apps"),
     ("widgets", "widgets"),
 ];
 
@@ -2136,19 +2277,9 @@ const SIDEBAR: &[SidebarEntry] = &[
         label: "Animations",
     },
     Page {
-        route: "fonts",
-        icon: "xsi-font-symbolic",
-        label: "Fonts",
-    },
-    Page {
         route: "theme",
         icon: "palette-symbolic",
         label: "Theme",
-    },
-    Page {
-        route: "wallpaper",
-        icon: "wallpaper-symbolic",
-        label: "Wallpaper",
     },
     Section("SHELL"),
     Page {

@@ -1,3 +1,4 @@
+pub mod app_theme;
 pub mod style_manager;
 pub mod user_css;
 

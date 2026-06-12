@@ -15,6 +15,7 @@ use mshell_matugen::matugen::{apply_matugen_from_image_queued, apply_matugen_fro
 use mshell_matugen::static_theme_mapping::static_theme;
 use reactive_graph::effect::Effect;
 use reactive_graph::prelude::{Get, GetUntracked};
+use reactive_graph::traits::ReadUntracked;
 use relm4::gtk::{CssProvider, STYLE_PROVIDER_PRIORITY_USER, gdk};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
@@ -382,6 +383,14 @@ impl Component for StyleManagerModel {
                     // failures are logged at warn but don't affect
                     // the current session.
                     write_cached_theme(&css);
+                    let helium = config_manager()
+                        .config()
+                        .read_untracked()
+                        .theme
+                        .apps
+                        .helium
+                        .clone();
+                    crate::app_theme::apply_helium_from_cache_async(helium);
 
                     let _ = sender.output(QueueFrameRedraw);
                 }

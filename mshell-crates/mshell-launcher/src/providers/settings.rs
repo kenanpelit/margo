@@ -1,10 +1,9 @@
 //! Settings sidebar navigator.
 //!
-//! Indexes the nine top-level sections of the Settings panel
-//! (general / bar / display / fonts / idle / menus / theme /
-//! wallpaper / widgets) by name + a small keyword set. Activating
-//! a result fires the caller-supplied open callback with the
-//! section id; the UI wires that to the Settings frame menu so the
+//! Indexes Settings destinations (top-level sections plus a few nested
+//! sub-pages such as `theme/fonts` and `theme/apps`) by name + a small
+//! keyword set. Activating a result fires the caller-supplied open callback
+//! with the section id; the UI wires that to the Settings frame menu so the
 //! launcher hops straight to the right pane.
 
 use crate::{item::LauncherItem, provider::Provider};
@@ -19,6 +18,7 @@ pub enum SettingsSection {
     Bar,
     Display,
     Fonts,
+    AppThemes,
     Idle,
     Launcher,
     Menus,
@@ -35,12 +35,13 @@ impl SettingsSection {
             Self::General => "general",
             Self::Bar => "bar",
             Self::Display => "display",
-            Self::Fonts => "fonts",
+            Self::Fonts => "theme/fonts",
+            Self::AppThemes => "theme/apps",
             Self::Idle => "idle",
             Self::Launcher => "launcher",
             Self::Menus => "menus",
             Self::Theme => "theme",
-            Self::Wallpaper => "wallpaper",
+            Self::Wallpaper => "theme/wallpaper",
             Self::Widgets => "widgets",
         }
     }
@@ -52,6 +53,7 @@ impl SettingsSection {
             Self::Bar => "Bar",
             Self::Display => "Display",
             Self::Fonts => "Fonts",
+            Self::AppThemes => "App Themes",
             Self::Idle => "Idle",
             Self::Launcher => "Launcher",
             Self::Menus => "Menus",
@@ -70,6 +72,7 @@ impl SettingsSection {
             Self::Bar => "view-dual-symbolic",
             Self::Display => "video-display-symbolic",
             Self::Fonts => "preferences-desktop-font-symbolic",
+            Self::AppThemes => "web-browser-symbolic",
             Self::Idle => "preferences-desktop-screensaver-symbolic",
             Self::Launcher => "system-search-symbolic",
             Self::Menus => "view-more-symbolic",
@@ -88,6 +91,7 @@ impl SettingsSection {
             Self::Bar => &["bar", "topbar", "panel", "pill", "pills"],
             Self::Display => &["display", "monitor", "screen", "layout", "twilight"],
             Self::Fonts => &["fonts", "font", "typography"],
+            Self::AppThemes => &["apps", "app", "helium", "browser", "chromium", "theme"],
             Self::Idle => &["idle", "screensaver", "lock", "timeout", "afk"],
             Self::Launcher => &[
                 "launcher",
@@ -112,6 +116,7 @@ impl SettingsSection {
         Self::Bar,
         Self::Display,
         Self::Fonts,
+        Self::AppThemes,
         Self::Idle,
         Self::Launcher,
         Self::Menus,
