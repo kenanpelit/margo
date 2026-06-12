@@ -307,8 +307,11 @@ impl Component for AppLauncherModel {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 3,
                 set_margin_bottom: 8,
-                set_halign: gtk::Align::Start,
-                set_hexpand: true,
+                // Match the clipboard tab strip: keep the pill group at its
+                // natural width and center it inside the launcher allocation
+                // instead of expanding the Box and left-aligning its children.
+                set_halign: gtk::Align::Center,
+                set_hexpand: false,
             },
 
             // Two-zone content: result list (left) + preview pane
