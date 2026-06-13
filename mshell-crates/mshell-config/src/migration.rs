@@ -68,16 +68,14 @@ fn set_version(map: &mut Mapping, version: u32) {
 }
 
 /// Apply the single migration step that takes a profile from `from` to
-/// `from + 1`, mutating the raw document in place. New migrations add an arm.
-fn apply_step(from: u32, _doc: &mut Mapping) {
-    match from {
-        // v0 → v1: the versioning baseline. Profiles predating `config_version`
-        // are stamped to v1; the format is otherwise unchanged, so there is no
-        // field transform here yet. The first real reshape adds its arm above
-        // this comment and bumps CONFIG_VERSION.
-        0 => {}
-        _ => {}
-    }
+/// `from + 1`, mutating the raw document in place.
+///
+/// v0 → v1 is the versioning baseline: profiles predating `config_version` are
+/// stamped to v1, the format is otherwise unchanged, so there is no field
+/// transform here yet. The first real reshape adds its branch — e.g.
+/// `if from == 1 { migrate_v1_to_v2(doc); }` — and bumps [`CONFIG_VERSION`].
+fn apply_step(from: u32, doc: &mut Mapping) {
+    let _ = (from, doc);
 }
 
 /// Migrate a profile YAML string up to [`CONFIG_VERSION`], applying each step in
