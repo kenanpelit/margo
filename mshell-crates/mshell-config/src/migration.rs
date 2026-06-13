@@ -34,7 +34,7 @@ use serde_yaml::{Mapping, Value};
 
 /// The current on-disk profile format version. A profile file with a lower (or
 /// absent → treated as 0) `config_version` is migrated up to this on load.
-pub const CONFIG_VERSION: u32 = 1;
+pub const CONFIG_VERSION: u32 = 2;
 
 /// The YAML key carrying the format version.
 const VERSION_KEY: &str = "config_version";
@@ -75,7 +75,30 @@ fn set_version(map: &mut Mapping, version: u32) {
 /// transform here yet. The first real reshape adds its branch — e.g.
 /// `if from == 1 { migrate_v1_to_v2(doc); }` — and bumps [`CONFIG_VERSION`].
 fn apply_step(from: u32, doc: &mut Mapping) {
-    let _ = (from, doc);
+    if from == 1 {
+        migrate_v1_to_v2(doc);
+    }
+}
+
+/// v1 → v2: the "Eventide" scheme was promoted to margo's house theme and
+/// renamed "Kenp", and the old `Kenp` / `KenpLight` themes were dropped.
+/// Rewrite any profile still selecting a now-dead variant onto the surviving
+/// `Kenp` — otherwise the unknown enum value fails to deserialize and the
+/// *whole* profile silently resets to defaults on load.
+fn migrate_v1_to_v2(doc: &mut Mapping) {
+    let Some(Value::Mapping(theme)) = doc.get_mut("theme") else {
+        return;
+    };
+    let dead = matches!(
+        theme.get("theme"),
+        Some(Value::String(s)) if s == "Eventide" || s == "KenpLight"
+    );
+    if dead {
+        theme.insert(
+            Value::String("theme".to_string()),
+            Value::String("Kenp".to_string()),
+        );
+    }
 }
 
 /// Migrate a profile YAML string up to [`CONFIG_VERSION`], applying each step in
@@ -185,6 +208,33 @@ idle:
             body_without_version(old),
             "v1 baseline preserves the whole body"
         );
+    }
+
+    #[test]
+    fn v1_to_v2_rewrites_dead_theme_to_kenp() {
+        for dead in ["Eventide", "KenpLight"] {
+            let old = format!("config_version: 1\ntheme:\n  theme: {dead}\n  css_file: \"\"\n");
+            let m = migrate_yaml(&old).unwrap();
+            assert!(m.changed, "{dead} → Kenp is a content change");
+
+            let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
+            assert_eq!(read_version(&out), CONFIG_VERSION);
+            let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
+            assert_eq!(theme.as_str(), Some("Kenp"), "{dead} rewritten to Kenp");
+
+            // Idempotent: re-running leaves it on Kenp and reports no change.
+            let again = migrate_yaml(&m.yaml).unwrap();
+            assert!(!again.changed, "already-migrated {dead} profile is a no-op");
+        }
+    }
+
+    #[test]
+    fn v1_to_v2_leaves_a_live_theme_untouched() {
+        let old = "config_version: 1\ntheme:\n  theme: TokyoNight\n";
+        let m = migrate_yaml(old).unwrap();
+        let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
+        let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
+        assert_eq!(theme.as_str(), Some("TokyoNight"), "live theme preserved");
     }
 
     #[test]

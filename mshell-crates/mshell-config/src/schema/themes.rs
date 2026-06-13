@@ -19,7 +19,6 @@ pub enum Themes {
     Dracula,
     Eldritch,
     Ethereal,
-    Eventide,
     EverforestDarkHard,
     EverforestDarkMedium,
     EverforestDarkSoft,
@@ -38,7 +37,6 @@ pub enum Themes {
     KanagawaLotus,
     KanagawaWave,
     Kenp,
-    KenpLight,
     Margo,
     Miasma,
     MonokaiClassic,
@@ -96,7 +94,6 @@ impl Themes {
             Self::Dracula => "Dracula",
             Self::Eldritch => "Eldritch",
             Self::Ethereal => "Ethereal",
-            Self::Eventide => "Eventide",
             Self::EverforestDarkHard => "Everforest Dark Hard",
             Self::EverforestDarkMedium => "Everforest Dark Medium",
             Self::EverforestDarkSoft => "Everforest Dark Soft",
@@ -115,7 +112,6 @@ impl Themes {
             Self::KanagawaLotus => "Kanagawa Lotus",
             Self::KanagawaWave => "Kanagawa Wave",
             Self::Kenp => "Kenp",
-            Self::KenpLight => "Kenp Light",
             Self::Margo => "Margo",
             Self::Miasma => "Miasma",
             Self::MonokaiClassic => "Monokai Classic",
@@ -162,7 +158,6 @@ impl Themes {
             Self::Dracula => "Dracula",
             Self::Eldritch => "Eldritch",
             Self::Ethereal => "Ethereal",
-            Self::Eventide => "Eventide",
             Self::EverforestDarkHard => "EverforestDarkHard",
             Self::EverforestDarkMedium => "EverforestDarkMedium",
             Self::EverforestDarkSoft => "EverforestDarkSoft",
@@ -181,7 +176,6 @@ impl Themes {
             Self::KanagawaLotus => "KanagawaLotus",
             Self::KanagawaWave => "KanagawaWave",
             Self::Kenp => "Kenp",
-            Self::KenpLight => "KenpLight",
             Self::Margo => "Margo",
             Self::Miasma => "Miasma",
             Self::MonokaiClassic => "MonokaiClassic",
@@ -210,8 +204,8 @@ impl Themes {
 
     /// Resolve a user-typed name to a theme, tolerant of case and of
     /// separators. We compare on the ASCII-alphanumeric skeleton of both
-    /// the [`Self::ident`] and the [`Self::label`], so `eventide`,
-    /// `Eventide`, `tokyo-night`, `tokyo_night`, `TokyoNight` and
+    /// the [`Self::ident`] and the [`Self::label`], so `kenp`, `Kenp`,
+    /// `tokyo-night`, `tokyo_night`, `TokyoNight` and
     /// `"Tokyo Night"` all resolve. Matching the ident (which carries no
     /// accents) is what lets `catppuccin-frappe` / `rose-pine` work even
     /// though their labels are accented ("Frappé" / "Rosé").
@@ -248,7 +242,6 @@ impl Themes {
             Self::Dracula,
             Self::Eldritch,
             Self::Ethereal,
-            Self::Eventide,
             Self::EverforestDarkHard,
             Self::EverforestDarkMedium,
             Self::EverforestDarkSoft,
@@ -267,7 +260,6 @@ impl Themes {
             Self::KanagawaLotus,
             Self::KanagawaWave,
             Self::Kenp,
-            Self::KenpLight,
             Self::Margo,
             Self::Miasma,
             Self::MonokaiClassic,
@@ -588,8 +580,8 @@ mod theme_ident_tests {
 
     #[test]
     fn from_cli_ignores_case_and_separators() {
-        for input in ["eventide", "Eventide", "EVENTIDE"] {
-            assert_eq!(Themes::from_cli(input), Some(Themes::Eventide));
+        for input in ["kenp", "Kenp", "KENP"] {
+            assert_eq!(Themes::from_cli(input), Some(Themes::Kenp));
         }
         for input in ["tokyo-night", "tokyo_night", "TokyoNight", "Tokyo Night"] {
             assert_eq!(Themes::from_cli(input), Some(Themes::TokyoNight));

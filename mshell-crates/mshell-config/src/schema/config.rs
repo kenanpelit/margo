@@ -311,7 +311,7 @@ impl Default for Theme {
     fn default() -> Self {
         Self {
             icons: Icons::default(),
-            theme: Themes::Margo,
+            theme: Themes::Kenp,
             matugen: Matugen::default(),
             apps: ThemeApps::default(),
             css_file: String::new(),

@@ -37,7 +37,7 @@ EXAMPLES:
   mshellctl brightness up           # raise backlight 5%
   mshellctl media toggle            # MPRIS play/pause the active player
   mshellctl wallpaper next          # cycle to the next wallpaper
-  mshellctl theme set eventide      # switch colour scheme live
+  mshellctl theme set kenp          # switch colour scheme live
   mshellctl lock                    # lock the session
 
 SEE ALSO:

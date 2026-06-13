@@ -16,12 +16,13 @@ general:
   clock_format_24_h: true
 
 # ── Theme ───────────────────────────────────────────────────────────────
-# Stock Material-You (matugen) dark theme on the bundled MargoMaterial icons.
+# Kenp — the house theme (a teal/dusk dark palette) on the bundled
+# MargoMaterial icons. This is margo's default colour scheme.
 theme:
   icons:
     shell_icon_theme: MargoMaterial
     app_icon_theme: MargoMaterial
-  theme: Default
+  theme: Kenp
   matugen:
     mode: Dark
 

@@ -9,7 +9,7 @@
 //! mshellctl theme set <name>            # switch live (case/-_ insensitive)
 //! ```
 //!
-//! `set` matching is forgiving: `eventide`, `Eventide`, `tokyo-night`,
+//! `set` matching is forgiving: `kenp`, `Kenp`, `tokyo-night`,
 //! `tokyo_night`, `TokyoNight` and `"Tokyo Night"` all resolve.
 
 use crate::bus::{bus_command_with_arg_reply, bus_command_with_reply};
@@ -27,7 +27,7 @@ pub enum ThemeCommands {
     /// Print the canonical name of the colour scheme currently in use.
     Get,
     /// Switch to a colour scheme by name and apply it live. Name matching
-    /// ignores case and `-`/`_`/space separators (e.g. `eventide`,
+    /// ignores case and `-`/`_`/space separators (e.g. `kenp`,
     /// `tokyo-night`). Use `theme list` to see the valid names.
     Set { name: String },
 }

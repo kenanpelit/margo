@@ -10,7 +10,6 @@ pub mod desert_power;
 pub mod dracula;
 pub mod eldritch;
 pub mod ethereal;
-pub mod eventide;
 pub mod everforest_dark_hard;
 pub mod everforest_dark_medium;
 pub mod everforest_dark_soft;

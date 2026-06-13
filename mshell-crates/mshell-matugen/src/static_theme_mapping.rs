@@ -11,7 +11,6 @@ use crate::static_themes::desert_power::desert_power;
 use crate::static_themes::dracula::dracula;
 use crate::static_themes::eldritch::eldritch;
 use crate::static_themes::ethereal::ethereal;
-use crate::static_themes::eventide::eventide;
 use crate::static_themes::everforest_dark_hard::everforest_dark_hard;
 use crate::static_themes::everforest_dark_medium::everforest_dark_medium;
 use crate::static_themes::everforest_dark_soft::everforest_dark_soft;
@@ -29,7 +28,7 @@ use crate::static_themes::inky_pinky::inky_pinky;
 use crate::static_themes::kanagawa_dragon::kanagawa_dragon;
 use crate::static_themes::kanagawa_lotus::kanagawa_lotus;
 use crate::static_themes::kanagawa_wave::kanagawa_wave;
-use crate::static_themes::kenp::{kenp, kenp_light};
+use crate::static_themes::kenp::kenp;
 use crate::static_themes::margo::margo;
 use crate::static_themes::miasma::miasma;
 use crate::static_themes::monokai_classic::monokai_classic;
@@ -78,7 +77,6 @@ pub fn static_theme(theme: &Themes, mshell: Option<MShell>) -> Option<MatugenThe
         Themes::Dracula => Some(dracula(mshell)),
         Themes::Eldritch => Some(eldritch(mshell)),
         Themes::Ethereal => Some(ethereal(mshell)),
-        Themes::Eventide => Some(eventide(mshell)),
         Themes::EverforestDarkHard => Some(everforest_dark_hard(mshell)),
         Themes::EverforestDarkMedium => Some(everforest_dark_medium(mshell)),
         Themes::EverforestDarkSoft => Some(everforest_dark_soft(mshell)),
@@ -97,7 +95,6 @@ pub fn static_theme(theme: &Themes, mshell: Option<MShell>) -> Option<MatugenThe
         Themes::KanagawaLotus => Some(kanagawa_lotus(mshell)),
         Themes::KanagawaWave => Some(kanagawa_wave(mshell)),
         Themes::Kenp => Some(kenp(mshell)),
-        Themes::KenpLight => Some(kenp_light(mshell)),
         Themes::Miasma => Some(miasma(mshell)),
         Themes::MonokaiClassic => Some(monokai_classic(mshell)),
         Themes::NordDark => Some(nord_dark(mshell)),
