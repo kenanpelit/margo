@@ -7,6 +7,42 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.0.6] – 2026-06-13
+
+An internals pass: no user-visible behaviour change, but the codebase paid
+down its two watched ratchets and gained safe config migration.
+
+### Changed
+
+- **`state.rs` split back under 3k (4045 → 2441 lines).** The compositor's
+  central file regrew past its Phase-2 `<3000` target; the window/tag-rule +
+  placement cluster, the tiling-arrange cluster (incl. the ~526-line
+  `arrange_monitor`), keyboard-focus + pointer-monitor methods, and DPMS +
+  monitor enable/disable moved into sibling `impl MargoState` modules
+  (`state/{window_rules,arrange,focus_methods,dpms}.rs`), and
+  `apply_theme_preset` sits beside its `ThemeBaseline` in `state/theme.rs`.
+  Pure lift-and-shift — no behaviour change.
+- **Settings + bar boilerplate consolidated.** A `build_pages!` macro collapses
+  the 47 hand-written settings-page controller builds into one declarative list
+  (the page stack + sidebar were already table-driven); the three bar-slot
+  rebuild guards fold into one `BarModel::rebuild_slot` helper.
+
+### Added
+
+- **Profile schema versioning + stepped migration** (`mshell-config`). A new
+  `config_version` file-format meta key with a `migrate_yaml` load pre-pass that
+  brings an older profile up to the current format and writes it back once
+  (idempotent), and a save-side stamp. The framework makes the next config
+  rename/reshape a one-step, round-trip-tested change instead of a silent
+  "works-on-my-fresh-config" bug. v0→v1 is the versioning baseline (no field
+  transform yet). 7 round-trip tests.
+
+### Docs
+
+- Roadmaps de-drifted: `road_map.md` / `1.0-readiness.md` current-status bumped
+  to v1.0.6; `code-quality-roadmap.md` marks the `state.rs` split, config
+  versioning, and the settings/bar boilerplate items done/partial.
+
 ## [1.0.5] – 2026-06-12
 
 The design-language release: one central geometry source, GNOME metrics

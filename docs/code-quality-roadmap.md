@@ -8,6 +8,13 @@ snapshot: tests grew 503 → 765 ✅, but `state.rs` regrew past its Phase-2
 target (2944 → 4045 lines) and the unwrap count crept up 563 → 581 —
 the two ratchets to watch.
 
+> **Update (1.0.6 internals pass, 2026-06-13):** the unwrap ratchet is now
+> a CI hard gate (`scripts/panic-ratchet.sh`, baseline 334 — can only drop);
+> `state.rs` was split back **under the <3k bar (4045 → 2441)** into
+> `state/{window_rules,focus_methods,dpms,arrange}.rs`; profile **config
+> versioning + stepped migration** shipped (`mshell-config/src/migration.rs`).
+> See the per-item checkmarks below.
+
 The architecture and discipline are strong (especially `DESIGN.md` and the
 parser test coverage). The real debt is **repeated boilerplate, a few god
 files, and overlapping feature mechanisms.**
@@ -36,16 +43,21 @@ files, and overlapping feature mechanisms.**
   - Remaining (optional): a single `menu` registry that also drives the
     `MenuType`↔`MenuKind`↔config-accessor relationship so the mapping lives in
     exactly one table rather than two macros.
-- [ ] **Data-drive Settings-page registration.** Adding a sidebar page is a
-  manual 9-point wiring (mod + use + field + sidebar button + builder + route
-  + ComponentParts + add_titled + ActivateSection). Easy to get wrong (the
-  Tiling Layout button landed in the wrong alphabetical slot). Drive it from a
-  table of `(SettingsPage, route, icon, title, builder)`.
-- [ ] **Split the god files.** `state.rs` 4045 (regrew past the Phase-2
-  <3k bar), `udev/mod.rs` 3868, `frame.rs` 2885, `mctl.rs` 2620,
-  `settings.rs` 2465. Split `impl MargoState` across submodule
-  `impl` blocks (input / render / layout / ipc) — no behaviour change, just
-  smaller units that fit in context.
+- [~] **Data-drive Settings-page registration.** *Mostly done (1.0.6).* The
+  page stack (`stack_pages` loop) and sidebar (`SIDEBAR` const) were already
+  table-driven; the `build_pages!` macro now collapses the 47 controller
+  builds into one declarative list. Remaining (optional): a true single-source
+  registry that also emits the struct fields + `ComponentParts` assigns so the
+  page-list lives in exactly one table (blocked on the heterogeneous typed
+  `Controller<…>` fields + the `#[relm4::component]` struct context).
+- [x] **Split the god files — `state.rs`.** ✅ Done (1.0.6): 4045 → **2441**,
+  back under the Phase-2 <3k bar. Lifted into sibling `impl MargoState` blocks:
+  `state/window_rules.rs` (window/tag rules + placement), `state/arrange.rs`
+  (the tiling-arrange cluster incl. the ~526-line `arrange_monitor`),
+  `state/focus_methods.rs` (keyboard-focus + pointer-monitor), `state/dpms.rs`,
+  and `apply_theme_preset` beside its `ThemeBaseline` in `state/theme.rs`.
+  Still oversized (optional next): `udev/mod.rs` 3868, `frame.rs` 2885,
+  `mctl.rs` 2620, `settings.rs` ~2480.
 - [ ] **Unify overlapping mechanisms.** Per-tag layout exists twice
   (`tagrule layout_name` *and* `taglayout`) with previously-undefined
   precedence (caused a bug, fixed in e42c0bb). Menu sizing had min/max +
@@ -55,11 +67,18 @@ files, and overlapping feature mechanisms.**
 
 ## Medium priority
 
-- [ ] **Config migration / versioning.** `#[serde(default)]` fills a *missing*
-  field with the type default, not the intended value, so new fields don't
-  reach existing saved profiles. Add a `config_version` + stepwise migration
-  fns. (This is why a default-value change couldn't reach existing users.)
-- [ ] **Tame reactive-store granularity.** A write to any field wakes every
+- [x] **Config migration / versioning.** ✅ Done (1.0.6).
+  `mshell-config/src/migration.rs`: `CONFIG_VERSION` + a stepped `migrate_yaml`
+  load pre-pass (rewrites an older profile up to current, once) + `stamp_version`
+  on save. `config_version` is a file-format meta key (serde ignores it on read)
+  so `Config`'s `Store`/`Patch`/`JsonSchema` derives are untouched. v0→v1 is the
+  versioning baseline; the next real reshape is a one-arm + one round-trip-test
+  change. 7 round-trip tests, incl. bundled-profile parse-after-migrate.
+- [~] **Tame reactive-store granularity.** *Partially addressed (1.0.6).* The
+  three bar-slot rebuild guards collapsed into one `BarModel::rebuild_slot`
+  helper (the distinct-until-changed defence lives in one place now). The
+  deeper fix — field-level signals so a write doesn't wake root-bound effects —
+  is still open. Original note: a write to any field wakes every
   effect bound to that store, so menus carry a manual `widget_kinds` guard to
   avoid destructive rebuilds (which re-run dns/ufw/podman probes). Extract the
   guard pattern into one helper, or move to finer-grained signals.
