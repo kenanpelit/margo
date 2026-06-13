@@ -55,52 +55,6 @@ impl ThemeBaseline {
     }
 }
 
-#[cfg(test)]
-mod theme_baseline_tests {
-    use super::*;
-
-    #[test]
-    fn round_trip_preserves_every_captured_field() {
-        let mut c = Config {
-            borderpx: 3,
-            border_radius: 8,
-            shadows: true,
-            layer_shadows: true,
-            shadow_only_floating: true,
-            shadows_size: 22,
-            shadows_blur: 14.0,
-            blur: true,
-            blur_layer: false,
-            ..Config::default()
-        };
-
-        let baseline = ThemeBaseline::capture(&c);
-
-        // Stomp every field with a different value.
-        c.borderpx = 1;
-        c.border_radius = 0;
-        c.shadows = false;
-        c.layer_shadows = false;
-        c.shadow_only_floating = false;
-        c.shadows_size = 0;
-        c.shadows_blur = 0.0;
-        c.blur = false;
-        c.blur_layer = true;
-
-        baseline.apply_to(&mut c);
-
-        assert_eq!(c.borderpx, 3);
-        assert_eq!(c.border_radius, 8);
-        assert!(c.shadows);
-        assert!(c.layer_shadows);
-        assert!(c.shadow_only_floating);
-        assert_eq!(c.shadows_size, 22);
-        assert!((c.shadows_blur - 14.0).abs() < f32::EPSILON);
-        assert!(c.blur);
-        assert!(!c.blur_layer);
-    }
-}
-
 // ── apply_theme_preset (moved from state.rs, roadmap Q1 split) ──────────
 // The live application of a theme preset onto MargoState; the ThemeBaseline
 // data above is its companion. Glue method, kept beside the baseline it reads.
@@ -166,5 +120,51 @@ impl MargoState {
         self.request_repaint();
         tracing::info!(target: "theme", "applied preset `{name}`");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod theme_baseline_tests {
+    use super::*;
+
+    #[test]
+    fn round_trip_preserves_every_captured_field() {
+        let mut c = Config {
+            borderpx: 3,
+            border_radius: 8,
+            shadows: true,
+            layer_shadows: true,
+            shadow_only_floating: true,
+            shadows_size: 22,
+            shadows_blur: 14.0,
+            blur: true,
+            blur_layer: false,
+            ..Config::default()
+        };
+
+        let baseline = ThemeBaseline::capture(&c);
+
+        // Stomp every field with a different value.
+        c.borderpx = 1;
+        c.border_radius = 0;
+        c.shadows = false;
+        c.layer_shadows = false;
+        c.shadow_only_floating = false;
+        c.shadows_size = 0;
+        c.shadows_blur = 0.0;
+        c.blur = false;
+        c.blur_layer = true;
+
+        baseline.apply_to(&mut c);
+
+        assert_eq!(c.borderpx, 3);
+        assert_eq!(c.border_radius, 8);
+        assert!(c.shadows);
+        assert!(c.layer_shadows);
+        assert!(c.shadow_only_floating);
+        assert_eq!(c.shadows_size, 22);
+        assert!((c.shadows_blur - 14.0).abs() < f32::EPSILON);
+        assert!(c.blur);
+        assert!(!c.blur_layer);
     }
 }
