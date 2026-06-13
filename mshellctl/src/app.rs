@@ -12,6 +12,7 @@ use crate::subcommands::plugin::PluginCommands;
 use crate::subcommands::screen_record::ScreenRecordCommands;
 use crate::subcommands::screenshot::ScreenshotCommands;
 use crate::subcommands::settings::SettingsCommands;
+use crate::subcommands::theme::ThemeCommands;
 use crate::subcommands::wallpaper::WallpaperCommands;
 use mshell_cli_style;
 
@@ -36,6 +37,7 @@ EXAMPLES:
   mshellctl brightness up           # raise backlight 5%
   mshellctl media toggle            # MPRIS play/pause the active player
   mshellctl wallpaper next          # cycle to the next wallpaper
+  mshellctl theme set eventide      # switch colour scheme live
   mshellctl lock                    # lock the session
 
 SEE ALSO:
@@ -49,31 +51,35 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Kill mshell
+    /// Quit the shell process — bars and menus disappear, but the
+    /// compositor (margo) keeps running.
     Quit,
-    /// Launch the GTK4 inspector.  Useful for finding css node id's and classes.
+    /// Open the GTK4 inspector — handy for finding CSS node names and
+    /// classes while styling.
     Inspect,
-    /// Set the current wallpaper
+    /// Set the wallpaper to a specific image (one-shot). Use `wallpaper`
+    /// to cycle through a directory instead.
     SetWallpaper {
         /// Path to the image file
         path: PathBuf,
     },
-    /// Commands for opening and closing menus
+    /// Open, close, or toggle a shell menu (control-center, dashboard,
+    /// clipboard, …).
     Menu {
         #[command(subcommand)]
         command: MenuCommands,
     },
-    /// Commands for hiding and revealing bars
+    /// Show, hide, or toggle the top and bottom bars.
     Bar {
         #[command(subcommand)]
         command: BarCommands,
     },
-    /// Control the Hidden Bar drawer widget
+    /// Control the Hidden Bar drawer widget.
     HiddenBar {
         /// toggle | expand | collapse | pin | unpin
         action: String,
     },
-    /// Commands for changing audio
+    /// Audio control — output/input volume, mute, and device switching.
     Audio {
         #[command(subcommand)]
         command: AudioCommands,
@@ -85,12 +91,12 @@ pub enum Commands {
         #[command(subcommand)]
         command: BluetoothCommands,
     },
-    /// Commands for controlling media players (MPRIS)
+    /// Control the active MPRIS media player — play/pause, next, previous.
     Media {
         #[command(subcommand)]
         command: MediaCommands,
     },
-    /// Commands for changing brightness
+    /// Backlight brightness — raise, lower, or set a level.
     Brightness {
         #[command(subcommand)]
         command: BrightnessCommands,
@@ -111,19 +117,25 @@ pub enum Commands {
         #[command(subcommand)]
         command: Option<LockCommands>,
     },
-    /// Commands for the settings window
+    /// Open or close the Settings window.
     Settings {
         #[command(subcommand)]
         command: SettingsCommands,
     },
-    /// Open the in-shell setup wizard (a layer-shell menu)
+    /// Open the in-shell setup wizard (a layer-shell menu).
     Wizard,
-    /// Commands for cycling the wallpaper
+    /// Cycle the wallpaper — next, previous, or random.
     Wallpaper {
         #[command(subcommand)]
         command: WallpaperCommands,
     },
-    /// Commands for installed WASM plugins (reload from disk, …)
+    /// Colour scheme — list, show, or switch the active scheme live
+    /// (the same picker as Settings → Theme → Color Scheme; no restart).
+    Theme {
+        #[command(subcommand)]
+        command: ThemeCommands,
+    },
+    /// Manage installed WASM plugins (reload from disk, …).
     Plugin {
         #[command(subcommand)]
         command: PluginCommands,

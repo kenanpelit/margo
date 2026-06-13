@@ -65,6 +65,19 @@ Set the current wallpaper to a specific image.
 .B wallpaper \fISUBCOMMAND\fR
 Cycle the wallpaper:
 .IR next " | " prev " | " random .
+.TP
+.B theme \fISUBCOMMAND\fR
+Inspect or switch the colour scheme (the same picker as Settings \(->
+Theme \(-> Color Scheme), applied live with no restart:
+.IR list " [" \-\-names\-only "] | " get " | " "set \fINAME\fR" .
+.B set
+matching ignores case and
+.RB ` \- '/` _ '/space
+separators, so
+.IR eventide ", " tokyo\-night " and " "\(dqTokyo Night\(dq"
+all resolve;
+.B theme list
+prints the valid names.
 .SS "Session and system"
 .TP
 .B lock " " [\fBcheck\fR]
@@ -103,6 +116,8 @@ mshellctl audio mute
 mshellctl brightness up
 mshellctl media toggle            # play/pause the active player
 mshellctl wallpaper next
+mshellctl theme set eventide      # switch colour scheme live
+mshellctl theme list              # show every scheme name
 mshellctl lock
 .EE
 .in

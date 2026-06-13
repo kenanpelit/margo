@@ -142,6 +142,96 @@ impl Themes {
         }
     }
 
+    /// The canonical, stable identifier — the PascalCase variant name,
+    /// which is exactly what serde writes to the YAML profile. Use this
+    /// for machine-facing output (`mshellctl theme get` / `list`) so the
+    /// printed name round-trips back through [`Self::from_cli`].
+    pub fn ident(&self) -> &'static str {
+        match self {
+            Self::Default => "Default",
+            Self::Wallpaper => "Wallpaper",
+            Self::Bauhaus => "Bauhaus",
+            Self::BlackTurq => "BlackTurq",
+            Self::BloodRust => "BloodRust",
+            Self::CatppuccinFrappe => "CatppuccinFrappe",
+            Self::CatppuccinLatte => "CatppuccinLatte",
+            Self::CatppuccinMacchiato => "CatppuccinMacchiato",
+            Self::CatppuccinMocha => "CatppuccinMocha",
+            Self::Cyberpunk => "Cyberpunk",
+            Self::DesertPower => "DesertPower",
+            Self::Dracula => "Dracula",
+            Self::Eldritch => "Eldritch",
+            Self::Ethereal => "Ethereal",
+            Self::Eventide => "Eventide",
+            Self::EverforestDarkHard => "EverforestDarkHard",
+            Self::EverforestDarkMedium => "EverforestDarkMedium",
+            Self::EverforestDarkSoft => "EverforestDarkSoft",
+            Self::EverforestLightHard => "EverforestLightHard",
+            Self::EverforestLightMedium => "EverforestLightMedium",
+            Self::EverforestLightSoft => "EverforestLightSoft",
+            Self::GruvboxDarkHard => "GruvboxDarkHard",
+            Self::GruvboxDarkMedium => "GruvboxDarkMedium",
+            Self::GruvboxDarkSoft => "GruvboxDarkSoft",
+            Self::GruvboxLightHard => "GruvboxLightHard",
+            Self::GruvboxLightMedium => "GruvboxLightMedium",
+            Self::GruvboxLightSoft => "GruvboxLightSoft",
+            Self::Hackerman => "Hackerman",
+            Self::InkyPinky => "InkyPinky",
+            Self::KanagawaDragon => "KanagawaDragon",
+            Self::KanagawaLotus => "KanagawaLotus",
+            Self::KanagawaWave => "KanagawaWave",
+            Self::Kenp => "Kenp",
+            Self::KenpLight => "KenpLight",
+            Self::Margo => "Margo",
+            Self::Miasma => "Miasma",
+            Self::MonokaiClassic => "MonokaiClassic",
+            Self::NordDark => "NordDark",
+            Self::NordLight => "NordLight",
+            Self::OceanicNext => "OceanicNext",
+            Self::OneDark => "OneDark",
+            Self::OsakaJade => "OsakaJade",
+            Self::Poimandres => "Poimandres",
+            Self::Retro82 => "Retro82",
+            Self::RosePine => "RosePine",
+            Self::RosePineDawn => "RosePineDawn",
+            Self::RosePineMoon => "RosePineMoon",
+            Self::Saga => "Saga",
+            Self::Seoul => "Seoul",
+            Self::SolarizedDark => "SolarizedDark",
+            Self::SolarizedLight => "SolarizedLight",
+            Self::Solitude => "Solitude",
+            Self::Synthwave84 => "Synthwave84",
+            Self::TokyoNight => "TokyoNight",
+            Self::TokyoNightStorm => "TokyoNightStorm",
+            Self::TokyoNightLight => "TokyoNightLight",
+            Self::Varda => "Varda",
+        }
+    }
+
+    /// Resolve a user-typed name to a theme, tolerant of case and of
+    /// separators. We compare on the ASCII-alphanumeric skeleton of both
+    /// the [`Self::ident`] and the [`Self::label`], so `eventide`,
+    /// `Eventide`, `tokyo-night`, `tokyo_night`, `TokyoNight` and
+    /// `"Tokyo Night"` all resolve. Matching the ident (which carries no
+    /// accents) is what lets `catppuccin-frappe` / `rose-pine` work even
+    /// though their labels are accented ("Frappé" / "Rosé").
+    pub fn from_cli(input: &str) -> Option<Self> {
+        let skeleton = |s: &str| -> String {
+            s.chars()
+                .filter(|c| c.is_ascii_alphanumeric())
+                .map(|c| c.to_ascii_lowercase())
+                .collect()
+        };
+        let target = skeleton(input);
+        if target.is_empty() {
+            return None;
+        }
+        Self::all()
+            .iter()
+            .copied()
+            .find(|t| skeleton(t.ident()) == target || skeleton(t.label()) == target)
+    }
+
     pub fn all() -> &'static [Self] {
         &[
             Self::Default,
@@ -466,3 +556,56 @@ impl PartialEq for WindowOpacity {
 }
 
 impl Eq for WindowOpacity {}
+
+#[cfg(test)]
+mod theme_ident_tests {
+    use super::*;
+
+    #[test]
+    fn every_ident_round_trips_through_from_cli() {
+        for theme in Themes::all() {
+            let ident = theme.ident();
+            assert_eq!(
+                Themes::from_cli(ident),
+                Some(*theme),
+                "ident {ident:?} did not resolve back to its own theme",
+            );
+        }
+    }
+
+    #[test]
+    fn idents_are_ascii_and_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for theme in Themes::all() {
+            let ident = theme.ident();
+            assert!(
+                ident.is_ascii() && !ident.is_empty(),
+                "ident {ident:?} must be non-empty ASCII (round-trips, no accents)",
+            );
+            assert!(seen.insert(ident), "duplicate ident {ident:?}");
+        }
+    }
+
+    #[test]
+    fn from_cli_ignores_case_and_separators() {
+        for input in ["eventide", "Eventide", "EVENTIDE"] {
+            assert_eq!(Themes::from_cli(input), Some(Themes::Eventide));
+        }
+        for input in ["tokyo-night", "tokyo_night", "TokyoNight", "Tokyo Night"] {
+            assert_eq!(Themes::from_cli(input), Some(Themes::TokyoNight));
+        }
+        // Accented labels still resolve via the (accent-free) ident.
+        assert_eq!(Themes::from_cli("rose-pine"), Some(Themes::RosePine));
+        assert_eq!(
+            Themes::from_cli("catppuccin frappe"),
+            Some(Themes::CatppuccinFrappe),
+        );
+    }
+
+    #[test]
+    fn from_cli_rejects_unknown_and_empty() {
+        assert_eq!(Themes::from_cli("not-a-real-theme"), None);
+        assert_eq!(Themes::from_cli(""), None);
+        assert_eq!(Themes::from_cli("   "), None);
+    }
+}

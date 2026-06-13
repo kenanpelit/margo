@@ -454,6 +454,24 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         },
                     );
                 }
+                IPCCommand::ThemeSet(theme) => {
+                    // Identical to the GUI's ThemeSelected handler: write the
+                    // scheme into the reactive config store and let the style
+                    // manager re-theme. No `mctl reload`, no restart.
+                    config_manager().update_config(|config| {
+                        config.theme.theme = theme;
+                    });
+                }
+                IPCCommand::ThemeGet(reply) => {
+                    let current = config_manager()
+                        .config()
+                        .theme()
+                        .get_untracked()
+                        .theme
+                        .ident()
+                        .to_string();
+                    let _ = reply.send(current);
+                }
                 IPCCommand::OpenSettings => {
                     open_settings();
                 }
@@ -620,6 +638,13 @@ enum IPCCommand {
     /// `mshellctl clipboard list` — reply with one `id\tcategory\tpreview`
     /// line per entry (newest first).
     ClipboardList(tokio::sync::oneshot::Sender<String>),
+    /// `mshellctl theme set <name>` — apply a colour scheme live, the
+    /// same write Settings → Theme → Color Scheme performs. Runs on the
+    /// GTK main thread (where the dispatch loop lives), so the reactive
+    /// store + style manager pick it up exactly like the GUI path.
+    ThemeSet(mshell_config::schema::themes::Themes),
+    /// `mshellctl theme get` — reply with the active scheme's canonical name.
+    ThemeGet(tokio::sync::oneshot::Sender<String>),
     OpenSettings,
     OpenWizard,
     CloseSettings,
@@ -1448,6 +1473,36 @@ impl IPCService {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let _ = self.tx.send(IPCCommand::ClipboardList(tx));
         rx.await.unwrap_or_default()
+    }
+    /// `mshellctl theme list` — one `name\tlabel` line per built-in colour
+    /// scheme. Static (sourced from `Themes::all()`), so it answers without
+    /// bouncing through the command loop.
+    async fn theme_list(&self) -> String {
+        use mshell_config::schema::themes::Themes;
+        Themes::all()
+            .iter()
+            .map(|t| format!("{}\t{}", t.ident(), t.label()))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+    /// `mshellctl theme get` — the active scheme's canonical name.
+    async fn theme_get(&self) -> String {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ = self.tx.send(IPCCommand::ThemeGet(tx));
+        rx.await.unwrap_or_default()
+    }
+    /// `mshellctl theme set <name>` — switch the colour scheme live. Returns
+    /// an empty string on success, or an error message for an unknown name
+    /// (so the CLI can fail loudly instead of silently no-op'ing).
+    async fn theme_set(&self, name: String) -> String {
+        use mshell_config::schema::themes::Themes;
+        match Themes::from_cli(&name) {
+            Some(theme) => {
+                let _ = self.tx.send(IPCCommand::ThemeSet(theme));
+                String::new()
+            }
+            None => format!("unknown theme '{name}' — run `mshellctl theme list`"),
+        }
     }
     async fn notifications(&self) {
         let _ = self.tx.send(IPCCommand::Notifications);

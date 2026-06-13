@@ -12,4 +12,5 @@ pub mod plugin;
 pub mod screen_record;
 pub mod screenshot;
 pub mod settings;
+pub mod theme;
 pub mod wallpaper;

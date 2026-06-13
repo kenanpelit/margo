@@ -35,6 +35,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Settings { command } => {
             mshellctl::subcommands::settings::execute(command).await?
         }
+        Commands::Theme { command } => mshellctl::subcommands::theme::execute(command).await?,
         Commands::Wizard => {
             bus_command("OpenWizard").await?;
         }
