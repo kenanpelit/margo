@@ -9,8 +9,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [1.0.6] – 2026-06-13
 
-An internals pass: paid down the two watched ratchets, gained safe config
-migration, and fixed silent notification sounds.
+An internals pass: split both compositor god-files (`state.rs` + `udev/mod.rs`)
+back down, gained safe config migration, covered the first-login bootstrap,
+added a `justfile` dev loop, and fixed silent notification sounds.
 
 ### Fixed
 
@@ -33,10 +34,19 @@ migration, and fixed silent notification sounds.
   (`state/{window_rules,arrange,focus_methods,dpms}.rs`), and
   `apply_theme_preset` sits beside its `ThemeBaseline` in `state/theme.rs`.
   Pure lift-and-shift — no behaviour change.
+- **`udev/mod.rs` split (3868 → 1654 lines).** The last compositor god-file:
+  the entire render-element construction cluster (`RenderTarget`,
+  `build_render_elements[_inner]`, cursor / MRU-switcher / scroller-overview
+  overlays, per-client/per-layer push helpers, screencast/image-copy frame
+  drains — ~2200 lines) moved into `backend/udev/render_elements.rs`; `mod.rs`
+  keeps backend setup, capture queueing, and `serve_screencopies`. Pure
+  lift-and-shift.
 - **Settings + bar boilerplate consolidated.** A `build_pages!` macro collapses
   the 47 hand-written settings-page controller builds into one declarative list
   (the page stack + sidebar were already table-driven); the three bar-slot
-  rebuild guards fold into one `BarModel::rebuild_slot` helper.
+  rebuild guards fold into one `BarModel::rebuild_slot` helper. The mute
+  wire-encoding (0/1/else = off/on/toggle) is now one `mute_target` helper
+  shared by the output + mic IPC arms instead of two inline copies.
 
 ### Added
 
@@ -47,6 +57,18 @@ migration, and fixed silent notification sounds.
   rename/reshape a one-step, round-trip-tested change instead of a silent
   "works-on-my-fresh-config" bug. v0→v1 is the versioning baseline (no field
   transform yet). 7 round-trip tests.
+- **`justfile` for the dev inner loop.** One source for build+install+restart:
+  `just shell` / `just margo` / `just cli` / `just all`, `just reload`
+  (`mctl reload` — config only, never a binary swap), and `just check` (the
+  exact pre-push CI gate). Complements `./install.sh` (the packaged installer).
+
+### Tests
+
+- **First-login config bootstrap** is now covered: `ensure_default_config`
+  writes a complete, *parseable* `config.conf` + starter `binds.conf` +
+  `conf.d/colors.conf` on an empty dir and never clobbers existing files;
+  `seed_bundled_profile` seeds the profile once and preserves a customised one.
+- **mshell-core mute encoding** unit-tested via the new `mute_target` helper.
 
 ### Docs
 
