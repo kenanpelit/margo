@@ -1011,3 +1011,44 @@ plugin ABI) nor mango-ext (single-TU C, zero tests) competes in.
 
 **Phase 1 closes here.** Phase 2 (§15) is the deeper work: harden, test,
 polish, grow.
+
+---
+
+## Deferred backlog (not urgent — parked 2026-06-13)
+
+After the 1.0.6 internals pass (both compositor god-files split, config
+versioning, bootstrap + IPC tests, `justfile`, the parked dock/mic/mplay
+bugs fixed, the visual overhaul shipped), the high-ROI debt is cleared.
+What's left is genuinely optional — pull an item up only when there's
+reason to. Recorded here so it isn't re-discovered from scratch.
+
+**Remaining large files (low ROI).** Unlike `state.rs` / `udev/mod.rs`
+(free-function / method clusters that lifted-and-shifted cleanly), these
+are harder or less valuable to split:
+- `mctl.rs` (~2620) — the most splittable (per-subcommand modules); do
+  this first if continuing the god-file work.
+- `frame.rs` (~2885), `settings.rs` (~2499) — GTK/relm4 component files
+  (`view!` macro + struct context); they don't split along clean `impl`
+  boundaries the way the compositor files did. Lower value.
+
+**Real feature gap.** Multi-GPU offload — the one architectural hole in
+the protocol/capability audit (`docs/protocol-comparison.md`). Large,
+isolated, hardware-dependent; a proper 1.x feature, not a quick win.
+(`wp_drm_lease_device_v1` and `wp_tearing_control_v1` remain
+architecture-/upstream-blocked, not effort-bound — see §15.10.)
+
+**Ecosystem / polish (cheap).**
+- Nix flake `nix run` is blocked on the smithay git `outputHash`
+  (`lib.fakeHash`) — ~10 min on a machine with Nix.
+- A "writing a plugin" tutorial + an example gallery (`mplugin-sdk` is
+  ready) — the low-stakes entry point for the community-contributor bar
+  (§15.6), not engineering work.
+
+**Optional deepening of done items.**
+- Settings registration: a true single-source registry that also emits
+  the struct fields + `ComponentParts` assigns (the `build_pages!` macro
+  already covers the controller builds; blocked on heterogeneous typed
+  `Controller<…>` fields + the `#[relm4::component]` struct context).
+- Reactive store: field-level signals so a write doesn't wake every
+  root-bound effect (the `BarModel::rebuild_slot` guard handles the
+  symptom; this would remove the cause). See `code-quality-roadmap.md`.
