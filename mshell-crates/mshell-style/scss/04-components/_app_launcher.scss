@@ -204,9 +204,9 @@
 // Hover: surface-container-high (the same colour the calendar
 //        prev/next buttons use on hover, so the whole shell feels
 //        consistent under the pointer).
-// Selected (keyboard nav): primary accent — drops the icon /
-//        label / pin marker / quick-key to the on-primary tone
-//        so contrast survives the tint swap.
+// Selected (keyboard nav): the soft --primary-container accent (same
+//        as the clipboard panel) — drops the icon / label / pin marker /
+//        quick-key to the on-primary-container tone so contrast survives.
 .app-launcher-item {
   background-color: transparent;
   border-radius: var(--radius-sm);
@@ -253,34 +253,37 @@
     background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
   }
 
+  // Selected row uses the soft --primary-container accent tier — the
+  // same calm selection fill the clipboard panel uses, so the active-row
+  // cue reads identically across both result lists (DESIGN.md §14
+  // restraint: a controlled accent, not a full --primary flood).
   &.selected {
-    background-color: var(--primary);
-    color: var(--on-primary);
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
     // Tonal elevation: a soft primary-tinted shadow lifts the selected
     // row off the well so the keyboard cursor reads as "raised", not
     // just tinted (DESIGN.md §0 tonal elevation).
-    box-shadow: 0 2px 8px unquote("color-mix(in srgb, var(--primary) 38%, transparent)");
+    box-shadow: 0 2px 8px unquote("color-mix(in srgb, var(--primary) 24%, transparent)");
 
     image {
-      color: var(--on-primary);
+      color: var(--on-primary-container);
     }
 
     .label-medium-bold,
     .label-small {
-      color: var(--on-primary);
+      color: var(--on-primary-container);
       opacity: 1;
     }
 
-    // Quick-key digit on a selected row picks up an inverted-but-
-    // still-dim tone so it stays a hint, not a competing primary
-    // label.
+    // Quick-key digit on a selected row stays a dim hint rather than a
+    // competing label.
     .app-launcher-quick-key {
-      color: var(--on-primary);
-      opacity: 0.75;
+      color: var(--on-primary-container);
+      opacity: 0.7;
     }
 
     .app-launcher-pin-marker {
-      color: var(--on-primary);
+      color: var(--on-primary-container);
       opacity: 1;
     }
   }
@@ -305,7 +308,7 @@
 // ── Pin marker ──────────────────────────────────────────────────
 //
 // ★ glyph at the end of pinned rows. Accent-coloured by default,
-// flips to on-primary when the row is the selection (see above).
+// flips to on-primary-container when the row is the selection (see above).
 .app-launcher-pin-marker {
   color: var(--primary);
   font-size: var(--font-xs);
