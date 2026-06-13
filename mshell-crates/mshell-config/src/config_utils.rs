@@ -261,4 +261,64 @@ mod tests {
             );
         }
     }
+
+    /// Shell-side first-login bootstrap: an empty profiles dir gets the chosen
+    /// bundled profile seeded (and it parses as a `Config`); a profile the user
+    /// already has is never clobbered; an unknown name seeds nothing. Mutates
+    /// `$HOME` (paths.rs derives everything from it), so it runs under a lock
+    /// and restores the env — no other test in this crate reads `$HOME`.
+    #[test]
+    fn seed_bundled_profile_creates_default_and_preserves_existing() {
+        use std::sync::Mutex;
+        static HOME_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let home =
+            std::env::temp_dir().join(format!("margo-seed-test-{}-{nanos}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+
+        let prev = std::env::var_os("HOME");
+        // SAFETY: single-threaded within the HOME_LOCK; restored below.
+        unsafe { std::env::set_var("HOME", &home) };
+
+        // Empty dir → seeding creates the profile, and it parses as Config.
+        let path = crate::paths::profile_path("default");
+        assert!(!path.exists(), "starts absent");
+        assert!(
+            seed_bundled_profile("default"),
+            "default is a bundled profile"
+        );
+        assert!(path.exists(), "default.yaml seeded");
+        serde_yaml::from_str::<Config>(&std::fs::read_to_string(&path).unwrap())
+            .expect("seeded profile parses as Config");
+
+        // Re-seeding must NOT clobber a profile the user has customised.
+        std::fs::write(&path, "general:\n  panel_scale: 1.25\n").unwrap();
+        assert!(
+            seed_bundled_profile("default"),
+            "returns true (already present)"
+        );
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .contains("panel_scale"),
+            "existing profile preserved, not overwritten"
+        );
+
+        // An unknown profile name seeds nothing.
+        assert!(!seed_bundled_profile("no-such-profile"));
+        assert!(!crate::paths::profile_path("no-such-profile").exists());
+
+        // Restore the environment for any later test.
+        match prev {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }

@@ -32,6 +32,7 @@ mod client;
 mod fixture;
 mod server;
 
+mod bootstrap;
 mod color_management;
 mod dmabuf;
 mod focus_mon;
