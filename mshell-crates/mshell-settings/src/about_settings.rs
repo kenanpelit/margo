@@ -44,6 +44,12 @@ impl Component for AboutSettingsModel {
     view! {
         #[root]
         gtk::ScrolledWindow {
+            // The page is built eagerly at startup, so a once-at-init read
+            // would freeze uptime (and the rest) at login time. Re-read every
+            // time the page is mapped — i.e. each time About is opened.
+            connect_map[sender] => move |_| {
+                sender.input(AboutSettingsInput::Refresh);
+            },
             set_vscrollbar_policy: gtk::PolicyType::Automatic,
             set_hscrollbar_policy: gtk::PolicyType::Never,
             set_propagate_natural_height: false,
