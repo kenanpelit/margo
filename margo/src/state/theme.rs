@@ -100,3 +100,71 @@ mod theme_baseline_tests {
         assert!(!c.blur_layer);
     }
 }
+
+// ── apply_theme_preset (moved from state.rs, roadmap Q1 split) ──────────
+// The live application of a theme preset onto MargoState; the ThemeBaseline
+// data above is its companion. Glue method, kept beside the baseline it reads.
+use super::MargoState;
+
+impl MargoState {
+    /// Live-swap the visual theme without touching `~/.config/margo/config.conf`.
+    ///
+    /// Three built-in presets:
+    ///   * `default` — restore the values parsed from the config file at
+    ///     startup (or the most recent `mctl reload`).
+    ///   * `minimal` — borders thin, shadows off, blur off, square corners.
+    ///     Good for low-end GPUs or anyone who likes a flat look.
+    ///   * `gaudy`   — chunky borders, deep drop shadows, rounded corners,
+    ///     blur on. Demo / screenshot mode.
+    ///
+    /// The first call captures the current config values into
+    /// `theme_baseline` so `default` always means "what was on disk
+    /// before the user started swapping". `mctl reload` re-invalidates
+    /// the baseline so reload + `default` gives the freshly-parsed
+    /// values.
+    ///
+    /// Returns `Err(reason)` for an unknown preset name; the dispatch
+    /// handler turns this into a user-visible warning.
+    pub fn apply_theme_preset(&mut self, name: &str) -> Result<(), String> {
+        // Lazy capture — first preset switch establishes the
+        // "what the config file said" baseline.
+        if self.theme_baseline.is_none() {
+            self.theme_baseline = Some(ThemeBaseline::capture(&self.config));
+        }
+        let baseline = self.theme_baseline.as_ref().unwrap().clone();
+
+        match name {
+            "default" => baseline.apply_to(&mut self.config),
+            "minimal" => {
+                self.config.shadows = false;
+                self.config.layer_shadows = false;
+                self.config.shadow_only_floating = false;
+                self.config.blur = false;
+                self.config.blur_layer = false;
+                self.config.border_radius = 0;
+                self.config.borderpx = 1;
+            }
+            "gaudy" => {
+                self.config.shadows = true;
+                self.config.layer_shadows = true;
+                self.config.shadows_size = 32;
+                self.config.shadows_blur = 18.0;
+                self.config.border_radius = 14;
+                self.config.borderpx = 4;
+            }
+            other => {
+                return Err(format!(
+                    "unknown theme preset `{other}` — try `default`, `minimal`, or `gaudy`"
+                ));
+            }
+        }
+
+        // Border / shadow / blur all read straight off `self.config`
+        // every frame, so an arrange + repaint is enough — no
+        // per-client mutation, no animation re-bake.
+        self.arrange_all();
+        self.request_repaint();
+        tracing::info!(target: "theme", "applied preset `{name}`");
+        Ok(())
+    }
+}
