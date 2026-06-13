@@ -68,7 +68,7 @@ impl MargoState {
         // and the keyboard-first MRU navigation
         // (`overview_focus_next/prev`) cycles through them with
         // focus + border tracking the selection.
-        let layout = if is_overview {
+        let mut layout = if is_overview {
             crate::layout::LayoutId::Grid
         } else {
             mon.current_layout()
@@ -163,6 +163,15 @@ impl MargoState {
         if !is_overview && self.config.smartgaps && tiled.len() <= 1 {
             gaps.gappoh = 0;
             gaps.gappov = 0;
+        }
+
+        // `monly` (port of oniri): when a tag holds exactly one tiled window,
+        // maximise it — arrange as Monocle regardless of the active layout, so
+        // the lone window fills the work area even in column layouts like
+        // scroller (where it would otherwise keep its column width). Pairs with
+        // `smartgaps` above, which drops the outer gaps for a single window.
+        if !is_overview && self.config.monly && tiled.len() == 1 {
+            layout = crate::layout::LayoutId::Monocle;
         }
 
         let curtag = self.monitors[mon_idx].pertag.curtag;

@@ -438,6 +438,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
             cfg.gappov = gap;
         }
         "smartgaps" => cfg.smartgaps = parse_bool(val),
+        "monly" => cfg.monly = parse_bool(val),
         "gappih" => cfg.gappih = parse_u32(val),
         "gappiv" => cfg.gappiv = parse_u32(val),
         "gappoh" => cfg.gappoh = parse_u32(val),
@@ -1601,6 +1602,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "sloppyfocus",
     "sloppyfocus_arrange",
     "smartgaps",
+    "monly",
     "enable_gaps",
     "gaps_enabled",
     "snap_distance",
@@ -1857,13 +1859,14 @@ mod tests {
 
         std::fs::write(
             &main,
-            "enable_gaps=1\ngaps=4\ngaps_in=6\ngaps_out=8\nsmartgaps=1\n",
+            "enable_gaps=1\ngaps=4\ngaps_in=6\ngaps_out=8\nsmartgaps=1\nmonly=1\n",
         )
         .unwrap();
 
         let cfg = parse_config(Some(&main)).unwrap();
         assert!(cfg.enable_gaps);
         assert!(cfg.smartgaps);
+        assert!(cfg.monly);
         assert_eq!(cfg.gappih, 6);
         assert_eq!(cfg.gappiv, 6);
         assert_eq!(cfg.gappoh, 8);

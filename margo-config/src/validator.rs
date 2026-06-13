@@ -544,6 +544,7 @@ const BOOL_KEYS: &[&str] = &[
     "sloppyfocus",
     "sloppyfocus_arrange",
     "smartgaps",
+    "monly",
     "syncobj_enable",
     "tag_carousel",
     "taglayout_force",

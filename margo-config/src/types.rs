@@ -828,6 +828,10 @@ pub struct Config {
     // gaps / borders
     pub enable_gaps: bool,
     pub smartgaps: bool,
+    /// "monly" (port of oniri): maximise the lone tiled window of a tag by
+    /// arranging it as Monocle regardless of the active layout — so a single
+    /// window fills the work area even in column layouts like scroller.
+    pub monly: bool,
     pub gappih: u32,
     pub gappiv: u32,
     pub gappoh: u32,
@@ -1151,6 +1155,7 @@ impl Default for Config {
 
             enable_gaps: true,
             smartgaps: false,
+            monly: false,
             gappih: 5,
             gappiv: 5,
             gappoh: 10,

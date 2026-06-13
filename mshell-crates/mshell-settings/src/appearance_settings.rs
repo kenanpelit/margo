@@ -29,6 +29,7 @@ pub(crate) struct AppearanceModel {
     gappoh: f64,
     gappov: f64,
     smartgaps: bool,
+    monly: bool,
     focused_opacity: f64,
     unfocused_opacity: f64,
     cursor_size: f64,
@@ -170,6 +171,14 @@ impl Component for AppearanceModel {
                             connect_active_notify[sender] => move |s| sender.input(AppearanceInput::SetBool("smartgaps", s.is_active())),
                         },
                     },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Maximise the only window (monly)" },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.monly,
+                            connect_active_notify[sender] => move |s| sender.input(AppearanceInput::SetBool("monly", s.is_active())),
+                        },
+                    },
                 },
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Opacity & cursor", set_halign: gtk::Align::Start },
@@ -225,6 +234,7 @@ impl Component for AppearanceModel {
             gappoh: read_int("gappoh", 12) as f64,
             gappov: read_int("gappov", 12) as f64,
             smartgaps: read_bool("smartgaps", false),
+            monly: read_bool("monly", false),
             focused_opacity: read_f64("focused_opacity", 1.0),
             unfocused_opacity: read_f64("unfocused_opacity", 0.9),
             cursor_size: read_int("cursor_size", 24) as f64,
