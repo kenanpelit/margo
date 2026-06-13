@@ -452,8 +452,10 @@ fn refilter() {
             .get_untracked()
             .get();
 
-        let should_filter =
-            apply && strength != 0.0 && theme != Themes::Default && theme != Themes::Wallpaper;
+        // `Default` is now an alias for the static house theme (Kenp), so it
+        // grades the wallpaper like any other static theme; only `Wallpaper`
+        // (the dynamic-from-image mode) is excluded.
+        let should_filter = apply && strength != 0.0 && theme != Themes::Wallpaper;
 
         std::thread::spawn(move || {
             let result = if should_filter {

@@ -64,13 +64,14 @@ const CLUT_TOKYO_NIGHT_LIGHT: &[u8] = include_bytes!("../cluts/tokyo_night_light
 const CLUT_VARDA: &[u8] = include_bytes!("../cluts/varda.bin");
 
 /// Look up the precomputed Hald CLUT for a static theme.
-/// Returns `None` for `Default` and `Wallpaper` (dynamic themes).
+/// Returns `None` only for `Wallpaper` (the dynamic-from-wallpaper mode).
 pub fn embedded_clut(theme: &Themes) -> Option<&'static [u8]> {
     match theme {
-        // `Default` is the alias for Margo, the project's brand
-        // theme. `Wallpaper` stays `None` — it's the dynamic
-        // mode that grades from the live wallpaper instead.
-        Themes::Default | Themes::Margo => Some(CLUT_MARGO),
+        // `Default` aliases margo's default scheme, now the house theme
+        // Kenp; `Margo` keeps the original brand LUT. `Wallpaper` stays
+        // `None` — it grades from the live wallpaper instead.
+        Themes::Default => Some(CLUT_KENP),
+        Themes::Margo => Some(CLUT_MARGO),
         Themes::Wallpaper => None,
         Themes::Bauhaus => Some(CLUT_BAUHAUS),
         Themes::BlackTurq => Some(CLUT_BLACK_TURQ),
