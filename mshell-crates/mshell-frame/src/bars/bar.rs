@@ -77,6 +77,15 @@ pub(crate) enum BarType {
     Bottom,
 }
 
+/// Which bar container a widget list targets — selects the cached-kinds +
+/// controllers field pair in [`BarModel::rebuild_slot`].
+#[derive(Clone, Copy)]
+enum Slot {
+    Start,
+    Center,
+    End,
+}
+
 pub(crate) struct BarModel {
     h_expand: bool,
     v_expand: bool,
@@ -604,46 +613,18 @@ impl Component for BarModel {
                 }
             }
             BarInput::SetStartWidgets(bar_widgets) => {
-                if self.start_widget_kinds == bar_widgets {
-                    return;
-                }
-                clear_box(&widgets.start_container);
-                self.start_widgets.clear();
-                for item in &bar_widgets {
-                    let controller =
-                        BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
-                    widgets.start_container.append(&controller.root_widget());
-                    self.start_widgets.push(controller);
-                }
-                self.start_widget_kinds = bar_widgets;
+                self.rebuild_slot(Slot::Start, &widgets.start_container, bar_widgets, &sender);
             }
             BarInput::SetEndWidgets(bar_widgets) => {
-                if self.end_widget_kinds == bar_widgets {
-                    return;
-                }
-                clear_box(&widgets.end_container);
-                self.end_widgets.clear();
-                for item in &bar_widgets {
-                    let controller =
-                        BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
-                    widgets.end_container.append(&controller.root_widget());
-                    self.end_widgets.push(controller);
-                }
-                self.end_widget_kinds = bar_widgets;
+                self.rebuild_slot(Slot::End, &widgets.end_container, bar_widgets, &sender);
             }
             BarInput::SetCenteredWidgets(bar_widgets) => {
-                if self.center_widget_kinds == bar_widgets {
-                    return;
-                }
-                clear_box(&widgets.center_container);
-                self.center_widgets.clear();
-                for item in &bar_widgets {
-                    let controller =
-                        BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
-                    widgets.center_container.append(&controller.root_widget());
-                    self.center_widgets.push(controller);
-                }
-                self.center_widget_kinds = bar_widgets;
+                self.rebuild_slot(
+                    Slot::Center,
+                    &widgets.center_container,
+                    bar_widgets,
+                    &sender,
+                );
             }
             BarInput::SetMinHeight(min) => {
                 self.min_height = min;
@@ -758,6 +739,39 @@ impl BarModel {
         self.start_widget_kinds.is_empty()
             && self.center_widget_kinds.is_empty()
             && self.end_widget_kinds.is_empty()
+    }
+
+    /// Rebuild one bar slot's widgets from `new`, guarded distinct-until-changed.
+    ///
+    /// A single config save reaches every effect bound to the root store, so
+    /// this can fire with an identical list; the guard skips the destructive
+    /// clear+rebuild that would otherwise flicker the bar (see the
+    /// `*_widget_kinds` field comment). One helper for all three slots.
+    fn rebuild_slot(
+        &mut self,
+        slot: Slot,
+        container: &gtk::Box,
+        new: Vec<BarWidget>,
+        sender: &ComponentSender<Self>,
+    ) {
+        let orientation = self.orientation;
+        let bar_type = self.bar_type;
+        let (cached, controllers) = match slot {
+            Slot::Start => (&mut self.start_widget_kinds, &mut self.start_widgets),
+            Slot::Center => (&mut self.center_widget_kinds, &mut self.center_widgets),
+            Slot::End => (&mut self.end_widget_kinds, &mut self.end_widgets),
+        };
+        if *cached == new {
+            return;
+        }
+        clear_box(container);
+        controllers.clear();
+        for item in &new {
+            let controller = BarModel::build_widget(orientation, bar_type, item, sender);
+            container.append(&controller.root_widget());
+            controllers.push(controller);
+        }
+        *cached = new;
     }
 
     fn build_widget(
