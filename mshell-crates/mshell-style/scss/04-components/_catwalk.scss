@@ -1,0 +1,20 @@
+// Catwalk bar pill — the cat itself rides the generic pill surface
+// (.ok-button-surface .ok-bar-widget), so this file only styles the
+// optional CPU-% readout beside it. Severity tracks the calm → warn →
+// danger ladder (DESIGN.md §3): normal text, then warning, then error.
+
+.catwalk-cpu-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  // Tabular-ish spacing so the pill doesn't jitter as the digits change.
+  font-feature-settings: "tnum";
+  color: var(--on-surface);
+
+  &.warn {
+    color: var(--warning);
+  }
+
+  &.danger {
+    color: var(--error);
+  }
+}

@@ -752,8 +752,65 @@ impl Default for PrivacyWidgetConfig {
     }
 }
 
+/// Which cat sprite set the [`BarWidget::Catwalk`] pill animates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CatStyle {
+    /// The noctalia cat — 4 walk frames + 4 idle frames.
+    Noctalia,
+    /// RunCat — the classic macOS running cat (5 run frames + a sleeping
+    /// idle pose). Ported from CatWalk by Driglu4it, originally RunCat by
+    /// Kyome.
+    #[default]
+    RunCat,
+}
+
+impl PatchField for CatStyle {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
+}
+
+/// What the catwalk pill shows: the cat, the CPU %, or both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CatwalkDisplay {
+    /// Just the animated cat.
+    #[default]
+    Icon,
+    /// Just the CPU percentage (severity-coloured), no cat.
+    Text,
+    /// The cat with the CPU percentage beside it.
+    Both,
+}
+
+impl PatchField for CatwalkDisplay {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
+}
+
 /// Settings for the [`BarWidget::Catwalk`] animated-cat pill (port of the
-/// noctalia catwalk plugin).
+/// noctalia catwalk plugin, with the RunCat sprite set + CPU-% readout from
+/// the DMS/Plasma CatWalk widgets).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct CatwalkConfig {
@@ -762,6 +819,14 @@ pub struct CatwalkConfig {
     pub minimum_threshold: u32,
     /// Drop the pill background so the cat floats on the bar.
     pub hide_background: bool,
+    /// Which cat sprite set to animate.
+    pub style: CatStyle,
+    /// Show the cat, the CPU %, or both.
+    pub display: CatwalkDisplay,
+    /// Sprite size in px (12–48).
+    pub size: u32,
+    /// How often to re-sample CPU load, in seconds (1–10).
+    pub poll_secs: u32,
 }
 
 impl Default for CatwalkConfig {
@@ -769,6 +834,10 @@ impl Default for CatwalkConfig {
         Self {
             minimum_threshold: 10,
             hide_background: false,
+            style: CatStyle::default(),
+            display: CatwalkDisplay::default(),
+            size: 22,
+            poll_secs: 1,
         }
     }
 }
