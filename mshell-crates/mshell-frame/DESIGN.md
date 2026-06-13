@@ -671,6 +671,16 @@ default, treat it as a migration, not a default:
    intended values. A field added without this test is a latent
    "works-on-my-fresh-config" bug.
 
+**Where this lives (shell profiles).** `mshell-config/src/migration.rs` owns
+the machinery: `CONFIG_VERSION`, a stepped `migrate_yaml` (load pre-pass that
+rewrites an older profile up to current, once), and `stamp_version` (save
+pins the version). `config_version` is a **file-format meta key**, not a
+`Config` field — serde ignores the extra key on read, so the reactive
+`Store`/`Patch` derives on `Config` stay untouched. A new migration = bump
+`CONFIG_VERSION`, add an `apply_step` arm, add a round-trip test (the steps
+above, mechanised). The compositor `.conf` has no analogue (it is parsed, not
+serde-round-tripped); see §9 of `docs/config-conventions.md` for that side.
+
 ---
 
 ## 10. IPC verb convention

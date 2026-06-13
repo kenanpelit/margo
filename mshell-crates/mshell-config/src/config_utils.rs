@@ -75,13 +75,44 @@ pub fn list_available_profiles() -> Vec<String> {
     out
 }
 
+/// Run the migration pre-pass on a profile file: if it exists and migrating it
+/// changes anything, write the upgraded YAML back atomically (symlink-safe).
+/// A missing file or a clean parse/migrate failure is a no-op — figment then
+/// falls back to defaults / last-good as it already does.
+fn migrate_profile_file(path: &Path) {
+    let Ok(raw) = fs::read_to_string(path) else {
+        return;
+    };
+    match crate::migration::migrate_yaml(&raw) {
+        Ok(m) if m.changed => {
+            if let Err(e) = crate::atomic_write::atomic_write(path, m.yaml.as_bytes()) {
+                eprintln!("config: profile migration write-back failed: {e}");
+            } else {
+                info!(
+                    "Migrated profile {} from config_version {} to {}",
+                    path.display(),
+                    m.from,
+                    crate::migration::CONFIG_VERSION
+                );
+            }
+        }
+        Ok(_) => {}
+        Err(e) => eprintln!("config: profile migration parse failed (leaving as-is): {e}"),
+    }
+}
+
 pub(crate) fn load_effective_config(
     active_profile: Option<&str>,
 ) -> Result<Config, figment::Error> {
     let mut figment = Figment::from(Serialized::defaults(Config::default()));
 
     if let Some(name) = active_profile {
-        figment = figment.merge(Yaml::file(profile_path(name)));
+        let path = profile_path(name);
+        // Migration pre-pass: bring an older on-disk profile up to the current
+        // format before figment reads it, writing the upgraded YAML back once
+        // (idempotent — a current profile is left untouched). See migration.rs.
+        migrate_profile_file(&path);
+        figment = figment.merge(Yaml::file(path));
     }
 
     let mut config = figment.extract::<Config>()?;
@@ -156,7 +187,10 @@ pub(crate) fn persist_config_layer<T: Serialize>(
         fs::create_dir_all(parent)?;
     }
 
-    let yaml = serde_yaml::to_string(value)?;
+    // Pin the current format version at the top of the serialized profile;
+    // the Config struct deliberately omits the meta key (migration.rs), so we
+    // stamp it on the way out.
+    let yaml = crate::migration::stamp_version(&serde_yaml::to_string(value)?);
 
     // Atomic write via the symlink-preserving helper so dcli /
     // stow / chezmoi users keep their `~/.config/margo/mshell/
