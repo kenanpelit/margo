@@ -295,11 +295,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 }
                 IPCCommand::MuteSet(mode) => {
                     if let Some(output) = audio_service().default_output.get() {
-                        let target = match mode {
-                            0 => false,
-                            1 => true,
-                            _ => !output.muted.get(),
-                        };
+                        let target = mute_target(mode, output.muted.get());
                         let _ = output.set_mute(target).await;
                     }
                     play_audio_volume_change();
@@ -327,11 +323,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 }
                 IPCCommand::MicMuteSet(mode) => {
                     if let Some(input) = audio_service().default_input.get() {
-                        let target = match mode {
-                            0 => false,
-                            1 => true,
-                            _ => !input.muted.get(),
-                        };
+                        let target = mute_target(mode, input.muted.get());
                         let _ = input.set_mute(target).await;
                     }
                     play_audio_volume_change();
@@ -775,6 +767,17 @@ enum ClipboardAction {
     Delete(u64),
     Clear,
     Wipe,
+}
+
+/// Resolve a mute wire-command into the target mute state. The wire encoding is
+/// shared by output and mic mute: `0` = unmute, `1` = mute, anything else =
+/// toggle the current state. One source for both `MuteSet` / `MicMuteSet` arms.
+fn mute_target(mode: i32, currently_muted: bool) -> bool {
+    match mode {
+        0 => false,
+        1 => true,
+        _ => !currently_muted,
+    }
 }
 
 /// Parse a `clipboard` IPC spec (`"<verb> [id]"`) into an action, or `None`
@@ -1806,7 +1809,21 @@ async fn start_shell_service(tx: mpsc::UnboundedSender<IPCCommand>) -> zbus::Res
 
 #[cfg(test)]
 mod tests {
-    use super::{ClipboardAction, parse_clipboard_action, pick_device};
+    use super::{ClipboardAction, mute_target, parse_clipboard_action, pick_device};
+
+    #[test]
+    fn mute_target_encodes_off_on_and_toggle() {
+        // 0 = unmute, regardless of current state.
+        assert!(!mute_target(0, true));
+        assert!(!mute_target(0, false));
+        // 1 = mute, regardless of current state.
+        assert!(mute_target(1, false));
+        assert!(mute_target(1, true));
+        // Anything else toggles the current state.
+        assert!(mute_target(2, false));
+        assert!(!mute_target(2, true));
+        assert!(mute_target(-1, false));
+    }
 
     #[test]
     fn clipboard_action_parses_known_verbs() {
