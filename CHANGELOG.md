@@ -9,12 +9,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [1.0.6] – 2026-06-13
 
-An internals pass: split both compositor god-files (`state.rs` + `udev/mod.rs`)
-back down, gained safe config migration, covered the first-login bootstrap,
-added a `justfile` dev loop, and fixed silent notification sounds.
+An internals pass — both compositor god-files (`state.rs` + `udev/mod.rs`)
+split back down, safe config migration, first-login bootstrap coverage, a
+`justfile` dev loop, fixed silent notification sounds — plus a batch of
+user-facing work: **Kenp** is the new default colour scheme, a `mshellctl theme`
+CLI, the Catwalk pill gains the RunCat cat + a CPU-% readout, the `monly`
+single-window-maximise knob, and a redesigned CPU dashboard.
 
 ### Fixed
 
+- **About → Uptime no longer frozen at login.** The About page is built eagerly
+  at startup, so its system info (uptime in particular) was read once and never
+  refreshed. It now re-reads every time the page is shown.
+- **Launcher selected-row accent matches the clipboard.** The launcher used a
+  full `--primary` flood while the clipboard used a soft `--primary-container`;
+  both now use the same soft container fill (DESIGN.md §14 restraint).
 - **Notification sounds now actually play.** rodio is built vorbis-only
   (`features = ["vorbis", "playback"]`, no WAV decoder), but the two
   notification chimes shipped as `.wav` — so symphonia probed each to EOF,
@@ -26,6 +35,17 @@ added a `justfile` dev loop, and fixed silent notification sounds.
 
 ### Changed
 
+- **Kenp is the new default colour scheme.** The dusk palette that briefly
+  shipped as "Eventide" — bioluminescent teal primary, twilight-violet / amber
+  / rose accents over deep blue-violet surfaces — is promoted to the house
+  theme and renamed **Kenp**; the previous Kenp / Kenp Light themes are
+  removed. The `Default` alias now resolves to Kenp (the `Margo` brand palette
+  stays selectable), so a fresh profile, an absent theme key, and `theme: Kenp`
+  all land on Kenp. A config **v1 → v2 migration** auto-rewrites any profile
+  still selecting the dead `Eventide` / `KenpLight` variants onto `Kenp` (an
+  unknown enum value would otherwise reset the whole profile to defaults).
+- **CPU dashboard redesigned.** A per-core heat-grid (calm → warn → danger
+  buckets), a gradient sparkline, and a refined hero readout.
 - **`state.rs` split back under 3k (4045 → 2441 lines).** The compositor's
   central file regrew past its Phase-2 `<3000` target; the window/tag-rule +
   placement cluster, the tiling-arrange cluster (incl. the ~526-line
@@ -50,13 +70,31 @@ added a `justfile` dev loop, and fixed silent notification sounds.
 
 ### Added
 
+- **`mshellctl theme` — switch the colour scheme from the terminal.**
+  `theme list [--names-only]` / `theme get` / `theme set <name>`. `set` writes
+  the same reactive config field the GUI picker does, so it applies live (no
+  `mctl reload`, no restart); name matching ignores case and `-`/`_`/space
+  separators. The top-level `mshellctl --help` command descriptions also got a
+  consistency pass.
+- **Catwalk: the RunCat cat + a CPU-% readout.** A `style` toggle picks the
+  bundled RunCat sprites (5 run frames + a sleeping pose) or the original
+  noctalia cat; a `display` mode shows the cat, the CPU %, or both (the %
+  severity-coloured); sprite size and CPU poll interval are configurable; the
+  walk cadence uses the RunCat easing and the tooltip narrates the cat's mood.
+  Ports the best of the Plasma / DMS CatWalk widgets.
+- **`monly` — maximise the only tiled window of a tag** (a native port of the
+  niri tool *oniri*). When a tag holds exactly one tiled window, it's arranged
+  as Monocle regardless of the active layout, so a lone window fills the work
+  area even in column layouts like scroller. Off by default; pairs with
+  `smartgaps`. Toggle in Settings → Appearance.
 - **Profile schema versioning + stepped migration** (`mshell-config`). A new
   `config_version` file-format meta key with a `migrate_yaml` load pre-pass that
   brings an older profile up to the current format and writes it back once
   (idempotent), and a save-side stamp. The framework makes the next config
   rename/reshape a one-step, round-trip-tested change instead of a silent
-  "works-on-my-fresh-config" bug. v0→v1 is the versioning baseline (no field
-  transform yet). 7 round-trip tests.
+  "works-on-my-fresh-config" bug. v0→v1 is the versioning baseline; v1→v2 is
+  the first real transform (the dead-theme-variant rewrite above). 9 round-trip
+  tests.
 - **`justfile` for the dev inner loop.** One source for build+install+restart:
   `just shell` / `just margo` / `just cli` / `just all`, `just reload`
   (`mctl reload` — config only, never a binary swap), and `just check` (the
