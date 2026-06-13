@@ -93,13 +93,16 @@
   font-size: var(--font-xxl);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  // Tight leading so the value + caption read as one stacked unit.
+  line-height: 1.05;
 }
 
 .cpu-dashboard-hero-caption {
-  font-size: var(--font-xs);
+  font-size: var(--font-2xs);
   font-weight: 600;
-  letter-spacing: 0.05em;
-  opacity: 0.7;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.65;
 }
 
 // Frequency min–max spread under the GHz hero value — quieter than the
@@ -119,16 +122,60 @@
   margin-top: var(--space-1);
 }
 
-.cpu-dashboard-core-label {
-  font-family: monospace;
-  font-size: var(--font-xs);
-  color: var(--on-surface-variant);
-  opacity: 0.7;
+// ── Per-core heat-grid ─────────────────────────────────────────
+// A compact grid of one tile per core (replaces the old wall of
+// full-width ProgressBars). Each tile shows the core index + its
+// load %, and its background is tinted by load: the matugen accent
+// washes in for normal load, escalating to the stable warning /
+// error pair at the warn / danger thresholds (DESIGN.md §Severity —
+// heat WITHOUT a rainbow gradient, so it stays calm and on-palette).
+.cpu-dashboard-core-grid {
+  // Grid spacing is set in Rust; nothing extra needed here.
 }
 
-.cpu-dashboard-bar-value {
+.cpu-dashboard-core-tile {
+  padding: var(--space-1) var(--space-1);
+  border-radius: var(--radius-xs);
+  background-color: var(--surface-container-high);
+  // Load changes ease across the selection-speed window so the grid
+  // breathes rather than flickering on each 2 s poll (DESIGN.md §Motion).
+  transition: background-color var(--motion-medium) var(--ease-standard);
+
+  // Heat buckets. heat-0 is the resting tile (handled by the base
+  // background above); 1–2 wash in the accent; 3–4 are the stable
+  // warn / danger tiers.
+  &.heat-1 {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, var(--surface-container-high))");
+  }
+  &.heat-2 {
+    background-color: unquote("color-mix(in srgb, var(--primary) 32%, var(--surface-container-high))");
+  }
+  &.heat-3 {
+    background-color: unquote("color-mix(in srgb, var(--warning) 38%, var(--surface-container-high))");
+  }
+  &.heat-4 {
+    background-color: var(--error-container);
+    .cpu-dashboard-core-pct {
+      color: var(--on-error-container);
+    }
+    .cpu-dashboard-core-num {
+      color: unquote("color-mix(in srgb, var(--on-error-container) 70%, transparent)");
+    }
+  }
+}
+
+// Tiny dim core index ("c0") at the top of a tile — a marker, not a value.
+.cpu-dashboard-core-num {
   font-family: monospace;
+  font-size: var(--font-2xs);
+  color: var(--on-surface-variant);
+  opacity: 0.75;
+}
+
+// The per-core load value ("99%") — the tile's focal number.
+.cpu-dashboard-core-pct {
   font-size: var(--font-xs);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--on-surface);
 }
@@ -149,9 +196,13 @@
 }
 
 // History sparkline. The DrawingArea reads its `color` at paint time
-// for the line/fill, so pin it to the matugen accent here.
+// for the line/fill, so pin it to the matugen accent here. The recessed
+// well + radius make it read as a graph panel, not a bare strip — the
+// draw func paints a gradient area + baseline inside it.
 .cpu-dashboard-sparkline {
   color: var(--primary);
+  background-color: var(--surface-container);
+  border-radius: var(--radius-sm);
 }
 
 // Memory/swap row caption (RAM / Swap) — secondary tier label.

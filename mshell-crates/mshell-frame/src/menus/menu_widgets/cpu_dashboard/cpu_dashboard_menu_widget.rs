@@ -23,7 +23,9 @@ use crate::bars::bar_widgets::sysstat::{
     find_cpu_temp_sensor_pub, read_all_fans_pub, read_all_temp_sensors_pub, read_cpu_stat_pub,
     read_temp_millideg_pub,
 };
-use relm4::gtk::prelude::{BoxExt, DrawingAreaExt, DrawingAreaExtManual, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{
+    BoxExt, DrawingAreaExt, DrawingAreaExtManual, GridExt, OrientableExt, WidgetExt,
+};
 use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -78,14 +80,29 @@ fn severity_class(cpu: u32, temp: i32) -> &'static str {
     }
 }
 
-fn cpu_only_severity(cpu: u32) -> &'static str {
+/// Heat-bucket class for a per-core tile. Low load washes in the matugen
+/// accent (heat-1/2); the warn / danger thresholds escalate to the stable
+/// amber / red tiers (heat-3/4) — same signal the rest of the dashboard uses,
+/// without a rainbow gradient (DESIGN.md §Severity).
+fn core_heat_class(cpu: u32) -> &'static str {
     if cpu >= CPU_DANGER_PERCENT {
-        "danger"
+        "heat-4"
     } else if cpu >= CPU_WARN_PERCENT {
-        "warn"
+        "heat-3"
+    } else if cpu >= 50 {
+        "heat-2"
+    } else if cpu >= 25 {
+        "heat-1"
     } else {
-        "calm"
+        "heat-0"
     }
+}
+
+/// Column count for the per-core heat-grid: a single row for small chips,
+/// otherwise a calm 8-wide grid (22 threads → 8×3) that keeps tiles readable
+/// at the panel width.
+fn core_grid_cols(n: usize) -> i32 {
+    if n <= 6 { n.max(1) as i32 } else { 8 }
 }
 
 #[derive(Default, Clone)]
@@ -95,10 +112,11 @@ struct CoreDeltas {
     percent: Vec<u32>,
 }
 
+/// One per-core heat tile: a small card (`tile`) whose background class is
+/// re-set each poll by load, holding a dim core index + the load %.
 #[derive(Clone)]
 struct CoreRow {
-    container: gtk::Box,
-    bar: gtk::ProgressBar,
+    tile: gtk::Box,
     pct_label: gtk::Label,
 }
 
@@ -299,16 +317,19 @@ impl Component for CpuDashboardMenuWidgetModel {
                 set_content_height: 44,
             },
 
-            // Per-core load bars.
+            // Per-core load — a compact heat-grid (tile per core), built
+            // dynamically once the core count is known (see the poll handler).
             gtk::Label {
                 add_css_class: "cpu-dashboard-section-label",
-                set_label: "PER-CORE LOAD",
+                set_label: "PER-CORE",
                 set_halign: gtk::Align::Start,
             },
             #[name = "cores_box"]
-            gtk::Box {
-                set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 4,
+            gtk::Grid {
+                add_css_class: "cpu-dashboard-core-grid",
+                set_row_spacing: 4,
+                set_column_spacing: 4,
+                set_column_homogeneous: true,
             },
 
             // Sensors — one tidy line: the average across all hwmon
@@ -590,17 +611,32 @@ impl Component for CpuDashboardMenuWidgetModel {
             let (r, g, b) = (c.red() as f64, c.green() as f64, c.blue() as f64);
             let n = hist.len();
             let step = w / (n - 1) as f64;
-            let y_of = |p: u32| h - (p.min(100) as f64 / 100.0) * (h - 2.0) - 1.0;
+            // Inset the curve a hair top/bottom so the stroke isn't clipped.
+            let y_of = |p: u32| h - (p.min(100) as f64 / 100.0) * (h - 3.0) - 1.5;
 
-            // Filled area under the curve.
+            // Faint baseline so an idle (flat-low) or pegged (flat-high) trace
+            // still reads as a graph rather than an empty band.
+            cr.set_source_rgba(r, g, b, 0.12);
+            cr.set_line_width(1.0);
+            cr.move_to(0.0, h - 0.5);
+            cr.line_to(w, h - 0.5);
+            let _ = cr.stroke();
+
+            // Filled area under the curve — a vertical gradient (accent near
+            // the line, fading toward the baseline) so it reads as a polished
+            // area chart, not a flat slab.
             cr.move_to(0.0, h);
             for (i, p) in hist.iter().enumerate() {
                 cr.line_to(i as f64 * step, y_of(*p));
             }
             cr.line_to((n - 1) as f64 * step, h);
             cr.close_path();
-            cr.set_source_rgba(r, g, b, 0.16);
-            let _ = cr.fill();
+            let grad = gtk::cairo::LinearGradient::new(0.0, 0.0, 0.0, h);
+            grad.add_color_stop_rgba(0.0, r, g, b, 0.34);
+            grad.add_color_stop_rgba(1.0, r, g, b, 0.03);
+            if cr.set_source(&grad).is_ok() {
+                let _ = cr.fill();
+            }
 
             // Line on top.
             for (i, p) in hist.iter().enumerate() {
@@ -610,7 +646,7 @@ impl Component for CpuDashboardMenuWidgetModel {
                     cr.line_to(i as f64 * step, y_of(*p));
                 }
             }
-            cr.set_source_rgba(r, g, b, 0.9);
+            cr.set_source_rgba(r, g, b, 0.95);
             cr.set_line_width(1.5);
             let _ = cr.stroke();
         });
@@ -673,41 +709,36 @@ impl Component for CpuDashboardMenuWidgetModel {
                     }
                 }
 
+                let cols = core_grid_cols(self.cores.percent.len());
                 while self.core_rows.len() < self.cores.percent.len() {
                     let i = self.core_rows.len();
-                    let container = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-                    let lbl = gtk::Label::new(Some(&format!("c{i}")));
-                    lbl.add_css_class("cpu-dashboard-core-label");
-                    lbl.set_width_chars(3);
-                    lbl.set_xalign(0.0);
-                    let bar = gtk::ProgressBar::new();
-                    bar.set_hexpand(true);
-                    bar.set_valign(gtk::Align::Center);
-                    bar.add_css_class("cpu-dashboard-bar");
+                    // Tile: a small vertical card — dim core index over the
+                    // load %. The tile's background class carries the heat.
+                    let tile = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    tile.set_css_classes(&["cpu-dashboard-core-tile", "heat-0"]);
+                    let num = gtk::Label::new(Some(&format!("c{i}")));
+                    num.add_css_class("cpu-dashboard-core-num");
+                    num.set_halign(gtk::Align::Center);
                     let pct_label = gtk::Label::new(Some("0%"));
-                    pct_label.add_css_class("cpu-dashboard-bar-value");
-                    pct_label.set_width_chars(4);
-                    container.append(&lbl);
-                    container.append(&bar);
-                    container.append(&pct_label);
-                    widgets.cores_box.append(&container);
-                    self.core_rows.push(CoreRow {
-                        container,
-                        bar,
-                        pct_label,
-                    });
+                    pct_label.add_css_class("cpu-dashboard-core-pct");
+                    pct_label.set_halign(gtk::Align::Center);
+                    tile.append(&num);
+                    tile.append(&pct_label);
+                    let col = (i as i32) % cols;
+                    let row = (i as i32) / cols;
+                    widgets.cores_box.attach(&tile, col, row, 1, 1);
+                    self.core_rows.push(CoreRow { tile, pct_label });
                 }
                 while self.core_rows.len() > self.cores.percent.len() {
                     if let Some(row) = self.core_rows.pop() {
-                        widgets.cores_box.remove(&row.container);
+                        widgets.cores_box.remove(&row.tile);
                     }
                 }
 
                 for (i, p) in self.cores.percent.iter().enumerate() {
                     if let Some(row) = self.core_rows.get(i) {
-                        row.bar.set_fraction((*p as f64) / 100.0);
-                        row.bar
-                            .set_css_classes(&["cpu-dashboard-bar", cpu_only_severity(*p)]);
+                        row.tile
+                            .set_css_classes(&["cpu-dashboard-core-tile", core_heat_class(*p)]);
                         row.pct_label.set_label(&format!("{p}%"));
                     }
                 }
