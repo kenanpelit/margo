@@ -178,6 +178,21 @@ pub struct SettingsWindowInit {
 #[derive(Debug)]
 pub enum SettingsWindowCommandOutput {}
 
+/// Build a batch of detached settings-page controllers from one list.
+///
+/// Each entry is `field = ModelPath => InitExpr`; it expands to the
+/// `let field = <ModelPath>::builder().launch(InitExpr).detach();` binding
+/// every page used to spell out by hand. Adding a (unit-init or otherwise)
+/// page is now one line in the [`Component::init`] list instead of a 3-line
+/// copy that could pick the wrong `Init` type. The page-stack and sidebar are
+/// already table-driven (`stack_pages` + the `SIDEBAR` const); this closes the
+/// last per-page boilerplate block.
+macro_rules! build_pages {
+    ($($ctrl:ident = $model:path => $init:expr),+ $(,)?) => {
+        $( let $ctrl = <$model>::builder().launch($init).detach(); )+
+    };
+}
+
 #[relm4::component(pub)]
 impl Component for SettingsWindowModel {
     type CommandOutput = SettingsWindowCommandOutput;
@@ -387,180 +402,55 @@ impl Component for SettingsWindowModel {
         });
         Box::leak(Box::new(size_effects));
 
-        let general_settings_controller = GeneralSettingsModel::builder()
-            .launch(GeneralSettingsInit {})
-            .detach();
-
-        let setup_settings_controller = SetupSettingsModel::builder()
-            .launch(SetupSettingsInit {})
-            .detach();
-
-        let weather_settings_controller = WeatherSettingsModel::builder()
-            .launch(WeatherSettingsInit {})
-            .detach();
-
-        let media_player_settings_controller = MediaPlayerSettingsModel::builder()
-            .launch(MediaPlayerSettingsInit {})
-            .detach();
-
-        let hidden_bar_settings_controller = HiddenBarSettingsModel::builder()
-            .launch(HiddenBarSettingsInit {})
-            .detach();
-
-        let catwalk_settings_controller = CatwalkSettingsModel::builder()
-            .launch(CatwalkSettingsInit {})
-            .detach();
-
-        let wallpaper_settings_controller = WallpaperSettingsModel::builder()
-            .launch(WallpaperSettingsInit {})
-            .detach();
-
-        let theme_settings_controller = ThemeSettingsModel::builder()
-            .launch(ThemeSettingsInit {})
-            .detach();
-
-        let fonts_settings_controller = FontsSettingsModel::builder()
-            .launch(FontsSettingsInit {})
-            .detach();
-
-        let helium_theme_settings_controller = HeliumThemeSettingsModel::builder()
-            .launch(HeliumThemeSettingsInit {})
-            .detach();
-
-        let about_settings_controller = AboutSettingsModel::builder()
-            .launch(AboutSettingsInit {})
-            .detach();
-
-        let appearance_settings_controller = AppearanceModel::builder()
-            .launch(AppearanceInit {})
-            .detach();
-        let effects_settings_controller = EffectsModel::builder().launch(EffectsInit {}).detach();
-        let behaviour_settings_controller =
-            BehaviourModel::builder().launch(BehaviourInit {}).detach();
-        let window_rules_settings_controller = WindowRulesModel::builder()
-            .launch(WindowRulesInit {})
-            .detach();
-        let layer_rules_settings_controller = LayerRulesModel::builder()
-            .launch(LayerRulesInit {})
-            .detach();
-        let tag_rules_settings_controller =
-            TagRulesModel::builder().launch(TagRulesInit {}).detach();
-        let startup_env_settings_controller = StartupEnvModel::builder()
-            .launch(StartupEnvInit {})
-            .detach();
-        let backup_settings_controller = BackupSettingsModel::builder()
-            .launch(BackupSettingsInit {})
-            .detach();
-
-        let logging_settings_controller = LoggingModel::builder().launch(LoggingInit {}).detach();
-
-        let animations_settings_controller = AnimationsSettingsModel::builder()
-            .launch(AnimationsSettingsInit {})
-            .detach();
-
-        let overview_settings_controller = OverviewSettingsModel::builder()
-            .launch(OverviewSettingsInit {})
-            .detach();
-
-        let vpn_settings_controller = VpnSettingsModel::builder()
-            .launch(VpnSettingsInit {})
-            .detach();
-
-        let ai_settings_controller = AiSettingsModel::builder()
-            .launch(AiSettingsInit {})
-            .detach();
-
-        let date_time_settings_controller = DateTimeSettingsModel::builder()
-            .launch(DateTimeSettingsInit {})
-            .detach();
-
-        let region_settings_controller = RegionSettingsModel::builder()
-            .launch(RegionSettingsInit {})
-            .detach();
-
-        let sound_settings_controller = SoundSettingsModel::builder()
-            .launch(SoundSettingsInit {})
-            .detach();
-
-        let users_settings_controller = UsersSettingsModel::builder()
-            .launch(UsersSettingsInit {})
-            .detach();
-
-        let keybinds_settings_controller = KeybindsSettingsModel::builder()
-            .launch(KeybindsSettingsInit {})
-            .detach();
-
-        let summon_settings_controller = crate::summon_settings::SummonSettingsModel::builder()
-            .launch(crate::summon_settings::SummonSettingsInit {})
-            .detach();
-
-        let input_settings_controller = InputSettingsModel::builder()
-            .launch(InputSettingsInit {})
-            .detach();
-
-        let display_settings_controller = DisplaySettingsModel::builder()
-            .launch(DisplaySettingsInit {})
-            .detach();
-
-        let bar_settings_controller = BarSettingsModel::builder()
-            .launch(BarSettingsInit {})
-            .detach();
-
-        let bluetooth_settings_controller = BluetoothSettingsModel::builder()
-            .launch(BluetoothSettingsInit {})
-            .detach();
-
-        let default_apps_settings_controller = DefaultAppsSettingsModel::builder()
-            .launch(DefaultAppsSettingsInit {})
-            .detach();
-
-        let lock_settings_controller = LockSettingsModel::builder()
-            .launch(LockSettingsInit {})
-            .detach();
-
-        let network_settings_controller = NetworkSettingsModel::builder()
-            .launch(NetworkSettingsInit {})
-            .detach();
-
-        let power_settings_controller = PowerSettingsModel::builder()
-            .launch(PowerSettingsInit {})
-            .detach();
-
-        let privacy_settings_controller = PrivacySettingsModel::builder()
-            .launch(PrivacySettingsInit {})
-            .detach();
-
-        let menu_settings_controller = MenuSettingsModel::builder()
-            .launch(MenuSettingsInit {})
-            .detach();
-
-        let notification_settings_controller = NotificationSettingsModel::builder()
-            .launch(NotificationSettingsInit {})
-            .detach();
-
-        let idle_settings_controller = IdleSettingsModel::builder()
-            .launch(IdleSettingsInit {})
-            .detach();
-
-        let keyboard_settings_controller = KeyboardSettingsModel::builder()
-            .launch(KeyboardSettingsInit {})
-            .detach();
-
-        let tag_layout_settings_controller = TagLayoutSettingsModel::builder()
-            .launch(TagLayoutSettingsInit {})
-            .detach();
-
-        let launcher_settings_controller = LauncherSettingsModel::builder()
-            .launch(LauncherSettingsInit {})
-            .detach();
-
-        let session_settings_controller = SessionSettingsModel::builder()
-            .launch(SessionSettingsInit {})
-            .detach();
-
-        let plugins_settings_controller = PluginsSettingsModel::builder()
-            .launch(PluginsSettingsInit {})
-            .detach();
+        build_pages! {
+            general_settings_controller = GeneralSettingsModel => GeneralSettingsInit {},
+            setup_settings_controller = SetupSettingsModel => SetupSettingsInit {},
+            weather_settings_controller = WeatherSettingsModel => WeatherSettingsInit {},
+            media_player_settings_controller = MediaPlayerSettingsModel => MediaPlayerSettingsInit {},
+            hidden_bar_settings_controller = HiddenBarSettingsModel => HiddenBarSettingsInit {},
+            catwalk_settings_controller = CatwalkSettingsModel => CatwalkSettingsInit {},
+            wallpaper_settings_controller = WallpaperSettingsModel => WallpaperSettingsInit {},
+            theme_settings_controller = ThemeSettingsModel => ThemeSettingsInit {},
+            fonts_settings_controller = FontsSettingsModel => FontsSettingsInit {},
+            helium_theme_settings_controller = HeliumThemeSettingsModel => HeliumThemeSettingsInit {},
+            about_settings_controller = AboutSettingsModel => AboutSettingsInit {},
+            appearance_settings_controller = AppearanceModel => AppearanceInit {},
+            effects_settings_controller = EffectsModel => EffectsInit {},
+            behaviour_settings_controller = BehaviourModel => BehaviourInit {},
+            window_rules_settings_controller = WindowRulesModel => WindowRulesInit {},
+            layer_rules_settings_controller = LayerRulesModel => LayerRulesInit {},
+            tag_rules_settings_controller = TagRulesModel => TagRulesInit {},
+            startup_env_settings_controller = StartupEnvModel => StartupEnvInit {},
+            backup_settings_controller = BackupSettingsModel => BackupSettingsInit {},
+            logging_settings_controller = LoggingModel => LoggingInit {},
+            animations_settings_controller = AnimationsSettingsModel => AnimationsSettingsInit {},
+            overview_settings_controller = OverviewSettingsModel => OverviewSettingsInit {},
+            vpn_settings_controller = VpnSettingsModel => VpnSettingsInit {},
+            ai_settings_controller = AiSettingsModel => AiSettingsInit {},
+            date_time_settings_controller = DateTimeSettingsModel => DateTimeSettingsInit {},
+            region_settings_controller = RegionSettingsModel => RegionSettingsInit {},
+            sound_settings_controller = SoundSettingsModel => SoundSettingsInit {},
+            users_settings_controller = UsersSettingsModel => UsersSettingsInit {},
+            keybinds_settings_controller = KeybindsSettingsModel => KeybindsSettingsInit {},
+            summon_settings_controller = crate::summon_settings::SummonSettingsModel => crate::summon_settings::SummonSettingsInit {},
+            input_settings_controller = InputSettingsModel => InputSettingsInit {},
+            display_settings_controller = DisplaySettingsModel => DisplaySettingsInit {},
+            bar_settings_controller = BarSettingsModel => BarSettingsInit {},
+            bluetooth_settings_controller = BluetoothSettingsModel => BluetoothSettingsInit {},
+            default_apps_settings_controller = DefaultAppsSettingsModel => DefaultAppsSettingsInit {},
+            lock_settings_controller = LockSettingsModel => LockSettingsInit {},
+            network_settings_controller = NetworkSettingsModel => NetworkSettingsInit {},
+            power_settings_controller = PowerSettingsModel => PowerSettingsInit {},
+            privacy_settings_controller = PrivacySettingsModel => PrivacySettingsInit {},
+            menu_settings_controller = MenuSettingsModel => MenuSettingsInit {},
+            notification_settings_controller = NotificationSettingsModel => NotificationSettingsInit {},
+            idle_settings_controller = IdleSettingsModel => IdleSettingsInit {},
+            keyboard_settings_controller = KeyboardSettingsModel => KeyboardSettingsInit {},
+            tag_layout_settings_controller = TagLayoutSettingsModel => TagLayoutSettingsInit {},
+            launcher_settings_controller = LauncherSettingsModel => LauncherSettingsInit {},
+            session_settings_controller = SessionSettingsModel => SessionSettingsInit {},
+            plugins_settings_controller = PluginsSettingsModel => PluginsSettingsInit {},
+        }
 
         // Built before the model so the model can hold a clone; the
         // Widgets sub-sidebar build loop (further down) fills the same map.
