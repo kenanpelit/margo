@@ -9,8 +9,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [1.0.6] – 2026-06-13
 
-An internals pass: no user-visible behaviour change, but the codebase paid
-down its two watched ratchets and gained safe config migration.
+An internals pass: paid down the two watched ratchets, gained safe config
+migration, and fixed silent notification sounds.
+
+### Fixed
+
+- **Notification sounds now actually play.** rodio is built vorbis-only
+  (`features = ["vorbis", "playback"]`, no WAV decoder), but the two
+  notification chimes shipped as `.wav` — so symphonia probed each to EOF,
+  logged `probe reach EOF at 61784 bytes`, and the chime was silent. Converted
+  `notification.wav` / `notification-critical.wav` to OGG/Vorbis (matching every
+  other shipped clip) and added a `mshell-sounds` test that decodes every
+  embedded clip with the configured features, so a future `.wav` fails CI
+  instead of going quiet in production.
 
 ### Changed
 

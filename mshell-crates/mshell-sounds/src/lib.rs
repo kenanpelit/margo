@@ -11,9 +11,15 @@ const POWER_UNPLUG_SOUND: &[u8] = include_bytes!("../assets/power-unplug.ogg");
 /// so it decodes with rodio's vorbis feature).
 const ALARM_SOUND: &[u8] = include_bytes!("../assets/alarm.ogg");
 /// Default notification chime (gentle two-tone, synthesized in-tree).
-const NOTIFICATION_SOUND: &[u8] = include_bytes!("../assets/notification.wav");
-/// Critical-urgency notification tone (three rising tones, brighter).
-const NOTIFICATION_CRITICAL_SOUND: &[u8] = include_bytes!("../assets/notification-critical.wav");
+/// OGG/Vorbis, not WAV: rodio is built with `default-features = false,
+/// features = ["vorbis", "playback"]`, so it has **no WAV decoder** — a `.wav`
+/// here never decodes (symphonia probes to EOF, logs `probe reach EOF`, and the
+/// chime is silent). Every shipped sound is OGG for this reason (see the alarm
+/// note above). Keep notification sounds OGG.
+const NOTIFICATION_SOUND: &[u8] = include_bytes!("../assets/notification.ogg");
+/// Critical-urgency notification tone (three rising tones, brighter). OGG, per
+/// the note above — rodio decodes vorbis only.
+const NOTIFICATION_CRITICAL_SOUND: &[u8] = include_bytes!("../assets/notification-critical.ogg");
 
 /// Whether the looping alarm tone is currently ringing. Drives both the loop
 /// thread and `alarm_is_ringing()`.
@@ -162,4 +168,33 @@ pub fn play_power_unplug_sound() {
             player.sleep_until_end();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every embedded clip MUST decode with rodio's configured feature set
+    /// (`vorbis` only — no WAV decoder). A `.wav` asset slips silently past a
+    /// plain build but fails to decode at runtime (symphonia logs
+    /// `probe reach EOF` and the sound never plays). Decoding here needs no
+    /// audio device, so it guards the regression in CI: add a WAV and this
+    /// fails instead of going quiet in production.
+    #[test]
+    fn every_embedded_clip_decodes() {
+        let clips: &[(&str, &[u8])] = &[
+            ("camera-shutter", CAMERA_SHUTTER_SOUND),
+            ("audio-volume-change", AUDIO_VOLUME_CHANGED_SOUND),
+            ("battery-low", BATTERY_LOW_SOUND),
+            ("power-plug", POWER_PLUG_SOUND),
+            ("power-unplug", POWER_UNPLUG_SOUND),
+            ("alarm", ALARM_SOUND),
+            ("notification", NOTIFICATION_SOUND),
+            ("notification-critical", NOTIFICATION_CRITICAL_SOUND),
+        ];
+        for (name, bytes) in clips {
+            rodio::Decoder::try_from(Cursor::new(*bytes))
+                .unwrap_or_else(|e| panic!("embedded sound `{name}` failed to decode: {e}"));
+        }
+    }
 }
