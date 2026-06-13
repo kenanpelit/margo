@@ -11,6 +11,7 @@ use crate::static_themes::desert_power::desert_power;
 use crate::static_themes::dracula::dracula;
 use crate::static_themes::eldritch::eldritch;
 use crate::static_themes::ethereal::ethereal;
+use crate::static_themes::eventide::eventide;
 use crate::static_themes::everforest_dark_hard::everforest_dark_hard;
 use crate::static_themes::everforest_dark_medium::everforest_dark_medium;
 use crate::static_themes::everforest_dark_soft::everforest_dark_soft;
@@ -77,6 +78,7 @@ pub fn static_theme(theme: &Themes, mshell: Option<MShell>) -> Option<MatugenThe
         Themes::Dracula => Some(dracula(mshell)),
         Themes::Eldritch => Some(eldritch(mshell)),
         Themes::Ethereal => Some(ethereal(mshell)),
+        Themes::Eventide => Some(eventide(mshell)),
         Themes::EverforestDarkHard => Some(everforest_dark_hard(mshell)),
         Themes::EverforestDarkMedium => Some(everforest_dark_medium(mshell)),
         Themes::EverforestDarkSoft => Some(everforest_dark_soft(mshell)),
