@@ -733,20 +733,20 @@ pointer-warp, xdg-toplevel-tag), margo's protocol surface grew from
 (foreign-toplevel write-side, ext-workspace, virtual-pointer), each
 hand-rolled from a niri reference. Surface is now **~57 advertised
 globals**, **past mango (~53)** and pursuing Hyprland (~67). The
-remaining three (P11, P12, P13) are blocked, not just deferred — see
-their rows + the unblocking notes below.
+remaining two (P11, P13) are blocked, not just deferred — see
+their rows + the unblocking notes below. (P12 shipped in 1.0.2.)
 
 | Tier | Shipped | Pending | Note |
 |---|---|---|---|
 | Tier 1 (daily-driver) | 5/5 (P1–P5) | — | P2, P5 shipped 2026-05-21 (niri ports) |
 | Tier 2 (niche / common) | 5/6 (P6, P7, P8, P9, P10) | 1 (P11) | P7 shipped 2026-05-21; P11 architecture-blocked |
-| Tier 3 (Hyprland fast-adopters) | 4/6 (P14, P15, P16, P17) | 2 (P12, P13) | P12 feasible-but-deferred; P13 upstream-blocked |
+| Tier 3 (Hyprland fast-adopters) | 5/6 (P12, P14, P15, P16, P17) | 1 (P13) | P12 `output_power` shipped in 1.0.2; P13 upstream-blocked |
 | Bonus (smithay-native extras) | 5/5 | — | xwayland-keyboard-grab, toplevel-icon, system-bell, pointer-warp, toplevel-tag |
 
-The remaining 3 (P11, P12, P13) are **blocked, not just back-loaded** —
+The remaining 2 (P11, P13) are **blocked, not just back-loaded** —
 P11 by margo's State/BackendData split, P13 by smithay (no tearing /
-async page-flip), P12 by the untested-DPMS / black-screen risk. See the
-per-row notes + "Unblocking the remaining three" below.
+async page-flip). See the per-row notes + "Unblocking the remaining
+three" below.
 
 #### Tier 1 — daily-driver impact (high value, low/medium cost)
 
@@ -777,7 +777,7 @@ specific gap.
 
 | # | Protocol | What it enables | smithay support |
 |---|---|---|---|
-| **P12** ⏸️ | `zwlr_output_power_management_v1` | Wayland-side DPMS — `wlopm` and shells (mshell) can blank outputs without going through libdrm directly. | **feasible, deferred** (audit 2026-05-21): bindings exist (`wayland_protocols_wlr::output_power_management`), implementable via margo's deferred-queue pattern (`pending_output_mode_changes` is the model). Deferred because the DPMS off/on apply is an untested DRM-path change with a black-screen failure mode — needs on-hardware iteration. |
+| **P12** ✅ | `zwlr_output_power_management_v1` | Wayland-side DPMS — `wlopm` and shells (mshell) can blank outputs without going through libdrm directly. Shipped in 1.0.2: `margo/src/protocols/output_power.rs` (server + global), `set_mode` → `request_dpms` (the recoverable deferred-queue DRM path), plus the `dpms` dispatch action (`bind = super,F10,dpms,off` / `mctl dispatch dpms off eDP-1`). | hand-rolled on `wayland_protocols_wlr::output_power_management` |
 | **P13** 🚧 | `wp_tearing_control_v1` | Variable-refresh / immediate-page-flip mode for games. | **upstream-blocked** (audit 2026-05-21): smithay's `DrmCompositor` exposes no tearing / async page-flip — `FrameFlags` has no tearing variant — and `wp_tearing_control` bindings aren't in the pinned wayland-protocols. Advertising it would be a no-op. Track upstream smithay. |
 | **P14** ✅ | `wp_content_type_v1` | Apps signal "this is video / this is game" — compositor can disable presentation-time hints, enable tearing, etc. Shipped in `74a0edb`. | `delegate_content_type!` |
 | **P15** ✅ | `wp_fifo_v1` + `wp_commit_timing_v1` | Newer presentation-pacing protocols. Shipped in `74a0edb`. | `delegate_fifo!` + `delegate_commit_timing!` |
@@ -812,19 +812,15 @@ work:
 #### Unblocking the remaining three
 
 P1, P3, P4, P9 (smithay-native) batched 2026-05-15. P2, P5, P7
-(hand-rolled niri ports) shipped 2026-05-21. The three left each need
-a *prerequisite*, not just a coding session:
+(hand-rolled niri ports) shipped 2026-05-21. P12 shipped in 1.0.2 (the
+DPMS apply rides `request_dpms`'s recoverable deferred-queue path). The
+two left each need a *prerequisite*, not just a coding session:
 
-1. **P12 — `zwlr_output_power_management_v1`** — implementable now via
-   the deferred-queue pattern (`pending_output_mode_changes` is the
-   model), but the DPMS apply needs on-hardware iteration before it's
-   safe to ship: a wrong re-enable path black-screens the output. Do it
-   with a reboot/TTY-recovery loop, not blind.
-2. **P13 — `wp_tearing_control_v1`** — wait for smithay's
+1. **P13 — `wp_tearing_control_v1`** — wait for smithay's
    `DrmCompositor` to expose tearing / async page-flip (a `FrameFlags`
    variant). Until then, any advertisement is a no-op lie. Track
    upstream smithay; revisit on the next smithay bump.
-3. **P11 — `wp_drm_lease_device_v1`** — needs `MargoState` to reach the
+2. **P11 — `wp_drm_lease_device_v1`** — needs `MargoState` to reach the
    udev `DrmDevice` synchronously (a small, deliberate-by-design
    backend-access change to the State/BackendData split). Lowest value
    (VR / leased connectors), so lowest priority.
@@ -912,11 +908,11 @@ Phase 2 left open:
 | **Wider packaging** | AUR ships; Fedora COPR + the existing Nix flake widen dogfood reach beyond single-user Arch. | per-distro |
 
 Compositor-side Phase 3 candidates are the still-open §15 items, all
-gated rather than back-loaded: **P12** Wayland DPMS (hardware-iterate
-the DRM re-enable path), **P11** DRM-lease (backend-access change),
-**P13** tearing-control + **HDR Phase 2/3/4 runtime** (all blocked on
-a smithay `DrmCompositor` API), and **W2.2b** pixman software-renderer
-fallback / **W2.3** tablet input (both hardware-driven).
+gated rather than back-loaded: **P11** DRM-lease (backend-access
+change), **P13** tearing-control + **HDR Phase 2/3/4 runtime** (all
+blocked on a smithay `DrmCompositor` API), and **W2.2b** pixman
+software-renderer fallback / **W2.3** tablet input (both
+hardware-driven). (**P12** Wayland DPMS shipped in 1.0.2.)
 
 ---
 
