@@ -1153,6 +1153,12 @@ impl Component for SettingsWindowModel {
                 icon: "view-grid-symbolic",
             },
             WidgetEntry::Menu {
+                kind: MenuKind::Mdash,
+                stack_name: "mdash",
+                label: "mdash",
+                icon: "view-grid-symbolic",
+            },
+            WidgetEntry::Menu {
                 kind: MenuKind::Vpn,
                 stack_name: "vpn",
                 label: "VPN",

@@ -2703,6 +2703,7 @@ impl Frame {
                 BarOutput::ClockClicked => FrameInput::ToggleClockMenu,
                 BarOutput::CatwalkClicked => FrameInput::ToggleCpuDashboardMenu,
                 BarOutput::DashboardClicked => FrameInput::ToggleDashboardMenu,
+                BarOutput::MdashClicked => FrameInput::ToggleMdashMenu,
                 BarOutput::ClipboardClicked => FrameInput::ToggleClipboardMenu,
                 BarOutput::NotificationsClicked => FrameInput::ToggleNotificationMenu,
                 BarOutput::ScreenshotClicked => FrameInput::ToggleScreenshotMenu,

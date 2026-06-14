@@ -183,6 +183,7 @@ pub(crate) enum BarOutput {
     ClockClicked,
     CatwalkClicked,
     DashboardClicked,
+    MdashClicked,
     ClipboardClicked,
     NotificationsClicked,
     ScreenshotClicked,
@@ -936,6 +937,15 @@ impl BarModel {
                     .launch(DashboardInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
                         DashboardOutput::Clicked => BarOutput::DashboardClicked,
+                    }),
+            ),
+            // mdash reuses the Dashboard clock pill (identical look /
+            // tempo label); only the click target differs.
+            BarWidget::Mdash => Box::new(
+                DashboardModel::builder()
+                    .launch(DashboardInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        DashboardOutput::Clicked => BarOutput::MdashClicked,
                     }),
             ),
             BarWidget::DarkMode => Box::new(

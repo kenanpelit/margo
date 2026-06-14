@@ -55,6 +55,11 @@ pub enum BarWidget {
     /// keeps their preferred date/time wording without any extra
     /// config.
     Dashboard,
+    /// Clock-style pill (twin of `Dashboard`) that opens the **mdash**
+    /// menu — the richer dashboard variant (greeting header, menu
+    /// shortcut grid, divider-separated power). Same `[tempo]` label as
+    /// Clock / Dashboard.
+    Mdash,
     DarkMode,
     /// Twilight (built-in blue-light filter) pill. Left-click opens
     /// the Twilight panel (toggle + temperature + mode + presets);
@@ -151,6 +156,7 @@ impl BarWidget {
             BarWidget::Clock => "Clock",
             BarWidget::CpuDashboard => "CPU Dashboard",
             BarWidget::Dashboard => "Dashboard",
+            BarWidget::Mdash => "mdash",
             BarWidget::DarkMode => "Dark Mode Toggle",
             BarWidget::Twilight => "Twilight (blue-light filter)",
             BarWidget::KeepAwake => "Keep Awake",
@@ -212,6 +218,7 @@ impl BarWidget {
             BarWidget::Clock,
             BarWidget::CpuDashboard,
             BarWidget::Dashboard,
+            BarWidget::Mdash,
             BarWidget::DarkMode,
             BarWidget::Twilight,
             BarWidget::KeepAwake,
