@@ -3,6 +3,7 @@ pub mod bar;
 pub mod bluetooth;
 pub mod brightness;
 pub mod clipboard;
+pub mod doctor;
 pub mod dock;
 pub mod lock;
 pub mod log;

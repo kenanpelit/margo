@@ -19,6 +19,7 @@ use mctl::actions::{ACTIONS, Group};
     long_about = "Query and control the margo Wayland compositor over its Unix-socket IPC.\n\
                   \n\
                   EXAMPLES:\n  \
+                    mctl doctor                         # one-shot health check (config, socket, GPU, services)\n  \
                     mctl status                         # current focused-client / tag state\n  \
                     mctl watch                          # stream state updates (Ctrl-C to stop)\n  \
                     mctl tags 128                       # switch active tagset to tag 8 (1<<7)\n  \
@@ -502,6 +503,25 @@ enum Command {
         shell: Shell,
     },
 
+    /// Health check — config, socket, version sync, GPU, services in one pass.
+    #[command(
+        display_order = 2,
+        long_about = "Run a one-shot health check over a margo install and print a \
+                      ✓ / ⚠ / ✗ line per check, then a summary.\n\
+                      \n\
+                      Unifies the scattered diagnostics — config validation \
+                      (`check-config`), the running compositor's rejected lines \
+                      (`config-errors`), socket reachability, margo↔mctl version \
+                      sync (catches 'installed a new margo but haven't re-logged \
+                      in'), GPU render nodes, matugen, and the mshell / portal \
+                      D-Bus services.\n\
+                      \n\
+                      Exits non-zero if any check is an outright error, so it \
+                      works as a scriptable smoke test. Optional pieces (matugen, \
+                      busctl) degrade to warnings, never failures."
+    )]
+    Doctor,
+
     /// List every open window with tag, monitor, app_id, title.
     ///
     /// Reads `the margo IPC socket` (margo refreshes
@@ -762,6 +782,11 @@ fn main() -> Result<()> {
         }
         Command::Completions { shell } => {
             return cmd_completions(*shell);
+        }
+        // doctor manages its own socket connection (and degrades when
+        // margo isn't running), so it lives among the no-preconnect group.
+        Command::Doctor => {
+            return mctl::doctor::run();
         }
         Command::Rules {
             config,
@@ -1070,6 +1095,7 @@ fn main() -> Result<()> {
         }
         Command::Actions { .. }
         | Command::Completions { .. }
+        | Command::Doctor
         | Command::Rules { .. }
         | Command::CheckConfig { .. }
         | Command::ConfigErrors

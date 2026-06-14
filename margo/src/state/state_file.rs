@@ -226,6 +226,12 @@ impl MargoState {
 
         json!({
             "version": 1,
+            // The compositor binary's own version (workspace version at
+            // build time). `mctl doctor` compares this against its own
+            // build version to catch "installed a new margo but haven't
+            // re-logged into it yet". Absent on margo builds predating
+            // this field → doctor degrades to a soft warning.
+            "margo_version": env!("CARGO_PKG_VERSION"),
             "tag_count": MAX_TAGS,
             "active_output": active_output,
             "focused_idx": focused_idx,

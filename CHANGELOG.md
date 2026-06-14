@@ -7,6 +7,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`mctl doctor`** — a one-shot compositor health check that unifies the
+  scattered diagnostics: control-socket reachability, on-disk config
+  validation, the running compositor's rejected lines, margo↔mctl version
+  sync (catches "installed a new margo but haven't re-logged in"), GPU
+  render nodes, matugen, and the mshell / portal D-Bus services. Prints a
+  ✓ / ⚠ / ✗ line per check and exits non-zero on error, so it works as a
+  scriptable smoke test. The compositor snapshot now carries `margo_version`
+  to feed the version-sync check.
+- **`mshellctl doctor`** — the shell-side counterpart: session-bus
+  reachability, `com.mshell.Shell` ownership, and mshell↔mshellctl version
+  sync (a stale shell after an upgrade is the usual "my new feature is
+  missing" cause). Backed by a new `Version` D-Bus method on the shell.
+- **`mshellctl completions <shell>`** — clap-generated shell completions
+  (bash / zsh / fish / …), matching the existing `mctl completions`.
+
+### Changed
+
+- Roadmap accuracy: P12 (`zwlr_output_power_management_v1`, Wayland DPMS)
+  marked shipped (1.0.2), not deferred; the Twilight in-Settings preset
+  editor marked won't-do (the Settings → Display → Twilight page already
+  covers it).
+
 ## [1.0.6] – 2026-06-13
 
 An internals pass — both compositor god-files (`state.rs` + `udev/mod.rs`)

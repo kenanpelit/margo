@@ -74,7 +74,7 @@ Theme \(-> Color Scheme), applied live with no restart:
 matching ignores case and
 .RB ` \- '/` _ '/space
 separators, so
-.IR eventide ", " tokyo\-night " and " "\(dqTokyo Night\(dq"
+.IR kenp ", " tokyo\-night " and " "\(dqTokyo Night\(dq"
 all resolve;
 .B theme list
 prints the valid names.
@@ -100,6 +100,20 @@ helper (e.g. the in-shell region selector).
 .TP
 .B inspect
 Launch the GTK4 inspector (find CSS node ids / classes).
+.TP
+.B doctor
+One-shot health check of the shell: session-bus reachability, whether
+.B com.mshell.Shell
+is up, and whether the running shell matches this
+.BR mshellctl 's
+version (a stale shell after an upgrade is the usual "my new feature is
+missing" cause). Exits non-zero on error. Run
+.B mctl doctor
+for the compositor side.
+.TP
+.B completions \fISHELL\fR
+Emit a shell-completion script to stdout
+.RI ( bash " | " zsh " | " fish " | " elvish " | " powershell ).
 .PP
 Run
 .B mshellctl
@@ -116,8 +130,10 @@ mshellctl audio mute
 mshellctl brightness up
 mshellctl media toggle            # play/pause the active player
 mshellctl wallpaper next
-mshellctl theme set eventide      # switch colour scheme live
+mshellctl theme set kenp          # switch colour scheme live
 mshellctl theme list              # show every scheme name
+mshellctl doctor                  # shell health check
+mshellctl completions zsh         # emit zsh completion script
 mshellctl lock
 .EE
 .in

@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use clap_complete::Shell;
 use std::path::PathBuf;
 
 use crate::subcommands::audio::AudioCommands;
@@ -160,5 +161,15 @@ pub enum Commands {
     Clipboard {
         #[command(subcommand)]
         command: crate::subcommands::clipboard::ClipboardCommands,
+    },
+    /// Health check — is the shell on the session bus, is it the same
+    /// version as this `mshellctl`, are its key services up. Run
+    /// `mctl doctor` for the compositor side.
+    Doctor,
+    /// Generate a shell-completion script (bash / zsh / fish / …) to stdout.
+    Completions {
+        /// Shell to generate for.
+        #[arg(value_enum)]
+        shell: Shell,
     },
 }

@@ -52,6 +52,13 @@ async fn main() -> anyhow::Result<()> {
         Commands::Clipboard { command } => {
             mshellctl::subcommands::clipboard::execute(command).await?
         }
+        Commands::Doctor => mshellctl::subcommands::doctor::execute().await?,
+        Commands::Completions { shell } => {
+            use clap::CommandFactory;
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+            clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
+        }
     };
 
     Ok(())

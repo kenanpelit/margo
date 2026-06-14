@@ -57,6 +57,15 @@ Print the focused window's app_id + title (terse, scriptable).
 .TP
 .B config-errors
 Show config diagnostics from the last reload (niri-style).
+.TP
+.B doctor
+One-shot health check: socket reachability, on-disk config validation,
+the running compositor's rejected lines, margo\(->mctl version sync
+(catches "installed a new margo but haven't re-logged in"), GPU render
+nodes, matugen, and the mshell / portal D-Bus services. Prints a
+\(haOK / warn / fail line per check and exits non-zero on error. Run
+.B mshellctl doctor
+for the shell side.
 .SS "Control"
 .TP
 .B dispatch \fIACTION\fR [\fIARGS\fR]

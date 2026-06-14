@@ -1504,6 +1504,12 @@ impl IPCService {
             None => format!("unknown theme '{name}' — run `mshellctl theme list`"),
         }
     }
+    /// `mshellctl doctor` — the running shell's version (the workspace
+    /// version baked in at build time). Lets the doctor flag a shell that
+    /// is older than the `mshellctl` talking to it (restart needed).
+    async fn version(&self) -> String {
+        env!("CARGO_PKG_VERSION").to_string()
+    }
     async fn notifications(&self) {
         let _ = self.tx.send(IPCCommand::Notifications);
     }
