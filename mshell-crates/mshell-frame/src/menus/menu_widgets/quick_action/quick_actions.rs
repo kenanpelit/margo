@@ -12,6 +12,9 @@ use crate::menus::menu_widgets::quick_action::actions::idle_inhibitor::{
 };
 use crate::menus::menu_widgets::quick_action::actions::lock::{LockInit, LockModel, LockOutput};
 use crate::menus::menu_widgets::quick_action::actions::logout::{LogoutInit, LogoutModel};
+use crate::menus::menu_widgets::quick_action::actions::menu_launcher::{
+    MenuLauncherInit, MenuLauncherModel, MenuLauncherOutput,
+};
 use crate::menus::menu_widgets::quick_action::actions::night_light::{
     NightLightInit, NightLightModel,
 };
@@ -160,6 +163,78 @@ impl QuickActionsModel {
             QuickActionWidget::Shutdown => {
                 Box::new(ShutdownModel::builder().launch(ShutdownInit {}).detach())
             }
+            // ── Menu-launcher buttons ──
+            QuickActionWidget::Network => {
+                Self::menu_btn(sender, "network", "network-wireless-symbolic", "Network")
+            }
+            QuickActionWidget::Bluetooth => {
+                Self::menu_btn(sender, "bluetooth", "bluetooth-symbolic", "Bluetooth")
+            }
+            QuickActionWidget::CpuDashboard => Self::menu_btn(
+                sender,
+                "cpu-dashboard",
+                "utilities-system-monitor-symbolic",
+                "CPU dashboard",
+            ),
+            QuickActionWidget::AudioDashboard => Self::menu_btn(
+                sender,
+                "audio-dashboard",
+                "audio-volume-high-symbolic",
+                "Audio dashboard",
+            ),
+            QuickActionWidget::Vpn => Self::menu_btn(sender, "vpn", "network-vpn-symbolic", "VPN"),
+            QuickActionWidget::ControlCenter => Self::menu_btn(
+                sender,
+                "control-center",
+                "preferences-system-symbolic",
+                "Control center",
+            ),
+            QuickActionWidget::Twilight => {
+                Self::menu_btn(sender, "twilight", "night-light-symbolic", "Twilight")
+            }
+            QuickActionWidget::Keybinds => {
+                Self::menu_btn(sender, "keybinds", "input-keyboard-symbolic", "Keybinds")
+            }
+            QuickActionWidget::Dns => {
+                Self::menu_btn(sender, "dns", "network-server-symbolic", "DNS")
+            }
+            QuickActionWidget::Power => {
+                Self::menu_btn(sender, "power", "battery-symbolic", "Power")
+            }
+            QuickActionWidget::Session => {
+                Self::menu_btn(sender, "session", "system-shutdown-symbolic", "Session")
+            }
+            QuickActionWidget::Ip => Self::menu_btn(sender, "ip", "network-wired-symbolic", "IP"),
+            QuickActionWidget::AlarmClock => {
+                Self::menu_btn(sender, "alarm-clock", "alarm-symbolic", "Alarm clock")
+            }
+            QuickActionWidget::SystemUpdate => Self::menu_btn(
+                sender,
+                "system-update",
+                "software-update-available-symbolic",
+                "System updates",
+            ),
         }
+    }
+
+    /// Build a menu-launcher button: an icon button that opens
+    /// `mshellctl menu <menu>` and closes the dashboard it lives in.
+    fn menu_btn(
+        sender: &ComponentSender<Self>,
+        menu: &str,
+        icon: &str,
+        tooltip: &str,
+    ) -> Box<dyn GenericWidgetController> {
+        Box::new(
+            MenuLauncherModel::builder()
+                .launch(MenuLauncherInit {
+                    menu: menu.to_string(),
+                    icon: icon.to_string(),
+                    tooltip: tooltip.to_string(),
+                })
+                .forward(sender.output_sender(), |msg| match msg {
+                    MenuLauncherOutput::CloseMenu => QuickActionsOutput::CloseMenu,
+                }),
+        )
     }
 }

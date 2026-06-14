@@ -1132,6 +1132,32 @@ fn default_mdash_menu() -> Menu {
                     QuickActionWidget::Settings,
                 ],
             }),
+            // ── Menu-shortcut grid (two rows of 7) — each opens the
+            //    matching menu and closes the dashboard. ──
+            MenuWidget::Spacer(SpacerConfig { size: 8 }),
+            MenuWidget::QuickActions(QuickActionsConfig {
+                widgets: vec![
+                    QuickActionWidget::Network,
+                    QuickActionWidget::Bluetooth,
+                    QuickActionWidget::CpuDashboard,
+                    QuickActionWidget::AudioDashboard,
+                    QuickActionWidget::Vpn,
+                    QuickActionWidget::ControlCenter,
+                    QuickActionWidget::Twilight,
+                ],
+            }),
+            MenuWidget::Spacer(SpacerConfig { size: 6 }),
+            MenuWidget::QuickActions(QuickActionsConfig {
+                widgets: vec![
+                    QuickActionWidget::Keybinds,
+                    QuickActionWidget::Dns,
+                    QuickActionWidget::Power,
+                    QuickActionWidget::Session,
+                    QuickActionWidget::Ip,
+                    QuickActionWidget::AlarmClock,
+                    QuickActionWidget::SystemUpdate,
+                ],
+            }),
             // ── Power row, separated from the toggles by a divider so a
             //    stray click can't reach Shutdown from a toggle. ──
             MenuWidget::Divider,

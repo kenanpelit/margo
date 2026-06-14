@@ -4,6 +4,7 @@ pub(crate) mod do_not_disturb;
 pub(crate) mod idle_inhibitor;
 pub(crate) mod lock;
 pub(crate) mod logout;
+pub(crate) mod menu_launcher;
 pub(crate) mod night_light;
 pub(crate) mod reboot;
 pub(crate) mod screenshot;

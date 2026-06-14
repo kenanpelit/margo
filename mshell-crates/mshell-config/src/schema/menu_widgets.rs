@@ -277,6 +277,23 @@ pub enum QuickActionWidget {
     Screenshot,
     Settings,
     Shutdown,
+    // ── Menu-launcher buttons ──────────────────────────────────────
+    // Each opens another shell menu (`mshellctl menu <name>`) and closes
+    // the dashboard it lives in. Used by mdash's bottom shortcut grid.
+    Network,
+    Bluetooth,
+    CpuDashboard,
+    AudioDashboard,
+    Vpn,
+    ControlCenter,
+    Twilight,
+    Keybinds,
+    Dns,
+    Power,
+    Session,
+    Ip,
+    AlarmClock,
+    SystemUpdate,
 }
 
 impl QuickActionWidget {
@@ -294,6 +311,20 @@ impl QuickActionWidget {
             QuickActionWidget::Screenshot => "Screenshot",
             QuickActionWidget::Settings => "Settings",
             QuickActionWidget::Shutdown => "Shutdown",
+            QuickActionWidget::Network => "Network",
+            QuickActionWidget::Bluetooth => "Bluetooth",
+            QuickActionWidget::CpuDashboard => "CPU Dashboard",
+            QuickActionWidget::AudioDashboard => "Audio Dashboard",
+            QuickActionWidget::Vpn => "VPN",
+            QuickActionWidget::ControlCenter => "Control Center",
+            QuickActionWidget::Twilight => "Twilight",
+            QuickActionWidget::Keybinds => "Keybinds",
+            QuickActionWidget::Dns => "DNS",
+            QuickActionWidget::Power => "Power",
+            QuickActionWidget::Session => "Session",
+            QuickActionWidget::Ip => "IP",
+            QuickActionWidget::AlarmClock => "Alarm Clock",
+            QuickActionWidget::SystemUpdate => "System Update",
         }
     }
 
@@ -315,6 +346,20 @@ impl QuickActionWidget {
             QuickActionWidget::Screenshot,
             QuickActionWidget::Settings,
             QuickActionWidget::Shutdown,
+            QuickActionWidget::Network,
+            QuickActionWidget::Bluetooth,
+            QuickActionWidget::CpuDashboard,
+            QuickActionWidget::AudioDashboard,
+            QuickActionWidget::Vpn,
+            QuickActionWidget::ControlCenter,
+            QuickActionWidget::Twilight,
+            QuickActionWidget::Keybinds,
+            QuickActionWidget::Dns,
+            QuickActionWidget::Power,
+            QuickActionWidget::Session,
+            QuickActionWidget::Ip,
+            QuickActionWidget::AlarmClock,
+            QuickActionWidget::SystemUpdate,
         ]
     }
 }

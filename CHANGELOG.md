@@ -23,6 +23,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   `mshellctl menu mdash`. (Per-row clickable intel and a SystemStatus
   sparkline are tracked as follow-ups; in mdash the actionable panels are
   embedded directly, which covers the same need.)
+- **Menu-launcher quick actions.** New `QuickActionWidget` variants
+  (Network, Bluetooth, CpuDashboard, AudioDashboard, Vpn, ControlCenter,
+  Twilight, Keybinds, Dns, Power, Session, Ip, AlarmClock, SystemUpdate)
+  render as icon buttons that open the matching menu (`mshellctl menu …`)
+  and close the dashboard. mdash ships a two-row shortcut grid of them
+  under the toggles; they're also selectable in Settings → Menus quick
+  actions for any menu.
 
 ## [1.0.6] – 2026-06-13
 
