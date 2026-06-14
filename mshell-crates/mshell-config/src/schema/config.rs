@@ -1032,8 +1032,14 @@ pub struct Menus {
     /// separated from the toggles. Ships alongside `dashboard_menu`
     /// (not replacing it) so users pick whichever they prefer via
     /// `mshellctl menu dashboard` vs `mshellctl menu mdash`.
-    /// Default-on-missing so older YAML parses.
-    #[serde(default = "default_mdash_menu")]
+    /// Default-on-missing so older YAML parses. `skip_serializing_if`
+    /// keeps it OUT of the written profile while it equals the code
+    /// default, so future default changes win instead of a stale baked
+    /// copy overriding them (it's only persisted once edited in Settings).
+    #[serde(
+        default = "default_mdash_menu",
+        skip_serializing_if = "mdash_menu_is_default"
+    )]
     pub mdash_menu: Menu,
     /// Margo layout switcher — replaces the legacy bar-popover
     /// variant. Anchored to whichever side the user pins it to;
@@ -1076,6 +1082,12 @@ fn default_plugin_panel_menu() -> Menu {
 /// `fill: false` on the columns keeps tiles at their natural height (top
 /// aligned) instead of stretching the last tile — the classic dashboard's
 /// `fill: true` is what stretched the media player.
+/// True when `mdash_menu` is still the untouched code default, so the
+/// profile serializer can omit it (see the field's `skip_serializing_if`).
+fn mdash_menu_is_default(m: &Menu) -> bool {
+    *m == default_mdash_menu()
+}
+
 fn default_mdash_menu() -> Menu {
     Menu {
         position: Position::Top,
