@@ -535,20 +535,30 @@ who migrate to margo will miss it.
 mango-margo migration story makes it the top friction point.
 Until then this lives here so we don't re-discover the scope cold.
 
-### 15.4.2 Twilight schedule preset GUI editor (deferred)
+### 15.4.2 Twilight schedule preset GUI editor (won't do)
+
+**Decision (2026-06-14): not building this.** Settings → Display →
+Twilight already exposes every twilight knob (mode, manual temp/gamma,
+schedule on/off) from the GUI, and preset *files* are editable via
+`$EDITOR`, `mctl twilight preset`, or the in-page "Open presets folder"
+button. A full in-GUI preset editor (per-row sliders + schedule
+time-picker grid) is redundant surface, not a missing capability — the
+user explicitly declined it. Kept below as a record of the scope that
+was considered, in case a future user asks to *draw* the curve rather
+than type numbers.
 
 The twilight Schedule-mode presets are TOML files under
 `~/.config/margo/twilight/` (`schedule.conf` + `presets/*.toml`).
-Three editing paths now exist:
+Three editing paths exist:
 
 | Path | Where | Status |
 |---|---|---|
 | Hand-edit + `mctl reload` | `$EDITOR` | ✅ always worked |
 | `mctl twilight preset list / set / remove / schedule` | CLI, scriptable | ✅ shipped |
 | Settings → Display → Twilight → "Open presets folder" button | xdg-open shortcut | ✅ shipped |
-| **In-Settings preset editor** with sliders + add/remove + schedule time picker | mshell GTK4 UI | 🟡 deferred |
+| **In-Settings preset editor** with sliders + add/remove + schedule time picker | mshell GTK4 UI | ⬜ won't do (redundant) |
 
-**What the GUI editor would add.**
+**What the GUI editor would have added.**
 
 - Read-write list of presets with inline temp (1000–25000 K) +
   gamma (10–200 %) sliders per row, live preview button that fires
