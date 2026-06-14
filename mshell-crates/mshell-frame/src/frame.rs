@@ -54,6 +54,7 @@ const MEDIA_PLAYER_MENU: &str = "media_player";
 const SESSION_MENU: &str = "session";
 const SETTINGS_MENU: &str = "settings";
 const DASHBOARD_MENU: &str = "dashboard";
+const MDASH_MENU: &str = "mdash";
 const MARGO_LAYOUT_MENU: &str = "margo_layout";
 
 pub struct Frame {
@@ -136,6 +137,7 @@ pub struct Frame {
     /// stack rather than the generic menu-widget pipeline.
     settings_menu: Controller<mshell_settings::SettingsWindowModel>,
     dashboard_menu: Controller<MenuModel>,
+    mdash_menu: Controller<MenuModel>,
     margo_layout_menu: Controller<MenuModel>,
     /// Pending keyboard-mode switch held inside the 90 ms debounce
     /// window. Replaced on every `sync_keyboard_mode` call; the
@@ -276,6 +278,7 @@ pub enum FrameInput {
     /// doesn't linger on a monitor the user is no longer viewing.
     CloseSettingsMenu,
     ToggleDashboardMenu,
+    ToggleMdashMenu,
     /// Open / close the Margo layout switcher menu (in-frame
     /// replacement for the legacy bar popover).
     ToggleMargoLayoutMenu,
@@ -839,6 +842,7 @@ impl Component for Frame {
         let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer);
         let session_menu = Self::build_menu(&sender, MenuType::Session);
         let dashboard_menu = Self::build_menu(&sender, MenuType::Dashboard);
+        let mdash_menu = Self::build_menu(&sender, MenuType::Mdash);
         let margo_layout_menu = Self::build_menu(&sender, MenuType::MargoLayout);
 
         // Settings doesn't go through `build_menu` because its
@@ -919,6 +923,7 @@ impl Component for Frame {
             // and the menu stays put until restart.
             let _ = pos!(cpu_dashboard_menu);
             let _ = pos!(audio_dashboard_menu);
+            let _ = pos!(mdash_menu);
             let _ = pos!(bluetooth_menu);
             let _ = pos!(system_update_menu);
             let _ = pos!(valent_menu);
@@ -1048,6 +1053,7 @@ impl Component for Frame {
             session_menu,
             settings_menu,
             dashboard_menu,
+            mdash_menu,
             margo_layout_menu,
             pending_kbd_mode: std::rc::Rc::new(std::cell::RefCell::new(None)),
             pending_kbd_mode_timeout: std::rc::Rc::new(std::cell::RefCell::new(None)),
@@ -1524,6 +1530,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleDashboardMenu => {
                 self.toggle_menu(DASHBOARD_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleMdashMenu => {
+                self.toggle_menu(MDASH_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleMargoLayoutMenu => {
@@ -2595,6 +2605,21 @@ impl Frame {
             &dashboard_menu_widget,
             DASHBOARD_MENU,
             &dashboard_menu_position,
+        );
+        // mdash — position read straight from config (newer pattern, like
+        // cpu_dashboard / margo_layout); toggled via FrameInput::ToggleMdashMenu.
+        let mdash_menu_widget: Widget = self.mdash_menu.widget().clone().upcast();
+        let mdash_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .mdash_menu()
+            .position()
+            .get();
+        Self::add_to_stack(
+            widgets,
+            &mdash_menu_widget,
+            MDASH_MENU,
+            &mdash_menu_position,
         );
         // Margo Layout menu — position read from config (the
         // Settings → Menus page exposes the knob). Bar pill output

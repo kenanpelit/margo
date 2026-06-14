@@ -1025,6 +1025,16 @@ pub struct Menus {
     /// `quick_settings_menu` rather than replacing them so users
     /// who prefer the focused single-purpose menus keep them.
     pub dashboard_menu: Menu,
+    /// `mdash` — the next-gen dashboard. Same widget engine as
+    /// `dashboard_menu` but a richer default composition: a
+    /// time-aware greeting header, an inline notifications panel +
+    /// notes + system-update tiles, and a power row visually
+    /// separated from the toggles. Ships alongside `dashboard_menu`
+    /// (not replacing it) so users pick whichever they prefer via
+    /// `mshellctl menu dashboard` vs `mshellctl menu mdash`.
+    /// Default-on-missing so older YAML parses.
+    #[serde(default = "default_mdash_menu")]
+    pub mdash_menu: Menu,
     /// Margo layout switcher — replaces the legacy bar-popover
     /// variant. Anchored to whichever side the user pins it to;
     /// content is a single `MargoLayout` widget rendering a
@@ -1047,6 +1057,97 @@ fn default_plugin_panel_menu() -> Menu {
         widgets: vec![],
         minimum_width: 420,
         maximum_height: 560,
+    }
+}
+
+/// `mdash` — the richer dashboard composition. Same two-pane body as the
+/// classic dashboard, plus: a time-aware greeting header, an inline
+/// notifications panel + a system-update tile (so updates and toasts are
+/// readable/actionable without leaving the panel), and a power row split
+/// off from the toggle row by a divider (so a stray click can't shut the
+/// machine down). Composed purely from existing widgets + the new
+/// greeting flag, so it shares the dashboard's render engine.
+fn default_mdash_menu() -> Menu {
+    Menu {
+        position: Position::Top,
+        widgets: vec![
+            // Greeting header (replaces the static "Dashboard" title).
+            MenuWidget::PanelHeader(PanelHeaderConfig {
+                title: "Dashboard".to_string(),
+                greeting: true,
+            }),
+            MenuWidget::Spacer(SpacerConfig { size: 8 }),
+            // ── 2-col body (same symmetric layout as dashboard) ──
+            MenuWidget::Container(ContainerConfig {
+                widgets: vec![
+                    // Left = "today at a glance" + a quick scratchpad.
+                    MenuWidget::Container(ContainerConfig {
+                        widgets: vec![
+                            MenuWidget::CalendarGrid,
+                            MenuWidget::Weather,
+                            MenuWidget::Notes,
+                        ],
+                        spacing: 10,
+                        orientation: Orientation::Vertical,
+                        minimum_width: 400,
+                        homogeneous: false,
+                        fill: true,
+                    }),
+                    // Right = intel + controls + media.
+                    MenuWidget::Container(ContainerConfig {
+                        widgets: vec![
+                            MenuWidget::OverviewIntel,
+                            MenuWidget::Connectivity,
+                            MenuWidget::CompactAudio,
+                            MenuWidget::SystemStatus,
+                            MenuWidget::MediaPlayer,
+                        ],
+                        spacing: 8,
+                        orientation: Orientation::Vertical,
+                        minimum_width: 400,
+                        homogeneous: false,
+                        fill: true,
+                    }),
+                ],
+                spacing: 12,
+                orientation: Orientation::Horizontal,
+                minimum_width: 0,
+                homogeneous: true,
+                fill: false,
+            }),
+            // ── Inline notifications (read + clear without leaving) ──
+            MenuWidget::Spacer(SpacerConfig { size: 8 }),
+            MenuWidget::Notifications,
+            // ── Actionable system updates ──
+            MenuWidget::Spacer(SpacerConfig { size: 8 }),
+            MenuWidget::SystemUpdate,
+            // ── Toggles row ──
+            MenuWidget::Spacer(SpacerConfig { size: 10 }),
+            MenuWidget::QuickActions(QuickActionsConfig {
+                widgets: vec![
+                    QuickActionWidget::AirplaneMode,
+                    QuickActionWidget::Nightlight,
+                    QuickActionWidget::ColorPicker,
+                    QuickActionWidget::Wallpaper,
+                    QuickActionWidget::Screenshot,
+                    QuickActionWidget::Settings,
+                ],
+            }),
+            // ── Power row, separated from the toggles by a divider so a
+            //    stray click can't reach Shutdown from a toggle. ──
+            MenuWidget::Divider,
+            MenuWidget::Spacer(SpacerConfig { size: 6 }),
+            MenuWidget::QuickActions(QuickActionsConfig {
+                widgets: vec![
+                    QuickActionWidget::Logout,
+                    QuickActionWidget::Lock,
+                    QuickActionWidget::Reboot,
+                    QuickActionWidget::Shutdown,
+                ],
+            }),
+        ],
+        minimum_width: 860,
+        maximum_height: 0,
     }
 }
 
@@ -1368,6 +1469,7 @@ impl Default for Menus {
                     // the Clock hero carried goes away with it.
                     MenuWidget::PanelHeader(PanelHeaderConfig {
                         title: "Dashboard".to_string(),
+                        greeting: false,
                     }),
                     MenuWidget::Spacer(SpacerConfig { size: 8 }),
                     // ── 2-col body ──
@@ -1472,6 +1574,7 @@ impl Default for Menus {
                 minimum_width: 860,
                 maximum_height: 0,
             },
+            mdash_menu: default_mdash_menu(),
             margo_layout_menu: Menu {
                 // Replaces the legacy `gtk::PopoverMenu` that
                 // opened as a separate `xdg_popup` window. Lives

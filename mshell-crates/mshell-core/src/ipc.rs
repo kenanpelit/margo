@@ -231,6 +231,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Dashboard => {
                     app_sender.emit(ShellInput::ToggleDashboardMenu(active_monitor().await));
                 }
+                IPCCommand::Mdash => {
+                    app_sender.emit(ShellInput::ToggleMdashMenu(active_monitor().await));
+                }
                 IPCCommand::SessionAction(action) => {
                     app_sender.emit(ShellInput::RunSessionAction(action));
                 }
@@ -585,6 +588,7 @@ enum IPCCommand {
     Power,
     MediaPlayer,
     Dashboard,
+    Mdash,
     /// Toggle an installed plugin's panel/menu by key (generic — any plugin).
     PluginMenu(String),
     /// Force-reload an installed plugin's WASM panel — evict the cached
@@ -1718,6 +1722,9 @@ impl IPCService {
     }
     async fn dashboard(&self) {
         let _ = self.tx.send(IPCCommand::Dashboard);
+    }
+    async fn mdash(&self) {
+        let _ = self.tx.send(IPCCommand::Mdash);
     }
     async fn plugin_reload(&self, key: String) {
         let _ = self.tx.send(IPCCommand::PluginReload(key));

@@ -120,6 +120,10 @@ pub enum MenuCommands {
     /// Toggle the combined dashboard menu (clock + weather +
     /// quick settings, all in one panel)
     Dashboard,
+    /// Toggle the mdash dashboard — a richer variant (greeting header,
+    /// inline notifications + system updates, divider-separated power row).
+    /// Coexists with `dashboard`; pick whichever you prefer.
+    Mdash,
     /// Toggle an installed plugin's panel/menu by key — e.g.
     /// `menu plugin assistant` or `menu plugin mullvad`. Generic: works for
     /// any plugin that ships a panel or a `[[widget.menu]]`, with no
@@ -269,6 +273,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         },
         MenuCommands::Dashboard => {
             bus_command("Dashboard").await?;
+        }
+        MenuCommands::Mdash => {
+            bus_command("Mdash").await?;
         }
         MenuCommands::Plugin { key } => {
             bus_command_with_arg("PluginMenu", &key).await?;

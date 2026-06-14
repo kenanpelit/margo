@@ -127,6 +127,12 @@ pub(crate) enum MenuType {
     /// `QuickSettings`; users wire a keybind / bar pill if they
     /// prefer the combined view.
     Dashboard,
+    /// `mdash` — the next-gen dashboard. Same render engine + card-stack
+    /// CSS as `Dashboard`, driven by the separate `mdash_menu` config so
+    /// it can carry a richer default composition (greeting header, inline
+    /// notifications + system-update, divider-separated power row).
+    /// Coexists with `Dashboard`.
+    Mdash,
     /// Margo layout switcher. Replaces the legacy in-bar
     /// `gtk::PopoverMenu` (xdg_popup, detached window feel)
     /// with a regular menu surface that slides out from the
@@ -559,6 +565,14 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, dashboard_menu);
                 effect_min_width!(effects, base_config, sender, dashboard_menu);
                 effect_max_height!(effects, base_config, sender, dashboard_menu);
+            }
+            MenuType::Mdash => {
+                // Shares the dashboard's card-stack CSS; the extra
+                // `mdash-menu` class is a hook for any mdash-only tweaks.
+                css_class = "quick-settings-menu dashboard-menu mdash-menu".to_string();
+                effect_widgets!(effects, base_config, sender, mdash_menu);
+                effect_min_width!(effects, base_config, sender, mdash_menu);
+                effect_max_height!(effects, base_config, sender, mdash_menu);
             }
             MenuType::MargoLayout => {
                 css_class = "quick-settings-menu margo-layout-menu".to_string();

@@ -7,6 +7,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`mdash` — a richer dashboard, alongside the existing one.** A second
+  composed dashboard (`mshellctl menu mdash`) that reuses the dashboard's
+  render engine but ships a fuller default layout: a **time-aware greeting
+  header** ("Good evening, <user>"), the two-pane calendar/weather/notes +
+  intel/controls/media body, an **inline notifications panel** and a
+  **system-update tile** (so toasts and updates are readable/actionable
+  without leaving the panel), and a **power row separated from the toggles
+  by a divider** (so a stray click can't reach Shutdown). The classic
+  `dashboard` is untouched — pick whichever you prefer. New
+  `PanelHeader { greeting }` flag + `menus.mdash_menu` config (serde-default,
+  so existing profiles parse unchanged). Bind it with
+  `mshellctl menu mdash`. (Per-row clickable intel and a SystemStatus
+  sparkline are tracked as follow-ups; in mdash the actionable panels are
+  embedded directly, which covers the same need.)
+
 ## [1.0.6] – 2026-06-13
 
 An internals pass — both compositor god-files (`state.rs` + `udev/mod.rs`)

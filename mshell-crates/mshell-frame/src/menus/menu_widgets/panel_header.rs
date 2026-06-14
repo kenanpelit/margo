@@ -39,7 +39,35 @@ fn current_date() -> String {
     now.format(&DATE_FORMAT).unwrap_or_default()
 }
 
+/// Time-aware greeting headline, e.g. "Good evening, Kenan". The name is
+/// the capitalised `$USER` (best-effort; dropped when unavailable so the
+/// greeting still reads cleanly). Recomputed on the minute tick so it
+/// flips as the day rolls from morning → afternoon → evening.
+fn greeting_text() -> String {
+    let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
+    let part = match now.hour() {
+        5..=11 => "Good morning",
+        12..=17 => "Good afternoon",
+        18..=22 => "Good evening",
+        _ => "Good night",
+    };
+    match std::env::var("USER").ok().filter(|u| !u.is_empty()) {
+        Some(user) => {
+            let mut chars = user.chars();
+            let name = match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => user,
+            };
+            format!("{part}, {name}")
+        }
+        None => part.to_string(),
+    }
+}
+
 pub(crate) struct PanelHeaderModel {
+    /// When true the title carries a live greeting instead of a static
+    /// label; the minute tick refreshes it alongside the date.
+    greeting: bool,
     title: String,
     date_label: String,
     timer_id: Option<SourceId>,
@@ -55,6 +83,7 @@ pub(crate) enum PanelHeaderOutput {}
 
 pub(crate) struct PanelHeaderInit {
     pub title: String,
+    pub greeting: bool,
 }
 
 #[relm4::component(pub)]
@@ -79,8 +108,10 @@ impl SimpleComponent for PanelHeaderModel {
             },
 
             // Title takes the slack, pushing the date + gear right.
+            // `#[watch]` so the greeting variant refreshes on the tick.
             gtk::Label {
                 add_css_class: "panel-title",
+                #[watch]
                 set_label: model.title.as_str(),
                 set_halign: gtk::Align::Start,
                 set_valign: gtk::Align::Center,
@@ -124,8 +155,14 @@ impl SimpleComponent for PanelHeaderModel {
             glib::ControlFlow::Continue
         });
 
+        let title = if params.greeting {
+            greeting_text()
+        } else {
+            params.title
+        };
         let model = PanelHeaderModel {
-            title: params.title,
+            greeting: params.greeting,
+            title,
             date_label: current_date(),
             timer_id: Some(id),
         };
@@ -139,6 +176,9 @@ impl SimpleComponent for PanelHeaderModel {
         match message {
             PanelHeaderInput::UpdateDate => {
                 self.date_label = current_date();
+                if self.greeting {
+                    self.title = greeting_text();
+                }
             }
         }
     }

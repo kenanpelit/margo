@@ -29,7 +29,7 @@ conflate them.
 .TP
 .B menu \fISUBCOMMAND\fR
 Open / close a shell menu:
-.IR control-center ", " dashboard ", " cpu-dashboard ", " audio-dashboard ,
+.IR control-center ", " dashboard ", " mdash ", " cpu-dashboard ", " audio-dashboard ,
 .IR ssh-sessions ", " session ", " plugin ", \[char46]\&.\&.\&."
 .TP
 .B bar \fISUBCOMMAND\fR
@@ -125,6 +125,7 @@ for the full subcommand and argument surface.
 .EX
 mshellctl menu control-center     # toggle the quick-settings panel
 mshellctl menu dashboard
+mshellctl menu mdash              # the richer dashboard variant
 mshellctl audio volume 60         # set output volume to 60%
 mshellctl audio mute
 mshellctl brightness up

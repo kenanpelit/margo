@@ -329,8 +329,15 @@ pub struct PanelHeaderConfig {
     /// Display-size panel title (e.g. "Dashboard"), shown SemiBold at
     /// the head of the panel beside a live date + a settings gear
     /// (DESIGN.md §12 header). A field so the header is reusable.
+    /// Ignored when `greeting` is on (the greeting replaces the title).
     #[serde(default = "default_panel_title")]
     pub title: String,
+    /// When true the title is replaced by a time-aware greeting
+    /// ("Good morning/afternoon/evening, <user>") that updates as the
+    /// day rolls over. Used by the `mdash` dashboard; defaults off so
+    /// the classic `dashboard` keeps its static title.
+    #[serde(default)]
+    pub greeting: bool,
 }
 
 fn default_panel_title() -> String {
@@ -341,6 +348,7 @@ impl Default for PanelHeaderConfig {
     fn default() -> Self {
         Self {
             title: default_panel_title(),
+            greeting: false,
         }
     }
 }

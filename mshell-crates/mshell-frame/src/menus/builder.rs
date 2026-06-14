@@ -370,6 +370,7 @@ pub fn build_widget(
             PanelHeaderModel::builder()
                 .launch(PanelHeaderInit {
                     title: config.title.clone(),
+                    greeting: config.greeting,
                 })
                 .detach(),
         ),
