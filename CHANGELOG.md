@@ -7,38 +7,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-### Added
-
-- **`mctl doctor`** — a one-shot compositor health check that unifies the
-  scattered diagnostics: control-socket reachability, on-disk config
-  validation, the running compositor's rejected lines, margo↔mctl version
-  sync (catches "installed a new margo but haven't re-logged in"), GPU
-  render nodes, matugen, and the mshell / portal D-Bus services. Prints a
-  ✓ / ⚠ / ✗ line per check and exits non-zero on error, so it works as a
-  scriptable smoke test. The compositor snapshot now carries `margo_version`
-  to feed the version-sync check.
-- **`mshellctl doctor`** — the shell-side counterpart: session-bus
-  reachability, `com.mshell.Shell` ownership, and mshell↔mshellctl version
-  sync (a stale shell after an upgrade is the usual "my new feature is
-  missing" cause). Backed by a new `Version` D-Bus method on the shell.
-- **`mshellctl completions <shell>`** — clap-generated shell completions
-  (bash / zsh / fish / …), matching the existing `mctl completions`.
-
-### Changed
-
-- Roadmap accuracy: P12 (`zwlr_output_power_management_v1`, Wayland DPMS)
-  marked shipped (1.0.2), not deferred; the Twilight in-Settings preset
-  editor marked won't-do (the Settings → Display → Twilight page already
-  covers it).
-
 ## [1.0.6] – 2026-06-13
 
 An internals pass — both compositor god-files (`state.rs` + `udev/mod.rs`)
 split back down, safe config migration, first-login bootstrap coverage, a
 `justfile` dev loop, fixed silent notification sounds — plus a batch of
 user-facing work: **Kenp** is the new default colour scheme, a `mshellctl theme`
-CLI, the Catwalk pill gains the RunCat cat + a CPU-% readout, the `monly`
-single-window-maximise knob, and a redesigned CPU dashboard.
+CLI, `mctl doctor` / `mshellctl doctor` health checks + shell completions, the
+Catwalk pill gains the RunCat cat + a CPU-% readout, the `monly`
+single-window-maximise knob, a redesigned CPU dashboard, and a branded default
+wallpaper.
 
 ### Fixed
 
@@ -85,6 +63,11 @@ single-window-maximise knob, and a redesigned CPU dashboard.
   drains — ~2200 lines) moved into `backend/udev/render_elements.rs`; `mod.rs`
   keeps backend setup, capture queueing, and `serve_screencopies`. Pure
   lift-and-shift.
+- **Network change OSD moved to Settings → Network.** The "Connection change
+  OSD" toggle lived under Settings → General; it now sits with the other
+  connection settings on the Network page. Config key unchanged
+  (`general.network_osd_enabled`), so existing profiles and the OSD itself are
+  unaffected — UI location only.
 - **Settings + bar boilerplate consolidated.** A `build_pages!` macro collapses
   the 47 hand-written settings-page controller builds into one declarative list
   (the page stack + sidebar were already table-driven); the three bar-slot
@@ -123,6 +106,22 @@ single-window-maximise knob, and a redesigned CPU dashboard.
   `just shell` / `just margo` / `just cli` / `just all`, `just reload`
   (`mctl reload` — config only, never a binary swap), and `just check` (the
   exact pre-push CI gate). Complements `./install.sh` (the packaged installer).
+- **`mctl doctor` — one-shot compositor health check.** Unifies the scattered
+  diagnostics: control-socket reachability, on-disk config validation, the
+  running compositor's rejected lines, margo↔mctl version sync (catches
+  "installed a new margo but haven't re-logged in"), GPU render nodes, matugen,
+  and the mshell / portal D-Bus services. Prints a ✓ / ⚠ / ✗ line per check and
+  exits non-zero on error, so it doubles as a scriptable smoke test. The
+  compositor snapshot now carries `margo_version` to feed the version check.
+- **`mshellctl doctor` + `mshellctl completions`.** The shell-side health check
+  (session-bus reachability, `com.mshell.Shell` ownership, mshell↔mshellctl
+  version sync — backed by a new `Version` D-Bus method), plus clap-generated
+  shell completions (bash / zsh / fish / …) matching the existing
+  `mctl completions`.
+- **Branded `default.jpg` wallpaper.** A clean dark desktop default mirroring
+  margo-hero: the brand mark (coral bars + dark inner block) in the bottom-left
+  corner with a soft halo and the "margo" wordmark beneath. This is the file the
+  compositor + `mlock` fallbacks already resolve when no wallpaper is set.
 
 ### Tests
 
@@ -137,6 +136,9 @@ single-window-maximise knob, and a redesigned CPU dashboard.
 - Roadmaps de-drifted: `road_map.md` / `1.0-readiness.md` current-status bumped
   to v1.0.6; `code-quality-roadmap.md` marks the `state.rs` split, config
   versioning, and the settings/bar boilerplate items done/partial.
+- Roadmap accuracy: P12 (`zwlr_output_power_management_v1`, Wayland DPMS) marked
+  shipped (1.0.2) rather than deferred; the Twilight in-Settings preset editor
+  marked won't-do (Settings → Display → Twilight already covers it).
 
 ## [1.0.5] – 2026-06-12
 
