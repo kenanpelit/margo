@@ -1060,13 +1060,22 @@ fn default_plugin_panel_menu() -> Menu {
     }
 }
 
-/// `mdash` — the richer dashboard composition. Same two-pane body as the
-/// classic dashboard, plus: a time-aware greeting header, an inline
-/// notifications panel + a system-update tile (so updates and toasts are
-/// readable/actionable without leaving the panel), and a power row split
-/// off from the toggle row by a divider (so a stray click can't shut the
-/// machine down). Composed purely from existing widgets + the new
-/// greeting flag, so it shares the dashboard's render engine.
+/// `mdash` — a compact, polished take on the dashboard. Deliberately the
+/// *same* balanced two-pane body as the classic dashboard (so it stays the
+/// size that fits on screen) with two restrained upgrades: a time-aware
+/// greeting header, and a power row split off from the toggles by a
+/// divider so a stray click can't reach Shutdown.
+///
+/// What it intentionally does NOT do: cram in the full Notes hub / inline
+/// notification center / system-update panel. Those are tall, full-feature
+/// surfaces — stacking them here turned the panel into a giant scroll that
+/// pushed the quick actions off-screen and stretched the media tile. They
+/// live in their own menus (`mshellctl menu notifications`, etc.); the
+/// OverviewIntel tile still surfaces the counts at a glance.
+///
+/// `fill: false` on the columns keeps tiles at their natural height (top
+/// aligned) instead of stretching the last tile — the classic dashboard's
+/// `fill: true` is what stretched the media player.
 fn default_mdash_menu() -> Menu {
     Menu {
         position: Position::Top,
@@ -1077,21 +1086,17 @@ fn default_mdash_menu() -> Menu {
                 greeting: true,
             }),
             MenuWidget::Spacer(SpacerConfig { size: 8 }),
-            // ── 2-col body (same symmetric layout as dashboard) ──
+            // ── 2-col body ──
             MenuWidget::Container(ContainerConfig {
                 widgets: vec![
-                    // Left = "today at a glance" + a quick scratchpad.
+                    // Left = "today at a glance".
                     MenuWidget::Container(ContainerConfig {
-                        widgets: vec![
-                            MenuWidget::CalendarGrid,
-                            MenuWidget::Weather,
-                            MenuWidget::Notes,
-                        ],
+                        widgets: vec![MenuWidget::CalendarGrid, MenuWidget::Weather],
                         spacing: 10,
                         orientation: Orientation::Vertical,
                         minimum_width: 400,
                         homogeneous: false,
-                        fill: true,
+                        fill: false,
                     }),
                     // Right = intel + controls + media.
                     MenuWidget::Container(ContainerConfig {
@@ -1106,7 +1111,7 @@ fn default_mdash_menu() -> Menu {
                         orientation: Orientation::Vertical,
                         minimum_width: 400,
                         homogeneous: false,
-                        fill: true,
+                        fill: false,
                     }),
                 ],
                 spacing: 12,
@@ -1115,12 +1120,6 @@ fn default_mdash_menu() -> Menu {
                 homogeneous: true,
                 fill: false,
             }),
-            // ── Inline notifications (read + clear without leaving) ──
-            MenuWidget::Spacer(SpacerConfig { size: 8 }),
-            MenuWidget::Notifications,
-            // ── Actionable system updates ──
-            MenuWidget::Spacer(SpacerConfig { size: 8 }),
-            MenuWidget::SystemUpdate,
             // ── Toggles row ──
             MenuWidget::Spacer(SpacerConfig { size: 10 }),
             MenuWidget::QuickActions(QuickActionsConfig {
