@@ -81,30 +81,27 @@ pub async fn execute() -> anyhow::Result<()> {
     // 2. Does the shell own its well-known name?
     let mut name_up = false;
     if let Some(conn) = &conn {
-        match DBusProxy::new(conn).await {
-            Ok(dbus) => {
-                let name =
-                    BusName::try_from(SHELL_NAME).expect("com.mshell.Shell is a valid bus name");
-                match dbus.name_has_owner(name).await {
-                    Ok(true) => {
-                        name_up = true;
-                        r.line(Level::Ok, "shell service", &format!("{SHELL_NAME} is up"));
-                    }
-                    Ok(false) => r.line(
-                        Level::Err,
-                        "shell service",
-                        &format!("{SHELL_NAME} has no owner — is mshell running?"),
-                    ),
-                    Err(e) => {
-                        r.line(
-                            Level::Warn,
-                            "shell service",
-                            &format!("name query failed: {e}"),
-                        );
-                    }
+        match (DBusProxy::new(conn).await, BusName::try_from(SHELL_NAME)) {
+            (Ok(dbus), Ok(name)) => match dbus.name_has_owner(name).await {
+                Ok(true) => {
+                    name_up = true;
+                    r.line(Level::Ok, "shell service", &format!("{SHELL_NAME} is up"));
                 }
-            }
-            Err(e) => r.line(
+                Ok(false) => r.line(
+                    Level::Err,
+                    "shell service",
+                    &format!("{SHELL_NAME} has no owner — is mshell running?"),
+                ),
+                Err(e) => {
+                    r.line(
+                        Level::Warn,
+                        "shell service",
+                        &format!("name query failed: {e}"),
+                    );
+                }
+            },
+            (_, Err(e)) => r.line(Level::Warn, "shell service", &format!("bad bus name: {e}")),
+            (Err(e), _) => r.line(
                 Level::Warn,
                 "shell service",
                 &format!("D-Bus proxy failed: {e}"),
