@@ -7,30 +7,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-### Added
-
-- **`mdash` — a richer dashboard, alongside the existing one.** A second
-  composed dashboard (`mshellctl menu mdash`) that reuses the dashboard's
-  render engine but ships a fuller default layout: a **time-aware greeting
-  header** ("Good evening, <user>"), the two-pane calendar/weather/notes +
-  intel/controls/media body, an **inline notifications panel** and a
-  **system-update tile** (so toasts and updates are readable/actionable
-  without leaving the panel), and a **power row separated from the toggles
-  by a divider** (so a stray click can't reach Shutdown). The classic
-  `dashboard` is untouched — pick whichever you prefer. New
-  `PanelHeader { greeting }` flag + `menus.mdash_menu` config (serde-default,
-  so existing profiles parse unchanged). Bind it with
-  `mshellctl menu mdash`. (Per-row clickable intel and a SystemStatus
-  sparkline are tracked as follow-ups; in mdash the actionable panels are
-  embedded directly, which covers the same need.)
-- **Menu-launcher quick actions.** New `QuickActionWidget` variants
-  (Network, Bluetooth, CpuDashboard, AudioDashboard, Vpn, ControlCenter,
-  Twilight, Keybinds, Dns, Power, Session, Ip, AlarmClock, SystemUpdate)
-  render as icon buttons that open the matching menu (`mshellctl menu …`)
-  and close the dashboard. mdash ships a two-row shortcut grid of them
-  under the toggles; they're also selectable in Settings → Menus quick
-  actions for any menu.
-
 ## [1.0.6] – 2026-06-13
 
 An internals pass — both compositor god-files (`state.rs` + `udev/mod.rs`)
@@ -39,8 +15,9 @@ split back down, safe config migration, first-login bootstrap coverage, a
 user-facing work: **Kenp** is the new default colour scheme, a `mshellctl theme`
 CLI, `mctl doctor` / `mshellctl doctor` health checks + shell completions, the
 Catwalk pill gains the RunCat cat + a CPU-% readout, the `monly`
-single-window-maximise knob, a redesigned CPU dashboard, and a branded default
-wallpaper.
+single-window-maximise knob, a redesigned CPU dashboard, a branded default
+wallpaper, and **mdash** — a second, richer dashboard with a greeting header
+and a menu-shortcut grid.
 
 ### Fixed
 
@@ -146,6 +123,20 @@ wallpaper.
   margo-hero: the brand mark (coral bars + dark inner block) in the bottom-left
   corner with a soft halo and the "margo" wordmark beneath. This is the file the
   compositor + `mlock` fallbacks already resolve when no wallpaper is set.
+- **`mdash` — a second, richer dashboard alongside the classic one.** Opened
+  with `mshellctl menu mdash` (or its own bar pill — a twin of the Dashboard
+  clock pill), it reuses the dashboard render engine with a fuller layout: a
+  **time-aware greeting header** ("Good evening, <user>" via a new
+  `PanelHeader { greeting }` flag), the two-pane calendar/weather +
+  intel/connectivity/audio/system/media body, and a **two-row action grid**
+  packing the toggles, a 14-button **menu-shortcut grid**, and the power
+  actions. The shortcut buttons are new `QuickActionWidget` menu-launchers
+  (Network, Bluetooth, CPU/Audio dashboards, VPN, Control Center, Twilight,
+  Keybinds, DNS, Power, Session, IP, Alarm Clock, System Update) — each opens
+  the matching menu and closes mdash; they're also pickable for any menu's
+  quick-actions in Settings. mdash is fully editable under **Settings →
+  Widgets → Menus → mdash**. Backed by a serde-default `menus.mdash_menu`
+  config, so the classic `dashboard` and existing profiles are untouched.
 
 ### Tests
 
