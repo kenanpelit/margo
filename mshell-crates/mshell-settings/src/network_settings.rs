@@ -1,6 +1,8 @@
 use mshell_common::WatcherToken;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, NetworkConfigStoreFields, ProxyMode};
+use mshell_config::schema::config::{
+    ConfigStoreFields, GeneralStoreFields, NetworkConfigStoreFields, ProxyMode,
+};
 use mshell_services::network_service;
 use mshell_utils::network::{
     get_wifi_icon_for_strength, spawn_available_wifi_networks_watcher, spawn_network_watcher,
@@ -51,6 +53,8 @@ pub(crate) struct NetworkSettingsModel {
     login_connect_vpn: bool,
     login_couple_blocky: bool,
     login_delay: u32,
+    // ── Network change OSD ──
+    network_osd_enabled: bool,
 }
 
 impl std::fmt::Debug for NetworkSettingsModel {
@@ -104,6 +108,8 @@ pub(crate) enum NetworkSettingsInput {
     SetLoginBlocky(bool),
     SetLoginDelay(u32),
     LoginRunNow,
+    // ── Network change OSD ──
+    SetNetworkOsd(bool),
 }
 
 // ── Output / Init / CommandOutput ─────────────────────────────────────────────
@@ -722,6 +728,47 @@ impl Component for NetworkSettingsModel {
                         sender.input(NetworkSettingsInput::LoginRunNow);
                     },
                 },
+
+                // ════════ Network change OSD ════════
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Connection change OSD",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 8,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "Flash a 2-second popup at the bottom of the screen whenever the primary connection changes — \"Connected: <SSID>\", \"Ethernet connected\", \"Disconnected\". Fires only on transitions. Off by default because NetworkManager often shows the same information as a desktop notification — turn this on if you don't have NM notifications, or just prefer the in-shell OSD.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
+
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_label: "Show OSD on connection change",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.network_osd_enabled,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(NetworkSettingsInput::SetNetworkOsd(v));
+                                glib::Propagation::Proceed
+                            },
+                        },
+                    },
+                },
             }
         },
 
@@ -820,6 +867,11 @@ impl Component for NetworkSettingsModel {
             login_connect_vpn: login.connect_vpn,
             login_couple_blocky: login.couple_blocky,
             login_delay: login.delay_secs,
+            network_osd_enabled: config_manager()
+                .config()
+                .general()
+                .network_osd_enabled()
+                .get_untracked(),
         };
 
         let widgets = view_output!();
@@ -1237,6 +1289,10 @@ impl Component for NetworkSettingsModel {
             }
             NetworkSettingsInput::LoginRunNow => {
                 mshell_services::login_net::run_now();
+            }
+            NetworkSettingsInput::SetNetworkOsd(v) => {
+                self.network_osd_enabled = v;
+                config_manager().update_config(|c| c.general.network_osd_enabled = v);
             }
         }
 

@@ -11,7 +11,7 @@ use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, CastNone, FileExt, ListModelExt, OrientableExt, WidgetExt,
 };
-use relm4::gtk::{gdk, gdk_pixbuf, gio, glib};
+use relm4::gtk::{gdk, gdk_pixbuf, gio};
 use relm4::{Component, ComponentParts, ComponentSender, Controller, gtk};
 use std::path::PathBuf;
 
@@ -23,7 +23,6 @@ pub(crate) struct GeneralSettingsModel {
     active_profile: Option<String>,
     available_profiles: gtk::StringList,
     new_profile_dialog: Option<Controller<TextEntryDialogModel>>,
-    network_osd_enabled: bool,
     /// Settings-panel anchor (`menus.settings_menu.position`).
     settings_position: Position,
     /// Settings-panel width/height overrides (`0` = auto). Stored on
@@ -48,8 +47,6 @@ pub(crate) enum GeneralSettingsInput {
     NewProfileNameChosen(String),
     DialogCanceled,
     DeleteProfileClicked,
-    NetworkOsdEnabledToggled(bool),
-    NetworkOsdEnabledEffect(bool),
     SettingsPositionPicked(u32),
     SettingsWidthChanged(i32),
     SettingsHeightChanged(i32),
@@ -214,51 +211,6 @@ impl Component for GeneralSettingsModel {
 
                 gtk::Separator {},
 
-                // ── Network OSD ────────────────────────────────
-                gtk::Box {
-                    add_css_class: "boxed-list",
-                    set_orientation: gtk::Orientation::Vertical,
-
-                    gtk::Box {
-                        add_css_class: "action-row",
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 20,
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Vertical,
-                            set_valign: gtk::Align::Center,
-                            gtk::Label {
-                                add_css_class: "label-medium-bold",
-                                set_halign: gtk::Align::Start,
-                                set_label: "Network change OSD",
-                                set_hexpand: true,
-                            },
-                            gtk::Label {
-                                add_css_class: "label-small",
-                                set_halign: gtk::Align::Start,
-                                set_label: "Flash a 2-second popup at the bottom of the screen whenever the primary connection changes — \"Connected: <SSID>\", \"Ethernet connected\", \"Disconnected\". Fires only on transitions. Off by default because NetworkManager often shows the same information as a desktop notification — turn this on if you don't have NM notifications, or just prefer the in-shell OSD.",
-                                set_hexpand: true,
-                                set_xalign: 0.0,
-                                set_wrap: true,
-                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                            },
-                        },
-
-                        gtk::Switch {
-                            set_valign: gtk::Align::Center,
-                            #[watch]
-                            #[block_signal(network_osd_handler)]
-                            set_active: model.network_osd_enabled,
-                            connect_state_set[sender] => move |_, v| {
-                                sender.input(GeneralSettingsInput::NetworkOsdEnabledToggled(v));
-                                glib::Propagation::Proceed
-                            } @network_osd_handler,
-                        },
-                    },
-                },
-
-                gtk::Separator {},
-
                 // ── Settings panel ─────────────────────────────
                 // Where this very Settings panel anchors + its size.
                 // Position writes `menus.settings_menu.position` (the
@@ -377,16 +329,6 @@ impl Component for GeneralSettingsModel {
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
-            let v = config_manager()
-                .config()
-                .general()
-                .network_osd_enabled()
-                .get();
-            sender_clone.input(GeneralSettingsInput::NetworkOsdEnabledEffect(v));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
             let p = config_manager()
                 .config()
                 .menus()
@@ -423,11 +365,6 @@ impl Component for GeneralSettingsModel {
             active_profile: None,
             available_profiles: gtk::StringList::new(&[]),
             new_profile_dialog: None,
-            network_osd_enabled: config_manager()
-                .config()
-                .general()
-                .network_osd_enabled()
-                .get_untracked(),
             settings_position: config_manager()
                 .config()
                 .menus()
@@ -565,14 +502,6 @@ impl Component for GeneralSettingsModel {
                 if let Some(active) = &self.active_profile {
                     let _ = config_manager().delete_profile(active.as_str());
                 }
-            }
-            GeneralSettingsInput::NetworkOsdEnabledToggled(v) => {
-                config_manager().update_config(|c| {
-                    c.general.network_osd_enabled = v;
-                });
-            }
-            GeneralSettingsInput::NetworkOsdEnabledEffect(v) => {
-                self.network_osd_enabled = v;
             }
             GeneralSettingsInput::SettingsPositionPicked(idx) => {
                 config_manager().update_config(|c| {
