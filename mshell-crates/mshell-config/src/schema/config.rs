@@ -1120,7 +1120,9 @@ fn default_mdash_menu() -> Menu {
                 homogeneous: true,
                 fill: false,
             }),
-            // ── Toggles row ──
+            // ── Bottom action grid: everything in two dense rows (~12
+            //    per row) — toggles, menu shortcuts, and the power
+            //    actions. Each shortcut opens its menu and closes mdash.
             MenuWidget::Spacer(SpacerConfig { size: 10 }),
             MenuWidget::QuickActions(QuickActionsConfig {
                 widgets: vec![
@@ -1130,25 +1132,18 @@ fn default_mdash_menu() -> Menu {
                     QuickActionWidget::Wallpaper,
                     QuickActionWidget::Screenshot,
                     QuickActionWidget::Settings,
-                ],
-            }),
-            // ── Menu-shortcut grid (two rows of 7) — each opens the
-            //    matching menu and closes the dashboard. ──
-            MenuWidget::Spacer(SpacerConfig { size: 8 }),
-            MenuWidget::QuickActions(QuickActionsConfig {
-                widgets: vec![
                     QuickActionWidget::Network,
                     QuickActionWidget::Bluetooth,
                     QuickActionWidget::CpuDashboard,
                     QuickActionWidget::AudioDashboard,
                     QuickActionWidget::Vpn,
                     QuickActionWidget::ControlCenter,
-                    QuickActionWidget::Twilight,
                 ],
             }),
             MenuWidget::Spacer(SpacerConfig { size: 6 }),
             MenuWidget::QuickActions(QuickActionsConfig {
                 widgets: vec![
+                    QuickActionWidget::Twilight,
                     QuickActionWidget::Keybinds,
                     QuickActionWidget::Dns,
                     QuickActionWidget::Power,
@@ -1156,14 +1151,6 @@ fn default_mdash_menu() -> Menu {
                     QuickActionWidget::Ip,
                     QuickActionWidget::AlarmClock,
                     QuickActionWidget::SystemUpdate,
-                ],
-            }),
-            // ── Power row, separated from the toggles by a divider so a
-            //    stray click can't reach Shutdown from a toggle. ──
-            MenuWidget::Divider,
-            MenuWidget::Spacer(SpacerConfig { size: 6 }),
-            MenuWidget::QuickActions(QuickActionsConfig {
-                widgets: vec![
                     QuickActionWidget::Logout,
                     QuickActionWidget::Lock,
                     QuickActionWidget::Reboot,
