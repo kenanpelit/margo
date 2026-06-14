@@ -86,12 +86,19 @@ pub fn run() -> anyhow::Result<()> {
 
     r.section("Desktop services");
     check_dbus_service(&mut r, "com.mshell.Shell", "mshell (desktop shell)");
-    check_dbus_service(&mut r, "org.freedesktop.portal.Desktop", "xdg-desktop-portal");
+    check_dbus_service(
+        &mut r,
+        "org.freedesktop.portal.Desktop",
+        "xdg-desktop-portal",
+    );
 
     // Summary.
     println!();
     if r.errs > 0 {
-        eprintln!("doctor: {} error(s), {} warning(s) — see ✗ lines above.", r.errs, r.warns);
+        eprintln!(
+            "doctor: {} error(s), {} warning(s) — see ✗ lines above.",
+            r.errs, r.warns
+        );
         std::process::exit(1);
     } else if r.warns > 0 {
         println!("doctor: no errors, {} warning(s).", r.warns);
@@ -104,7 +111,11 @@ pub fn run() -> anyhow::Result<()> {
 fn check_env(r: &mut Report) {
     match std::env::var("WAYLAND_DISPLAY") {
         Ok(v) if !v.is_empty() => r.line(Level::Ok, "WAYLAND_DISPLAY", &v),
-        _ => r.line(Level::Warn, "WAYLAND_DISPLAY", "unset — not in a Wayland session?"),
+        _ => r.line(
+            Level::Warn,
+            "WAYLAND_DISPLAY",
+            "unset — not in a Wayland session?",
+        ),
     }
     match std::env::var("XDG_RUNTIME_DIR") {
         Ok(v) if !v.is_empty() => r.line(Level::Ok, "XDG_RUNTIME_DIR", &v),
@@ -116,7 +127,11 @@ fn check_env(r: &mut Report) {
     } else {
         "default"
     };
-    r.line(Level::Ok, "control socket", &format!("{} ({src})", sock.display()));
+    r.line(
+        Level::Ok,
+        "control socket",
+        &format!("{} ({src})", sock.display()),
+    );
 }
 
 /// Connect to margo's control socket and pull a `get state` snapshot.
@@ -136,7 +151,11 @@ fn check_socket(r: &mut Report) -> Option<serde_json::Value> {
             None
         }
         Err(e) => {
-            r.line(Level::Err, "socket reachable", &format!("cannot reach margo: {e}"));
+            r.line(
+                Level::Err,
+                "socket reachable",
+                &format!("cannot reach margo: {e}"),
+            );
             None
         }
     }
@@ -160,7 +179,9 @@ fn check_version_sync(r: &mut Report, snapshot: Option<&serde_json::Value>) {
         Some(running) => r.line(
             Level::Warn,
             "version sync",
-            &format!("running margo {running} != mctl {mine} — re-login to load the new compositor"),
+            &format!(
+                "running margo {running} != mctl {mine} — re-login to load the new compositor"
+            ),
         ),
         None => r.line(
             Level::Warn,
@@ -207,10 +228,17 @@ fn check_config_file(r: &mut Report) {
         Ok(report) if report.has_warnings() => r.line(
             Level::Warn,
             "config validates",
-            &format!("{} warning(s) — run `mctl check-config`", report.warnings().count()),
+            &format!(
+                "{} warning(s) — run `mctl check-config`",
+                report.warnings().count()
+            ),
         ),
         Ok(_) => r.line(Level::Ok, "config validates", "no errors or warnings"),
-        Err(e) => r.line(Level::Warn, "config validates", &format!("could not read config: {e}")),
+        Err(e) => r.line(
+            Level::Warn,
+            "config validates",
+            &format!("could not read config: {e}"),
+        ),
     }
 }
 
@@ -225,7 +253,11 @@ fn check_render_nodes(r: &mut Report) {
         .filter(|n| n.starts_with("renderD"))
         .collect();
     if nodes.is_empty() {
-        r.line(Level::Warn, "GPU render node", "none found — software rendering only");
+        r.line(
+            Level::Warn,
+            "GPU render node",
+            "none found — software rendering only",
+        );
     } else {
         r.line(Level::Ok, "GPU render node", &nodes.join(", "));
     }
@@ -263,7 +295,11 @@ fn check_dbus_service(r: &mut Report, name: &str, label: &str) {
     if ok {
         r.line(Level::Ok, label, &format!("{name} is up"));
     } else {
-        r.line(Level::Warn, label, &format!("{name} not on the session bus"));
+        r.line(
+            Level::Warn,
+            label,
+            &format!("{name} not on the session bus"),
+        );
     }
 }
 

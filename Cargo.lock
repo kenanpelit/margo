@@ -4829,6 +4829,7 @@ version = "1.0.6"
 dependencies = [
  "anyhow",
  "clap",
+ "clap_complete",
  "margo-logging",
  "mshell-cli-style",
  "mshell-plugins",

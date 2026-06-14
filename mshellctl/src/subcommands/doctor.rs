@@ -83,8 +83,8 @@ pub async fn execute() -> anyhow::Result<()> {
     if let Some(conn) = &conn {
         match DBusProxy::new(conn).await {
             Ok(dbus) => {
-                let name = BusName::try_from(SHELL_NAME)
-                    .expect("com.mshell.Shell is a valid bus name");
+                let name =
+                    BusName::try_from(SHELL_NAME).expect("com.mshell.Shell is a valid bus name");
                 match dbus.name_has_owner(name).await {
                     Ok(true) => {
                         name_up = true;
@@ -96,11 +96,19 @@ pub async fn execute() -> anyhow::Result<()> {
                         &format!("{SHELL_NAME} has no owner — is mshell running?"),
                     ),
                     Err(e) => {
-                        r.line(Level::Warn, "shell service", &format!("name query failed: {e}"));
+                        r.line(
+                            Level::Warn,
+                            "shell service",
+                            &format!("name query failed: {e}"),
+                        );
                     }
                 }
             }
-            Err(e) => r.line(Level::Warn, "shell service", &format!("D-Bus proxy failed: {e}")),
+            Err(e) => r.line(
+                Level::Warn,
+                "shell service",
+                &format!("D-Bus proxy failed: {e}"),
+            ),
         }
     }
 
@@ -135,7 +143,10 @@ pub async fn execute() -> anyhow::Result<()> {
     println!("Tip: run `mctl doctor` for the compositor-side health check.");
     println!();
     if r.errs > 0 {
-        eprintln!("doctor: {} error(s), {} warning(s) — see ✗ lines above.", r.errs, r.warns);
+        eprintln!(
+            "doctor: {} error(s), {} warning(s) — see ✗ lines above.",
+            r.errs, r.warns
+        );
         std::process::exit(1);
     } else if r.warns > 0 {
         println!("doctor: no errors, {} warning(s).", r.warns);
