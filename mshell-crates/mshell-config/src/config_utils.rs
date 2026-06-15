@@ -149,8 +149,23 @@ pub(crate) fn watch_config_loop(
             let active = active.as_deref();
             match load_effective_config(active) {
                 Ok(new_cfg) => {
-                    config.patch(new_cfg);
+                    // The profile-list store is cheap and may have changed even
+                    // when the effective config did not (a profile file added /
+                    // removed), so always refresh it.
                     available_profiles.patch(list_available_profiles());
+                    // No-op guard: the notify watcher also fires on mshell's
+                    // OWN profile writes (`persist_config_layer`'s atomic
+                    // rename) — at login that bounced two self-writes back as
+                    // full reloads. When the reloaded config is identical to
+                    // what's already live, skip `config.patch` so we don't
+                    // re-run every config effect across both bars and all menus
+                    // for no change. A genuine external edit differs and still
+                    // patches.
+                    let unchanged = new_cfg == *config.read_untracked();
+                    if unchanged {
+                        continue;
+                    }
+                    config.patch(new_cfg);
                     info!("New config loaded in watch loop");
                 }
                 Err(e) => eprintln!("config: reload failed (keeping last-good): {e}"),

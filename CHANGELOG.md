@@ -29,6 +29,15 @@ data structure retired and a permanent idle wakeup removed.
   matugen run, all inside the startup CPU spike. `set_active_profile` now
   early-returns when the requested profile is already active, collapsing the
   whole cascade.
+- **The config file-watcher no longer reloads on mshell's own writes.** The
+  profile dir is watched with `notify`, and `persist_config_layer`'s atomic
+  rename fires that watcher — so a Settings write (or a startup re-persist)
+  bounced straight back as a full reload. After the `set_active_profile` storm
+  fix this was the remaining two reload cascades at login. The watch loop now
+  compares the reloaded config to what's already live and skips the
+  reactive-store patch (and its effect cascade across both bars and all menus)
+  when they're identical — exactly the self-write case. A genuine external edit
+  still differs and reloads.
 - **Config writes no longer round-trip through disk.** Every Settings toggle /
   slider step called `update_config`, which persisted the profile and then
   `reload_config`'d it — rebuilding a default `Config`, re-reading and
