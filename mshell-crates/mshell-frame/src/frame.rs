@@ -53,7 +53,6 @@ const NPOWER_MENU: &str = "power";
 const MEDIA_PLAYER_MENU: &str = "media_player";
 const SESSION_MENU: &str = "session";
 const SETTINGS_MENU: &str = "settings";
-const DASHBOARD_MENU: &str = "dashboard";
 const MDASH_MENU: &str = "mdash";
 const MARGO_LAYOUT_MENU: &str = "margo_layout";
 
@@ -136,7 +135,6 @@ pub struct Frame {
     /// `MenuModel`) because its content is a custom sidebar +
     /// stack rather than the generic menu-widget pipeline.
     settings_menu: Controller<mshell_settings::SettingsWindowModel>,
-    dashboard_menu: Controller<MenuModel>,
     mdash_menu: Controller<MenuModel>,
     margo_layout_menu: Controller<MenuModel>,
     /// Pending keyboard-mode switch held inside the 90 ms debounce
@@ -170,8 +168,6 @@ pub enum FrameInput {
         Position,
         Position,
         Position,
-        Position,
-        // dashboard_menu_position
         Position,
     ),
     ToggleClockMenu,
@@ -277,7 +273,6 @@ pub enum FrameInput {
     /// open Settings is closed out from under it so the panel
     /// doesn't linger on a monitor the user is no longer viewing.
     CloseSettingsMenu,
-    ToggleDashboardMenu,
     ToggleMdashMenu,
     /// Open / close the Margo layout switcher menu (in-frame
     /// replacement for the legacy bar popover).
@@ -841,7 +836,6 @@ impl Component for Frame {
         let power_menu = Self::build_menu(&sender, MenuType::Power);
         let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer);
         let session_menu = Self::build_menu(&sender, MenuType::Session);
-        let dashboard_menu = Self::build_menu(&sender, MenuType::Dashboard);
         let mdash_menu = Self::build_menu(&sender, MenuType::Mdash);
         let margo_layout_menu = Self::build_menu(&sender, MenuType::MargoLayout);
 
@@ -915,7 +909,6 @@ impl Component for Frame {
             let media_player_menu_position = pos!(media_player_menu);
             let session_menu_position = pos!(session_menu);
             let settings_menu_position = pos!(settings_menu);
-            let dashboard_menu_position = pos!(dashboard_menu);
             // These menus are placed by `apply_left_and_right_side_children`
             // reading their position straight from config (not passed as a
             // RepositionMenus arg), so subscribe the effect to them here too
@@ -956,7 +949,6 @@ impl Component for Frame {
                 media_player_menu_position,
                 session_menu_position,
                 settings_menu_position,
-                dashboard_menu_position,
             ));
         });
 
@@ -1052,7 +1044,6 @@ impl Component for Frame {
             media_player_menu,
             session_menu,
             settings_menu,
-            dashboard_menu,
             mdash_menu,
             margo_layout_menu,
             pending_kbd_mode: std::rc::Rc::new(std::cell::RefCell::new(None)),
@@ -1117,7 +1108,6 @@ impl Component for Frame {
                 media_player_menu_position,
                 session_menu_position,
                 settings_menu_position,
-                dashboard_menu_position,
             ) => {
                 sender.input(FrameInput::CloseMenus);
                 self.apply_left_and_right_side_children(
@@ -1139,7 +1129,6 @@ impl Component for Frame {
                     media_player_menu_position,
                     session_menu_position,
                     settings_menu_position,
-                    dashboard_menu_position,
                 );
             }
             FrameInput::ToggleClockMenu => {
@@ -1527,10 +1516,6 @@ impl Component for Frame {
                     self.toggle_menu(SETTINGS_MENU, widgets);
                     self.sync_keyboard_mode(root);
                 }
-            }
-            FrameInput::ToggleDashboardMenu => {
-                self.toggle_menu(DASHBOARD_MENU, widgets);
-                self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleMdashMenu => {
                 self.toggle_menu(MDASH_MENU, widgets);
@@ -2258,7 +2243,6 @@ impl Frame {
         media_player_menu_position: Position,
         session_menu_position: Position,
         settings_menu_position: Position,
-        dashboard_menu_position: Position,
     ) {
         let clock_widget: Widget = self.clock_menu.widget().clone().upcast();
         let clipboard_widget: Widget = self.clipboard_menu.widget().clone().upcast();
@@ -2399,7 +2383,6 @@ impl Frame {
         let media_player_menu_widget: Widget = self.media_player_menu.widget().clone().upcast();
         let session_menu_widget: Widget = self.session_menu.widget().clone().upcast();
         let settings_menu_widget: Widget = self.settings_menu.widget().clone().upcast();
-        let dashboard_menu_widget: Widget = self.dashboard_menu.widget().clone().upcast();
 
         // Snapshot which child each region's stack currently shows. The
         // `remove_all` + re-add below would otherwise leave every stack
@@ -2600,12 +2583,6 @@ impl Frame {
             WIZARD_MENU,
             &settings_menu_position,
         );
-        Self::add_to_stack(
-            widgets,
-            &dashboard_menu_widget,
-            DASHBOARD_MENU,
-            &dashboard_menu_position,
-        );
         // mdash — position read straight from config (newer pattern, like
         // cpu_dashboard / margo_layout); toggled via FrameInput::ToggleMdashMenu.
         let mdash_menu_widget: Widget = self.mdash_menu.widget().clone().upcast();
@@ -2702,7 +2679,6 @@ impl Frame {
                 },
                 BarOutput::ClockClicked => FrameInput::ToggleClockMenu,
                 BarOutput::CatwalkClicked => FrameInput::ToggleCpuDashboardMenu,
-                BarOutput::DashboardClicked => FrameInput::ToggleDashboardMenu,
                 BarOutput::MdashClicked => FrameInput::ToggleMdashMenu,
                 BarOutput::ClipboardClicked => FrameInput::ToggleClipboardMenu,
                 BarOutput::NotificationsClicked => FrameInput::ToggleNotificationMenu,

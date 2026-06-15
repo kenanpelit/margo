@@ -47,18 +47,12 @@ pub enum BarWidget {
     /// + load averages. Replaces the standalone CpuMonitor /
     /// CpuTemp / RamMonitor pills.
     CpuDashboard,
-    /// Compound clock-style pill that opens the **dashboard** menu
-    /// (clock hero + calendar + weather + media player + the QS
-    /// tile stack). Shares Clock's `[tempo]` format list — the
+    /// Compound clock-style pill that opens the **mdash** menu (greeting
+    /// hero + calendar + weather + media player + the QS tile stack +
+    /// menu-shortcut grid). Shares Clock's `[tempo]` format list — the
     /// label cycles through the same chrono-strftime presets on
-    /// right-click — so a user who switches from Clock to Dashboard
-    /// keeps their preferred date/time wording without any extra
-    /// config.
-    Dashboard,
-    /// Clock-style pill (twin of `Dashboard`) that opens the **mdash**
-    /// menu — the richer dashboard variant (greeting header, menu
-    /// shortcut grid, divider-separated power). Same `[tempo]` label as
-    /// Clock / Dashboard.
+    /// right-click — so a user who switches from Clock to Mdash keeps
+    /// their preferred date/time wording without any extra config.
     Mdash,
     DarkMode,
     /// Twilight (built-in blue-light filter) pill. Left-click opens
@@ -155,7 +149,6 @@ impl BarWidget {
             BarWidget::Clipboard => "Clipboard",
             BarWidget::Clock => "Clock",
             BarWidget::CpuDashboard => "CPU Dashboard",
-            BarWidget::Dashboard => "Dashboard",
             BarWidget::Mdash => "Mdash",
             BarWidget::DarkMode => "Dark Mode Toggle",
             BarWidget::Twilight => "Twilight (blue-light filter)",
@@ -217,7 +210,6 @@ impl BarWidget {
             BarWidget::Clipboard,
             BarWidget::Clock,
             BarWidget::CpuDashboard,
-            BarWidget::Dashboard,
             BarWidget::Mdash,
             BarWidget::DarkMode,
             BarWidget::Twilight,

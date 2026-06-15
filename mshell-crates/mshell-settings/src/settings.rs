@@ -1147,12 +1147,6 @@ impl Component for SettingsWindowModel {
                 icon: "alarm-symbolic",
             },
             WidgetEntry::Menu {
-                kind: MenuKind::Dashboard,
-                stack_name: "dashboard",
-                label: "Dashboard",
-                icon: "view-grid-symbolic",
-            },
-            WidgetEntry::Menu {
                 kind: MenuKind::Mdash,
                 stack_name: "mdash",
                 label: "Mdash",
@@ -1987,7 +1981,7 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
         "launcher",
         "app launcher run search spotlight provider calc ssh",
     ),
-    ("menus", "menu popup dashboard"),
+    ("menus", "menu popup mdash dashboard"),
     (
         "notifications",
         "notification toast popup do-not-disturb dnd inline reply sound chime quiet hours progress history search",

@@ -9,7 +9,6 @@ use crate::bars::bar_widgets::control_center::{ControlCenterInit, ControlCenterM
 use crate::bars::bar_widgets::cpu_dashboard::{CpuDashboardInit, CpuDashboardModel};
 use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel, CustomWidgetOutput};
 use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
-use crate::bars::bar_widgets::dashboard::{DashboardInit, DashboardModel, DashboardOutput};
 use crate::bars::bar_widgets::ip::{IpInit, IpModel};
 use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
 use crate::bars::bar_widgets::keybinds::{KeybindsInit, KeybindsModel};
@@ -23,6 +22,7 @@ use crate::bars::bar_widgets::margo_layout::{
     MargoLayoutInit, MargoLayoutModel, MargoLayoutOutput,
 };
 use crate::bars::bar_widgets::margo_tags::{MargoTagsInit, MargoTagsModel};
+use crate::bars::bar_widgets::mdash::{MdashInit, MdashModel, MdashOutput};
 use crate::bars::bar_widgets::media_player::{
     MediaPlayerInit, MediaPlayerModel, MediaPlayerOutput,
 };
@@ -182,7 +182,6 @@ pub(crate) enum BarOutput {
     ReserveHeight(i32),
     ClockClicked,
     CatwalkClicked,
-    DashboardClicked,
     MdashClicked,
     ClipboardClicked,
     NotificationsClicked,
@@ -932,20 +931,11 @@ impl BarModel {
                         }
                     }),
             ),
-            BarWidget::Dashboard => Box::new(
-                DashboardModel::builder()
-                    .launch(DashboardInit { orientation })
-                    .forward(sender.output_sender(), |msg| match msg {
-                        DashboardOutput::Clicked => BarOutput::DashboardClicked,
-                    }),
-            ),
-            // mdash reuses the Dashboard clock pill (identical look /
-            // tempo label); only the click target differs.
             BarWidget::Mdash => Box::new(
-                DashboardModel::builder()
-                    .launch(DashboardInit { orientation })
+                MdashModel::builder()
+                    .launch(MdashInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
-                        DashboardOutput::Clicked => BarOutput::MdashClicked,
+                        MdashOutput::Clicked => BarOutput::MdashClicked,
                     }),
             ),
             BarWidget::DarkMode => Box::new(

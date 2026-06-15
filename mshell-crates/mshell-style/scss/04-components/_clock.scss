@@ -61,9 +61,9 @@
 // below reads as a surface-variant card so the panel feels like a
 // stack of focused tiles rather than a flat list.
 //
-// `.dashboard-menu` reuses the same rules (the Dashboard menu
-// shares the `.quick-settings-menu` class on the root) so the
-// 2-col body's nested widgets get card chrome automatically.
+// `.mdash-menu` reuses the same rules (mdash shares the
+// `.quick-settings-menu` class on the root) so the 2-col body's
+// nested widgets get card chrome automatically.
 .quick-settings-menu {
   .network-menu-widget,
   .bluetooth-menu-widget,
@@ -144,9 +144,9 @@
   }
 }
 
-// Dashboard-specific tweaks — applied on top of the
+// mdash-specific tweaks — applied on top of the
 // `.quick-settings-menu` shared rules above.
-.dashboard-menu {
+.mdash-menu {
   // The 2-col body's columns should hug their content's top
   // edge rather than spreading vertically — keeps cards
   // compact even when the other column is taller.

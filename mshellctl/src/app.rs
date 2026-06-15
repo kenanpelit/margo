@@ -32,7 +32,7 @@ COMPOSITOR (windows, tags, layouts). The two talk to different daemons.
 
 EXAMPLES:
   mshellctl menu control-center     # toggle the quick-settings panel
-  mshellctl menu dashboard          # toggle the dashboard
+  mshellctl menu mdash              # toggle the dashboard
   mshellctl audio volume 60         # set output volume to 60%
   mshellctl audio mute              # toggle output mute
   mshellctl brightness up           # raise backlight 5%
@@ -64,7 +64,7 @@ pub enum Commands {
         /// Path to the image file
         path: PathBuf,
     },
-    /// Open, close, or toggle a shell menu (control-center, dashboard,
+    /// Open, close, or toggle a shell menu (control-center, mdash,
     /// clipboard, …).
     Menu {
         #[command(subcommand)]

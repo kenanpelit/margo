@@ -228,9 +228,6 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Session => {
                     app_sender.emit(ShellInput::ToggleSessionMenu(active_monitor().await));
                 }
-                IPCCommand::Dashboard => {
-                    app_sender.emit(ShellInput::ToggleDashboardMenu(active_monitor().await));
-                }
                 IPCCommand::Mdash => {
                     app_sender.emit(ShellInput::ToggleMdashMenu(active_monitor().await));
                 }
@@ -587,7 +584,6 @@ enum IPCCommand {
     Network,
     Power,
     MediaPlayer,
-    Dashboard,
     Mdash,
     /// Toggle an installed plugin's panel/menu by key (generic — any plugin).
     PluginMenu(String),
@@ -1719,9 +1715,6 @@ impl IPCService {
     }
     async fn session(&self) {
         let _ = self.tx.send(IPCCommand::Session);
-    }
-    async fn dashboard(&self) {
-        let _ = self.tx.send(IPCCommand::Dashboard);
     }
     async fn mdash(&self) {
         let _ = self.tx.send(IPCCommand::Mdash);

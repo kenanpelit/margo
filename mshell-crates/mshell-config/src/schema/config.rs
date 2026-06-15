@@ -1019,19 +1019,11 @@ pub struct Menus {
     /// Settings panel — embeds in the frame's menu stack instead
     /// of launching a separate `gtk::Window` toplevel.
     pub settings_menu: Menu,
-    /// Combined dashboard — hero (clock + weather) on top, then
-    /// calendar + the full quick-settings stack underneath. Sits
-    /// alongside the existing `clock_menu` and
-    /// `quick_settings_menu` rather than replacing them so users
-    /// who prefer the focused single-purpose menus keep them.
-    pub dashboard_menu: Menu,
-    /// `mdash` — the next-gen dashboard. Same widget engine as
-    /// `dashboard_menu` but a richer default composition: a
-    /// time-aware greeting header, an inline notifications panel +
-    /// notes + system-update tiles, and a power row visually
-    /// separated from the toggles. Ships alongside `dashboard_menu`
-    /// (not replacing it) so users pick whichever they prefer via
-    /// `mshellctl menu dashboard` vs `mshellctl menu mdash`.
+    /// `mdash` — the dashboard menu. A time-aware greeting header,
+    /// the two-pane calendar/weather + intel/connectivity/audio/system/
+    /// media body, and a two-row action grid (toggles + a menu-shortcut
+    /// grid + power actions). Opened by `mshellctl menu mdash` or the
+    /// Mdash bar pill.
     /// Default-on-missing so older YAML parses. `skip_serializing_if`
     /// keeps it OUT of the written profile while it equals the code
     /// default, so future default changes win instead of a stale baked
@@ -1066,11 +1058,10 @@ fn default_plugin_panel_menu() -> Menu {
     }
 }
 
-/// `mdash` — a compact, polished take on the dashboard. Deliberately the
-/// *same* balanced two-pane body as the classic dashboard (so it stays the
-/// size that fits on screen) with two restrained upgrades: a time-aware
-/// greeting header, and a power row split off from the toggles by a
-/// divider so a stray click can't reach Shutdown.
+/// `mdash` — a compact, polished dashboard. A balanced two-pane body sized
+/// to fit on screen, a time-aware greeting header, and a two-row action
+/// grid where the power actions sit apart from the toggles so a stray
+/// click can't reach Shutdown.
 ///
 /// What it intentionally does NOT do: cram in the full Notes hub / inline
 /// notification center / system-update panel. Those are tall, full-feature
@@ -1080,8 +1071,7 @@ fn default_plugin_panel_menu() -> Menu {
 /// OverviewIntel tile still surfaces the counts at a glance.
 ///
 /// `fill: false` on the columns keeps tiles at their natural height (top
-/// aligned) instead of stretching the last tile — the classic dashboard's
-/// `fill: true` is what stretched the media player.
+/// aligned) instead of stretching the last tile.
 /// True when `mdash_menu` is still the untouched code default, so the
 /// profile serializer can omit it (see the field's `skip_serializing_if`).
 fn mdash_menu_is_default(m: &Menu) -> bool {
@@ -1457,145 +1447,6 @@ impl Default for Menus {
                 position: Position::Top,
                 widgets: vec![],
                 minimum_width: 780,
-                maximum_height: 0,
-            },
-            dashboard_menu: Menu {
-                // Rebalanced two-column dashboard:
-                //
-                //   ┌── Hero (compact Clock status strip) ─────┐
-                //   ├── 2-col row ─────────────────────────────┤
-                //   │ ┌─ LEFT (calendar/weather) ┐  ┌─ RIGHT (controls + media) ─┐ │
-                //   │ │ CalendarGrid             │  │ Network                    │ │
-                //   │ │ Weather                  │  │ Bluetooth                  │ │
-                //   │ │                          │  │ AudioOutput                │ │
-                //   │ │                          │  │ AudioInput                 │ │
-                //   │ │                          │  │ PowerProfiles              │ │
-                //   │ │                          │  │ MediaPlayer                │ │
-                //   │ │                          │  │ QuickActions (toggle)      │ │
-                //   │ │                          │  │ QuickActions (power)       │ │
-                //   │ └──────────────────────────┘  └────────────────────────────┘ │
-                //   └──────────────────────────────────────────┘
-                //
-                // Compared with the previous layout: MediaPlayer
-                // moved from the left to the right-column bottom.
-                // The left column is now pure "time/date context"
-                // (calendar + weather) so it reads as a focused
-                // information panel; the right column carries all
-                // the actionable controls + the now-rich media
-                // surface as the bottom anchor.
-                position: Position::Top,
-                widgets: vec![
-                    // ── §12 panel header ──
-                    // Replaces the old Clock hero: the big time was
-                    // redundant with the bar clock, so the dashboard
-                    // leads with a title + dim date + settings gear
-                    // (DESIGN.md §12). The decorative primary underline
-                    // the Clock hero carried goes away with it.
-                    MenuWidget::PanelHeader(PanelHeaderConfig {
-                        title: "Dashboard".to_string(),
-                        greeting: false,
-                    }),
-                    MenuWidget::Spacer(SpacerConfig { size: 8 }),
-                    // ── 2-col body ──
-                    MenuWidget::Container(ContainerConfig {
-                        widgets: vec![
-                            // Left column = pure "today at a glance"
-                            // — calendar and weather as their own
-                            // tiles. (Previously wrapped in a
-                            // DailyOverview merged surface; user
-                            // asked for them separated.)
-                            MenuWidget::Container(ContainerConfig {
-                                widgets: vec![MenuWidget::CalendarGrid, MenuWidget::Weather],
-                                spacing: 10,
-                                orientation: Orientation::Vertical,
-                                // Equalised with the right column —
-                                // both sides share the same width so
-                                // the dashboard reads as a symmetric
-                                // two-pane layout. The parent's
-                                // `homogeneous` is what actually forces
-                                // the equal split; this width is the
-                                // shared floor.
-                                minimum_width: 400,
-                                homogeneous: false,
-                                // Stretch this column's tiles to fill
-                                // its height so both columns end at the
-                                // same bottom edge.
-                                fill: true,
-                            }),
-                            // Right column = controls + media, with
-                            // OverviewIntel pinned at the top so the
-                            // urgency signals (notifications, low
-                            // battery, thermal alerts) sit separate
-                            // from the calendar/weather context
-                            // group on the left.
-                            MenuWidget::Container(ContainerConfig {
-                                widgets: vec![
-                                    MenuWidget::OverviewIntel,
-                                    MenuWidget::Connectivity,
-                                    MenuWidget::CompactAudio,
-                                    // SystemStatus replaces the
-                                    // standalone PowerProfiles tile
-                                    // — combines profile + battery
-                                    // + CPU temp in one compact card.
-                                    MenuWidget::SystemStatus,
-                                    MenuWidget::MediaPlayer,
-                                ],
-                                spacing: 8,
-                                orientation: Orientation::Vertical,
-                                // Equalised with the left column —
-                                // 400 px on each side keeps the
-                                // standalone-QS breathing room while
-                                // making the dashboard symmetric.
-                                minimum_width: 400,
-                                homogeneous: false,
-                                // Stretch this column's tiles to fill
-                                // its height so both columns end at the
-                                // same bottom edge.
-                                fill: true,
-                            }),
-                        ],
-                        spacing: 12,
-                        orientation: Orientation::Horizontal,
-                        minimum_width: 0,
-                        // Force the two columns to identical widths
-                        // regardless of which side's content is
-                        // naturally wider — symmetric two-pane body.
-                        homogeneous: true,
-                        // Horizontal body: per-column fill is set on
-                        // the inner vertical columns, not here.
-                        fill: false,
-                    }),
-                    // ── Bottom centred QuickActions strip ──
-                    //
-                    // Both toggle (AirplaneMode / Nightlight /
-                    // ColorPicker / Settings) and power (Logout /
-                    // Lock / Reboot / Shutdown) buttons share one
-                    // horizontal row. QuickActions widget already
-                    // centres itself via `set_align: Center`, so
-                    // sitting at the dashboard root puts it as a
-                    // sibling of the column container — centred
-                    // under the body.
-                    MenuWidget::Spacer(SpacerConfig { size: 10 }),
-                    MenuWidget::QuickActions(QuickActionsConfig {
-                        widgets: vec![
-                            QuickActionWidget::AirplaneMode,
-                            QuickActionWidget::Nightlight,
-                            QuickActionWidget::ColorPicker,
-                            QuickActionWidget::Wallpaper,
-                            QuickActionWidget::Screenshot,
-                            QuickActionWidget::Settings,
-                            QuickActionWidget::Logout,
-                            QuickActionWidget::Lock,
-                            QuickActionWidget::Reboot,
-                            QuickActionWidget::Shutdown,
-                        ],
-                    }),
-                ],
-                // 400 (left) + 12 (spacing) + 400 (right) + ~40
-                // (menu padding) wants ~852; round to 860 so the
-                // outer menu opens at a width where both equal-
-                // sized columns slot in without renegotiation.
-                minimum_width: 860,
                 maximum_height: 0,
             },
             mdash_menu: default_mdash_menu(),

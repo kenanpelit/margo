@@ -183,7 +183,6 @@ pub(crate) enum ShellInput {
     /// `ToggleSettingsMenu`. Emitted by the launcher's Settings
     /// provider through the `SECTION_BACKEND` bridge.
     OpenSettingsAtSection(Option<String>, String),
-    ToggleDashboardMenu(Option<String>),
     ToggleMdashMenu(Option<String>),
     RunSessionAction(mshell_utils::session::SessionAction),
     CloseAllMenus,
@@ -886,11 +885,6 @@ impl Component for Shell {
                 }
                 if let Some(frame) = target {
                     frame.emit(FrameInput::OpenSettingsAtSection(section));
-                }
-            }
-            ShellInput::ToggleDashboardMenu(monitor_name) => {
-                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleDashboardMenu);
                 }
             }
             ShellInput::ToggleMdashMenu(monitor_name) => {

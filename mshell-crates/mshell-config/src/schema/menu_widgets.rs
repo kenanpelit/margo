@@ -379,8 +379,8 @@ pub struct PanelHeaderConfig {
     pub title: String,
     /// When true the title is replaced by a time-aware greeting
     /// ("Good morning/afternoon/evening, <user>") that updates as the
-    /// day rolls over. Used by the `mdash` dashboard; defaults off so
-    /// the classic `dashboard` keeps its static title.
+    /// day rolls over. Used by `mdash`; defaults off so a plain
+    /// `PanelHeader` keeps its static title.
     #[serde(default)]
     pub greeting: bool,
 }

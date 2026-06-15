@@ -121,17 +121,10 @@ pub(crate) enum MenuType {
     Privacy,
     MediaPlayer,
     Session,
-    /// Combined clock + quick-settings dashboard. Renders the
-    /// hero clock card on top, then calendar + weather + the
-    /// full QS stack underneath. Coexists with `Clock` and
-    /// `QuickSettings`; users wire a keybind / bar pill if they
-    /// prefer the combined view.
-    Dashboard,
-    /// `mdash` — the next-gen dashboard. Same render engine + card-stack
-    /// CSS as `Dashboard`, driven by the separate `mdash_menu` config so
-    /// it can carry a richer default composition (greeting header, inline
-    /// notifications + system-update, divider-separated power row).
-    /// Coexists with `Dashboard`.
+    /// `mdash` — the dashboard menu. Renders a greeting header, then the
+    /// two-pane calendar/weather + intel/connectivity/audio/system/media
+    /// body and a two-row action grid. Driven by the `mdash_menu` config;
+    /// opened by `mshellctl menu mdash` or the Mdash bar pill.
     Mdash,
     /// Margo layout switcher. Replaces the legacy in-bar
     /// `gtk::PopoverMenu` (xdg_popup, detached window feel)
@@ -167,7 +160,7 @@ pub(crate) struct MenuModel {
     css_class: String,
     /// `true` only for the standalone weather menu (`MenuType::Weather`);
     /// passed to `build_widget` so weather stacks all sections there and
-    /// stays paged everywhere else (notably the dashboard).
+    /// stays paged everywhere else (notably mdash).
     weather_all_in_one: bool,
     /// `false` until the content widget tree has been built. Building is
     /// deferred to the first reveal (the menu's `map`), so menus the user
@@ -280,12 +273,11 @@ impl Component for MenuModel {
         #[root]
         #[name = "scrolled_window"]
         gtk::ScrolledWindow {
-            // CSS classes are wired post-`view_output!` so the
-            // dashboard's space-separated `"quick-settings-menu
-            // dashboard-menu"` is split into two distinct classes
-            // (a single slice entry would be treated as one
-            // multi-word class and break `.quick-settings-menu`
-            // descendant selectors).
+            // CSS classes are wired post-`view_output!` so mdash's
+            // space-separated `"quick-settings-menu mdash-menu"` is
+            // split into two distinct classes (a single slice entry
+            // would be treated as one multi-word class and break
+            // `.quick-settings-menu` descendant selectors).
             set_css_classes: &["menu-scroll-window"],
             set_vscrollbar_policy: gtk::PolicyType::Automatic,
             set_hscrollbar_policy: gtk::PolicyType::Never,
@@ -557,19 +549,11 @@ impl Component for MenuModel {
                 effect_min_width!(effects, base_config, sender, session_menu);
                 effect_max_height!(effects, base_config, sender, session_menu);
             }
-            MenuType::Dashboard => {
-                // Same card-stack CSS as quick-settings — dashboard
-                // reuses the .quick-settings-menu class so all the
-                // surface-variant card + hero clock rules apply.
-                css_class = "quick-settings-menu dashboard-menu".to_string();
-                effect_widgets!(effects, base_config, sender, dashboard_menu);
-                effect_min_width!(effects, base_config, sender, dashboard_menu);
-                effect_max_height!(effects, base_config, sender, dashboard_menu);
-            }
             MenuType::Mdash => {
-                // Shares the dashboard's card-stack CSS; the extra
-                // `mdash-menu` class is a hook for any mdash-only tweaks.
-                css_class = "quick-settings-menu dashboard-menu mdash-menu".to_string();
+                // Card-stack CSS: reuses the `.quick-settings-menu` class
+                // so all the surface-variant card rules apply, plus the
+                // `.mdash-menu` class for the 2-col body's card chrome.
+                css_class = "quick-settings-menu mdash-menu".to_string();
                 effect_widgets!(effects, base_config, sender, mdash_menu);
                 effect_min_width!(effects, base_config, sender, mdash_menu);
                 effect_max_height!(effects, base_config, sender, mdash_menu);
@@ -628,10 +612,10 @@ impl Component for MenuModel {
         let widgets = view_output!();
 
         // Apply per-menu CSS classes one-by-one so multi-class
-        // strings like dashboard's `"quick-settings-menu
-        // dashboard-menu"` register as two separate classes —
-        // letting `.quick-settings-menu .network-menu-widget`
-        // rules match descendants of the dashboard root.
+        // strings like mdash's `"quick-settings-menu mdash-menu"`
+        // register as two separate classes — letting
+        // `.quick-settings-menu .network-menu-widget` rules match
+        // descendants of the mdash root.
         let mut classes: Vec<&str> = vec!["menu-scroll-window"];
         classes.extend(model.css_class.split_whitespace());
         widgets.scrolled_window.set_css_classes(&classes);
@@ -966,7 +950,7 @@ impl Component for MenuModel {
                 // Forward to the AppLauncherModel if this menu
                 // hosts one. The launcher widget is the only
                 // controller in the AppLauncher menu's widget
-                // list (per `dashboard_menu.widgets =
+                // list (per `app_launcher_menu.widgets =
                 // [AppLauncher]` in the default config), but we
                 // scan-and-downcast to stay robust against future
                 // configs that interleave other widgets.
@@ -1000,7 +984,7 @@ impl MenuModel {
         let kinds = std::mem::take(&mut self.widget_kinds);
         for item in &kinds {
             // The standalone weather menu stacks all sections; every other
-            // host (the dashboard) keeps the compact paged weather view.
+            // host (notably mdash) keeps the compact paged weather view.
             let controller =
                 build_widget(item, gtk::Orientation::Vertical, sender, weather_all_in_one);
             container.append(&controller.root_widget());

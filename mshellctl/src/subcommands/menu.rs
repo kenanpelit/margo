@@ -117,12 +117,8 @@ pub enum MenuCommands {
         #[command(subcommand)]
         action: Option<SessionAction>,
     },
-    /// Toggle the combined dashboard menu (clock + weather +
-    /// quick settings, all in one panel)
-    Dashboard,
-    /// Toggle the mdash dashboard — a richer variant (greeting header,
-    /// inline notifications + system updates, divider-separated power row).
-    /// Coexists with `dashboard`; pick whichever you prefer.
+    /// Toggle the mdash dashboard menu — greeting header, calendar +
+    /// weather, the quick-settings card stack, and a menu-shortcut grid.
     Mdash,
     /// Toggle an installed plugin's panel/menu by key — e.g.
     /// `menu plugin assistant` or `menu plugin mullvad`. Generic: works for
@@ -271,9 +267,6 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
                 bus_command("SessionShutdown").await?;
             }
         },
-        MenuCommands::Dashboard => {
-            bus_command("Dashboard").await?;
-        }
         MenuCommands::Mdash => {
             bus_command("Mdash").await?;
         }
