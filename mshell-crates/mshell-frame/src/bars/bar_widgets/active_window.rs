@@ -19,7 +19,7 @@ use mshell_services::margo_service;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -43,9 +43,11 @@ pub(crate) struct ActiveWindowModel {
     has_window: bool,
     class: String,
     title: String,
-    /// Keeps the marquee timer alive for the widget's lifetime.
+    /// Holds the (start/stop) marquee scroll timer. Only `Some` while the
+    /// title actually overflows — see `wire_marquee`. Stored to keep it alive
+    /// for the widget's lifetime.
     #[allow(dead_code)]
-    marquee_source: Option<glib::SourceId>,
+    marquee_source: Rc<RefCell<Option<glib::SourceId>>>,
 }
 
 #[derive(Debug)]
@@ -152,13 +154,13 @@ impl Component for ActiveWindowModel {
             has_window: false,
             class: String::new(),
             title: String::new(),
-            marquee_source: None,
+            marquee_source: Rc::new(RefCell::new(None)),
         };
 
         subscribe_focused(&sender, &mut model.watcher_token);
 
         let widgets = view_output!();
-        model.marquee_source = Some(start_scroll(&widgets.marquee_scroller));
+        model.marquee_source = wire_marquee(&widgets.marquee_scroller);
         read_focused(&mut model);
         apply_visual(&widgets, &model);
 
@@ -250,10 +252,52 @@ fn apply_visual(widgets: &ActiveWindowModelWidgets, model: &ActiveWindowModel) {
         }));
 }
 
+/// Wire the title marquee to the scroller's content width: the 30 ms scroll
+/// timer only exists while the title actually overflows. The previous design
+/// armed that timer once and let it run for the widget's whole life, waking
+/// the GTK main loop ~33×/s just to early-return whenever the title fit — a
+/// permanent idle-wakeup source per monitor. `hadjustment`'s `changed` signal
+/// fires whenever the content/page geometry changes (i.e. when the title's
+/// rendered width changes), so we can start the scroller when overflow appears
+/// and stop it (snapping back to the start) when it goes away. Returns the
+/// shared timer slot so the model keeps it alive.
+fn wire_marquee(scrolled_window: &gtk::ScrolledWindow) -> Rc<RefCell<Option<glib::SourceId>>> {
+    let slot: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
+    let adj = scrolled_window.hadjustment();
+    {
+        let sw = scrolled_window.clone();
+        let slot = slot.clone();
+        adj.connect_changed(move |adj| sync_marquee(adj, &sw, &slot));
+    }
+    // Evaluate once for whatever title is already present at startup.
+    sync_marquee(&adj, scrolled_window, &slot);
+    slot
+}
+
+/// Start/stop the scroll timer to match the current overflow state.
+fn sync_marquee(
+    adj: &gtk::Adjustment,
+    scrolled_window: &gtk::ScrolledWindow,
+    slot: &Rc<RefCell<Option<glib::SourceId>>>,
+) {
+    let overflow = adj.upper() - adj.page_size() > 0.0;
+    let mut current = slot.borrow_mut();
+    match (overflow, current.is_some()) {
+        (true, false) => *current = Some(start_scroll(scrolled_window)),
+        (false, true) => {
+            if let Some(id) = current.take() {
+                id.remove();
+            }
+            adj.set_value(0.0);
+        }
+        _ => {}
+    }
+}
+
 /// Start the title marquee: a periodic timer that scrolls the capped
 /// scroller from start → end with a dwell at each end, then snaps back.
-/// Idle (a cheap early-return) while the title fits. Returns the source id
-/// so the model can keep it alive for the widget's lifetime.
+/// Only armed (by `wire_marquee`) while the title overflows. Returns the
+/// source id so the caller can stop it when overflow goes away.
 fn start_scroll(scrolled_window: &gtk::ScrolledWindow) -> glib::SourceId {
     let state = Rc::new(Cell::new(ScrollState::PauseStart(0)));
     let scroll = scrolled_window.clone();

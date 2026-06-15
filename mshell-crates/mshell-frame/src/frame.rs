@@ -151,25 +151,10 @@ pub enum FrameInput {
     QueueFrameRedraw,
     SetLeftMenuExpansionType(VerticalMenuExpansion),
     SetRightMenuExpansionType(VerticalMenuExpansion),
-    RepositionMenus(
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-    ),
+    /// Re-place every left/right-side menu in the stack. Carries no payload:
+    /// the handler reads each menu's live position from config. Fired by the
+    /// per-output effect that subscribes to all menu positions.
+    RepositionMenus,
     ToggleClockMenu,
     /// Re-assert the layer surface's keyboard interactivity from the
     /// current menu-reveal state. Fired once when the frame surface
@@ -892,28 +877,31 @@ impl Component for Frame {
                     menu_config.clone().menus().$menu().position().get()
                 };
             }
-            let clock_menu_position = pos!(clock_menu);
-            let clipboard_menu_position = pos!(clipboard_menu);
-            let notification_menu_position = pos!(notification_menu);
-            let screenshot_menu_position = pos!(screenshot_menu);
-            let app_launcher_menu_position = pos!(app_launcher_menu);
-            let wallpaper_menu_position = pos!(wallpaper_menu);
-            let screenshare_menu_position = pos!(screenshare_menu);
-            let ufw_menu_position = pos!(ufw_menu);
-            let dns_menu_position = pos!(dns_menu);
-            let podman_menu_position = pos!(podman_menu);
-            let notes_menu_position = pos!(notes_menu);
-            let ip_menu_position = pos!(ip_menu);
-            let network_menu_position = pos!(network_menu);
-            let power_menu_position = pos!(power_menu);
-            let media_player_menu_position = pos!(media_player_menu);
-            let session_menu_position = pos!(session_menu);
-            let settings_menu_position = pos!(settings_menu);
-            // These menus are placed by `apply_left_and_right_side_children`
-            // reading their position straight from config (not passed as a
-            // RepositionMenus arg), so subscribe the effect to them here too
-            // — otherwise moving them in Settings doesn't re-fire this effect
-            // and the menu stays put until restart.
+            // Read every menu's position purely to subscribe this effect to
+            // them — `apply_left_and_right_side_children` re-reads the live
+            // values from config when it fires, so we don't pass any of them
+            // through `RepositionMenus`. (Previously the left/right-placed
+            // menus were threaded through a 17-field positional tuple; the
+            // config-read pattern the dashboards already used is now uniform,
+            // so the tuple is gone — adding/removing a menu no longer means
+            // hand-aligning five call sites.)
+            let _ = pos!(clock_menu);
+            let _ = pos!(clipboard_menu);
+            let _ = pos!(notification_menu);
+            let _ = pos!(screenshot_menu);
+            let _ = pos!(app_launcher_menu);
+            let _ = pos!(wallpaper_menu);
+            let _ = pos!(screenshare_menu);
+            let _ = pos!(ufw_menu);
+            let _ = pos!(dns_menu);
+            let _ = pos!(podman_menu);
+            let _ = pos!(notes_menu);
+            let _ = pos!(ip_menu);
+            let _ = pos!(network_menu);
+            let _ = pos!(power_menu);
+            let _ = pos!(media_player_menu);
+            let _ = pos!(session_menu);
+            let _ = pos!(settings_menu);
             let _ = pos!(cpu_dashboard_menu);
             let _ = pos!(audio_dashboard_menu);
             let _ = pos!(mdash_menu);
@@ -931,25 +919,7 @@ impl Component for Frame {
             let _ = pos!(vpn_menu);
             let _ = pos!(ai_menu);
             let _ = pos!(margo_layout_menu);
-            sender_clone.input(FrameInput::RepositionMenus(
-                clock_menu_position,
-                clipboard_menu_position,
-                notification_menu_position,
-                screenshot_menu_position,
-                app_launcher_menu_position,
-                wallpaper_menu_position,
-                screenshare_menu_position,
-                ufw_menu_position,
-                dns_menu_position,
-                podman_menu_position,
-                notes_menu_position,
-                ip_menu_position,
-                network_menu_position,
-                power_menu_position,
-                media_player_menu_position,
-                session_menu_position,
-                settings_menu_position,
-            ));
+            sender_clone.input(FrameInput::RepositionMenus);
         });
 
         let monitor_clone = params.monitor.clone();
@@ -1090,46 +1060,9 @@ impl Component for Frame {
             FrameInput::SetRightMenuExpansionType(expansion_type) => {
                 self.right_menu_expansion_type = expansion_type;
             }
-            FrameInput::RepositionMenus(
-                clock_menu_position,
-                clipboard_menu_position,
-                notification_menu_position,
-                screenshot_menu_position,
-                app_launcher_menu_position,
-                wallpaper_menu_position,
-                screenshare_menu_position,
-                ufw_menu_position,
-                dns_menu_position,
-                podman_menu_position,
-                notes_menu_position,
-                ip_menu_position,
-                network_menu_position,
-                power_menu_position,
-                media_player_menu_position,
-                session_menu_position,
-                settings_menu_position,
-            ) => {
+            FrameInput::RepositionMenus => {
                 sender.input(FrameInput::CloseMenus);
-                self.apply_left_and_right_side_children(
-                    widgets,
-                    clock_menu_position,
-                    clipboard_menu_position,
-                    notification_menu_position,
-                    screenshot_menu_position,
-                    app_launcher_menu_position,
-                    wallpaper_menu_position,
-                    screenshare_menu_position,
-                    ufw_menu_position,
-                    dns_menu_position,
-                    podman_menu_position,
-                    notes_menu_position,
-                    ip_menu_position,
-                    network_menu_position,
-                    power_menu_position,
-                    media_player_menu_position,
-                    session_menu_position,
-                    settings_menu_position,
-                );
+                self.apply_left_and_right_side_children(widgets);
             }
             FrameInput::ToggleClockMenu => {
                 self.toggle_menu(CLOCK_MENU, widgets);
@@ -2223,27 +2156,37 @@ impl Frame {
         );
     }
 
-    fn apply_left_and_right_side_children(
-        &self,
-        widgets: &FrameWidgets,
-        clock_menu_position: Position,
-        clipboard_menu_position: Position,
-        notification_menu_position: Position,
-        screenshot_menu_position: Position,
-        app_launcher_menu_position: Position,
-        wallpaper_menu_position: Position,
-        screenshare_menu_position: Position,
-        ufw_menu_position: Position,
-        dns_menu_position: Position,
-        podman_menu_position: Position,
-        notes_menu_position: Position,
-        ip_menu_position: Position,
-        network_menu_position: Position,
-        power_menu_position: Position,
-        media_player_menu_position: Position,
-        session_menu_position: Position,
-        settings_menu_position: Position,
-    ) {
+    fn apply_left_and_right_side_children(&self, widgets: &FrameWidgets) {
+        // Every menu's position is read straight from config (the uniform
+        // pattern — no positional args). `menu_pos!($menu)` is the
+        // read-from-config shorthand used throughout this function.
+        macro_rules! menu_pos {
+            ($menu:ident) => {
+                mshell_config::config_manager::config_manager()
+                    .config()
+                    .menus()
+                    .$menu()
+                    .position()
+                    .get()
+            };
+        }
+        let clock_menu_position = menu_pos!(clock_menu);
+        let clipboard_menu_position = menu_pos!(clipboard_menu);
+        let notification_menu_position = menu_pos!(notification_menu);
+        let screenshot_menu_position = menu_pos!(screenshot_menu);
+        let app_launcher_menu_position = menu_pos!(app_launcher_menu);
+        let wallpaper_menu_position = menu_pos!(wallpaper_menu);
+        let screenshare_menu_position = menu_pos!(screenshare_menu);
+        let ufw_menu_position = menu_pos!(ufw_menu);
+        let dns_menu_position = menu_pos!(dns_menu);
+        let podman_menu_position = menu_pos!(podman_menu);
+        let notes_menu_position = menu_pos!(notes_menu);
+        let ip_menu_position = menu_pos!(ip_menu);
+        let network_menu_position = menu_pos!(network_menu);
+        let power_menu_position = menu_pos!(power_menu);
+        let media_player_menu_position = menu_pos!(media_player_menu);
+        let session_menu_position = menu_pos!(session_menu);
+        let settings_menu_position = menu_pos!(settings_menu);
         let clock_widget: Widget = self.clock_menu.widget().clone().upcast();
         let clipboard_widget: Widget = self.clipboard_menu.widget().clone().upcast();
         let notification_menu_widget: Widget = self.notification_menu.widget().clone().upcast();

@@ -240,6 +240,17 @@ lto = "thin"
 # Default `cargo install` strips; this prevents that.
 strip = "none"
 
+# Release-grade distribution build. Inherits `release` but trades a longer
+# compile for a faster, smaller shipped binary: a single codegen unit (no
+# cross-unit inlining barriers) + fat LTO. Opt-in so the dev inner loop keeps
+# `release`'s thin-LTO / parallel-codegen speed. Build the installed binaries
+# with `cargo build --profile dist -p margo` (etc.); CI / `just` keep using
+# `release`.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+
 # ── Vendored patches ─────────────────────────────────────────────────
 # wayle-notification is vendored (verbatim copy of 0.1.3 + a contained
 # margo extension): KDE-style inline reply — the `inline-reply`

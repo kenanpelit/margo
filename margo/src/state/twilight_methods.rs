@@ -33,6 +33,11 @@ impl MargoState {
     /// keeps them separate, and on each fire `tick_twilight` is
     /// idempotent (it reads live config + override state).
     pub fn force_tick_twilight(&mut self) {
+        // Every explicit twilight change (toggle / reset / set / preview /
+        // test, and the `mctl twilight preset` writers) funnels through here,
+        // so this is the right place to drop the schedule cache and pick up
+        // edited preset files on the resample below.
+        self.twilight_schedule_cache = None;
         let next = self.tick_twilight();
         // Persist the new twilight state to state snapshot. Every explicit
         // user action (`mctl twilight toggle/reset/set/preview/test`,
@@ -51,6 +56,34 @@ impl MargoState {
             });
     }
 
+    /// Schedule-mode presets, served from `twilight_schedule_cache`.
+    ///
+    /// Non-schedule modes get an empty table (the tick branches on
+    /// `Mode::Schedule`, so a populated table only matters there). In schedule
+    /// mode we read + parse the preset files at most once per
+    /// reload / `mctl twilight` command — not on every 50 ms sweep tick — by
+    /// keying the cache on the configured schedule dir. The cache is
+    /// invalidated explicitly at those change points (see `force_tick_twilight`
+    /// and the reload path), so a dir change here also forces a fresh load.
+    fn twilight_presets_cached(&mut self) -> crate::twilight::preset::ScheduleData {
+        if !matches!(
+            self.config.twilight_mode,
+            margo_config::TwilightMode::Schedule
+        ) {
+            return crate::twilight::preset::ScheduleData::default();
+        }
+        let dir = &self.config.twilight_schedule_dir;
+        let fresh = matches!(&self.twilight_schedule_cache, Some((d, _)) if d == dir);
+        if !fresh {
+            let data = crate::twilight::preset::ScheduleData::load(dir);
+            self.twilight_schedule_cache = Some((dir.clone(), data));
+        }
+        self.twilight_schedule_cache
+            .as_ref()
+            .map(|(_, d)| d.clone())
+            .unwrap_or_default()
+    }
+
     /// Advance twilight one tick + apply the resulting ramp to every
     /// connected output. Called from the calloop timer (steady-state
     /// path), from `reload_config` (force resample on config change),
@@ -59,17 +92,10 @@ impl MargoState {
     /// next automatic tick — the caller schedules a `calloop::timer`
     /// for that duration.
     pub fn tick_twilight(&mut self) -> std::time::Duration {
+        // Resolve the schedule presets first (this needs `&mut self` for the
+        // cache); the rest of the tick only borrows `&self.config`.
+        let presets = self.twilight_presets_cached();
         let cfg = &self.config;
-        // Schedule mode loads sunsetr-compatible presets from
-        // `cfg.twilight_schedule_dir` (defaults to
-        // `~/.config/sunsetr`). Anything else gets an empty
-        // table — the tick branches on `Mode::Schedule` so a
-        // populated table only matters there.
-        let presets = if matches!(cfg.twilight_mode, margo_config::TwilightMode::Schedule) {
-            crate::twilight::preset::ScheduleData::load(&cfg.twilight_schedule_dir)
-        } else {
-            crate::twilight::preset::ScheduleData::default()
-        };
         let inputs = crate::twilight::TickInputs {
             enabled: cfg.twilight,
             schedule: crate::twilight::schedule_from_config(cfg),

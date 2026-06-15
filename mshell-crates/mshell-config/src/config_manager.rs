@@ -186,9 +186,20 @@ impl ConfigManager {
             return;
         }
 
-        // Reload so the ArcStore reflects the new effective config.
+        // Write-through: we already hold the new effective config in `updated`,
+        // so push it straight into the reactive store instead of bouncing back
+        // through disk. The old path called `reload_config`, which rebuilt a
+        // default `Config`, re-read + re-parsed the just-written YAML, ran the
+        // migration pre-pass (another read), and re-derived the plugin layer —
+        // a full deserialize on every toggle / slider step. Here we only need
+        // to re-add the derived plugin-widget layer that we stripped before
+        // persisting (a fresh load does the same via `resync_plugin_widgets`),
+        // then patch. Result matches a reload byte-for-byte, minus the round
+        // trip. The `None` (default-layer) branch keeps its original
+        // bootstrap-on-first-write behaviour.
         if active.is_some() {
-            self.reload_config();
+            crate::plugin_bridge::resync_plugin_widgets(&mut updated);
+            self.config.patch(updated);
         } else {
             self.set_active_profile(Some(DEFAULT_PROFILE_NAME.to_string()));
         }

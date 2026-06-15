@@ -762,6 +762,14 @@ pub struct MargoState {
     /// re-insert on every tick (single-shot pattern) and key off
     /// this to avoid double-arming.
     pub twilight_timer_armed: bool,
+    /// Cached `(schedule_dir, ScheduleData)` for Schedule mode. The schedule
+    /// presets are static between explicit changes, but `tick_twilight` runs
+    /// as often as every 50 ms during a sunrise/sunset sweep — re-reading +
+    /// parsing the seven preset files on every one of those ticks was pure
+    /// waste. We load once and serve from here; the cache is cleared on
+    /// config reload and on every `mctl twilight` command (both invalidation
+    /// points users actually change presets through).
+    pub twilight_schedule_cache: Option<(String, crate::twilight::preset::ScheduleData)>,
 
     pub hotplug_last_event_at: Option<std::time::Instant>,
     /// Sentinel: a debounce timer is already armed in the event
@@ -1119,6 +1127,7 @@ impl MargoState {
             hot_corner_dwelling: None,
             twilight: crate::twilight::TwilightState::default(),
             twilight_timer_armed: false,
+            twilight_schedule_cache: None,
             hotplug_last_event_at: None,
             hotplug_rescan_pending: false,
             hot_corner_armed_at: None,
@@ -1630,7 +1639,9 @@ impl MargoState {
         // Config swap may have flipped twilight on/off or changed
         // day/night temps — force a resample so the new values
         // take effect immediately instead of waiting for the next
-        // tick.
+        // tick. Drop the schedule cache first so edited presets /
+        // a changed schedule dir are re-read on this resample.
+        self.twilight_schedule_cache = None;
         self.tick_twilight();
         tracing::info!("config reloaded");
         Ok(())
