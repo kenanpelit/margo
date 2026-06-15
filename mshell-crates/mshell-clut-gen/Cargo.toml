@@ -12,7 +12,6 @@ image.workspace = true
 lutgen.workspace = true
 mshell-config.workspace = true
 mshell-matugen.workspace = true
-tracing.workspace = true
 
 [lints]
 workspace = true

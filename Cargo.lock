@@ -4138,7 +4138,6 @@ version = "1.0.6"
 dependencies = [
  "anyhow",
  "clap",
- "serde",
  "serde_json",
 ]
 
@@ -4238,7 +4237,6 @@ dependencies = [
  "anyhow",
  "clap",
  "libc",
- "serde",
  "serde_json",
 ]
 
@@ -4318,7 +4316,6 @@ dependencies = [
  "lutgen",
  "mshell-config",
  "mshell-matugen",
- "tracing",
 ]
 
 [[package]]
@@ -4363,7 +4360,6 @@ name = "mshell-core"
 version = "1.0.6"
 dependencies = [
  "any_spawner",
- "anyhow",
  "dirs 6.0.0",
  "futures",
  "gtk4-layer-shell",
@@ -4485,7 +4481,6 @@ dependencies = [
  "mshell-config",
  "mshell-matugen",
  "relm4",
- "tracing",
 ]
 
 [[package]]
@@ -4563,14 +4558,11 @@ dependencies = [
 name = "mshell-notification-popups"
 version = "1.0.6"
 dependencies = [
- "gtk4",
  "gtk4-layer-shell",
- "mshell-cache",
  "mshell-common",
  "mshell-config",
  "mshell-services",
  "mshell-sounds",
- "mshell-style",
  "mshell-utils",
  "reactive_graph",
  "relm4",
@@ -4701,17 +4693,8 @@ dependencies = [
 name = "mshell-session"
 version = "1.0.6"
 dependencies = [
- "futures",
- "gtk4-layer-shell",
  "gtk4-session-lock",
- "mshell-config",
- "reactive_graph",
- "relm4",
- "time",
- "tokio",
- "tokio-util",
  "tracing",
- "wayle-notification",
 ]
 
 [[package]]
@@ -4801,7 +4784,6 @@ dependencies = [
  "wayle-bluetooth",
  "wayle-media",
  "wayle-network",
- "wayle-notification",
  "wayle-power-profiles",
  "wayle-weather",
 ]
@@ -4815,12 +4797,8 @@ dependencies = [
  "mshell-cache",
  "mshell-common",
  "mshell-config",
- "mshell-image",
- "mshell-style",
  "reactive_graph",
  "relm4",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -4862,7 +4840,6 @@ dependencies = [
 name = "mvpn"
 version = "1.0.6"
 dependencies = [
- "anyhow",
  "async-channel",
  "clap",
  "glib 0.20.12",

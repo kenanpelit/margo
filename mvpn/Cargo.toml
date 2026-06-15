@@ -17,7 +17,6 @@ clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
-anyhow = { workspace = true }
 # GUI — GTK4 + layer-shell pinned to the workspace gtk4 0.10 generation
 # (matches mkeys/mshell). The panel themes itself by reading margo's matugen
 # palette cache at runtime (~/.cache/margo/mshell-colors.toml), no mshell-* dep.

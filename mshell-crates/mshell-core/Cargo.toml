@@ -8,7 +8,6 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-anyhow.workspace = true
 any_spawner.workspace = true
 dirs.workspace = true
 gtk4-layer-shell.workspace = true

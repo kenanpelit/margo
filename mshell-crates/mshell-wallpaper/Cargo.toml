@@ -13,12 +13,8 @@ gtk4-layer-shell.workspace = true
 mshell-cache.workspace = true
 mshell-common.workspace = true
 mshell-config.workspace = true
-mshell-image.workspace = true
-mshell-style.workspace = true
 reactive_graph.workspace = true
 relm4.workspace = true
-tokio.workspace = true
-tracing.workspace = true
 
 [lints]
 workspace = true
