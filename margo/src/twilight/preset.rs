@@ -195,18 +195,19 @@ fn resolve_dir(dir: &str) -> PathBuf {
 }
 
 /// Default schedule the bootstrap seeds on first run. A warm
-/// all-day curve — every preset sits in the 2150–2500 K band —
-/// so the screen stays gentle on the eyes regardless of the
-/// hour, just shifting warmth over the day. Values match the
-/// repo owner's vetted sunsetr setup. The user edits to taste
-/// from there.
+/// all-day curve (2200–2650 K) that stays gentle on the eyes at
+/// every hour, but shaped like a proper day: it warms+dims toward
+/// a 2200 K / 86 % deep-night trough, peaks cool+bright at midday
+/// (2650 K / 100 % late-morning), then eases back down through the
+/// evening. Values match the repo owner's vetted setup; the user
+/// edits to taste from there.
 const DEFAULT_PRESETS: &[(&str, u32, u32)] = &[
-    ("deep-night", 2150, 88),
-    ("morning", 2500, 97),
-    ("late-morning", 2450, 96),
-    ("afternoon", 2350, 94),
-    ("sunset", 2300, 93),
-    ("evening", 2250, 92),
+    ("deep-night", 2200, 86),
+    ("morning", 2400, 95),
+    ("late-morning", 2650, 100),
+    ("afternoon", 2550, 98),
+    ("sunset", 2400, 93),
+    ("evening", 2300, 89),
 ];
 const DEFAULT_SCHEDULE: &str = "\
 # margo twilight schedule
