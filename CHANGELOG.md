@@ -21,6 +21,14 @@ and a menu-shortcut grid.
 
 ### Fixed
 
+- **mdash no longer reverts to a stale layout after a rebuild.** Because the
+  shell rewrites the *entire* resolved config to the active profile on any
+  change, the serde-default `menus.mdash_menu` got baked into the profile on
+  first write and that stale copy then shadowed every later code-default
+  change (the button grid kept reappearing as an old 4-row layout). The
+  field is now `skip_serializing_if` it still equals the code default, so it
+  stays out of the written profile until actually customized — future
+  default changes win, and user edits still persist.
 - **About → Uptime no longer frozen at login.** The About page is built eagerly
   at startup, so its system info (uptime in particular) was read once and never
   refreshed. It now re-reads every time the page is shown.
@@ -135,8 +143,12 @@ and a menu-shortcut grid.
   Keybinds, DNS, Power, Session, IP, Alarm Clock, System Update) — each opens
   the matching menu and closes mdash; they're also pickable for any menu's
   quick-actions in Settings. mdash is fully editable under **Settings →
-  Widgets → Menus → mdash**. Backed by a serde-default `menus.mdash_menu`
-  config, so the classic `dashboard` and existing profiles are untouched.
+  Widgets → Mdash**, which now includes a **Buttons** editor — an
+  add / remove / **reorder** list of every quick action that treats mdash's
+  two physical button rows as one flat list and re-splits it evenly on
+  change (leaving the header / calendar / weather widgets untouched). Backed
+  by a serde-default `menus.mdash_menu` config, so the classic `dashboard`
+  and existing profiles are untouched.
 
 ### Tests
 
