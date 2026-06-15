@@ -77,6 +77,19 @@ impl ConfigManager {
 
     /// Sets active profile name (without ".yaml"), persists it, reloads immediately
     pub fn set_active_profile(&self, name: Option<String>) {
+        // No-op guard: re-selecting the already-active profile must not write
+        // the cache + run a full `reload_config`. The General settings profile
+        // DropDown fires `connect_selected_notify` on its own programmatic
+        // `set_selected` during init (and again from the
+        // Active/AvailableProfiles effects) — at login that re-selected the
+        // same "active" profile several times, and each call reparsed the
+        // profile and re-ran every config effect across both bars and all
+        // menus (the "Config reloaded" burst in the startup window). Skip when
+        // the name is unchanged.
+        if self.active_profile.read_untracked().as_deref() == name.as_deref() {
+            return;
+        }
+
         self.active_profile.patch(name.clone());
 
         write_active_profile_to_cache(name.as_deref());

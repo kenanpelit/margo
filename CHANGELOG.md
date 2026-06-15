@@ -16,6 +16,19 @@ data structure retired and a permanent idle wakeup removed.
 
 ### Changed
 
+- **Login no longer triggers a config-reload storm.** The General settings
+  profile `DropDown` fires `connect_selected_notify` on its own programmatic
+  `set_selected` during init (and again from the active/available-profile
+  effects), each time re-selecting the *already-active* profile. Every such
+  call ran a full `set_active_profile` → `reload_config`: a fresh figment merge
+  + migration pass + full deserialize, then a reactive-store patch that re-ran
+  every config effect across both bars and all menus — and that cascade in turn
+  re-triggered the theme effect (a second matugen palette subprocess) and a
+  profile re-write that the file watcher bounced back as yet another reload. At
+  login this fanned out to ~4 reloads + 2 watch-loop reloads + a redundant
+  matugen run, all inside the startup CPU spike. `set_active_profile` now
+  early-returns when the requested profile is already active, collapsing the
+  whole cascade.
 - **Config writes no longer round-trip through disk.** Every Settings toggle /
   slider step called `update_config`, which persisted the profile and then
   `reload_config`'d it — rebuilding a default `Config`, re-reading and
