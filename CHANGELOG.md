@@ -46,6 +46,14 @@ a menu-shortcut grid (it replaces the old `dashboard` outright).
 
 ### Changed
 
+- **Twilight's seeded preset curve reshaped.** The bootstrap default was a
+  near-flat warm band (2150–2500 K) whose coolest point landed at 07:30 and
+  barely dimmed at night. It's now a proper day curve within the same warm
+  range (2200–2650 K): a warm+dim deep-night trough (2200 K / 86 %), a
+  cool+bright midday peak (2650 K / 100 % late-morning), easing back down
+  through the evening. Schedule times unchanged; only new installs are
+  affected — existing `~/.config/margo/twilight/presets/` files are
+  user-owned and untouched.
 - **Kenp is the new default colour scheme.** The dusk palette that briefly
   shipped as "Eventide" — bioluminescent teal primary, twilight-violet / amber
   / rose accents over deep blue-violet surfaces — is promoted to the house
