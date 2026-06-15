@@ -16,6 +16,8 @@
 # Exclusions (must stay in sync with how the baseline was measured):
 #   * target/, .git/
 #   * integration-test trees (any path containing /tests/)
+#   * benchmark trees (any path containing /benches/) — dev-only, never
+#     shipped; a panic in a bench can't take down the desktop
 #   * build.rs (compile-time, panicking is fine)
 #   * everything after the first `#[cfg(test)]` in a file — in-file unit-test
 #     modules conventionally sit at the end of the file.
@@ -28,6 +30,7 @@ count=$(find . -name '*.rs' \
     -not -path './target/*' \
     -not -path './.git/*' \
     -not -path '*/tests/*' \
+    -not -path '*/benches/*' \
     -not -name 'build.rs' \
     -print0 | sort -z | xargs -0 awk '
       FNR == 1   { in_test = 0 }
