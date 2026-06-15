@@ -6,5 +6,12 @@ license.workspace = true
 description = "Pure layout-arithmetic crate for margo's 14 tiling algorithms — usable by both the compositor binary and downstream tools (mvisual)."
 repository.workspace = true
 
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "arrange"
+harness = false
+
 [lints]
 workspace = true
