@@ -7,6 +7,56 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.0.7] – 2026-06-15
+
+A performance + code-quality pass acting on a deep review. The headline wins
+are on the shell's config write path and the compositor's twilight tick — both
+were doing redundant work on hot/frequent paths — plus a fragile menu-placement
+data structure retired and a permanent idle wakeup removed.
+
+### Changed
+
+- **Config writes no longer round-trip through disk.** Every Settings toggle /
+  slider step called `update_config`, which persisted the profile and then
+  `reload_config`'d it — rebuilding a default `Config`, re-reading and
+  re-parsing the just-written YAML, running the migration pre-pass (another
+  read), and re-deriving the plugin-widget layer. It now writes through: the
+  in-memory config is patched straight into the reactive store (after re-adding
+  the plugin layer), so a full synchronous reparse is gone from the UI thread on
+  every change.
+- **Twilight stops re-reading its presets every tick.** In schedule mode
+  `tick_twilight` re-read and re-parsed all seven preset files on every tick —
+  as often as every 50 ms during a sunrise/sunset sweep. The parsed schedule is
+  now cached on the compositor state (keyed by the schedule dir) and invalidated
+  only on config reload and `mctl twilight` commands, so steady-state and sweep
+  ticks do zero preset I/O.
+- **Menu placement dropped its positional tuple.** The per-output reposition
+  signal carried a 17-field `(Position, …)` tuple that had to be hand-aligned
+  across five call sites (adding or removing a menu meant editing all of them).
+  It's now a unit signal; the placement code reads each menu's position from
+  config — the pattern the dashboards already used.
+- **New opt-in `dist` build profile** (fat LTO + a single codegen unit) for a
+  faster, smaller shipped binary, without slowing the `release` dev loop. Build
+  with `cargo build --profile dist`.
+
+### Fixed
+
+- **Active-window title marquee no longer wakes the main loop forever.** It
+  armed a 30 ms timer for the widget's whole life — ~33 wakeups/second per
+  monitor — just to early-return whenever the title fit. It's now driven by the
+  scroller's `changed` signal, so the timer exists only while the title
+  actually overflows.
+
+### Removed
+
+- **Unused dependencies pruned from ten crates** (verified with cargo-machete
+  plus a per-crate source grep — e.g. an 84-line stub crate was carrying nine).
+
+### Tests
+
+- **Criterion benches** for the two hottest pure-logic paths: layout arrange
+  (`margo-layouts`) and config parse (`margo-config`), as regression shields.
+
 ## [1.0.6] – 2026-06-13
 
 An internals pass — both compositor god-files (`state.rs` + `udev/mod.rs`)
