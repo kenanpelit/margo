@@ -45,6 +45,7 @@ mod layer_rules_settings;
 mod layout_settings;
 mod lock_settings;
 mod logging_settings;
+mod mdash_buttons_settings;
 mod media_player_settings;
 mod menu_settings;
 mod monitors_settings;

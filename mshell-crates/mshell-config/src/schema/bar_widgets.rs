@@ -156,7 +156,7 @@ impl BarWidget {
             BarWidget::Clock => "Clock",
             BarWidget::CpuDashboard => "CPU Dashboard",
             BarWidget::Dashboard => "Dashboard",
-            BarWidget::Mdash => "mdash",
+            BarWidget::Mdash => "Mdash",
             BarWidget::DarkMode => "Dark Mode Toggle",
             BarWidget::Twilight => "Twilight (blue-light filter)",
             BarWidget::KeepAwake => "Keep Awake",

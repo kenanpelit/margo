@@ -1155,7 +1155,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Menu {
                 kind: MenuKind::Mdash,
                 stack_name: "mdash",
-                label: "mdash",
+                label: "Mdash",
                 icon: "view-grid-symbolic",
             },
             WidgetEntry::Menu {

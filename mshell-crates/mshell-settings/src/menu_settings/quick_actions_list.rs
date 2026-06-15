@@ -17,6 +17,10 @@ pub enum QuickActionListInput {
     MoveUp(DynamicIndex),
     MoveDown(DynamicIndex),
     Reorder(usize, usize),
+    /// Re-seed the whole list from an external source (a reactive effect
+    /// mirroring config). Does NOT emit `Changed` — it's a sync-in, not a
+    /// user edit, so it must not loop back into a config write.
+    ReplaceAll(Vec<QuickActionWidget>),
 }
 
 #[derive(Debug)]
@@ -122,6 +126,16 @@ impl Component for QuickActionListModel {
                     self.actions.guard().move_to(from, to);
                     self.emit_changed(&sender);
                 }
+            }
+            QuickActionListInput::ReplaceAll(actions) => {
+                {
+                    let mut guard = self.actions.guard();
+                    guard.clear();
+                    for action in actions {
+                        guard.push_back(action);
+                    }
+                }
+                self.rebuild_add_menu(widgets, &sender);
             }
         }
 

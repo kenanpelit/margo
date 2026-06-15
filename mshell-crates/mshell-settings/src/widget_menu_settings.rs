@@ -10,6 +10,7 @@
 //! shortcut.
 
 use crate::cc_tiles_settings::{CcTilesSettingsInit, CcTilesSettingsModel};
+use crate::mdash_buttons_settings::{MdashButtonsSettingsInit, MdashButtonsSettingsModel};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
@@ -156,7 +157,7 @@ impl MenuKind {
             Self::Clock => "Clock",
             Self::CpuDashboard => "CPU Dashboard",
             Self::Dashboard => "Dashboard",
-            Self::Mdash => "mdash",
+            Self::Mdash => "Mdash",
             Self::MargoLayout => "Margo Layout",
             Self::MediaPlayer => "Media Player",
             Self::Vpn => "VPN",
@@ -299,6 +300,9 @@ pub(crate) struct WidgetMenuSettingsModel {
     /// ControlCenter-only: the tiles order/visibility sub-section.
     /// `None` for every other menu kind.
     _cc_tiles_controller: Option<Controller<CcTilesSettingsModel>>,
+    /// Mdash-only: the quick-action buttons add/remove/reorder editor.
+    /// `None` for every other menu kind.
+    _mdash_buttons_controller: Option<Controller<MdashButtonsSettingsModel>>,
     _effects: EffectScope,
 }
 
@@ -625,6 +629,18 @@ impl Component for WidgetMenuSettingsModel {
             None
         };
 
+        // Mdash-only: build the quick-action Buttons sub-section and append it
+        // to the page box after the generic position/size controls.
+        let mdash_buttons_controller = if kind == MenuKind::Mdash {
+            Some(
+                MdashButtonsSettingsModel::builder()
+                    .launch(MdashButtonsSettingsInit {})
+                    .detach(),
+            )
+        } else {
+            None
+        };
+
         let model = WidgetMenuSettingsModel {
             kind,
             position: kind.read_position(),
@@ -639,6 +655,7 @@ impl Component for WidgetMenuSettingsModel {
                 .get_untracked(),
             position_model,
             _cc_tiles_controller: cc_tiles_controller,
+            _mdash_buttons_controller: mdash_buttons_controller,
             _effects: effects,
         };
 
@@ -646,6 +663,10 @@ impl Component for WidgetMenuSettingsModel {
 
         // Append the CC tiles section widget to the page box when present.
         if let Some(ctrl) = &model._cc_tiles_controller {
+            widgets.page_box.append(ctrl.widget());
+        }
+        // Append the Mdash buttons section widget to the page box when present.
+        if let Some(ctrl) = &model._mdash_buttons_controller {
             widgets.page_box.append(ctrl.widget());
         }
 
