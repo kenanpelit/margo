@@ -16,8 +16,8 @@ user-facing work: **Kenp** is the new default colour scheme, a `mshellctl theme`
 CLI, `mctl doctor` / `mshellctl doctor` health checks + shell completions, the
 Catwalk pill gains the RunCat cat + a CPU-% readout, the `monly`
 single-window-maximise knob, a redesigned CPU dashboard, a branded default
-wallpaper, and **mdash** — a second, richer dashboard with a greeting header
-and a menu-shortcut grid.
+wallpaper, and **mdash** — the dashboard, rebuilt with a greeting header and
+a menu-shortcut grid (it replaces the old `dashboard` outright).
 
 ### Fixed
 
@@ -84,6 +84,18 @@ and a menu-shortcut grid.
   wire-encoding (0/1/else = off/on/toggle) is now one `mute_target` helper
   shared by the output + mic IPC arms instead of two inline copies.
 
+### Removed
+
+- **The classic `dashboard` menu + pill are gone — `mdash` is the only
+  dashboard now.** Removed `BarWidget::Dashboard`, `MenuType::Dashboard`, the
+  `dashboard_menu` config field, the `MenuKind::Dashboard` settings page, and
+  the `mshellctl menu dashboard` verb. The bar pill widget moved to
+  `bars/bar_widgets/mdash.rs` (`MdashModel`) so the bar surface is mdash-owned
+  rather than borrowing the old dashboard pill. The default `Super + G`
+  keybind and the shipped `margo` profile now point at mdash; a leftover
+  `dashboard_menu:` block in an existing profile is harmlessly ignored.
+  (`cpu_dashboard` / `audio_dashboard` are separate menus and unaffected.)
+
 ### Added
 
 - **`mshellctl theme` — switch the colour scheme from the terminal.**
@@ -131,24 +143,23 @@ and a menu-shortcut grid.
   margo-hero: the brand mark (coral bars + dark inner block) in the bottom-left
   corner with a soft halo and the "margo" wordmark beneath. This is the file the
   compositor + `mlock` fallbacks already resolve when no wallpaper is set.
-- **`mdash` — a second, richer dashboard alongside the classic one.** Opened
-  with `mshellctl menu mdash` (or its own bar pill — a twin of the Dashboard
-  clock pill), it reuses the dashboard render engine with a fuller layout: a
-  **time-aware greeting header** ("Good evening, <user>" via a new
-  `PanelHeader { greeting }` flag), the two-pane calendar/weather +
-  intel/connectivity/audio/system/media body, and a **two-row action grid**
-  packing the toggles, a 14-button **menu-shortcut grid**, and the power
-  actions. The shortcut buttons are new `QuickActionWidget` menu-launchers
-  (Network, Bluetooth, CPU/Audio dashboards, VPN, Control Center, Twilight,
-  Keybinds, DNS, Power, Session, IP, Alarm Clock, System Update) — each opens
-  the matching menu and closes mdash; they're also pickable for any menu's
-  quick-actions in Settings. mdash is fully editable under **Settings →
-  Widgets → Mdash**, which now includes a **Buttons** editor — an
-  add / remove / **reorder** list of every quick action that treats mdash's
-  two physical button rows as one flat list and re-splits it evenly on
-  change (leaving the header / calendar / weather widgets untouched). Backed
-  by a serde-default `menus.mdash_menu` config, so the classic `dashboard`
-  and existing profiles are untouched.
+- **`mdash` — the dashboard, rebuilt.** Replaces the old `dashboard` menu
+  entirely. Opened with `mshellctl menu mdash`, the default `Super + G`
+  keybind, or the **Mdash** bar pill (a clock-style tempo pill — its own
+  `MdashModel` widget). A fuller layout: a **time-aware greeting header**
+  ("Good evening, <user>" via a new `PanelHeader { greeting }` flag), the
+  two-pane calendar/weather + intel/connectivity/audio/system/media body,
+  and a **two-row action grid** packing the toggles, a 14-button
+  **menu-shortcut grid**, and the power actions. The shortcut buttons are new
+  `QuickActionWidget` menu-launchers (Network, Bluetooth, CPU/Audio
+  dashboards, VPN, Control Center, Twilight, Keybinds, DNS, Power, Session,
+  IP, Alarm Clock, System Update) — each opens the matching menu and closes
+  mdash; they're also pickable for any menu's quick-actions in Settings.
+  mdash is fully editable under **Settings → Widgets → Mdash**, including a
+  **Buttons** editor — an add / remove / **reorder** list of every quick
+  action that treats mdash's two physical button rows as one flat list and
+  re-splits it evenly on change (leaving the header / calendar / weather
+  widgets untouched). Backed by a serde-default `menus.mdash_menu` config.
 
 ### Tests
 
