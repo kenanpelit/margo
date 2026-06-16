@@ -143,6 +143,12 @@ DEBIAN_DEPS=(
   # runtime tools
   grim slurp wl-clipboard libnotify-bin pipewire
   xdg-desktop-portal xdg-desktop-portal-gtk
+  # session manager — the installed wayland-session entry launches margo
+  # via uwsm, which activates graphical-session.target (that target is
+  # what starts mshell + the rest of the user session). Available on the
+  # GTK >= 4.19 releases this installer already requires (Debian trixie+,
+  # Ubuntu 25.10+, rolling).
+  uwsm
 )
 
 debian_check_release() {
@@ -298,7 +304,33 @@ debian_install_files() {
   done
 
   # ── wayland session entry ──
-  install_file 644 "${REPO_ROOT}/margo.desktop" "/usr/share/wayland-sessions/margo.desktop"
+  # Only the uwsm-managed session is offered at the login chooser. uwsm
+  # (a runtime dep above) runs the compositor in a transient systemd
+  # scope and activates graphical-session.target — and it is that target
+  # which pulls in mshell.service + the rest of the user session. The
+  # entry chains margo-uwsm-session → margo-session → start-margo/margo;
+  # both wrapper scripts resolve each other via PATH, so /usr/bin is
+  # enough. The contrib .desktop's Exec= uses the manual-install
+  # /usr/local/bin path; rewrite it to the packaged /usr/bin location.
+  local uwsm_desktop_tmp
+  uwsm_desktop_tmp="$(mktemp)"
+  sed 's|/usr/local/bin/|/usr/bin/|' \
+    "${REPO_ROOT}/contrib/sessions/margo-uwsm.desktop" > "$uwsm_desktop_tmp"
+  install_file 644 "$uwsm_desktop_tmp" "/usr/share/wayland-sessions/margo-uwsm.desktop"
+  rm -f "$uwsm_desktop_tmp"
+  install_file 755 "${REPO_ROOT}/contrib/sessions/margo-uwsm-session" "/usr/bin/margo-uwsm-session"
+  install_file 755 "${REPO_ROOT}/contrib/sessions/margo-session" "/usr/bin/margo-session"
+  # uwsm env file: restores the standard XDG user-bin dirs (~/.local/bin)
+  # that uwsm's login-shell env rebuild drops, so keybind/autostart
+  # launches can resolve user-local tools. Per-user overrides still go in
+  # ~/.config/uwsm/env.
+  install_file 644 "${REPO_ROOT}/contrib/sessions/uwsm-env-margo" "/etc/xdg/uwsm/env-margo"
+  # The plain `Exec=margo` entry is deliberately NOT a session: picked
+  # from a DM it brings up a bare compositor with no shell (nothing
+  # activates graphical-session.target). Kept under doc/ for manual /
+  # no-systemd launching only.
+  install_file 644 "${REPO_ROOT}/margo.desktop" \
+    "/usr/share/doc/${DEB_DOCNAME}/sessions/margo-bare.desktop"
 
   # ── icons ──
   install_file 644 "${REPO_ROOT}/docs/assets/margo-icon.svg" \
@@ -387,8 +419,10 @@ debian_uninstall() {
     warn "no manifest at ${MANIFEST} — removing known fixed paths only"
     local p
     for p in /usr/bin/{margo,start-margo,mctl,mlock,mlayout,mscreenshot,mvisual,mplay,mshell,mshellctl,mshellshare,mpicker,mwizard} \
+             /usr/bin/margo-uwsm-session /usr/bin/margo-session \
              /usr/lib/margo/margo-portal \
-             /usr/share/wayland-sessions/margo.desktop \
+             /usr/share/wayland-sessions/margo-uwsm.desktop \
+             /etc/xdg/uwsm/env-margo \
              /usr/share/xdg-desktop-portal/margo-portals.conf \
              /usr/share/xdg-desktop-portal/portals/margo.portal \
              /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.margo.service \

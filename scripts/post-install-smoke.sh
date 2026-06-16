@@ -16,7 +16,7 @@
 #   3. `mctl actions` returns at least 30 entries (sanity bound for
 #      the dispatch catalogue — drop a digit and the check trips).
 #   4. The Wayland session entry validates: `desktop-file-validate
-#      /usr/share/wayland-sessions/margo.desktop` exits 0.
+#      /usr/share/wayland-sessions/margo-uwsm.desktop` exits 0.
 #   5. xdg-desktop-portal config (when shipped) parses as TOML / INI.
 #   6. Shell completions land in the right places.
 #   7. License files / docs are installed (downstream attribution).
@@ -125,7 +125,7 @@ fi
 
 section "4. Wayland session entry"
 
-DESKTOP="$PREFIX/share/wayland-sessions/margo.desktop"
+DESKTOP="$PREFIX/share/wayland-sessions/margo-uwsm.desktop"
 if [[ -f "$DESKTOP" ]]; then
     ok "session entry: $DESKTOP"
     if command -v desktop-file-validate >/dev/null 2>&1; then

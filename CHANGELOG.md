@@ -7,6 +7,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **Only the uwsm-managed Wayland session is offered at the login chooser.**
+  The packages previously shipped two session entries — `margo.desktop`
+  (`Exec=margo`) and `margo-uwsm.desktop`. Picking the plain one from a display
+  manager brought up a bare compositor with no shell: nothing activates the
+  systemd `graphical-session.target`, so `mshell.service` (and the rest of the
+  user session) was never pulled in, which read as "margo is broken". uwsm is a
+  hard dependency and is what wires up that target, so the plain entry is now
+  installed under `doc/.../sessions/margo-bare.desktop` (for manual / no-systemd
+  launching) rather than as a session. `install.sh` also now installs the uwsm
+  session + wrapper scripts + `uwsm` dependency, matching the Arch `PKGBUILD`.
+
 ## [1.0.7] – 2026-06-15
 
 A performance + code-quality pass acting on a deep review. The headline wins
