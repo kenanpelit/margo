@@ -164,17 +164,23 @@ impl MargoState {
             // Collapse the OUTER gaps for a lone window — but not all the way to
             // 0. Window borders are drawn OUTSET (`render_element_for_client`
             // grows the border rect by `border_width` beyond `c.geom` on every
-            // side), so the content must sit at least `borderpx` inside the
-            // work area for the border to land *within* it. At gap 0 the content
-            // is flush to the work-area edge and the outset border spills past
-            // it: under the top bar and below the monitor's bottom edge (the
-            // left/right borders survive only because a centered/scroller window
-            // leaves horizontal slack). Clamping the outer gaps to `borderpx`
-            // keeps the window visually flush while giving the border exactly
-            // the room it needs.
+            // side), so the content must sit far enough inside the work area for
+            // the whole border ring to land *within* it. At gap 0 the content is
+            // flush to the work-area edge and the outset border spills past it.
+            //
+            // `borderpx` alone is not enough: it makes the border's OUTER edge
+            // land exactly on the work-area edge. Vertically that's fine — the
+            // work area is already inset from the monitor by the bar (top) and
+            // bottom slack, so the border still sits inside the screen. But the
+            // work area is flush with the monitor's left/right edges (no side
+            // bars), so a `borderpx` gap glues the left/right border to the
+            // physical screen edge — in a full-width tile layout it reads as the
+            // border being clipped off the monitor. Clamp to `2 * borderpx` so
+            // the outset border keeps a full `borderpx` of clearance inside the
+            // work area on every side, matching the inset look top/bottom get.
             let bw = self.config.borderpx as i32;
-            gaps.gappoh = bw;
-            gaps.gappov = bw;
+            gaps.gappoh = 2 * bw;
+            gaps.gappov = 2 * bw;
         }
 
         // `monly` (port of oniri): when a tag holds exactly one tiled window,
@@ -646,11 +652,13 @@ impl MargoState {
 
         if self.config.smartgaps && tiled.len() <= 1 {
             // Keep room for the OUTSET border — see the matching guard in
-            // `arrange_monitor`. Collapsing to 0 makes the border spill under
-            // the bar / past the monitor edge; `borderpx` keeps it flush.
+            // `arrange_monitor` for the full reasoning. `2 * borderpx` (not
+            // `borderpx`) so the border keeps a `borderpx` margin inside the
+            // work area, otherwise a full-width tile glues the left/right
+            // border to the flush monitor edge.
             let bw = self.config.borderpx as i32;
-            gaps.gappoh = bw;
-            gaps.gappov = bw;
+            gaps.gappoh = 2 * bw;
+            gaps.gappov = 2 * bw;
         }
 
         let scroller_proportions: Vec<f32> = tiled

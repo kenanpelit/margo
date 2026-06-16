@@ -88,19 +88,22 @@ data structure retired and a permanent idle wakeup removed.
   monitor — just to early-return whenever the title fit. It's now driven by the
   scroller's `changed` signal, so the timer exists only while the title
   actually overflows.
-- **`smartgaps` no longer eats a tiled window's top and bottom border.** Window
-  borders are drawn OUTSET — `render_element_for_client` grows the border rect
-  by `borderpx` beyond the window geometry on every side — so the content must
-  sit at least `borderpx` inside the work area for the border to land *within*
-  it. `smartgaps` collapsed the outer gaps to 0, leaving the lone window flush
-  against the work area; its outset top border then spilled under the bar and
-  its bottom border past the monitor's edge, while the left/right borders
-  survived only because a centered / scroller window leaves horizontal slack
-  (exactly the reported asymmetry — confirmed against the live geometry: a
-  1440-tall output with the window at y=38 h=1400, its 2 px border landing at
-  36–38 under the bar and 1438–1440 off the bottom). `smartgaps` now clamps the
-  outer gaps to `borderpx` instead of 0 — the window still reads as flush, but
-  the border gets exactly the room it needs. (As a related tidy-up the drawn
+- **`smartgaps` no longer clips a lone tiled window's border on any edge.**
+  Window borders are drawn OUTSET — `render_element_for_client` grows the border
+  rect by `borderpx` beyond the window geometry on every side — so the content
+  must sit far enough inside the work area for the whole border ring to land
+  *within* the monitor. `smartgaps` collapsed the outer gaps to 0, leaving the
+  lone window flush against the work area and its outset border spilling past
+  the screen. Clamping the gaps to `borderpx` (an earlier pass) made the
+  border's outer edge land exactly on the work-area edge: fine top/bottom (the
+  work area is already inset there by the bar + bottom slack) but on a
+  full-width **tile** the left/right border then sat exactly on the flush
+  monitor edge — no side bars — and read as clipped off-screen (confirmed
+  against live geometry: a 2560-wide output with the lone window at x=2 w=2556,
+  its 2 px border landing at 0–2 and 2558–2560, glued to the bezel). `smartgaps`
+  now clamps the outer gaps to `2 * borderpx`, so the outset border keeps a full
+  `borderpx` of clearance inside the work area on all four sides — visibly inset
+  on left/right too, matching top/bottom. (As a related tidy-up the drawn
   connected-frame band is also pinned to the bar's reserved height rather than
   its allocated container height, so the painted frame can't overhang
   `work_area` either.)
