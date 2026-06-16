@@ -1084,6 +1084,28 @@ impl Component for Frame {
                 let _ = spacer
                     .sender()
                     .send(FrameSpacerInput::HeightUpdated(height));
+                // Lock the drawn frame band to the SAME height as the layer-
+                // shell exclusive zone. The band (`top/bottom_thickness`) is
+                // otherwise driven off the bar container's *allocated* height
+                // (the `resized` listeners below), while the exclusive zone is
+                // the bar's *reserved* height (`BarOutput::ReserveHeight`,
+                // measured off `bar_center`). When the two differ the frame —
+                // which paints on the TOP layer, above tiled windows — bleeds
+                // past `work_area` by that difference, painting over the
+                // window's top/bottom border. With gaps that overhang hides in
+                // the gap; with `smartgaps` (gap → 0) the lone window sits
+                // flush against `work_area` and the overhang eats its top and
+                // bottom border. Driving the band from the reserve guarantees
+                // hole edge == work_area edge, so the border always shows.
+                if is_top {
+                    widgets
+                        .frame_draw_widget
+                        .update_style(|s| s.top_thickness = height as f64);
+                } else {
+                    widgets
+                        .frame_draw_widget
+                        .update_style(|s| s.bottom_thickness = height as f64);
+                }
             }
             FrameInput::ToggleClipboardMenu => {
                 self.toggle_menu(CLIPBOARD_MENU, widgets);
@@ -1963,31 +1985,21 @@ impl Frame {
     // Can't use sender for this.  Must queue redraw in the callback.  Otherwise, there is a slight
     // delay and the frame isn't draw immediately.
     fn attach_resize_listeners(&self, widgets: &FrameWidgets) {
-        // NB: the spacer's reserved height (layer-shell exclusive zone) is
-        // NOT driven from this `resized` stream any more — the Revealer
-        // fires it 60×/s during a bar slide, which re-tiled the compositor
-        // every frame and tore window borders off the slide. The spacer is
-        // now driven by `BarOutput::ReserveHeight` (→ `FrameInput::SpacerReserve`),
-        // which jumps straight to the target once. This listener only keeps
-        // the drawn frame-background thickness tracking the visible bar.
-        let frame_widget = widgets.frame_draw_widget.clone();
-        widgets
-            .top_bar_container
-            .connect_local("resized", false, move |values| {
-                let height = values[2].get::<i32>().expect("height i32");
-                frame_widget.update_style(|s| s.top_thickness = height as f64);
-                None
-            });
-
-        let frame_widget = widgets.frame_draw_widget.clone();
-        widgets
-            .bottom_bar_container
-            .connect_local("resized", false, move |values| {
-                let height = values[2].get::<i32>().expect("height i32");
-                frame_widget.update_style(|s| s.bottom_thickness = height as f64);
-                None
-            });
-
+        // NB: neither the spacer's reserved height (layer-shell exclusive
+        // zone) NOR the drawn frame band's top/bottom thickness is driven from
+        // a `resized` stream any more. The Revealer fires "resized" 60×/s
+        // during a bar slide (which re-tiled the compositor every frame and
+        // tore window borders off the slide), and — worse — it reports the bar
+        // container's *allocated* height, which exceeds the bar's *reserved*
+        // height (`bar_center`'s natural measure). Driving the painted band
+        // off that allocated height made the frame (TOP layer, above tiled
+        // windows) bleed past `work_area` and paint over the lone window's
+        // top/bottom border once `smartgaps` collapsed the gap. Both the
+        // exclusive zone AND the band are now driven by
+        // `BarOutput::ReserveHeight` (→ `FrameInput::SpacerReserve`), which
+        // jumps straight to the target once and keeps hole edge == work_area
+        // edge. The left/right thickness listeners below stay: side menus have
+        // no spacer and their width legitimately tracks the live content.
         let frame_widget = widgets.frame_draw_widget.clone();
         widgets.left_bar_and_menu_container.connect_local(
             "resized",

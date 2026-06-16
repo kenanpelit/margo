@@ -7,19 +7,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-### Changed
-
-- **Only the uwsm-managed Wayland session is offered at the login chooser.**
-  The packages previously shipped two session entries — `margo.desktop`
-  (`Exec=margo`) and `margo-uwsm.desktop`. Picking the plain one from a display
-  manager brought up a bare compositor with no shell: nothing activates the
-  systemd `graphical-session.target`, so `mshell.service` (and the rest of the
-  user session) was never pulled in, which read as "margo is broken". uwsm is a
-  hard dependency and is what wires up that target, so the plain entry is now
-  installed under `doc/.../sessions/margo-bare.desktop` (for manual / no-systemd
-  launching) rather than as a session. `install.sh` also now installs the uwsm
-  session + wrapper scripts + `uwsm` dependency, matching the Arch `PKGBUILD`.
-
 ## [1.0.7] – 2026-06-15
 
 A performance + code-quality pass acting on a deep review. The headline wins
@@ -73,6 +60,16 @@ data structure retired and a permanent idle wakeup removed.
 - **New opt-in `dist` build profile** (fat LTO + a single codegen unit) for a
   faster, smaller shipped binary, without slowing the `release` dev loop. Build
   with `cargo build --profile dist`.
+- **Only the uwsm-managed Wayland session is offered at the login chooser.**
+  The packages previously shipped two session entries — `margo.desktop`
+  (`Exec=margo`) and `margo-uwsm.desktop`. Picking the plain one from a display
+  manager brought up a bare compositor with no shell: nothing activates the
+  systemd `graphical-session.target`, so `mshell.service` (and the rest of the
+  user session) was never pulled in, which read as "margo is broken". uwsm is a
+  hard dependency and is what wires up that target, so the plain entry is now
+  installed under `doc/.../sessions/margo-bare.desktop` (for manual / no-systemd
+  launching) rather than as a session. `install.sh` also now installs the uwsm
+  session + wrapper scripts + `uwsm` dependency, matching the Arch `PKGBUILD`.
 
 ### Fixed
 
@@ -91,6 +88,17 @@ data structure retired and a permanent idle wakeup removed.
   monitor — just to early-return whenever the title fit. It's now driven by the
   scroller's `changed` signal, so the timer exists only while the title
   actually overflows.
+- **`smartgaps` no longer eats a tiled window's top and bottom border.** With
+  the connected frame enabled, the painted frame band's thickness was driven
+  off the bar *container's allocated height*, while the layer-shell exclusive
+  zone (and thus the compositor's `work_area`) was driven off the bar's
+  *reserved height* (`bar_center`'s natural measure). The allocated height runs
+  a few pixels larger, so the frame — which paints on the top layer, above
+  tiled windows — bled past `work_area` and painted over the window's top/
+  bottom border. Normal gaps hid the overhang; `smartgaps` collapsing the gap
+  to 0 exposed it (left/right were unaffected — no side bars). The frame band
+  is now locked to the same reserved height as the exclusive zone, so the hole
+  edge always matches `work_area` and the border stays visible.
 
 ### Removed
 
