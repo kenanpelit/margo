@@ -7,6 +7,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.0.7] – 2026-06-15
+
+A performance + code-quality pass acting on a deep review. The headline wins
+are on the shell's config write path and the compositor's twilight tick — both
+were doing redundant work on hot/frequent paths — plus a fragile menu-placement
+data structure retired and a permanent idle wakeup removed.
+
 ### Added
 
 - **The OSD capsule is now configurable (Settings → OSD).** The volume /
@@ -19,13 +26,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   live `--osd-*` CSS vars (update instantly); position / distance anchor the
   layer-shell windows and apply on the next mshell restart (the screen-corner
   contract). Border colour stays matugen-driven, not a setting (DESIGN.md).
-
-## [1.0.7] – 2026-06-15
-
-A performance + code-quality pass acting on a deep review. The headline wins
-are on the shell's config write path and the compositor's twilight tick — both
-were doing redundant work on hot/frequent paths — plus a fragile menu-placement
-data structure retired and a permanent idle wakeup removed.
 
 ### Changed
 
