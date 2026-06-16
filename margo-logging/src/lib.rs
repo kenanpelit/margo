@@ -25,13 +25,58 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use tracing_subscriber::filter::EnvFilter;
+use tracing::Metadata;
+use tracing::subscriber::Interest;
+use tracing_subscriber::filter::{EnvFilter, FilterExt};
 use tracing_subscriber::fmt as fmt_layer;
+use tracing_subscriber::layer::{Context, Filter};
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{Registry, reload};
 
 /// The five log levels we expose, lowest to highest verbosity.
 pub const LEVELS: [&str; 5] = ["error", "warn", "info", "debug", "trace"];
+
+/// Drops smithay's benign popup/toplevel teardown `error!`s.
+///
+/// smithay registers a per-`wl_surface` pre-commit hook for every xdg popup
+/// (and toplevel) and never removes it. When a client dismisses a popup — it
+/// destroys the `xdg_popup` (so smithay drops it from `known_popups`) and then
+/// issues one last commit on the still-alive `wl_surface`, the ordinary
+/// teardown for many GTK/Qt menus — the orphaned hook fires, fails the
+/// `known_popups` lookup, and smithay logs
+/// `error!("surface missing from known popups")`. It is a harmless race: the
+/// popup is already gone, there is nothing to act on. The same path produces
+/// `…known toplevels`.
+///
+/// These "missing from known {popups,toplevels}" lines are the *only* `error!`
+/// sites in `smithay::wayland::shell::xdg` — verified against both the pinned
+/// rev and upstream HEAD, so bumping smithay does not change them. We therefore
+/// drop ERROR-level events from that module while leaving its warn/info/debug
+/// intact. Implemented as a per-callsite `Interest::never` so the matching
+/// events are never even constructed (zero steady-state cost).
+#[derive(Clone, Copy)]
+struct DropBenignSmithayXdgErrors;
+
+impl DropBenignSmithayXdgErrors {
+    fn is_suppressed(meta: &Metadata<'_>) -> bool {
+        *meta.level() == tracing::Level::ERROR
+            && meta.target().starts_with("smithay::wayland::shell::xdg")
+    }
+}
+
+impl<S> Filter<S> for DropBenignSmithayXdgErrors {
+    fn enabled(&self, meta: &Metadata<'_>, _cx: &Context<'_, S>) -> bool {
+        !Self::is_suppressed(meta)
+    }
+
+    fn callsite_enabled(&self, meta: &Metadata<'_>) -> Interest {
+        if Self::is_suppressed(meta) {
+            Interest::never()
+        } else {
+            Interest::always()
+        }
+    }
+}
 
 /// Parameters for [`init`].
 pub struct LogInit {
@@ -218,12 +263,12 @@ pub fn init(opts: LogInit) -> LogHandle {
             .with_writer(appender)
             .with_ansi(false)
             .with_target(true)
-            .with_filter(filter);
+            .with_filter(filter.and(DropBenignSmithayXdgErrors));
 
         let stdout = to_stdout.then(|| {
             fmt_layer::layer()
                 .with_target(true)
-                .with_filter(EnvFilter::new(&stdout_initial))
+                .with_filter(EnvFilter::new(&stdout_initial).and(DropBenignSmithayXdgErrors))
         });
 
         let _ = tracing_subscriber::registry()
@@ -247,7 +292,7 @@ pub fn init(opts: LogInit) -> LogHandle {
     let stdout = to_stdout.then(|| {
         fmt_layer::layer()
             .with_target(true)
-            .with_filter(EnvFilter::new(&stdout_initial))
+            .with_filter(EnvFilter::new(&stdout_initial).and(DropBenignSmithayXdgErrors))
     });
     let _ = tracing_subscriber::registry().with(stdout).try_init();
     tracing::warn!(
@@ -312,6 +357,56 @@ mod tests {
     #[test]
     fn filter_string_off_when_disabled() {
         assert_eq!(filter_string("margo", "debug", false), "off");
+    }
+
+    #[test]
+    fn drops_only_smithay_xdg_errors() {
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::Layer;
+
+        type Seen = Arc<Mutex<Vec<(tracing::Level, String)>>>;
+
+        #[derive(Clone)]
+        struct Collector(Seen);
+        impl<S: tracing::Subscriber> Layer<S> for Collector {
+            fn on_event(&self, event: &tracing::Event<'_>, _cx: Context<'_, S>) {
+                let m = event.metadata();
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((*m.level(), m.target().to_string()));
+            }
+        }
+
+        let seen: Seen = Arc::new(Mutex::new(Vec::new()));
+        let layer = Collector(seen.clone()).with_filter(DropBenignSmithayXdgErrors);
+        let subscriber = tracing_subscriber::registry().with(layer);
+
+        tracing::subscriber::with_default(subscriber, || {
+            // The benign popup teardown race — must be dropped.
+            tracing::error!(target: "smithay::wayland::shell::xdg", "surface missing from known popups");
+            // Same module, lower level — must survive.
+            tracing::warn!(target: "smithay::wayland::shell::xdg", "kept warn");
+            // ERROR from a different module — must survive.
+            tracing::error!(target: "margo::state", "kept other-module error");
+        });
+
+        let got = seen.lock().unwrap();
+        assert!(
+            !got.iter().any(|(l, t)| *l == tracing::Level::ERROR
+                && t.starts_with("smithay::wayland::shell::xdg")),
+            "smithay xdg ERROR should be dropped, got: {got:?}"
+        );
+        assert!(
+            got.iter()
+                .any(|(l, t)| *l == tracing::Level::WARN && t == "smithay::wayland::shell::xdg"),
+            "smithay xdg WARN should survive, got: {got:?}"
+        );
+        assert!(
+            got.iter()
+                .any(|(l, t)| *l == tracing::Level::ERROR && t == "margo::state"),
+            "other-module ERROR should survive, got: {got:?}"
+        );
     }
 
     #[test]

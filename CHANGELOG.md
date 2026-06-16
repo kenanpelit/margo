@@ -63,6 +63,16 @@ data structure retired and a permanent idle wakeup removed.
 
 ### Fixed
 
+- **No more `surface missing from known popups` ERROR spam in the logs.**
+  smithay adds a permanent per-`wl_surface` pre-commit hook for every xdg popup
+  and never removes it, so when a client dismisses a menu (destroy the
+  `xdg_popup`, then one last commit on the still-alive surface — the normal GTK/
+  Qt teardown) the orphaned hook fires, fails its `known_popups` lookup, and
+  smithay logs an ERROR for a harmless race. These "missing from known
+  {popups,toplevels}" lines are the only `error!`s in
+  `smithay::wayland::shell::xdg` (confirmed against both the pinned rev and
+  upstream HEAD — bumping smithay does not change them), so margo-logging now
+  drops ERROR-level events from that module while keeping its warn/info/debug.
 - **Active-window title marquee no longer wakes the main loop forever.** It
   armed a 30 ms timer for the widget's whole life — ~33 wakeups/second per
   monitor — just to early-return whenever the title fit. It's now driven by the
