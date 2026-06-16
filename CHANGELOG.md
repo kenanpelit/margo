@@ -22,7 +22,8 @@ data structure retired and a permanent idle wakeup removed.
   section + Settings page (under Appearance) exposes width, position
   (top / bottom / left / right / centre), distance from the edge, corner radius
   and **border thickness** — the capsule now ships with a 2 px border in the
-  matugen `--outline-variant` colour by default. Width / radius / border drive
+  matugen `--outline` colour (the same role the compositor paints idle window
+  borders with, so the OSD ring matches the window border). Width / radius / border drive
   live `--osd-*` CSS vars (update instantly); position / distance anchor the
   layer-shell windows and apply on the next mshell restart (the screen-corner
   contract). Border colour stays matugen-driven, not a setting (DESIGN.md).

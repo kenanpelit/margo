@@ -52,7 +52,9 @@ pub struct Config {
 /// `width`, `position` and `distance` are applied to the layer-shell
 /// windows when they're (re)created — a shell restart picks up changes,
 /// like the screen-corner overlays. Border colour follows the matugen
-/// `--outline-variant` role (DESIGN.md: surfaces over hardcoded colours).
+/// `--outline` role — the same one the compositor paints idle window
+/// borders with — so the OSD ring matches the window border (DESIGN.md:
+/// surfaces over hardcoded colours).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct Osd {

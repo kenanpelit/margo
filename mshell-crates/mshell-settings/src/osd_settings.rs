@@ -3,8 +3,10 @@
 //! the layer-shell windows (applied when the OSDs are next created — a shell
 //! restart, like the screen-corner overlays); width, corner radius and border
 //! thickness drive the live `--osd-*` CSS vars, so they update instantly.
-//! Border colour follows the matugen `--outline-variant` role — not a setting
-//! (DESIGN.md: surfaces over hardcoded colours).
+//! Border colour follows the matugen `--outline` role — the same one the
+//! compositor paints idle window borders with, so the OSD ring matches the
+//! window border — and isn't a setting (DESIGN.md: surfaces over hardcoded
+//! colours).
 //!
 //! All five knobs persist to `osd.*` on the shared `config_manager` store.
 

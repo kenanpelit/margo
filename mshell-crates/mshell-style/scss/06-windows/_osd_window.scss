@@ -8,12 +8,14 @@
   // Width / radius / border are user-tunable (Settings → OSD): the
   // `--osd-*` vars are injected live by mshell-style from the `osd`
   // config, with the fallbacks here matching its defaults. The border
-  // tracks the matugen `--outline-variant` role — never a hardcoded
-  // colour (DESIGN.md). `border-width: 0` (default would still draw a
-  // ring) is handled by the user setting `--osd-border-width: 0px`.
+  // tracks `--outline` — the SAME matugen role the compositor paints
+  // idle window borders with (`bordercolor = c.outline` in
+  // css_mapping.rs), so the OSD ring matches the window border colour.
+  // Never a hardcoded colour (DESIGN.md); `--osd-border-width: 0px`
+  // hides it.
   min-width: var(--osd-width, 280px);
   border-radius: var(--osd-radius, 24px);
-  border: var(--osd-border-width, 2px) solid var(--outline-variant);
+  border: var(--osd-border-width, 2px) solid var(--outline);
   background-color: var(--surface-container-high);
   padding: var(--padding-md) var(--padding-lg);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
