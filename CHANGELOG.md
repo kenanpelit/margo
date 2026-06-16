@@ -16,6 +16,11 @@ data structure retired and a permanent idle wakeup removed.
 
 ### Added
 
+- **`mshellctl menu margo-layout`** toggles the Margo Layout Switcher menu from
+  the CLI. The pill + menu already existed (bar widget + Settings → Widgets) but
+  had no IPC verb, so it was the one bar menu that couldn't be opened from a
+  keybind / script — now wired through the same `com.mshell.Shell` path as every
+  other menu.
 - **The OSD capsule is now configurable (Settings → OSD).** The volume /
   brightness / mic / network pulse used hardcoded geometry (280 px wide,
   bottom-centre, 48 px up, fully-pill corners, no border). A new `osd` config

@@ -83,6 +83,10 @@ pub enum MenuCommands {
     KeepAwake,
     /// Toggle the Twilight menu (toggle + temperature + mode + presets)
     Twilight,
+    /// Toggle the Margo Layout Switcher menu (pick the current tag's tiling
+    /// layout — same picker as the bar's Margo Layout Switcher pill)
+    #[command(name = "margo-layout")]
+    MargoLayout,
     /// Toggle the Weather menu (current + hourly + daily, all in one)
     Weather,
     /// Toggle the keybind cheatsheet menu (searchable shortcut list)
@@ -204,6 +208,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Twilight => {
             bus_command("Twilight").await?;
+        }
+        MenuCommands::MargoLayout => {
+            bus_command("MargoLayoutMenu").await?;
         }
         MenuCommands::Weather => {
             bus_command("Weather").await?;
