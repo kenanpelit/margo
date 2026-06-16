@@ -88,17 +88,22 @@ data structure retired and a permanent idle wakeup removed.
   monitor — just to early-return whenever the title fit. It's now driven by the
   scroller's `changed` signal, so the timer exists only while the title
   actually overflows.
-- **`smartgaps` no longer eats a tiled window's top and bottom border.** With
-  the connected frame enabled, the painted frame band's thickness was driven
-  off the bar *container's allocated height*, while the layer-shell exclusive
-  zone (and thus the compositor's `work_area`) was driven off the bar's
-  *reserved height* (`bar_center`'s natural measure). The allocated height runs
-  a few pixels larger, so the frame — which paints on the top layer, above
-  tiled windows — bled past `work_area` and painted over the window's top/
-  bottom border. Normal gaps hid the overhang; `smartgaps` collapsing the gap
-  to 0 exposed it (left/right were unaffected — no side bars). The frame band
-  is now locked to the same reserved height as the exclusive zone, so the hole
-  edge always matches `work_area` and the border stays visible.
+- **`smartgaps` no longer eats a tiled window's top and bottom border.** Window
+  borders are drawn OUTSET — `render_element_for_client` grows the border rect
+  by `borderpx` beyond the window geometry on every side — so the content must
+  sit at least `borderpx` inside the work area for the border to land *within*
+  it. `smartgaps` collapsed the outer gaps to 0, leaving the lone window flush
+  against the work area; its outset top border then spilled under the bar and
+  its bottom border past the monitor's edge, while the left/right borders
+  survived only because a centered / scroller window leaves horizontal slack
+  (exactly the reported asymmetry — confirmed against the live geometry: a
+  1440-tall output with the window at y=38 h=1400, its 2 px border landing at
+  36–38 under the bar and 1438–1440 off the bottom). `smartgaps` now clamps the
+  outer gaps to `borderpx` instead of 0 — the window still reads as flush, but
+  the border gets exactly the room it needs. (As a related tidy-up the drawn
+  connected-frame band is also pinned to the bar's reserved height rather than
+  its allocated container height, so the painted frame can't overhang
+  `work_area` either.)
 
 ### Removed
 
