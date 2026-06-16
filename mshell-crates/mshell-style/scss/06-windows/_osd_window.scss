@@ -2,9 +2,18 @@
   // Floating overlay capsule (DESIGN.md §0.1 surfaces-over-borders): a
   // raised tonal surface + soft elevation shadow lifts the OSD off
   // arbitrary content (video, a bright page) — the same idiom as the
-  // corner toast — instead of a hard outline box. Slim: pill corners +
-  // snug vertical padding so it reads as a thin bar, not a chunky panel.
-  border-radius: var(--radius-pill);
+  // corner toast — instead of a hard outline box. Slim: snug vertical
+  // padding so it reads as a thin bar, not a chunky panel.
+  //
+  // Width / radius / border are user-tunable (Settings → OSD): the
+  // `--osd-*` vars are injected live by mshell-style from the `osd`
+  // config, with the fallbacks here matching its defaults. The border
+  // tracks the matugen `--outline-variant` role — never a hardcoded
+  // colour (DESIGN.md). `border-width: 0` (default would still draw a
+  // ring) is handled by the user setting `--osd-border-width: 0px`.
+  min-width: var(--osd-width, 280px);
+  border-radius: var(--osd-radius, 24px);
+  border: var(--osd-border-width, 2px) solid var(--outline-variant);
   background-color: var(--surface-container-high);
   padding: var(--padding-md) var(--padding-lg);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);

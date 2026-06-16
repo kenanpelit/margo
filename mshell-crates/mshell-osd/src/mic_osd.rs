@@ -9,7 +9,7 @@
 
 use gtk4::gdk;
 use gtk4::prelude::{BoxExt, GtkWindowExt, OrientableExt, RangeExt, WidgetExt};
-use gtk4_layer_shell::{Edge, Layer, LayerShell};
+use gtk4_layer_shell::{Layer, LayerShell};
 use mshell_common::WatcherToken;
 use mshell_services::audio_service;
 use mshell_utils::audio::{
@@ -64,11 +64,9 @@ impl Component for MicOsdModel {
             set_decorated: false,
             set_visible: false,
             set_default_height: 1,
-            set_margin_bottom: 48,
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
-                set_width_request: 280,
                 set_spacing: 12,
 
                 gtk::Image {
@@ -108,7 +106,8 @@ impl Component for MicOsdModel {
         root.set_namespace(Some("mshell-osd"));
         root.set_layer(Layer::Overlay);
         root.set_exclusive_zone(0);
-        root.set_anchor(Edge::Bottom, true);
+        let (position, distance) = crate::osd_geometry::read();
+        crate::osd_geometry::apply(&root, &position, distance);
 
         spawn_default_input_watcher(&sender, None, || MicOsdCommandOutput::DeviceChanged);
 

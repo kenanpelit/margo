@@ -32,6 +32,7 @@ use crate::media_player_settings::{MediaPlayerSettingsInit, MediaPlayerSettingsM
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
 use crate::network_settings::{NetworkSettingsInit, NetworkSettingsModel};
 use crate::notification_settings::{NotificationSettingsInit, NotificationSettingsModel};
+use crate::osd_settings::{OsdSettingsInit, OsdSettingsModel};
 use crate::overview_settings::{OverviewSettingsInit, OverviewSettingsModel};
 use crate::plugins_settings::{PluginsSettingsInit, PluginsSettingsModel};
 use crate::power_settings::{PowerSettingsInit, PowerSettingsModel};
@@ -87,6 +88,7 @@ pub struct SettingsWindowModel {
     startup_env_settings_controller: Controller<StartupEnvModel>,
     backup_settings_controller: Controller<BackupSettingsModel>,
     logging_settings_controller: Controller<LoggingModel>,
+    osd_settings_controller: Controller<OsdSettingsModel>,
     overview_settings_controller: Controller<OverviewSettingsModel>,
     vpn_settings_controller: Controller<VpnSettingsModel>,
     ai_settings_controller: Controller<AiSettingsModel>,
@@ -424,6 +426,7 @@ impl Component for SettingsWindowModel {
             backup_settings_controller = BackupSettingsModel => BackupSettingsInit {},
             logging_settings_controller = LoggingModel => LoggingInit {},
             animations_settings_controller = AnimationsSettingsModel => AnimationsSettingsInit {},
+            osd_settings_controller = OsdSettingsModel => OsdSettingsInit {},
             overview_settings_controller = OverviewSettingsModel => OverviewSettingsInit {},
             vpn_settings_controller = VpnSettingsModel => VpnSettingsInit {},
             ai_settings_controller = AiSettingsModel => AiSettingsInit {},
@@ -497,6 +500,7 @@ impl Component for SettingsWindowModel {
             animations_settings_controller,
             appearance_settings_controller,
             effects_settings_controller,
+            osd_settings_controller,
             behaviour_settings_controller,
             window_rules_settings_controller,
             layer_rules_settings_controller,
@@ -804,6 +808,11 @@ impl Component for SettingsWindowModel {
                 "effects",
                 "Effects",
                 model.effects_settings_controller.widget().clone().into(),
+            ),
+            (
+                "osd",
+                "OSD",
+                model.osd_settings_controller.widget().clone().into(),
             ),
             (
                 "behaviour",
@@ -1914,6 +1923,10 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
     ),
     ("effects", "shadow shadows drop blur layer floating glow"),
     (
+        "osd",
+        "osd on-screen display volume brightness mic network capsule pill width position radius border size distance",
+    ),
+    (
         "behaviour",
         "focus sloppy warp cursor drag tile swap snap hot corner overview scroll axis scratchpad tearing sync syncobj xwayland inhibit",
     ),
@@ -2043,6 +2056,7 @@ const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("animations", "animations"),
     ("appearance", "appearance"),
     ("effects", "effects"),
+    ("osd", "osd"),
     ("behaviour", "behaviour"),
     ("behavior", "behaviour"),
     ("logging", "logging"),
@@ -2125,6 +2139,11 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "effects",
         icon: "applications-graphics-symbolic",
         label: "Effects",
+    },
+    Page {
+        route: "osd",
+        icon: "audio-volume-high-symbolic",
+        label: "OSD",
     },
     Page {
         route: "window_rules",

@@ -155,6 +155,79 @@ impl NotificationPosition {
     }
 }
 
+/// Which screen edge (or centre) the volume / brightness / mic / network
+/// OSD capsule docks against. Mirrors the layer-shell anchors the OSD
+/// windows apply; `distance` (Osd config) is the margin from that edge.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
+pub enum OsdPosition {
+    Top,
+    Bottom,
+    Left,
+    Right,
+    Center,
+}
+
+impl PatchField for OsdPosition {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
+}
+
+impl OsdPosition {
+    pub fn to_index(&self) -> u32 {
+        match self {
+            OsdPosition::Top => 0,
+            OsdPosition::Bottom => 1,
+            OsdPosition::Left => 2,
+            OsdPosition::Right => 3,
+            OsdPosition::Center => 4,
+        }
+    }
+
+    pub fn from_index(idx: u32) -> Self {
+        match idx {
+            0 => OsdPosition::Top,
+            1 => OsdPosition::Bottom,
+            2 => OsdPosition::Left,
+            3 => OsdPosition::Right,
+            _ => OsdPosition::Center,
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            OsdPosition::Top => "Top",
+            OsdPosition::Bottom => "Bottom",
+            OsdPosition::Left => "Left",
+            OsdPosition::Right => "Right",
+            OsdPosition::Center => "Center",
+        }
+    }
+
+    pub fn display_names() -> Vec<&'static str> {
+        Self::all().iter().map(|p| p.display_name()).collect()
+    }
+
+    pub fn all() -> &'static [OsdPosition] {
+        &[
+            OsdPosition::Top,
+            OsdPosition::Bottom,
+            OsdPosition::Left,
+            OsdPosition::Right,
+            OsdPosition::Center,
+        ]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
 pub enum Orientation {
     Horizontal,

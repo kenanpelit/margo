@@ -7,6 +7,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **The OSD capsule is now configurable (Settings → OSD).** The volume /
+  brightness / mic / network pulse used hardcoded geometry (280 px wide,
+  bottom-centre, 48 px up, fully-pill corners, no border). A new `osd` config
+  section + Settings page (under Appearance) exposes width, position
+  (top / bottom / left / right / centre), distance from the edge, corner radius
+  and **border thickness** — the capsule now ships with a 2 px border in the
+  matugen `--outline-variant` colour by default. Width / radius / border drive
+  live `--osd-*` CSS vars (update instantly); position / distance anchor the
+  layer-shell windows and apply on the next mshell restart (the screen-corner
+  contract). Border colour stays matugen-driven, not a setting (DESIGN.md).
+
 ## [1.0.7] – 2026-06-15
 
 A performance + code-quality pass acting on a deep review. The headline wins

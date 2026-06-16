@@ -6,8 +6,8 @@ use crate::user_css::user_style_manager::style_manager;
 use mshell_cache::wallpaper::{WallpaperStateStoreFields, source_path, wallpaper_store};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    ConfigStoreFields, FontStoreFields, Matugen, SizingStoreFields, ThemeAttributes,
-    ThemeAttributesStoreFields, ThemeStoreFields,
+    ConfigStoreFields, FontStoreFields, Matugen, OsdStoreFields, SizingStoreFields,
+    ThemeAttributes, ThemeAttributesStoreFields, ThemeStoreFields,
 };
 use mshell_config::schema::themes::{MatugenMode, Themes};
 use mshell_matugen::json_struct::{Font, MShell, MatugenTheme, MatugenThemeCustomOnly, Sizing};
@@ -277,8 +277,14 @@ impl Component for StyleManagerModel {
 
         let sender_clone = sender.clone();
         Effect::new(move || {
-            let config = config_manager().config();
-            let attributes = config.theme().attributes().get();
+            let attributes = config_manager().config().theme().attributes().get();
+            // Subscribe to the OSD chrome knobs too — they ride the same
+            // attributes CSS provider (--osd-* injected in the handler), so
+            // changing them in Settings → OSD re-injects live. (Each store
+            // accessor consumes the handle, so re-fetch per read.)
+            let _ = config_manager().config().osd().width().get();
+            let _ = config_manager().config().osd().radius().get();
+            let _ = config_manager().config().osd().border_width().get();
             sender_clone.input(AttributesUpdate(attributes));
         });
 
@@ -416,6 +422,23 @@ impl Component for StyleManagerModel {
                 if !sc.is_empty() {
                     frame_overrides.push_str(&format!("--bar-separator-color: {sc};"));
                 }
+                // OSD capsule chrome (Settings → OSD). Read here (untracked —
+                // the effect above subscribes for live re-injection) and
+                // clamped so a stray edit can't break the layout. Drives the
+                // `--osd-*` fallbacks in `_osd_window.scss`.
+                let osd_width = config_manager()
+                    .config()
+                    .osd()
+                    .width()
+                    .get()
+                    .clamp(80, 1200);
+                let osd_radius = config_manager().config().osd().radius().get().clamp(0, 200);
+                let osd_border = config_manager()
+                    .config()
+                    .osd()
+                    .border_width()
+                    .get()
+                    .clamp(0, 20);
                 self.attributes_css_provider.load_from_string(&format!(
                     r#":root {{
                         --font-family-primary: {};
@@ -431,6 +454,9 @@ impl Component for StyleManagerModel {
                         --font-scale: {:.4};
                         --font-bar-scale: {:.4};
                         --surface-opacity: {}%;
+                        --osd-width: {}px;
+                        --osd-radius: {}px;
+                        --osd-border-width: {}px;
                         {}
                     }}"#,
                     if attributes.font.primary.is_empty() {
@@ -474,6 +500,9 @@ impl Component for StyleManagerModel {
                     // by the frame-draw widget (fill alpha) and color-mix on
                     // the frameless panel backgrounds.
                     attributes.sizing.surface_opacity.clamp(60, 100),
+                    osd_width,
+                    osd_radius,
+                    osd_border,
                     frame_overrides,
                 ));
 
