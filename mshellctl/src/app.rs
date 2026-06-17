@@ -75,10 +75,14 @@ pub enum Commands {
         #[command(subcommand)]
         command: BarCommands,
     },
-    /// Control the Hidden Bar drawer widget.
+    /// Control a Hidden Bar drawer widget. With no `name`, the verb reaches
+    /// every drawer; pass a `name` to target one named drawer (a
+    /// `bars.widgets.hidden_bars` entry, placed via `!HiddenBarNamed <name>`).
     HiddenBar {
         /// toggle | expand | collapse | pin | unpin
         action: String,
+        /// Optional drawer name to target (omit to act on all drawers).
+        name: Option<String>,
     },
     /// Audio control — output/input volume, mute, and device switching.
     Audio {

@@ -166,8 +166,9 @@ pub enum FrameInput {
     /// enforces the "Exclusive iff a menu is revealed" invariant
     /// proactively at map time instead of only reactively on toggle.
     SyncKeyboardMode,
-    /// Forward a Hidden Bar IPC verb to both bars' HiddenBar widgets.
-    HiddenBar(mshell_common::hidden_bar::HiddenBarVerb),
+    /// Forward a Hidden Bar IPC verb to both bars' drawers. The optional
+    /// target name selects a single named drawer; `None` reaches all.
+    HiddenBar(mshell_common::hidden_bar::HiddenBarVerb, Option<String>),
     /// A bar reported its target reserved height (`BarOutput::ReserveHeight`).
     /// Routed to that bar's FrameSpacer so the layer-shell exclusive zone
     /// jumps to the final value at toggle time (one smooth compositor
@@ -1071,9 +1072,13 @@ impl Component for Frame {
             FrameInput::SyncKeyboardMode => {
                 self.sync_keyboard_mode(root);
             }
-            FrameInput::HiddenBar(verb) => {
-                self.top_bar.sender().emit(BarInput::HiddenBar(verb));
-                self.bottom_bar.sender().emit(BarInput::HiddenBar(verb));
+            FrameInput::HiddenBar(verb, target) => {
+                self.top_bar
+                    .sender()
+                    .emit(BarInput::HiddenBar(verb, target.clone()));
+                self.bottom_bar
+                    .sender()
+                    .emit(BarInput::HiddenBar(verb, target));
             }
             FrameInput::SpacerReserve { is_top, height } => {
                 let spacer = if is_top {

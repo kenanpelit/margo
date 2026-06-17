@@ -11,12 +11,17 @@
 //! keeps them alive for its lifetime and parents their roots in the revealer.
 
 use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
+use mshell_common::hidden_bar::HiddenBarVerb;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 
 pub(crate) struct HiddenBarInit {
+    /// Drawer name. Empty for the bar's default drawer; set for a named
+    /// drawer. A CLI verb with a target name only acts on the matching
+    /// drawer (see [`HiddenBarInput::Ipc`]).
+    pub name: String,
     pub orientation: gtk::Orientation,
     /// Root widgets of the hidden children, parented into the revealer.
     pub children: Vec<gtk::Widget>,
@@ -30,6 +35,7 @@ pub(crate) struct HiddenBarInit {
 }
 
 pub(crate) struct HiddenBarModel {
+    name: String,
     orientation: gtk::Orientation,
     expanded: bool,
     pinned: bool,
@@ -48,11 +54,10 @@ pub(crate) struct HiddenBarModel {
 pub(crate) enum HiddenBarInput {
     ToggleExpand,
     TogglePin,
-    // IPC verbs (mshellctl hidden-bar …)
-    Expand,
-    Collapse,
-    Pin,
-    Unpin,
+    // IPC verb (mshellctl hidden-bar …). The optional target name filters
+    // which drawer reacts: `None` = every drawer, `Some(name)` = only the
+    // drawer whose `name` matches.
+    Ipc(HiddenBarVerb, Option<String>),
     // Internal hover / timer events
     HoverEnter,
     HoverLeave,
@@ -142,6 +147,7 @@ impl Component for HiddenBarModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let model = HiddenBarModel {
+            name: init.name,
             orientation: init.orientation,
             expanded: init.start_expanded,
             pinned: false,
@@ -190,19 +196,39 @@ impl Component for HiddenBarModel {
                     self.expand();
                 }
             }
-            HiddenBarInput::Expand => self.expand(),
-            HiddenBarInput::Collapse => {
-                if !self.pinned {
-                    self.collapse();
+            HiddenBarInput::Ipc(verb, target) => {
+                // A targeted verb only acts on the matching drawer; an
+                // untargeted one (`mshellctl hidden-bar <verb>` with no name)
+                // reaches every drawer.
+                if let Some(name) = target.as_deref()
+                    && name != self.name
+                {
+                    return;
                 }
-            }
-            HiddenBarInput::Pin => {
-                self.pinned = true;
-                self.cancel_collapse();
-                self.expand();
-            }
-            HiddenBarInput::Unpin => {
-                self.pinned = false;
+                match verb {
+                    HiddenBarVerb::Toggle => {
+                        self.cancel_hover();
+                        if self.expanded {
+                            self.collapse();
+                        } else {
+                            self.expand();
+                        }
+                    }
+                    HiddenBarVerb::Expand => self.expand(),
+                    HiddenBarVerb::Collapse => {
+                        if !self.pinned {
+                            self.collapse();
+                        }
+                    }
+                    HiddenBarVerb::Pin => {
+                        self.pinned = true;
+                        self.cancel_collapse();
+                        self.expand();
+                    }
+                    HiddenBarVerb::Unpin => {
+                        self.pinned = false;
+                    }
+                }
             }
             HiddenBarInput::HoverEnter => {
                 self.cancel_collapse();

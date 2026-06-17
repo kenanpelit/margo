@@ -195,8 +195,8 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::ControlCenter => {
                     app_sender.emit(ShellInput::ToggleControlCenterMenu(active_monitor().await));
                 }
-                IPCCommand::HiddenBar(verb) => {
-                    app_sender.emit(ShellInput::HiddenBar(verb));
+                IPCCommand::HiddenBar(verb, target) => {
+                    app_sender.emit(ShellInput::HiddenBar(verb, target));
                 }
                 IPCCommand::SshSessions => {
                     app_sender.emit(ShellInput::ToggleSshSessionsMenu(active_monitor().await));
@@ -577,7 +577,7 @@ enum IPCCommand {
     Keybinds,
     AlarmClock,
     ControlCenter,
-    HiddenBar(mshell_common::hidden_bar::HiddenBarVerb),
+    HiddenBar(mshell_common::hidden_bar::HiddenBarVerb, Option<String>),
     SshSessions,
     Vpn,
     Ai,
@@ -1683,11 +1683,17 @@ impl IPCService {
     async fn control_center(&self) {
         let _ = self.tx.send(IPCCommand::ControlCenter);
     }
-    /// Control the Hidden Bar drawer: `toggle` / `expand` / `collapse` /
-    /// `pin` / `unpin`. Unknown actions are ignored.
-    async fn hidden_bar(&self, action: String) {
+    /// Control a Hidden Bar drawer: `toggle` / `expand` / `collapse` /
+    /// `pin` / `unpin`. `name` targets a single named drawer; an empty
+    /// `name` reaches every drawer. Unknown actions are ignored.
+    async fn hidden_bar(&self, action: String, name: String) {
         if let Some(verb) = mshell_common::hidden_bar::HiddenBarVerb::from_action(&action) {
-            let _ = self.tx.send(IPCCommand::HiddenBar(verb));
+            let target = if name.trim().is_empty() {
+                None
+            } else {
+                Some(name)
+            };
+            let _ = self.tx.send(IPCCommand::HiddenBar(verb, target));
         }
     }
     async fn ssh_sessions(&self) {

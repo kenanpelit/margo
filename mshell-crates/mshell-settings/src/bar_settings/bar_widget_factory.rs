@@ -23,6 +23,9 @@ pub enum BarListLocation {
     BottomCenter,
     BottomEnd,
     BottomHidden,
+    /// The widget list of a named Hidden Bar drawer
+    /// (`bars.widgets.hidden_bars[i].widgets`).
+    NamedDrawer(usize),
 }
 
 #[derive(Debug)]
@@ -110,6 +113,7 @@ impl FactoryComponent for ActiveWidgetModel {
     fn init_model(init: Self::Init, _index: &DynamicIndex, _sender: FactorySender<Self>) -> Self {
         let label = match &init.widget {
             BarWidget::Custom(name) => super::bar_widget_section::custom_widget_label(name),
+            BarWidget::HiddenBarNamed(name) => format!("Hidden Bar · {name}"),
             other => other.display_name().to_string(),
         };
         Self {
@@ -143,11 +147,11 @@ impl FactoryComponent for ActiveWidgetModel {
     }
 }
 
-fn list_mut(
+pub(crate) fn list_mut(
     config: &mut mshell_config::schema::config::Config,
     location: BarListLocation,
-) -> &mut Vec<BarWidget> {
-    match location {
+) -> Option<&mut Vec<BarWidget>> {
+    Some(match location {
         BarListLocation::TopStart => &mut config.bars.top_bar.left_widgets,
         BarListLocation::TopCenter => &mut config.bars.top_bar.center_widgets,
         BarListLocation::TopEnd => &mut config.bars.top_bar.right_widgets,
@@ -156,12 +160,24 @@ fn list_mut(
         BarListLocation::BottomCenter => &mut config.bars.bottom_bar.center_widgets,
         BarListLocation::BottomEnd => &mut config.bars.bottom_bar.right_widgets,
         BarListLocation::BottomHidden => &mut config.bars.bottom_bar.hidden_widgets,
-    }
+        // A named drawer may have been removed since this card was built —
+        // fall through to `None` rather than panic on a stale index.
+        BarListLocation::NamedDrawer(i) => {
+            return config
+                .bars
+                .widgets
+                .hidden_bars
+                .get_mut(i)
+                .map(|d| &mut d.widgets);
+        }
+    })
 }
 
 fn reorder(location: BarListLocation, idx: usize, delta: i32) {
     config_manager().update_config(move |config| {
-        let list = list_mut(config, location);
+        let Some(list) = list_mut(config, location) else {
+            return;
+        };
         if idx >= list.len() {
             return;
         }
@@ -181,7 +197,9 @@ fn reorder(location: BarListLocation, idx: usize, delta: i32) {
 /// before it).
 pub(crate) fn move_item(location: BarListLocation, from: usize, to: usize) {
     config_manager().update_config(move |config| {
-        let list = list_mut(config, location);
+        let Some(list) = list_mut(config, location) else {
+            return;
+        };
         if from >= list.len() || from == to {
             return;
         }
@@ -193,7 +211,9 @@ pub(crate) fn move_item(location: BarListLocation, from: usize, to: usize) {
 
 fn remove_at(location: BarListLocation, idx: usize) {
     config_manager().update_config(move |config| {
-        let list = list_mut(config, location);
+        let Some(list) = list_mut(config, location) else {
+            return;
+        };
         if idx < list.len() {
             list.remove(idx);
         }

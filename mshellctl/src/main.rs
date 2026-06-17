@@ -15,8 +15,8 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Menu { command } => mshellctl::subcommands::menu::execute(command).await?,
         Commands::Bar { command } => mshellctl::subcommands::bar::execute(command).await?,
-        Commands::HiddenBar { action } => {
-            bus_command_with_arg("HiddenBar", &action).await?;
+        Commands::HiddenBar { action, name } => {
+            bus_command_with_arg("HiddenBar", &(action, name.unwrap_or_default())).await?;
         }
         Commands::Audio { command } => mshellctl::subcommands::audio::execute(command).await?,
         Commands::Bluetooth { command } => {

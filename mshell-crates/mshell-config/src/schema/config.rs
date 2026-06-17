@@ -679,8 +679,13 @@ impl Default for Bars {
 #[derive(Default)]
 pub struct BarWidgets {
     pub system_update: SystemUpdateBarWidget,
-    /// Hidden Bar drawer behaviour (hover-expand, auto-collapse, …).
+    /// Hidden Bar drawer behaviour (hover-expand, auto-collapse, …) for the
+    /// bar's default (`!HiddenBar`) drawer.
     pub hidden_bar: HiddenBarConfig,
+    /// Additional named Hidden Bar drawers, each with its own widget list and
+    /// behaviour. Referenced from a bar slot via `!HiddenBarNamed <name>` and
+    /// targetable from the CLI via `mshellctl hidden-bar <verb> <name>`.
+    pub hidden_bars: Vec<HiddenBarConfig>,
     /// Catwalk — the CPU-reactive animated cat pill.
     pub catwalk: CatwalkConfig,
     /// Privacy indicator — mic / camera / screen-share watchdog pill.
@@ -884,6 +889,14 @@ impl Default for CatwalkConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct HiddenBarConfig {
+    /// Drawer name. Empty for the bar's default (`!HiddenBar`) drawer; set
+    /// for a named drawer (an entry in `bars.widgets.hidden_bars`, referenced
+    /// from a slot via `!HiddenBarNamed <name>` and targetable by
+    /// `mshellctl hidden-bar <verb> <name>`).
+    pub name: String,
+    /// Widgets collapsed into this drawer. Used only for named drawers; the
+    /// default drawer instead reads each bar's own `hidden_widgets` list.
+    pub widgets: Vec<BarWidget>,
     /// Start expanded on shell launch.
     pub start_expanded: bool,
     /// Reveal on hover (in addition to click). Off = click-only.
@@ -899,6 +912,8 @@ pub struct HiddenBarConfig {
 impl Default for HiddenBarConfig {
     fn default() -> Self {
         Self {
+            name: String::new(),
+            widgets: Vec::new(),
             start_expanded: false,
             auto_expand: true,
             hover_delay_ms: 0,

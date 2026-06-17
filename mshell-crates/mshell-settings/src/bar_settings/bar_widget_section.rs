@@ -14,6 +14,8 @@ pub enum BarSection {
     Center,
     End,
     Hidden,
+    /// A named Hidden Bar drawer's own widget list.
+    Drawer,
 }
 
 impl BarSection {
@@ -23,6 +25,7 @@ impl BarSection {
             BarSection::Center => "Center",
             BarSection::End => "End",
             BarSection::Hidden => "Hidden widgets",
+            BarSection::Drawer => "Widgets",
         }
     }
 }
@@ -214,17 +217,11 @@ fn populate_add_list(list: &gtk::Box, popover: &gtk::Popover, location: BarListL
         btn.connect_clicked(move |_| {
             let widget_clone = widget_clone.clone();
             config_manager().update_config(move |config| {
-                let list = match location {
-                    BarListLocation::TopStart => &mut config.bars.top_bar.left_widgets,
-                    BarListLocation::TopCenter => &mut config.bars.top_bar.center_widgets,
-                    BarListLocation::TopEnd => &mut config.bars.top_bar.right_widgets,
-                    BarListLocation::BottomStart => &mut config.bars.bottom_bar.left_widgets,
-                    BarListLocation::BottomCenter => &mut config.bars.bottom_bar.center_widgets,
-                    BarListLocation::BottomEnd => &mut config.bars.bottom_bar.right_widgets,
-                    BarListLocation::TopHidden => &mut config.bars.top_bar.hidden_widgets,
-                    BarListLocation::BottomHidden => &mut config.bars.bottom_bar.hidden_widgets,
-                };
-                list.push(widget_clone);
+                if let Some(list) =
+                    crate::bar_settings::bar_widget_factory::list_mut(config, location)
+                {
+                    list.push(widget_clone);
+                }
             });
             popover_clone.popdown();
         });
@@ -248,17 +245,39 @@ fn populate_add_list(list: &gtk::Box, popover: &gtk::Popover, location: BarListL
         btn.connect_clicked(move |_| {
             let name = name.clone();
             config_manager().update_config(move |config| {
-                let list = match location {
-                    BarListLocation::TopStart => &mut config.bars.top_bar.left_widgets,
-                    BarListLocation::TopCenter => &mut config.bars.top_bar.center_widgets,
-                    BarListLocation::TopEnd => &mut config.bars.top_bar.right_widgets,
-                    BarListLocation::BottomStart => &mut config.bars.bottom_bar.left_widgets,
-                    BarListLocation::BottomCenter => &mut config.bars.bottom_bar.center_widgets,
-                    BarListLocation::BottomEnd => &mut config.bars.bottom_bar.right_widgets,
-                    BarListLocation::TopHidden => &mut config.bars.top_bar.hidden_widgets,
-                    BarListLocation::BottomHidden => &mut config.bars.bottom_bar.hidden_widgets,
-                };
-                list.push(BarWidget::Custom(name.clone()));
+                if let Some(list) =
+                    crate::bar_settings::bar_widget_factory::list_mut(config, location)
+                {
+                    list.push(BarWidget::Custom(name.clone()));
+                }
+            });
+            popover_clone.popdown();
+        });
+
+        list.append(&btn);
+    }
+
+    // Named Hidden Bar drawers (bars.widgets.hidden_bars) — each referenced
+    // as a `!HiddenBarNamed <name>` pill, like custom widgets above.
+    for hb in &cfg.bars.widgets.hidden_bars {
+        if hb.name.trim().is_empty() {
+            continue;
+        }
+        let btn = gtk::Button::with_label(&format!("Hidden Bar · {}", hb.name));
+        btn.set_css_classes(&["settings-bar-widget-add-item"]);
+        btn.set_halign(gtk::Align::Fill);
+        btn.set_has_frame(false);
+
+        let name = hb.name.clone();
+        let popover_clone = popover.clone();
+        btn.connect_clicked(move |_| {
+            let name = name.clone();
+            config_manager().update_config(move |config| {
+                if let Some(list) =
+                    crate::bar_settings::bar_widget_factory::list_mut(config, location)
+                {
+                    list.push(BarWidget::HiddenBarNamed(name.clone()));
+                }
             });
             popover_clone.popdown();
         });

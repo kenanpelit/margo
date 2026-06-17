@@ -7,6 +7,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Multiple, independently-addressable Hidden Bar drawers.** The Hidden Bar
+  used to be a single per-bar drawer (one `!HiddenBar` pill rendering that bar's
+  one `hidden_widgets` list), so you couldn't place two drawers with different
+  contents. You now can: define named drawers under `bars.widgets.hidden_bars`
+  (each with its own widget list + behaviour) and drop as many as you like into
+  any bar slot — they show up in the "Add widget" menu as `Hidden Bar · <name>`
+  (the `!HiddenBarNamed <name>` reference pattern, mirroring `!Custom`). Settings
+  → Widgets → Hidden Bar gains a **Named drawers** editor (add / rename / delete,
+  each with its own add-remove-reorder widget list). The bare `!HiddenBar` pill
+  is unchanged and keeps working as the bar's default drawer — zero config
+  migration. `mshellctl hidden-bar <verb>` now takes an optional drawer **name**:
+  `mshellctl hidden-bar toggle media` toggles just that drawer, while the
+  name-less form still reaches every drawer.
+
 ## [1.0.7] – 2026-06-15
 
 A performance + code-quality pass acting on a deep review. The headline wins

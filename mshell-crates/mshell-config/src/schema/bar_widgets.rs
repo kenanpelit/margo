@@ -21,7 +21,18 @@ pub enum BarWidget {
     /// behind a trigger: hover (when auto-expand) or left-click to
     /// reveal, right-click to pin open, auto-collapse on leave. Port of
     /// the DMS hidden-bar plugin, native to mshell's bar.
+    ///
+    /// The bare (unit) form is the bar's default drawer — it renders that
+    /// bar's `hidden_widgets` list and uses the global `hidden_bar`
+    /// behaviour. For additional, independently-addressable drawers (each
+    /// with its own widgets + behaviour) use [`BarWidget::HiddenBarNamed`].
     HiddenBar,
+    /// A named Hidden Bar drawer. The `String` is the drawer's `name`,
+    /// matching an entry in `bars.widgets.hidden_bars`; that entry supplies
+    /// the drawer's own widget list and behaviour. Multiple named drawers
+    /// can sit in the same bar, and `mshellctl hidden-bar <verb> <name>`
+    /// targets one by name. Mirrors the `!Custom <name>` reference pattern.
+    HiddenBarNamed(String),
     /// Catwalk — a CPU-reactive animated cat (port of the noctalia plugin).
     /// Idles ("Zz") below a CPU threshold, walks faster as load climbs;
     /// click opens the CPU dashboard.
@@ -142,6 +153,7 @@ impl BarWidget {
             BarWidget::AlarmClock => "Alarm Clock",
             BarWidget::ControlCenter => "Control Center",
             BarWidget::HiddenBar => "Hidden Bar",
+            BarWidget::HiddenBarNamed(_) => "Hidden Bar",
             BarWidget::Catwalk => "Catwalk (animated cat)",
             BarWidget::AudioDashboard => "Audio Dashboard",
             BarWidget::AudioVisualizer => "Audio Visualizer",

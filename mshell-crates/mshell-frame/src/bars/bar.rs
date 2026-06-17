@@ -160,8 +160,9 @@ pub(crate) enum BarInput {
     /// `bars.islands` toggled in Settings — flip the marker class live so
     /// the strip ⇄ floating-pills switch applies without a shell restart.
     SetIslands(bool),
-    /// Forward a Hidden Bar IPC verb to every HiddenBar widget in this bar.
-    HiddenBar(mshell_common::hidden_bar::HiddenBarVerb),
+    /// Forward a Hidden Bar IPC verb to this bar's drawers. The optional
+    /// target name selects a single named drawer; `None` reaches all.
+    HiddenBar(mshell_common::hidden_bar::HiddenBarVerb, Option<String>),
     /// `hidden_widgets` config changed — rebuild the slot holding the drawer
     /// so it re-reads its contents (live add/remove from Settings).
     RebuildHidden,
@@ -391,7 +392,9 @@ impl Component for BarModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let _ = config.bars().top_bar().hidden_widgets().get();
+                    let _ = config.clone().bars().top_bar().hidden_widgets().get();
+                    // Also rebuild when a named drawer's definition changes.
+                    let _ = config.bars().widgets().hidden_bars().get();
                     sender_clone.input(BarInput::RebuildHidden);
                 });
             }
@@ -449,7 +452,9 @@ impl Component for BarModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let _ = config.bars().bottom_bar().hidden_widgets().get();
+                    let _ = config.clone().bars().bottom_bar().hidden_widgets().get();
+                    // Also rebuild when a named drawer's definition changes.
+                    let _ = config.bars().widgets().hidden_bars().get();
                     sender_clone.input(BarInput::RebuildHidden);
                 });
             }
@@ -576,25 +581,21 @@ impl Component for BarModel {
         _root: &Self::Root,
     ) {
         match message {
-            BarInput::HiddenBar(verb) => {
+            BarInput::HiddenBar(verb, target) => {
                 use crate::bars::bar_widgets::hidden_bar::{HiddenBarInput, HiddenBarModel};
                 use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetControllerExtSafe;
-                use mshell_common::hidden_bar::HiddenBarVerb;
                 use relm4::ComponentController;
 
+                // Forward to every drawer controller; each one self-filters on
+                // its own `name` against the optional target (so a named verb
+                // only acts on the matching drawer).
                 for list in [&self.start_widgets, &self.center_widgets, &self.end_widgets] {
                     for w in list {
                         if let Some(ctrl) =
                             (**w).downcast_ref::<relm4::Controller<HiddenBarModel>>()
                         {
-                            let input = match verb {
-                                HiddenBarVerb::Toggle => HiddenBarInput::ToggleExpand,
-                                HiddenBarVerb::Expand => HiddenBarInput::Expand,
-                                HiddenBarVerb::Collapse => HiddenBarInput::Collapse,
-                                HiddenBarVerb::Pin => HiddenBarInput::Pin,
-                                HiddenBarVerb::Unpin => HiddenBarInput::Unpin,
-                            };
-                            ctrl.sender().emit(input);
+                            ctrl.sender()
+                                .emit(HiddenBarInput::Ipc(verb, target.clone()));
                         }
                     }
                 }
@@ -675,7 +676,12 @@ impl Component for BarModel {
                 }
             }
             BarInput::RebuildHidden => {
-                if self.start_widget_kinds.contains(&BarWidget::HiddenBar) {
+                fn holds_drawer(kinds: &[BarWidget]) -> bool {
+                    kinds
+                        .iter()
+                        .any(|w| matches!(w, BarWidget::HiddenBar | BarWidget::HiddenBarNamed(_)))
+                }
+                if holds_drawer(&self.start_widget_kinds) {
                     let kinds = self.start_widget_kinds.clone();
                     clear_box(&widgets.start_container);
                     self.start_widgets.clear();
@@ -686,7 +692,7 @@ impl Component for BarModel {
                         self.start_widgets.push(c);
                     }
                 }
-                if self.center_widget_kinds.contains(&BarWidget::HiddenBar) {
+                if holds_drawer(&self.center_widget_kinds) {
                     let kinds = self.center_widget_kinds.clone();
                     clear_box(&widgets.center_container);
                     self.center_widgets.clear();
@@ -697,7 +703,7 @@ impl Component for BarModel {
                         self.center_widgets.push(c);
                     }
                 }
-                if self.end_widget_kinds.contains(&BarWidget::HiddenBar) {
+                if holds_drawer(&self.end_widget_kinds) {
                     let kinds = self.end_widget_kinds.clone();
                     clear_box(&widgets.end_container);
                     self.end_widgets.clear();
@@ -844,7 +850,7 @@ impl BarModel {
                 let mut child_controllers: Vec<Box<dyn GenericWidgetController>> = Vec::new();
                 let mut children: Vec<gtk::Widget> = Vec::new();
                 for w in &hidden {
-                    if matches!(w, BarWidget::HiddenBar) {
+                    if matches!(w, BarWidget::HiddenBar | BarWidget::HiddenBarNamed(_)) {
                         continue; // no nesting a drawer inside itself
                     }
                     let ctrl = Self::build_widget(orientation, bar_type, w, sender);
@@ -855,6 +861,7 @@ impl BarModel {
                 Box::new(
                     crate::bars::bar_widgets::hidden_bar::HiddenBarModel::builder()
                         .launch(crate::bars::bar_widgets::hidden_bar::HiddenBarInit {
+                            name: String::new(),
                             orientation,
                             children,
                             child_controllers,
@@ -863,6 +870,50 @@ impl BarModel {
                             hover_delay_ms,
                             auto_collapse,
                             collapse_delay_ms,
+                        })
+                        .detach(),
+                )
+            }
+            BarWidget::HiddenBarNamed(name) => {
+                // A named drawer pulls its widget list + behaviour from the
+                // matching `bars.widgets.hidden_bars` entry (read from a
+                // snapshot; reactivity for live edits is driven by the
+                // `RebuildHidden` effect, like the default drawer). An unknown
+                // name yields an empty, default-behaviour drawer.
+                let cfg = config_manager().config().read_untracked().clone();
+                let def = cfg
+                    .bars
+                    .widgets
+                    .hidden_bars
+                    .iter()
+                    .find(|d| &d.name == name)
+                    .cloned()
+                    .unwrap_or_default();
+
+                let mut child_controllers: Vec<Box<dyn GenericWidgetController>> = Vec::new();
+                let mut children: Vec<gtk::Widget> = Vec::new();
+                for w in &def.widgets {
+                    // Never nest a drawer inside a drawer.
+                    if matches!(w, BarWidget::HiddenBar | BarWidget::HiddenBarNamed(_)) {
+                        continue;
+                    }
+                    let ctrl = Self::build_widget(orientation, bar_type, w, sender);
+                    children.push(ctrl.root_widget());
+                    child_controllers.push(ctrl);
+                }
+
+                Box::new(
+                    crate::bars::bar_widgets::hidden_bar::HiddenBarModel::builder()
+                        .launch(crate::bars::bar_widgets::hidden_bar::HiddenBarInit {
+                            name: def.name.clone(),
+                            orientation,
+                            children,
+                            child_controllers,
+                            start_expanded: def.start_expanded,
+                            auto_expand: def.auto_expand,
+                            hover_delay_ms: def.hover_delay_ms,
+                            auto_collapse: def.auto_collapse,
+                            collapse_delay_ms: def.collapse_delay_ms,
                         })
                         .detach(),
                 )
