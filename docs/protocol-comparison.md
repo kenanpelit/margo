@@ -1,16 +1,20 @@
 # Wayland Protocol Surface — margo vs niri vs Hyprland vs mango
 
-> **Last refreshed:** 2026-05-28 (full four-way walk); **margo column
-> re-audited 2026-06-12 at `v1.0.3`** — since the walk, margo **removed**
-> the custom dwl-ipc-v2 global (replaced by the Unix control socket, not a
-> Wayland protocol) and **added** `zwlr_foreign_toplevel_manager_v1`
-> (write-side), `ext_workspace_v1`, `zwlr_virtual_pointer_manager_v1` and
-> `zwlr_output_power_management_v1` (1.0.2) → **~60 globals**.
-> **Sources walked (all at that day's `HEAD`):**
-> - **margo** `0.8.8` (`6738494`) — this repo (smithay `delegate_*!` macros + hand-rolled `GlobalDispatch`).
-> - **niri** `26.04` (`v26.04-23-g9a6f310`) — same smithay method.
-> - **Hyprland** `0.55.0` (`v0.55.0-86-gebc1816`) — `src/protocols/*.cpp` + `src/protocols/core/`.
-> - **mango** `0.13.1` (`0.13.1-69-gd702cc2`) — wlroots `wlr_*_create()` call sites + `protocols/*.xml`.
+> **Last refreshed:** 2026-06-17 — **margo column re-counted directly from
+> source** at `v1.0.7` (`446f8597`): margo advertises **57 protocol-bearing
+> smithay `delegate_*` macros** (excluding the two framework-internal
+> `delegate_dispatch` / `delegate_global_dispatch`); all 8 hand-rolled
+> `GlobalDispatch` globals overlap an existing delegate, so they add no
+> extra. This **corrects the prior headline `~60`** (which over-counted —
+> the standing-picture prose below already said `~57`) to the
+> source-verified **57**. The protocol *set* is unchanged from the `v1.0.3`
+> audit: `tearing_control` and `drm_lease` are still the only two not
+> advertised (both blocked, see gaps below).
+> **Sources (re-counted from each project's `HEAD` this pass):**
+> - **margo** `v1.0.7` (`446f8597`) — this repo; **57** protocol `delegate_*` macros (+ overlapping hand-rolled `GlobalDispatch`).
+> - **niri** `v26.04-34` (`fdb6d85`) — same smithay method; **41** protocol delegates (unchanged from the 2026-05-28 walk).
+> - **Hyprland** `v0.55.0-189` (`2d190ba`) — `src/protocols/*.cpp` (**63**) + `src/protocols/core/` (**6**) = **69**.
+> - **mango** `0.14.4-7` (`892d127`) — wlroots `wlr_*_create()` globals + `protocols/*.xml`; **~53 carried from the 2026-05-28 walk, not re-counted this pass** (a clean count needs manual curation to exclude non-protocol `wlr_*_create` calls such as `wlr_scene_*` / `wlr_output_layout_*`).
 
 > **Companion:** [`protocol-matrix.md`](protocol-matrix.md) is the *internal*
 > view — for each protocol margo advertises, whether it's implemented and how
@@ -41,20 +45,28 @@ numbers are comparable.
 
 | Compositor | Protocols (approx.) | Stack | Note |
 |---|---|---|---|
-| **Hyprland** `0.55.0` | **~68** | C++ (hand-rolled) | Widest surface — 62 protocol modules + 6 core, plus Hyprland-only extensions |
-| **margo** `1.0.3` | **~60** | Rust / smithay | Modern surface; **ahead of niri and mango**; pursuing Hyprland (was ~57 at the 0.8.8 walk; +output_power, +foreign-toplevel write-side, +ext_workspace, +virtual_pointer, −dwl-ipc-v2) |
-| **mango** `0.13.1` | **~53** | C / wlroots | Broad-but-legacy: wlroots hands it everything for free |
-| **niri** `26.04` | **~41** | Rust / smithay | Tightest surface; deliberately minimal |
+| **Hyprland** `0.55.0` | **69** | C++ (hand-rolled) | Widest surface — 63 protocol modules + 6 core, plus Hyprland-only extensions (source-counted 2026-06-17) |
+| **margo** `1.0.7` | **57** | Rust / smithay | Modern surface; **ahead of niri and mango**; pursuing Hyprland. Source-counted 2026-06-17: 57 protocol `delegate_*` macros — the modern surface + the three wlroots-freebies (foreign-toplevel write-side, ext_workspace, virtual_pointer) + output_power are all present |
+| **mango** `0.13.1` | **~53** | C / wlroots | Broad-but-legacy: wlroots hands it everything for free (carried from 2026-05-28; not re-counted) |
+| **niri** `26.04` | **41** | Rust / smithay | Tightest surface; deliberately minimal (source-counted 2026-06-17) |
 
-**This refresh (2026-05-28) is a re-verification, not a re-shuffle.** All
-four were walked again at today's `HEAD`; the standings are unchanged.
-The only protocol movement in the week since the last audit is on the
-widest surface: **Hyprland added `hyprland_lock_notify`** (its own
-`LockNotify.cpp` / `CHyprlandLockNotification`), nudging it 61→62
-modules. margo, niri and mango advertise the exact same protocol sets as
-the 2026-05-21 audit — margo's headline work this cycle (the niri-style
-scroller overview, v0.8.8) is internal render/input and adds **no** new
-Wayland globals.
+**This refresh (2026-06-17) re-counts the surface from source; the
+standings are unchanged — only the margo headline number was corrected**
+(`~60` → source-verified **57**, matching the standing-picture prose that
+already said `~57`). What was re-counted directly from each project's
+checkout this pass: **margo = 57** protocol `delegate_*` macros, **niri =
+41** (identical to the 2026-05-28 walk), **Hyprland = 69** (63
+`src/protocols/*.cpp` + 6 `core/`; was 68 — consistent with its steady
+module creep, e.g. the earlier `hyprland_lock_notify` addition).
+**mango (~53) was *not* re-counted** this pass — its wlroots globals need
+manual curation to separate true protocol globals from scene/output
+`wlr_*_create` calls, so the 2026-05-28 figure is carried forward.
+
+> **Scope of this pass:** only **margo's** column was re-verified against
+> source (every margo ✅/❌ in the tables below was confirmed against the
+> `delegate_*` list). The **niri / Hyprland / mango** per-protocol cells
+> carry forward from the 2026-05-28 four-way walk and were **not**
+> re-walked protocol-by-protocol here.
 
 The standing picture: **margo (~57) leads its own C ancestor mango
 (~53)** and niri (~41), having hand-rolled the three wlroots-freebies
