@@ -5,7 +5,12 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.7] – 2026-06-15
+
+A performance + code-quality pass acting on a deep review. The headline wins
+are on the shell's config write path and the compositor's twilight tick — both
+were doing redundant work on hot/frequent paths — plus a fragile menu-placement
+data structure retired and a permanent idle wakeup removed.
 
 ### Added
 
@@ -22,16 +27,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   migration. `mshellctl hidden-bar <verb>` now takes an optional drawer **name**:
   `mshellctl hidden-bar toggle media` toggles just that drawer, while the
   name-less form still reaches every drawer.
-
-## [1.0.7] – 2026-06-15
-
-A performance + code-quality pass acting on a deep review. The headline wins
-are on the shell's config write path and the compositor's twilight tick — both
-were doing redundant work on hot/frequent paths — plus a fragile menu-placement
-data structure retired and a permanent idle wakeup removed.
-
-### Added
-
 - **`mshellctl menu margo-layout`** toggles the Margo Layout Switcher menu from
   the CLI. The pill + menu already existed (bar widget + Settings → Widgets) but
   had no IPC verb, so it was the one bar menu that couldn't be opened from a
