@@ -5,6 +5,27 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] – 2026-06-18
+
+A focused input fix: clicking right after a touchpad-gesture tag switch no
+longer bounces you back to the tag you came from.
+
+### Fixed
+
+- **Pointer focus is refreshed before a click is delivered.** A programmatic
+  tag switch (the 4-finger `viewtoright` / `viewtoleft` gesture, `super`+N, an
+  overview close, …) hides the window under a *stationary* cursor and remaps
+  the scene, but Smithay only re-evaluates pointer focus on real motion — so
+  the pointer kept its stale focus on the now-hidden window. The next click was
+  delivered to that off-tag window, and because browsers / Electron apps
+  self-activate on every click via `xdg-activation`, the activation switched the
+  view straight back to the hidden window's tag. Symptom: swipe to a tag, then
+  click without moving the mouse, and you'd jump back to the previous tag.
+  `handle_pointer_button` now re-sends a zero-distance pointer motion (reusing
+  the press's serial so a click-initiated move/resize grab still validates)
+  before the button event, so the click lands on whatever is actually under the
+  cursor now.
+
 ## [1.0.7] – 2026-06-15
 
 A performance + code-quality pass acting on a deep review. The headline wins
