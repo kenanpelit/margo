@@ -1089,6 +1089,35 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
                     state.focus_surface(None);
                 }
             }
+
+            // The cursor may not have moved since a programmatic layout
+            // change (gesture `viewtoright`/`viewtoleft`, `super`+N tag
+            // switch, overview close) hid the window it was over and
+            // remapped `space`. Smithay only refreshes pointer focus on a
+            // real motion event, so without this the button below is
+            // delivered to the window that *used* to be under the cursor —
+            // now hidden on another tag. Browsers / Electron apps
+            // self-activate on click via xdg-activation, and that
+            // activation switches the view back to the hidden window's tag
+            // (its `!already_visible` guard passes because the window is
+            // genuinely off-tag now) — the "swipe to a tag, then click
+            // without moving, and it jumps back" bug. Re-send a
+            // zero-distance motion, reusing this press's serial so a
+            // client-side move/resize grab started from the click still
+            // validates, so the button lands on whatever is genuinely
+            // under the cursor now. See handlers/xdg_activation.rs.
+            let ptr_focus = pointer_focus_under(state, pos);
+            if let Some(ptr) = state.seat.get_pointer() {
+                ptr.motion(
+                    state,
+                    ptr_focus,
+                    &MotionEvent {
+                        location: pos,
+                        serial,
+                        time: event.time_msec(),
+                    },
+                );
+            }
         }
     }
     state.request_repaint();
