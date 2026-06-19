@@ -7,11 +7,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [1.0.8] – 2026-06-18
 
-A focused input fix: clicking right after a touchpad-gesture tag switch no
-longer bounces you back to the tag you came from.
+Two fixes: clicking right after a touchpad-gesture tag switch no longer bounces
+you back to the tag you came from, and a lone `smartgaps` tile no longer shows a
+thin strip of wallpaper between the bar and its top/bottom border.
 
 ### Fixed
 
+- **No wallpaper sliver above/below a lone `smartgaps` window.** With
+  `smartgaps` and a single tiled window the outer gap was clamped to
+  `2 × borderpx` on *both* axes. Left/right needs that — the work area is flush
+  with the monitor edge there, so the outset border would otherwise glue to (and
+  read as clipped at) the physical screen edge. But top/bottom the work area is
+  already inset by the bar(s), so the clamp left a `borderpx`-wide strip of
+  wallpaper between the bar and the border: invisible left/right (it abuts the
+  bezel) but an obvious gap against the dark bar. `gappov` now uses just
+  `borderpx` so the outset border lands flush against the bar; `gappoh` keeps
+  `2 × borderpx`. Applied to the live arrange and the overview pre-arrange path.
 - **Pointer focus is refreshed before a click is delivered.** A programmatic
   tag switch (the 4-finger `viewtoright` / `viewtoleft` gesture, `super`+N, an
   overview close, …) hides the window under a *stationary* cursor and remaps
