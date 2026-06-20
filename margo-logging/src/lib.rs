@@ -36,44 +36,112 @@ use tracing_subscriber::{Registry, reload};
 /// The five log levels we expose, lowest to highest verbosity.
 pub const LEVELS: [&str; 5] = ["error", "warn", "info", "debug", "trace"];
 
-/// Drops smithay's benign popup/toplevel teardown `error!`s.
+/// Drops a small, curated set of *benign* log lines from our own
+/// dependencies — noise that would otherwise alarm someone reading the log
+/// even though there is nothing to act on. Three cases:
 ///
-/// smithay registers a per-`wl_surface` pre-commit hook for every xdg popup
-/// (and toplevel) and never removes it. When a client dismisses a popup — it
-/// destroys the `xdg_popup` (so smithay drops it from `known_popups`) and then
-/// issues one last commit on the still-alive `wl_surface`, the ordinary
-/// teardown for many GTK/Qt menus — the orphaned hook fires, fails the
-/// `known_popups` lookup, and smithay logs
-/// `error!("surface missing from known popups")`. It is a harmless race: the
-/// popup is already gone, there is nothing to act on. The same path produces
-/// `…known toplevels`.
+/// 1. **smithay xdg teardown `error!`s.** smithay registers a per-`wl_surface`
+///    pre-commit hook for every xdg popup (and toplevel) and never removes it.
+///    When a client dismisses a popup it destroys the `xdg_popup` (so smithay
+///    drops it from `known_popups`) and then issues one last commit on the
+///    still-alive `wl_surface` — the ordinary teardown for many GTK/Qt menus.
+///    The orphaned hook fires, fails the `known_popups` lookup, and smithay
+///    logs `error!("surface missing from known popups")` (and the `…toplevels`
+///    sibling). Harmless race: the popup is already gone. These are the *only*
+///    `error!` sites in `smithay::wayland::shell::xdg` (verified at the pinned
+///    rev and HEAD), so we drop ERROR from that module wholesale.
 ///
-/// These "missing from known {popups,toplevels}" lines are the *only* `error!`
-/// sites in `smithay::wayland::shell::xdg` — verified against both the pinned
-/// rev and upstream HEAD, so bumping smithay does not change them. We therefore
-/// drop ERROR-level events from that module while leaving its warn/info/debug
-/// intact. Implemented as a per-callsite `Interest::never` so the matching
-/// events are never even constructed (zero steady-state cost).
+/// 2. **wayle-audio startup default-device warnings.** PipeWire reports the
+///    default sink/source as the symbolic `@DEFAULT_SINK@` / `@DEFAULT_SOURCE@`
+///    token before a concrete default propagates; `wayle_audio` can't resolve
+///    that alias in its device store yet and `warn!`s. The next event carries a
+///    real device name and resolves fine — a one-shot startup race. Drop WARN
+///    from `wayle_audio::backend::commands::server`.
+///
+/// 3. **wayle-bluetooth `br-connection-page-timeout`.** When a trusted device
+///    is off / out of range at connect time, BlueZ returns
+///    `org.bluez.Error.Failed: br-connection-page-timeout` and `wayle_bluetooth`
+///    surfaces it as an `error!`. That's a hardware/range condition, not a
+///    software fault. This one is matched on the *message* so that genuine
+///    connect failures (auth, protocol, …) from the same module still log.
+///
+/// Cases 1–2 are decided from metadata alone, so they're suppressed at the
+/// callsite (`Interest::never`) and never even constructed. Case 3 needs the
+/// message text, so its callsite stays `sometimes` and is filtered per event.
 #[derive(Clone, Copy)]
-struct DropBenignSmithayXdgErrors;
+struct DropBenignNoise;
 
-impl DropBenignSmithayXdgErrors {
-    fn is_suppressed(meta: &Metadata<'_>) -> bool {
+impl DropBenignNoise {
+    /// Metadata-only suppression (target + level), decidable at the callsite.
+    fn meta_suppressed(meta: &Metadata<'_>) -> bool {
+        let target = meta.target();
+        match *meta.level() {
+            tracing::Level::ERROR => target.starts_with("smithay::wayland::shell::xdg"),
+            tracing::Level::WARN => target.starts_with("wayle_audio::backend::commands::server"),
+            _ => false,
+        }
+    }
+
+    /// Targets whose suppression depends on the message text — checked per
+    /// event in [`Filter::event_enabled`].
+    fn needs_message_check(meta: &Metadata<'_>) -> bool {
         *meta.level() == tracing::Level::ERROR
-            && meta.target().starts_with("smithay::wayland::shell::xdg")
+            && meta
+                .target()
+                .starts_with("wayle_bluetooth::core::device::controls")
     }
 }
 
-impl<S> Filter<S> for DropBenignSmithayXdgErrors {
+impl<S> Filter<S> for DropBenignNoise {
     fn enabled(&self, meta: &Metadata<'_>, _cx: &Context<'_, S>) -> bool {
-        !Self::is_suppressed(meta)
+        !Self::meta_suppressed(meta)
     }
 
     fn callsite_enabled(&self, meta: &Metadata<'_>) -> Interest {
-        if Self::is_suppressed(meta) {
+        if Self::meta_suppressed(meta) {
             Interest::never()
+        } else if Self::needs_message_check(meta) {
+            // Can't tell from metadata — decide per event.
+            Interest::sometimes()
         } else {
             Interest::always()
+        }
+    }
+
+    fn event_enabled(&self, event: &tracing::Event<'_>, _cx: &Context<'_, S>) -> bool {
+        if Self::needs_message_check(event.metadata()) {
+            let mut v = MessageContains::new("br-connection-page-timeout");
+            event.record(&mut v);
+            return !v.found;
+        }
+        true
+    }
+}
+
+/// Field visitor that reports whether any recorded field's value contains a
+/// needle substring. Used to message-match the benign bluetooth transient.
+struct MessageContains {
+    needle: &'static str,
+    found: bool,
+}
+
+impl MessageContains {
+    fn new(needle: &'static str) -> Self {
+        Self {
+            needle,
+            found: false,
+        }
+    }
+}
+
+impl tracing::field::Visit for MessageContains {
+    fn record_str(&mut self, _field: &tracing::field::Field, value: &str) {
+        self.found |= value.contains(self.needle);
+    }
+
+    fn record_debug(&mut self, _field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if !self.found {
+            self.found = format!("{value:?}").contains(self.needle);
         }
     }
 }
@@ -263,12 +331,12 @@ pub fn init(opts: LogInit) -> LogHandle {
             .with_writer(appender)
             .with_ansi(false)
             .with_target(true)
-            .with_filter(filter.and(DropBenignSmithayXdgErrors));
+            .with_filter(filter.and(DropBenignNoise));
 
         let stdout = to_stdout.then(|| {
             fmt_layer::layer()
                 .with_target(true)
-                .with_filter(EnvFilter::new(&stdout_initial).and(DropBenignSmithayXdgErrors))
+                .with_filter(EnvFilter::new(&stdout_initial).and(DropBenignNoise))
         });
 
         let _ = tracing_subscriber::registry()
@@ -292,7 +360,7 @@ pub fn init(opts: LogInit) -> LogHandle {
     let stdout = to_stdout.then(|| {
         fmt_layer::layer()
             .with_target(true)
-            .with_filter(EnvFilter::new(&stdout_initial).and(DropBenignSmithayXdgErrors))
+            .with_filter(EnvFilter::new(&stdout_initial).and(DropBenignNoise))
     });
     let _ = tracing_subscriber::registry().with(stdout).try_init();
     tracing::warn!(
@@ -360,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn drops_only_smithay_xdg_errors() {
+    fn drops_curated_benign_noise() {
         use std::sync::{Arc, Mutex};
         use tracing_subscriber::Layer;
 
@@ -379,32 +447,55 @@ mod tests {
         }
 
         let seen: Seen = Arc::new(Mutex::new(Vec::new()));
-        let layer = Collector(seen.clone()).with_filter(DropBenignSmithayXdgErrors);
+        let layer = Collector(seen.clone()).with_filter(DropBenignNoise);
         let subscriber = tracing_subscriber::registry().with(layer);
 
         tracing::subscriber::with_default(subscriber, || {
-            // The benign popup teardown race — must be dropped.
+            // 1. smithay popup teardown race — dropped; lower level survives.
             tracing::error!(target: "smithay::wayland::shell::xdg", "surface missing from known popups");
-            // Same module, lower level — must survive.
             tracing::warn!(target: "smithay::wayland::shell::xdg", "kept warn");
-            // ERROR from a different module — must survive.
+            // 2. wayle-audio startup default-device warning — dropped.
+            tracing::warn!(target: "wayle_audio::backend::commands::server", "Default output device '@DEFAULT_SINK@' not found in store");
+            // 3. wayle-bluetooth transient page-timeout — dropped; a genuine
+            //    connect error from the same module survives (message-matched).
+            tracing::error!(target: "wayle_bluetooth::core::device::controls", error = "dbus error: org.bluez.Error.Failed: br-connection-page-timeout");
+            tracing::error!(target: "wayle_bluetooth::core::device::controls", error = "dbus error: org.bluez.Error.Failed: authentication-failed");
+            // Control: ERROR from an unrelated module always survives.
             tracing::error!(target: "margo::state", "kept other-module error");
         });
 
         let got = seen.lock().unwrap();
+        let has =
+            |lvl: tracing::Level, target: &str| got.iter().any(|(l, t)| *l == lvl && t == target);
+        let count = |target: &str| got.iter().filter(|(_, t)| t == target).count();
+
+        // smithay xdg: ERROR dropped, WARN kept.
         assert!(
-            !got.iter().any(|(l, t)| *l == tracing::Level::ERROR
-                && t.starts_with("smithay::wayland::shell::xdg")),
+            !has(tracing::Level::ERROR, "smithay::wayland::shell::xdg"),
             "smithay xdg ERROR should be dropped, got: {got:?}"
         );
         assert!(
-            got.iter()
-                .any(|(l, t)| *l == tracing::Level::WARN && t == "smithay::wayland::shell::xdg"),
+            has(tracing::Level::WARN, "smithay::wayland::shell::xdg"),
             "smithay xdg WARN should survive, got: {got:?}"
         );
+        // wayle-audio: the startup WARN is dropped.
         assert!(
-            got.iter()
-                .any(|(l, t)| *l == tracing::Level::ERROR && t == "margo::state"),
+            !has(
+                tracing::Level::WARN,
+                "wayle_audio::backend::commands::server"
+            ),
+            "wayle-audio default-device WARN should be dropped, got: {got:?}"
+        );
+        // wayle-bluetooth: exactly one of the two errors survives (the
+        // non-page-timeout one); the transient is message-matched out.
+        assert_eq!(
+            count("wayle_bluetooth::core::device::controls"),
+            1,
+            "only the genuine bluetooth error should survive, got: {got:?}"
+        );
+        // Unrelated ERROR always survives.
+        assert!(
+            has(tracing::Level::ERROR, "margo::state"),
             "other-module ERROR should survive, got: {got:?}"
         );
     }
