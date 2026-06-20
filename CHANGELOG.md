@@ -37,6 +37,13 @@ behaviour changes — but it is a large one, so it gets its own release.
   modern Mesa drops it in favour of `linux-dmabuf` (which margo sets up right
   after), so its absence is expected and harmless. The missing-extension case is
   now logged at `debug` instead of `warn` — genuine bind failures still warn.
+- **Quieter startup log: three benign dependency lines suppressed.** The shared
+  log-noise filter now also drops `wayle_audio`'s startup
+  `@DEFAULT_SINK@`/`@DEFAULT_SOURCE@` "not found in store" warnings (PipeWire
+  reports the symbolic default before a concrete one propagates) and
+  `wayle_bluetooth`'s `br-connection-page-timeout` error (a trusted device that
+  was off / out of range at connect time). The bluetooth line is matched on its
+  message, so genuine connect failures still log.
 
 ## [1.0.8] – 2026-06-18
 
