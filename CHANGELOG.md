@@ -8,8 +8,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [1.0.9] – 2026-06-20
 
 Tracks Smithay to its current HEAD — a large but internal port — alongside an
-audio-backend health watchdog, a couple of launcher tweaks, and a few
-startup-log fixes.
+audio-backend health watchdog, a few launcher fixes, and a few startup-log
+fixes.
 
 ### Changed
 
@@ -36,6 +36,13 @@ startup-log fixes.
 
 ### Fixed
 
+- **No more ~1-second freeze when switching to the launcher's Actions tab.** The
+  Bluetooth / audio / media providers ran blocking `bluetoothctl` / `wpctl` /
+  `playerctl` subprocesses on the GTK main thread inside their search/browse —
+  which the runtime calls on every tab switch — so tabbing onto Actions stalled
+  the UI (worst on Bluetooth, one `bluetoothctl info` per paired device). They
+  now refresh off-thread and serve the last snapshot instantly, repainting via a
+  re-query when fresh data lands; the tab switch is immediate.
 - **Typing a script's full name in the launcher runs it directly.** An exact
   `start-*` script match now outranks the generic "Run: <text>" shell row in the
   Actions tab, so pressing Enter spawns the script by absolute path instead of
