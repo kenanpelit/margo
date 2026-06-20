@@ -6,6 +6,12 @@
 
 use crate::item::LauncherItem;
 
+/// A thread-safe callback a provider invokes when an off-thread data
+/// refresh lands, asking the launcher UI to re-run the current query so the
+/// freshly-loaded rows appear. Handed to providers by the runtime via
+/// [`Provider::set_refresh_notifier`]; safe to call from a worker thread.
+pub type RefreshNotifier = std::sync::Arc<dyn Fn() + Send + Sync>;
+
 /// A source of launcher results.
 ///
 /// The runtime owns providers behind `Box<dyn Provider>` so they
@@ -86,6 +92,15 @@ pub trait Provider {
     /// Lets providers drop transient state (open file handles,
     /// in-flight async requests). Default: no-op.
     fn on_closed(&mut self) {}
+
+    /// Hand the provider a notifier to call when one of its off-thread
+    /// data refreshes completes, so the launcher can re-run the current
+    /// query and show the new rows. Providers that read live external
+    /// state through a blocking subprocess (Bluetooth / audio / media)
+    /// refresh in the background to keep `search`/`browse` off the main
+    /// thread and use this to repaint. Default: no-op (most providers
+    /// serve from in-memory state synchronously).
+    fn set_refresh_notifier(&mut self, _notifier: RefreshNotifier) {}
 
     /// Coarse category bucket the provider falls under. Drives the
     /// Tab/Shift+Tab provider-cycle and the visual category strip

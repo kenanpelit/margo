@@ -175,6 +175,11 @@ pub(crate) enum AppLauncherInput {
     TogglePinFromRow(String),
     /// Right-click context menu → Hide/Unhide.
     ToggleHiddenFromRow(String),
+    /// A provider's off-thread data refresh (Bluetooth / audio / media)
+    /// landed — re-run the current query so the freshly-loaded rows appear
+    /// without the user typing. Sent from a worker thread via the input
+    /// sender.
+    ResultsRefreshed,
 }
 
 #[derive(Debug)]
@@ -716,6 +721,15 @@ impl Component for AppLauncherModel {
             sender_clone.input(AppLauncherInput::FilterChanged(String::new()));
         });
 
+        // Let providers that refresh data off-thread (Bluetooth / audio /
+        // media) ask us to re-run the current query when fresh rows land —
+        // that's what keeps their `search`/`browse` off the GTK main thread
+        // (no more ~1s freeze when Tab-ing onto the Actions/System tab).
+        let refresh_sender = sender.input_sender().clone();
+        runtime.set_refresh_notifier(std::sync::Arc::new(move || {
+            let _ = refresh_sender.send(AppLauncherInput::ResultsRefreshed);
+        }));
+
         runtime.on_opened();
 
         let close_sender_cell: RefCell<Option<Box<dyn Fn() + 'static>>> = RefCell::new(None);
@@ -907,6 +921,17 @@ impl Component for AppLauncherModel {
                 self.recompute_results();
                 self.push_results_to_dynamic_box();
                 self.broadcast_selection();
+            }
+            AppLauncherInput::ResultsRefreshed => {
+                // A background snapshot (Bluetooth / audio / media) finished
+                // off-thread. Re-run the current query so the new rows show.
+                // Only when on screen — a refresh that lands after close
+                // shouldn't churn the UI.
+                if self.is_revealed {
+                    self.recompute_results();
+                    self.push_results_to_dynamic_box();
+                    self.broadcast_selection();
+                }
             }
             AppLauncherInput::ParentRevealChanged(revealed) => {
                 if revealed && !self.is_revealed {

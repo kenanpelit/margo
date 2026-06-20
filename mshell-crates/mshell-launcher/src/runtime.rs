@@ -154,6 +154,15 @@ impl LauncherRuntime {
         self.providers.push(provider);
     }
 
+    /// Hand every registered provider a notifier to call when one of its
+    /// off-thread data refreshes completes (so the UI can re-run the
+    /// current query). Call once, after all providers are registered.
+    pub fn set_refresh_notifier(&mut self, notifier: crate::provider::RefreshNotifier) {
+        for provider in &mut self.providers {
+            provider.set_refresh_notifier(notifier.clone());
+        }
+    }
+
     /// Read-only access to the frecency store.
     pub fn frecency(&self) -> &FrecencyStore {
         &self.frecency

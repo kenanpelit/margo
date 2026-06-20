@@ -5,6 +5,7 @@
 //! alongside the rest of the GTK code.
 
 pub mod archpkgs;
+pub(crate) mod bg_cache;
 pub mod bluetooth;
 pub mod calculator;
 pub mod command;

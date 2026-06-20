@@ -9,39 +9,33 @@
 //!
 //! Activation runs `wpctl set-default <id>`.
 
-use crate::{item::LauncherItem, notify::toast, provider::Provider};
-use std::cell::RefCell;
+use crate::providers::bg_cache::BgCache;
+use crate::{
+    item::LauncherItem,
+    notify::toast,
+    provider::{Provider, RefreshNotifier},
+};
 use std::process::Command;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const SNAPSHOT_TTL: Duration = Duration::from_secs(2);
 
 pub struct WireplumberProvider {
-    cache: RefCell<Option<CachedSnapshot<Vec<Device>>>>,
+    cache: BgCache<Vec<Device>>,
 }
 
 impl WireplumberProvider {
     pub fn new() -> Self {
         Self {
-            cache: RefCell::new(None),
+            cache: BgCache::new(SNAPSHOT_TTL),
         }
     }
 
+    /// Last audio-device snapshot, refreshing off-thread when stale. The
+    /// `wpctl status` probe never runs on the calling (GTK main) thread.
     fn cached_snapshot(&self) -> Vec<Device> {
-        let now = Instant::now();
-        if let Some(cached) = self.cache.borrow().as_ref()
-            && now.duration_since(cached.captured_at) < SNAPSHOT_TTL
-        {
-            return cached.value.clone();
-        }
-
-        let value = snapshot();
-        *self.cache.borrow_mut() = Some(CachedSnapshot {
-            captured_at: now,
-            value: value.clone(),
-        });
-        value
+        self.cache.get(snapshot).unwrap_or_default()
     }
 }
 
@@ -62,11 +56,6 @@ struct Device {
     is_default: bool,
     /// "sink" or "source".
     kind: &'static str,
-}
-
-struct CachedSnapshot<T> {
-    captured_at: Instant,
-    value: T,
 }
 
 /// Parse `wpctl status` output. Indented lines under each
@@ -165,6 +154,17 @@ impl Provider for WireplumberProvider {
 
     fn handles_search(&self) -> bool {
         false
+    }
+
+    fn set_refresh_notifier(&mut self, notifier: RefreshNotifier) {
+        self.cache.set_notifier(notifier);
+    }
+
+    fn on_opened(&mut self) {
+        // Warm the audio-device cache off-thread so the System tab is
+        // populated by the time the user reaches it — never blocking the
+        // main thread on `wpctl status`.
+        let _ = self.cache.get(snapshot);
     }
 
     fn handles_command(&self, query: &str) -> bool {

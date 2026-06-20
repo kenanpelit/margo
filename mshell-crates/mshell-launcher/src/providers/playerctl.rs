@@ -13,39 +13,33 @@
 //!      fork is unmeasurable next to the keystroke that triggered
 //!      it.
 
-use crate::{item::LauncherItem, notify::toast, provider::Provider};
-use std::cell::RefCell;
+use crate::providers::bg_cache::BgCache;
+use crate::{
+    item::LauncherItem,
+    notify::toast,
+    provider::{Provider, RefreshNotifier},
+};
 use std::process::Command;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const SNAPSHOT_TTL: Duration = Duration::from_secs(2);
 
 pub struct PlayerctlProvider {
-    cache: RefCell<Option<CachedSnapshot<PlayerSnapshot>>>,
+    cache: BgCache<PlayerSnapshot>,
 }
 
 impl PlayerctlProvider {
     pub fn new() -> Self {
         Self {
-            cache: RefCell::new(None),
+            cache: BgCache::new(SNAPSHOT_TTL),
         }
     }
 
+    /// Last MPRIS-player snapshot, refreshing off-thread when stale. The
+    /// `playerctl` probes never run on the calling (GTK main) thread.
     fn cached_snapshot(&self) -> PlayerSnapshot {
-        let now = Instant::now();
-        if let Some(cached) = self.cache.borrow().as_ref()
-            && now.duration_since(cached.captured_at) < SNAPSHOT_TTL
-        {
-            return cached.value.clone();
-        }
-
-        let value = snapshot();
-        *self.cache.borrow_mut() = Some(CachedSnapshot {
-            captured_at: now,
-            value: value.clone(),
-        });
-        value
+        self.cache.get(snapshot).unwrap_or_default()
     }
 }
 
@@ -56,7 +50,7 @@ impl Default for PlayerctlProvider {
 }
 
 /// Snapshot of currently-registered MPRIS players.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct PlayerSnapshot {
     players: Vec<PlayerInfo>,
 }
@@ -68,11 +62,6 @@ struct PlayerInfo {
     /// Cached metadata so Actions typing does not fork one
     /// `playerctl metadata` per player on every recompute.
     track: Option<String>,
-}
-
-struct CachedSnapshot<T> {
-    captured_at: Instant,
-    value: T,
 }
 
 fn snapshot() -> PlayerSnapshot {
@@ -137,6 +126,17 @@ impl Provider for PlayerctlProvider {
 
     fn handles_search(&self) -> bool {
         false
+    }
+
+    fn set_refresh_notifier(&mut self, notifier: RefreshNotifier) {
+        self.cache.set_notifier(notifier);
+    }
+
+    fn on_opened(&mut self) {
+        // Warm the player cache off-thread so the System tab is populated
+        // by the time the user reaches it — never blocking the main thread
+        // on `playerctl`.
+        let _ = self.cache.get(snapshot);
     }
 
     fn handles_command(&self, query: &str) -> bool {
