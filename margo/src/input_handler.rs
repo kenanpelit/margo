@@ -3,8 +3,8 @@
 
 use smithay::{
     backend::input::{
-        Axis, ButtonState, GestureBeginEvent, GestureSwipeUpdateEvent, InputBackend, InputEvent,
-        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        Axis, AxisSource, ButtonState, GestureBeginEvent, GestureSwipeUpdateEvent, InputBackend,
+        InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
         PointerMotionAbsoluteEvent, PointerMotionEvent,
     },
     desktop::{WindowSurfaceType, layer_map_for_output},
@@ -1179,24 +1179,30 @@ fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(state: &mut Marg
     }
 
     // AxisFrame::source() and AxisFrame::value() both use smithay::backend::input types.
-    let mut frame = AxisFrame::new(event.time_msec()).source(event.source());
+    let source = event.source();
+    let mut frame = AxisFrame::new(event.time_msec()).source(source);
 
-    if event.amount_v120(Axis::Horizontal).is_some() || event.amount(Axis::Horizontal).is_some() {
-        let amount = event
-            .amount(Axis::Horizontal)
-            .unwrap_or_else(|| event.amount_v120(Axis::Horizontal).unwrap_or(0.0) / 120.0 * 3.0);
-        frame = frame.value(Axis::Horizontal, amount);
-        if let Some(v120) = event.amount_v120(Axis::Horizontal) {
-            frame = frame.v120(Axis::Horizontal, v120 as i32);
+    for axis in [Axis::Horizontal, Axis::Vertical] {
+        if event.amount_v120(axis).is_none() && event.amount(axis).is_none() {
+            continue;
         }
-    }
-    if event.amount_v120(Axis::Vertical).is_some() || event.amount(Axis::Vertical).is_some() {
         let amount = event
-            .amount(Axis::Vertical)
-            .unwrap_or_else(|| event.amount_v120(Axis::Vertical).unwrap_or(0.0) / 120.0 * 3.0);
-        frame = frame.value(Axis::Vertical, amount);
-        if let Some(v120) = event.amount_v120(Axis::Vertical) {
-            frame = frame.v120(Axis::Vertical, v120 as i32);
+            .amount(axis)
+            .unwrap_or_else(|| event.amount_v120(axis).unwrap_or(0.0) / 120.0 * 3.0);
+
+        // libinput emits a 0.0-amount finger event when the fingers lift off
+        // the touchpad; forward it as wl_pointer.axis_stop so the client ends
+        // the scroll sequence. Firefox/Gecko ignores touchpad (finger-source)
+        // scrolling entirely without this stop — only the wheel (v120) path
+        // works otherwise. (Our virtual-pointer path already emits stop.)
+        if source == AxisSource::Finger && amount == 0.0 {
+            frame = frame.stop(axis);
+            continue;
+        }
+
+        frame = frame.value(axis, amount);
+        if let Some(v120) = event.amount_v120(axis) {
+            frame = frame.v120(axis, v120 as i32);
         }
     }
 
