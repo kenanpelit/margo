@@ -8,7 +8,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [1.0.9] – 2026-06-20
 
 Tracks Smithay to its current HEAD — a large but internal port — alongside an
-audio-backend health watchdog and a few startup-log fixes.
+audio-backend health watchdog, a couple of launcher tweaks, and a few
+startup-log fixes.
 
 ### Changed
 
@@ -29,9 +30,17 @@ audio-backend health watchdog and a few startup-log fixes.
     and **`XWayland::spawn`** gained an `extra_args` parameter.
 - Transitive bumps that came with it: `winit` 0.30 → 0.31.0-beta.2,
   `smithay-client-toolkit` 0.20, plus the new `reis`/EI input crates.
+- **The launcher's result preview pane now defaults off.** A fresh config opens
+  with the result list at full width; re-enable the detail pane in
+  Settings → Launcher or with the in-launcher toggle.
 
 ### Fixed
 
+- **Typing a script's full name in the launcher runs it directly.** An exact
+  `start-*` script match now outranks the generic "Run: <text>" shell row in the
+  Actions tab, so pressing Enter spawns the script by absolute path instead of
+  the `sh -c <name>` fallback shadowing it from the top slot (which was a silent
+  no-op for some scripts, leaving only the "$ <name>" toast).
 - **No more spurious "failed to bind EGL Wayland display" warning on startup.**
   `EGL_WL_bind_wayland_display` is the legacy `wl_drm` buffer-sharing path;
   modern Mesa drops it in favour of `linux-dmabuf` (which margo sets up right
