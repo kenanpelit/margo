@@ -226,16 +226,29 @@ impl Provider for ScriptsProvider {
             .to_ascii_lowercase();
 
         let entries = self.entries.borrow();
-        // Score MRU-ish: every match starts at 100, the frecency
-        // boost the runtime adds (5*log2(1+count)) is what
+        // Score MRU-ish: substring matches start at 100, the
+        // frecency boost the runtime adds (5*log2(1+count)) is what
         // ultimately surfaces most-used scripts to the top.
         // Without a non-zero base score the runtime's stable
         // sort would keep the alphabetical refresh() order which
         // would dilute the frecency signal at small counts.
+        //
+        // An *exact* name match scores 250 — above the Command
+        // provider's generic "Run: <text>" shell row (200) — so when
+        // the user types a script's full name and hits Enter it runs
+        // the script directly (a reliable absolute-path spawn) instead
+        // of the shell-command fallback shadowing it from the top slot.
         entries
             .iter()
             .filter(|entry| filter.is_empty() || entry.name.to_ascii_lowercase().contains(&filter))
-            .map(|entry| self.make_item(entry, 100.0))
+            .map(|entry| {
+                let score = if !filter.is_empty() && entry.name.to_ascii_lowercase() == filter {
+                    250.0
+                } else {
+                    100.0
+                };
+                self.make_item(entry, score)
+            })
             .collect()
     }
 
@@ -290,5 +303,35 @@ mod tests {
         let cmds = p.commands();
         assert_eq!(cmds.len(), 1);
         assert_eq!(cmds[0].name, ">start");
+    }
+
+    #[test]
+    fn exact_name_match_outranks_generic_run_row() {
+        let p = ScriptsProvider::with_prefix("start-");
+        // Pin a deterministic index (refresh() scanned the real PATH).
+        *p.entries.borrow_mut() = vec![
+            ScriptEntry {
+                name: "start-brave-kenp".into(),
+                path: "/x/start-brave-kenp".into(),
+            },
+            ScriptEntry {
+                name: "start-brave-ai".into(),
+                path: "/x/start-brave-ai".into(),
+            },
+        ];
+
+        // Exact full-name query → boosted above the Command provider's
+        // live "Run: …" row (200) so Enter runs the script directly.
+        let exact = p.search(">start start-brave-kenp");
+        let hit = exact
+            .iter()
+            .find(|i| i.name == "start-brave-kenp")
+            .expect("exact script present");
+        assert!(hit.score > 200.0, "exact match must outrank the Run: row");
+
+        // Substring-only query stays at the base score (below the Run:
+        // row), so an ambiguous partial doesn't hijack the shell entry.
+        let partial = p.search(">start brave");
+        assert!(partial.iter().all(|i| i.score <= 200.0));
     }
 }
