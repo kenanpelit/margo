@@ -71,13 +71,14 @@ quieter startup logs.
 ### Added
 
 - **Audio-backend health watchdog.** `wayle-audio`'s PulseAudio backend has no
-  reconnect logic, so a transient pipewire-pulse disconnect at login (typically
-  during Bluetooth-audio churn) can sever it for the rest of the session — after
-  which the volume keys and the volume OSD silently stop working even though
-  `wpctl` still drives the sink fine. The shell now probes the backend's
-  liveness and, on a confirmed death, raises a single critical notification with
-  a one-click **Restart shell** action — the only in-session cure, since a fresh
-  `mshell` re-establishes the audio connection.
+  reconnect logic, so when the PipeWire server restarts under it — `dcli sync`
+  re-applying the pipewire user services, or a transient drop during Bluetooth
+  churn at login — its connection dies for the rest of the session and the
+  volume keys + OSD silently stop working (while `wpctl` still drives the sink
+  fine). The shell now notices the audio server restarting (a systemd `MainPID`
+  change) and raises a single critical notification with a one-click **Restart
+  shell** action — the only in-session cure, since a fresh `mshell` re-establishes
+  the connection.
 
 ## [1.0.8] – 2026-06-18
 
