@@ -1544,7 +1544,7 @@ impl Default for Launcher {
     fn default() -> Self {
         Self {
             autostart_scripts: Vec::new(),
-            show_preview: true,
+            show_preview: false,
             compact_rows: false,
             large_app_icons: true,
         }
