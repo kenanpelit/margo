@@ -9,10 +9,7 @@
 //! Smithay's `XdgForeignState` handles all the protocol-level
 //! bookkeeping; the handler trait is a single-method state accessor.
 
-use smithay::{
-    delegate_xdg_foreign,
-    wayland::xdg_foreign::{XdgForeignHandler, XdgForeignState},
-};
+use smithay::wayland::xdg_foreign::{XdgForeignHandler, XdgForeignState};
 
 use crate::state::MargoState;
 
@@ -21,4 +18,3 @@ impl XdgForeignHandler for MargoState {
         &mut self.xdg_foreign_state
     }
 }
-delegate_xdg_foreign!(MargoState);

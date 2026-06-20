@@ -227,7 +227,7 @@ mshell-wallpaper = { path = "mshell-crates/mshell-wallpaper" }
 
 [workspace.dependencies.smithay]
 git = "https://github.com/Smithay/smithay.git"
-rev = "ff5fa7df392cecfba049ffed55cdaa4e98a8e7ef"
+rev = "e1fb2496c9d7ec4d994cc50fe61b7439686ba8b9"
 default-features = false
 
 [profile.release]

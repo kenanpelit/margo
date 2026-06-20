@@ -9,7 +9,6 @@
 //! instead of the dead surface.
 
 use smithay::{
-    delegate_layer_shell,
     desktop::{LayerSurface as DesktopLayerSurface, layer_map_for_output},
     output::Output,
     reexports::wayland_server::{Resource, protocol::wl_output::WlOutput},
@@ -294,4 +293,3 @@ impl WlrLayerShellHandler for MargoState {
         tracing::info!("layer surface destroyed");
     }
 }
-delegate_layer_shell!(MargoState);

@@ -39,7 +39,6 @@
 
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
-    delegate_compositor,
     desktop::{PopupKind, WindowSurface, WindowSurfaceType, layer_map_for_output},
     reexports::{
         calloop::Interest,
@@ -441,7 +440,6 @@ impl CompositorHandler for MargoState {
         self.request_repaint();
     }
 }
-delegate_compositor!(MargoState);
 
 impl BufferHandler for MargoState {
     fn buffer_destroyed(&mut self, _buffer: &WlBuffer) {}
@@ -457,7 +455,6 @@ impl BufferHandler for MargoState {
 /// pixel-grid drifts off the output grid every state-poll cycle.
 /// niri wires this the same way (`niri/src/handlers/mod.rs:845`).
 impl smithay::wayland::fractional_scale::FractionalScaleHandler for MargoState {}
-smithay::delegate_fractional_scale!(MargoState);
 
 /// Push `wl_surface.preferred_buffer_scale` (integer) +
 /// `wp_fractional_scale_v1.preferred_scale` (fractional) events to

@@ -9,7 +9,6 @@
 //! can target the matching X11 toplevel.
 
 use smithay::{
-    delegate_xwayland_keyboard_grab,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     wayland::{seat::WaylandFocus, xwayland_keyboard_grab::XWaylandKeyboardGrabHandler},
 };
@@ -28,4 +27,3 @@ impl XWaylandKeyboardGrabHandler for MargoState {
             .map(|c| FocusTarget::Window(c.window.clone()))
     }
 }
-delegate_xwayland_keyboard_grab!(MargoState);

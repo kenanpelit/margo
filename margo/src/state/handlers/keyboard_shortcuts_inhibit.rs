@@ -15,7 +15,6 @@
 //! only.
 
 use smithay::{
-    delegate_keyboard_shortcuts_inhibit,
     reexports::wayland_server::Resource,
     wayland::keyboard_shortcuts_inhibit::{
         KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor,
@@ -49,4 +48,3 @@ impl KeyboardShortcutsInhibitHandler for MargoState {
         self.keyboard_shortcuts_inhibiting_surfaces.remove(&surface);
     }
 }
-delegate_keyboard_shortcuts_inhibit!(MargoState);

@@ -201,8 +201,3 @@ impl ImageCopyCaptureHandler for MargoState {
         frame.fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
     }
 }
-
-smithay::delegate_image_capture_source!(MargoState);
-smithay::delegate_output_capture_source!(MargoState);
-smithay::delegate_toplevel_capture_source!(MargoState);
-smithay::delegate_image_copy_capture!(MargoState);

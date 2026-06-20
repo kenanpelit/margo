@@ -7,9 +7,8 @@
 //! dialogs (they go through the same map / arrange path as any
 //! other xdg toplevel), so the default no-op is fine.
 
-use smithay::{delegate_xdg_dialog, wayland::shell::xdg::dialog::XdgDialogHandler};
+use smithay::wayland::shell::xdg::dialog::XdgDialogHandler;
 
 use crate::state::MargoState;
 
 impl XdgDialogHandler for MargoState {}
-delegate_xdg_dialog!(MargoState);

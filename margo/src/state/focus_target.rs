@@ -323,10 +323,9 @@ impl TouchTarget<MargoState> for FocusTarget {
         seat: &Seat<MargoState>,
         data: &mut MargoState,
         event: &smithay::input::touch::DownEvent,
-        seq: Serial,
     ) {
         if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::down(s, seat, data, event, seq);
+            TouchTarget::down(s, seat, data, event);
         }
     }
     fn up(
@@ -334,10 +333,9 @@ impl TouchTarget<MargoState> for FocusTarget {
         seat: &Seat<MargoState>,
         data: &mut MargoState,
         event: &smithay::input::touch::UpEvent,
-        seq: Serial,
     ) {
         if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::up(s, seat, data, event, seq);
+            TouchTarget::up(s, seat, data, event);
         }
     }
     fn motion(
@@ -345,20 +343,29 @@ impl TouchTarget<MargoState> for FocusTarget {
         seat: &Seat<MargoState>,
         data: &mut MargoState,
         event: &smithay::input::touch::MotionEvent,
-        seq: Serial,
     ) {
         if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::motion(s, seat, data, event, seq);
+            TouchTarget::motion(s, seat, data, event);
         }
     }
-    fn frame(&self, seat: &Seat<MargoState>, data: &mut MargoState, seq: Serial) {
+    fn frame(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        marker: smithay::input::touch::FrameMarker,
+    ) {
         if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::frame(s, seat, data, seq);
+            TouchTarget::frame(s, seat, data, marker);
         }
     }
-    fn cancel(&self, seat: &Seat<MargoState>, data: &mut MargoState, seq: Serial) {
+    fn cancel(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        marker: smithay::input::touch::FrameMarker,
+    ) {
         if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::cancel(s, seat, data, seq);
+            TouchTarget::cancel(s, seat, data, marker);
         }
     }
     fn shape(
@@ -366,10 +373,9 @@ impl TouchTarget<MargoState> for FocusTarget {
         seat: &Seat<MargoState>,
         data: &mut MargoState,
         event: &smithay::input::touch::ShapeEvent,
-        seq: Serial,
     ) {
         if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::shape(s, seat, data, event, seq);
+            TouchTarget::shape(s, seat, data, event);
         }
     }
     fn orientation(
@@ -377,11 +383,18 @@ impl TouchTarget<MargoState> for FocusTarget {
         seat: &Seat<MargoState>,
         data: &mut MargoState,
         event: &smithay::input::touch::OrientationEvent,
-        seq: Serial,
     ) {
         if let Some(s) = self.inner_wl_surface() {
-            TouchTarget::orientation(s, seat, data, event, seq);
+            TouchTarget::orientation(s, seat, data, event);
         }
+    }
+    fn last_frame(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+    ) -> Option<smithay::input::touch::FrameMarker> {
+        self.inner_wl_surface()
+            .and_then(|s| TouchTarget::last_frame(s, seat, data))
     }
 }
 

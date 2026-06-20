@@ -5,7 +5,7 @@
 //! enhancement.
 
 use smithay::{
-    delegate_xdg_system_bell, reexports::wayland_server::protocol::wl_surface::WlSurface,
+    reexports::wayland_server::protocol::wl_surface::WlSurface,
     wayland::xdg_system_bell::XdgSystemBellHandler,
 };
 
@@ -16,4 +16,3 @@ impl XdgSystemBellHandler for MargoState {
         tracing::debug!(?surface, "xdg_system_bell: ring");
     }
 }
-delegate_xdg_system_bell!(MargoState);

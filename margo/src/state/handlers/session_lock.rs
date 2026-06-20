@@ -7,7 +7,6 @@
 //! ("alt+l → black screen" symptom).
 
 use smithay::{
-    delegate_session_lock,
     output::Output,
     reexports::wayland_server::protocol::wl_output::WlOutput,
     utils::Size,
@@ -95,4 +94,3 @@ impl SessionLockHandler for MargoState {
         self.request_repaint();
     }
 }
-delegate_session_lock!(MargoState);

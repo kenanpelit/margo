@@ -16,7 +16,6 @@
 //! hooks back into PopupManager.
 
 use smithay::{
-    delegate_input_method_manager, delegate_text_input_manager,
     desktop::{PopupKind, PopupManager},
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{Logical, Rectangle},
@@ -53,5 +52,3 @@ impl InputMethodHandler for MargoState {
             .unwrap_or_default()
     }
 }
-delegate_text_input_manager!(MargoState);
-delegate_input_method_manager!(MargoState);

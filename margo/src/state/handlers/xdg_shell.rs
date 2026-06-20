@@ -35,7 +35,6 @@
 
 use smithay::{
     backend::renderer::element::Id as RenderElementId,
-    delegate_xdg_shell,
     desktop::{PopupKind, Window},
     input::Seat,
     reexports::{
@@ -619,5 +618,3 @@ impl MargoState {
         });
     }
 }
-
-delegate_xdg_shell!(MargoState);

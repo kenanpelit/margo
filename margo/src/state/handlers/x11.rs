@@ -43,7 +43,6 @@ impl XWaylandShellHandler for MargoState {
         &mut self.xwayland_shell_state
     }
 }
-smithay::delegate_xwayland_shell!(MargoState);
 
 impl XwmHandler for MargoState {
     fn xwm_state(&mut self, _xwm: XwmId) -> &mut X11Wm {

@@ -11,8 +11,6 @@
 use std::os::unix::io::OwnedFd;
 
 use smithay::{
-    delegate_data_control, delegate_data_device, delegate_ext_data_control,
-    delegate_primary_selection,
     input::{Seat, dnd::DndGrabHandler},
     wayland::selection::{
         SelectionHandler, SelectionSource, SelectionTarget,
@@ -66,25 +64,21 @@ impl DataDeviceHandler for MargoState {
 }
 impl WaylandDndGrabHandler for MargoState {}
 impl DndGrabHandler for MargoState {}
-delegate_data_device!(MargoState);
 
 impl PrimarySelectionHandler for MargoState {
     fn primary_selection_state(&mut self) -> &mut PrimarySelectionState {
         &mut self.primary_selection_state
     }
 }
-delegate_primary_selection!(MargoState);
 
 impl DataControlHandler for MargoState {
     fn data_control_state(&mut self) -> &mut DataControlState {
         &mut self.data_control_state
     }
 }
-delegate_data_control!(MargoState);
 
 impl ExtDataControlHandler for MargoState {
     fn data_control_state(&mut self) -> &mut ExtDataControlState {
         &mut self.ext_data_control_state
     }
 }
-delegate_ext_data_control!(MargoState);

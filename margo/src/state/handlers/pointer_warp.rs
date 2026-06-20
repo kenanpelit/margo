@@ -6,9 +6,8 @@
 //! future policy could honor warps from focused surfaces with the
 //! correct enter serial.
 
-use smithay::{delegate_pointer_warp, wayland::pointer_warp::PointerWarpHandler};
+use smithay::wayland::pointer_warp::PointerWarpHandler;
 
 use crate::state::MargoState;
 
 impl PointerWarpHandler for MargoState {}
-delegate_pointer_warp!(MargoState);

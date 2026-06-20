@@ -12,7 +12,6 @@
 //! semantic), so we gate the tag switch on `!already_visible`.
 
 use smithay::{
-    delegate_xdg_activation,
     input::Seat,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     wayland::{
@@ -106,4 +105,3 @@ impl XdgActivationHandler for MargoState {
         );
     }
 }
-delegate_xdg_activation!(MargoState);

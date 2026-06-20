@@ -6,7 +6,6 @@
 //! they're playing.
 
 use smithay::{
-    delegate_idle_inhibit, delegate_idle_notify,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     wayland::{
         idle_inhibit::IdleInhibitHandler,
@@ -21,7 +20,6 @@ impl IdleNotifierHandler for MargoState {
         &mut self.idle_notifier_state
     }
 }
-delegate_idle_notify!(MargoState);
 
 impl IdleInhibitHandler for MargoState {
     fn inhibit(&mut self, surface: WlSurface) {
@@ -47,4 +45,3 @@ impl IdleInhibitHandler for MargoState {
         );
     }
 }
-delegate_idle_inhibit!(MargoState);

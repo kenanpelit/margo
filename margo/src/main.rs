@@ -657,6 +657,9 @@ fn main() -> Result<()> {
             &margo.display_handle,
             None,
             std::iter::empty::<(&str, &str)>(),
+            // `extra_args`: added upstream (smithay HEAD) between `envs`
+            // and `open_abstract_socket` — we pass no extra X server args.
+            std::iter::empty::<&str>(),
             true,
             Stdio::null(),
             Stdio::null(),

@@ -13,11 +13,8 @@
 //! holds the fd) is what does the heavy lifting. Restricted-client
 //! enforcement is a follow-up enhancement.
 
-use smithay::{
-    delegate_security_context,
-    wayland::security_context::{
-        SecurityContext, SecurityContextHandler, SecurityContextListenerSource,
-    },
+use smithay::wayland::security_context::{
+    SecurityContext, SecurityContextHandler, SecurityContextListenerSource,
 };
 
 use crate::state::MargoState;
@@ -52,4 +49,3 @@ impl SecurityContextHandler for MargoState {
         }
     }
 }
-delegate_security_context!(MargoState);

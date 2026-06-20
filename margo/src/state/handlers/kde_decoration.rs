@@ -9,10 +9,7 @@
 //! doesn't enforce a stricter policy here, since clients ignoring
 //! the suggested mode is allowed by the protocol.
 
-use smithay::{
-    delegate_kde_decoration,
-    wayland::shell::kde::decoration::{KdeDecorationHandler, KdeDecorationState},
-};
+use smithay::wayland::shell::kde::decoration::{KdeDecorationHandler, KdeDecorationState};
 
 use crate::state::MargoState;
 
@@ -21,4 +18,3 @@ impl KdeDecorationHandler for MargoState {
         &self.kde_decoration_state
     }
 }
-delegate_kde_decoration!(MargoState);

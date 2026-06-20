@@ -47,7 +47,6 @@ use std::{cell::RefCell, path::PathBuf, rc::Rc};
 use anyhow::{Context, Result};
 use smithay::{
     backend::allocator::dmabuf::Dmabuf,
-    delegate_output, delegate_presentation, delegate_seat, delegate_shm,
     desktop::{PopupManager, Space, Window, WindowSurface, layer_map_for_output},
     input::{Seat, SeatHandler, SeatState, pointer::CursorImageStatus},
     output::Output,
@@ -2214,7 +2213,6 @@ impl ShmHandler for MargoState {
         &self.shm_state
     }
 }
-delegate_shm!(MargoState);
 
 // ── Smithay delegate: Seat ────────────────────────────────────────────────────
 
@@ -2255,19 +2253,26 @@ impl SeatHandler for MargoState {
         self.request_repaint();
     }
 }
-delegate_seat!(MargoState);
-smithay::delegate_virtual_keyboard_manager!(MargoState);
 
 // `wp_cursor_shape_v1`: clients send a shape name instead of their
 // own cursor surface; we draw via `cursor_manager` at our own size.
 // Required for GTK4 layer-shell surfaces to avoid oversized cursor.
 // (TabletSeatHandler lives in state/handlers/tablet_manager.rs.)
-smithay::delegate_cursor_shape!(MargoState);
 
 // ── Smithay delegate: Output ──────────────────────────────────────────────────
 
 impl OutputHandler for MargoState {}
-delegate_output!(MargoState);
+
+// Single blanket bridge that replaces all the old per-protocol
+// `delegate_*!` macros (removed upstream in the smithay Dispatch2
+// rework, 2026-04-30). It implements `Dispatch`/`GlobalDispatch` for
+// every resource whose user-data implements smithay's
+// `Dispatch2`/`GlobalDispatch2` — i.e. every protocol whose Handler
+// trait we already impl. margo's own protocol modules keep their
+// hand-written `wayland_server::delegate_dispatch!` impls; those use
+// concrete (local) user-data types that don't implement `Dispatch2`,
+// so they don't overlap with this blanket.
+smithay::delegate_dispatch2!(MargoState);
 
 // ── ForeignToplevelListHandler ────────────────────────────────────────────────
 
@@ -2276,8 +2281,6 @@ impl ForeignToplevelListHandler for MargoState {
         &mut self.foreign_toplevel_list
     }
 }
-
-smithay::delegate_foreign_toplevel_list!(MargoState);
 
 // ── XwmHandler: X11 window management ────────────────────────────────────────
 
@@ -2379,8 +2382,6 @@ impl MargoState {
 
 // ── Smithay delegate: Viewporter ───────────────────────────────────────────────
 
-smithay::delegate_viewporter!(MargoState);
-
 // ── Smithay delegate: text-input-v3 + input-method-v2 ────────────────────────
 //
 // Qt's `text-input-v3` plugin is what backs every `QML.TextInput` field on
@@ -2448,5 +2449,3 @@ smithay::delegate_viewporter!(MargoState);
 // use: switch to the target window's tag, restore that monitor, focus
 // the window. That keeps activation-driven jumps consistent with
 // alt+tab / explicit `mctl dispatch view N`.
-
-delegate_presentation!(MargoState);

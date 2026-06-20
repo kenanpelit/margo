@@ -6,7 +6,6 @@
 //! hint resolution).
 
 use smithay::{
-    delegate_pointer_constraints, delegate_relative_pointer,
     input::pointer::PointerHandle,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{Logical, Point},
@@ -35,6 +34,13 @@ impl PointerConstraintsHandler for MargoState {
                 }
             });
         }
+    }
+
+    fn remove_constraint(&mut self, _surface: &WlSurface, _pointer: &PointerHandle<Self>) {
+        // Nothing to tear down: enforcement in `handle_pointer_motion`
+        // reads the live constraint via `with_pointer_constraint` every
+        // event, so once the constraint object is gone the lock/confine
+        // simply stops applying. We cache no per-constraint state here.
     }
 
     fn cursor_position_hint(
@@ -72,5 +78,3 @@ impl PointerConstraintsHandler for MargoState {
         self.input_pointer.y = target.y;
     }
 }
-delegate_pointer_constraints!(MargoState);
-delegate_relative_pointer!(MargoState);
