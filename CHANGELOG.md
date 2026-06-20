@@ -5,6 +5,31 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] – 2026-06-20
+
+Tracks Smithay to its current HEAD. This is an internal port — no user-facing
+behaviour changes — but it is a large one, so it gets its own release.
+
+### Changed
+
+- **Migrated to Smithay HEAD (`e1fb2496`, was `ff5fa7df`).** ~2 months / 61
+  upstream commits, with three breaking APIs adapted:
+  - **Dispatch2 rework.** Smithay replaced every per-protocol `delegate_*!`
+    macro with a single blanket `delegate_dispatch2!`. The ~40
+    `delegate_X!(MargoState)` calls collapse to one; margo's own protocol
+    modules keep their hand-written `wayland_server::delegate_dispatch!` impls
+    (their concrete user-data types don't implement `Dispatch2`, so there's no
+    coherence overlap with the blanket).
+  - **Touch API.** `TouchTarget` dropped the `seq: Serial` argument on
+    down/up/motion/shape/orientation, `frame`/`cancel` now take a `FrameMarker`,
+    and a new `last_frame` is required; the `FocusTarget` impl was updated to
+    match.
+  - **`PointerConstraintsHandler::remove_constraint`** is now a required method
+    (a no-op for us — constraint enforcement reads the live state each motion),
+    and **`XWayland::spawn`** gained an `extra_args` parameter.
+- Transitive bumps that came with it: `winit` 0.30 → 0.31.0-beta.2,
+  `smithay-client-toolkit` 0.20, plus the new `reis`/EI input crates.
+
 ## [1.0.8] – 2026-06-18
 
 Two fixes: clicking right after a touchpad-gesture tag switch no longer bounces
