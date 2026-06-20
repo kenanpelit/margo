@@ -8,8 +8,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [1.0.9] – 2026-06-20
 
 Tracks Smithay to its current HEAD — a large but internal port — alongside an
-audio-backend health watchdog, a few launcher fixes, and a few startup-log
-fixes.
+audio-backend health watchdog, a touchpad-scroll fix, a few launcher fixes, and
+quieter startup logs.
 
 ### Changed
 
@@ -36,6 +36,13 @@ fixes.
 
 ### Fixed
 
+- **Two-finger touchpad scrolling works in Firefox / Zen again.** The
+  compositor forwarded touchpad finger scrolling but never sent the matching
+  `wl_pointer.axis_stop` when the fingers lift (libinput's 0.0-amount finger
+  event was passed through as a `value(axis, 0.0)`). Firefox/Gecko on Wayland
+  ignores finger-source scrolling without that stop, so two-finger up/down did
+  nothing there while the mouse wheel worked. We now emit `axis_stop` on a
+  finger-source scroll-end, matching the reference compositors.
 - **No more ~1-second freeze when switching to the launcher's Actions tab.** The
   Bluetooth / audio / media providers ran blocking `bluetoothctl` / `wpctl` /
   `playerctl` subprocesses on the GTK main thread inside their search/browse —
