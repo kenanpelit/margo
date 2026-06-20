@@ -48,7 +48,7 @@ use smithay::{
     wayland::shell::wlr_layer::Layer as WlrLayer,
     wayland::{compositor::with_states, dmabuf::DmabufFeedbackBuilder, seat::WaylandFocus},
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     input_handler::handle_input,
@@ -337,7 +337,16 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
     let mut renderer = unsafe { GlesRenderer::new(egl_context) }.context("GlesRenderer::new")?;
 
     match renderer.bind_wl_display(&state.display_handle) {
-        Ok(()) => info!("EGL Wayland hardware-acceleration enabled"),
+        Ok(()) => info!("EGL Wayland hardware-acceleration enabled (legacy wl_drm binding)"),
+        // `EGL_WL_bind_wayland_display` is the legacy wl_drm buffer-sharing
+        // path. Modern Mesa drivers drop it in favour of linux-dmabuf (set up
+        // just below), so its absence is expected and harmless — clients still
+        // get zero-copy hardware buffers via dmabuf. Not worth a WARN.
+        Err(smithay::backend::egl::Error::EglExtensionNotSupported(_)) => {
+            debug!(
+                "EGL wl_drm binding unavailable (EGL_WL_bind_wayland_display); using linux-dmabuf instead"
+            );
+        }
         Err(err) => warn!("failed to bind EGL Wayland display: {err:?}"),
     }
 

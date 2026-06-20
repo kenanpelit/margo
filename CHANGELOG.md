@@ -30,6 +30,14 @@ behaviour changes — but it is a large one, so it gets its own release.
 - Transitive bumps that came with it: `winit` 0.30 → 0.31.0-beta.2,
   `smithay-client-toolkit` 0.20, plus the new `reis`/EI input crates.
 
+### Fixed
+
+- **No more spurious "failed to bind EGL Wayland display" warning on startup.**
+  `EGL_WL_bind_wayland_display` is the legacy `wl_drm` buffer-sharing path;
+  modern Mesa drops it in favour of `linux-dmabuf` (which margo sets up right
+  after), so its absence is expected and harmless. The missing-extension case is
+  now logged at `debug` instead of `warn` — genuine bind failures still warn.
+
 ## [1.0.8] – 2026-06-18
 
 Two fixes: clicking right after a touchpad-gesture tag switch no longer bounces
