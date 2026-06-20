@@ -10,6 +10,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 mshell-config.workspace = true
+notify-rust.workspace = true
 reactive_graph.workspace = true
 tokio.workspace = true
 tracing.workspace = true

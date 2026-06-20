@@ -7,8 +7,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [1.0.9] – 2026-06-20
 
-Tracks Smithay to its current HEAD. This is an internal port — no user-facing
-behaviour changes — but it is a large one, so it gets its own release.
+Tracks Smithay to its current HEAD — a large but internal port — alongside an
+audio-backend health watchdog and a few startup-log fixes.
 
 ### Changed
 
@@ -44,6 +44,17 @@ behaviour changes — but it is a large one, so it gets its own release.
   `wayle_bluetooth`'s `br-connection-page-timeout` error (a trusted device that
   was off / out of range at connect time). The bluetooth line is matched on its
   message, so genuine connect failures still log.
+
+### Added
+
+- **Audio-backend health watchdog.** `wayle-audio`'s PulseAudio backend has no
+  reconnect logic, so a transient pipewire-pulse disconnect at login (typically
+  during Bluetooth-audio churn) can sever it for the rest of the session — after
+  which the volume keys and the volume OSD silently stop working even though
+  `wpctl` still drives the sink fine. The shell now probes the backend's
+  liveness and, on a confirmed death, raises a single critical notification with
+  a one-click **Restart shell** action — the only in-session cure, since a fresh
+  `mshell` re-establishes the audio connection.
 
 ## [1.0.8] – 2026-06-18
 

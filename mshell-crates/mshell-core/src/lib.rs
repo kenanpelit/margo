@@ -238,6 +238,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // fallback). Native replacement for the external home-net-vpn script.
     mshell_services::login_net::spawn_login_net_startup();
 
+    // Audio-backend health watchdog: wayle-audio's PulseAudio backend can lose
+    // its connection at login (Bluetooth/pipewire churn) and never reconnect,
+    // silently killing volume keys + the volume OSD. Probe it and, on a
+    // confirmed death, offer a one-click shell restart via a notification.
+    mshell_services::audio_watchdog::spawn_audio_health_watchdog();
+
     // Restore default audio levels: PipeWire doesn't persist sink/source volume
     // across reboots, so on opt-in (Settings → Sound) we pin the default output
     // + input to the user's chosen levels once WirePlumber has settled. Done

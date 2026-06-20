@@ -23,6 +23,7 @@ where
 {
     tokio_rt().spawn(future)
 }
+pub mod audio_watchdog;
 pub mod bluetooth;
 pub mod login_net;
 

@@ -4728,6 +4728,7 @@ dependencies = [
  "anyhow",
  "mshell-config",
  "mshell-margo-client",
+ "notify-rust",
  "reactive_graph",
  "tokio",
  "tracing",
