@@ -86,6 +86,11 @@ quieter startup logs.
   change) and raises a single critical notification with a one-click **Restart
   shell** action — the only in-session cure, since a fresh `mshell` re-establishes
   the connection.
+- **The launcher ranks recently-run entries to the top.** In browse mode — the
+  category tabs (e.g. Actions) and the empty-query list — the things you ran most
+  recently now lead, with a decaying recency boost (3-day half-life) on top of
+  the existing use-count. Typed all-search is unchanged: it still ranks by fuzzy
+  match, so recency never overrides a better match. (Pinned rows still win.)
 
 ## [1.0.8] – 2026-06-18
 
