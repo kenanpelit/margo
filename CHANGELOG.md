@@ -36,6 +36,13 @@ quieter startup logs.
 
 ### Fixed
 
+- **The shell no longer aborts when a media player disappears mid-seek.** The
+  media-player seek bar's `value_changed` handler and its 300 ms debounced seek
+  timeout used relm4's panicking `sender.input(...)`; when the player vanished
+  (or the menu closed) those could fire after the component was dropped, hitting
+  a dead receiver — and inside a glib callback that panic can't unwind, so it
+  took the whole shell down with `SIGABRT`. They now use the fallible sender, so
+  a send-after-shutdown is a silent no-op.
 - **Two-finger touchpad scrolling works in Firefox / Zen again.** The
   compositor forwarded touchpad finger scrolling but never sent the matching
   `wl_pointer.axis_stop` when the fingers lift (libinput's 0.0-amount finger
