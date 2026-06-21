@@ -52,6 +52,25 @@ pub fn usage_boost(count: u64) -> f64 {
     5.0 * ((1.0 + count as f64).log2())
 }
 
+/// Recency boost added on top of [`usage_boost`] in **browse** mode — the
+/// category tabs (e.g. Actions) and the empty-query list — so the items you
+/// ran most recently float to the top. It peaks well above the providers' base
+/// scores, so a just-run entry clearly leads, then halves every
+/// `RECENCY_HALF_LIFE` and fades back over a week or so, letting base score +
+/// frequency take back over for older entries.
+///
+/// Deliberately *not* applied to typed searches: there the fuzzy match score
+/// must dominate, so a strong recency term would wrongly promote a recently-run
+/// item over a clearly better match.
+pub fn recency_boost(age_secs: u64) -> f64 {
+    /// Boost for an item used "just now" (age 0). Far above the base scores so
+    /// recent entries lead, but below the runtime's pin bonus so pins stay top.
+    const RECENCY_PEAK: f64 = 1000.0;
+    /// Seconds for the boost to halve — 3 days.
+    const RECENCY_HALF_LIFE: f64 = 3.0 * 24.0 * 60.0 * 60.0;
+    RECENCY_PEAK * 0.5_f64.powf(age_secs as f64 / RECENCY_HALF_LIFE)
+}
+
 /// Construct a matcher with the same config the runtime uses, so
 /// providers writing one-off scoring loops don't drift from the
 /// runtime's defaults.
@@ -92,6 +111,23 @@ mod tests {
         assert!(usage_boost(0) < usage_boost(1));
         assert!(usage_boost(1) < usage_boost(10));
         assert!(usage_boost(10) < usage_boost(100));
+    }
+
+    #[test]
+    fn recency_boost_decays_with_age() {
+        let now = recency_boost(0);
+        let three_days = recency_boost(3 * 24 * 60 * 60);
+        let two_weeks = recency_boost(14 * 24 * 60 * 60);
+        // Strictly decreasing with age.
+        assert!(now > three_days && three_days > two_weeks);
+        // Half-life is 3 days.
+        assert!(
+            (three_days - now / 2.0).abs() < 1.0,
+            "three_days={three_days} now={now}"
+        );
+        // A just-run item outranks the entire frequency-boost range, so in
+        // browse mode it leads regardless of how often other items were used.
+        assert!(now > usage_boost(u64::from(u16::MAX)));
     }
 
     #[test]

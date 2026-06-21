@@ -46,7 +46,7 @@ use crate::{
     item::{DisplayItem, LauncherItem},
     pin::PinStore,
     provider::Provider,
-    scoring::usage_boost,
+    scoring::{recency_boost, usage_boost},
 };
 
 /// Bonus added to a pinned item's score in browse mode so pinned
@@ -360,7 +360,10 @@ impl LauncherRuntime {
         for p in &self.providers {
             if p.handles_command(trimmed) {
                 let results = p.search(trimmed);
-                return self.decorate(self.apply_frecency_and_sort(results));
+                // Command mode is a typed, provider-owned query (`>cmd`,
+                // `>start`, `bt`, …); leave its ordering to the provider +
+                // frequency, not recency.
+                return self.decorate(self.apply_frecency_and_sort(results, false));
             }
         }
 
@@ -481,17 +484,32 @@ impl LauncherRuntime {
             });
         }
 
-        self.decorate(self.apply_frecency_and_sort(results))
+        // Recency leads in browse mode — a category tab (e.g. Actions) or the
+        // empty-query list — so the things you just ran sit at the top. Typed
+        // all-search keeps fuzzy-match order.
+        let browse = in_specific_category || trimmed.is_empty();
+        self.decorate(self.apply_frecency_and_sort(results, browse))
     }
 
-    /// Shared scoring pipeline: add `usage_boost(count)` plus the
-    /// pin bonus (when applicable) to every item that carries a
-    /// `usage_key`, then stable-sort descending by score.
-    fn apply_frecency_and_sort(&self, mut results: Vec<LauncherItem>) -> Vec<LauncherItem> {
+    /// Shared scoring pipeline: add `usage_boost(count)` plus — in `browse`
+    /// mode — a decaying `recency_boost`, plus the pin bonus (when applicable)
+    /// to every item that carries a `usage_key`, then stable-sort descending by
+    /// score. `browse` is the category-tab / empty-query view, where the most
+    /// recently run rows should lead; typed all-search passes `false` so the
+    /// fuzzy match score keeps deciding the order.
+    fn apply_frecency_and_sort(
+        &self,
+        mut results: Vec<LauncherItem>,
+        browse: bool,
+    ) -> Vec<LauncherItem> {
+        let now = crate::frecency::now_unix();
         for item in &mut results {
             if let Some(key) = &item.usage_key {
                 let count = self.frecency.count(key);
                 item.score += usage_boost(count);
+                if browse && let Some(last) = self.frecency.last_used(key) {
+                    item.score += recency_boost(now.saturating_sub(last));
+                }
                 if self.pins.is_pinned(key) {
                     item.score += PIN_BONUS;
                 }

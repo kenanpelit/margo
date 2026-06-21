@@ -25,6 +25,11 @@ use std::{
 struct StoreFile {
     #[serde(default)]
     counts: HashMap<String, u64>,
+    /// Per-key Unix timestamp (seconds) of the most recent [`FrecencyStore::bump`].
+    /// Powers the *recency* half of frecency. `#[serde(default)]` keeps older
+    /// counts-only stores loading cleanly (the map just starts empty).
+    #[serde(default)]
+    last_used: HashMap<String, u64>,
 }
 
 /// In-memory cache + disk-write coordinator for launcher usage
@@ -67,10 +72,17 @@ impl FrecencyStore {
         self.inner.counts.get(key).copied().unwrap_or(0)
     }
 
-    /// Increment the counter for `key`. Defers disk write until
-    /// [`FrecencyStore::flush`].
+    /// Unix timestamp (seconds) of the most recent [`bump`](Self::bump) for
+    /// `key`, or `None` if it was never used (or predates timestamp tracking).
+    pub fn last_used(&self, key: &str) -> Option<u64> {
+        self.inner.last_used.get(key).copied()
+    }
+
+    /// Increment the counter for `key` and stamp it as just-used. Defers disk
+    /// write until [`FrecencyStore::flush`].
     pub fn bump(&mut self, key: &str) {
         *self.inner.counts.entry(key.to_string()).or_insert(0) += 1;
+        self.inner.last_used.insert(key.to_string(), now_unix());
         self.dirty = true;
     }
 
@@ -82,7 +94,9 @@ impl FrecencyStore {
     /// click) doesn't haunt the top of the list forever. No-op for
     /// keys that don't have a counter.
     pub fn forget(&mut self, key: &str) {
-        if self.inner.counts.remove(key).is_some() {
+        let removed = self.inner.counts.remove(key).is_some();
+        self.inner.last_used.remove(key);
+        if removed {
             self.dirty = true;
         }
     }
@@ -117,6 +131,16 @@ impl Drop for FrecencyStore {
     fn drop(&mut self) {
         self.flush();
     }
+}
+
+/// Current Unix time in whole seconds (0 if the clock is somehow before the
+/// epoch). Shared by [`FrecencyStore::bump`] and the runtime's recency scoring
+/// so both read the same clock.
+pub(crate) fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn default_path() -> PathBuf {
@@ -196,6 +220,18 @@ mod tests {
         let reloaded = FrecencyStore::load_from(path);
         assert_eq!(reloaded.count("firefox"), 2);
         assert_eq!(reloaded.count("kitty"), 1);
+    }
+
+    #[test]
+    fn bump_records_last_used_and_forget_clears_it() {
+        let path = tmp_path("lastused");
+        let _ = std::fs::remove_file(&path);
+        let mut store = FrecencyStore::load_from(path);
+        assert_eq!(store.last_used("vim"), None);
+        store.bump("vim");
+        assert!(store.last_used("vim").is_some());
+        store.forget("vim");
+        assert_eq!(store.last_used("vim"), None);
     }
 
     #[test]
