@@ -667,16 +667,26 @@ fn setup_scale_seek(
 
         let value = scale.value();
 
-        // Immediately update display so it doesn't jump while dragging
-        sender.input(MediaPlayerInput::ScaleChanged(value));
+        // Immediately update display so it doesn't jump while dragging.
+        // Use the fallible sender, not `input()`: `value_changed` also fires
+        // when the position is set programmatically, which can happen as the
+        // component tears down — and `input()` *panics* if the runtime is gone.
+        // From a glib callback that panic can't unwind (it aborts the whole
+        // process), so swallow a send-after-shutdown instead.
+        let _ = sender
+            .input_sender()
+            .send(MediaPlayerInput::ScaleChanged(value));
 
         let seek_sender = sender.clone();
         let pending = pending_source.clone();
 
-        // Only actually seek after dragging stops
+        // Only actually seek after dragging stops. This 300 ms timeout can fire
+        // after the component is dropped, so it must not panic either.
         let source_id = glib::timeout_add_local_once(Duration::from_millis(300), move || {
             pending.set(None);
-            seek_sender.input(MediaPlayerInput::ScaleClicked(value));
+            let _ = seek_sender
+                .input_sender()
+                .send(MediaPlayerInput::ScaleClicked(value));
         });
 
         pending_source.set(Some(source_id));
