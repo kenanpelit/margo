@@ -566,6 +566,31 @@ impl MargoState {
                 if initial_sent {
                     toplevel.send_pending_configure();
                 }
+            } else if let WindowSurface::X11(x11) = window.underlying_surface() {
+                // X11 (XWayland) clients anchor their menus / popups / tooltips
+                // to their OWN absolute position, so they must be told where the
+                // compositor actually placed the toplevel. Wayland clients don't
+                // need this (the compositor owns their position), but an X11
+                // client left thinking it sits elsewhere opens popups detached
+                // from the rendered window — the "menus open in the wrong place
+                // under XWayland" bug. Mirror the scene rect into the X11 client
+                // (guarded so we don't re-configure an already-correct window).
+                if geom.width > 0 && geom.height > 0 {
+                    let rect = smithay::utils::Rectangle::new(
+                        (geom.x, geom.y).into(),
+                        (geom.width, geom.height).into(),
+                    );
+                    if x11.geometry() != rect {
+                        tracing::debug!(
+                            "arrange: configuring x11 window to {}x{}+{}+{}",
+                            geom.width,
+                            geom.height,
+                            geom.x,
+                            geom.y
+                        );
+                        let _ = x11.configure(rect);
+                    }
+                }
             }
         }
         self.enforce_z_order();
