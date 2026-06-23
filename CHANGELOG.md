@@ -5,13 +5,20 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.10] – 2026-06-23
+## [1.0.10] – 2026-06-24
 
-A small dock-polish release: an icon-override resolution fix plus an
-internal field rename.
+A small fixes release: an XWayland popup-positioning fix and a dock
+icon-override resolution fix, plus an internal field rename.
 
 ### Fixed
 
+- **XWayland menus/popups now follow their final position.** Override-redirect
+  X11 surfaces (Qt5/GTK context menus, dropdowns, tooltips) are now
+  repositioned on `configure_notify`, not only at their initial map. Toolkits
+  that map a popup and *then* move it to its anchor (Qt5, GTK) previously left
+  the surface frozen at its first location, so menus opened detached / in the
+  wrong place under XWayland — most visibly with multi-monitor layouts. The
+  surface now tracks the client-chosen geometry (mirroring Smithay anvil).
 - **Dock icon overrides now resolve through the configured `app_icon_theme`.**
   A `dock.icon_overrides` entry given as a bare icon name (e.g.
   `brave-browser`) is now looked up in the configured app icon theme — with
