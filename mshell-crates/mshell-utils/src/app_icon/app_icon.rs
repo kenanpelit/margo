@@ -101,6 +101,15 @@ pub fn set_icon(
     });
 }
 
+/// Resolve a bare icon name to a file path through `theme`'s icon index
+/// (which already carries the hicolor + pixmaps fallbacks). Blocking — run it
+/// on a worker thread. Returns `None` when no theme in the search path provides
+/// the name. Not tied to any specific icon set: `theme` is the configured
+/// `app_icon_theme`.
+pub fn themed_icon_path(name: &str, theme: &str) -> Option<std::path::PathBuf> {
+    IconIndex::get_or_build(theme).lookup(name).cloned()
+}
+
 fn resolve_icon_candidates(icon: &gio::Icon, app_id: &Option<String>) -> Vec<String> {
     let mut candidates = Vec::new();
 

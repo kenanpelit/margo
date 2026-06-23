@@ -7,7 +7,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [1.0.10] – 2026-06-23
 
-A small internal-cleanup release.
+A small dock-polish release: an icon-override resolution fix plus an
+internal field rename.
+
+### Fixed
+
+- **Dock icon overrides now resolve through the configured `app_icon_theme`.**
+  A `dock.icon_overrides` entry given as a bare icon name (e.g.
+  `brave-browser`) is now looked up in the configured app icon theme — with
+  that index's built-in hicolor/pixmaps fallback — instead of only the shell's
+  default GTK theme. Theme-specific icons therefore render without hardcoding
+  an absolute file path, and the lookup follows whatever `app_icon_theme` is
+  set (no dependency on any one icon set). On a miss it still falls back to the
+  default icon theme by name. Absolute / `file://` / `~/` override values keep
+  loading straight from disk as before.
 
 ### Changed
 

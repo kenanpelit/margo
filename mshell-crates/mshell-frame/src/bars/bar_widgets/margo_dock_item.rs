@@ -7,7 +7,7 @@ use mshell_config::schema::config::{
 use mshell_config::schema::themes::Themes;
 use mshell_margo_client::{Address, Client};
 use mshell_services::margo_service;
-use mshell_utils::app_icon::app_icon::set_icon;
+use mshell_utils::app_icon::app_icon::{set_icon, themed_icon_path};
 use mshell_utils::app_info::find_app_info;
 use mshell_utils::launch::launch_detached;
 use mshell_utils::strings::truncate_string;
@@ -280,7 +280,11 @@ impl Component for MargoDockItemModel {
         // A per-app icon override wins outright — it's the escape hatch for
         // synthetic `--class` apps that have no matching .desktop.
         if let Some(icon) = dock_icon_override(&model.class) {
-            apply_override_icon(&widgets.image, &icon);
+            apply_override_icon(
+                &widgets.image,
+                &icon,
+                &base_config.theme().icons().app_icon_theme().get_untracked(),
+            );
         } else {
             let model_clone = model.clone();
             set_icon(
@@ -944,7 +948,7 @@ fn dock_icon_override(class: &str) -> Option<String> {
 
 /// Apply an override icon: a `file://` URI or absolute / `~/` path loads from
 /// file; anything else is treated as a themed icon name.
-fn apply_override_icon(image: &gtk::Image, icon: &str) {
+fn apply_override_icon(image: &gtk::Image, icon: &str, app_icon_theme: &str) {
     let icon = icon.trim();
     if let Some(path) = icon.strip_prefix("file://") {
         image.set_from_file(Some(path));
@@ -956,7 +960,25 @@ fn apply_override_icon(image: &gtk::Image, icon: &str) {
     } else if icon.starts_with('/') {
         image.set_from_file(Some(icon));
     } else {
-        image.set_icon_name(Some(icon));
+        // A bare name: resolve it through the configured `app_icon_theme` (which
+        // carries its own hicolor/pixmaps fallback) so theme-specific names like
+        // `brave-browser` render even when the shell's default GTK theme lacks
+        // them. On a miss, fall back to the default icon theme by name — this is
+        // never tied to one icon set, and never a hard failure.
+        let image = image.clone();
+        let name = icon.to_string();
+        let theme = app_icon_theme.to_string();
+        glib::spawn_future_local(async move {
+            let lookup_name = name.clone();
+            let path = gio::spawn_blocking(move || themed_icon_path(&lookup_name, &theme))
+                .await
+                .ok()
+                .flatten();
+            match path {
+                Some(path) => image.set_from_file(Some(&path)),
+                None => image.set_icon_name(Some(&name)),
+            }
+        });
     }
 }
 
