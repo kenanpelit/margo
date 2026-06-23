@@ -60,13 +60,25 @@ impl XwmHandler for MargoState {
 
     fn mapped_override_redirect_window(&mut self, _xwm: XwmId, window: X11Surface) {
         let win = Window::new_x11_window(window);
-        let pos = win
-            .x11_surface()
-            .map(|s| {
-                let g = s.geometry();
-                (g.loc.x, g.loc.y)
-            })
-            .unwrap_or((0, 0));
+        let geo = win.x11_surface().map(|s| s.geometry());
+        let pos = geo.map(|g| (g.loc.x, g.loc.y)).unwrap_or((0, 0));
+        tracing::debug!(
+            "xwm OR mapped: x11_geometry={:?} -> space pos {:?} | outputs={:?}",
+            geo,
+            pos,
+            self.monitors
+                .iter()
+                .map(|m| (
+                    m.name.clone(),
+                    (
+                        m.monitor_area.x,
+                        m.monitor_area.y,
+                        m.monitor_area.width,
+                        m.monitor_area.height
+                    )
+                ))
+                .collect::<Vec<_>>(),
+        );
         self.space.map_element(win, pos, false);
     }
 
@@ -108,6 +120,7 @@ impl XwmHandler for MargoState {
         _above: Option<X11Window>,
     ) {
         if let Some(idx) = self.find_x11_client(&window) {
+            tracing::debug!("xwm managed configure_notify: geometry={:?}", geometry);
             self.clients[idx].geom = crate::layout::Rect {
                 x: geometry.loc.x,
                 y: geometry.loc.y,
@@ -116,6 +129,7 @@ impl XwmHandler for MargoState {
             };
             return;
         }
+        tracing::debug!("xwm OR configure_notify: geometry={:?}", geometry);
         // Override-redirect surface (menu / popup / tooltip). It is never
         // registered in `self.clients` — it lives only in the space and
         // positions itself. `mapped_override_redirect_window` placed it once
