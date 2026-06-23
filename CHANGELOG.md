@@ -5,6 +5,19 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.10] – 2026-06-23
+
+A small internal-cleanup release.
+
+### Changed
+
+- Renamed the dock's pinned-app field `hyprland_class` → `app_id` (and the
+  matching `set_icon`/`resolve_icon_candidates` parameter). The value is the
+  Wayland app-id margo reports for a window (`mctl clients` APP-ID), matched
+  against running clients to decide focus-vs-launch; the old name was a
+  leftover from the noctalia/hyprland port. Internal-only — the on-disk
+  `pinned_apps.txt` format (`desktop_id<TAB>app_id`) is unchanged.
+
 ## [1.0.9] – 2026-06-20
 
 Tracks Smithay to its current HEAD — a large but internal port — alongside an
