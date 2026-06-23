@@ -14,7 +14,7 @@
 use std::os::unix::io::OwnedFd;
 
 use smithay::{
-    desktop::Window,
+    desktop::{Window, WindowSurface},
     utils::{Logical, Rectangle},
     wayland::{
         selection::{
@@ -114,6 +114,28 @@ impl XwmHandler for MargoState {
                 width: geometry.size.w,
                 height: geometry.size.h,
             };
+            return;
+        }
+        // Override-redirect surface (menu / popup / tooltip). It is never
+        // registered in `self.clients` — it lives only in the space and
+        // positions itself. `mapped_override_redirect_window` placed it once
+        // at its initial geometry; we must also follow LATER moves here, or
+        // the surface freezes at its first location. Qt5/GTK X11 popups
+        // routinely map first and then move to their anchor, so without this
+        // re-map menus open detached / in the wrong place under XWayland
+        // (the symptom that disappears under a single-output nested
+        // compositor). Mirrors Smithay anvil's override-redirect handling.
+        let id = window.window_id();
+        let elem = self
+            .space
+            .elements()
+            .find(
+                |e| matches!(e.underlying_surface(), WindowSurface::X11(s) if s.window_id() == id),
+            )
+            .cloned();
+        if let Some(elem) = elem {
+            self.space.map_element(elem, geometry.loc, false);
+            self.request_repaint();
         }
     }
 
