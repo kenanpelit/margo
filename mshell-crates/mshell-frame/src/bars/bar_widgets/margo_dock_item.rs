@@ -713,7 +713,7 @@ impl MargoDockItemModel {
         action.connect_activate(move |_, _| {
             pin_app(PinnedApp {
                 desktop_id: desktop_id.clone(),
-                hyprland_class: class.clone(),
+                app_id: class.clone(),
             });
         });
         action_group.add_action(&action);

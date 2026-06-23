@@ -306,7 +306,7 @@ impl Component for MargoDockModel {
 
                 let pinned_map: std::collections::HashMap<&str, _> = current_pinned
                     .iter()
-                    .map(|app| (app.hyprland_class.as_str(), app))
+                    .map(|app| (app.app_id.as_str(), app))
                     .collect();
 
                 let reordered_pinned: Vec<_> = classes_in_new_order
@@ -316,12 +316,9 @@ impl Component for MargoDockModel {
 
                 if reordered_pinned
                     .iter()
-                    .map(|a| &a.hyprland_class)
+                    .map(|a| &a.app_id)
                     .collect::<Vec<_>>()
-                    != current_pinned
-                        .iter()
-                        .map(|a| &a.hyprland_class)
-                        .collect::<Vec<_>>()
+                    != current_pinned.iter().map(|a| &a.app_id).collect::<Vec<_>>()
                 {
                     store.write().apps = reordered_pinned;
                 }
@@ -353,10 +350,10 @@ impl Component for MargoDockModel {
                 let mut rows: Vec<DockItem> = pinned_apps
                     .iter()
                     .map(|app| {
-                        seen.insert(app.hyprland_class.clone());
+                        seen.insert(app.app_id.clone());
                         DockItem {
-                            class: app.hyprland_class.clone(),
-                            client_count: *counts.get(&app.hyprland_class).unwrap_or(&0),
+                            class: app.app_id.clone(),
+                            client_count: *counts.get(&app.app_id).unwrap_or(&0),
                             pinned: true,
                             separator_before: false,
                         }
@@ -426,10 +423,8 @@ impl Component for MargoDockModel {
                     .unwrap();
 
                 // Update each entry's client count and pinned state.
-                let pinned_classes: std::collections::HashSet<&str> = pinned_apps
-                    .iter()
-                    .map(|a| a.hyprland_class.as_str())
-                    .collect();
+                let pinned_classes: std::collections::HashSet<&str> =
+                    pinned_apps.iter().map(|a| a.app_id.as_str()).collect();
 
                 self.dynamic_box.model().for_each_entry(|_, entry| {
                     if let Some(ctrl) = entry

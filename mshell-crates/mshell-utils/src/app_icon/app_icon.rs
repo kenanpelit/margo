@@ -9,7 +9,7 @@ use std::sync::atomic::AtomicBool;
 
 pub fn set_icon(
     app_info: &Option<DesktopAppInfo>,
-    hyprland_class: &Option<String>,
+    app_id: &Option<String>,
     image: &gtk::Image,
     theme: String,
     color_theme: &Themes,
@@ -37,7 +37,7 @@ pub fn set_icon(
 
     let image = image.clone();
     let color_theme = *color_theme;
-    let hyprland_class = hyprland_class.clone();
+    let app_id = app_id.clone();
 
     // Also grab the direct file path if it's a FileIcon
     let file_icon_path = icon
@@ -47,7 +47,7 @@ pub fn set_icon(
     glib::spawn_future_local(async move {
         // Build/fetch the index off-thread (cached after first call)
         let theme_clone = theme.clone();
-        let candidates = resolve_icon_candidates(&icon, &hyprland_class);
+        let candidates = resolve_icon_candidates(&icon, &app_id);
         let path = gio::spawn_blocking(move || {
             let index = IconIndex::get_or_build(&theme_clone);
             for name in &candidates {
@@ -101,7 +101,7 @@ pub fn set_icon(
     });
 }
 
-fn resolve_icon_candidates(icon: &gio::Icon, hyprland_class: &Option<String>) -> Vec<String> {
+fn resolve_icon_candidates(icon: &gio::Icon, app_id: &Option<String>) -> Vec<String> {
     let mut candidates = Vec::new();
 
     // ThemedIcon names (first is primary, rest are fallbacks)
@@ -134,7 +134,7 @@ fn resolve_icon_candidates(icon: &gio::Icon, hyprland_class: &Option<String>) ->
     }
 
     // Hyprland class
-    if let Some(class) = hyprland_class {
+    if let Some(class) = app_id {
         candidates.push(class.to_lowercase());
     }
 

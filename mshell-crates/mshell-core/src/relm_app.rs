@@ -448,7 +448,7 @@ impl Component for Shell {
                     .apps
                     .clone();
                 if let Some(app) = apps.get((n.max(1) - 1) as usize) {
-                    let class = app.hyprland_class.clone();
+                    let class = app.app_id.clone();
                     let mut matching: Vec<_> = margo_service()
                         .clients
                         .get()

@@ -13,8 +13,13 @@ pub struct PinnedAppsState {
 
 #[derive(Debug, Clone, PartialEq, Eq, Patch)]
 pub struct PinnedApp {
+    /// `.desktop` id (or raw launch key) used to start the app when no
+    /// window is running.
     pub desktop_id: String,
-    pub hyprland_class: String,
+    /// Wayland app-id the compositor reports for this app's windows
+    /// (`mctl clients` APP-ID); matched verbatim against running clients
+    /// to decide focus-vs-launch.
+    pub app_id: String,
 }
 
 static PINNED_APPS: LazyLock<ArcStore<PinnedAppsState>> = LazyLock::new(|| {
@@ -93,19 +98,16 @@ fn save_pinned_apps(apps: &[PinnedApp]) -> std::io::Result<()> {
 
 impl PinnedApp {
     fn to_line(&self) -> String {
-        format!("{}\t{}", self.desktop_id, self.hyprland_class)
+        format!("{}\t{}", self.desktop_id, self.app_id)
     }
 
     fn from_line(line: &str) -> Option<Self> {
         let mut parts = line.splitn(2, '\t');
         let desktop_id = parts.next()?.trim().to_string();
-        let hyprland_class = parts.next()?.trim().to_string();
-        if desktop_id.is_empty() || hyprland_class.is_empty() {
+        let app_id = parts.next()?.trim().to_string();
+        if desktop_id.is_empty() || app_id.is_empty() {
             return None;
         }
-        Some(Self {
-            desktop_id,
-            hyprland_class,
-        })
+        Some(Self { desktop_id, app_id })
     }
 }
