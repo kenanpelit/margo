@@ -14,6 +14,14 @@ a dock icon-override fix, plus an internal field rename.
 
 ### Added
 
+- **Settings → Display → Layout — quick display profiles + per-output power.**
+  On top of the existing named-`mlayout` catalogue + drag-to-arrange editor,
+  the page gains four one-click profiles — **Internal only · External only ·
+  Extend · Mirror** — applied live via `mctl` (the laptop panel is detected by
+  its eDP/LVDS connector; Mirror duplicates it onto an external monitor via
+  `wl-mirror`). A per-output list adds a Toggle to flip any single display
+  on/off. (Inspired by the niri display-settings plugin, built on margo's
+  native `mlayout` + `mctl dispatch`.)
 - **CPU dashboard menu — Storage section.** The dashboard menu now shows a
   **Storage** group: a per-mount usage bar (used / total + %, calm/warn/danger)
   for each real filesystem, read from the shared system-stats service. Disk was
