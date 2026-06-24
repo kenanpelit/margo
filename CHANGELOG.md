@@ -65,6 +65,13 @@ a dock icon-override fix, plus an internal field rename.
 
 ### Changed
 
+- **Friendlier Settings sidebar group headers.** The sidebar's section
+  headers are now Title-Case, user-facing names with a leading icon instead
+  of terse ALL-CAPS jargon: `SHELL` → **Shell & Desktop**, `SYSTEM` →
+  **System & Devices**, `INPUT` → **Input & Shortcuts**, plus Appearance /
+  Locale & Accounts / Advanced / About. Two page labels soften too — **OSD →
+  On-screen Displays**, **Keybinds → Keyboard Shortcuts**. Search keywords are
+  unchanged, so the old terms still find the pages.
 - Renamed the dock's pinned-app field `hyprland_class` → `app_id` (and the
   matching `set_icon`/`resolve_icon_candidates` parameter). The value is the
   Wayland app-id margo reports for a window (`mctl clients` APP-ID), matched
