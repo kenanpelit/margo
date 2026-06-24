@@ -623,6 +623,14 @@ pub struct MargoState {
     /// re-decoded by `reload_config` so Settings → Overview applies live.
     pub overview_backdrop: Option<crate::wallpaper::WallpaperState>,
     pub xwm: Option<X11Wm>,
+    /// Latest position an override-redirect X11 surface (menu / popup /
+    /// tooltip) was configured to, keyed by `window_id`. Toolkits move the
+    /// popup to its anchor via a ConfigureNotify that can arrive BEFORE the
+    /// map event, at which point the surface isn't in the space yet and
+    /// `X11Surface::geometry()` still reads its stale (0,0) creation rect —
+    /// so we stash the configured location here and consume it when the
+    /// surface is finally mapped. Cleared on unmap/destroy.
+    pub or_positions: std::collections::HashMap<u32, (i32, i32)>,
     pub xwayland_shell_state: XWaylandShellState,
     pub libinput: Option<smithay::reexports::input::Libinput>,
     pub gamma_control_manager_state: crate::protocols::gamma_control::GammaControlManagerState,
@@ -1098,6 +1106,7 @@ impl MargoState {
                 .as_deref()
                 .and_then(crate::wallpaper::WallpaperState::load_exact),
             xwm: None,
+            or_positions: std::collections::HashMap::new(),
             xwayland_shell_state,
             libinput: None,
             gamma_control_manager_state,

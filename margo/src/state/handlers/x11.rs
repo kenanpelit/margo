@@ -59,34 +59,36 @@ impl XwmHandler for MargoState {
     }
 
     fn mapped_override_redirect_window(&mut self, _xwm: XwmId, window: X11Surface) {
+        let id = window.window_id();
         let win = Window::new_x11_window(window);
-        let geo = win.x11_surface().map(|s| s.geometry());
-        let pos = geo.map(|g| (g.loc.x, g.loc.y)).unwrap_or((0, 0));
+        let stale = win.x11_surface().map(|s| s.geometry());
+        // The toolkit usually moves the popup to its anchor via a
+        // ConfigureNotify that arrives BEFORE this map event, when the surface
+        // isn't in the space yet — so we stashed that location in
+        // `or_positions`. Prefer it; `X11Surface::geometry()` still reads the
+        // stale (0,0) creation rect here, which would dump the menu in the
+        // top-left corner.
+        let pos = self
+            .or_positions
+            .remove(&id)
+            .or_else(|| stale.map(|g| (g.loc.x, g.loc.y)))
+            .unwrap_or((0, 0));
         tracing::debug!(
-            "xwm OR mapped: x11_geometry={:?} -> space pos {:?} | outputs={:?}",
-            geo,
-            pos,
-            self.monitors
-                .iter()
-                .map(|m| (
-                    m.name.clone(),
-                    (
-                        m.monitor_area.x,
-                        m.monitor_area.y,
-                        m.monitor_area.width,
-                        m.monitor_area.height
-                    )
-                ))
-                .collect::<Vec<_>>(),
+            "xwm OR mapped: id={} stale_geom={:?} -> space pos {:?}",
+            id,
+            stale,
+            pos
         );
         self.space.map_element(win, pos, false);
     }
 
     fn unmapped_window(&mut self, _xwm: XwmId, window: X11Surface) {
+        self.or_positions.remove(&window.window_id());
         self.remove_x11_window(&window);
     }
 
     fn destroyed_window(&mut self, _xwm: XwmId, window: X11Surface) {
+        self.or_positions.remove(&window.window_id());
         self.remove_x11_window(&window);
     }
 
@@ -130,6 +132,11 @@ impl XwmHandler for MargoState {
             return;
         }
         tracing::debug!("xwm OR configure_notify: geometry={:?}", geometry);
+        // Remember the anchor even if the surface isn't mapped into the space
+        // yet (Qt/GTK configure the popup to its anchor BEFORE the map event);
+        // `mapped_override_redirect_window` consumes this.
+        self.or_positions
+            .insert(window.window_id(), (geometry.loc.x, geometry.loc.y));
         // Override-redirect surface (menu / popup / tooltip). It is never
         // registered in `self.clients` — it lives only in the space and
         // positions itself. `mapped_override_redirect_window` placed it once
