@@ -8,6 +8,10 @@ use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::*;
 use relm4::gtk::{gdk, gio, glib};
 use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
+
+use crate::menus::menu_widgets::app_launcher::launcher_row::{
+    match_accent_value, resolve_primary_var, set_match_accent,
+};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use time::OffsetDateTime;
@@ -639,6 +643,7 @@ impl Component for ClipboardModel {
             unsafe { list_item.set_data(ROW_DATA_KEY, rw) };
         });
 
+        let bind_query = query_state.clone();
         factory.connect_bind(move |_, list_item| {
             let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
             let Some(rw) = (unsafe { list_item.data::<RowWidgets>(ROW_DATA_KEY) }) else {
@@ -662,7 +667,8 @@ impl Component for ClipboardModel {
                 rw.pin_image.set_icon_name(Some("non-starred-symbolic"));
             }
             clear_box(&rw.preview_box);
-            build_preview(&rw.preview_box, &row.preview);
+            let query = bind_query.borrow();
+            build_preview(&rw.preview_box, &row.preview, &query);
         });
 
         factory.connect_unbind(move |_, list_item| {
@@ -917,7 +923,11 @@ impl Component for ClipboardModel {
             ClipboardInput::ApplySearch(generation) => {
                 if generation == self.search_gen {
                     *self.query_state.borrow_mut() = self.search_query.to_lowercase();
-                    self.refilter();
+                    // Rebuild the model so every visible row re-binds and picks
+                    // up the new highlight: a FilterListModel leaves surviving
+                    // rows untouched, which would freeze a stale highlight from
+                    // the previous keystroke.
+                    self.populate();
                 }
             }
             ClipboardInput::ParentRevealChanged(revealed) => {
@@ -938,6 +948,10 @@ impl Component for ClipboardModel {
                     // Always re-sync to current history on open (cheap:
                     // it's model data, not widgets) and clear `dirty`.
                     self.dirty = false;
+                    // Resolve the matugen accent from a realized widget so the
+                    // search highlight matches the theme (refreshed each open →
+                    // picks up theme changes between opens).
+                    set_match_accent(resolve_primary_var(&widgets.search_entry));
                     self.populate();
                     self.focus_list();
                 }
@@ -1049,7 +1063,58 @@ fn clear_box(container: &gtk::Box) {
 }
 
 /// Fill a recycled row's preview container for the given entry preview.
-fn build_preview(preview_box: &gtk::Box, preview: &EntryPreview) {
+/// Build Pango markup for `text` with every case-insensitive occurrence of
+/// `needle_lower` accent-coloured (`needle_lower` is already lower-cased).
+/// `None` when the needle is empty or doesn't occur in `text` (the caller then
+/// keeps the plain label — e.g. the match was in the truncated-off tail).
+/// Char-aligned and Pango-escaped.
+fn highlight_substring_markup(text: &str, needle_lower: &str, accent: &str) -> Option<String> {
+    if needle_lower.is_empty() {
+        return None;
+    }
+    let needle: Vec<char> = needle_lower.chars().collect();
+    let chars: Vec<char> = text.chars().collect();
+    // 1:1 lower-cased view so matched-char indices line up with `chars`.
+    let lower: Vec<char> = chars
+        .iter()
+        .map(|c| c.to_lowercase().next().unwrap_or(*c))
+        .collect();
+
+    let mut matched = vec![false; chars.len()];
+    let mut any = false;
+    let mut i = 0;
+    while i + needle.len() <= lower.len() {
+        if lower[i..i + needle.len()] == needle[..] {
+            for m in matched.iter_mut().skip(i).take(needle.len()) {
+                *m = true;
+            }
+            any = true;
+            i += needle.len();
+        } else {
+            i += 1;
+        }
+    }
+    if !any {
+        return None;
+    }
+
+    let mut markup = String::new();
+    for (idx, ch) in chars.iter().enumerate() {
+        let esc = gtk::glib::markup_escape_text(&ch.to_string());
+        if matched[idx] {
+            markup.push_str("<span foreground=\"");
+            markup.push_str(accent);
+            markup.push_str("\">");
+            markup.push_str(esc.as_str());
+            markup.push_str("</span>");
+        } else {
+            markup.push_str(esc.as_str());
+        }
+    }
+    Some(markup)
+}
+
+fn build_preview(preview_box: &gtk::Box, preview: &EntryPreview, query_lower: &str) {
     match preview {
         EntryPreview::Text(text) => {
             let label = gtk::Label::builder()
@@ -1063,6 +1128,15 @@ fn build_preview(preview_box: &gtk::Box, preview: &EntryPreview) {
                 .wrap_mode(gtk::pango::WrapMode::WordChar)
                 .build();
             label.add_css_class("label-medium-bold");
+            // fzf-style: accent-colour the matched query substring(s) when the
+            // `/` filter is active. Falls back to the plain `.label(text)`
+            // above when there's no query, no accent, or the match is in the
+            // truncated-off tail.
+            if let Some(accent) = match_accent_value()
+                && let Some(markup) = highlight_substring_markup(text, query_lower, &accent)
+            {
+                label.set_markup(&markup);
+            }
             preview_box.append(&label);
         }
         EntryPreview::Image {

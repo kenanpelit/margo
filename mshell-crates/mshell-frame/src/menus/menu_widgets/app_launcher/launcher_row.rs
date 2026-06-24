@@ -362,7 +362,7 @@ pub(crate) fn set_match_accent(hex: Option<String>) {
     MATCH_ACCENT.with(|a| *a.borrow_mut() = hex);
 }
 
-fn match_accent_value() -> Option<String> {
+pub(crate) fn match_accent_value() -> Option<String> {
     MATCH_ACCENT.with(|a| a.borrow().clone())
 }
 
