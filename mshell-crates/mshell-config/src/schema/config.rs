@@ -148,6 +148,11 @@ pub struct Idle {
     /// `systemctl suspend` when idle.
     pub suspend_enabled: bool,
     pub suspend_timeout_minutes: u32,
+    /// Hold the idle inhibitor while any MPRIS media player is playing, and
+    /// restore the prior inhibitor state when playback stops. Off by default
+    /// (opt-in — it overrides the idle/lock/suspend timers above while media
+    /// plays). Ported from the DMS audio-inhibit plugin.
+    pub inhibit_while_media: bool,
 }
 
 impl Default for Idle {
@@ -159,6 +164,7 @@ impl Default for Idle {
             lock_timeout_minutes: 20,
             suspend_enabled: true,
             suspend_timeout_minutes: 30,
+            inhibit_while_media: false,
         }
     }
 }

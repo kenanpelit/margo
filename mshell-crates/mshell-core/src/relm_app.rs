@@ -7,6 +7,7 @@ use mshell_config::schema::config::{
     BarsStoreFields, ConfigStoreFields, DockStoreFields, FrameStoreFields, GeneralStoreFields,
     IdleStoreFields, WallpaperRotationMode, WallpaperStoreFields,
 };
+use mshell_frame::audio_inhibit::{AudioInhibitInit, AudioInhibitModel};
 use mshell_frame::frame::{Frame, FrameInit, FrameInput};
 use mshell_frame::mdock_surface::{MdockSurface, MdockSurfaceInit, MdockSurfaceInput};
 use mshell_idle::idle_manager::{self, IdleConfig, IdleStage};
@@ -92,6 +93,10 @@ pub(crate) struct Shell {
     _polkit: Controller<PolkitPromptModel>,
     _sound_alerts: Controller<SoundAlertsModel>,
     _style_manager: Controller<StyleManagerModel>,
+    /// Holds the idle inhibitor while media plays (DMS audio-inhibit port);
+    /// gated on `idle.inhibit_while_media`. Singleton, kept alive for the
+    /// shell's lifetime.
+    _audio_inhibit: Controller<AudioInhibitModel>,
     monitor_filter: Vec<String>,
     /// Keeps the idle-manager timeout channel alive for the
     /// shell's lifetime.
@@ -240,6 +245,9 @@ impl Component for Shell {
         let polkit = PolkitPromptModel::builder().launch(()).detach();
 
         let sound_alerts = SoundAlertsModel::builder().launch(()).detach();
+        let audio_inhibit = AudioInhibitModel::builder()
+            .launch(AudioInhibitInit {})
+            .detach();
 
         let style_manager = StyleManagerModel::builder().launch(()).forward(
             sender.input_sender(),
@@ -377,6 +385,7 @@ impl Component for Shell {
             _polkit: polkit,
             _sound_alerts: sound_alerts,
             _style_manager: style_manager,
+            _audio_inhibit: audio_inhibit,
             monitor_filter,
             _idle_config_tx: idle_config_tx,
         };

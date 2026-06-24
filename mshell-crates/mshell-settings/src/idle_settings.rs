@@ -14,6 +14,7 @@ pub(crate) struct IdleSettingsModel {
     lock_timeout: u32,
     suspend_enabled: bool,
     suspend_timeout: u32,
+    inhibit_while_media: bool,
     _effects: EffectScope,
 }
 
@@ -25,6 +26,7 @@ pub(crate) enum IdleSettingsInput {
     LockTimeoutChanged(u32),
     SuspendEnabledChanged(bool),
     SuspendTimeoutChanged(u32),
+    InhibitWhileMediaChanged(bool),
 
     DimEnabledEffect(bool),
     DimTimeoutEffect(u32),
@@ -32,6 +34,7 @@ pub(crate) enum IdleSettingsInput {
     LockTimeoutEffect(u32),
     SuspendEnabledEffect(bool),
     SuspendTimeoutEffect(u32),
+    InhibitWhileMediaEffect(bool),
 }
 
 #[derive(Debug)]
@@ -333,6 +336,53 @@ impl Component for IdleSettingsModel {
                         },
                     },
                 },
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Media",
+                    set_halign: gtk::Align::Start,
+                },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Keep awake while media plays",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Hold the idle inhibitor while any media player is playing, and restore the previous state when it stops. Overrides the idle / lock / suspend timers above during playback.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(inhibit_media_handler)]
+                            set_active: model.inhibit_while_media,
+                            connect_state_set[sender] => move |_, enabled| {
+                                sender.input(IdleSettingsInput::InhibitWhileMediaChanged(enabled));
+                                glib::Propagation::Proceed
+                            } @inhibit_media_handler,
+                        },
+                    },
+                },
             }
         }
     }
@@ -359,6 +409,7 @@ impl Component for IdleSettingsModel {
         push_effect!(lock_timeout_minutes, LockTimeoutEffect);
         push_effect!(suspend_enabled, SuspendEnabledEffect);
         push_effect!(suspend_timeout_minutes, SuspendTimeoutEffect);
+        push_effect!(inhibit_while_media, InhibitWhileMediaEffect);
 
         let model = IdleSettingsModel {
             dim_enabled: config_manager()
@@ -390,6 +441,11 @@ impl Component for IdleSettingsModel {
                 .config()
                 .idle()
                 .suspend_timeout_minutes()
+                .get_untracked(),
+            inhibit_while_media: config_manager()
+                .config()
+                .idle()
+                .inhibit_while_media()
                 .get_untracked(),
             _effects: effects,
         };
@@ -425,6 +481,9 @@ impl Component for IdleSettingsModel {
             IdleSettingsInput::SuspendTimeoutChanged(v) => {
                 config_manager().update_config(|c| c.idle.suspend_timeout_minutes = v);
             }
+            IdleSettingsInput::InhibitWhileMediaChanged(v) => {
+                config_manager().update_config(|c| c.idle.inhibit_while_media = v);
+            }
 
             IdleSettingsInput::DimEnabledEffect(v) => self.dim_enabled = v,
             IdleSettingsInput::DimTimeoutEffect(v) => self.dim_timeout = v,
@@ -432,6 +491,7 @@ impl Component for IdleSettingsModel {
             IdleSettingsInput::LockTimeoutEffect(v) => self.lock_timeout = v,
             IdleSettingsInput::SuspendEnabledEffect(v) => self.suspend_enabled = v,
             IdleSettingsInput::SuspendTimeoutEffect(v) => self.suspend_timeout = v,
+            IdleSettingsInput::InhibitWhileMediaEffect(v) => self.inhibit_while_media = v,
         }
 
         self.update_view(widgets, sender);

@@ -1,3 +1,4 @@
+pub mod audio_inhibit;
 mod bars;
 mod common_widgets;
 pub mod frame;
