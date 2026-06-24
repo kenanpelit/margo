@@ -9,8 +9,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 A small release: a `>run` launcher palette with `$PATH` completion, fzf-style
 search highlighting, a redesigned Podman menu with container shell/logs/ports,
-an XWayland window-geometry fix, and a dock icon-override fix, plus an internal
-field rename.
+keyboard-typable Settings colour pickers, an XWayland window-geometry fix, and
+a dock icon-override fix, plus an internal field rename.
 
 ### Added
 
@@ -40,6 +40,15 @@ field rename.
 
 ### Fixed
 
+- **Settings colour pickers can be typed into.** A `gtk::ColorDialogButton`
+  opens its chooser as a separate toplevel window, which can't take keyboard
+  focus under the layer-shell Settings surface — so the bar frame fill / border
+  / separator and the overview backdrop colours could only be set with the
+  mouse (wheel / sliders), never by typing a hex code. Each picker now has an
+  inline hex entry that lives in the Settings surface itself: type or paste
+  `#rrggbbaa` (or `0xRRGGBBAA`) and press Enter. The dialog button stays for
+  mouse picking; both paths stay in sync, and an unparseable value flags the
+  entry.
 - **XWayland windows now honor their compositor-assigned geometry.** Managed
   X11 (XWayland) toplevels are configured to their scene rect, so they fill
   their tile instead of opening at a too-small self-chosen size; and
