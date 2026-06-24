@@ -247,7 +247,7 @@ mod tests {
         assert!(p.handles_command(">clip"));
         assert!(p.handles_command(">clip foo"));
         assert!(p.handles_command(">clear"));
-        assert!(!p.handles_command(">cmd"));
+        assert!(!p.handles_command(">run"));
         assert!(!p.handles_command("clipboard"));
     }
 }

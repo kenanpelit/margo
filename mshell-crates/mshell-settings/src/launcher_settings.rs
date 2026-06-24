@@ -545,7 +545,7 @@ impl Component for LauncherSettingsModel {
                 } else {
                     mshell_launcher::notify::toast(
                         "Command history cleared",
-                        ">cmd recent list emptied.",
+                        ">run recent list emptied.",
                     );
                 }
             }

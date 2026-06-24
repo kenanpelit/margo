@@ -293,7 +293,7 @@ mod tests {
         let p = ScriptsProvider::with_prefix("start-");
         assert!(p.handles_command(">start"));
         assert!(p.handles_command(">start brave"));
-        assert!(!p.handles_command(">cmd"));
+        assert!(!p.handles_command(">run"));
         assert!(!p.handles_command("start"));
     }
 

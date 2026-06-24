@@ -77,9 +77,9 @@ const ENTRIES: &[Entry] = &[
         icon: "preferences-system-symbolic",
     },
     Entry {
-        prefix: ">cmd",
-        example: ">cmd echo hi",
-        description: "Run a shell command (history-aware)",
+        prefix: ">run",
+        example: ">run firefox",
+        description: "Run a PATH executable or shell command (history-aware)",
         icon: "utilities-terminal-symbolic",
     },
     Entry {
