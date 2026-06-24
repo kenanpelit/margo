@@ -14,6 +14,12 @@ a dock icon-override fix, plus an internal field rename.
 
 ### Added
 
+- **Keyboard shortcuts in the capture menus.** The Screenshot and Screen-record
+  menus now respond to keys while open: **A** all · **M** monitor · **W**
+  window · **R** area (S too), **Esc** to close; in the recorder, **S** / Space
+  stop. A dim hint line at the bottom of each menu lists them. (Inspired by the
+  DMS ScreenCapture toolbar — margo already had photo + video capture as two
+  menus; this adds the in-menu keyboard control they lacked.)
 - **Settings → Display → Layout — quick display profiles + per-output power.**
   On top of the existing named-`mlayout` catalogue + drag-to-arrange editor,
   the page gains four one-click profiles — **Internal only · External only ·
