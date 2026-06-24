@@ -43,6 +43,32 @@ pub fn fuzzy_score(matcher: &mut Matcher, query: &str, haystack: &str) -> Option
     Some(raw as f64)
 }
 
+/// The char positions in `haystack` that `query` matched — for fzf-style
+/// result highlighting. Empty when there's no match (or an empty query).
+/// These are char/codepoint indices (not bytes), so a caller can pair them
+/// with `haystack.chars().enumerate()`. Sorted + deduped.
+pub fn fuzzy_indices(matcher: &mut Matcher, query: &str, haystack: &str) -> Vec<u32> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+
+    let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
+
+    let mut buf = Vec::new();
+    let haystack_u32 = Utf32Str::new(haystack, &mut buf);
+
+    let mut indices = Vec::new();
+    if pattern
+        .indices(haystack_u32, matcher, &mut indices)
+        .is_none()
+    {
+        return Vec::new();
+    }
+    indices.sort_unstable();
+    indices.dedup();
+    indices
+}
+
 /// Frecency boost added on top of a fuzzy score. The `5.0`
 /// multiplier puts a single use at ~5, ten uses at ~17, a
 /// hundred uses at ~33 — comparable to a typical nucleo gap

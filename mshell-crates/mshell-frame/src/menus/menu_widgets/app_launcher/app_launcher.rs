@@ -41,7 +41,8 @@
 use crate::menus::menu_widgets::app_launcher::apps_provider::AppsProvider;
 use crate::menus::menu_widgets::app_launcher::clipboard_provider::ClipboardProvider;
 use crate::menus::menu_widgets::app_launcher::launcher_row::{
-    LauncherRowInit, LauncherRowInput, LauncherRowModel, LauncherRowOutput,
+    LauncherRowInit, LauncherRowInput, LauncherRowModel, LauncherRowOutput, resolve_primary_var,
+    set_match_accent,
 };
 use crate::menus::menu_widgets::app_launcher::tags_provider::TagsProvider;
 use crate::menus::menu_widgets::app_launcher::windows_provider::WindowsProvider;
@@ -946,6 +947,11 @@ impl Component for AppLauncherModel {
                     self.filter.clear();
                     widgets.search_entry.set_text("");
                     widgets.search_entry.grab_focus();
+                    // Resolve the matugen accent (`--primary`) from a realized
+                    // widget so result rows can accent-colour matched query
+                    // chars (fzf-style). Refreshed each open → picks up theme
+                    // changes between opens.
+                    set_match_accent(resolve_primary_var(&widgets.search_entry));
                     self.recompute_results();
                     self.push_results_to_dynamic_box();
                     self.broadcast_selection();
@@ -1439,6 +1445,7 @@ fn clone_display_item(src: &DisplayItem) -> DisplayItem {
         pinned: src.pinned,
         quick_key: src.quick_key.clone(),
         hidden: src.hidden,
+        match_indices: src.match_indices.clone(),
     }
 }
 

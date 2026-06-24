@@ -94,6 +94,12 @@ pub struct DisplayItem {
     /// uses this flag to flip the right-click context menu label
     /// between "Hide" and "Unhide".
     pub hidden: bool,
+
+    /// Char positions in [`LauncherItem::name`] that the current query
+    /// matched, for fzf-style highlighting in the row. Empty for
+    /// non-fuzzy / empty-query results — the UI then renders the name
+    /// plainly. Char (not byte) indices; pair with `name.chars().enumerate()`.
+    pub match_indices: Vec<u32>,
 }
 
 impl std::fmt::Debug for DisplayItem {
@@ -103,6 +109,7 @@ impl std::fmt::Debug for DisplayItem {
             .field("pinned", &self.pinned)
             .field("quick_key", &self.quick_key)
             .field("hidden", &self.hidden)
+            .field("match_indices", &self.match_indices)
             .finish()
     }
 }

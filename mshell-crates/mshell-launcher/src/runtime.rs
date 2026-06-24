@@ -346,12 +346,26 @@ impl LauncherRuntime {
     pub fn query(&self, query: &str) -> Vec<DisplayItem> {
         let trimmed = query.trim_start();
 
+        // The substring to highlight in each result name. For a command-mode
+        // query (`>run fire`) it's the part after the prefix token (so we
+        // highlight `fire`, not `>run`); for a plain search it's the whole
+        // query; for the bare command palette there's nothing to highlight.
+        let needle: String = if trimmed == ">" {
+            String::new()
+        } else if let Some(rest) = trimmed.strip_prefix('>') {
+            rest.split_once(char::is_whitespace)
+                .map(|(_, after)| after.trim().to_string())
+                .unwrap_or_default()
+        } else {
+            trimmed.to_string()
+        };
+
         // Bare ">" → command palette. Every provider's commands()
         // collected so the user can discover all prefixes at
         // once (`;` does the richer cheatsheet version of this).
         if trimmed == ">" {
             let raw: Vec<LauncherItem> = self.providers.iter().flat_map(|p| p.commands()).collect();
-            return self.decorate(raw);
+            return self.decorate(raw, &needle);
         }
 
         // Command mode: any provider that claims `handles_command`
@@ -363,7 +377,7 @@ impl LauncherRuntime {
                 // Command mode is a typed, provider-owned query (`>run`,
                 // `>start`, `bt`, …); leave its ordering to the provider +
                 // frequency, not recency.
-                return self.decorate(self.apply_frecency_and_sort(results, false));
+                return self.decorate(self.apply_frecency_and_sort(results, false), &needle);
             }
         }
 
@@ -488,7 +502,7 @@ impl LauncherRuntime {
         // empty-query list — so the things you just ran sit at the top. Typed
         // all-search keeps fuzzy-match order.
         let browse = in_specific_category || trimmed.is_empty();
-        self.decorate(self.apply_frecency_and_sort(results, browse))
+        self.decorate(self.apply_frecency_and_sort(results, browse), &needle)
     }
 
     /// Shared scoring pipeline: add `usage_boost(count)` plus — in `browse`
@@ -528,7 +542,10 @@ impl LauncherRuntime {
     /// quick-key digit). The hidden flag lets the UI flip the
     /// right-click context-menu label between "Hide" and
     /// "Unhide" without re-querying the store per row.
-    fn decorate(&self, items: Vec<LauncherItem>) -> Vec<DisplayItem> {
+    fn decorate(&self, items: Vec<LauncherItem>, needle: &str) -> Vec<DisplayItem> {
+        // One matcher reused across the whole result set (nucleo amortises its
+        // buffers). Skipped entirely when there's nothing to highlight.
+        let mut matcher = (!needle.is_empty()).then(crate::scoring::make_matcher);
         items
             .into_iter()
             .enumerate()
@@ -548,11 +565,16 @@ impl LauncherRuntime {
                 } else {
                     String::new()
                 };
+                let match_indices = match matcher.as_mut() {
+                    Some(m) => crate::scoring::fuzzy_indices(m, needle, &item.name),
+                    None => Vec::new(),
+                };
                 DisplayItem {
                     item,
                     pinned,
                     quick_key,
                     hidden,
+                    match_indices,
                 }
             })
             .collect()
