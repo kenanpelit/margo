@@ -23,6 +23,7 @@ use crate::bars::bar_widgets::sysstat::{
     find_cpu_temp_sensor_pub, read_all_fans_pub, read_all_temp_sensors_pub, read_cpu_stat_pub,
     read_temp_millideg_pub,
 };
+use futures::StreamExt;
 use mshell_services::sys_info_service;
 use relm4::gtk::prelude::{
     BoxExt, DrawingAreaExt, DrawingAreaExtManual, GridExt, OrientableExt, WidgetExt,
@@ -178,7 +179,9 @@ pub(crate) struct CpuDashboardMenuWidgetInit {}
 
 #[relm4::component(pub(crate))]
 impl Component for CpuDashboardMenuWidgetModel {
-    type CommandOutput = ();
+    /// A storage snapshot pushed in from the `sys_info_service().disks`
+    /// watch stream: `(mount, used_kb, total_kb, percent)` per filesystem.
+    type CommandOutput = Vec<(String, u64, u64, u32)>;
     type Input = CpuDashboardMenuWidgetInput;
     type Output = CpuDashboardMenuWidgetOutput;
     type Init = CpuDashboardMenuWidgetInit;
@@ -667,9 +670,44 @@ impl Component for CpuDashboardMenuWidgetModel {
             let _ = cr.stroke();
         });
 
-        // Seed the storage rows from the service's current snapshot so
-        // the section is populated on first open, before the first poll.
-        rebuild_disk_rows(&widgets.disk_box);
+        // Subscribe to the shared service's disk metrics. wayle's pollers
+        // only run while a property has a `.watch()` subscriber — a `.get()`
+        // never wakes them — so the menu MUST watch (not poll) for the
+        // Storage section to populate. The poller emits immediately on the
+        // first subscribe, then on its own (slow) cadence.
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut stream = sys_info_service().disks.watch();
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    next = stream.next() => match next {
+                        Some(disks) => {
+                            // Real filesystems only (≥1 GiB drops efi/tmpfs/loop
+                            // noise), sorted + de-duplicated + capped.
+                            let mut rows: Vec<(String, u64, u64, u32)> = disks
+                                .into_iter()
+                                .filter(|d| d.total_bytes >= 1024 * 1024 * 1024)
+                                .map(|d| {
+                                    (
+                                        d.mount_point.to_string_lossy().into_owned(),
+                                        d.used_bytes / 1024,
+                                        d.total_bytes / 1024,
+                                        d.usage_percent.round() as u32,
+                                    )
+                                })
+                                .collect();
+                            rows.sort_by(|a, b| a.0.cmp(&b.0));
+                            rows.dedup_by(|a, b| a.0 == b.0);
+                            rows.truncate(6);
+                            let _ = out.send(rows);
+                        }
+                        None => break,
+                    },
+                }
+            }
+        });
 
         let _ = root;
         ComponentParts { model, widgets }
@@ -786,10 +824,6 @@ impl Component for CpuDashboardMenuWidgetModel {
                     self.ram_percent = ram_pct(used, total);
                 }
 
-                // Storage: rebuild the per-mount rows from the service's
-                // cached disk snapshot (no extra disk I/O here).
-                rebuild_disk_rows(&widgets.disk_box);
-
                 if let Some((a, b, c)) = read_loadavg() {
                     self.load_1m = a;
                     self.load_5m = b;
@@ -799,6 +833,18 @@ impl Component for CpuDashboardMenuWidgetModel {
             }
         }
         self.update_view(widgets, sender);
+    }
+
+    fn update_cmd_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::CommandOutput,
+        _sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        // A fresh disk snapshot arrived from the watch stream — repaint the
+        // Storage rows.
+        rebuild_disk_rows(&widgets.disk_box, &message);
     }
 }
 
@@ -911,34 +957,14 @@ fn build_disk_row(mount: &str, used_kb: u64, total_kb: u64, pct: u32) -> gtk::Bo
     row
 }
 
-/// Rebuild the storage rows in `container` from the shared
-/// `SysinfoService` disk snapshot. Real filesystems only (≥ 1 GiB drops
-/// efi / tmpfs / loop noise), sorted by mount and de-duplicated, capped so
-/// the section stays compact. Reads the service's cached value — no disk
-/// I/O happens here.
-fn rebuild_disk_rows(container: &gtk::Box) {
+/// Rebuild the storage rows in `container` from a `(mount, used_kb,
+/// total_kb, percent)` snapshot delivered by the disk watch stream.
+fn rebuild_disk_rows(container: &gtk::Box, rows: &[(String, u64, u64, u32)]) {
     while let Some(child) = container.first_child() {
         container.remove(&child);
     }
-    let mut disks: Vec<(String, u64, u64, u32)> = sys_info_service()
-        .disks
-        .get()
-        .into_iter()
-        .filter(|d| d.total_bytes >= 1024 * 1024 * 1024)
-        .map(|d| {
-            (
-                d.mount_point.to_string_lossy().into_owned(),
-                d.used_bytes / 1024,
-                d.total_bytes / 1024,
-                d.usage_percent.round() as u32,
-            )
-        })
-        .collect();
-    disks.sort_by(|a, b| a.0.cmp(&b.0));
-    disks.dedup_by(|a, b| a.0 == b.0);
-    disks.truncate(6);
-    for (mount, used_kb, total_kb, pct) in disks {
-        container.append(&build_disk_row(&mount, used_kb, total_kb, pct));
+    for (mount, used_kb, total_kb, pct) in rows {
+        container.append(&build_disk_row(mount, *used_kb, *total_kb, *pct));
     }
 }
 
