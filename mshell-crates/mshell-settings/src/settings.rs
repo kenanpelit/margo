@@ -578,15 +578,10 @@ impl Component for SettingsWindowModel {
                 // sidebar Box, find which one currently has focus
                 // (or is active), and grab focus on the neighbour.
                 let mut buttons: Vec<gtk::ToggleButton> = Vec::new();
-                let mut child = sidebar.first_child();
-                while let Some(c) = child {
-                    if let Ok(btn) = c.clone().downcast::<gtk::ToggleButton>()
-                        && btn.has_css_class("sidebar-button")
-                    {
-                        buttons.push(btn);
-                    }
-                    child = c.next_sibling();
-                }
+                collect_sidebar_buttons(&sidebar, &mut buttons);
+                // Skip page buttons inside a collapsed group — they aren't on
+                // screen, so Tab/arrows shouldn't land on them.
+                buttons.retain(|b| b.is_mapped());
                 if buttons.is_empty() {
                     return glib::Propagation::Proceed;
                 }
@@ -2359,7 +2354,6 @@ const SIDEBAR: &[SidebarEntry] = &[
 
 const SETTINGS_SIDEBAR_LABEL_MIN_HEIGHT: i32 = 28;
 const SETTINGS_SIDEBAR_TITLE_MIN_HEIGHT: i32 = 28;
-const SETTINGS_SIDEBAR_SECTION_MIN_HEIGHT: i32 = 22;
 const SETTINGS_SIDEBAR_TEXT_RISE: i32 = -1024;
 
 fn settings_sidebar_markup(label: &str) -> String {
@@ -2418,36 +2412,138 @@ fn settings_sidebar_title_label(label: &str) -> gtk::Label {
 /// Title-Case label ("Appearance", "Shell & Desktop", …). The 12px gap +
 /// `space-3` left padding (in CSS) line the icon up with the page-button
 /// icons below it, so the groups scan as one column. Non-interactive.
-fn settings_sidebar_section(name: &str, icon: &str) -> gtk::Box {
+/// Cache file holding the set of *collapsed* sidebar section names
+/// (comma-separated), so the accordion state survives reopening Settings.
+fn sidebar_state_path() -> std::path::PathBuf {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+    base.join("mshell").join("settings_sidebar")
+}
+
+fn load_collapsed_sections() -> std::collections::HashSet<String> {
+    std::fs::read_to_string(sidebar_state_path())
+        .ok()
+        .map(|s| {
+            s.split(',')
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn set_section_collapsed(name: &str, collapsed: bool) {
+    let mut set = load_collapsed_sections();
+    if collapsed {
+        set.insert(name.to_string());
+    } else {
+        set.remove(name);
+    }
+    let path = sidebar_state_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let body = set.into_iter().collect::<Vec<_>>().join(",");
+    let _ = std::fs::write(path, body);
+}
+
+/// Build a collapsible sidebar group: a clickable header (icon + name +
+/// chevron) over a `gtk::Revealer` that the page buttons get appended into.
+/// Clicking the header flips the revealer + chevron and persists the state.
+/// Returns `(group, revealer, pages, chevron)` — `build_sidebar` appends
+/// pages into `pages` and uses `(revealer, chevron)` to auto-expand the
+/// group when one of its pages is activated (e.g. via search / IPC).
+fn build_section_group(
+    name: &str,
+    icon: &str,
+    expanded: bool,
+) -> (gtk::Box, gtk::Revealer, gtk::Box, gtk::Image) {
     use gtk::prelude::*;
 
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    row.add_css_class("settings-sidebar-section");
-    row.set_halign(gtk::Align::Fill);
-    row.set_hexpand(true);
-    row.set_valign(gtk::Align::Center);
+    let group = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    group.add_css_class("settings-sidebar-group");
+
+    let header = gtk::Button::new();
+    header.add_css_class("settings-sidebar-section");
+    let hb = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    hb.set_valign(gtk::Align::Center);
 
     let img = gtk::Image::from_icon_name(icon);
     img.add_css_class("settings-sidebar-section-icon");
     img.set_valign(gtk::Align::Center);
-    row.append(&img);
+    hb.append(&img);
 
     let lbl = gtk::Label::new(None);
     lbl.set_markup(&settings_sidebar_markup(name));
     lbl.add_css_class("settings-sidebar-section-label");
     lbl.set_halign(gtk::Align::Start);
-    lbl.set_valign(gtk::Align::Center);
     lbl.set_xalign(0.0);
-    lbl.set_yalign(0.5);
     lbl.set_hexpand(true);
-    lbl.set_vexpand(false);
     lbl.set_wrap(false);
     lbl.set_single_line_mode(true);
-    // NO ellipsize: short fixed headers; ellipsize + letter-spacing under-
-    // reports the natural width and would clip a glyph.
-    lbl.set_height_request(SETTINGS_SIDEBAR_SECTION_MIN_HEIGHT);
-    row.append(&lbl);
-    row
+    hb.append(&lbl);
+
+    let chevron = gtk::Image::from_icon_name(if expanded {
+        "pan-down-symbolic"
+    } else {
+        "pan-end-symbolic"
+    });
+    chevron.add_css_class("settings-sidebar-chevron");
+    chevron.set_valign(gtk::Align::Center);
+    hb.append(&chevron);
+
+    header.set_child(Some(&hb));
+    group.append(&header);
+
+    let revealer = gtk::Revealer::builder()
+        .transition_type(gtk::RevealerTransitionType::SlideDown)
+        .transition_duration(180)
+        .reveal_child(expanded)
+        .build();
+    let pages = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    pages.add_css_class("settings-sidebar-group-pages");
+    revealer.set_child(Some(&pages));
+    group.append(&revealer);
+
+    let name_owned = name.to_string();
+    let rev = revealer.clone();
+    let chev = chevron.clone();
+    header.connect_clicked(move |_| {
+        let now = !rev.reveals_child();
+        rev.set_reveal_child(now);
+        chev.set_icon_name(Some(if now {
+            "pan-down-symbolic"
+        } else {
+            "pan-end-symbolic"
+        }));
+        set_section_collapsed(&name_owned, !now);
+    });
+
+    (group, revealer, pages, chevron)
+}
+
+/// Recursively collect every `sidebar-button` toggle under `parent`, in
+/// visual order. The accordion nests page buttons inside per-section
+/// revealers, so the keyboard-nav walk can't assume direct children.
+fn collect_sidebar_buttons(
+    parent: &impl gtk::prelude::IsA<gtk::Widget>,
+    out: &mut Vec<gtk::ToggleButton>,
+) {
+    use gtk::prelude::*;
+    let mut child = parent.first_child();
+    while let Some(c) = child {
+        if let Ok(btn) = c.clone().downcast::<gtk::ToggleButton>() {
+            if btn.has_css_class("sidebar-button") {
+                out.push(btn);
+            }
+        } else {
+            collect_sidebar_buttons(&c, out);
+        }
+        child = c.next_sibling();
+    }
 }
 
 /// Build the sidebar buttons + section headers from [`SIDEBAR`] into
@@ -2461,11 +2557,23 @@ fn build_sidebar(
     use gtk::prelude::*;
     let mut buttons = std::collections::HashMap::new();
     let mut anchor: Option<gtk::ToggleButton> = None;
+    let collapsed = load_collapsed_sections();
+    // Where the next page button goes. Starts at the sidebar root (for any
+    // ungrouped page before the first section — e.g. General), then points
+    // at each section group's revealer-pages box.
+    let mut current_pages: gtk::Box = sidebar_box.clone();
+    // The current group's revealer + chevron, so activating one of its pages
+    // (via search / IPC) auto-expands the group so the page is visible.
+    let mut current_reveal: Option<(gtk::Revealer, gtk::Image)> = None;
+
     for entry in SIDEBAR {
         match entry {
             Section { name, icon } => {
-                let header = settings_sidebar_section(name, icon);
-                sidebar_box.append(&header);
+                let expanded = !collapsed.contains(*name);
+                let (group, revealer, pages, chevron) = build_section_group(name, icon, expanded);
+                sidebar_box.append(&group);
+                current_pages = pages;
+                current_reveal = Some((revealer, chevron));
             }
             Page { route, icon, label } => {
                 let btn = gtk::ToggleButton::new();
@@ -2485,12 +2593,19 @@ fn build_sidebar(
                 btn.set_child(Some(&hbox));
                 let stack = stack.clone();
                 let route_owned = route.to_string();
+                let reveal_for_btn = current_reveal.clone();
                 btn.connect_toggled(move |b| {
                     if b.is_active() {
                         stack.set_visible_child_name(&route_owned);
+                        // Make sure the activated page's group is open (it may
+                        // have been collapsed, or a search jump landed here).
+                        if let Some((rev, chev)) = &reveal_for_btn {
+                            rev.set_reveal_child(true);
+                            chev.set_icon_name(Some("pan-down-symbolic"));
+                        }
                     }
                 });
-                sidebar_box.append(&btn);
+                current_pages.append(&btn);
                 buttons.insert(route.to_string(), btn);
             }
         }

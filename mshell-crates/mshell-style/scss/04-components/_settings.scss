@@ -219,36 +219,52 @@
     }
 }
 
-// Group header in the sidebar (Appearance / Shell & Desktop / …).
-// A leading symbolic icon + a friendly Title-Case label that structures
-// the list. Non-interactive. Sits a notch above its buttons; the icon
-// lines up with the page-button icons below (space-3 left padding +
-// 12px gap match the button content inset), so the groups scan as one
-// column instead of a staggered zig-zag.
+// Collapsible group header in the sidebar (Appearance / Shell & Desktop /
+// …). A clickable row: leading icon + Title-Case name + a trailing chevron
+// that flips the group's revealer open/closed. The icon lines up with the
+// page-button icons below it (space-3 left padding + 12px gap match the
+// button content inset), so an expanded group scans as one column.
+.settings-sidebar-group {
+    // The group is just a vertical stack of header + revealer; spacing comes
+    // from the header's own margins.
+}
 .settings-sidebar-section {
-    // space-2 top: breaks groups apart without the "double gap" the old
-    // margin made on top of the buttons' spacing.
+    // Flat, interactive header button — reset GTK's button chrome, then add
+    // the canonical primary hover wash so it reads as clickable.
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    outline: none;
+    min-height: 30px;
     margin-top: var(--space-2);
-    margin-bottom: var(--space-1);
-    padding-top: 3px;
-    padding-bottom: 2px;
-    padding-left: var(--space-3);
+    margin-bottom: 2px;
+    padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+    border-radius: var(--radius-sm);
+    transition: background-color var(--motion-fast) var(--ease-standard);
+
+    &:hover {
+        background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+    }
+    &:active {
+        background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
+    }
 }
 .settings-sidebar-section-icon {
     color: var(--on-surface-variant);
-    opacity: 0.8;
 }
 .settings-sidebar-section-label {
-    // DESIGN.md §1 section-label: dim, semibold, lightly letter-spaced.
-    // Title Case (not uppercase) reads calmer and matches the friendlier
-    // group names ("Shell & Desktop", "Locale & Accounts").
-    font-size: calc(11.5px * var(--font-scale-settings, 1.0));
+    // Bigger than a caption now that it's a real group header (was 11.5px) —
+    // Title Case, semibold, the calm secondary tier.
+    font-size: calc(13px * var(--font-scale-settings, 1.0));
     font-weight: 600;
-    line-height: 1.45;
-    min-height: calc(20px * var(--font-scale-settings, 1.0));
-    letter-spacing: 0.02em;
+    line-height: 1.4;
+    letter-spacing: 0.01em;
     color: var(--on-surface-variant);
-    opacity: 0.8;
+}
+.settings-sidebar-chevron {
+    -gtk-icon-size: 16px;
+    color: var(--on-surface-variant);
+    opacity: 0.7;
 }
 
 .settings-sidebar-title {
