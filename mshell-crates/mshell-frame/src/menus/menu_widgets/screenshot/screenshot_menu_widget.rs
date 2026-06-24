@@ -162,6 +162,15 @@ impl Component for ScreenshotMenuWidgetModel {
                     },
                 },
             },
+
+            // Keyboard-shortcut hint (the keys are wired in `init`).
+            gtk::Label {
+                add_css_class: "label-small",
+                add_css_class: "dim-label",
+                set_label: "A all · M monitor · W window · R area · Esc close",
+                set_halign: gtk::Align::Center,
+                set_margin_top: 12,
+            },
         }
     }
 
@@ -260,6 +269,38 @@ impl Component for ScreenshotMenuWidgetModel {
         };
 
         let widgets = view_output!();
+
+        // Keyboard shortcuts while the menu is open (DMS-style): one
+        // mnemonic key per capture target + Escape to dismiss. The menu
+        // surface holds Exclusive keyboard focus while revealed, so the
+        // Capture-phase controller on the root sees the keys.
+        {
+            let sender = sender.clone();
+            let kc = gtk::EventControllerKey::new();
+            kc.set_propagation_phase(gtk::PropagationPhase::Capture);
+            kc.connect_key_pressed(move |_, keyval, _, _| {
+                use relm4::gtk::glib::Propagation;
+                if keyval == gtk::gdk::Key::Escape {
+                    let _ = sender.output(ScreenshotMenuWidgetOutput::CloseMenu);
+                    return Propagation::Stop;
+                }
+                let input = match keyval.to_unicode() {
+                    Some('a' | 'A') => Some(ScreenshotMenuWidgetInput::AllClicked),
+                    Some('m' | 'M') => Some(ScreenshotMenuWidgetInput::MonitorClicked),
+                    Some('w' | 'W') => Some(ScreenshotMenuWidgetInput::WindowClicked),
+                    Some('r' | 'R' | 's' | 'S') => Some(ScreenshotMenuWidgetInput::AreaClicked),
+                    _ => None,
+                };
+                if let Some(i) = input {
+                    sender.input(i);
+                    Propagation::Stop
+                } else {
+                    Propagation::Proceed
+                }
+            });
+            root.add_controller(kc);
+        }
+
         ComponentParts { model, widgets }
     }
 

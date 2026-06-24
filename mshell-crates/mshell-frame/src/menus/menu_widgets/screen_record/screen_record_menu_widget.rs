@@ -21,7 +21,7 @@ use mshell_services::audio_service;
 use mshell_utils::notifications::show_file_saved_notification;
 use reactive_graph::traits::{Get, GetUntracked};
 use reactive_stores::Patch;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, EventControllerExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::sync::Arc;
 use std::time::Duration;
@@ -220,6 +220,15 @@ impl Component for ScreenRecordMenuWidgetModel {
                     },
                 }
             },
+
+            // Keyboard-shortcut hint (the keys are wired in `init`).
+            gtk::Label {
+                add_css_class: "label-small",
+                add_css_class: "dim-label",
+                set_label: "A all · M monitor · W window · R area · S stop · Esc close",
+                set_halign: gtk::Align::Center,
+                set_margin_top: 12,
+            },
         }
     }
 
@@ -274,6 +283,46 @@ impl Component for ScreenRecordMenuWidgetModel {
         };
 
         let widgets = view_output!();
+
+        // Keyboard shortcuts while the menu is open (DMS-style): mnemonic
+        // keys per capture target + Escape to dismiss. While recording, the
+        // capture keys are ignored (the buttons are insensitive too) and
+        // S / Space stop the recording.
+        {
+            let sender = sender.clone();
+            let kc = gtk::EventControllerKey::new();
+            kc.set_propagation_phase(gtk::PropagationPhase::Capture);
+            kc.connect_key_pressed(move |_, keyval, _, _| {
+                use relm4::gtk::glib::Propagation;
+                if keyval == gtk::gdk::Key::Escape {
+                    let _ = sender.output(ScreenRecordMenuWidgetOutput::CloseMenu);
+                    return Propagation::Stop;
+                }
+                if is_recording() {
+                    if keyval == gtk::gdk::Key::space
+                        || matches!(keyval.to_unicode(), Some('s' | 'S'))
+                    {
+                        sender.input(ScreenRecordMenuWidgetInput::StopClicked);
+                        return Propagation::Stop;
+                    }
+                    return Propagation::Proceed;
+                }
+                let input = match keyval.to_unicode() {
+                    Some('a' | 'A') => Some(ScreenRecordMenuWidgetInput::AllClicked),
+                    Some('m' | 'M') => Some(ScreenRecordMenuWidgetInput::MonitorClicked),
+                    Some('w' | 'W') => Some(ScreenRecordMenuWidgetInput::WindowClicked),
+                    Some('r' | 'R') => Some(ScreenRecordMenuWidgetInput::AreaClicked),
+                    _ => None,
+                };
+                if let Some(i) = input {
+                    sender.input(i);
+                    Propagation::Stop
+                } else {
+                    Propagation::Proceed
+                }
+            });
+            root.add_controller(kc);
+        }
 
         ComponentParts { model, widgets }
     }
