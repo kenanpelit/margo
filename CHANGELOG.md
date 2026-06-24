@@ -8,10 +8,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [1.0.10] – 2026-06-24
 
 A small release: a `>run` launcher palette with `$PATH` completion, fzf-style
-search highlighting, an XWayland window-geometry fix, and a dock icon-override
-fix, plus an internal field rename.
+search highlighting, a redesigned Podman menu with container shell/logs/ports,
+an XWayland window-geometry fix, and a dock icon-override fix, plus an internal
+field rename.
 
 ### Added
+
+- **Podman menu — expandable container cards with shell, logs & ports.** The
+  `mshellctl menu podman` Containers tab is now the house revealer-row card:
+  a state-tinted glyph + name + image + chevron, expanding to the human status
+  line, published port mappings as chips (`3000 → 8080`), and a state-aware
+  action list — **Shell** (interactive `podman exec -it`, bash with sh
+  fallback, opened in your terminal), **Logs** (`podman logs -f` in a terminal
+  that stays open), Pause/Unpause, plus Start/Stop/Restart/Remove. Containers
+  sort running → paused → stopped, and an open row survives auto-refresh and
+  post-action repolls instead of collapsing under you. Ported from the DMS
+  Docker Manager plugin.
 
 - **`>run` launcher palette — `$PATH` executable completion.** The launcher's
   command runner is now reached via `>run` (renamed from `>cmd`) and, while
