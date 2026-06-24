@@ -7,18 +7,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [1.0.10] – 2026-06-24
 
-A small fixes release: an XWayland popup-positioning fix and a dock
-icon-override resolution fix, plus an internal field rename.
+A small release: a `>run` launcher palette with `$PATH` completion, an
+XWayland window-geometry fix, and a dock icon-override fix, plus an internal
+field rename.
+
+### Added
+
+- **`>run` launcher palette — `$PATH` executable completion.** The launcher's
+  command runner is now reached via `>run` (renamed from `>cmd`) and, while
+  you type a single bare token, completes against `$PATH` executables:
+  `>run fire` surfaces `firefox`, `firejail`, … An exact name launches
+  directly on Enter (spawned by absolute path); a multi-token line
+  (`>run a | b`) still runs as a free-form `sh -c` command; frecency lifts
+  your most-used binaries to the top.
 
 ### Fixed
 
-- **XWayland menus/popups now follow their final position.** Override-redirect
-  X11 surfaces (Qt5/GTK context menus, dropdowns, tooltips) are now
-  repositioned on `configure_notify`, not only at their initial map. Toolkits
-  that map a popup and *then* move it to its anchor (Qt5, GTK) previously left
-  the surface frozen at its first location, so menus opened detached / in the
-  wrong place under XWayland — most visibly with multi-monitor layouts. The
-  surface now tracks the client-chosen geometry (mirroring Smithay anvil).
+- **XWayland windows now honor their compositor-assigned geometry.** Managed
+  X11 (XWayland) toplevels are configured to their scene rect, so they fill
+  their tile instead of opening at a too-small self-chosen size; and
+  override-redirect popups track position changes after their initial map.
 - **Dock icon overrides now resolve through the configured `app_icon_theme`.**
   A `dock.icon_overrides` entry given as a bare icon name (e.g.
   `brave-browser`) is now looked up in the configured app icon theme — with
