@@ -14,6 +14,11 @@ a dock icon-override fix, plus an internal field rename.
 
 ### Added
 
+- **Keep awake while media plays.** A new opt-in **Settings → Idle → "Keep
+  awake while media plays"** holds the idle inhibitor while any MPRIS player is
+  playing and restores the previous inhibitor state when playback stops — so a
+  video or music keeps the screen on without toggling Keep Awake by hand.
+  (Ported from the DMS audio-inhibit plugin.)
 - **Keyboard shortcuts in the capture menus.** The Screenshot and Screen-record
   menus now respond to keys while open: **A** all · **M** monitor · **W**
   window · **R** area (S too), **Esc** to close; in the recorder, **S** / Space
