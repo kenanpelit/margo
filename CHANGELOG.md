@@ -84,13 +84,16 @@ a dock icon-override fix, plus an internal field rename.
   the dashboard menu can't skew, and per-interface throughput + disk come from
   the same place. (No external stats helper: native in-process reads beat an
   extra subprocess.)
-- **Friendlier Settings sidebar group headers.** The sidebar's section
-  headers are now Title-Case, user-facing names with a leading icon instead
-  of terse ALL-CAPS jargon: `SHELL` → **Shell & Desktop**, `SYSTEM` →
-  **System & Devices**, `INPUT` → **Input & Shortcuts**, plus Appearance /
-  Locale & Accounts / Advanced / About. Two page labels soften too — **OSD →
-  On-screen Displays**, **Keybinds → Keyboard Shortcuts**. Search keywords are
-  unchanged, so the old terms still find the pages.
+- **Collapsible Settings sidebar with friendlier group headers.** The sidebar
+  sections are now real accordion groups — each header is a clickable row
+  (icon + Title-Case name + chevron) that expands/collapses its pages, with
+  the open/closed state remembered across reopens and the active page's group
+  auto-expanded. Headers are also renamed from terse ALL-CAPS jargon to
+  user-facing names: `SHELL` → **Shell & Desktop**, `SYSTEM` → **System &
+  Devices**, `INPUT` → **Input & Shortcuts**, plus Appearance / Locale &
+  Accounts / Advanced / About. Two page labels soften too — **OSD → On-screen
+  Displays**, **Keybinds → Keyboard Shortcuts**. Search keywords are unchanged,
+  so the old terms still find the pages.
 - Renamed the dock's pinned-app field `hyprland_class` → `app_id` (and the
   matching `set_icon`/`resolve_icon_candidates` parameter). The value is the
   Wayland app-id margo reports for a window (`mctl clients` APP-ID), matched
