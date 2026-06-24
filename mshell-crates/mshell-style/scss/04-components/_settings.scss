@@ -219,28 +219,36 @@
     }
 }
 
-// Group header in the sidebar (Appearance / Shell / System / …).
-// DESIGN.md §1 section-label: dim, uppercase, letter-spaced; sits a
-// notch above its buttons. Non-interactive — just structures the list.
+// Group header in the sidebar (Appearance / Shell & Desktop / …).
+// A leading symbolic icon + a friendly Title-Case label that structures
+// the list. Non-interactive. Sits a notch above its buttons; the icon
+// lines up with the page-button icons below (space-3 left padding +
+// 12px gap match the button content inset), so the groups scan as one
+// column instead of a staggered zig-zag.
 .settings-sidebar-section {
-    font-size: calc(11.5px * var(--font-scale-settings, 1.0));
-    font-weight: 600;
-    line-height: 1.45;
-    min-height: calc(20px * var(--font-scale-settings, 1.0));
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--on-surface-variant);
-    opacity: 0.8;
-    // space-2 top (was space-3): enough to break the groups apart without
-    // the "double gap" the old margin made on top of the buttons' spacing.
+    // space-2 top: breaks groups apart without the "double gap" the old
+    // margin made on top of the buttons' spacing.
     margin-top: var(--space-2);
     margin-bottom: var(--space-1);
     padding-top: 3px;
     padding-bottom: 2px;
-    // Align the header's left edge with the button icons below it
-    // (button content padding is space-3), so the groups scan as one
-    // column instead of a staggered zig-zag.
     padding-left: var(--space-3);
+}
+.settings-sidebar-section-icon {
+    color: var(--on-surface-variant);
+    opacity: 0.8;
+}
+.settings-sidebar-section-label {
+    // DESIGN.md §1 section-label: dim, semibold, lightly letter-spaced.
+    // Title Case (not uppercase) reads calmer and matches the friendlier
+    // group names ("Shell & Desktop", "Locale & Accounts").
+    font-size: calc(11.5px * var(--font-scale-settings, 1.0));
+    font-weight: 600;
+    line-height: 1.45;
+    min-height: calc(20px * var(--font-scale-settings, 1.0));
+    letter-spacing: 0.02em;
+    color: var(--on-surface-variant);
+    opacity: 0.8;
 }
 
 .settings-sidebar-title {

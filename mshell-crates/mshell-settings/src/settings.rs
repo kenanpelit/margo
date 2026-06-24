@@ -480,7 +480,7 @@ impl Component for SettingsWindowModel {
                     SidebarEntry::Page { route, label, .. } => {
                         Some((route.to_string(), label.to_string()))
                     }
-                    SidebarEntry::Section(_) => None,
+                    SidebarEntry::Section { .. } => None,
                 })
                 .collect(),
         ));
@@ -2110,7 +2110,10 @@ const SEARCH_ALIASES: &[(&str, &str)] = &[
 
 /// One row of the sidebar: a group header or a page button.
 enum SidebarEntry {
-    Section(&'static str),
+    Section {
+        name: &'static str,
+        icon: &'static str,
+    },
     Page {
         route: &'static str,
         icon: &'static str,
@@ -2129,7 +2132,10 @@ const SIDEBAR: &[SidebarEntry] = &[
         icon: "settings-symbolic",
         label: "General",
     },
-    Section("APPEARANCE"),
+    Section {
+        name: "Appearance",
+        icon: "applications-graphics-symbolic",
+    },
     Page {
         route: "appearance",
         icon: "preferences-desktop-display-symbolic",
@@ -2143,7 +2149,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     Page {
         route: "osd",
         icon: "audio-volume-high-symbolic",
-        label: "OSD",
+        label: "On-screen Displays",
     },
     Page {
         route: "window_rules",
@@ -2190,7 +2196,10 @@ const SIDEBAR: &[SidebarEntry] = &[
         icon: "palette-symbolic",
         label: "Theme",
     },
-    Section("SHELL"),
+    Section {
+        name: "Shell & Desktop",
+        icon: "sidebar-symbolic",
+    },
     Page {
         route: "bar",
         icon: "sidebar-symbolic",
@@ -2226,7 +2235,10 @@ const SIDEBAR: &[SidebarEntry] = &[
         icon: "view-grid-symbolic",
         label: "Widgets",
     },
-    Section("SYSTEM"),
+    Section {
+        name: "System & Devices",
+        icon: "preferences-system-symbolic",
+    },
     Page {
         route: "bluetooth",
         icon: "bluetooth-active-symbolic",
@@ -2272,7 +2284,10 @@ const SIDEBAR: &[SidebarEntry] = &[
         icon: "audio-volume-high-symbolic",
         label: "Sound",
     },
-    Section("INPUT"),
+    Section {
+        name: "Input & Shortcuts",
+        icon: "input-keyboard-symbolic",
+    },
     Page {
         route: "input",
         icon: "input-keyboard-symbolic",
@@ -2281,7 +2296,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     Page {
         route: "keybinds",
         icon: "preferences-desktop-keyboard-shortcuts-symbolic",
-        label: "Keybinds",
+        label: "Keyboard Shortcuts",
     },
     Page {
         route: "summon",
@@ -2293,7 +2308,10 @@ const SIDEBAR: &[SidebarEntry] = &[
         icon: "system-search-symbolic",
         label: "Launcher",
     },
-    Section("LOCALE & ACCOUNTS"),
+    Section {
+        name: "Locale & Accounts",
+        icon: "preferences-desktop-locale-symbolic",
+    },
     Page {
         route: "date_time",
         icon: "preferences-system-time-symbolic",
@@ -2314,7 +2332,10 @@ const SIDEBAR: &[SidebarEntry] = &[
         icon: "system-users-symbolic",
         label: "Users",
     },
-    Section("ADVANCED"),
+    Section {
+        name: "Advanced",
+        icon: "emblem-system-symbolic",
+    },
     Page {
         route: "plugins",
         icon: "application-x-addon-symbolic",
@@ -2325,7 +2346,10 @@ const SIDEBAR: &[SidebarEntry] = &[
         icon: "emblem-system-symbolic",
         label: "Setup",
     },
-    Section("ABOUT"),
+    Section {
+        name: "About",
+        icon: "help-about-symbolic",
+    },
     Page {
         route: "about",
         icon: "help-about-symbolic",
@@ -2390,12 +2414,27 @@ fn settings_sidebar_title_label(label: &str) -> gtk::Label {
     lbl
 }
 
-fn settings_sidebar_section_label(label: &str) -> gtk::Label {
+/// A sidebar group header: a leading symbolic icon + a friendly
+/// Title-Case label ("Appearance", "Shell & Desktop", …). The 12px gap +
+/// `space-3` left padding (in CSS) line the icon up with the page-button
+/// icons below it, so the groups scan as one column. Non-interactive.
+fn settings_sidebar_section(name: &str, icon: &str) -> gtk::Box {
     use gtk::prelude::*;
 
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    row.add_css_class("settings-sidebar-section");
+    row.set_halign(gtk::Align::Fill);
+    row.set_hexpand(true);
+    row.set_valign(gtk::Align::Center);
+
+    let img = gtk::Image::from_icon_name(icon);
+    img.add_css_class("settings-sidebar-section-icon");
+    img.set_valign(gtk::Align::Center);
+    row.append(&img);
+
     let lbl = gtk::Label::new(None);
-    lbl.set_markup(&settings_sidebar_markup(label));
-    lbl.add_css_class("settings-sidebar-section");
+    lbl.set_markup(&settings_sidebar_markup(name));
+    lbl.add_css_class("settings-sidebar-section-label");
     lbl.set_halign(gtk::Align::Start);
     lbl.set_valign(gtk::Align::Center);
     lbl.set_xalign(0.0);
@@ -2404,14 +2443,11 @@ fn settings_sidebar_section_label(label: &str) -> gtk::Label {
     lbl.set_vexpand(false);
     lbl.set_wrap(false);
     lbl.set_single_line_mode(true);
-    // NO ellipsize: these are short fixed headers ("APPEARANCE", "SHELL", …).
-    // `letter-spacing` makes Pango under-report the label's natural width by
-    // the trailing letter-space, so with ellipsize on, GTK thinks the text
-    // doesn't fit and truncates it ("SHELL" → "SHE…") even though it does.
-    // Without ellipsize the (invisible) trailing space is all that's ever
-    // clipped, never a glyph.
+    // NO ellipsize: short fixed headers; ellipsize + letter-spacing under-
+    // reports the natural width and would clip a glyph.
     lbl.set_height_request(SETTINGS_SIDEBAR_SECTION_MIN_HEIGHT);
-    lbl
+    row.append(&lbl);
+    row
 }
 
 /// Build the sidebar buttons + section headers from [`SIDEBAR`] into
@@ -2427,9 +2463,9 @@ fn build_sidebar(
     let mut anchor: Option<gtk::ToggleButton> = None;
     for entry in SIDEBAR {
         match entry {
-            Section(name) => {
-                let lbl = settings_sidebar_section_label(name);
-                sidebar_box.append(&lbl);
+            Section { name, icon } => {
+                let header = settings_sidebar_section(name, icon);
+                sidebar_box.append(&header);
             }
             Page { route, icon, label } => {
                 let btn = gtk::ToggleButton::new();
