@@ -14,6 +14,10 @@ a dock icon-override fix, plus an internal field rename.
 
 ### Added
 
+- **CPU dashboard menu — Storage section.** The dashboard menu now shows a
+  **Storage** group: a per-mount usage bar (used / total + %, calm/warn/danger)
+  for each real filesystem, read from the shared system-stats service. Disk was
+  the one system metric the shell didn't surface anywhere.
 - **Podman menu — expandable container cards with shell, logs & ports.** The
   `mshellctl menu podman` Containers tab is now the house revealer-row card:
   a state-tinted glyph + name + image + chevron, expanding to the human status
@@ -65,6 +69,13 @@ a dock icon-override fix, plus an internal field rename.
 
 ### Changed
 
+- **Bar system-stat widgets now share one poll pass.** The CPU pill and the
+  Network pill each ran their own `/proc` poll loops while the reactive
+  `wayle-sysinfo` service (already built at startup) sat unused. Both pills now
+  read from that single service — one poll feeds every consumer, the pill and
+  the dashboard menu can't skew, and per-interface throughput + disk come from
+  the same place. (No external stats helper: native in-process reads beat an
+  extra subprocess.)
 - **Friendlier Settings sidebar group headers.** The sidebar's section
   headers are now Title-Case, user-facing names with a leading icon instead
   of terse ALL-CAPS jargon: `SHELL` → **Shell & Desktop**, `SYSTEM` →
