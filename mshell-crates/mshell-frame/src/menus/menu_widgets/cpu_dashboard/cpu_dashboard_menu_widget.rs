@@ -23,6 +23,7 @@ use crate::bars::bar_widgets::sysstat::{
     find_cpu_temp_sensor_pub, read_all_fans_pub, read_all_temp_sensors_pub, read_cpu_stat_pub,
     read_temp_millideg_pub,
 };
+use mshell_services::sys_info_service;
 use relm4::gtk::prelude::{
     BoxExt, DrawingAreaExt, DrawingAreaExtManual, GridExt, OrientableExt, WidgetExt,
 };
@@ -475,6 +476,21 @@ impl Component for CpuDashboardMenuWidgetModel {
                 },
             },
 
+            // Storage — per-mount usage, read from the shared
+            // SysinfoService (disks). Same labelled-bar row shape as
+            // Memory; rows are rebuilt imperatively each poll (the menu
+            // reads the service's cached snapshot — no extra disk I/O).
+            gtk::Label {
+                add_css_class: "cpu-dashboard-section-label",
+                set_label: "STORAGE",
+                set_halign: gtk::Align::Start,
+            },
+            #[name = "disk_box"]
+            gtk::Box {
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 6,
+            },
+
             // Load average + uptime — two labelled stat columns
             // (caption above value), the same caption→value rhythm the
             // hero uses, so the footer doesn't read as raw text.
@@ -651,6 +667,10 @@ impl Component for CpuDashboardMenuWidgetModel {
             let _ = cr.stroke();
         });
 
+        // Seed the storage rows from the service's current snapshot so
+        // the section is populated on first open, before the first poll.
+        rebuild_disk_rows(&widgets.disk_box);
+
         let _ = root;
         ComponentParts { model, widgets }
     }
@@ -765,6 +785,11 @@ impl Component for CpuDashboardMenuWidgetModel {
                     self.swap_total_kb = swap_total;
                     self.ram_percent = ram_pct(used, total);
                 }
+
+                // Storage: rebuild the per-mount rows from the service's
+                // cached disk snapshot (no extra disk I/O here).
+                rebuild_disk_rows(&widgets.disk_box);
+
                 if let Some((a, b, c)) = read_loadavg() {
                     self.load_1m = a;
                     self.load_5m = b;
@@ -828,6 +853,93 @@ fn ram_pct(used_kb: u64, total_kb: u64) -> u32 {
 
 fn swap_pct(used_kb: u64, total_kb: u64) -> u32 {
     ram_pct(used_kb, total_kb)
+}
+
+/// Storage severity bucket — disks fill slowly, so the thresholds sit
+/// high (warn 80 %, danger 92 %). Same calm/warn/danger class names the
+/// memory + hero bars use.
+fn disk_severity(pct: u32) -> &'static str {
+    if pct >= 92 {
+        "danger"
+    } else if pct >= 80 {
+        "warn"
+    } else {
+        "calm"
+    }
+}
+
+/// One storage row: mount caption + usage bar + "used / total" + percent —
+/// the same shape as the Memory rows. Built with builders so it needs no
+/// extra `*Ext` trait imports.
+fn build_disk_row(mount: &str, used_kb: u64, total_kb: u64, pct: u32) -> gtk::Box {
+    let row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(10)
+        .build();
+    row.append(
+        &gtk::Label::builder()
+            .label(mount)
+            .css_classes(["cpu-dashboard-stat-caption"])
+            .width_chars(6)
+            .max_width_chars(10)
+            .ellipsize(gtk::pango::EllipsizeMode::Middle)
+            .xalign(0.0)
+            .build(),
+    );
+    row.append(
+        &gtk::ProgressBar::builder()
+            .hexpand(true)
+            .valign(gtk::Align::Center)
+            .fraction((pct.min(100) as f64) / 100.0)
+            .css_classes(["cpu-dashboard-bar", disk_severity(pct)])
+            .build(),
+    );
+    row.append(
+        &gtk::Label::builder()
+            .label(format!("{} / {}", fmt_gb(used_kb), fmt_gb(total_kb)))
+            .css_classes(["cpu-dashboard-stat-detail"])
+            .build(),
+    );
+    row.append(
+        &gtk::Label::builder()
+            .label(format!("{pct}%"))
+            .css_classes(["cpu-dashboard-stat-value"])
+            .width_chars(4)
+            .xalign(1.0)
+            .build(),
+    );
+    row
+}
+
+/// Rebuild the storage rows in `container` from the shared
+/// `SysinfoService` disk snapshot. Real filesystems only (≥ 1 GiB drops
+/// efi / tmpfs / loop noise), sorted by mount and de-duplicated, capped so
+/// the section stays compact. Reads the service's cached value — no disk
+/// I/O happens here.
+fn rebuild_disk_rows(container: &gtk::Box) {
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
+    }
+    let mut disks: Vec<(String, u64, u64, u32)> = sys_info_service()
+        .disks
+        .get()
+        .into_iter()
+        .filter(|d| d.total_bytes >= 1024 * 1024 * 1024)
+        .map(|d| {
+            (
+                d.mount_point.to_string_lossy().into_owned(),
+                d.used_bytes / 1024,
+                d.total_bytes / 1024,
+                d.usage_percent.round() as u32,
+            )
+        })
+        .collect();
+    disks.sort_by(|a, b| a.0.cmp(&b.0));
+    disks.dedup_by(|a, b| a.0 == b.0);
+    disks.truncate(6);
+    for (mount, used_kb, total_kb, pct) in disks {
+        container.append(&build_disk_row(&mount, used_kb, total_kb, pct));
+    }
 }
 
 /// Read the aggregate `cpu` line of `/proc/stat` and return

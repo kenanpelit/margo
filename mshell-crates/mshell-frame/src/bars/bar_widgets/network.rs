@@ -8,24 +8,21 @@
 //! disconnect / rescan / radio-toggle actions live in the menu
 //! widget.
 //!
-//! Live throughput is the one thing NetworkManager doesn't give
-//! cheaply, so the `↓ … ↑ …` figure is still sampled from
-//! `/proc/net/dev` on a 1 s loop — a couple of file reads, no
-//! subprocess.
+//! Live throughput (the `↓ … ↑ …` figure) is read from the shared
+//! `sys_info_service()` (`wayle-sysinfo`) reactive store — per-interface
+//! rx/tx rates, summed across non-loopback links. One service poll feeds
+//! the pill (and any other consumer), so there's no per-pill
+//! `/proc/net/dev` loop here any more.
 
+use futures::StreamExt;
 use mshell_common::WatcherToken;
-use mshell_services::network_service;
+use mshell_services::{network_service, sys_info_service};
 use mshell_utils::network::{spawn_network_watcher, spawn_wifi_watcher, spawn_wired_watcher};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, IsA, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::time::Duration;
 use wayle_network::core::access_point::SecurityType;
 use wayle_network::types::connectivity::ConnectionType;
 use wayle_network::types::states::NetworkStatus;
-
-/// Live throughput sampling cadence — 1 s gives a readable
-/// KB/s figure without the number jittering too fast to read.
-const SPEED_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Bar-pill display mode. Right-click toggles between the two:
 ///   * `Speed` — live `↓ … ↑ …` throughput text (the default).
@@ -233,25 +230,36 @@ impl Component for NetworkModel {
             || NetworkCommandOutput::WiredChanged,
         );
 
-        // Live throughput poll — independent 1 s loop over
-        // `/proc/net/dev`. Keeps a `prev` reading and emits the
-        // per-second delta. File reads only, no subprocess.
+        // Live throughput — from the shared SysinfoService (per-interface
+        // rx/tx rates), summed across non-loopback interfaces. `watch()`
+        // yields the current value first, then on every change; one
+        // service poll feeds the pill, so there's no per-pill loop.
         sender.command(|out, shutdown| async move {
             let shutdown_fut = shutdown.wait();
             tokio::pin!(shutdown_fut);
-            let mut prev = read_net_totals().await;
+            let mut stream = sys_info_service().network.watch();
             loop {
                 tokio::select! {
                     () = &mut shutdown_fut => break,
-                    _ = tokio::time::sleep(SPEED_INTERVAL) => {}
+                    next = stream.next() => match next {
+                        Some(ifaces) => {
+                            let mut down = 0u64;
+                            let mut up = 0u64;
+                            for iface in &ifaces {
+                                if iface.interface == "lo" {
+                                    continue;
+                                }
+                                down = down.saturating_add(iface.rx_bytes_per_sec);
+                                up = up.saturating_add(iface.tx_bytes_per_sec);
+                            }
+                            let _ = out.send(NetworkCommandOutput::SpeedSampled(SpeedSample {
+                                down_bps: down,
+                                up_bps: up,
+                            }));
+                        }
+                        None => break,
+                    },
                 }
-                let now = read_net_totals().await;
-                let sample = SpeedSample {
-                    down_bps: now.0.saturating_sub(prev.0),
-                    up_bps: now.1.saturating_sub(prev.1),
-                };
-                prev = now;
-                let _ = out.send(NetworkCommandOutput::SpeedSampled(sample));
             }
         });
 

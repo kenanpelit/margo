@@ -6,6 +6,14 @@
 //! visibility in the bar cluster — off by default so the row reads
 //! CPU% · Temp°C only.
 //!
+//! **Data source.** CPU% and RAM% are read from the shared
+//! `sys_info_service()` (`wayle-sysinfo`) reactive store rather than a
+//! per-pill `/proc` poll loop: one poll pass in the service feeds this
+//! pill, the dashboard menu, and any other consumer, so they never skew
+//! and there's a single cadence. Temperature prefers the service's
+//! `temperature_celsius`, falling back to margo's own robust hwmon
+//! sensor discovery (`sysstat`) when the service can't supply one.
+//!
 //! Threshold semantics (the higher of the two values wins —
 //! mirrors how the user actually feels load: an idle CPU running
 //! hot is still "warm-looking", and a busy CPU at moderate temp
@@ -14,16 +22,13 @@
 //! - **warn**:   one of CPU 50–80 %, temp 60–80 °C
 //! - **danger**: CPU ≥ 80 % OR temp ≥ 80 °C
 
-use crate::bars::bar_widgets::sysstat::{
-    find_cpu_temp_sensor_pub, read_cpu_stat_pub, read_temp_millideg_pub,
-};
+use crate::bars::bar_widgets::sysstat::{find_cpu_temp_sensor_pub, read_temp_millideg_pub};
+use futures::StreamExt;
+use mshell_services::sys_info_service;
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
-use std::time::Duration;
-
-const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 // Threshold ceilings for the three visual states. Tuned high
 // enough that an idle desktop sits in "calm" — the previous
@@ -38,8 +43,8 @@ pub(crate) struct CpuDashboardModel {
     cpu_percent: u32,
     temp_celsius: i32,
     ram_percent: u32,
-    prev_total: u64,
-    prev_idle: u64,
+    /// hwmon sensor path used only as a fallback when the service can't
+    /// supply a CPU temperature (discovered once on init).
     sensor_path: Option<PathBuf>,
     _orientation: Orientation,
     /// Whether the bar pill cluster also surfaces the RAM
@@ -51,7 +56,6 @@ pub(crate) struct CpuDashboardModel {
 
 #[derive(Debug)]
 pub(crate) enum CpuDashboardInput {
-    Poll,
     Clicked,
     ToggleRamInBar,
 }
@@ -63,6 +67,18 @@ pub(crate) enum CpuDashboardOutput {
 
 pub(crate) struct CpuDashboardInit {
     pub(crate) orientation: Orientation,
+}
+
+/// Reactive updates pushed in from the `sys_info_service()` watch
+/// streams. Converted to primitives in the watcher so this crate
+/// doesn't need the `wayle-sysinfo` types directly.
+#[derive(Debug)]
+pub(crate) enum CpuDashboardCmd {
+    /// CPU usage % + the service's temperature (`None` → use the
+    /// hwmon fallback).
+    Cpu { percent: u32, temp: Option<i32> },
+    /// RAM usage %.
+    Mem { percent: u32 },
 }
 
 /// Pick the calm/warn/danger CSS class from the two top-level
@@ -91,7 +107,7 @@ fn severity_class(cpu: u32, temp: i32) -> &'static str {
 
 #[relm4::component(pub)]
 impl Component for CpuDashboardModel {
-    type CommandOutput = ();
+    type CommandOutput = CpuDashboardCmd;
     type Input = CpuDashboardInput;
     type Output = CpuDashboardOutput;
     type Init = CpuDashboardInit;
@@ -194,35 +210,70 @@ impl Component for CpuDashboardModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // Prime the running CPU delta so the first tick produces
-        // a meaningful percentage instead of "100 % since boot".
-        let (prev_total, prev_idle) = read_cpu_stat_pub();
+        let svc = sys_info_service();
+        let cpu0 = svc.cpu.get();
+        let mem0 = svc.memory.get();
         let sensor_path = find_cpu_temp_sensor_pub();
-        let temp_celsius = sensor_path
-            .as_ref()
-            .and_then(read_temp_millideg_pub)
-            .map(|t| t / 1000)
+        let temp_celsius = cpu0
+            .temperature_celsius
+            .filter(|t| *t > 0.0)
+            .map(|t| t.round() as i32)
+            .or_else(|| {
+                sensor_path
+                    .as_ref()
+                    .and_then(read_temp_millideg_pub)
+                    .map(|t| t / 1000)
+            })
             .unwrap_or(0);
-        let ram_percent = read_ram_used_percent_local().unwrap_or(0);
 
-        let sender_clone = sender.clone();
-        relm4::gtk::glib::timeout_add_local(POLL_INTERVAL, move || {
-            if sender_clone
-                .input_sender()
-                .send(CpuDashboardInput::Poll)
-                .is_err()
-            {
-                return relm4::gtk::glib::ControlFlow::Break;
+        // Subscribe to the shared service. `watch()` yields the current
+        // value first, then on every change — one poll pass feeds the
+        // pill, so there is no per-pill `/proc` loop any more.
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut stream = sys_info_service().cpu.watch();
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    next = stream.next() => match next {
+                        Some(d) => {
+                            let _ = out.send(CpuDashboardCmd::Cpu {
+                                percent: d.usage_percent.round() as u32,
+                                temp: d
+                                    .temperature_celsius
+                                    .filter(|t| *t > 0.0)
+                                    .map(|t| t.round() as i32),
+                            });
+                        }
+                        None => break,
+                    },
+                }
             }
-            relm4::gtk::glib::ControlFlow::Continue
+        });
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut stream = sys_info_service().memory.watch();
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    next = stream.next() => match next {
+                        Some(d) => {
+                            let _ = out.send(CpuDashboardCmd::Mem {
+                                percent: d.usage_percent.round() as u32,
+                            });
+                        }
+                        None => break,
+                    },
+                }
+            }
         });
 
         let model = CpuDashboardModel {
-            cpu_percent: 0,
+            cpu_percent: cpu0.usage_percent.round() as u32,
             temp_celsius,
-            ram_percent,
-            prev_total,
-            prev_idle,
+            ram_percent: mem0.usage_percent.round() as u32,
             sensor_path,
             _orientation: params.orientation,
             show_ram_in_bar: false,
@@ -251,30 +302,6 @@ impl Component for CpuDashboardModel {
         _root: &Self::Root,
     ) {
         match message {
-            CpuDashboardInput::Poll => {
-                let (total, idle) = read_cpu_stat_pub();
-                let delta_total = total.saturating_sub(self.prev_total);
-                let delta_idle = idle.saturating_sub(self.prev_idle);
-                if delta_total > 0 {
-                    let busy = delta_total.saturating_sub(delta_idle);
-                    self.cpu_percent = ((busy * 100) / delta_total) as u32;
-                }
-                self.prev_total = total;
-                self.prev_idle = idle;
-
-                if let Some(p) = &self.sensor_path
-                    && let Some(t) = read_temp_millideg_pub(p)
-                {
-                    self.temp_celsius = t / 1000;
-                }
-
-                self.ram_percent = read_ram_used_percent_local().unwrap_or(self.ram_percent);
-
-                _root.set_tooltip_text(Some(&format!(
-                    "CPU {}%  ·  Temp {}°C  ·  RAM {}%\nClick: open dashboard\nRight-click: toggle RAM in bar",
-                    self.cpu_percent, self.temp_celsius, self.ram_percent,
-                )));
-            }
             CpuDashboardInput::Clicked => {
                 let _ = sender.output(CpuDashboardOutput::Clicked);
             }
@@ -284,27 +311,33 @@ impl Component for CpuDashboardModel {
         }
         self.update_view(widgets, sender);
     }
-}
 
-fn read_ram_used_percent_local() -> Option<u32> {
-    let s = std::fs::read_to_string("/proc/meminfo").ok()?;
-    let mut total: Option<u64> = None;
-    let mut avail: Option<u64> = None;
-    for line in s.lines() {
-        if let Some(rest) = line.strip_prefix("MemTotal:") {
-            total = rest.split_whitespace().next()?.parse().ok();
-        } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
-            avail = rest.split_whitespace().next()?.parse().ok();
+    fn update_cmd_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::CommandOutput,
+        sender: ComponentSender<Self>,
+        root: &Self::Root,
+    ) {
+        match message {
+            CpuDashboardCmd::Cpu { percent, temp } => {
+                self.cpu_percent = percent;
+                if let Some(t) = temp {
+                    self.temp_celsius = t;
+                } else if let Some(p) = &self.sensor_path
+                    && let Some(t) = read_temp_millideg_pub(p)
+                {
+                    self.temp_celsius = t / 1000;
+                }
+            }
+            CpuDashboardCmd::Mem { percent } => {
+                self.ram_percent = percent;
+            }
         }
-        if total.is_some() && avail.is_some() {
-            break;
-        }
+        root.set_tooltip_text(Some(&format!(
+            "CPU {}%  ·  Temp {}°C  ·  RAM {}%\nClick: open dashboard\nRight-click: toggle RAM in bar",
+            self.cpu_percent, self.temp_celsius, self.ram_percent,
+        )));
+        self.update_view(widgets, sender);
     }
-    let total = total?;
-    let avail = avail?;
-    if total == 0 {
-        return None;
-    }
-    let used = total.saturating_sub(avail);
-    Some(((used * 100) / total) as u32)
 }
