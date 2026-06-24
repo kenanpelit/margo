@@ -698,3 +698,19 @@
         margin-top: var(--space-2);
     }
 }
+
+// Settings colour pickers: the inline hex Entry beside each
+// ColorDialogButton. It is the keyboard path — the dialog button opens a
+// separate toplevel that can't take keyboard focus under the layer-shell
+// Settings surface. `tabular-nums` keeps the 8 hex digits from jittering;
+// the `.error` class (toggled in Rust on an unparseable value) borrows the
+// matugen error role.
+.color-hex-entry {
+    font-family: monospace;
+    font-variant-numeric: tabular-nums;
+
+    &.error {
+        color: var(--error);
+        box-shadow: inset 0 0 0 var(--border-width) var(--error);
+    }
+}

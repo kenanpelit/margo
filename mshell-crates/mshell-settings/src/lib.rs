@@ -26,6 +26,7 @@ mod bluetooth_settings;
 mod catwalk_settings;
 mod cc_tiles_settings;
 mod clipboard_settings;
+mod color_input;
 mod compositor_conf;
 mod date_time_settings;
 mod default_apps_settings;

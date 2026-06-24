@@ -2,6 +2,7 @@ use crate::bar_settings::bar_widget_section::{
     BarSection, WidgetSectionInit, WidgetSectionInput, WidgetSectionModel,
 };
 use crate::bar_settings::monitor_chip::{MonitorChipModel, MonitorChipOutput};
+use crate::color_input::parse_hex_rgba;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
@@ -263,6 +264,10 @@ impl Component for BarSettingsModel {
                         }
                     },
 
+                    // Frame fill. The hex Entry is the keyboard path — the
+                    // ColorDialogButton opens a separate toplevel window that
+                    // can't receive keyboard focus under the layer-shell
+                    // Settings surface, so type/paste the code here instead.
                     gtk::Box {
                         add_css_class: "action-row",
                         set_orientation: gtk::Orientation::Horizontal,
@@ -272,15 +277,29 @@ impl Component for BarSettingsModel {
 
                         gtk::Label {
                             add_css_class: "label-small",
-                            set_label: "Frame fill / border",
+                            set_label: "Frame fill",
                             set_halign: gtk::Align::Start,
                             set_hexpand: true,
                             set_xalign: 0.0,
                         },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_label: "Fill",
-                            set_halign: gtk::Align::End,
+                        gtk::Entry {
+                            add_css_class: "color-hex-entry",
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: false,
+                            set_width_chars: 9,
+                            set_max_width_chars: 9,
+                            set_placeholder_text: Some("#rrggbbaa"),
+                            set_tooltip_text: Some("Hex colour — type or paste, then press Enter"),
+                            #[watch]
+                            set_text: &rgba_to_css(model.frame_color),
+                            connect_activate[sender] => move |e| {
+                                if let Some(rgba) = parse_hex_rgba(e.text().as_str()) {
+                                    e.remove_css_class("error");
+                                    sender.input(BarSettingsInput::FrameFillColorSet(rgba));
+                                } else {
+                                    e.add_css_class("error");
+                                }
+                            },
                         },
                         gtk::ColorDialogButton {
                             set_valign: gtk::Align::Center,
@@ -291,10 +310,41 @@ impl Component for BarSettingsModel {
                                 sender.input(BarSettingsInput::FrameFillColorSet(b.rgba()));
                             },
                         },
+                    },
+
+                    // Frame border (same keyboard-path rationale as fill).
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 8,
+                        #[watch]
+                        set_sensitive: model.frame_color_custom,
+
                         gtk::Label {
                             add_css_class: "label-small",
-                            set_label: "Border",
-                            set_halign: gtk::Align::End,
+                            set_label: "Frame border",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                        },
+                        gtk::Entry {
+                            add_css_class: "color-hex-entry",
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: false,
+                            set_width_chars: 9,
+                            set_max_width_chars: 9,
+                            set_placeholder_text: Some("#rrggbbaa"),
+                            set_tooltip_text: Some("Hex colour — type or paste, then press Enter"),
+                            #[watch]
+                            set_text: &rgba_to_css(model.frame_border_color),
+                            connect_activate[sender] => move |e| {
+                                if let Some(rgba) = parse_hex_rgba(e.text().as_str()) {
+                                    e.remove_css_class("error");
+                                    sender.input(BarSettingsInput::FrameBorderColorSet(rgba));
+                                } else {
+                                    e.add_css_class("error");
+                                }
+                            },
                         },
                         gtk::ColorDialogButton {
                             set_valign: gtk::Align::Center,
@@ -348,6 +398,25 @@ impl Component for BarSettingsModel {
                             set_halign: gtk::Align::Start,
                             set_hexpand: true,
                             set_xalign: 0.0,
+                        },
+                        gtk::Entry {
+                            add_css_class: "color-hex-entry",
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: false,
+                            set_width_chars: 9,
+                            set_max_width_chars: 9,
+                            set_placeholder_text: Some("#rrggbbaa"),
+                            set_tooltip_text: Some("Hex colour — type or paste, then press Enter"),
+                            #[watch]
+                            set_text: &rgba_to_css(model.separator_color),
+                            connect_activate[sender] => move |e| {
+                                if let Some(rgba) = parse_hex_rgba(e.text().as_str()) {
+                                    e.remove_css_class("error");
+                                    sender.input(BarSettingsInput::SeparatorColorSet(rgba));
+                                } else {
+                                    e.add_css_class("error");
+                                }
+                            },
                         },
                         gtk::ColorDialogButton {
                             set_valign: gtk::Align::Center,

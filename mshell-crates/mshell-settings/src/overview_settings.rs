@@ -6,6 +6,7 @@
 //! margo's `config.conf`, writes patch the `key = value` line in place,
 //! then `mctl reload` applies them live.
 
+use crate::color_input::parse_hex_rgba;
 use crate::row::Row;
 use relm4::gtk::prelude::*;
 use relm4::gtk::{gdk, gio};
@@ -331,9 +332,33 @@ impl Component for OverviewSettingsModel {
                         #[template_child] desc {
                             set_label: "Solid colour painted behind the scroller-overview cells (used when no backdrop image is set).",
                         },
+                        // Keyboard path — the ColorDialogButton's chooser is a
+                        // separate toplevel that can't take keyboard focus
+                        // under the layer-shell Settings surface, so type/paste
+                        // the hex here and press Enter.
+                        gtk::Entry {
+                            add_css_class: "color-hex-entry",
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: false,
+                            set_width_chars: 11,
+                            set_max_width_chars: 11,
+                            set_placeholder_text: Some("0xrrggbbaa"),
+                            set_tooltip_text: Some("Hex colour — type or paste, then press Enter"),
+                            #[watch]
+                            set_text: &rgba_to_hex(model.backdrop_color),
+                            connect_activate[sender] => move |e| {
+                                if let Some(rgba) = parse_hex_rgba(e.text().as_str()) {
+                                    e.remove_css_class("error");
+                                    sender.input(OverviewSettingsInput::SetBackdropColor(rgba));
+                                } else {
+                                    e.add_css_class("error");
+                                }
+                            },
+                        },
                         gtk::ColorDialogButton {
                             set_valign: gtk::Align::Center,
                             set_dialog: &gtk::ColorDialog::builder().with_alpha(true).build(),
+                            #[watch]
                             set_rgba: &model.backdrop_color,
                             connect_rgba_notify[sender] => move |b| {
                                 sender.input(OverviewSettingsInput::SetBackdropColor(b.rgba()));
