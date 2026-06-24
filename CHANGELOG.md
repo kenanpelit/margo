@@ -7,9 +7,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [1.0.10] – 2026-06-24
 
-A small release: a `>run` launcher palette with `$PATH` completion, an
-XWayland window-geometry fix, and a dock icon-override fix, plus an internal
-field rename.
+A small release: a `>run` launcher palette with `$PATH` completion, fzf-style
+search highlighting, an XWayland window-geometry fix, and a dock icon-override
+fix, plus an internal field rename.
 
 ### Added
 
@@ -20,6 +20,11 @@ field rename.
   directly on Enter (spawned by absolute path); a multi-token line
   (`>run a | b`) still runs as a free-form `sh -c` command; frecency lifts
   your most-used binaries to the top.
+- **fzf-style search highlighting.** The launcher results and the clipboard
+  menu's `/`-filter now accent-colour the characters your query matched in
+  each row. The colour is read live from the matugen `--primary`, so it
+  follows the theme; matched chars are coloured only (no bold), so row
+  geometry doesn't shift.
 
 ### Fixed
 
