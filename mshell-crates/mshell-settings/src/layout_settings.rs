@@ -108,6 +108,27 @@ pub(crate) enum LayoutSettingsInput {
     ApplyArrangement,
     /// Re-read live outputs, discarding un-applied drags.
     ResetArrangement,
+    /// Apply a semantic quick-profile (Internal/External/Extend/Mirror)
+    /// live via `mctl dispatch enable_output/disable_output` (+ wl-mirror).
+    ApplyProfile(DisplayProfile),
+    /// Flip one output on/off via `mctl dispatch toggle_output <connector>`.
+    ToggleOutput(String),
+}
+
+/// A semantic quick display profile — the four universal arrangements the
+/// niri/Win+P-style switcher offers, applied on top of the live outputs
+/// (laptop panel detected by an eDP/LVDS connector).
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum DisplayProfile {
+    /// Laptop panel only — every external output off.
+    InternalOnly,
+    /// External monitors only — the laptop panel off.
+    ExternalOnly,
+    /// Every output on, side by side.
+    Extend,
+    /// Every output on + `wl-mirror` duplicating the laptop onto the first
+    /// external monitor.
+    Mirror,
 }
 
 #[derive(Debug, Default)]
@@ -174,6 +195,57 @@ impl Component for LayoutSettingsModel {
                             set_wrap: true,
                         },
                     },
+                },
+
+                // ── Quick profiles + per-output power ──────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Quick profiles",
+                    set_halign: gtk::Align::Start,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "One-click display arrangements, applied live (mctl). The laptop panel is detected by its eDP/LVDS connector; Mirror duplicates it onto an external monitor (needs wl-mirror). Use Extend to bring every screen back.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                },
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    set_homogeneous: true,
+                    gtk::Button {
+                        add_css_class: "ok-button-surface",
+                        set_label: "Internal only",
+                        connect_clicked[sender] => move |_| sender.input(LayoutSettingsInput::ApplyProfile(DisplayProfile::InternalOnly)),
+                    },
+                    gtk::Button {
+                        add_css_class: "ok-button-surface",
+                        set_label: "External only",
+                        connect_clicked[sender] => move |_| sender.input(LayoutSettingsInput::ApplyProfile(DisplayProfile::ExternalOnly)),
+                    },
+                    gtk::Button {
+                        add_css_class: "ok-button-surface",
+                        set_label: "Extend",
+                        connect_clicked[sender] => move |_| sender.input(LayoutSettingsInput::ApplyProfile(DisplayProfile::Extend)),
+                    },
+                    gtk::Button {
+                        add_css_class: "ok-button-surface",
+                        set_label: "Mirror",
+                        set_tooltip_text: Some("Duplicate the laptop screen onto an external monitor (needs wl-mirror)"),
+                        connect_clicked[sender] => move |_| sender.input(LayoutSettingsInput::ApplyProfile(DisplayProfile::Mirror)),
+                    },
+                },
+                gtk::Label {
+                    add_css_class: "label-medium-bold",
+                    set_label: "Outputs",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 4,
+                },
+                #[name = "power_box"]
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
                 },
 
                 // ── Drag-to-arrange editor ─────────────────────
@@ -459,6 +531,7 @@ impl Component for LayoutSettingsModel {
                 self.editor = outs;
                 self.editor_dirty = false;
                 rebuild_editor_canvas(&widgets.editor_canvas, &self.editor, sender.clone());
+                rebuild_power(&widgets.power_box, &self.editor, sender.clone());
             }
             LayoutSettingsInput::OutputMoved(connector, x, y) => {
                 if let Some(o) = self.editor.iter_mut().find(|o| o.connector == connector) {
@@ -474,6 +547,17 @@ impl Component for LayoutSettingsModel {
             }
             LayoutSettingsInput::ResetArrangement => {
                 spawn_outputs(sender.clone());
+            }
+            LayoutSettingsInput::ApplyProfile(profile) => {
+                spawn_profile(sender.clone(), profile, self.editor.clone());
+            }
+            LayoutSettingsInput::ToggleOutput(connector) => {
+                run_dispatches(
+                    sender.clone(),
+                    vec![vec!["toggle_output".to_string(), connector.clone()]],
+                    None,
+                    format!("toggle {connector}"),
+                );
             }
         }
 
@@ -633,6 +717,191 @@ fn spawn_outputs(sender: ComponentSender<LayoutSettingsModel>) {
         };
         sender.input(LayoutSettingsInput::OutputsLoaded(outs));
     });
+}
+
+/// The laptop panel is the eDP / LVDS connector.
+fn is_internal_connector(connector: &str) -> bool {
+    let l = connector.to_ascii_lowercase();
+    l.starts_with("edp") || l.starts_with("lvds")
+}
+
+/// Run a sequence of `mctl dispatch <action> <connector>` commands, then
+/// optionally launch `wl-mirror` to show `mirror.1` fullscreen on
+/// `mirror.0`. A `CommandResult` re-reads the catalogue + live outputs
+/// afterwards. Any running mirror is dropped first so switching is clean.
+fn run_dispatches(
+    sender: ComponentSender<LayoutSettingsModel>,
+    dispatches: Vec<Vec<String>>,
+    mirror: Option<(String, String)>,
+    label: String,
+) {
+    relm4::spawn(async move {
+        let _ = tokio::process::Command::new("pkill")
+            .args(["-x", "wl-mirror"])
+            .status()
+            .await;
+
+        let mut err: Option<String> = None;
+        for d in &dispatches {
+            let res = tokio::process::Command::new("mctl")
+                .arg("dispatch")
+                .args(d)
+                .status()
+                .await;
+            match res {
+                Ok(s) if s.success() => {}
+                Ok(s) => {
+                    err = Some(format!("mctl dispatch {}: exit {s}", d.join(" ")));
+                    break;
+                }
+                Err(e) => {
+                    err = Some(format!("mctl dispatch {}: spawn failed: {e}", d.join(" ")));
+                    break;
+                }
+            }
+        }
+
+        if err.is_none()
+            && let Some((target, source)) = mirror
+            && let Err(e) = tokio::process::Command::new("wl-mirror")
+                .args(["--fullscreen-output", &target, &source])
+                .spawn()
+        {
+            err = Some(format!("wl-mirror: {e} (is it installed?)"));
+        }
+
+        sender.input(LayoutSettingsInput::CommandResult(match err {
+            Some(e) => Err(e),
+            None => Ok(label),
+        }));
+    });
+}
+
+/// Build the `mctl dispatch` plan for a semantic profile from the live
+/// outputs and run it. Laptop panel detected by an eDP/LVDS connector.
+fn spawn_profile(
+    sender: ComponentSender<LayoutSettingsModel>,
+    profile: DisplayProfile,
+    outputs: Vec<EditorOut>,
+) {
+    let internal: Vec<String> = outputs
+        .iter()
+        .filter(|o| is_internal_connector(&o.connector))
+        .map(|o| o.connector.clone())
+        .collect();
+    let external: Vec<String> = outputs
+        .iter()
+        .filter(|o| !is_internal_connector(&o.connector))
+        .map(|o| o.connector.clone())
+        .collect();
+
+    let enable = |c: &String| vec!["enable_output".to_string(), c.clone()];
+    let disable = |c: &String| vec!["disable_output".to_string(), c.clone()];
+
+    let (plan, mirror, label): (Vec<Vec<String>>, Option<(String, String)>, &str) = match profile {
+        DisplayProfile::InternalOnly => (
+            internal
+                .iter()
+                .map(&enable)
+                .chain(external.iter().map(&disable))
+                .collect(),
+            None,
+            "profile: internal only",
+        ),
+        DisplayProfile::ExternalOnly => (
+            external
+                .iter()
+                .map(&enable)
+                .chain(internal.iter().map(&disable))
+                .collect(),
+            None,
+            "profile: external only",
+        ),
+        DisplayProfile::Extend => (
+            outputs.iter().map(|o| enable(&o.connector)).collect(),
+            None,
+            "profile: extend",
+        ),
+        DisplayProfile::Mirror => {
+            let plan: Vec<Vec<String>> = outputs.iter().map(|o| enable(&o.connector)).collect();
+            let mirror = match (external.first(), internal.first()) {
+                (Some(ext), Some(int)) => Some((ext.clone(), int.clone())),
+                _ => None,
+            };
+            (plan, mirror, "profile: mirror")
+        }
+    };
+
+    if matches!(profile, DisplayProfile::Mirror) && mirror.is_none() {
+        sender.input(LayoutSettingsInput::CommandResult(Err(
+            "Mirror needs both a laptop screen and an external monitor".to_string(),
+        )));
+        return;
+    }
+
+    run_dispatches(sender, plan, mirror, label.to_string());
+}
+
+/// Rebuild the per-output power list: one row per live output with a
+/// toggle that flips it on/off (`mctl dispatch toggle_output <connector>`).
+fn rebuild_power(
+    container: &gtk::Box,
+    outputs: &[EditorOut],
+    sender: ComponentSender<LayoutSettingsModel>,
+) {
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
+    }
+    if outputs.is_empty() {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        row.set_margin_top(8);
+        row.set_margin_bottom(8);
+        row.set_margin_start(8);
+        let lbl = gtk::Label::builder()
+            .label("No live outputs detected.")
+            .css_classes(["label-small"])
+            .halign(gtk::Align::Start)
+            .build();
+        row.append(&lbl);
+        container.append(&row);
+        return;
+    }
+    for o in outputs {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        row.set_margin_top(6);
+        row.set_margin_bottom(6);
+        row.set_margin_start(8);
+        row.set_margin_end(8);
+
+        let title = if is_internal_connector(&o.connector) {
+            format!("{} · Laptop screen", o.connector)
+        } else if o.label.is_empty() {
+            o.connector.clone()
+        } else {
+            format!("{} · {}", o.connector, o.label)
+        };
+        let name = gtk::Label::builder()
+            .label(title)
+            .css_classes(["label-medium"])
+            .halign(gtk::Align::Start)
+            .hexpand(true)
+            .xalign(0.0)
+            .build();
+        row.append(&name);
+
+        let btn = gtk::Button::builder()
+            .label("Toggle")
+            .css_classes(["ok-button-surface"])
+            .valign(gtk::Align::Center)
+            .tooltip_text("Turn this output off / on (use Extend to bring all back)")
+            .build();
+        let s = sender.clone();
+        let conn = o.connector.clone();
+        btn.connect_clicked(move |_| s.input(LayoutSettingsInput::ToggleOutput(conn.clone())));
+        row.append(&btn);
+
+        container.append(&row);
+    }
 }
 
 fn parse_outputs(body: &str) -> Option<Vec<EditorOut>> {
