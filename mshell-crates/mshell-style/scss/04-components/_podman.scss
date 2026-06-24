@@ -71,13 +71,100 @@
   background-color: transparent;
 }
 
+// Each row is a content-card (§12): one tonal step above the panel
+// surface, rounded at the card radius. Hover/press washes live on the
+// interactive *children* (the header + action rows), not the whole card,
+// so the card itself doesn't light up as one block.
 .podman-row-list row {
-  padding: 2px var(--space-1);
-  border-radius: var(--radius-sm);
-  margin-bottom: var(--space-1);
-  background-color: var(--surface-container-high);
-  @include state-layer(var(--surface-container-high));
+  padding: 0;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+  background-color: var(--surface-container);
 }
 .podman-row-list row:last-child {
   margin-bottom: 0;
+}
+
+// Images / pods rows keep the old inline layout — give them a touch of
+// inset hover feedback so they still feel interactive.
+.podman-row-list row > box {
+  border-radius: var(--radius-md);
+}
+
+// ── Container card: header (collapses the revealer) ─────────────────
+.podman-row-header {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  min-height: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  @include state-layer(transparent);
+}
+
+.podman-status-icon {
+  -gtk-icon-size: 18px;
+}
+.podman-status-icon.running {
+  color: var(--primary);
+}
+.podman-status-icon.paused {
+  color: var(--warning);
+}
+.podman-status-icon.stopped {
+  color: var(--on-surface-variant);
+  opacity: 0.65;
+}
+.podman-status-icon.error {
+  color: var(--error);
+}
+
+.podman-chevron {
+  -gtk-icon-size: 16px;
+  color: var(--on-surface-variant);
+}
+
+// ── Container card: revealed detail ─────────────────────────────────
+.podman-detail {
+  padding: 0 var(--space-3) var(--space-2) var(--space-3);
+}
+
+.podman-port-chip {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.podman-actions {
+  margin-top: var(--space-1);
+}
+
+// Full-width labelled action button (Restart / Pause / Stop / Shell /
+// Logs / Start / Remove). Flat at rest, canonical 14% primary wash on
+// hover; the destructive variant escalates to the error tint on hover.
+.podman-action-row {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  min-height: 34px;
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--on-surface);
+  @include state-layer(transparent);
+}
+.podman-action-row image {
+  color: var(--on-surface-variant);
+}
+.podman-action-row.danger:hover {
+  background-color: unquote("color-mix(in srgb, var(--error) 14%, transparent)");
+  color: var(--error);
+}
+.podman-action-row.danger:hover image {
+  color: var(--error);
 }
