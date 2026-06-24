@@ -36,7 +36,7 @@
 //! When a query starts with `>` the runtime switches to **command
 //! mode**: it asks each provider for its `commands()` and looks for
 //! one whose `supports_command()` matches. The matching provider
-//! takes over result generation (so e.g. `>cmd ls` runs `ls` via
+//! takes over result generation (so e.g. `>run ls` runs `ls` via
 //! the Command provider, not the Apps fuzzy matcher).
 
 pub mod frecency;

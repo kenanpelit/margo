@@ -1,5 +1,5 @@
 //! Persistent MRU (most-recently-used) history of shell commands
-//! run via the `>cmd` Command provider.
+//! run via the `>run` Command provider.
 //!
 //! Stored as a JSON array on disk so the user can edit / clear it
 //! with `jq` or by deleting the file. Capped at
@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct StoreFile {
     /// Most-recently-used first. Each entry is the raw shell
-    /// expression as the user typed it (without the `>cmd `
+    /// expression as the user typed it (without the `>run `
     /// prefix).
     #[serde(default)]
     entries: Vec<String>,

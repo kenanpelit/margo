@@ -2,7 +2,7 @@
 //! by a [`LauncherRuntime`].
 //!
 //! Replaces the legacy app-only widget: every result row (apps,
-//! calculator, session actions, settings shortcuts, `>cmd`) flows
+//! calculator, session actions, settings shortcuts, `>run`) flows
 //! through the same provider trait + scoring + frecency pipeline.
 //! The widget itself only owns UI state (filter string, selection
 //! index) and delegates everything else to the runtime.

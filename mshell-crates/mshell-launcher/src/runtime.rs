@@ -360,7 +360,7 @@ impl LauncherRuntime {
         for p in &self.providers {
             if p.handles_command(trimmed) {
                 let results = p.search(trimmed);
-                // Command mode is a typed, provider-owned query (`>cmd`,
+                // Command mode is a typed, provider-owned query (`>run`,
                 // `>start`, `bt`, …); leave its ordering to the provider +
                 // frequency, not recency.
                 return self.decorate(self.apply_frecency_and_sort(results, false));

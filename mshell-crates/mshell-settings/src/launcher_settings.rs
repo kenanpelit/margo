@@ -358,7 +358,7 @@ impl Component for LauncherSettingsModel {
                     set_label: "Reset the launcher's persistent state. \
                                 Frecency clears the usage counts that \
                                 push frequently-launched apps to the \
-                                top; history clears the >cmd MRU list; \
+                                top; history clears the >run MRU list; \
                                 clipboard clears the running clipboard \
                                 ring.",
                     set_halign: gtk::Align::Start,
