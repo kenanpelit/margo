@@ -16,6 +16,16 @@ ConditionPathExists=/usr/bin/mshell
 
 [Service]
 Type=simple
+
+# Cap glibc's per-thread malloc arenas. mshell runs ~70 threads (a tokio pool
+# sized to the CPU count + wayle service workers); with the default unbounded
+# arena count glibc spins up an arena per contended thread (~150 × 64 MB on a
+# many-core box), bloating RSS with cross-arena fragmentation it never returns
+# to the OS — observed ~1.3 GB RSS / ~13 GB virtual where live data was a small
+# fraction. Two arenas keep malloc concurrency adequate for a desktop shell's
+# light allocation rate while collapsing that fragmentation.
+Environment=MALLOC_ARENA_MAX=2
+
 ExecStart=/usr/bin/mshell
 Restart=on-failure
 RestartSec=2
