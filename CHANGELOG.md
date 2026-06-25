@@ -5,6 +5,50 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.11] – 2026-06-26
+
+A performance + memory release. The clipboard and launcher no longer stutter
+on large histories or package searches, mshell's memory footprint is cut
+substantially, and the keep-awake-while-media-plays inhibitor no longer
+freezes the shell.
+
+### Fixed
+
+- **Keep-awake-while-media-plays could freeze the shell.** The idle inhibitor
+  added in 1.0.10 re-subscribed to the wayle playback `Property` from inside
+  the very handler that subscription fired, looping forever the moment playback
+  state changed — a hard freeze of the bar and menus. List-change (which needs
+  a re-subscribe) is now split from item-change (reconcile only), so playback
+  transitions no longer feed back on themselves.
+- **Clipboard history was sluggish to open and search with a large history.**
+  The menu rebuilt its list from a full clone of every entry — including each
+  entry's raw bytes, which images make tens of megabytes — on every open, every
+  copy-while-open, and every search keystroke (e.g. a 1000-entry history with a
+  handful of images cloned ~27 MB per keystroke). It now builds from
+  lightweight preview-only views; the raw payloads are touched only by the
+  persistence layer that actually needs them.
+- **Launcher froze while searching packages.** Typing `p <query>` ran
+  `pacman -Ss` (or `paru -Ss`) synchronously on the GTK main thread — a 1–3 s
+  subprocess per keystroke that locked up the whole UI. The lookup now runs on
+  a worker thread (a brief "searching…" row shows while it's in flight), and a
+  short settle window coalesces a fast typist's keystrokes so only the term
+  they pause on hits pacman.
+
+### Changed
+
+- **`>start` scripts are indexed off the main thread.** The scripts provider
+  used to walk every `$PATH` directory (thousands of entries under `/usr/bin`)
+  synchronously on every launcher open. It now scans lazily on a worker thread,
+  only the first time `>start` / the Run tab is actually used.
+- **Substantially lower memory footprint.** mshell's RSS was dominated by glibc
+  malloc-arena fragmentation driven by its thread count (a CPU-sized async pool
+  + per-service workers spun up ~150 × 64 MB arenas). Capping the glibc arenas
+  (`MALLOC_ARENA_MAX=2` in `mshell.service`) cut RSS by ~38 % (~1.25 GB →
+  ~782 MB) and reserved virtual address space from ~13 GB → ~1.5 GB. A mimalloc
+  global allocator (Rust-side allocations) and a right-sized tokio worker pool
+  (4 workers instead of one per CPU) trim the remainder and keep RSS from
+  ratcheting up over a long session.
+
 ## [1.0.10] – 2026-06-24
 
 A small release: a `>run` launcher palette with `$PATH` completion, fzf-style
