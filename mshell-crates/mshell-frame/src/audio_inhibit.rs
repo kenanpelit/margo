@@ -51,8 +51,14 @@ pub enum AudioInhibitInput {
 
 #[derive(Debug)]
 pub enum AudioInhibitCmd {
-    /// The player list or some player's playback state changed.
-    MediaChanged,
+    /// The player list (or active player) changed — re-subscribe to every
+    /// player's `playback_state`, then reconcile.
+    PlayersChanged,
+    /// Some player's `playback_state` changed — reconcile only. Crucially we
+    /// do **not** re-subscribe here: a `.watch()` emits its current value the
+    /// instant it is subscribed, so re-subscribing on a playback change would
+    /// re-emit → re-subscribe → spin forever and freeze the shell.
+    PlaybackChanged,
 }
 
 pub struct AudioInhibitInit {}
@@ -77,8 +83,8 @@ impl Component for AudioInhibitModel {
     ) -> ComponentParts<Self> {
         spawn_media_players_watcher(
             &sender,
-            || AudioInhibitCmd::MediaChanged,
-            || AudioInhibitCmd::MediaChanged,
+            || AudioInhibitCmd::PlayersChanged,
+            || AudioInhibitCmd::PlayersChanged,
         );
 
         let mut effects = EffectScope::new();
@@ -131,8 +137,11 @@ impl Component for AudioInhibitModel {
         _root: &Self::Root,
     ) {
         match message {
-            AudioInhibitCmd::MediaChanged => {
+            AudioInhibitCmd::PlayersChanged => {
                 subscribe_playback(&sender, &mut self.watcher_token);
+                self.reconcile();
+            }
+            AudioInhibitCmd::PlaybackChanged => {
                 self.reconcile();
             }
         }
@@ -180,7 +189,7 @@ fn subscribe_playback(
         let playback_state = player.playback_state.clone();
         let t = token.clone();
         watch_cancellable!(sender, t, [playback_state.watch()], |out| {
-            let _ = out.send(AudioInhibitCmd::MediaChanged);
+            let _ = out.send(AudioInhibitCmd::PlaybackChanged);
         });
     }
 }
