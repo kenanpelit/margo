@@ -9,9 +9,49 @@
 //! conflicts/deps/replacements that a generic popover can't
 //! represent.
 
-use crate::{item::LauncherItem, notify::toast, provider::Provider};
+use crate::{
+    item::LauncherItem,
+    notify::toast,
+    provider::{Provider, RefreshNotifier},
+};
 use std::process::Command;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+/// How long the background search worker waits before actually
+/// spawning `pacman -Ss`. A keystroke that supersedes the term within
+/// this window aborts the worker first, so a fast typist's
+/// intermediate terms (`fir`, `fire`, `firef`…) don't each spawn a
+/// subprocess — only the term they pause on does. This is the
+/// debounce, run off the main thread so it never delays the launcher's
+/// instant in-memory providers.
+const SEARCH_SETTLE: Duration = Duration::from_millis(180);
+
+/// Query-keyed snapshot of the last package search, shared with the
+/// background worker. `pacman -Ss` is a blocking subprocess (1-3 s on a
+/// slow mirror) and used to run inside [`Provider::search`] on the GTK
+/// main thread, freezing the whole UI on every keystroke. Now `search`
+/// serves from here instantly and the actual lookup runs on a worker
+/// thread; when it lands it fills this cache and fires the
+/// [`RefreshNotifier`] so the launcher re-queries and the rows appear.
+#[derive(Default)]
+struct PkgCache {
+    /// The term the cache currently holds / is fetching results for.
+    term: String,
+    /// Parsed hits for `term` (valid only once `ready`).
+    hits: Vec<Hit>,
+    /// A worker is settling or running `pacman -Ss` for `term`.
+    in_flight: bool,
+    /// `term`'s search completed — distinguishes "still fetching" from
+    /// "ran and genuinely matched nothing".
+    ready: bool,
+    /// Bumped on every new term of interest. A worker stores its result
+    /// only if the generation it captured still matches, so a
+    /// superseded (typed-past) search discards its result instead of
+    /// clobbering the latest term's rows.
+    generation: u64,
+}
 
 pub struct ArchLinuxPkgsProvider {
     /// AUR helper found on PATH (`yay` / `paru` / `pamac`). When
@@ -29,6 +69,11 @@ pub struct ArchLinuxPkgsProvider {
     /// package lookups still require an explicit prefix to avoid
     /// running pacman on every generic Search-tab keystroke.
     set_search: Option<Rc<dyn Fn(&str) + 'static>>,
+    /// Shared with the background search worker (see [`PkgCache`]).
+    cache: Arc<Mutex<PkgCache>>,
+    /// Fired (from the worker) when a search lands, so the launcher
+    /// re-runs the current query and shows the new rows.
+    notifier: Option<RefreshNotifier>,
 }
 
 impl ArchLinuxPkgsProvider {
@@ -50,12 +95,147 @@ impl ArchLinuxPkgsProvider {
             helper,
             terminal,
             set_search: None,
+            cache: Arc::new(Mutex::new(PkgCache::default())),
+            notifier: None,
         }
     }
 
     pub fn with_search_setter(mut self, set_search: Rc<dyn Fn(&str) + 'static>) -> Self {
         self.set_search = Some(set_search);
         self
+    }
+
+    /// Hits for `term` from the background cache, kicking an off-thread
+    /// `pacman -Ss` when the cache doesn't already hold them.
+    ///
+    /// * `Some(hits)` — results are ready (possibly empty: a genuine
+    ///   no-match), served instantly from the cache.
+    /// * `None` — a worker is (settling then) fetching this term; the
+    ///   caller shows a transient placeholder and the [`RefreshNotifier`]
+    ///   re-queries us once the rows land.
+    ///
+    /// Never blocks: the subprocess always runs on a worker thread.
+    fn hits_for(&self, term: &str) -> Option<Vec<Hit>> {
+        let generation = {
+            // A poisoned lock would mean a worker panicked mid-update;
+            // degrade to "no results" rather than take the shell down.
+            let Ok(mut cache) = self.cache.lock() else {
+                return None;
+            };
+            if cache.term == term {
+                if cache.ready {
+                    return Some(cache.hits.clone());
+                }
+                if cache.in_flight {
+                    return None; // already fetching this exact term
+                }
+            }
+            // New term of interest — (re)start a fetch.
+            cache.term = term.to_string();
+            cache.hits.clear();
+            cache.ready = false;
+            cache.in_flight = true;
+            cache.generation = cache.generation.wrapping_add(1);
+            cache.generation
+        };
+
+        let cache = Arc::clone(&self.cache);
+        let notifier = self.notifier.clone();
+        let helper = self.helper.clone();
+        let term = term.to_string();
+        std::thread::spawn(move || {
+            // Debounce: a newer keystroke bumps the generation; if ours
+            // is stale after the settle window, abort before running
+            // pacman so intermediate terms don't each spawn a search.
+            std::thread::sleep(SEARCH_SETTLE);
+            match cache.lock() {
+                Ok(c) if c.generation == generation => {}
+                _ => return, // superseded (or poisoned) — abort
+            }
+
+            let hits = search_packages(&term, helper.as_deref());
+
+            let stored = match cache.lock() {
+                Ok(mut c) if c.generation == generation => {
+                    c.hits = hits;
+                    c.ready = true;
+                    c.in_flight = false;
+                    true
+                }
+                _ => false, // typed past this term (or poisoned) — discard
+            };
+            if stored && let Some(notify) = &notifier {
+                notify();
+            }
+        });
+
+        None
+    }
+
+    /// Map parsed package hits into activatable launcher rows. Pure
+    /// (main-thread) work — the slow `pacman` call already happened on
+    /// the worker thread in [`Self::hits_for`].
+    fn items_from_hits(&self, hits: Vec<Hit>) -> Vec<LauncherItem> {
+        let install_cmd = self.helper.clone().unwrap_or_else(|| "pacman".into());
+        let terminal = self.terminal.clone();
+
+        hits.into_iter()
+            .take(80)
+            .enumerate()
+            .map(|(idx, hit)| {
+                let pkg = hit.full.clone();
+                let pkg_short = pkg.split('/').next_back().unwrap_or(&pkg).to_string();
+                let term_clone = terminal.clone();
+                let install_cmd_clone = install_cmd.clone();
+                let pkg_label = pkg.clone();
+                let label = if hit.installed {
+                    format!("{}  {}  [installed]", hit.full, hit.version)
+                } else {
+                    format!("{}  {}", hit.full, hit.version)
+                };
+                let description = if hit.description.is_empty() {
+                    "Press Enter to install in a terminal".into()
+                } else {
+                    hit.description.clone()
+                };
+                LauncherItem {
+                    id: format!("archpkgs:{}", hit.full),
+                    name: label,
+                    description,
+                    icon: if hit.installed {
+                        "emblem-default-symbolic".into()
+                    } else {
+                        "package-x-generic-symbolic".into()
+                    },
+                    icon_is_path: false,
+                    score: 180.0 - idx as f64,
+                    provider_name: "Arch packages".into(),
+                    usage_key: Some(format!("archpkgs:{}", hit.full)),
+                    on_activate: Rc::new(move || {
+                        spawn_install(&term_clone, &install_cmd_clone, &pkg_short);
+                        toast("Installing", pkg_label.clone());
+                    }),
+                }
+            })
+            .collect()
+    }
+}
+
+/// Transient, non-actionable row shown while a background package
+/// search is in flight, so the Search tab reads as "working" rather
+/// than empty during the ~1 s lookup. Carries no `usage_key` (never
+/// recorded) and a no-op activation.
+fn searching_row(term: &str) -> LauncherItem {
+    LauncherItem {
+        id: "archpkgs:searching".into(),
+        name: format!("Searching Arch + AUR for “{term}”…"),
+        description: "Results will appear in a moment".into(),
+        icon: "system-search-symbolic".into(),
+        icon_is_path: false,
+        score: 200.0,
+        provider_name: "Arch packages".into(),
+        usage_key: None,
+        on_activate: Rc::new(|| {}),
     }
 }
 
@@ -74,6 +254,7 @@ fn which_exists(bin: &str) -> bool {
 }
 
 /// One package row.
+#[derive(Clone)]
 struct Hit {
     /// `repo/name` (e.g. `extra/firefox` or `aur/spotify`).
     full: String,
@@ -208,49 +389,17 @@ impl Provider for ArchLinuxPkgsProvider {
             return Vec::new();
         }
 
-        let hits = search_packages(term, self.helper.as_deref());
-        let install_cmd = self.helper.clone().unwrap_or_else(|| "pacman".into());
-        let terminal = self.terminal.clone();
+        // Serve from the background cache; never run `pacman` on this
+        // (main) thread. `None` = a worker is fetching this term — show
+        // a transient "searching" row until the notifier re-queries us.
+        match self.hits_for(term) {
+            Some(hits) => self.items_from_hits(hits),
+            None => vec![searching_row(term)],
+        }
+    }
 
-        hits.into_iter()
-            .take(80)
-            .enumerate()
-            .map(|(idx, hit)| {
-                let pkg = hit.full.clone();
-                let pkg_short = pkg.split('/').next_back().unwrap_or(&pkg).to_string();
-                let term_clone = terminal.clone();
-                let install_cmd_clone = install_cmd.clone();
-                let pkg_label = pkg.clone();
-                let label = if hit.installed {
-                    format!("{}  {}  [installed]", hit.full, hit.version)
-                } else {
-                    format!("{}  {}", hit.full, hit.version)
-                };
-                let description = if hit.description.is_empty() {
-                    "Press Enter to install in a terminal".into()
-                } else {
-                    hit.description.clone()
-                };
-                LauncherItem {
-                    id: format!("archpkgs:{}", hit.full),
-                    name: label,
-                    description,
-                    icon: if hit.installed {
-                        "emblem-default-symbolic".into()
-                    } else {
-                        "package-x-generic-symbolic".into()
-                    },
-                    icon_is_path: false,
-                    score: 180.0 - idx as f64,
-                    provider_name: "Arch packages".into(),
-                    usage_key: Some(format!("archpkgs:{}", hit.full)),
-                    on_activate: Rc::new(move || {
-                        spawn_install(&term_clone, &install_cmd_clone, &pkg_short);
-                        toast("Installing", pkg_label.clone());
-                    }),
-                }
-            })
-            .collect()
+    fn set_refresh_notifier(&mut self, notifier: RefreshNotifier) {
+        self.notifier = Some(notifier);
     }
 
     fn browse(&self, filter: &str) -> Vec<LauncherItem> {

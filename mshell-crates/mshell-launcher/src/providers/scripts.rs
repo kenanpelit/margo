@@ -23,8 +23,20 @@
 //! frecency store ranks frequently-launched scripts to the top
 //! of the `>start` palette.
 
-use crate::{item::LauncherItem, notify::toast, provider::Provider};
-use std::{cell::RefCell, collections::HashSet, path::PathBuf, process::Command, rc::Rc};
+use crate::providers::bg_cache::BgCache;
+use crate::{
+    item::LauncherItem,
+    notify::toast,
+    provider::{Provider, RefreshNotifier},
+};
+use std::time::Duration;
+use std::{collections::HashSet, path::PathBuf, process::Command, rc::Rc};
+
+/// How long a `$PATH` scan stays warm before [`BgCache`] re-runs it.
+/// Generous because `on_opened` already invalidates on every panel
+/// open, so this only bounds staleness for a launcher left open a long
+/// time.
+const SCRIPTS_TTL: Duration = Duration::from_secs(10);
 
 /// One indexed script. Cached after `refresh()` so subsequent
 /// `>start` keystrokes are a pure in-memory filter — no `readdir`
@@ -40,13 +52,16 @@ struct ScriptEntry {
 }
 
 pub struct ScriptsProvider {
-    /// Prefix every script name must start with. Lives behind a
-    /// `Cell<String>` so the Settings page can swap it without
-    /// rebuilding the provider; for now it's set at construction
+    /// Prefix every script name must start with. Set at construction
     /// time and never changed.
     prefix: String,
-    /// Cached entries — refreshed on every `on_opened()`.
-    entries: RefCell<Vec<ScriptEntry>>,
+    /// Indexed scripts, refreshed off the GTK main thread. The `$PATH`
+    /// walk used to run synchronously in `on_opened` (every panel open)
+    /// and at construction — `read_dir` over every `$PATH` directory,
+    /// thousands of entries in `/usr/bin` alone. Now `on_opened` just
+    /// invalidates and the (re)scan happens lazily on a worker thread
+    /// the first time `>start` / the Run tab actually queries us.
+    cache: BgCache<Vec<ScriptEntry>>,
 }
 
 impl ScriptsProvider {
@@ -61,76 +76,45 @@ impl ScriptsProvider {
     }
 
     pub fn with_prefix(prefix: impl Into<String>) -> Self {
-        let me = Self {
+        Self {
             prefix: prefix.into(),
-            entries: RefCell::new(Vec::new()),
-        };
-        me.refresh();
-        me
+            cache: BgCache::new(SCRIPTS_TTL),
+        }
+    }
+
+    /// Current indexed scripts (cached snapshot, kicking an off-thread
+    /// rescan when cold/stale). `None` only on the very first cold
+    /// access before the worker lands.
+    fn entries(&self) -> Vec<ScriptEntry> {
+        let prefix = self.prefix.clone();
+        self.cache
+            .get(move || scan_scripts(&prefix))
+            .unwrap_or_default()
     }
 
     /// Snapshot of the currently-indexed scripts as
     /// `(name, path)` pairs. The Settings UI uses this to list
-    /// what's discoverable through `>start`.
+    /// what's discoverable through `>start`. Scans synchronously so
+    /// the page always reflects the real `$PATH` (not the hot path).
     pub fn indexed(&self) -> Vec<(String, PathBuf)> {
-        self.entries
-            .borrow()
-            .iter()
-            .map(|e| (e.name.clone(), e.path.clone()))
+        scan_scripts(&self.prefix)
+            .into_iter()
+            .map(|e| (e.name, e.path))
             .collect()
     }
 
-    /// Just the script names, for compact display. Cheap because
-    /// it just clones already-cached strings.
+    /// Just the script names, for compact display.
     pub fn indexed_names(&self) -> Vec<String> {
-        self.entries
-            .borrow()
-            .iter()
-            .map(|e| e.name.clone())
+        scan_scripts(&self.prefix)
+            .into_iter()
+            .map(|e| e.name)
             .collect()
     }
 
-    /// Walk every directory on `$PATH` and collect executables
-    /// matching the configured prefix. Names are deduplicated
-    /// (first hit wins) so the same script reachable through two
-    /// PATH entries doesn't show twice.
+    /// Invalidate the cached index so the next query re-scans `$PATH`
+    /// (off-thread). Kept public for callers that force a rescan.
     pub fn refresh(&self) {
-        let mut seen: HashSet<String> = HashSet::new();
-        let mut scripts: Vec<ScriptEntry> = Vec::new();
-
-        let path = std::env::var_os("PATH").unwrap_or_default();
-        for dir in std::env::split_paths(&path) {
-            let Ok(read) = std::fs::read_dir(&dir) else {
-                continue;
-            };
-            for entry in read.flatten() {
-                let Ok(file_type) = entry.file_type() else {
-                    continue;
-                };
-                if file_type.is_dir() {
-                    continue;
-                }
-                let name = match entry.file_name().into_string() {
-                    Ok(s) => s,
-                    Err(_) => continue,
-                };
-                if !name.starts_with(&self.prefix) {
-                    continue;
-                }
-                if !seen.insert(name.clone()) {
-                    continue;
-                }
-                if !is_executable(&entry.path()) {
-                    continue;
-                }
-                scripts.push(ScriptEntry {
-                    name,
-                    path: entry.path(),
-                });
-            }
-        }
-        scripts.sort_by(|a, b| a.name.cmp(&b.name));
-        *self.entries.borrow_mut() = scripts;
+        self.cache.invalidate();
     }
 
     fn make_item(&self, entry: &ScriptEntry, score: f64) -> LauncherItem {
@@ -161,6 +145,50 @@ impl Default for ScriptsProvider {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Walk every directory on `$PATH` and collect executables matching
+/// `prefix`. Names are deduplicated (first hit wins) so the same
+/// script reachable through two PATH entries doesn't show twice.
+/// Pure + `Send` (operates on owned data) so [`BgCache`] can run it on
+/// a worker thread.
+fn scan_scripts(prefix: &str) -> Vec<ScriptEntry> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut scripts: Vec<ScriptEntry> = Vec::new();
+
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    for dir in std::env::split_paths(&path) {
+        let Ok(read) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in read.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                continue;
+            }
+            let name = match entry.file_name().into_string() {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            if !name.starts_with(prefix) {
+                continue;
+            }
+            if !seen.insert(name.clone()) {
+                continue;
+            }
+            if !is_executable(&entry.path()) {
+                continue;
+            }
+            scripts.push(ScriptEntry {
+                name,
+                path: entry.path(),
+            });
+        }
+    }
+    scripts.sort_by(|a, b| a.name.cmp(&b.name));
+    scripts
 }
 
 /// Check whether `path` has at least one executable bit set.
@@ -225,7 +253,7 @@ impl Provider for ScriptsProvider {
             .trim()
             .to_ascii_lowercase();
 
-        let entries = self.entries.borrow();
+        let entries = self.entries();
         // Score MRU-ish: substring matches start at 100, the
         // frecency boost the runtime adds (5*log2(1+count)) is what
         // ultimately surfaces most-used scripts to the top.
@@ -253,10 +281,17 @@ impl Provider for ScriptsProvider {
     }
 
     fn on_opened(&mut self) {
-        // Re-scan PATH on every open — cheap enough (handful of
-        // readdirs) and ensures new scripts the user added with
-        // `chmod +x` between opens show up immediately.
-        self.refresh();
+        // Mark the index stale so a script the user added with
+        // `chmod +x` between opens is picked up — but defer the actual
+        // `$PATH` walk to the first `>start` / Run-tab query, on a
+        // worker thread, instead of blocking this (main-thread) open.
+        self.cache.invalidate();
+    }
+
+    fn set_refresh_notifier(&mut self, notifier: RefreshNotifier) {
+        // Fired from the worker when a rescan lands so the launcher
+        // re-runs the current query and the rows appear.
+        self.cache.set_notifier(notifier);
     }
 
     /// Allow Delete on script rows so a mis-bumped frecency entry
@@ -308,8 +343,8 @@ mod tests {
     #[test]
     fn exact_name_match_outranks_generic_run_row() {
         let p = ScriptsProvider::with_prefix("start-");
-        // Pin a deterministic index (refresh() scanned the real PATH).
-        *p.entries.borrow_mut() = vec![
+        // Pin a deterministic index (bypassing the real $PATH scan).
+        p.cache.seed(vec![
             ScriptEntry {
                 name: "start-brave-kenp".into(),
                 path: "/x/start-brave-kenp".into(),
@@ -318,7 +353,7 @@ mod tests {
                 name: "start-brave-ai".into(),
                 path: "/x/start-brave-ai".into(),
             },
-        ];
+        ]);
 
         // Exact full-name query → boosted above the Command provider's
         // live "Run: …" row (200) so Enter runs the script directly.

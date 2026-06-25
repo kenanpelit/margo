@@ -97,6 +97,28 @@ impl<T: Clone + Send + 'static> BgCache<T> {
 
         value
     }
+
+    /// Drop the cached snapshot so the next [`Self::get`] is treated as
+    /// cold and kicks a fresh off-thread refresh. Used by providers
+    /// whose inputs changed (e.g. a panel-open asked for a re-scan):
+    /// the rescan still happens on a worker thread, not the caller's.
+    pub(crate) fn invalidate(&self) {
+        if let Ok(mut guard) = self.inner.lock() {
+            *guard = None;
+        }
+    }
+
+    /// Seed the snapshot directly (no refresh). Test helper for
+    /// injecting a deterministic value.
+    #[cfg(test)]
+    pub(crate) fn seed(&self, value: T) {
+        if let Ok(mut guard) = self.inner.lock() {
+            *guard = Some(Cached {
+                value,
+                captured_at: Instant::now(),
+            });
+        }
+    }
 }
 
 #[cfg(test)]
