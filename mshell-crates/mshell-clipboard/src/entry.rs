@@ -135,6 +135,41 @@ impl ClipboardEntry {
             self.mime_type.to_lowercase()
         }
     }
+
+    /// Project to a lightweight [`EntryView`] for the menu's list model.
+    /// Computes the category + search haystack once and clones only the
+    /// (cheap, `Arc`-backed) preview — crucially **never** the raw
+    /// `data` payload (up to 10 MB/entry). Building the model from views
+    /// instead of [`crate::ClipboardHistory::entries`] is what keeps a
+    /// menu open / search keystroke from copying the whole history.
+    pub fn to_view(&self) -> EntryView {
+        EntryView {
+            id: self.id,
+            timestamp: self.timestamp,
+            category: self.category(),
+            pinned: self.pinned,
+            preview: self.preview.clone(),
+            haystack: self.search_haystack(),
+        }
+    }
+}
+
+/// Lightweight, displayable projection of a [`ClipboardEntry`] used as
+/// the clipboard menu's per-row model data. Carries only what a row
+/// renders — preview + metadata + a pre-lowercased search haystack —
+/// and deliberately **excludes** the entry's raw `data` bytes, so the
+/// list model never holds the full clipboard payloads.
+#[derive(Clone, Debug)]
+pub struct EntryView {
+    pub id: u64,
+    pub timestamp: OffsetDateTime,
+    pub category: ClipCategory,
+    pub pinned: bool,
+    pub preview: EntryPreview,
+    /// Pre-lowercased search target (full text for text entries, MIME
+    /// for image/binary) so the live `/` filter is a cheap substring
+    /// test — computed once per populate, not per keystroke.
+    pub haystack: String,
 }
 
 #[derive(Clone, Debug)]

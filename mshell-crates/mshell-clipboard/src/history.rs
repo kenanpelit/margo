@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-use crate::entry::ClipboardEntry;
+use crate::entry::{ClipboardEntry, EntryView};
 
 #[derive(Clone)]
 pub struct ClipboardHistory {
@@ -79,6 +79,22 @@ impl ClipboardHistory {
         // hoisted to the top; the Favorites tab is where they're
         // shown in isolation.
         inner.entries.iter().cloned().collect()
+    }
+
+    /// Lightweight projection of the whole history for the UI list
+    /// model: each entry mapped to an [`EntryView`] (preview +
+    /// metadata + search haystack) under a single lock, **without**
+    /// cloning the entries' raw `data` payloads. This is what the
+    /// clipboard menu populates from; [`Self::entries`] (full clones,
+    /// incl. `data`) is reserved for persistence, which needs the bytes.
+    pub fn views(&self) -> Vec<EntryView> {
+        // Degrade to an empty list rather than panic if the lock is
+        // poisoned — a stale/blank clipboard menu beats taking the
+        // shell down (and keeps this off the panic-ratchet).
+        let Ok(inner) = self.inner.lock() else {
+            return Vec::new();
+        };
+        inner.entries.iter().map(ClipboardEntry::to_view).collect()
     }
 
     pub fn get(&self, id: u64) -> Option<ClipboardEntry> {

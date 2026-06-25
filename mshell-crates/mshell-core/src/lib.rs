@@ -126,6 +126,17 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         &config_manager.config().get_untracked().clipboard,
     ));
 
+    // Warm the clipboard service on a background thread now, so its
+    // one-time synchronous restore (read history.json + decode every
+    // persisted image thumbnail) runs off the GTK main thread instead
+    // of blocking the first clipboard-menu build at login. The watcher
+    // is a thread-safe `OnceLock`; whichever side wins the race, the
+    // heavy decode no longer lands on the main thread in the common
+    // case (this starts well before any frame is built).
+    std::thread::spawn(|| {
+        let _ = mshell_clipboard::clipboard_service();
+    });
+
     // Initialize the effects in the wallpaper store
     let _ = mshell_cache::wallpaper::wallpaper_store();
 

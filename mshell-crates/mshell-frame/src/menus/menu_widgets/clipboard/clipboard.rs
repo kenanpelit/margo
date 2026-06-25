@@ -1,5 +1,5 @@
 use mshell_clipboard::{
-    ClipCategory, ClipboardEntry, ClipboardHistory, EntryPreview, clipboard_service,
+    ClipCategory, ClipboardHistory, EntryPreview, EntryView, clipboard_service,
 };
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::clipboard::{ClipboardDensity, ClipboardStoreFields};
@@ -162,35 +162,13 @@ fn configured_list_max_height() -> i32 {
         .get_untracked()
 }
 
-/// Lightweight per-row data placed in the [`gio::ListStore`] (wrapped
-/// in a [`glib::BoxedAnyObject`]). Deliberately **excludes** the
-/// entry's raw `data` payload — a row never needs it — so the list
-/// model holds previews + metadata only, not the full clipboard bytes.
-#[derive(Clone)]
-struct ClipRow {
-    id: u64,
-    timestamp: OffsetDateTime,
-    category: ClipCategory,
-    pinned: bool,
-    preview: EntryPreview,
-    /// Pre-lowercased search target so the live filter is a cheap
-    /// substring test, recomputed once per populate, not per keystroke.
-    haystack: String,
-}
-
-impl ClipRow {
-    fn from_entry(e: &ClipboardEntry) -> Self {
-        Self {
-            id: e.id,
-            timestamp: e.timestamp,
-            category: e.category(),
-            pinned: e.pinned,
-            preview: e.preview.clone(),
-            haystack: e.search_haystack(),
-        }
-    }
-}
-
+/// Per-row model data placed in the [`gio::ListStore`] (wrapped in a
+/// [`glib::BoxedAnyObject`]) is [`EntryView`] — a lightweight
+/// projection that carries previews + metadata + search haystack but
+/// **never** the entry's raw `data` payload, so the list model holds
+/// no clipboard bytes. Built under the history lock via
+/// [`ClipboardHistory::views`].
+///
 /// Sub-widgets of a recycled list row, stashed on the `ListItem` in
 /// `connect_setup` and re-read in `connect_bind` to repaint for the
 /// newly-bound [`ClipRow`].
@@ -544,7 +522,7 @@ impl Component for ClipboardModel {
             let Some(bo) = obj.downcast_ref::<glib::BoxedAnyObject>() else {
                 return false;
             };
-            let row = bo.borrow::<ClipRow>();
+            let row = bo.borrow::<EntryView>();
             if !filter_tab.get().matches_cat(row.category, row.pinned) {
                 return false;
             }
@@ -654,7 +632,7 @@ impl Component for ClipboardModel {
             let Ok(bo) = obj.downcast::<glib::BoxedAnyObject>() else {
                 return;
             };
-            let row = bo.borrow::<ClipRow>();
+            let row = bo.borrow::<EntryView>();
 
             rw.title.set_label(&relative_time(row.timestamp));
             rw.type_icon
@@ -694,7 +672,7 @@ impl Component for ClipboardModel {
             if let Some(obj) = activate_selection.item(position)
                 && let Ok(bo) = obj.downcast::<glib::BoxedAnyObject>()
             {
-                let id = bo.borrow::<ClipRow>().id;
+                let id = bo.borrow::<EntryView>().id;
                 activate_sender.input(ClipboardInput::CopyId(id));
             }
         });
@@ -969,18 +947,19 @@ impl ClipboardModel {
     /// this on its own. Search-independent (the `/` filter narrows the
     /// view, the counts always reflect the whole history).
     fn populate(&mut self) {
-        let entries = self.history.entries();
+        // Lightweight views (no raw `data` clone, category computed
+        // once) — see [`ClipboardHistory::views`].
+        let views = self.history.views();
         let mut counts = [0usize; ClipTab::ALL.len()];
 
         self.store.remove_all();
-        for e in &entries {
+        for view in views {
             for (i, tab) in ClipTab::ALL.iter().enumerate() {
-                if tab.matches_cat(e.category(), e.pinned) {
+                if tab.matches_cat(view.category, view.pinned) {
                     counts[i] += 1;
                 }
             }
-            self.store
-                .append(&glib::BoxedAnyObject::new(ClipRow::from_entry(e)));
+            self.store.append(&glib::BoxedAnyObject::new(view));
         }
 
         self.tab_counts = counts;
@@ -1022,7 +1001,7 @@ impl ClipboardModel {
         }
         let obj = self.selection.item(pos)?;
         let bo = obj.downcast::<glib::BoxedAnyObject>().ok()?;
-        let id = bo.borrow::<ClipRow>().id;
+        let id = bo.borrow::<EntryView>().id;
         Some(id)
     }
 
@@ -1051,7 +1030,7 @@ impl ClipboardModel {
 fn row_id_of(list_item: &gtk::ListItem) -> Option<u64> {
     let obj = list_item.item()?;
     let bo = obj.downcast::<glib::BoxedAnyObject>().ok()?;
-    let id = bo.borrow::<ClipRow>().id;
+    let id = bo.borrow::<EntryView>().id;
     Some(id)
 }
 

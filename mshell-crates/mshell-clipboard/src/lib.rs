@@ -5,7 +5,7 @@ mod settings;
 mod thumbnail;
 mod watcher;
 
-pub use entry::{ClipCategory, ClipboardEntry, EntryPreview};
+pub use entry::{ClipCategory, ClipboardEntry, EntryPreview, EntryView};
 pub use history::ClipboardHistory;
 pub use settings::{ClearPolicy, ClipboardSettings, PersistMode};
 pub use watcher::{ClipboardEvent, ClipboardWatcher};
