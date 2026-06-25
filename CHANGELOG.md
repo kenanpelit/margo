@@ -99,7 +99,10 @@ a dock icon-override fix, plus an internal field rename.
   sections are now real accordion groups — each header is a clickable row
   (icon + Title-Case name + chevron) that expands/collapses its pages, with
   the open/closed state remembered across reopens and the active page's group
-  auto-expanded. Headers are also renamed from terse ALL-CAPS jargon to
+  auto-expanded. The headers are also styled to actually read as headers —
+  full-strength `--on-surface` at bold weight with a `--primary`-accent icon,
+  so a group clearly out-ranks the page rows beneath it instead of looking
+  like a dim caption. Headers are also renamed from terse ALL-CAPS jargon to
   user-facing names: `SHELL` → **Shell & Desktop**, `SYSTEM` → **System &
   Devices**, `INPUT` → **Input & Shortcuts**, plus Appearance / Locale &
   Accounts / Advanced / About. Two page labels soften too — **OSD → On-screen
