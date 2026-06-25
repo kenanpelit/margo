@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
+mimalloc.workspace = true
 mshell-cli-style.workspace = true
 mshell-core.workspace = true
 mshell-logging.workspace = true

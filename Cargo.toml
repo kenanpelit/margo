@@ -102,6 +102,12 @@ manual_checked_ops = "allow"
 anyhow = "1.0"
 bitflags = "2.0"
 clap = { version = "4.0", features = ["derive"] }
+# Global allocator for the long-lived mshell binary (Rust-side allocations).
+# mimalloc fragments far less than glibc malloc across mshell's many threads
+# and returns freed memory to the OS, so the shell's RSS doesn't ratchet up
+# over a session. Complements `MALLOC_ARENA_MAX=2` in mshell.service, which
+# bounds the glibc arenas that GTK's C-side allocations still use.
+mimalloc = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"

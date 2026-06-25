@@ -12,7 +12,21 @@ static TOKIO_RT: OnceLock<Runtime> = OnceLock::new();
 /// initial value if we poll from relm4's private runtime; subsequent
 /// `replace`/`set` updates are missed).
 pub fn tokio_rt() -> &'static Runtime {
-    TOKIO_RT.get_or_init(|| Runtime::new().expect("tokio runtime"))
+    TOKIO_RT.get_or_init(|| {
+        // The wayle services this drives are I/O-bound (D-Bus signal
+        // streams, periodic polls) — not CPU-bound. `Runtime::new()`
+        // sizes the worker pool to the CPU count (22 threads on this
+        // box), which is wasted scheduling + thread overhead for a
+        // desktop shell; 4 async workers comfortably multiplex every
+        // service's monitoring task. Named so its threads are
+        // attributable in `/proc/<pid>/task/*/comm`.
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(4)
+            .enable_all()
+            .thread_name("mshell-tokio")
+            .build()
+            .expect("tokio runtime")
+    })
 }
 
 /// Convenience wrapper around `tokio_rt().spawn(...)`.
