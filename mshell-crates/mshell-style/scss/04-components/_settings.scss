@@ -250,21 +250,28 @@
     }
 }
 .settings-sidebar-section-icon {
-    color: var(--on-surface-variant);
+    // Accent the group with a primary-tinted leading glyph — carries the
+    // "pop" so the title text can stay neutral-strong rather than coloured.
+    color: var(--primary);
+    -gtk-icon-size: 17px;
 }
 .settings-sidebar-section-label {
-    // Bigger than a caption now that it's a real group header (was 11.5px) —
-    // Title Case, semibold, the calm secondary tier.
-    font-size: calc(13px * var(--font-scale-settings, 1.0));
-    font-weight: 600;
+    // A real group header, not a caption: it must out-rank the page rows
+    // beneath it (15.5px / 500 / --on-surface), so it was reading *weaker*
+    // than its own children when set at 13px / on-surface-variant. Match the
+    // page-label baseline size, go full-strength --on-surface, and carry the
+    // hierarchy on weight (700) + a touch more tracking. Title Case set in
+    // Rust (GTK CSS has no text-transform).
+    font-size: calc(15.5px * var(--font-scale-settings, 1.0));
+    font-weight: 700;
     line-height: 1.4;
-    letter-spacing: 0.01em;
-    color: var(--on-surface-variant);
+    letter-spacing: 0.02em;
+    color: var(--on-surface);
 }
 .settings-sidebar-chevron {
     -gtk-icon-size: 16px;
-    color: var(--on-surface-variant);
-    opacity: 0.7;
+    color: var(--on-surface);
+    opacity: 0.8;
 }
 
 .settings-sidebar-title {
