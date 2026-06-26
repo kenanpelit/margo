@@ -32,11 +32,14 @@ use tracing::{info, warn};
 static FONT: OnceLock<Option<Font>> = OnceLock::new();
 
 thread_local! {
-    /// `(text, height_px, packed_rgb, max_width_px)` → rasterised buffer
-    /// (`None` when the text rasterised to nothing). Reused across frames
-    /// so Smithay's texture upload stays cached.
-    static LABEL_CACHE: RefCell<HashMap<(String, i32, u32, i32), Option<MemoryRenderBuffer>>> =
-        RefCell::new(HashMap::new());
+    /// `(height_px, packed_rgb, max_width_px)` → (`text` → rasterised
+    /// buffer; `None` when the text rasterised to nothing). Reused across
+    /// frames so Smithay's texture upload stays cached. The text is the
+    /// *inner* key so the common cache-hit lookup can borrow it as `&str`
+    /// rather than allocating a key `String` every frame.
+    static LABEL_CACHE: RefCell<
+        HashMap<(i32, u32, i32), HashMap<String, Option<MemoryRenderBuffer>>>,
+    > = RefCell::new(HashMap::new());
 }
 
 fn font() -> Option<&'static Font> {
@@ -122,19 +125,25 @@ pub fn label_element(
     }
     let font = font()?;
     let packed = ((rgb[0] as u32) << 16) | ((rgb[1] as u32) << 8) | rgb[2] as u32;
-    let key = (text.to_string(), height_px, packed, max_width_px);
+    let style_key = (height_px, packed, max_width_px);
 
     LABEL_CACHE.with(|c| {
         let mut cache = c.borrow_mut();
-        // Window titles change often (browser tabs etc.); cap the cache so
-        // stale entries can't accumulate unbounded over a long session.
-        if cache.len() > 512 {
+        // Window titles change often (browser tabs etc.); cap the total
+        // cached buffers so stale entries can't accumulate unbounded over
+        // a long session.
+        let total: usize = cache.values().map(HashMap::len).sum();
+        if total > 512 {
             cache.clear();
         }
-        let buf = cache
-            .entry(key)
-            .or_insert_with(|| build_buffer(font, text, height_px, max_width_px, rgb));
-        let buf = buf.as_ref()?;
+        let inner = cache.entry(style_key).or_default();
+        // Hit path borrows `text` as `&str` — we only allocate a key
+        // `String` when actually inserting a freshly-rasterised buffer.
+        if !inner.contains_key(text) {
+            let buf = build_buffer(font, text, height_px, max_width_px, rgb);
+            inner.insert(text.to_string(), buf);
+        }
+        let buf = inner.get(text)?.as_ref()?;
         MemoryRenderBufferRenderElement::from_buffer(
             renderer,
             pos,

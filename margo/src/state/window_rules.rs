@@ -416,17 +416,10 @@ impl MargoState {
             handle.send_done();
         }
 
-        let title_rules_exist = self.config.window_rules.iter().any(|rule| {
-            rule.title
-                .as_ref()
-                .is_some_and(|pattern| !pattern.is_empty())
-                || rule
-                    .exclude_title
-                    .as_ref()
-                    .is_some_and(|pattern| !pattern.is_empty())
-        });
+        // Cached at config-load time (`config_has_title_rules`) instead
+        // of re-scanning every window rule on each title commit.
         let should_reapply_rules = (app_id_changed && !app_id.is_empty())
-            || (title_changed && !title.is_empty() && title_rules_exist);
+            || (title_changed && !title.is_empty() && self.title_rules_exist);
 
         if should_reapply_rules && self.reapply_rules(idx, WindowRuleReason::AppIdSettled) {
             let new_monitor = self.clients[idx].monitor;

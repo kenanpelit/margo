@@ -64,6 +64,30 @@ impl MargoState {
                 })
                 .unwrap_or(0),
         };
+        // Single pass over clients → per-monitor aggregates. The monitor
+        // loop below used to re-scan all of `self.clients` three times
+        // *per monitor* (occupied tag mask + the two scratchpad counts),
+        // i.e. O(monitors × clients × 3); this folds them in one O(clients)
+        // sweep so the loop just indexes the result.
+        let mon_count = self.monitors.len();
+        let mut occupied_mask = vec![0u32; mon_count];
+        let mut scratchpad_visible = vec![0usize; mon_count];
+        let mut scratchpad_hidden = vec![0usize; mon_count];
+        for c in &self.clients {
+            let m = c.monitor;
+            if m >= mon_count {
+                continue;
+            }
+            occupied_mask[m] |= c.tags;
+            if c.is_in_scratchpad {
+                if c.is_scratchpad_show {
+                    scratchpad_visible[m] += 1;
+                } else {
+                    scratchpad_hidden[m] += 1;
+                }
+            }
+        }
+
         let outputs: Vec<_> = self
             .monitors
             .iter()
@@ -93,9 +117,7 @@ impl MargoState {
                     "layout_idx": mon.pertag.ltidxs[mon.pertag.curtag] as u32,
                     "active_tag_mask": active_tag,
                     "prev_tag_mask": prev_tag,
-                    "occupied_tag_mask": self.clients.iter()
-                        .filter(|c| c.monitor == i)
-                        .fold(0u32, |a, c| a | c.tags),
+                    "occupied_tag_mask": occupied_mask[i],
                     "is_overview": mon.is_overview,
                     // W3.6: per-tag wallpaper hint of the *active*
                     // tag. Wallpaper daemons watching state snapshot
@@ -114,16 +136,8 @@ impl MargoState {
                     // app_ids, most recent first). MRU widgets and
                     // dock indicators read these to render counts +
                     // recently-used app rings.
-                    "scratchpad_visible": self.clients.iter()
-                        .filter(|c| c.monitor == i
-                            && c.is_in_scratchpad
-                            && c.is_scratchpad_show)
-                        .count(),
-                    "scratchpad_hidden": self.clients.iter()
-                        .filter(|c| c.monitor == i
-                            && c.is_in_scratchpad
-                            && !c.is_scratchpad_show)
-                        .count(),
+                    "scratchpad_visible": scratchpad_visible[i],
+                    "scratchpad_hidden": scratchpad_hidden[i],
                     "focus_history": mon.focus_history.iter()
                         .filter_map(|&idx| self.clients.get(idx))
                         .map(|c| c.app_id.clone())
@@ -170,28 +184,35 @@ impl MargoState {
             })
             .collect();
 
-        // The canonical layouts list — same set the live status
-        // bar shows.
-        let all_layouts = [
-            crate::layout::LayoutId::Tile,
-            crate::layout::LayoutId::Scroller,
-            crate::layout::LayoutId::Grid,
-            crate::layout::LayoutId::Monocle,
-            crate::layout::LayoutId::Deck,
-            crate::layout::LayoutId::CenterTile,
-            crate::layout::LayoutId::RightTile,
-            crate::layout::LayoutId::VerticalScroller,
-            crate::layout::LayoutId::VerticalTile,
-            crate::layout::LayoutId::VerticalGrid,
-            crate::layout::LayoutId::VerticalDeck,
-            crate::layout::LayoutId::TgMix,
-            crate::layout::LayoutId::Canvas,
-            crate::layout::LayoutId::Dwindle,
-        ];
-        let layout_names: Vec<_> = all_layouts
-            .iter()
-            .map(|l| serde_json::Value::String(l.name().to_string()))
-            .collect();
+        // The canonical layouts list — same set the live status bar
+        // shows. It's compile-time constant, so build the JSON name
+        // array once and clone it instead of rebuilding the 14-element
+        // `LayoutId` array + re-running `name()` on every snapshot.
+        static LAYOUT_NAMES: std::sync::OnceLock<Vec<serde_json::Value>> =
+            std::sync::OnceLock::new();
+        let layout_names = LAYOUT_NAMES
+            .get_or_init(|| {
+                [
+                    crate::layout::LayoutId::Tile,
+                    crate::layout::LayoutId::Scroller,
+                    crate::layout::LayoutId::Grid,
+                    crate::layout::LayoutId::Monocle,
+                    crate::layout::LayoutId::Deck,
+                    crate::layout::LayoutId::CenterTile,
+                    crate::layout::LayoutId::RightTile,
+                    crate::layout::LayoutId::VerticalScroller,
+                    crate::layout::LayoutId::VerticalTile,
+                    crate::layout::LayoutId::VerticalGrid,
+                    crate::layout::LayoutId::VerticalDeck,
+                    crate::layout::LayoutId::TgMix,
+                    crate::layout::LayoutId::Canvas,
+                    crate::layout::LayoutId::Dwindle,
+                ]
+                .iter()
+                .map(|l| serde_json::Value::String(l.name().to_string()))
+                .collect()
+            })
+            .clone();
 
         // Active output: the monitor `focused_monitor()` resolves
         // to. Includes pointer-monitor fallback, so cursor-only

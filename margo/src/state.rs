@@ -180,6 +180,16 @@ pub enum ActiveOutputSource {
     Pointer,
 }
 
+/// Does any window rule carry a title / exclude_title pattern? Cached on
+/// `MargoState` as `title_rules_exist` and only recomputed when the config
+/// changes — see that field.
+fn config_has_title_rules(config: &Config) -> bool {
+    config.window_rules.iter().any(|rule| {
+        rule.title.as_ref().is_some_and(|p| !p.is_empty())
+            || rule.exclude_title.as_ref().is_some_and(|p| !p.is_empty())
+    })
+}
+
 pub struct MargoState {
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
@@ -596,6 +606,13 @@ pub struct MargoState {
     config_path: Option<PathBuf>,
 
     pub config: Config,
+    /// Cached "does any window rule carry a title / exclude_title
+    /// pattern?" — recomputed only when `config` changes (startup +
+    /// `reload_config`). Title commits fire often (browser tabs,
+    /// terminal titles); without this every one re-scanned the whole
+    /// `window_rules` list just to decide whether a title change could
+    /// possibly re-match a rule.
+    pub title_rules_exist: bool,
     /// Snapshot of theme-relevant `Config` fields captured the first
     /// time `apply_theme_preset` runs. `Theme::Default` resets to
     /// this snapshot; the snapshot is also reset on `mctl reload` so
@@ -1193,6 +1210,7 @@ impl MargoState {
             hotplug_last_event_at: None,
             hotplug_rescan_pending: false,
             hot_corner_armed_at: None,
+            title_rules_exist: config_has_title_rules(&config),
             config,
             theme_baseline: None,
         }
@@ -1630,6 +1648,7 @@ impl MargoState {
         let old_borderpx = self.config.borderpx;
         let new_borderpx = new_config.borderpx;
         self.config = new_config;
+        self.title_rules_exist = config_has_title_rules(&self.config);
 
         // Re-apply the file-logging knobs live so `mctl config reload`
         // (and Settings → Logging via the compositor `.conf`) takes effect
