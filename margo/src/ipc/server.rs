@@ -269,12 +269,21 @@ impl MargoState {
     /// retried via a WRITE source. A connection whose backlog exceeds
     /// [`IPC_OUT_CAP`] is dropped (slow consumer → reconnect + re-sync).
     pub fn ipc_send(&mut self, token: u32, value: &serde_json::Value) {
+        let mut line = value.to_string();
+        line.push('\n');
+        self.ipc_send_line(token, &line);
+    }
+
+    /// Queue an already-serialized, newline-terminated frame. Lets the
+    /// `watch` fan-out serialize one byte-identical `state` document once
+    /// and reuse it across every subscriber instead of re-`to_string`-ing
+    /// per connection. Same backpressure/slow-consumer policy as
+    /// [`Self::ipc_send`].
+    pub fn ipc_send_line(&mut self, token: u32, line: &str) {
         let over_cap = {
             let Some(c) = self.ipc_conns.get_mut(&token) else {
                 return;
             };
-            let mut line = value.to_string();
-            line.push('\n');
             if c.out_buf.len().saturating_add(line.len()) > IPC_OUT_CAP {
                 true
             } else {

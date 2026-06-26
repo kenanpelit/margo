@@ -1,5 +1,6 @@
 //! `watch`-subscription registry + change fan-out.
 
+use crate::ipc::topics::project_topic;
 use crate::state::MargoState;
 
 /// One active `watch` subscription.
@@ -41,9 +42,25 @@ impl MargoState {
             .iter()
             .map(|w| (w.token, w.topic.clone(), w.args.clone()))
             .collect();
+        // Build the full snapshot ONCE per flush, not once per subscriber.
+        // Every `state` subscriber gets a byte-identical document, so its
+        // serialized line is produced once and reused; projection topics
+        // (`tags`, `twilight`, `monitor`, …) derive from the same `snap`
+        // instead of each forcing another O(monitors×clients) rebuild.
+        let snap = self.build_state_snapshot();
+        let mut state_line: Option<String> = None;
         for (token, topic, args) in subs {
-            let payload = self.ipc_topic(&topic, &args);
-            self.ipc_send(token, &payload);
+            if topic == "state" {
+                let line: &str = state_line.get_or_insert_with(|| {
+                    let mut s = snap.to_string();
+                    s.push('\n');
+                    s
+                });
+                self.ipc_send_line(token, line);
+            } else {
+                let payload = project_topic(&snap, &self.current_kb_layout, &topic, &args);
+                self.ipc_send(token, &payload);
+            }
         }
     }
 }

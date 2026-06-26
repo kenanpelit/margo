@@ -1513,6 +1513,13 @@ fn push_client_elements(
 ) {
     let scale = Scale::from(output_scale);
 
+    // Index clients by window once per output per frame. The per-window
+    // body below resolved its client with a linear `clients.iter().find`,
+    // making this loop O(windows × clients) every frame — quadratic in the
+    // open-window count. The map makes each lookup O(1).
+    let client_by_window: std::collections::HashMap<_, _> =
+        state.clients.iter().map(|c| (&c.window, c)).collect();
+
     for window in state.space.elements_for_output(output).rev() {
         let Some(location) = state.space.element_location(window) else {
             continue;
@@ -1520,7 +1527,7 @@ fn push_client_elements(
         let render_location = location - window.geometry().loc;
         let physical_location = (render_location - output_geo.loc).to_physical_precise_round(scale);
 
-        let client = state.clients.iter().find(|client| client.window == *window);
+        let client = client_by_window.get(&window).copied();
 
         // Overview alpha: while overview is open, every non-selected
         // thumbnail renders dimmed (config `overview_dim_alpha`,
@@ -1693,8 +1700,15 @@ fn push_client_elements(
                                     .into(),
                                 (client.geom.width.max(1), client.geom.height.max(1)).into(),
                             );
+                            // Stable id (reused across frames) so an
+                            // unchanged shadow reports zero damage instead
+                            // of re-damaging its oversized bbox every frame.
+                            let shadow_id = match window.wl_surface() {
+                                Some(s) => state.decoration_element_ids(&s).0,
+                                None => smithay::backend::renderer::element::Id::new(),
+                            };
                             let shadow = crate::render::shadow::ShadowRenderElement::new(
-                                smithay::backend::renderer::element::Id::new(),
+                                shadow_id,
                                 win_rect,
                                 state.config.border_radius.max(0) as f32,
                                 state.config.shadows_size as f32,
@@ -1962,9 +1976,16 @@ fn push_client_elements(
                                 )
                                     .into(),
                             );
+                            // Stable id (reused across frames) so unchanged
+                            // window blur reports zero damage rather than
+                            // re-damaging its rect every frame.
+                            let blur_id = match window.wl_surface() {
+                                Some(s) => state.decoration_element_ids(&s).1,
+                                None => smithay::backend::renderer::element::Id::new(),
+                            };
                             elements.push(MargoRenderElement::Blur(
                                 crate::render::blur::BlurRenderElement::new(
-                                    smithay::backend::renderer::element::Id::new(),
+                                    blur_id,
                                     rect,
                                     radius,
                                     state.config.blur_params,
@@ -2157,9 +2178,14 @@ fn push_layer_elements(
                     (geo.loc.x, geo.loc.y).into(),
                     (geo.size.w.max(1), geo.size.h.max(1)).into(),
                 );
+                // Stable id (reused across frames) so unchanged layer blur
+                // reports zero damage rather than re-damaging every frame.
+                let blur_id = state
+                    .decoration_element_ids(surface.layer_surface().wl_surface())
+                    .1;
                 elements.push(MargoRenderElement::Blur(
                     crate::render::blur::BlurRenderElement::new(
-                        smithay::backend::renderer::element::Id::new(),
+                        blur_id,
                         rect,
                         0.0,
                         state.config.blur_params,

@@ -627,6 +627,26 @@ pub struct MargoState {
     /// read in `build_state_snapshot` to compute `active_output`.
     pub active_output_source: ActiveOutputSource,
 
+    /// Stable per-surface render-element ids for the decorations margo
+    /// draws itself — the drop shadow and the background blur, keyed by
+    /// the anchoring surface's `ObjectId` to `(shadow_id, blur_id)`. The
+    /// smithay damage tracker keys element identity on `Id`; the render
+    /// path used to hand it a fresh `Id::new()` every frame, so it treated
+    /// every shadow/blur as brand-new and re-damaged its whole (oversized)
+    /// bbox each frame — any unrelated repaint then redrew every floating
+    /// window's decorations. A stable id lets unchanged decorations report
+    /// zero damage. Entries for closed surfaces just linger (an `Id` is a
+    /// cheap handle); not worth pruning.
+    pub decoration_ids: std::cell::RefCell<
+        std::collections::HashMap<
+            smithay::reexports::wayland_server::backend::ObjectId,
+            (
+                smithay::backend::renderer::element::Id,
+                smithay::backend::renderer::element::Id,
+            ),
+        >,
+    >,
+
     pub foreign_toplevel_list: ForeignToplevelListState,
     pub wlr_foreign_toplevel: crate::protocols::wlr_foreign_toplevel::WlrForeignToplevelState,
     pub ext_workspace_state: crate::protocols::ext_workspace::ExtWorkspaceManagerState,
@@ -1089,6 +1109,7 @@ impl MargoState {
             input_touch: Default::default(),
             input_gesture: Default::default(),
             active_output_source: ActiveOutputSource::default(),
+            decoration_ids: std::cell::RefCell::new(std::collections::HashMap::new()),
             foreign_toplevel_list,
             wlr_foreign_toplevel,
             ext_workspace_state,
@@ -2325,6 +2346,27 @@ impl ForeignToplevelListHandler for MargoState {
 }
 
 // ── XwmHandler: X11 window management ────────────────────────────────────────
+
+impl MargoState {
+    /// Stable `(shadow_id, blur_id)` for a surface's self-drawn
+    /// decorations, created once and reused across frames. See
+    /// [`MargoState::decoration_ids`]. The pair is created lazily on first
+    /// use; `Id` is a cheap clonable handle.
+    pub fn decoration_element_ids(
+        &self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> (
+        smithay::backend::renderer::element::Id,
+        smithay::backend::renderer::element::Id,
+    ) {
+        use smithay::backend::renderer::element::Id;
+        self.decoration_ids
+            .borrow_mut()
+            .entry(surface.id())
+            .or_insert_with(|| (Id::new(), Id::new()))
+            .clone()
+    }
+}
 
 impl MargoState {
     fn find_x11_client(&self, window: &X11Surface) -> Option<usize> {

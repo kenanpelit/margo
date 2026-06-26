@@ -367,6 +367,13 @@ pub(crate) fn matches_layer_name(rule: &margo_config::LayerRule, namespace: &str
         .unwrap_or(true)
 }
 
+/// Substring fallback for patterns the regex engine rejects — match the
+/// literal text between optional anchors.
+fn rule_text_substring_fallback(pattern: &str, value: &str) -> bool {
+    let trimmed = pattern.trim_start_matches('^').trim_end_matches('$');
+    value == trimmed || value.contains(trimmed)
+}
+
 pub(crate) fn matches_rule_text(pattern: &str, value: &str) -> bool {
     if pattern.is_empty() {
         return true;
@@ -374,13 +381,37 @@ pub(crate) fn matches_rule_text(pattern: &str, value: &str) -> bool {
     if value.is_empty() {
         return false;
     }
-    match regex::Regex::new(pattern) {
-        Ok(regex) => regex.is_match(value),
-        Err(_) => {
-            let trimmed = pattern.trim_start_matches('^').trim_end_matches('$');
-            value == trimmed || value.contains(trimmed)
-        }
+    thread_local! {
+        // Compiled-regex cache keyed by the pattern string. Window/layer
+        // rule matching runs on the hot title/app_id-change path; without
+        // this, every match recompiled the pattern (≈tens of µs for the
+        // shipped alternation rules) — apps that rewrite their title
+        // continuously (players, htop, browser tabs) paid that many times
+        // per second. Keyed by the pattern text, so it stays correct
+        // across `mctl reload`: identical patterns reuse the entry, removed
+        // ones just linger harmlessly. `None` = pattern didn't compile
+        // (fall back to substring match). The compositor is single-
+        // threaded, so a `thread_local` needs no lock.
+        static REGEX_CACHE: std::cell::RefCell<std::collections::HashMap<String, Option<regex::Regex>>> =
+            std::cell::RefCell::new(std::collections::HashMap::new());
     }
+    REGEX_CACHE.with(|cache| {
+        // Fast path: cache hit, no allocation.
+        if let Some(entry) = cache.borrow().get(pattern) {
+            return match entry {
+                Some(regex) => regex.is_match(value),
+                None => rule_text_substring_fallback(pattern, value),
+            };
+        }
+        // Miss: compile once, then insert (allocating the key only here).
+        let compiled = regex::Regex::new(pattern).ok();
+        let result = match &compiled {
+            Some(regex) => regex.is_match(value),
+            None => rule_text_substring_fallback(pattern, value),
+        };
+        cache.borrow_mut().insert(pattern.to_string(), compiled);
+        result
+    })
 }
 
 pub(crate) fn read_toplevel_identity(surface: &ToplevelSurface) -> (String, String) {
