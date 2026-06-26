@@ -2,6 +2,7 @@ use crate::bars::bar::{BarInit, BarInput, BarModel, BarOutput, BarType};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use mshell_common::box_with_resize::BoxWithResize;
 use mshell_common::diagonal_revealer::DiagonalRevealer;
+use mshell_common::motion::MENU_REVEAL_MS;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::*;
@@ -334,6 +335,7 @@ impl Component for Frame {
                                 #[name = "left_revealer"]
                                 append = &gtk::Revealer {
                                     set_transition_type: gtk::RevealerTransitionType::SlideRight,
+                                    set_transition_duration: MENU_REVEAL_MS,
                                     #[watch]
                                     set_reveal_child: model.left_revealed,
 
@@ -606,6 +608,7 @@ impl Component for Frame {
                                 #[name = "right_revealer"]
                                 append = &gtk::Revealer {
                                     set_transition_type: gtk::RevealerTransitionType::SlideLeft,
+                                    set_transition_duration: MENU_REVEAL_MS,
                                     #[watch]
                                     set_reveal_child: model.right_revealed,
 

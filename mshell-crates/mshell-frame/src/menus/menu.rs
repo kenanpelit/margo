@@ -167,6 +167,14 @@ pub(crate) struct MenuModel {
     /// never opens never construct their GTK trees — otherwise ~30 menus
     /// per monitor build their full content at shell startup.
     built: bool,
+    /// Latest reveal state from `map`/`unmap`. The per-widget reveal
+    /// broadcasts (which kick off pollers) are deferred off the reveal
+    /// frame and read this, so a fast open→close collapses to one apply
+    /// reflecting the final state.
+    revealed: bool,
+    /// A deferred `BroadcastReveal` is already queued — coalesces rapid
+    /// map/unmap toggles into a single idle-tick apply.
+    reveal_broadcast_pending: bool,
     /// `true` only for the wizard menu, whose dedicated widget is built
     /// lazily on first reveal (via `AddWizardWidget`) instead of from the
     /// config-driven `widget_kinds`. Screenshare can't do this (it must
@@ -183,6 +191,10 @@ pub(crate) struct MenuModel {
 #[derive(Debug)]
 pub(crate) enum MenuInput {
     RevealChanged(bool),
+    /// Deferred companion to `RevealChanged`: runs the per-widget reveal
+    /// broadcasts (poller kick-offs) on the next idle tick so they don't
+    /// stall the open/close animation's first frames.
+    BroadcastReveal,
     /// Esc was pressed while the clipboard `/` filter is open — leave
     /// search mode (instead of closing the menu). Routed by the frame.
     ClipboardExitSearch,
@@ -585,6 +597,8 @@ impl Component for MenuModel {
         };
         let model = MenuModel {
             widget_controllers: Vec::new(),
+            revealed: false,
+            reveal_broadcast_pending: false,
             widget_kinds: Vec::new(),
             minimum_width,
             maximum_height,
@@ -663,7 +677,10 @@ impl Component for MenuModel {
             MenuInput::RevealChanged(visible) => {
                 // Build the content tree on first reveal (deferred from
                 // init) — most menus are never opened, so this skips ~30
-                // GTK tree builds per monitor at startup.
+                // GTK tree builds per monitor at startup. Kept SYNCHRONOUS:
+                // the revealer animates to the child's real size, so the
+                // tree must exist before the slide starts (deferring it
+                // would slide an empty child in, then jump to full size).
                 if visible && !self.built {
                     if self.lazy_wizard {
                         // Dedicated widget, not config-driven: build it
@@ -673,6 +690,24 @@ impl Component for MenuModel {
                         self.build_content(&widgets.widget_container, &sender);
                     }
                 }
+                // Defer the per-widget reveal broadcasts (which kick off
+                // pollers — network/BT scans, launcher requery, …) off the
+                // reveal frame so they don't stall the open/close
+                // animation's first frames. Coalesced via the pending flag;
+                // the deferred apply reads the latest `revealed` so a fast
+                // open→close settles on the final state.
+                self.revealed = visible;
+                if !self.reveal_broadcast_pending {
+                    self.reveal_broadcast_pending = true;
+                    let apply_sender = sender.clone();
+                    gtk::glib::idle_add_local_once(move || {
+                        let _ = apply_sender.input_sender().send(MenuInput::BroadcastReveal);
+                    });
+                }
+            }
+            MenuInput::BroadcastReveal => {
+                self.reveal_broadcast_pending = false;
+                let visible = self.revealed;
                 // Let widgets that care know they are being revealed
                 for controller in &self.widget_controllers {
                     if let Some(controller) =

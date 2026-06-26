@@ -2,6 +2,7 @@ pub mod box_with_resize;
 pub mod diagonal_revealer;
 pub mod dynamic_box;
 pub mod hidden_bar;
+pub mod motion;
 pub mod notification;
 mod notifying_layout;
 pub mod scoped_effects;

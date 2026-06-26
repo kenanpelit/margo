@@ -121,7 +121,9 @@ impl DiagonalRevealer {
     fn start_animation(&self) {
         let target: f64 = if self.imp().revealed.get() { 1.0 } else { 0.0 };
         let start_pos = self.imp().current_pos.get();
-        let duration_ms = 200.0;
+        // Shared with the edge revealers (see crate::motion) so corner and
+        // edge menus reveal/unreveal with identical timing.
+        let duration_ms = crate::motion::MENU_REVEAL_MS as f64;
         let widget = self.clone();
         let start_time = std::cell::Cell::new(None::<i64>);
 
