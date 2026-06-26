@@ -58,6 +58,17 @@ poison races.
   with the `dist` profile (fat LTO + a single codegen unit) and installs from
   `target/dist`; the shipped binaries previously missed the optimisation that
   `just` / CI intentionally skip for dev-loop speed.
+- **The Margo layout menu is keyboard-navigable.** `mshellctl menu
+  margo-layout` (and the layout bar pill) now walks its rows with Tab /
+  Shift+Tab, the arrow keys, and Ctrl+N / Ctrl+P — the same focus-walk the
+  session menu uses — with Enter / Space activating the focused layout.
+- **Internal: the frame's menu-toggle plumbing is consolidated.** The 34
+  uniform "open this menu" messages — each a data-less `FrameInput` variant
+  plus an identical match arm, mirrored across the bar-output routing and the
+  shell dispatcher — collapse into a single `ToggleMenu(MenuId)` path. No
+  behaviour change (a routing cross-check pins every pill and IPC trigger to
+  the same menu it opened before); it just sheds ~80 lines of parallel
+  boilerplate and a class of "forgot to wire one of the four places" bugs.
 
 ### Fixed
 
@@ -92,11 +103,20 @@ poison races.
   per-keystroke xkb layout read, the clipboard watcher's Wayland read
   preparation, and the shell's per-output frame init each `unwrap()`-panicked
   on an unlikely-but-possible race; all three now recover gracefully.
+- **Customised shell settings could be silently reset by a later update.** The
+  shell rewrote the *entire* resolved profile to `active.yaml`, baking every
+  field at its then-current default; a field you never touched kept that stale
+  baked value and shadowed a newer code default. Persistence now writes only
+  the keys that actually differ from the current defaults, so untouched
+  settings track the live default and your real customisations are preserved.
 
 ### Tests
 
 - First unit coverage for the tiling algorithms' gap semantics: `tile`,
   `grid` and `vertical_grid` are pinned against asymmetric `gappih`/`gappiv`.
+- Config persistence is pinned: a customised profile round-trips through the
+  diff-against-default serialiser unchanged, and a field left at its default is
+  confirmed omitted from the written `active.yaml`.
 
 ## [1.0.11] – 2026-06-26
 
