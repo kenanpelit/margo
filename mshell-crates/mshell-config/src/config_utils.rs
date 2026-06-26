@@ -14,7 +14,7 @@ use reactive_stores::{ArcStore, Patch};
 use crate::paths::{active_profile_cache_path, profile_path, profiles_dir};
 use crate::schema::config::Config;
 use reactive_graph::prelude::ReadUntracked;
-use serde::Serialize;
+use serde_yaml::{Mapping, Value};
 use std::fs;
 use std::path::Path;
 
@@ -194,18 +194,32 @@ pub(crate) fn is_relevant_config_event(event: &Event) -> bool {
     })
 }
 
-pub(crate) fn persist_config_layer<T: Serialize>(
-    value: &T,
+pub(crate) fn persist_config_layer(
+    value: &Config,
     path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
 
+    // Persist only what the user actually changed from `Config::default()`.
+    // `load_effective_config` layers the profile *over* `Config::default()`
+    // via figment, so any field omitted here transparently picks up the
+    // current code default on load. Writing the full resolved config (the
+    // old behaviour) baked every `#[serde(default = …)]` field's value into
+    // the profile permanently: serde then saw the key present and never
+    // re-applied a later code-default change, silently freezing the field
+    // at whatever the default was the first time the profile was written.
+    // Diffing kills that shadowing for every field at once — a field is
+    // only persisted once it actually diverges from the default.
+    let full = serde_yaml::to_value(value)?;
+    let base = serde_yaml::to_value(Config::default())?;
+    let diff = diff_against_default(&full, &base).unwrap_or_else(|| Value::Mapping(Mapping::new()));
+
     // Pin the current format version at the top of the serialized profile;
     // the Config struct deliberately omits the meta key (migration.rs), so we
     // stamp it on the way out.
-    let yaml = crate::migration::stamp_version(&serde_yaml::to_string(value)?);
+    let yaml = crate::migration::stamp_version(&serde_yaml::to_string(&diff)?);
 
     // Atomic write via the symlink-preserving helper so dcli /
     // stow / chezmoi users keep their `~/.config/margo/mshell/
@@ -216,6 +230,45 @@ pub(crate) fn persist_config_layer<T: Serialize>(
     crate::atomic_write::atomic_write(path, yaml.as_bytes())?;
 
     Ok(())
+}
+
+/// Recursively strip from `value` everything that equals the matching entry
+/// in `base` (a serialized `Config::default()`), keeping only the leaves the
+/// user changed. Mappings recurse key-by-key; sequences and scalars are
+/// atomic — kept whole when they differ, because figment *replaces* arrays
+/// rather than element-merging them. Returns `None` when nothing differs.
+fn diff_against_default(value: &Value, base: &Value) -> Option<Value> {
+    match (value, base) {
+        (Value::Mapping(v), Value::Mapping(b)) => {
+            let mut out = Mapping::new();
+            for (k, vv) in v {
+                match b.get(k) {
+                    Some(bv) => {
+                        if let Some(d) = diff_against_default(vv, bv) {
+                            out.insert(k.clone(), d);
+                        }
+                    }
+                    // Key absent from the default tree — keep it verbatim
+                    // (shouldn't happen for a same-shaped Config, but safe).
+                    None => {
+                        out.insert(k.clone(), vv.clone());
+                    }
+                }
+            }
+            if out.is_empty() {
+                None
+            } else {
+                Some(Value::Mapping(out))
+            }
+        }
+        _ => {
+            if value == base {
+                None
+            } else {
+                Some(value.clone())
+            }
+        }
+    }
 }
 
 // Starter profiles baked into the binary (also installed to
@@ -275,6 +328,60 @@ mod tests {
                 cfg.err()
             );
         }
+    }
+
+    /// The diff-persist path must reproduce a customised config exactly when
+    /// figment layers the sparse profile back over the compiled-in defaults
+    /// (the same merge `load_effective_config` does). If any changed field
+    /// were dropped or any default field mis-restored, equality fails.
+    #[test]
+    fn diff_persist_round_trips_a_customised_config() {
+        let mut cfg = Config::default();
+        cfg.osd.width += 123;
+        cfg.osd.distance += 7;
+        cfg.osd.border_width += 2;
+
+        let full = serde_yaml::to_value(&cfg).unwrap();
+        let base = serde_yaml::to_value(Config::default()).unwrap();
+        let diff =
+            diff_against_default(&full, &base).expect("a customised config diffs to something");
+        let yaml = serde_yaml::to_string(&diff).unwrap();
+
+        let reloaded = Figment::from(Serialized::defaults(Config::default()))
+            .merge(Yaml::string(&yaml))
+            .extract::<Config>()
+            .expect("sparse profile re-extracts");
+
+        assert_eq!(
+            reloaded, cfg,
+            "diff + figment-merge must reproduce the config exactly"
+        );
+    }
+
+    /// The whole point of diffing: a field left at its default is omitted, so
+    /// a later change to that code default is never shadowed by a stale baked
+    /// copy. An all-default config diffs to nothing; a one-field change diffs
+    /// to only that branch.
+    #[test]
+    fn diff_drops_fields_left_at_default() {
+        let base = serde_yaml::to_value(Config::default()).unwrap();
+        assert!(
+            diff_against_default(&base, &base).is_none(),
+            "an all-default config persists nothing"
+        );
+
+        let mut cfg = Config::default();
+        cfg.osd.width += 1;
+        let full = serde_yaml::to_value(&cfg).unwrap();
+        let diff = diff_against_default(&full, &base).unwrap();
+        let Value::Mapping(map) = &diff else {
+            panic!("config diffs to a mapping");
+        };
+        assert!(map.contains_key("osd"), "the changed branch is present");
+        assert!(
+            !map.contains_key("launcher"),
+            "an untouched branch is omitted"
+        );
     }
 
     /// Shell-side first-login bootstrap: an empty profiles dir gets the chosen
