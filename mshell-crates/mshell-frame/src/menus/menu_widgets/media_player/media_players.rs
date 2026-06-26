@@ -13,7 +13,9 @@
 //! — that keeps a browser that merely *registered* an MPRIS
 //! interface (but isn't playing anything) out of the menu.
 
-use crate::menus::menu_widgets::media_player::media_player::{MediaPlayerInit, MediaPlayerModel};
+use crate::menus::menu_widgets::media_player::media_player::{
+    MediaPlayerInit, MediaPlayerInput, MediaPlayerModel,
+};
 use mshell_common::{WatcherToken, watch_cancellable};
 use mshell_services::media_service;
 use mshell_utils::media::spawn_media_players_watcher;
@@ -30,6 +32,10 @@ pub(crate) struct MediaPlayersModel {
     previous_button_sensitive: bool,
     next_button_sensitive: bool,
     players_visible: bool,
+    /// Whether the media menu is currently revealed. New child players
+    /// added while open inherit this so their marquees start straight
+    /// away instead of waiting for the next reveal toggle.
+    revealed: bool,
 }
 
 #[derive(Debug)]
@@ -37,6 +43,9 @@ pub(crate) enum MediaPlayersInput {
     PreviousClicked,
     NextClicked,
     UpdateState,
+    /// Menu reveal state changed — forwarded to every child player so
+    /// their marquee timers stop while the media menu is closed.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -166,6 +175,7 @@ impl Component for MediaPlayersModel {
             previous_button_sensitive: false,
             next_button_sensitive: false,
             players_visible: !players.is_empty(),
+            revealed: false,
         };
 
         subscribe_playback(&sender, &mut model.watcher_token);
@@ -239,6 +249,15 @@ impl Component for MediaPlayersModel {
                     }
                 }
             }
+            MediaPlayersInput::ParentRevealChanged(visible) => {
+                self.revealed = visible;
+                for controller in &self.player_controllers {
+                    controller
+                        .sender()
+                        .send(MediaPlayerInput::ParentRevealChanged(visible))
+                        .ok();
+                }
+            }
         }
 
         self.update_view(widgets, sender);
@@ -284,6 +303,15 @@ impl Component for MediaPlayersModel {
                             })
                             .detach();
                         widgets.player_container.add_child(controller.widget());
+                        // A player added while the menu is already open must
+                        // start its marquee now — the reveal broadcast won't
+                        // fire again until the next open/close.
+                        if self.revealed {
+                            controller
+                                .sender()
+                                .send(MediaPlayerInput::ParentRevealChanged(true))
+                                .ok();
+                        }
                         self.player_controllers.push(controller);
                     }
                 }

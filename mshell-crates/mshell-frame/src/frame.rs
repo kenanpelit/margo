@@ -85,6 +85,14 @@ pub struct Frame {
     bottom_revealed: bool,
     bottom_left_revealed: bool,
     bottom_right_revealed: bool,
+    /// Last menu-position snapshot applied by `RepositionMenus`, so the
+    /// effect (which re-fires on every coarse config write) can skip the
+    /// destructive restack when nothing moved. `None` until the first
+    /// reposition.
+    last_menu_positions: Option<Vec<Position>>,
+    /// This Frame's monitor, kept so the lazily-built Settings panel
+    /// (`ensure_settings_built`) can pass it to `SettingsWindowModel`.
+    monitor: gdk::Monitor,
     top_spacer: Controller<FrameSpacerModel>,
     bottom_spacer: Controller<FrameSpacerModel>,
     clock_menu: Controller<MenuModel>,
@@ -135,7 +143,13 @@ pub struct Frame {
     /// Settings panel — uses its own dedicated model (not
     /// `MenuModel`) because its content is a custom sidebar +
     /// stack rather than the generic menu-widget pipeline.
-    settings_menu: Controller<mshell_settings::SettingsWindowModel>,
+    ///
+    /// Built lazily on first open (`ensure_settings_built`): the panel
+    /// launches ~48 page controllers, and one Frame exists per monitor, so
+    /// building it eagerly cost ~48×N page-tree builds on the GTK main
+    /// thread at login for a surface most sessions never open. `None`
+    /// until first toggled.
+    settings_menu: Option<Controller<mshell_settings::SettingsWindowModel>>,
     mdash_menu: Controller<MenuModel>,
     margo_layout_menu: Controller<MenuModel>,
     /// Pending keyboard-mode switch held inside the 90 ms debounce
@@ -152,10 +166,13 @@ pub enum FrameInput {
     QueueFrameRedraw,
     SetLeftMenuExpansionType(VerticalMenuExpansion),
     SetRightMenuExpansionType(VerticalMenuExpansion),
-    /// Re-place every left/right-side menu in the stack. Carries no payload:
-    /// the handler reads each menu's live position from config. Fired by the
-    /// per-output effect that subscribes to all menu positions.
-    RepositionMenus,
+    /// Re-place every left/right-side menu in the stack. Carries the
+    /// snapshot of all menu positions the firing effect just read, so the
+    /// handler can skip the (destructive) restack when nothing actually
+    /// moved — the config store is coarse, so this effect re-fires on
+    /// every unrelated setting write. Fired by the per-output effect that
+    /// subscribes to all menu positions.
+    RepositionMenus(Vec<Position>),
     ToggleClockMenu,
     /// Re-assert the layer surface's keyboard interactivity from the
     /// current menu-reveal state. Fired once when the frame surface
@@ -828,18 +845,13 @@ impl Component for Frame {
         let mdash_menu = Self::build_menu(&sender, MenuType::Mdash);
         let margo_layout_menu = Self::build_menu(&sender, MenuType::MargoLayout);
 
-        // Settings doesn't go through `build_menu` because its
-        // content isn't a list of `MenuWidget`s — it's a custom
-        // sidebar + stack laid out by `SettingsWindowModel`.
-        // Build one controller per Frame; the shell-level
-        // dispatcher registers the toggle backend that resolves
-        // active monitor and emits `ToggleSettingsMenu` to the
-        // right Frame.
-        let settings_menu = mshell_settings::SettingsWindowModel::builder()
-            .launch(mshell_settings::SettingsWindowInit {
-                monitor: Some(params.monitor.clone()),
-            })
-            .detach();
+        // Settings doesn't go through `build_menu` because its content
+        // isn't a list of `MenuWidget`s — it's a custom sidebar + stack
+        // laid out by `SettingsWindowModel`. It is also NOT built here:
+        // the panel's ~48 page controllers are deferred to first open via
+        // `ensure_settings_built` (see the field doc). The shell-level
+        // dispatcher emits `ToggleSettingsMenu` to the right Frame, which
+        // builds + attaches the panel on demand.
 
         let mut effects = EffectScope::new();
 
@@ -876,54 +888,53 @@ impl Component for Frame {
             // one-liners. Reading a menu's position also subscribes this effect
             // to that menu — which is why the side-placed menus below are read
             // into `_` (purely to re-fire when their position changes).
+            // Collect every menu's position into one ordered Vec. The
+            // `.get()` both reads the value AND subscribes this effect to
+            // that menu (so a position change re-fires it), and the
+            // collected snapshot lets `RepositionMenus` skip the
+            // destructive restack when nothing moved (the config store is
+            // coarse: any write re-fires this effect).
+            let mut positions: Vec<Position> = Vec::new();
             macro_rules! pos {
                 ($menu:ident) => {
-                    menu_config.clone().menus().$menu().position().get()
+                    positions.push(menu_config.clone().menus().$menu().position().get())
                 };
             }
-            // Read every menu's position purely to subscribe this effect to
-            // them — `apply_left_and_right_side_children` re-reads the live
-            // values from config when it fires, so we don't pass any of them
-            // through `RepositionMenus`. (Previously the left/right-placed
-            // menus were threaded through a 17-field positional tuple; the
-            // config-read pattern the dashboards already used is now uniform,
-            // so the tuple is gone — adding/removing a menu no longer means
-            // hand-aligning five call sites.)
-            let _ = pos!(clock_menu);
-            let _ = pos!(clipboard_menu);
-            let _ = pos!(notification_menu);
-            let _ = pos!(screenshot_menu);
-            let _ = pos!(app_launcher_menu);
-            let _ = pos!(wallpaper_menu);
-            let _ = pos!(screenshare_menu);
-            let _ = pos!(ufw_menu);
-            let _ = pos!(dns_menu);
-            let _ = pos!(podman_menu);
-            let _ = pos!(notes_menu);
-            let _ = pos!(ip_menu);
-            let _ = pos!(network_menu);
-            let _ = pos!(power_menu);
-            let _ = pos!(media_player_menu);
-            let _ = pos!(session_menu);
-            let _ = pos!(settings_menu);
-            let _ = pos!(cpu_dashboard_menu);
-            let _ = pos!(audio_dashboard_menu);
-            let _ = pos!(mdash_menu);
-            let _ = pos!(bluetooth_menu);
-            let _ = pos!(system_update_menu);
-            let _ = pos!(valent_menu);
-            let _ = pos!(weather_menu);
-            let _ = pos!(keep_awake_menu);
-            let _ = pos!(twilight_menu);
-            let _ = pos!(keybinds_menu);
-            let _ = pos!(alarmclock_menu);
-            let _ = pos!(dock_menu);
-            let _ = pos!(control_center_menu);
-            let _ = pos!(ssh_menu);
-            let _ = pos!(vpn_menu);
-            let _ = pos!(ai_menu);
-            let _ = pos!(margo_layout_menu);
-            sender_clone.input(FrameInput::RepositionMenus);
+            pos!(clock_menu);
+            pos!(clipboard_menu);
+            pos!(notification_menu);
+            pos!(screenshot_menu);
+            pos!(app_launcher_menu);
+            pos!(wallpaper_menu);
+            pos!(screenshare_menu);
+            pos!(ufw_menu);
+            pos!(dns_menu);
+            pos!(podman_menu);
+            pos!(notes_menu);
+            pos!(ip_menu);
+            pos!(network_menu);
+            pos!(power_menu);
+            pos!(media_player_menu);
+            pos!(session_menu);
+            pos!(settings_menu);
+            pos!(cpu_dashboard_menu);
+            pos!(audio_dashboard_menu);
+            pos!(mdash_menu);
+            pos!(bluetooth_menu);
+            pos!(system_update_menu);
+            pos!(valent_menu);
+            pos!(weather_menu);
+            pos!(keep_awake_menu);
+            pos!(twilight_menu);
+            pos!(keybinds_menu);
+            pos!(alarmclock_menu);
+            pos!(dock_menu);
+            pos!(control_center_menu);
+            pos!(ssh_menu);
+            pos!(vpn_menu);
+            pos!(ai_menu);
+            pos!(margo_layout_menu);
+            sender_clone.input(FrameInput::RepositionMenus(positions));
         });
 
         let monitor_clone = params.monitor.clone();
@@ -967,6 +978,8 @@ impl Component for Frame {
             bottom_revealed: false,
             bottom_left_revealed: false,
             bottom_right_revealed: false,
+            last_menu_positions: None,
+            monitor: params.monitor.clone(),
             top_spacer,
             bottom_spacer,
             clock_menu: calendar_menu,
@@ -1017,7 +1030,7 @@ impl Component for Frame {
             power_menu,
             media_player_menu,
             session_menu,
-            settings_menu,
+            settings_menu: None,
             mdash_menu,
             margo_layout_menu,
             pending_kbd_mode: std::rc::Rc::new(std::cell::RefCell::new(None)),
@@ -1064,9 +1077,18 @@ impl Component for Frame {
             FrameInput::SetRightMenuExpansionType(expansion_type) => {
                 self.right_menu_expansion_type = expansion_type;
             }
-            FrameInput::RepositionMenus => {
-                sender.input(FrameInput::CloseMenus);
-                self.apply_left_and_right_side_children(widgets);
+            FrameInput::RepositionMenus(positions) => {
+                // Skip the destructive restack (CloseMenus +
+                // remove_all-and-rebuild every stack) when no menu actually
+                // moved. The position effect re-fires on every config write
+                // because the store is coarse, so without this guard
+                // editing any unrelated setting tore down the open menu and
+                // re-stacked ~33 menus per monitor (the "bar flicker").
+                if self.last_menu_positions.as_deref() != Some(positions.as_slice()) {
+                    self.last_menu_positions = Some(positions);
+                    sender.input(FrameInput::CloseMenus);
+                    self.apply_left_and_right_side_children(widgets);
+                }
             }
             FrameInput::ToggleClockMenu => {
                 self.toggle_menu(CLOCK_MENU, widgets);
@@ -1448,6 +1470,7 @@ impl Component for Frame {
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleSettingsMenu => {
+                self.ensure_settings_built(widgets);
                 self.toggle_menu(SETTINGS_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
@@ -1459,17 +1482,20 @@ impl Component for Frame {
                 self.sync_keyboard_mode(root);
             }
             FrameInput::OpenSettingsAtSection(section) => {
-                // Ensure Settings is visible — toggle if currently
-                // hidden. Skip the toggle when already visible so
-                // re-issuing the same section nav doesn't close
-                // the panel.
+                // Build the panel on demand, then ensure Settings is
+                // visible — toggle if currently hidden. Skip the toggle
+                // when already visible so re-issuing the same section nav
+                // doesn't close the panel.
+                self.ensure_settings_built(widgets);
                 if !self.is_menu_visible_now(SETTINGS_MENU, widgets) {
                     self.toggle_menu(SETTINGS_MENU, widgets);
                     self.sync_keyboard_mode(root);
                 }
-                let _ = self.settings_menu.sender().send(
-                    mshell_settings::SettingsWindowInput::ActivateSection(section),
-                );
+                if let Some(controller) = self.settings_menu.as_ref() {
+                    let _ = controller.sender().send(
+                        mshell_settings::SettingsWindowInput::ActivateSection(section),
+                    );
+                }
             }
             FrameInput::CloseSettingsMenu => {
                 // Idempotent close: no-op if Settings isn't currently
@@ -1764,6 +1790,30 @@ impl Frame {
         stacks.iter().any(|(stack, revealed)| {
             *revealed && stack.visible_child_name().map(|n| n.to_string()) == Some(name.to_string())
         })
+    }
+
+    /// Build the Settings panel + attach it to its stack on first open.
+    /// Deferred from `init` because the panel launches ~48 page
+    /// controllers and one Frame exists per monitor (see the
+    /// `settings_menu` field doc). Idempotent: a no-op once built.
+    fn ensure_settings_built(&mut self, widgets: &FrameWidgets) {
+        if self.settings_menu.is_some() {
+            return;
+        }
+        let controller = mshell_settings::SettingsWindowModel::builder()
+            .launch(mshell_settings::SettingsWindowInit {
+                monitor: Some(self.monitor.clone()),
+            })
+            .detach();
+        let widget: Widget = controller.widget().clone().upcast();
+        let position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .settings_menu()
+            .position()
+            .get();
+        Self::add_to_stack(widgets, &widget, SETTINGS_MENU, &position);
+        self.settings_menu = Some(controller);
     }
 
     fn toggle_menu(&mut self, name: &str, widgets: &mut FrameWidgets) {
@@ -2345,7 +2395,12 @@ impl Frame {
         let power_menu_widget: Widget = self.power_menu.widget().clone().upcast();
         let media_player_menu_widget: Widget = self.media_player_menu.widget().clone().upcast();
         let session_menu_widget: Widget = self.session_menu.widget().clone().upcast();
-        let settings_menu_widget: Widget = self.settings_menu.widget().clone().upcast();
+        // Settings is built lazily (`ensure_settings_built`); only attach
+        // it once it exists. `None` until the user first opens it.
+        let settings_menu_widget: Option<Widget> = self
+            .settings_menu
+            .as_ref()
+            .map(|c| c.widget().clone().upcast());
 
         // Snapshot which child each region's stack currently shows. The
         // `remove_all` + re-add below would otherwise leave every stack
@@ -2531,12 +2586,14 @@ impl Frame {
             SESSION_MENU,
             &session_menu_position,
         );
-        Self::add_to_stack(
-            widgets,
-            &settings_menu_widget,
-            SETTINGS_MENU,
-            &settings_menu_position,
-        );
+        if let Some(settings_menu_widget) = &settings_menu_widget {
+            Self::add_to_stack(
+                widgets,
+                settings_menu_widget,
+                SETTINGS_MENU,
+                &settings_menu_position,
+            );
+        }
         // The wizard shares the settings slot/position (both center
         // panels, mutually exclusive via toggle_menu by name).
         let wizard_menu_widget: Widget = self.wizard_menu.widget().clone().upcast();

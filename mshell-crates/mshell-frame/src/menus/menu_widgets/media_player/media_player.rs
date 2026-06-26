@@ -63,6 +63,11 @@ pub(crate) enum MediaPlayerInput {
     PreviousClicked,
     NextClicked,
     PlayPauseClicked,
+    /// Menu reveal state changed. The track/artist marquees are 30 ms
+    /// timers (≈66 Hz combined); they're useless while the menu is
+    /// closed, so we stop the GTK sources on hide and restart them on
+    /// show instead of spinning them forever.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -444,8 +449,10 @@ impl Component for MediaPlayerModel {
 
         apply_cover(&widgets.cover, &model.player);
 
-        model.track_name_scroll_source = Some(start_scroll(&widgets.track_scroll_window));
-        model.artist_name_scroll_source = Some(start_scroll(&widgets.artist_scroll_window));
+        // Marquees are started lazily by `ParentRevealChanged(true)` once
+        // the menu is actually opened — see the input handler. Keeping
+        // them off until first reveal avoids two 30 ms timers spinning
+        // from login for a menu most users never open.
 
         model.scale_value_changed_signal = Some(setup_scale_seek(&widgets.scale, &sender));
 
@@ -565,6 +572,25 @@ impl Component for MediaPlayerModel {
                 tokio::spawn(async move {
                     let _ = player.play_pause().await;
                 });
+            }
+            MediaPlayerInput::ParentRevealChanged(visible) => {
+                if visible {
+                    if self.track_name_scroll_source.is_none() {
+                        self.track_name_scroll_source =
+                            Some(start_scroll(&widgets.track_scroll_window));
+                    }
+                    if self.artist_name_scroll_source.is_none() {
+                        self.artist_name_scroll_source =
+                            Some(start_scroll(&widgets.artist_scroll_window));
+                    }
+                } else {
+                    if let Some(source) = self.track_name_scroll_source.take() {
+                        source.remove();
+                    }
+                    if let Some(source) = self.artist_name_scroll_source.take() {
+                        source.remove();
+                    }
+                }
             }
         }
 

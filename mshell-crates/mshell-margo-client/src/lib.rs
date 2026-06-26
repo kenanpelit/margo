@@ -637,6 +637,25 @@ impl MargoService {
     /// open menus on the previous monitor). Trust the compositor's
     /// signal; only fall back locally when it's somehow empty.
     pub async fn active_monitor_name(&self) -> Option<String> {
+        // Fast path: the focused output is already mirrored into the
+        // reactive store by the `watch state` subscription
+        // (`Monitor.focused` ← margo's per-output `active`, i.e. its
+        // recency-based `active_output`). Resolving it is a zero-I/O store
+        // read. This runs on the GTK main thread on every menu open; the
+        // old unconditional `state_json::read()` did a blocking socket
+        // round-trip (250 ms worst case when margo's loop is busy
+        // post-suspend) each time.
+        if let Some(name) = self
+            .monitors
+            .get()
+            .iter()
+            .find(|m| m.focused.get())
+            .map(|m| m.name.get())
+        {
+            return Some(name);
+        }
+        // Cold fallback: before the first state push has populated the
+        // store, read the socket synchronously (same as before).
         let state = state_json::read()?;
         if !state.active_output.is_empty() {
             return Some(state.active_output);
