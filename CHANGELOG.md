@@ -10,10 +10,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 A performance + memory release. The clipboard and launcher no longer stutter
 on large histories or package searches, mshell's memory footprint is cut
 substantially, and the keep-awake-while-media-plays inhibitor no longer
-freezes the shell.
+freezes the shell. Menus also open and close more smoothly, and on a
+multi-monitor desk they now open on the monitor you're actually working on.
 
 ### Fixed
 
+- **Menus opened on the wrong monitor.** Keybind/IPC-triggered menus (launcher,
+  settings, every pill menu) opened on whichever monitor the mouse cursor
+  happened to sit on, even when you were working on another output. The
+  compositor's "active output" is now last-writer-wins between keyboard focus
+  and the pointer, so a menu opens on the monitor of your most recent
+  interaction: the focused monitor when you're working there (keybind or
+  typing), the cursor's monitor when you just moved onto another output
+  (including an empty one). Menu-open keybinds stay neutral, so the trigger
+  itself never decides the target.
 - **Keep-awake-while-media-plays could freeze the shell.** The idle inhibitor
   added in 1.0.10 re-subscribed to the wayle playback `Property` from inside
   the very handler that subscription fired, looping forever the moment playback
@@ -36,6 +46,12 @@ freezes the shell.
 
 ### Changed
 
+- **Smoother menu open/close.** The first reveal frame used to stall on a
+  synchronous content build plus a broadcast that kicked off every widget's
+  pollers (network/Bluetooth scans, launcher requery) — most visible as a
+  laggy slide, worse on close. Those poller kick-offs are now deferred off the
+  animation's critical frames, and edge + corner menus share one reveal timing
+  so the whole set opens and closes consistently.
 - **`>start` scripts are indexed off the main thread.** The scripts provider
   used to walk every `$PATH` directory (thousands of entries under `/usr/bin`)
   synchronously on every launcher open. It now scans lazily on a worker thread,
