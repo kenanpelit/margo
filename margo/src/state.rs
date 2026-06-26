@@ -2219,7 +2219,11 @@ impl MargoState {
             return;
         };
         let name = kbd.with_xkb_state(self, |ctx| {
-            let xkb = ctx.xkb().lock().unwrap();
+            // Runs on every key event — recover a poisoned lock (the xkb
+            // state is still valid to *read*) instead of panicking the
+            // whole compositor on a keystroke if some other thread paniced
+            // while holding it.
+            let xkb = ctx.xkb().lock().unwrap_or_else(|e| e.into_inner());
             let layout = xkb.active_layout();
             xkb.layout_name(layout).to_string()
         });

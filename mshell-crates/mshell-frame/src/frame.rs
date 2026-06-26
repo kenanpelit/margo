@@ -699,7 +699,11 @@ impl Component for Frame {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         info!(
-            monitor = params.monitor.connector().unwrap().to_string(),
+            monitor = params
+                .monitor
+                .connector()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "<unknown>".to_string()),
             "Initializing frame"
         );
 
