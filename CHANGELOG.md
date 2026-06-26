@@ -5,6 +5,99 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] – 2026-06-27
+
+A deep performance and robustness pass over the whole stack — the
+compositor's state egress, the render hot path, the shell's menus, and the
+streaming chat and launcher surfaces — plus a batch of concrete correctness
+fixes surfaced by the same review. Nothing changes about how margo looks or
+how you drive it; it just does less work to get there, holds the desktop
+asleep when nothing's happening, and no longer panics on a few hotplug and
+poison races.
+
+### Changed
+
+- **The compositor does far less work per state change.** Every IPC `watch`
+  flush built the state snapshot once per *subscriber* and re-serialised it
+  each time; it now builds the snapshot once per flush and serialises the
+  shared `state` frame a single time, projecting the rest. Within the
+  snapshot, the per-monitor occupied-tag mask and scratchpad counts were each
+  a full scan of every client *per monitor* — folded into one pass — and the
+  constant layout-name list is built once instead of every snapshot.
+- **Idle desktops actually idle.** A blurred always-on surface (a blurred bar,
+  an acrylic window) reported full damage every frame, forcing a full-output
+  repaint at refresh rate forever. The blur element now only self-damages when
+  its own geometry changes; a static region behind it lets the frame be
+  skipped entirely, while anything changing behind it still repaints correctly.
+  Window shadows and blur also keep stable element ids across frames instead
+  of defeating the damage tracker with a fresh id each frame, and the
+  per-window client lookup on the render path is now O(1).
+- **Closed menus stop polling.** The CPU dashboard (its `/proc` + dual-hwmon
+  walk), the media menu's two 30 ms marquee timers, the system-status temp
+  poll, the overview-intel update probe, and the clock / calendar ticks all
+  kept running while their menu was closed. They now stop on hide and resume
+  on show — with an immediate refresh so nothing reads stale when you reopen.
+- **Menus build when first opened, not eagerly per monitor.** The Settings
+  panel is now constructed on its first toggle rather than on every output at
+  login; the active-monitor lookup that routes menu placement resolves from
+  the shell's mirrored state store instead of a blocking socket round-trip;
+  and an unchanged monitor layout no longer tears down and rebuilds menu
+  surfaces.
+- **Streaming chat and the launcher stay responsive.** The AI assistant set
+  the entire growing reply on its bubble every token (a full Pango relayout
+  per token, O(n²) over a long answer) — repaints are now coalesced to ~30 Hz
+  with the final text always flushed at the end. The launcher re-swept every
+  provider and re-cloned every row on each keystroke; typing now debounces the
+  recompute by 60 ms while keeping the text field in lock-step.
+- **Window-rule matching got cheaper.** Window-rule regexes are compiled once
+  and cached instead of recompiled on every match, the "does any rule carry a
+  title pattern" check is cached at config-load instead of recomputed on every
+  title commit (frequent for browser tabs / terminal titles), and the render
+  text-label cache no longer allocates a key string on every cache hit.
+- **The packaged installer ships an optimised build.** `install.sh` now builds
+  with the `dist` profile (fat LTO + a single codegen unit) and installs from
+  `target/dist`; the shipped binaries previously missed the optimisation that
+  `just` / CI intentionally skip for dev-loop speed.
+
+### Fixed
+
+- **`l` (lock-apply) keybinds were a silent no-op.** Binds tagged `l` to keep
+  working over the lock screen (volume / brightness / media keys) were never
+  actually dispatched while locked — only `force_unlock` was, and everything
+  else was forwarded to the lock surface. Tagged binds now run while locked
+  and the key is swallowed; every other bind still forwards, so the lock
+  screen stays secure.
+- **Secondary / tertiary fonts were ignored.** The matugen style builder read
+  `.primary()` for all three font slots, so the configured secondary and
+  tertiary fonts never took effect.
+- **Bogus config warnings.** `mru_scope`, `mru_filter` and `mru_show_labels`
+  were validated as integers, so margo's own shipped string/bool defaults
+  tripped a spurious "expected integer" warning. They're now validated as the
+  enums / bool they are.
+- **Asymmetric tiling gaps were wrong.** The `tile` layout used the horizontal
+  inner gap for the vertical spacing between stacked windows, and
+  `vertical_grid` transposed the work area but not the gaps — so a setup with
+  `gappih ≠ gappiv` tiled with the gaps on the wrong axes. (Symmetric gaps,
+  the common case, were unaffected.)
+- **Keybind/IPC menus could open on a random monitor.** When the resolved
+  monitor name didn't match (a stale or missing name), the shell fell back to
+  an arbitrary hash-map entry, so a menu could open on a different output run
+  to run. The fallback is now deterministic.
+- **A stalled clipboard source could freeze clipboard history.** Reading a
+  paste offer looped on a blocking pipe read with no timeout, so a source app
+  that requested the transfer then stopped writing wedged the single clipboard
+  watcher thread forever. Reads now bail after a 2 s idle with no progress
+  (a transfer that keeps flowing is never cut off).
+- **A few hotplug / poison races could crash the compositor or shell.** The
+  per-keystroke xkb layout read, the clipboard watcher's Wayland read
+  preparation, and the shell's per-output frame init each `unwrap()`-panicked
+  on an unlikely-but-possible race; all three now recover gracefully.
+
+### Tests
+
+- First unit coverage for the tiling algorithms' gap semantics: `tile`,
+  `grid` and `vertical_grid` are pinned against asymmetric `gappih`/`gappiv`.
+
 ## [1.0.11] – 2026-06-26
 
 A performance + memory release. The clipboard and launcher no longer stutter
