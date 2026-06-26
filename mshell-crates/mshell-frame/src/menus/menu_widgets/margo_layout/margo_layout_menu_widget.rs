@@ -20,7 +20,9 @@
 //! layout) and emits `CloseMenu` so the drawer collapses.
 
 use mshell_margo_client::read_state_json;
-use relm4::{Component, ComponentParts, ComponentSender, gtk, gtk::glib, gtk::prelude::*};
+use relm4::{
+    Component, ComponentParts, ComponentSender, gtk, gtk::gdk, gtk::glib, gtk::prelude::*,
+};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -39,6 +41,11 @@ pub(crate) struct MargoLayoutMenuWidgetModel {
     /// Cleanup handle: when the controller drops, the timer
     /// closure is released and the periodic tick stops.
     _timeout: Option<glib::SourceId>,
+    /// Row index currently held by the keyboard focus-walk. Tracked
+    /// in the model (not GTK) so Tab / Ctrl+N wrap deterministically
+    /// even when no row has grabbed focus yet — same scheme as the
+    /// session menu.
+    focused: usize,
 }
 
 #[derive(Debug)]
@@ -49,6 +56,12 @@ pub(crate) enum MargoLayoutMenuWidgetInput {
     /// Live update from the poll-tick — refresh the `.selected`
     /// class on each row based on the new index.
     LayoutChanged(Option<usize>),
+    /// Move keyboard focus to the next row (Tab / Down / Ctrl+N /
+    /// Ctrl+J), wrapping at the end.
+    FocusNext,
+    /// Move keyboard focus to the previous row (Shift+Tab / Up /
+    /// Ctrl+P / Ctrl+K), wrapping at the start.
+    FocusPrev,
 }
 
 #[derive(Debug)]
@@ -169,13 +182,48 @@ impl Component for MargoLayoutMenuWidgetModel {
             glib::ControlFlow::Continue
         });
 
+        // Keyboard focus-walk (Tab / Shift+Tab, Ctrl+N / Ctrl+P, the
+        // arrow keys, Ctrl+J / Ctrl+K) — same scheme as the session
+        // menu. A Capture-phase EventControllerKey on the root means a
+        // focused row routes the key through us first; we translate it
+        // to Focus{Next,Prev} and Stop so GTK's built-in Tab handler
+        // doesn't also move focus (which would double-step). Plain
+        // keys (Enter / Space) fall through as Proceed so the focused
+        // button still activates via GTK's default handler.
+        {
+            let sender_walk = sender.clone();
+            let key_controller = gtk::EventControllerKey::new();
+            key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
+            key_controller.connect_key_pressed(move |_, keyval, _, modifiers| {
+                let shift = modifiers.contains(gdk::ModifierType::SHIFT_MASK);
+                let ctrl = modifiers.contains(gdk::ModifierType::CONTROL_MASK);
+                let dir = match keyval {
+                    gdk::Key::Tab if !shift && !ctrl => 1i32,
+                    gdk::Key::Down if !ctrl => 1i32,
+                    gdk::Key::n | gdk::Key::j if ctrl => 1i32,
+                    gdk::Key::ISO_Left_Tab => -1i32,
+                    gdk::Key::Tab if shift => -1i32,
+                    gdk::Key::Up if !ctrl => -1i32,
+                    gdk::Key::p | gdk::Key::k if ctrl => -1i32,
+                    _ => return glib::Propagation::Proceed,
+                };
+                sender_walk.input(if dir > 0 {
+                    MargoLayoutMenuWidgetInput::FocusNext
+                } else {
+                    MargoLayoutMenuWidgetInput::FocusPrev
+                });
+                glib::Propagation::Stop
+            });
+            root.add_controller(key_controller);
+        }
+
         let model = MargoLayoutMenuWidgetModel {
             buttons: buttons_cell,
             last_active: last_active_cell,
             _timeout: Some(timeout),
+            focused: 0,
         };
 
-        let _ = root; // keep `root` alive in the macro-expanded view
         ComponentParts { model, widgets }
     }
 
@@ -200,6 +248,20 @@ impl Component for MargoLayoutMenuWidgetModel {
             }
             MargoLayoutMenuWidgetInput::LayoutChanged(idx) => {
                 apply_active_class(&self.buttons.borrow(), idx);
+            }
+            MargoLayoutMenuWidgetInput::FocusNext => {
+                let buttons = self.buttons.borrow();
+                if !buttons.is_empty() {
+                    self.focused = (self.focused + 1) % buttons.len();
+                    buttons[self.focused].grab_focus();
+                }
+            }
+            MargoLayoutMenuWidgetInput::FocusPrev => {
+                let buttons = self.buttons.borrow();
+                if !buttons.is_empty() {
+                    self.focused = (self.focused + buttons.len() - 1) % buttons.len();
+                    buttons[self.focused].grab_focus();
+                }
             }
         }
     }
