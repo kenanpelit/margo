@@ -35,7 +35,9 @@ use mshell_utils::power_profile::{
 };
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::cell::Cell;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::Duration;
 use wayle_battery::types::DeviceState;
 use wayle_power_profiles::types::profile::PowerProfile;
@@ -58,6 +60,10 @@ pub(crate) struct SystemStatusModel {
     profile: PowerProfile,
     temp_celsius: i32,
     temp_sensor_path: Option<PathBuf>,
+    /// Whether this menu is currently revealed. The temp poll skips its
+    /// hwmon read while the menu is closed (battery/profile stay
+    /// watcher-driven, so they keep updating regardless).
+    revealed: Rc<Cell<bool>>,
     _effects: EffectScope,
 }
 
@@ -66,6 +72,7 @@ pub(crate) enum SystemStatusInput {
     BatteryChanged,
     ProfileChanged,
     PollTemp,
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -217,9 +224,16 @@ impl Component for SystemStatusModel {
         spawn_battery_online_watcher(&sender, || SystemStatusCommandOutput::BatteryChanged);
         spawn_active_profile_watcher(&sender, None, || SystemStatusCommandOutput::ProfileChanged);
 
-        // Self-cancelling temp poll (mirrors sysstat pattern).
+        // Self-cancelling temp poll (mirrors sysstat pattern). Skips the
+        // hwmon read while the menu is closed — defaults open so the
+        // first paint after build is primed.
+        let revealed = Rc::new(Cell::new(true));
         let sender_clone = sender.clone();
+        let revealed_timer = revealed.clone();
         relm4::gtk::glib::timeout_add_local(POLL_INTERVAL, move || {
+            if !revealed_timer.get() {
+                return relm4::gtk::glib::ControlFlow::Continue;
+            }
             if sender_clone
                 .input_sender()
                 .send(SystemStatusInput::PollTemp)
@@ -254,6 +268,7 @@ impl Component for SystemStatusModel {
             profile,
             temp_celsius,
             temp_sensor_path,
+            revealed,
             _effects: EffectScope::new(),
         };
 
@@ -279,7 +294,7 @@ impl Component for SystemStatusModel {
         }
     }
 
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             SystemStatusInput::BatteryChanged => {
                 let battery = battery_service().device.clone();
@@ -296,6 +311,12 @@ impl Component for SystemStatusModel {
                     && let Some(t) = read_temp_millideg(p)
                 {
                     self.temp_celsius = t / 1000;
+                }
+            }
+            SystemStatusInput::ParentRevealChanged(visible) => {
+                self.revealed.set(visible);
+                if visible {
+                    sender.input(SystemStatusInput::PollTemp);
                 }
             }
         }

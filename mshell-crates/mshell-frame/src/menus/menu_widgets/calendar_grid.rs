@@ -30,6 +30,10 @@ pub(crate) enum CalendarGridInput {
     /// day starts so the grid stays useful as a glanceable
     /// "today" reference.
     CheckDayRollover,
+    /// Menu reveal state changed — the rollover tick is stopped while
+    /// the menu is closed and restarted (with an immediate check) on
+    /// show.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -76,11 +80,7 @@ impl Component for CalendarGridModel {
         // on day rollover; the rest of the time the closure is a
         // no-op. Sub-minute resolution lets a click "today" land
         // promptly when crossing midnight.
-        let sender_clone = sender.clone();
-        let id = glib::timeout_add_local(std::time::Duration::from_secs(60), move || {
-            sender_clone.input(CalendarGridInput::CheckDayRollover);
-            glib::ControlFlow::Continue
-        });
+        let id = start_tick(&sender);
 
         let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
 
@@ -115,10 +115,29 @@ impl Component for CalendarGridModel {
                     widgets.calendar.set_day(now.day() as i32);
                 }
             }
+            CalendarGridInput::ParentRevealChanged(visible) => {
+                if visible {
+                    if self.timer_id.is_none() {
+                        self.timer_id = Some(start_tick(&sender));
+                    }
+                    sender.input(CalendarGridInput::CheckDayRollover);
+                } else if let Some(id) = self.timer_id.take() {
+                    id.remove();
+                }
+            }
         }
 
         self.update_view(widgets, sender);
     }
+}
+
+/// Start the 60 s day-rollover tick.
+fn start_tick(sender: &ComponentSender<CalendarGridModel>) -> SourceId {
+    let sender = sender.clone();
+    glib::timeout_add_local(std::time::Duration::from_secs(60), move || {
+        sender.input(CalendarGridInput::CheckDayRollover);
+        glib::ControlFlow::Continue
+    })
 }
 
 impl Drop for CalendarGridModel {

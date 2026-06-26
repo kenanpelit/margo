@@ -60,6 +60,9 @@ pub(crate) struct CalendarModel {
 #[derive(Debug)]
 pub(crate) enum CalendarInput {
     UpdateTime,
+    /// Menu reveal state changed — the 1 Hz tick is stopped while the
+    /// menu is closed and restarted (with an immediate refresh) on show.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -157,11 +160,7 @@ impl Component for CalendarModel {
         // 1 Hz tick — fine-grained enough that the time label
         // never lags more than a second. The hero day + grid
         // selection only update on day rollover.
-        let sender_clone = sender.clone();
-        let id = glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
-            sender_clone.input(CalendarInput::UpdateTime);
-            glib::ControlFlow::Continue
-        });
+        let id = start_tick(&sender);
 
         let format_24_h = mshell_config::config_manager::config_manager()
             .config()
@@ -219,10 +218,29 @@ impl Component for CalendarModel {
                     widgets.calendar.set_day(now.day() as i32);
                 }
             }
+            CalendarInput::ParentRevealChanged(visible) => {
+                if visible {
+                    if self.timer_id.is_none() {
+                        self.timer_id = Some(start_tick(&sender));
+                    }
+                    sender.input(CalendarInput::UpdateTime);
+                } else if let Some(id) = self.timer_id.take() {
+                    id.remove();
+                }
+            }
         }
 
         self.update_view(widgets, sender);
     }
+}
+
+/// Start the 1 Hz tick that drives `UpdateTime`.
+fn start_tick(sender: &ComponentSender<CalendarModel>) -> SourceId {
+    let sender = sender.clone();
+    glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
+        sender.input(CalendarInput::UpdateTime);
+        glib::ControlFlow::Continue
+    })
 }
 
 fn format_time(now: &OffsetDateTime, format_24_h: bool) -> String {

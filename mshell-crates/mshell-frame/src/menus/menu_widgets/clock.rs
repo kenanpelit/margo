@@ -58,6 +58,10 @@ pub(crate) struct ClockModel {
 pub(crate) enum ClockInput {
     UpdateTime,
     ChangeFormat(bool),
+    /// Menu reveal state changed — the 1 Hz tick is useless while the
+    /// menu is closed, so the timer is stopped on hide and restarted
+    /// (with an immediate refresh) on show.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -117,11 +121,7 @@ impl SimpleComponent for ClockModel {
     ) -> ComponentParts<Self> {
         let base_config = mshell_config::config_manager::config_manager().config();
 
-        let sender_clone = sender.clone();
-        let id = glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
-            sender_clone.input(ClockInput::UpdateTime);
-            glib::ControlFlow::Continue
-        });
+        let id = start_tick(&sender);
 
         let format_24_h = base_config
             .clone()
@@ -158,7 +158,7 @@ impl SimpleComponent for ClockModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>) {
         match message {
             ClockInput::UpdateTime => {
                 let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
@@ -169,8 +169,29 @@ impl SimpleComponent for ClockModel {
             ClockInput::ChangeFormat(format_24_h) => {
                 self.format_24_h = format_24_h;
             }
+            ClockInput::ParentRevealChanged(visible) => {
+                if visible {
+                    if self.timer_id.is_none() {
+                        self.timer_id = Some(start_tick(&sender));
+                    }
+                    // Refresh immediately so the time is current the
+                    // instant the menu opens, not up to a second stale.
+                    sender.input(ClockInput::UpdateTime);
+                } else if let Some(id) = self.timer_id.take() {
+                    id.remove();
+                }
+            }
         }
     }
+}
+
+/// Start the 1 Hz tick that drives `UpdateTime`.
+fn start_tick(sender: &ComponentSender<ClockModel>) -> SourceId {
+    let sender = sender.clone();
+    glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
+        sender.input(ClockInput::UpdateTime);
+        glib::ControlFlow::Continue
+    })
 }
 
 fn format_time(now: &OffsetDateTime, format_24_h: bool) -> String {

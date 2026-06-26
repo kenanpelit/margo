@@ -34,6 +34,8 @@ use mshell_utils::battery::spawn_battery_watcher;
 use mshell_utils::notifications::spawn_notifications_watcher;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -68,6 +70,11 @@ pub(crate) struct OverviewIntelModel {
     /// always-visible updates line so it doesn't flash "up to date"
     /// before the first probe lands.
     updates_known: bool,
+    /// Whether this menu is currently revealed. The 5 s tick — which
+    /// re-reads the update cache and can spawn a `checkupdates` probe —
+    /// is skipped while the menu is closed (notifications/battery stay
+    /// watcher-driven, so they keep updating regardless).
+    revealed: Rc<Cell<bool>>,
     _effects: EffectScope,
 }
 
@@ -77,6 +84,7 @@ pub(crate) enum OverviewIntelInput {
     Tick,
     /// A pending-update count came back (cache or our own probe).
     UpdateCountProbed(usize),
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -229,8 +237,13 @@ impl Component for OverviewIntelModel {
         // 5 s tick for the cached update count + date refresh (date
         // crosses midnight; the update count isn't a reactive store, so
         // we re-read its cache on the tick).
+        let revealed = Rc::new(Cell::new(true));
         let sender_clone = sender.clone();
+        let revealed_timer = revealed.clone();
         relm4::gtk::glib::timeout_add_local(POLL_INTERVAL, move || {
+            if !revealed_timer.get() {
+                return relm4::gtk::glib::ControlFlow::Continue;
+            }
             if sender_clone
                 .input_sender()
                 .send(OverviewIntelInput::Tick)
@@ -254,6 +267,7 @@ impl Component for OverviewIntelModel {
             has_battery,
             update_count: 0,
             updates_known: false,
+            revealed,
             _effects: EffectScope::new(),
         };
 
@@ -296,6 +310,12 @@ impl Component for OverviewIntelModel {
             OverviewIntelInput::UpdateCountProbed(count) => {
                 self.update_count = count;
                 self.updates_known = true;
+            }
+            OverviewIntelInput::ParentRevealChanged(visible) => {
+                self.revealed.set(visible);
+                if visible {
+                    sender.input(OverviewIntelInput::Tick);
+                }
             }
         }
     }

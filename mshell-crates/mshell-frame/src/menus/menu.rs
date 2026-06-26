@@ -10,7 +10,10 @@ use crate::menus::menu_widgets::audio_out::audio_out_menu_widget::{
 use crate::menus::menu_widgets::bluetooth::bluetooth_menu_widget::{
     BluetoothMenuWidgetInput, BluetoothMenuWidgetModel,
 };
+use crate::menus::menu_widgets::calendar::{CalendarInput, CalendarModel};
+use crate::menus::menu_widgets::calendar_grid::{CalendarGridInput, CalendarGridModel};
 use crate::menus::menu_widgets::clipboard::clipboard::{ClipboardInput, ClipboardModel};
+use crate::menus::menu_widgets::clock::{ClockInput, ClockModel};
 use crate::menus::menu_widgets::control_center::control_center_menu_widget::{
     ControlCenterMenuWidgetInput, ControlCenterMenuWidgetModel,
 };
@@ -34,6 +37,7 @@ use crate::menus::menu_widgets::network_toggle::network_menu_widget::{
 use crate::menus::menu_widgets::notifications::notifications::{
     NotificationsInput, NotificationsModel,
 };
+use crate::menus::menu_widgets::overview_intel::{OverviewIntelInput, OverviewIntelModel};
 use crate::menus::menu_widgets::podman::podman_menu_widget::{
     PodmanMenuWidgetInput, PodmanMenuWidgetModel,
 };
@@ -47,6 +51,7 @@ use crate::menus::menu_widgets::session::session_menu_widget::{
 use crate::menus::menu_widgets::ssh_sessions::ssh_sessions_menu_widget::{
     SshSessionsMenuWidgetInput, SshSessionsMenuWidgetModel,
 };
+use crate::menus::menu_widgets::system_status::{SystemStatusInput, SystemStatusModel};
 use crate::menus::menu_widgets::system_update::system_update_menu_widget::{
     SystemUpdateMenuWidgetInput, SystemUpdateMenuWidgetModel,
 };
@@ -906,6 +911,43 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(MediaPlayersInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<SystemStatusModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(SystemStatusInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<OverviewIntelModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(OverviewIntelInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) = controller.downcast_ref::<Controller<ClockModel>>() {
+                        controller
+                            .sender()
+                            .send(ClockInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) = controller.downcast_ref::<Controller<CalendarModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(CalendarInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<CalendarGridModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(CalendarGridInput::ParentRevealChanged(visible))
                             .ok();
                     }
                 }
