@@ -529,14 +529,14 @@ fn build_mshell_matugen() -> MShell {
                 .theme()
                 .attributes()
                 .font()
-                .primary()
+                .secondary()
                 .get_untracked(),
             tertiary: config_manager()
                 .config()
                 .theme()
                 .attributes()
                 .font()
-                .primary()
+                .tertiary()
                 .get_untracked(),
         },
         sizing: Sizing {

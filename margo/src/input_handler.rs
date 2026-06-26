@@ -359,6 +359,19 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                                 crate::dispatch::dispatch_action(state, &action, &arg);
                                 return FilterResult::Intercept(());
                             }
+                            // Binds the user explicitly tagged `l` (lock_apply) —
+                            // volume / brightness / media keys marked safe to run
+                            // over the lock screen — are dispatched here and the key
+                            // is swallowed so it doesn't also reach the lock surface.
+                            // Every other bind falls through to the forward below, so
+                            // the lock screen stays secure (no spawning terminals over
+                            // it). Without this the `l` suffix was a silent no-op.
+                            if kb.lock_apply {
+                                let action = kb.action.clone();
+                                let arg = kb.arg.clone();
+                                crate::dispatch::dispatch_action(state, &action, &arg);
+                                return FilterResult::Intercept(());
+                            }
                         }
                     }
                     let focus = state.seat.get_keyboard().and_then(|kb| kb.current_focus());

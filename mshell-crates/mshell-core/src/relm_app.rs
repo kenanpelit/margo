@@ -1149,7 +1149,8 @@ fn spawn_idle_manager() -> tokio::sync::watch::Sender<IdleConfig> {
     config_tx
 }
 
-/// Get the frame for the monitor name.  If it doesn't exist, get the first frame available
+/// Get the frame for the monitor name. If it doesn't exist, fall back
+/// to a *deterministic* frame rather than an arbitrary one.
 fn resolve_frame<'a>(
     window_groups: &'a HashMap<String, WindowGroup>,
     monitor_name: &Option<String>,
@@ -1159,7 +1160,16 @@ fn resolve_frame<'a>(
     {
         return Some(frame);
     }
-    window_groups.values().find_map(|g| g.frame.as_ref())
+    // The caller's `monitor_name` already comes from
+    // `active_monitor_name()` (focused-first), so we only reach here when
+    // that name is stale/missing. Pick the lowest connector name instead
+    // of `values().find_map` — HashMap iteration order is unspecified, so
+    // the old path could open a menu on a different output frame-to-frame.
+    window_groups
+        .iter()
+        .filter(|(_, g)| g.frame.is_some())
+        .min_by(|(a, _), (b, _)| a.cmp(b))
+        .and_then(|(_, g)| g.frame.as_ref())
 }
 
 impl Debug for WindowGroup {

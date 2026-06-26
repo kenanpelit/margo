@@ -250,11 +250,14 @@ ensure_rust() {
 # feature unification.
 debian_build() {
   cd "$REPO_ROOT"
-  log "building compositor group (release)"
-  cargo build --release -p margo -p start-margo \
+  # Ship with the `dist` profile (fat LTO + single codegen unit) — the
+  # installer is not the dev inner loop, so the longer compile buys a
+  # faster, smaller installed binary. `just` / CI stay on `release`.
+  log "building compositor group (dist)"
+  cargo build --profile dist -p margo -p start-margo \
     -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mplay
-  log "building shell group (release)"
-  cargo build --release -p mshell -p mshellctl -p mshellshare \
+  log "building shell group (dist)"
+  cargo build --profile dist -p mshell -p mshellctl -p mshellshare \
     -p mpicker -p mwizard -p margo-portal
 }
 
@@ -281,7 +284,7 @@ install_tree() {
 }
 
 debian_install_files() {
-  local tgt="$1"   # target release dir
+  local tgt="$1"   # target build dir (e.g. target/dist)
   log "installing to /usr (recorded in ${MANIFEST})"
   $SUDO install -d "$(dirname "$MANIFEST")"
   $SUDO rm -f "$MANIFEST"
@@ -401,7 +404,7 @@ debian_install() {
   ensure_rust
   debian_build
   need_sudo
-  debian_install_files "${CARGO_TARGET_DIR:-${REPO_ROOT}/target}/release"
+  debian_install_files "${CARGO_TARGET_DIR:-${REPO_ROOT}/target}/dist"
   $SUDO systemctl daemon-reload >/dev/null 2>&1 || true
   log "done."
   cat <<EOF

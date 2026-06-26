@@ -528,6 +528,7 @@ const BOOL_KEYS: &[&str] = &[
     "left_handed",
     "middle_button_emulation",
     "mouse_natural_scrolling",
+    "mru_show_labels",
     "new_is_master",
     "no_border_when_single",
     "no_radius_when_single",
@@ -567,9 +568,6 @@ const INT_KEYS: &[&str] = &[
     "overviewgappi",
     "overviewgappo",
     "repeat_delay",
-    "mru_filter",
-    "mru_scope",
-    "mru_show_labels",
     "mru_thumb_height",
     "repeat_rate",
     "scroller_overview_gap",
@@ -647,6 +645,8 @@ const FLOAT_KEYS: &[&str] = &[
 /// Scalar keys whose value is one of a fixed set. Mirrors the `match`
 /// arms in `parser::parse_option`; keep in sync when a new enum knob lands.
 const ENUM_KEYS: &[(&str, &[&str])] = &[
+    ("mru_filter", &["all", "appid"]),
+    ("mru_scope", &["all", "output", "workspace"]),
     ("overview_cycle_order", &["mru", "tag", "mixed"]),
     ("overview_style", &["grid", "scroller"]),
     ("twilight_mode", &["geo", "manual", "static", "schedule"]),
