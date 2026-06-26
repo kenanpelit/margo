@@ -8,7 +8,7 @@ use mshell_config::schema::config::{
     IdleStoreFields, WallpaperRotationMode, WallpaperStoreFields,
 };
 use mshell_frame::audio_inhibit::{AudioInhibitInit, AudioInhibitModel};
-use mshell_frame::frame::{Frame, FrameInit, FrameInput};
+use mshell_frame::frame::{Frame, FrameInit, FrameInput, MenuId};
 use mshell_frame::mdock_surface::{MdockSurface, MdockSurfaceInit, MdockSurfaceInput};
 use mshell_idle::idle_manager::{self, IdleConfig, IdleStage};
 use mshell_idle::inhibitor::IdleInhibitor;
@@ -437,7 +437,7 @@ impl Component for Shell {
                 for group in self.window_groups.values() {
                     if layer_shell {
                         if let Some(f) = &group.frame {
-                            f.emit(FrameInput::ToggleDockMenu);
+                            f.emit(FrameInput::ToggleMenu(MenuId::Dock));
                         }
                     } else if let Some(m) = &group.mdock {
                         m.emit(match message {
@@ -606,7 +606,7 @@ impl Component for Shell {
             }
             ShellInput::ToggleAppLauncher(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleAppLauncherMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::AppLauncher));
                 }
             }
             ShellInput::ToggleAppLauncherWithTab(monitor_name, tab) => {
@@ -616,7 +616,7 @@ impl Component for Shell {
             }
             ShellInput::ToggleScreenshotMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleScreenshotMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Screenshot));
                 }
             }
             ShellInput::CaptureScreenshot(spec) => {
@@ -668,7 +668,7 @@ impl Component for Shell {
             }
             ShellInput::ToggleNotifications(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleNotificationMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Notification));
                 }
             }
             ShellInput::NotificationsClearAll => {
@@ -688,12 +688,12 @@ impl Component for Shell {
             }
             ShellInput::ToggleClipboard(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleClipboardMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Clipboard));
                 }
             }
             ShellInput::ToggleClockMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleClockMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Clock));
                 }
             }
             ShellInput::HiddenBar(verb, target) => {
@@ -706,7 +706,7 @@ impl Component for Shell {
             }
             ShellInput::ToggleWallpaperMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleWallpaperMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Wallpaper));
                 }
             }
             ShellInput::CycleWallpaper(direction) => {
@@ -716,102 +716,102 @@ impl Component for Shell {
             }
             ShellInput::ToggleUfwMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleUfwMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Ufw));
                 }
             }
             ShellInput::TogglePrivacyMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::TogglePrivacyMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Privacy));
                 }
             }
             ShellInput::ToggleBluetoothMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleBluetoothMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Bluetooth));
                 }
             }
             ShellInput::ToggleCpuDashboardMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleCpuDashboardMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::CpuDashboard));
                 }
             }
             ShellInput::ToggleAudioDashboardMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleAudioDashboardMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::AudioDashboard));
                 }
             }
             ShellInput::ToggleSystemUpdateMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleSystemUpdateMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::SystemUpdate));
                 }
             }
             ShellInput::ToggleValentMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleValentMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Valent));
                 }
             }
             ShellInput::ToggleKeepAwakeMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleKeepAwakeMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::KeepAwake));
                 }
             }
             ShellInput::ToggleTwilightMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleTwilightMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Twilight));
                 }
             }
             ShellInput::ToggleMargoLayoutMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleMargoLayoutMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::MargoLayout));
                 }
             }
             ShellInput::ToggleWeatherMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleWeatherMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Weather));
                 }
             }
             ShellInput::ToggleKeybindsMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleKeybindsMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Keybinds));
                 }
             }
             ShellInput::ToggleAlarmClockMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleAlarmClockMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::AlarmClock));
                 }
             }
             ShellInput::ToggleControlCenterMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleControlCenterMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::ControlCenter));
                 }
             }
             ShellInput::ToggleSshSessionsMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleSshSessionsMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::SshSessions));
                 }
             }
             ShellInput::ToggleVpnMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleVpnMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Vpn));
                 }
             }
             ShellInput::ToggleAiMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleAiMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Ai));
                 }
             }
             ShellInput::ToggleDnsMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleDnsMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Dns));
                 }
             }
             ShellInput::TogglePodmanMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::TogglePodmanMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Podman));
                 }
             }
             ShellInput::ToggleNotesMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleNotesMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Notes));
                 }
             }
             ShellInput::TogglePluginMenu(monitor_name, key) => {
@@ -835,27 +835,27 @@ impl Component for Shell {
             }
             ShellInput::ToggleIpMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleIpMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Ip));
                 }
             }
             ShellInput::ToggleNetworkMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleNetworkMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Network));
                 }
             }
             ShellInput::TogglePowerMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::TogglePowerMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Power));
                 }
             }
             ShellInput::ToggleMediaPlayerMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleMediaPlayerMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::MediaPlayer));
                 }
             }
             ShellInput::ToggleSessionMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleSessionMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Session));
                 }
             }
             ShellInput::ToggleSettingsMenu(monitor_name) => {
@@ -882,7 +882,7 @@ impl Component for Shell {
             }
             ShellInput::ToggleWizardMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleWizardMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Wizard));
                 }
             }
             ShellInput::OpenSettingsAtSection(monitor_name, section) => {
@@ -904,7 +904,7 @@ impl Component for Shell {
             }
             ShellInput::ToggleMdashMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleMdashMenu);
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Mdash));
                 }
             }
             ShellInput::RunSessionAction(action) => {

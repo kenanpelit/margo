@@ -160,6 +160,96 @@ pub struct Frame {
     _effects: EffectScope,
 }
 
+/// The menus that share the uniform open path: toggle the menu's reveal,
+/// then re-sync the layer surface's keyboard mode. Each maps to its
+/// menu-name key via [`MenuId::menu_name`]. Folding these into the single
+/// parametrised [`FrameInput::ToggleMenu`] replaces the ~34 data-less
+/// `Toggle*Menu` variants (and their identical match arms) that used to
+/// enumerate them one by one. Menus whose open path is *not* uniform —
+/// Settings (built on demand), Screenshare (forwards a reply channel), the
+/// WASM / declarative plugin panels, and AppLauncher-with-tab — keep their
+/// own bespoke `FrameInput` variants below.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuId {
+    Clock,
+    Clipboard,
+    Notification,
+    Screenshot,
+    AppLauncher,
+    Wallpaper,
+    Wizard,
+    Ufw,
+    Privacy,
+    Bluetooth,
+    CpuDashboard,
+    AudioDashboard,
+    SystemUpdate,
+    Valent,
+    Weather,
+    KeepAwake,
+    Twilight,
+    Keybinds,
+    AlarmClock,
+    Dock,
+    ControlCenter,
+    SshSessions,
+    Dns,
+    Vpn,
+    Ai,
+    Podman,
+    Notes,
+    Ip,
+    Network,
+    Power,
+    MediaPlayer,
+    Session,
+    Mdash,
+    MargoLayout,
+}
+
+impl MenuId {
+    /// The stable menu-name key this id toggles — the same `&str` the
+    /// per-menu arms passed to [`Frame::toggle_menu`] before the collapse.
+    const fn menu_name(self) -> &'static str {
+        match self {
+            MenuId::Clock => CLOCK_MENU,
+            MenuId::Clipboard => CLIPBOARD_MENU,
+            MenuId::Notification => NOTIFICATION_MENU,
+            MenuId::Screenshot => SCREENSHOT_MENU,
+            MenuId::AppLauncher => APP_LAUNCHER_MENU,
+            MenuId::Wallpaper => WALLPAPER_MENU,
+            MenuId::Wizard => WIZARD_MENU,
+            MenuId::Ufw => NUFW_MENU,
+            MenuId::Privacy => PRIVACY_MENU,
+            MenuId::Bluetooth => BLUETOOTH_MENU,
+            MenuId::CpuDashboard => CPU_DASHBOARD_MENU,
+            MenuId::AudioDashboard => AUDIO_DASHBOARD_MENU,
+            MenuId::SystemUpdate => SYSTEM_UPDATE_MENU,
+            MenuId::Valent => VALENT_MENU,
+            MenuId::Weather => WEATHER_MENU,
+            MenuId::KeepAwake => KEEP_AWAKE_MENU,
+            MenuId::Twilight => TWILIGHT_MENU,
+            MenuId::Keybinds => KEYBINDS_MENU,
+            MenuId::AlarmClock => ALARMCLOCK_MENU,
+            MenuId::Dock => DOCK_MENU,
+            MenuId::ControlCenter => CONTROL_CENTER_MENU,
+            MenuId::SshSessions => SSH_MENU,
+            MenuId::Dns => NDNS_MENU,
+            MenuId::Vpn => NVPN_MENU,
+            MenuId::Ai => NAI_MENU,
+            MenuId::Podman => NPODMAN_MENU,
+            MenuId::Notes => NNOTES_MENU,
+            MenuId::Ip => NIP_MENU,
+            MenuId::Network => NNETWORK_MENU,
+            MenuId::Power => NPOWER_MENU,
+            MenuId::MediaPlayer => MEDIA_PLAYER_MENU,
+            MenuId::Session => SESSION_MENU,
+            MenuId::Mdash => MDASH_MENU,
+            MenuId::MargoLayout => MARGO_LAYOUT_MENU,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum FrameInput {
     SetDrawFrame(bool),
@@ -173,7 +263,10 @@ pub enum FrameInput {
     /// every unrelated setting write. Fired by the per-output effect that
     /// subscribes to all menu positions.
     RepositionMenus(Vec<Position>),
-    ToggleClockMenu,
+    /// Toggle one of the uniform menus — open path is reveal + keyboard-mode
+    /// sync. The [`MenuId`] payload selects which. Menus with bespoke open
+    /// logic keep their own variants below.
+    ToggleMenu(MenuId),
     /// Re-assert the layer surface's keyboard interactivity from the
     /// current menu-reveal state. Fired once when the frame surface
     /// first maps: gtk4-layer-shell's initial commit can land with a
@@ -196,37 +289,12 @@ pub enum FrameInput {
         is_top: bool,
         height: i32,
     },
-    ToggleClipboardMenu,
-    ToggleNotificationMenu,
-    ToggleScreenshotMenu,
-    ToggleAppLauncherMenu,
-    /// Same as `ToggleAppLauncherMenu` but also forwards a
+    /// Same as `ToggleMenu(MenuId::AppLauncher)` but also forwards a
     /// `SelectCategory(tab)` into the underlying
     /// `AppLauncherModel` once the menu is open. Bridges
     /// `mshellctl menu app-launcher --tab Run` to the runtime's
     /// existing category-cycle path.
     ToggleAppLauncherMenuWithTab(String),
-    ToggleWallpaperMenu,
-    ToggleUfwMenu,
-    TogglePrivacyMenu,
-    ToggleBluetoothMenu,
-    ToggleCpuDashboardMenu,
-    ToggleAudioDashboardMenu,
-    ToggleSystemUpdateMenu,
-    ToggleValentMenu,
-    ToggleWeatherMenu,
-    ToggleKeepAwakeMenu,
-    ToggleTwilightMenu,
-    ToggleKeybindsMenu,
-    ToggleAlarmClockMenu,
-    ToggleDockMenu,
-    ToggleControlCenterMenu,
-    ToggleSshSessionsMenu,
-    ToggleDnsMenu,
-    ToggleVpnMenu,
-    ToggleAiMenu,
-    TogglePodmanMenu,
-    ToggleNotesMenu,
     /// Open the first-class plugin-panel menu hosting a plugin's WASM panel,
     /// carrying its compiled component path + resolved settings (JSON).
     ToggleWasmPluginPanel {
@@ -259,13 +327,7 @@ pub enum FrameInput {
     /// `binds.d/mshell-plugins.conf` spawn `mshellctl plugin keybind …`
     /// which lands here.
     FirePluginKeybind(String, String),
-    ToggleIpMenu,
-    ToggleNetworkMenu,
-    TogglePowerMenu,
-    ToggleMediaPlayerMenu,
-    ToggleSessionMenu,
     ToggleSettingsMenu,
-    ToggleWizardMenu,
     /// Open Settings and jump to a specific sidebar section.
     /// Used by the launcher's Settings provider via the shell
     /// router. If Settings is already visible, just switches the
@@ -277,10 +339,6 @@ pub enum FrameInput {
     /// open Settings is closed out from under it so the panel
     /// doesn't linger on a monitor the user is no longer viewing.
     CloseSettingsMenu,
-    ToggleMdashMenu,
-    /// Open / close the Margo layout switcher menu (in-frame
-    /// replacement for the legacy bar popover).
-    ToggleMargoLayoutMenu,
     CloseMenus,
     /// Esc while the clipboard `/` filter is open — tell the clipboard
     /// menu to leave search mode instead of closing the whole menu.
@@ -1094,8 +1152,8 @@ impl Component for Frame {
                     self.apply_left_and_right_side_children(widgets);
                 }
             }
-            FrameInput::ToggleClockMenu => {
-                self.toggle_menu(CLOCK_MENU, widgets);
+            FrameInput::ToggleMenu(id) => {
+                self.toggle_menu(id.menu_name(), widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::SyncKeyboardMode => {
@@ -1141,22 +1199,6 @@ impl Component for Frame {
                         .update_style(|s| s.bottom_thickness = height as f64);
                 }
             }
-            FrameInput::ToggleClipboardMenu => {
-                self.toggle_menu(CLIPBOARD_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleNotificationMenu => {
-                self.toggle_menu(NOTIFICATION_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleScreenshotMenu => {
-                self.toggle_menu(SCREENSHOT_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleAppLauncherMenu => {
-                self.toggle_menu(APP_LAUNCHER_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
             FrameInput::ToggleAppLauncherMenuWithTab(tab) => {
                 // If the launcher is already visible AND already
                 // on the requested tab, treat the call as a
@@ -1173,90 +1215,6 @@ impl Component for Frame {
                     .sender()
                     .send(MenuInput::AppLauncherSelectCategory(tab))
                     .ok();
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleWallpaperMenu => {
-                self.toggle_menu(WALLPAPER_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleUfwMenu => {
-                self.toggle_menu(NUFW_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::TogglePrivacyMenu => {
-                self.toggle_menu(PRIVACY_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleBluetoothMenu => {
-                self.toggle_menu(BLUETOOTH_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleCpuDashboardMenu => {
-                self.toggle_menu(CPU_DASHBOARD_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleAudioDashboardMenu => {
-                self.toggle_menu(AUDIO_DASHBOARD_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleSystemUpdateMenu => {
-                self.toggle_menu(SYSTEM_UPDATE_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleValentMenu => {
-                self.toggle_menu(VALENT_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleWeatherMenu => {
-                self.toggle_menu(WEATHER_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleKeepAwakeMenu => {
-                self.toggle_menu(KEEP_AWAKE_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleTwilightMenu => {
-                self.toggle_menu(TWILIGHT_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleKeybindsMenu => {
-                self.toggle_menu(KEYBINDS_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleAlarmClockMenu => {
-                self.toggle_menu(ALARMCLOCK_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleDockMenu => {
-                self.toggle_menu(DOCK_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleControlCenterMenu => {
-                self.toggle_menu(CONTROL_CENTER_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleSshSessionsMenu => {
-                self.toggle_menu(SSH_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleDnsMenu => {
-                self.toggle_menu(NDNS_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleVpnMenu => {
-                self.toggle_menu(NVPN_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleAiMenu => {
-                self.toggle_menu(NAI_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::TogglePodmanMenu => {
-                self.toggle_menu(NPODMAN_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleNotesMenu => {
-                self.toggle_menu(NNOTES_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleWasmPluginPanel {
@@ -1453,36 +1411,9 @@ impl Component for Frame {
                 #[cfg(not(feature = "wasm-plugins"))]
                 let _ = (key, bind_id);
             }
-            FrameInput::ToggleIpMenu => {
-                self.toggle_menu(NIP_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleNetworkMenu => {
-                self.toggle_menu(NNETWORK_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::TogglePowerMenu => {
-                self.toggle_menu(NPOWER_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleMediaPlayerMenu => {
-                self.toggle_menu(MEDIA_PLAYER_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleSessionMenu => {
-                self.toggle_menu(SESSION_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
             FrameInput::ToggleSettingsMenu => {
                 self.ensure_settings_built(widgets);
                 self.toggle_menu(SETTINGS_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleWizardMenu => {
-                // In-shell setup wizard — a layer-shell menu, toggled like
-                // every other menu (keyboard mode synced so its controls
-                // take input).
-                self.toggle_menu(WIZARD_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::OpenSettingsAtSection(section) => {
@@ -1509,14 +1440,6 @@ impl Component for Frame {
                     self.toggle_menu(SETTINGS_MENU, widgets);
                     self.sync_keyboard_mode(root);
                 }
-            }
-            FrameInput::ToggleMdashMenu => {
-                self.toggle_menu(MDASH_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleMargoLayoutMenu => {
-                self.toggle_menu(MARGO_LAYOUT_MENU, widgets);
-                self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleScreenshareMenu(reply, payload) => {
                 self.screenshare_menu
@@ -2608,7 +2531,7 @@ impl Frame {
             &settings_menu_position,
         );
         // mdash — position read straight from config (newer pattern, like
-        // cpu_dashboard / margo_layout); toggled via FrameInput::ToggleMdashMenu.
+        // cpu_dashboard / margo_layout); toggled via FrameInput::ToggleMenu(MenuId::Mdash).
         let mdash_menu_widget: Widget = self.mdash_menu.widget().clone().upcast();
         let mdash_menu_position = mshell_config::config_manager::config_manager()
             .config()
@@ -2625,7 +2548,7 @@ impl Frame {
         // Margo Layout menu — position read from config (the
         // Settings → Menus page exposes the knob). Bar pill output
         // cascades through `BarOutput::MargoLayoutClicked` to
-        // `FrameInput::ToggleMargoLayoutMenu` which calls
+        // `FrameInput::ToggleMenu(MenuId::MargoLayout)` which calls
         // `toggle_menu(MARGO_LAYOUT_MENU, …)` against the same
         // stack.
         let margo_layout_menu_widget: Widget = self.margo_layout_menu.widget().clone().upcast();
@@ -2701,33 +2624,33 @@ impl Frame {
                     is_top: matches!(bar_type, BarType::Top),
                     height: h,
                 },
-                BarOutput::ClockClicked => FrameInput::ToggleClockMenu,
-                BarOutput::CatwalkClicked => FrameInput::ToggleCpuDashboardMenu,
-                BarOutput::MdashClicked => FrameInput::ToggleMdashMenu,
-                BarOutput::ClipboardClicked => FrameInput::ToggleClipboardMenu,
-                BarOutput::NotificationsClicked => FrameInput::ToggleNotificationMenu,
-                BarOutput::ScreenshotClicked => FrameInput::ToggleScreenshotMenu,
-                BarOutput::AppLauncherClicked => FrameInput::ToggleAppLauncherMenu,
-                BarOutput::WallpaperClicked => FrameInput::ToggleWallpaperMenu,
-                BarOutput::UfwClicked => FrameInput::ToggleUfwMenu,
-                BarOutput::PrivacyClicked => FrameInput::TogglePrivacyMenu,
-                BarOutput::BluetoothClicked => FrameInput::ToggleBluetoothMenu,
-                BarOutput::CpuDashboardClicked => FrameInput::ToggleCpuDashboardMenu,
-                BarOutput::AudioDashboardClicked => FrameInput::ToggleAudioDashboardMenu,
-                BarOutput::SystemUpdateClicked => FrameInput::ToggleSystemUpdateMenu,
-                BarOutput::ValentClicked => FrameInput::ToggleValentMenu,
-                BarOutput::WeatherClicked => FrameInput::ToggleWeatherMenu,
-                BarOutput::KeepAwakeClicked => FrameInput::ToggleKeepAwakeMenu,
-                BarOutput::TwilightClicked => FrameInput::ToggleTwilightMenu,
-                BarOutput::KeybindsClicked => FrameInput::ToggleKeybindsMenu,
-                BarOutput::AlarmClockClicked => FrameInput::ToggleAlarmClockMenu,
-                BarOutput::ControlCenterClicked => FrameInput::ToggleControlCenterMenu,
-                BarOutput::SshSessionsClicked => FrameInput::ToggleSshSessionsMenu,
-                BarOutput::VpnClicked => FrameInput::ToggleVpnMenu,
-                BarOutput::AiClicked => FrameInput::ToggleAiMenu,
-                BarOutput::DnsClicked => FrameInput::ToggleDnsMenu,
-                BarOutput::PodmanClicked => FrameInput::TogglePodmanMenu,
-                BarOutput::NotesClicked => FrameInput::ToggleNotesMenu,
+                BarOutput::ClockClicked => FrameInput::ToggleMenu(MenuId::Clock),
+                BarOutput::CatwalkClicked => FrameInput::ToggleMenu(MenuId::CpuDashboard),
+                BarOutput::MdashClicked => FrameInput::ToggleMenu(MenuId::Mdash),
+                BarOutput::ClipboardClicked => FrameInput::ToggleMenu(MenuId::Clipboard),
+                BarOutput::NotificationsClicked => FrameInput::ToggleMenu(MenuId::Notification),
+                BarOutput::ScreenshotClicked => FrameInput::ToggleMenu(MenuId::Screenshot),
+                BarOutput::AppLauncherClicked => FrameInput::ToggleMenu(MenuId::AppLauncher),
+                BarOutput::WallpaperClicked => FrameInput::ToggleMenu(MenuId::Wallpaper),
+                BarOutput::UfwClicked => FrameInput::ToggleMenu(MenuId::Ufw),
+                BarOutput::PrivacyClicked => FrameInput::ToggleMenu(MenuId::Privacy),
+                BarOutput::BluetoothClicked => FrameInput::ToggleMenu(MenuId::Bluetooth),
+                BarOutput::CpuDashboardClicked => FrameInput::ToggleMenu(MenuId::CpuDashboard),
+                BarOutput::AudioDashboardClicked => FrameInput::ToggleMenu(MenuId::AudioDashboard),
+                BarOutput::SystemUpdateClicked => FrameInput::ToggleMenu(MenuId::SystemUpdate),
+                BarOutput::ValentClicked => FrameInput::ToggleMenu(MenuId::Valent),
+                BarOutput::WeatherClicked => FrameInput::ToggleMenu(MenuId::Weather),
+                BarOutput::KeepAwakeClicked => FrameInput::ToggleMenu(MenuId::KeepAwake),
+                BarOutput::TwilightClicked => FrameInput::ToggleMenu(MenuId::Twilight),
+                BarOutput::KeybindsClicked => FrameInput::ToggleMenu(MenuId::Keybinds),
+                BarOutput::AlarmClockClicked => FrameInput::ToggleMenu(MenuId::AlarmClock),
+                BarOutput::ControlCenterClicked => FrameInput::ToggleMenu(MenuId::ControlCenter),
+                BarOutput::SshSessionsClicked => FrameInput::ToggleMenu(MenuId::SshSessions),
+                BarOutput::VpnClicked => FrameInput::ToggleMenu(MenuId::Vpn),
+                BarOutput::AiClicked => FrameInput::ToggleMenu(MenuId::Ai),
+                BarOutput::DnsClicked => FrameInput::ToggleMenu(MenuId::Dns),
+                BarOutput::PodmanClicked => FrameInput::ToggleMenu(MenuId::Podman),
+                BarOutput::NotesClicked => FrameInput::ToggleMenu(MenuId::Notes),
                 BarOutput::PluginPanelClicked {
                     name,
                     entry,
@@ -2752,11 +2675,11 @@ impl Frame {
                     min_width,
                     max_height,
                 },
-                BarOutput::IpClicked => FrameInput::ToggleIpMenu,
-                BarOutput::NetworkClicked => FrameInput::ToggleNetworkMenu,
-                BarOutput::PowerClicked => FrameInput::TogglePowerMenu,
-                BarOutput::MediaPlayerClicked => FrameInput::ToggleMediaPlayerMenu,
-                BarOutput::MargoLayoutClicked => FrameInput::ToggleMargoLayoutMenu,
+                BarOutput::IpClicked => FrameInput::ToggleMenu(MenuId::Ip),
+                BarOutput::NetworkClicked => FrameInput::ToggleMenu(MenuId::Network),
+                BarOutput::PowerClicked => FrameInput::ToggleMenu(MenuId::Power),
+                BarOutput::MediaPlayerClicked => FrameInput::ToggleMenu(MenuId::MediaPlayer),
+                BarOutput::MargoLayoutClicked => FrameInput::ToggleMenu(MenuId::MargoLayout),
                 BarOutput::CloseMenu => FrameInput::CloseMenus,
             },
         )
@@ -2767,8 +2690,8 @@ impl Frame {
             .launch(MenuInit { menu_type })
             .forward(sender.input_sender(), |msg| match msg {
                 MenuOutput::CloseMenu => FrameInput::CloseMenus,
-                MenuOutput::ToggleSessionMenu => FrameInput::ToggleSessionMenu,
-                MenuOutput::OpenAppLauncher => FrameInput::ToggleAppLauncherMenu,
+                MenuOutput::ToggleSessionMenu => FrameInput::ToggleMenu(MenuId::Session),
+                MenuOutput::OpenAppLauncher => FrameInput::ToggleMenu(MenuId::AppLauncher),
             })
     }
 

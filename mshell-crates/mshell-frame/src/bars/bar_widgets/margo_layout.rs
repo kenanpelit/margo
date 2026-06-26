@@ -2,7 +2,7 @@
 //!
 //! Pure trigger button — clicking emits `MargoLayoutOutput::Clicked`
 //! which the bar forwards through `BarOutput::MargoLayoutClicked` →
-//! `FrameInput::ToggleMargoLayoutMenu`, opening the new in-frame
+//! `FrameInput::ToggleMenu(MenuId::MargoLayout)`, opening the new in-frame
 //! Margo Layout menu (see
 //! `menus/menu_widgets/margo_layout/margo_layout_menu_widget.rs`).
 //!
