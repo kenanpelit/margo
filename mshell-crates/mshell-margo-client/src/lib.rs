@@ -580,22 +580,6 @@ impl MargoService {
         }
     }
 
-    /// Run a query against the compositor. Used by the layout
-    /// indicator widget. Returns the currently-focused output's
-    /// layout name when the query mentions "layout"; otherwise an
-    /// empty string.
-    pub async fn eval(&self, query: &str) -> Result<String> {
-        tracing::debug!(query = %query, "mshell-margo-client: eval");
-        if query.contains("layout")
-            && let Some(state) = state_json::read()
-            && let Some(out) = state.outputs.iter().find(|o| o.active)
-            && let Some(name) = state.layouts.get(out.layout_idx)
-        {
-            return Ok(name.clone());
-        }
-        Ok(String::new())
-    }
-
     /// Snapshot the focused workspace. Reads state.json directly
     /// so the answer always reflects the latest margo write, not
     /// the most recent poll tick (which can lag by up to

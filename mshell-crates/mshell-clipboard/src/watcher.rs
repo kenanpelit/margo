@@ -376,25 +376,29 @@ fn run_watcher(
         // Dispatch any events already in the queue.
         event_queue.dispatch_pending(&mut state)?;
 
-        // Prepare for blocking read.
-        let read_guard = event_queue.prepare_read().unwrap();
+        // Prepare for a blocking read. `prepare_read` returns None when
+        // events arrived between `dispatch_pending` above and here — in
+        // that case skip the poll/read this round (they're dispatched at
+        // the top of the next iteration) and fall through to service the
+        // command channel, rather than `unwrap()`-panicking the thread.
+        if let Some(read_guard) = event_queue.prepare_read() {
+            // Poll the Wayland fd with a short timeout so we also
+            // check the command channel. 50ms is responsive enough.
+            let mut poll_fd = [libc::pollfd {
+                fd: wayland_fd.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            }];
+            let ret = unsafe { libc::poll(poll_fd.as_mut_ptr(), 1, 50) };
 
-        // Poll the Wayland fd with a short timeout so we also
-        // check the command channel. 50ms is responsive enough.
-        let mut poll_fd = [libc::pollfd {
-            fd: wayland_fd.as_raw_fd(),
-            events: libc::POLLIN,
-            revents: 0,
-        }];
-        let ret = unsafe { libc::poll(poll_fd.as_mut_ptr(), 1, 50) };
-
-        if ret > 0 && (poll_fd[0].revents & libc::POLLIN != 0) {
-            // Wayland data available — read and dispatch.
-            read_guard.read().ok();
-            event_queue.dispatch_pending(&mut state)?;
-        } else {
-            // Timeout or no data — cancel the read guard.
-            drop(read_guard);
+            if ret > 0 && (poll_fd[0].revents & libc::POLLIN != 0) {
+                // Wayland data available — read and dispatch.
+                read_guard.read().ok();
+                event_queue.dispatch_pending(&mut state)?;
+            } else {
+                // Timeout or no data — cancel the read guard.
+                drop(read_guard);
+            }
         }
 
         // Process any pending commands from the UI thread.
@@ -695,21 +699,68 @@ fn read_offer_data(
     // Close the write end so we get EOF when the source is done.
     drop(write_fd);
 
-    // Read from the pipe.
+    // Read from the pipe — but never let a source that requested the
+    // offer yet stops writing (or never writes) wedge the *single*
+    // watcher thread forever. Set the fd non-blocking and poll with an
+    // *idle* deadline: a transfer that keeps making progress is never
+    // interrupted, but if no bytes arrive for `IDLE_TIMEOUT` we bail.
+    const IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
     let mut data = Vec::new();
     let mut file = std::fs::File::from(read_fd);
+    let raw = file.as_raw_fd();
+    unsafe {
+        let flags = libc::fcntl(raw, libc::F_GETFL);
+        if flags >= 0 {
+            libc::fcntl(raw, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+    }
 
     let mut buf = [0u8; 8192];
+    let mut last_progress = std::time::Instant::now();
     loop {
-        let n = file.read(&mut buf)?;
-        if n == 0 {
-            break;
+        let idle = last_progress.elapsed();
+        if idle >= IDLE_TIMEOUT {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "clipboard offer read stalled",
+            ));
         }
-        data.extend_from_slice(&buf[..n]);
-        if data.len() > MAX_DATA_SIZE {
-            warn!("Clipboard data exceeds {MAX_DATA_SIZE} bytes, truncating");
-            data.truncate(MAX_DATA_SIZE);
-            break;
+        let remaining_ms = (IDLE_TIMEOUT - idle).as_millis().min(i32::MAX as u128) as i32;
+        let mut poll_fd = [libc::pollfd {
+            fd: raw,
+            events: libc::POLLIN,
+            revents: 0,
+        }];
+        let ret = unsafe { libc::poll(poll_fd.as_mut_ptr(), 1, remaining_ms) };
+        if ret < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(err);
+        }
+        if ret == 0 {
+            // poll timed out — the idle check at the top of the loop bails.
+            continue;
+        }
+        match file.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                data.extend_from_slice(&buf[..n]);
+                last_progress = std::time::Instant::now();
+                if data.len() > MAX_DATA_SIZE {
+                    warn!("Clipboard data exceeds {MAX_DATA_SIZE} bytes, truncating");
+                    data.truncate(MAX_DATA_SIZE);
+                    break;
+                }
+            }
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::Interrupted =>
+            {
+                continue;
+            }
+            Err(e) => return Err(e),
         }
     }
 
