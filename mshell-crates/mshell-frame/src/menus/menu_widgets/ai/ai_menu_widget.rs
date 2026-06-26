@@ -33,6 +33,12 @@ pub(crate) struct AiMenuWidgetModel {
     font_provider: gtk::CssProvider,
     /// Label of the assistant bubble being streamed into.
     current_ai: Option<gtk::Label>,
+    /// Last time the streaming bubble's label was repainted. `gtk::Label`
+    /// has no incremental append — `set_label` re-lays-out the whole
+    /// (growing) string, so pushing every token is O(n²) over a long
+    /// reply. We coalesce repaints to ~30 Hz against this; the final
+    /// text is always flushed on `Done`.
+    last_token_render: Option<std::time::Instant>,
     /// History restored from disk yet? (lazy, on first reveal.)
     loaded: bool,
 }
@@ -199,6 +205,7 @@ impl Component for AiMenuWidgetModel {
             meta_label: meta_label_widget.clone(),
             font_provider: gtk::CssProvider::new(),
             current_ai: None,
+            last_token_render: None,
             loaded: false,
         };
         // Register the transcript-font provider on the display (USER priority so
@@ -300,12 +307,23 @@ impl Component for AiMenuWidgetModel {
                 {
                     last.text.push_str(&delta);
                 }
-                if let Some(label) = &self.current_ai
-                    && let Some(last) = self.messages.last()
-                {
-                    label.set_label(&last.text);
+                // Coalesce the (full-string, O(n)) label repaint to ~30 Hz
+                // so a fast stream of small tokens doesn't trigger a Pango
+                // relayout of the whole growing reply per token. The tail
+                // not yet painted here is flushed by `Done`.
+                let now = std::time::Instant::now();
+                let due = self
+                    .last_token_render
+                    .is_none_or(|t| now.duration_since(t) >= std::time::Duration::from_millis(33));
+                if due {
+                    if let Some(label) = &self.current_ai
+                        && let Some(last) = self.messages.last()
+                    {
+                        label.set_label(&last.text);
+                    }
+                    self.last_token_render = Some(now);
+                    self.scroll_to_bottom();
                 }
-                self.scroll_to_bottom();
             }
             AiMenuWidgetCommandOutput::Done(err) => {
                 self.streaming = false;
@@ -318,12 +336,17 @@ impl Component for AiMenuWidgetModel {
                     {
                         last.text = format!("⚠ {e}");
                     }
-                    if let Some(label) = &self.current_ai
-                        && let Some(last) = self.messages.last()
-                    {
-                        label.set_label(&last.text);
-                    }
                 }
+                // Final flush: the token throttle above may have skipped
+                // the last repaint, so always paint the complete reply
+                // here (covers both the normal-finish and error paths).
+                if let Some(label) = &self.current_ai
+                    && let Some(last) = self.messages.last()
+                {
+                    label.set_label(&last.text);
+                }
+                self.scroll_to_bottom();
+                self.last_token_render = None;
                 self.current_ai = None;
                 self.persist();
             }
@@ -386,6 +409,8 @@ impl AiMenuWidgetModel {
         self.messages.push(Message::assistant(""));
         let ai_label = self.push_bubble(Role::Assistant, "");
         self.current_ai = Some(ai_label);
+        // First token of the new reply should paint immediately.
+        self.last_token_render = None;
         self.streaming = true;
         self.set_busy(true);
         self.scroll_to_bottom();

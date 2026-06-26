@@ -115,12 +115,26 @@ pub(crate) struct AppLauncherModel {
     show_preview: bool,
     compact_rows: bool,
     large_app_icons: bool,
+    /// Pending debounce timer for the search box. Typing only updates
+    /// `filter` immediately; the (provider-sweep + row-clone) recompute
+    /// is coalesced so a fast burst of keystrokes runs it once.
+    search_debounce: Option<glib::SourceId>,
     _effects: EffectScope,
 }
 
 #[derive(Debug)]
 pub(crate) enum AppLauncherInput {
+    /// A keystroke in the search box. Updates `filter` immediately and
+    /// schedules a debounced `ApplyFilter` (see the handler) so a fast
+    /// burst doesn't re-sweep every provider per key.
+    SearchTyped(String),
+    /// Recompute for the current `filter` *now* — used for programmatic
+    /// filter changes (open / category switch) that shouldn't wait for
+    /// the debounce.
     FilterChanged(String),
+    /// Debounce timer fired: recompute for whatever `filter` the latest
+    /// `SearchTyped` left in place.
+    ApplyFilter,
     /// Plain Enter on the search entry — activate the currently-
     /// selected row.
     Activate,
@@ -254,7 +268,7 @@ impl Component for AppLauncherModel {
                     set_placeholder_text: Some("Search apps, calc, > commands…"),
                     set_hexpand: true,
                     connect_changed[sender] => move |entry| {
-                        sender.input(AppLauncherInput::FilterChanged(entry.text().to_string()));
+                        sender.input(AppLauncherInput::SearchTyped(entry.text().to_string()));
                     },
                     connect_activate[sender] => move |_| {
                         sender.input(AppLauncherInput::Activate);
@@ -769,6 +783,7 @@ impl Component for AppLauncherModel {
                 .launcher()
                 .large_app_icons()
                 .get_untracked(),
+            search_debounce: None,
             _effects: effect_scope,
         };
 
@@ -809,7 +824,35 @@ impl Component for AppLauncherModel {
         _root: &Self::Root,
     ) {
         match message {
+            AppLauncherInput::SearchTyped(filter) => {
+                // Keep `filter` in lock-step with the entry, but coalesce
+                // the expensive recompute: cancel any pending timer and
+                // (re)arm a short one that fires `ApplyFilter`.
+                self.filter = filter;
+                if let Some(id) = self.search_debounce.take() {
+                    id.remove();
+                }
+                let s = sender.clone();
+                self.search_debounce = Some(glib::timeout_add_local_once(
+                    std::time::Duration::from_millis(60),
+                    move || s.input(AppLauncherInput::ApplyFilter),
+                ));
+            }
+            AppLauncherInput::ApplyFilter => {
+                // The one-shot timer already auto-removed; just drop the
+                // handle (no `remove()`) and recompute for `self.filter`.
+                self.search_debounce = None;
+                self.recompute_results();
+                self.push_results_to_dynamic_box();
+                self.broadcast_selection();
+                reset_scroll_to_top(&widgets.scrolled_window);
+            }
             AppLauncherInput::FilterChanged(filter) => {
+                // Programmatic / immediate path — cancel any pending
+                // debounce so it can't fire later with a stale filter.
+                if let Some(id) = self.search_debounce.take() {
+                    id.remove();
+                }
                 self.filter = filter;
                 self.recompute_results();
                 self.push_results_to_dynamic_box();
