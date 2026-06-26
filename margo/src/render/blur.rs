@@ -343,16 +343,33 @@ impl Element for BlurRenderElement {
         scale: Scale<f64>,
         commit: Option<CommitCounter>,
     ) -> DamageSet<i32, Physical> {
-        // Blur depends on whatever is *behind* the surface, which can
-        // change every frame independently of our own commit — so we
-        // always report the full region as damaged. (A future
-        // `blur_optimized` path can intersect this with actual
-        // background damage; for now correctness over efficiency.)
-        let _ = commit;
-        DamageSet::from_slice(&[Rectangle::new(
-            Default::default(),
-            self.geometry(scale).size,
-        )])
+        // The blur output is a pure function of the framebuffer content
+        // *within our own geometry*: `draw_blur` captures exactly the
+        // `dst` slice (`CopyTexSubImage2D` over `region_w × region_h` at
+        // `dst.loc`) and reblurs the whole region every `draw`, ignoring
+        // the passed damage rects. Nothing outside `geometry` is sampled.
+        //
+        // So we don't need to self-damage every frame to stay correct:
+        // when anything behind us changes *inside* our rect, that
+        // element's damage lands in the output's accumulated damage, and
+        // the damage tracker redraws every element overlapping it —
+        // including this translucent one in front — which recaptures the
+        // fresh background. When nothing behind us changes, the blur is
+        // identical, so reporting no damage lets the tracker skip the
+        // frame entirely (the big idle-power win: an always-on blurred
+        // bar no longer forces a full repaint at refresh rate).
+        //
+        // Geometry/size changes are caught by the tracker's own per-id
+        // geometry diff (same as `ShadowRenderElement`); blur-param
+        // changes only happen on `mctl reload`, which repaints anyway.
+        if commit != Some(self.commit) {
+            DamageSet::from_slice(&[Rectangle::new(
+                Default::default(),
+                self.geometry(scale).size,
+            )])
+        } else {
+            DamageSet::default()
+        }
     }
 
     fn opaque_regions(&self, _scale: Scale<f64>) -> OpaqueRegions<i32, Physical> {
