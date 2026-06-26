@@ -14,8 +14,12 @@ pub fn tile(ctx: &ArrangeCtx) -> ArrangeResult {
 
     let oh = g.gappoh;
     let ov = g.gappov;
+    // `ih` (gappih) is the *horizontal* inner gap — between the master
+    // column and the stack column. `iv` (gappiv) is the *vertical* inner
+    // gap — between windows stacked within a column. The old code used
+    // `ih` for both, so an asymmetric gappih≠gappiv tiled wrong.
     let ih = g.gappih;
-    let _iv = g.gappiv;
+    let iv = g.gappiv;
 
     let mut result = Vec::with_capacity(n);
 
@@ -35,13 +39,13 @@ pub fn tile(ctx: &ArrangeCtx) -> ArrangeResult {
 
     for (i, &idx) in ctx.tiled.iter().enumerate() {
         let rect = if i < master_count {
-            let h = (total_h - (master_count - 1) as i32 * ih) / master_count as i32;
-            let y = wa.y + ov + i as i32 * (h + ih);
+            let h = (total_h - (master_count - 1) as i32 * iv) / master_count as i32;
+            let y = wa.y + ov + i as i32 * (h + iv);
             Rect::new(wa.x + oh, y, master_w, h)
         } else {
             let si = i - master_count;
-            let h = (total_h - (stack_count - 1) as i32 * ih) / stack_count as i32;
-            let y = wa.y + ov + si as i32 * (h + ih);
+            let h = (total_h - (stack_count - 1) as i32 * iv) / stack_count as i32;
+            let y = wa.y + ov + si as i32 * (h + iv);
             Rect::new(wa.x + oh + master_w + ih, y, stack_w, h)
         };
         result.push((idx, rect));
@@ -420,19 +424,29 @@ pub fn vertical_tile(ctx: &ArrangeCtx) -> ArrangeResult {
 // ── Vertical grid ─────────────────────────────────────────────────────────────
 
 pub fn vertical_grid(ctx: &ArrangeCtx) -> ArrangeResult {
-    // Transpose the work area, run grid, then un-transpose.
+    // Transpose the work area AND the gaps, run grid, then un-transpose.
+    // grid() treats gappih/gappoh as horizontal and gappiv/gappov as
+    // vertical; in the transposed space those axes are swapped, so the
+    // gaps must be swapped too — otherwise asymmetric inner/outer gaps
+    // land on the wrong axis once the rects are un-transposed.
     let transposed_wa = Rect::new(
         ctx.work_area.y,
         ctx.work_area.x,
         ctx.work_area.height,
         ctx.work_area.width,
     );
+    let transposed_gaps = crate::GapConfig {
+        gappih: ctx.gaps.gappiv,
+        gappiv: ctx.gaps.gappih,
+        gappoh: ctx.gaps.gappov,
+        gappov: ctx.gaps.gappoh,
+    };
     let transposed_ctx = ArrangeCtx {
         work_area: transposed_wa,
         tiled: ctx.tiled,
         nmaster: ctx.nmaster,
         mfact: ctx.mfact,
-        gaps: ctx.gaps,
+        gaps: &transposed_gaps,
         scroller_proportions: ctx.scroller_proportions,
         default_scroller_proportion: ctx.default_scroller_proportion,
         focused_tiled_pos: ctx.focused_tiled_pos,
@@ -793,5 +807,71 @@ mod tests {
         assert!(focused.y >= 0);
         assert!(focused.y + focused.height <= 600);
         assert!(((focused.y + focused.height / 2) - 300).abs() <= 1);
+    }
+
+    /// Asymmetric inner gaps: horizontal (`gappih`) separates the master
+    /// column from the stack; vertical (`gappiv`) separates the windows
+    /// stacked within the stack column. They must not be conflated.
+    const ASYM: GapConfig = GapConfig {
+        gappih: 10,
+        gappiv: 20,
+        gappoh: 0,
+        gappov: 0,
+    };
+
+    fn ctx<'a>(tiled: &'a [usize], gaps: &'a GapConfig, nmaster: u32) -> ArrangeCtx<'a> {
+        ArrangeCtx {
+            work_area: Rect::new(0, 0, 1000, 600),
+            tiled,
+            nmaster,
+            mfact: 0.5,
+            gaps,
+            scroller_proportions: &[],
+            default_scroller_proportion: 0.8,
+            focused_tiled_pos: None,
+            scroller_structs: 0,
+            scroller_focus_center: false,
+            scroller_prefer_center: false,
+            scroller_prefer_overspread: false,
+            canvas_pan: (0.0, 0.0),
+        }
+    }
+
+    #[test]
+    fn tile_uses_horizontal_gap_between_columns_and_vertical_within_a_column() {
+        // 1 master + 2 stack.
+        let tiled = [0usize, 1, 2];
+        let r = tile(&ctx(&tiled, &ASYM, 1));
+        let master = r[0].1;
+        let stack0 = r[1].1;
+        let stack1 = r[2].1;
+        // Master↔stack separation is horizontal → gappih.
+        assert_eq!(stack0.x - (master.x + master.width), ASYM.gappih);
+        // Within the stack column, the two windows are separated
+        // vertically → gappiv.
+        assert_eq!(stack1.y - (stack0.y + stack0.height), ASYM.gappiv);
+    }
+
+    #[test]
+    fn grid_keeps_column_and_row_gaps_distinct() {
+        // 4 windows → 2×2 grid.
+        let tiled = [0usize, 1, 2, 3];
+        let r = grid(&ctx(&tiled, &ASYM, 1));
+        // Indices 0,1 share a row (cols=2): horizontal gap = gappih.
+        assert_eq!(r[1].1.x - (r[0].1.x + r[0].1.width), ASYM.gappih);
+        // Indices 0,2 share a column: vertical gap = gappiv.
+        assert_eq!(r[2].1.y - (r[0].1.y + r[0].1.height), ASYM.gappiv);
+    }
+
+    #[test]
+    fn vertical_grid_applies_the_vertical_gap_between_stacked_windows() {
+        // 2 windows stack top/bottom in a vertical grid; the gap between
+        // them is vertical → gappiv, regardless of the work-area
+        // transpose (the gaps must be transposed too).
+        let tiled = [0usize, 1];
+        let mut r = vertical_grid(&ctx(&tiled, &ASYM, 1));
+        r.sort_by_key(|(_, rect)| rect.y);
+        let gap = r[1].1.y - (r[0].1.y + r[0].1.height);
+        assert_eq!(gap, ASYM.gappiv);
     }
 }
