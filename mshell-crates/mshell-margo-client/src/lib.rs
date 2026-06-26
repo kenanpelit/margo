@@ -623,21 +623,19 @@ impl MargoService {
     /// connector name. Used by the IPC layer to decide which
     /// per-monitor Frame should host a newly-toggled menu.
     ///
-    /// Trusts margo's `active_output` field. As of the
-    /// pointer-monitor-tracking fix in margo's state_file.rs,
-    /// `active_output` is **pointer-first**:
-    ///   * cursor crossing into another monitor rewrites state.json
-    ///   * `focusmon` dispatch likewise refreshes state.json
-    ///   * focused-client monitor is only the fallback when the
-    ///     pointer hasn't been observed yet (boot, or pointer
-    ///     outside every output area)
+    /// Trusts margo's `active_output` field. margo computes it
+    /// last-writer-wins between two input signals (its
+    /// `ActiveOutputSource`): a keyboard keybind on the focused
+    /// monitor makes it follow keyboard focus; the cursor crossing
+    /// into a monitor makes it follow the pointer. Menu-open keybinds
+    /// (`spawn mshellctl menu …`) are neutral, so this resolves to
+    /// "the monitor the user most recently acted on".
     ///
-    /// We used to prefer the focused client's monitor here to dodge
-    /// a stale `active_output`; that read-side workaround now
-    /// fights the compositor — when the user moves the cursor to
-    /// an empty monitor, the focused client on the previous
-    /// monitor would still win and the launcher would open on the
-    /// wrong output. Trust the compositor's signal.
+    /// We do the resolution compositor-side rather than re-deriving it
+    /// here: an earlier read-side "prefer the focused client" workaround
+    /// fought the compositor (cursor on an empty monitor would still
+    /// open menus on the previous monitor). Trust the compositor's
+    /// signal; only fall back locally when it's somehow empty.
     pub async fn active_monitor_name(&self) -> Option<String> {
         let state = state_json::read()?;
         if !state.active_output.is_empty() {

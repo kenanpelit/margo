@@ -154,6 +154,32 @@ pub(crate) struct SurfaceFrameThrottlingState {
     pub last_sent_at: std::cell::RefCell<Option<(Output, u32)>>,
 }
 
+/// Which input signal currently defines the "active output" — the
+/// monitor mshell targets when a keybind/IPC opens a menu (launcher,
+/// settings, every pill menu). Last-writer-wins between the two:
+///
+///   * `Focus` — the user just acted on the keyboard-focused monitor via
+///     a margo-internal keybind (tag switch, focus move, layout, …). The
+///     active output follows keyboard focus.
+///   * `Pointer` — the user's cursor last crossed into a (possibly empty)
+///     monitor. The active output follows the pointer.
+///
+/// Menu-open keybinds are `spawn mshellctl menu …`, i.e. `spawn` actions,
+/// which are deliberately *neutral*: they read the current source instead
+/// of overwriting it, so "I just moved the mouse to monitor B → open the
+/// launcher there" and "I'm working with the keyboard on monitor A → open
+/// it there" both do the intuitive thing. Resolved to a live monitor in
+/// `build_state_snapshot`, so monitor hot-plug/unplug can't leave it
+/// pointing at a stale index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ActiveOutputSource {
+    /// Keyboard focus defines the active output (default at startup).
+    #[default]
+    Focus,
+    /// The pointer's monitor defines the active output.
+    Pointer,
+}
+
 pub struct MargoState {
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
@@ -594,6 +620,12 @@ pub struct MargoState {
     pub input_pointer: PointerState,
     pub input_touch: TouchState,
     pub input_gesture: GestureState,
+
+    /// Last-writer-wins signal deciding which monitor a keybind/IPC menu
+    /// open targets. Written by `refresh_pointer_monitor_tracking`
+    /// (→ `Pointer`) and the keyboard keybind dispatch path (→ `Focus`);
+    /// read in `build_state_snapshot` to compute `active_output`.
+    pub active_output_source: ActiveOutputSource,
 
     pub foreign_toplevel_list: ForeignToplevelListState,
     pub wlr_foreign_toplevel: crate::protocols::wlr_foreign_toplevel::WlrForeignToplevelState,
@@ -1056,6 +1088,7 @@ impl MargoState {
             input_pointer: Default::default(),
             input_touch: Default::default(),
             input_gesture: Default::default(),
+            active_output_source: ActiveOutputSource::default(),
             foreign_toplevel_list,
             wlr_foreign_toplevel,
             ext_workspace_state,

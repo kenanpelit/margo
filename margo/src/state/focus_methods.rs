@@ -206,6 +206,14 @@ impl MargoState {
         let current = self.pointer_monitor();
         if self.input_pointer.last_monitor != current {
             self.input_pointer.last_monitor = current;
+            // Crossing *into* a monitor makes the pointer the freshest
+            // "where is the user" signal, so menu opens follow the cursor
+            // (e.g. mouse onto an empty output → launcher opens there).
+            // Leaving every output (`None`) doesn't flip the source — we
+            // keep the last meaningful one.
+            if current.is_some() {
+                self.active_output_source = crate::state::ActiveOutputSource::Pointer;
+            }
             self.mark_state_dirty();
         }
     }

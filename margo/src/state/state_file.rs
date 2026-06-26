@@ -34,33 +34,36 @@ impl MargoState {
         use serde_json::json;
 
         let focused_idx = self.focused_client_idx();
-        // The compositor's "where is the user looking" signal that
-        // mshell needs for menu placement. Crucially this is
-        // **pointer-first**, not focused-client-first:
+        // The compositor's "where is the user" signal that mshell needs
+        // for menu placement (launcher, settings, every pill menu open
+        // routed through `active_monitor_name()`). Driven by
+        // `active_output_source`, a last-writer-wins choice between the
+        // two input signals (see `ActiveOutputSource` for the why):
         //
-        // * focused_monitor() prefers the focused client → leaves
-        //   active_output stuck on monitor A when the user moves
-        //   the cursor to empty monitor B (the focused client on A
-        //   keeps focus, so focused_monitor() returns A). Pressing
-        //   Super+Space then opens the launcher on A — the bug.
-        // * pointer-first matches user intent: the cursor is the
-        //   most reliable signal of "where I'm about to look /
-        //   click", whether or not the cursor is over a focusable
-        //   client.
+        // * `Focus` — the user's most recent action was a keyboard
+        //   keybind on the focused monitor (tag switch, focus move, …),
+        //   so follow keyboard focus. This is what fixes "I'm working on
+        //   monitor A but the launcher opens on B because the cursor is
+        //   parked there".
+        // * `Pointer` — the user's most recent action was moving the
+        //   cursor into a (possibly empty) monitor, so follow the
+        //   pointer. This preserves "mouse onto empty monitor B →
+        //   Super+Space opens the launcher there".
         //
-        // Fallback order: pointer monitor → focused client's
-        // monitor (cursor outside any output area) → first
-        // enumerated monitor (initial startup, no pointer events
-        // yet).
-        let focused_mon_idx = self
-            .input_pointer
-            .last_monitor
-            .or_else(|| {
-                focused_idx
-                    .and_then(|i| self.clients.get(i))
-                    .map(|c| c.monitor)
-            })
-            .unwrap_or(0);
+        // Both arms fall back through the other signal, then to the first
+        // enumerated monitor (initial startup, no input yet).
+        let focused_mon_idx = match self.active_output_source {
+            crate::state::ActiveOutputSource::Focus => self.focused_monitor(),
+            crate::state::ActiveOutputSource::Pointer => self
+                .input_pointer
+                .last_monitor
+                .or_else(|| {
+                    focused_idx
+                        .and_then(|i| self.clients.get(i))
+                        .map(|c| c.monitor)
+                })
+                .unwrap_or(0),
+        };
         let outputs: Vec<_> = self
             .monitors
             .iter()

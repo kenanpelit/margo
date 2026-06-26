@@ -32,6 +32,7 @@ mod client;
 mod fixture;
 mod server;
 
+mod active_output;
 mod bootstrap;
 mod color_management;
 mod dmabuf;

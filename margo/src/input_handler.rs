@@ -471,6 +471,18 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                             state.mru_open_mask = smithay_mods_to_margo(modifiers);
                         }
                         crate::dispatch::dispatch_action(state, &action, &arg);
+                        // A keyboard keybind means the user is acting on
+                        // the focused monitor, so menu opens should target
+                        // it — *unless* this bind is a `spawn` (every
+                        // `mshellctl menu …` open is a spawn, plus app
+                        // launches). Those are neutral: they read the
+                        // current active-output source instead of redefining
+                        // it, so a fresh "mouse onto monitor B → open menu"
+                        // still lands on B. Stamped after dispatch so
+                        // `focusmon`/tag changes are already reflected.
+                        if action != "spawn" {
+                            state.active_output_source = crate::state::ActiveOutputSource::Focus;
+                        }
                         return FilterResult::Intercept(());
                     }
 
@@ -512,6 +524,18 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                         if handled {
                             return FilterResult::Intercept(());
                         }
+                    }
+
+                    // Reached here = a pressed key that no keybind or modal
+                    // claimed, so it's forwarded to the focused client —
+                    // i.e. the user is typing on the focused monitor. Make
+                    // that monitor the active-output source so a later menu
+                    // open targets it even across a plain typing session
+                    // with the cursor parked on another output. Modifiers
+                    // are skipped so the Super/Alt of a menu-open chord
+                    // stays neutral (the open itself doesn't move focus).
+                    if !is_modifier_keysym(keysym.raw()) {
+                        state.active_output_source = crate::state::ActiveOutputSource::Focus;
                     }
                 }
 
@@ -1242,6 +1266,13 @@ fn released_modifier_bit(keysym: u32) -> Option<margo_config::Modifiers> {
         SUPER_L | SUPER_R | HYPER_L | HYPER_R => Some(margo_config::Modifiers::LOGO),
         _ => None,
     }
+}
+
+/// Is this keysym a modifier (Shift/Ctrl/Alt/Super/Hyper)? Used to keep
+/// the modifier half of a menu-open chord (e.g. the Super of Super+D)
+/// from counting as "the user is typing on this monitor".
+fn is_modifier_keysym(keysym: u32) -> bool {
+    released_modifier_bit(keysym).is_some()
 }
 
 fn smithay_mods_to_margo(m: &ModifiersState) -> margo_config::Modifiers {
