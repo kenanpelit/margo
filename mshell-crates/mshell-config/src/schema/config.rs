@@ -2044,6 +2044,17 @@ impl Default for Wallpaper {
 pub struct Frame {
     pub enable_frame: bool,
     pub monitor_filter: Vec<String>,
+    /// Inset gap (px) around each bar when frame drawing is OFF. With the
+    /// frame disabled each bar paints its own floating panel inset from the
+    /// screen edges by this much; the value is reserved in the layer-shell
+    /// exclusive zone so windows tile below the floating bar (never under it).
+    /// Ignored while the frame is enabled. 0 = flush to the edges.
+    #[serde(default = "default_frameless_gap")]
+    pub frameless_gap: i32,
+}
+
+fn default_frameless_gap() -> i32 {
+    8
 }
 
 impl Default for Frame {
@@ -2051,6 +2062,7 @@ impl Default for Frame {
         Self {
             enable_frame: true,
             monitor_filter: vec![],
+            frameless_gap: default_frameless_gap(),
         }
     }
 }

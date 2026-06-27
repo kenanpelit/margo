@@ -23,9 +23,14 @@
     background-color: color-mix(in srgb, var(--surface-container) var(--surface-opacity), transparent);
     border: 1px solid var(--outline-variant);
     border-radius: var(--radius-lg);
-    margin: var(--space-2);
     padding: var(--space-1);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    // The inset gap (margin) is applied in Rust from `bars.frame.frameless_gap`
+    // (Settings → Bar) via `bar_center.set_margin_*`, NOT here: a GTK margin
+    // counts in `measure()`, so the layer-shell exclusive zone reserves it and
+    // windows tile below the floating bar. A CSS `margin` is invisible to that
+    // reserve and would let the bar overlap the window. See bar.rs
+    // `BarInput::SetFrameInset`.
   }
 
   // Menu surfaces (clipboard, dashboard, control-center, …) get the same

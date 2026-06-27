@@ -921,7 +921,11 @@ impl Component for Frame {
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config.clone();
-            let enable_frame = config.bars().frame().enable_frame().get();
+            let enable_frame = config.clone().bars().frame().enable_frame().get();
+            // Subscribe to the inset too, so editing `frameless_gap` re-fires
+            // this effect → `SetDrawFrame` re-reads the fresh gap and re-pushes
+            // the inset to the bars (live slider, no shell restart).
+            let _ = config.bars().frame().frameless_gap().get();
             sender_clone.input(FrameInput::SetDrawFrame(enable_frame));
         });
 
@@ -1129,6 +1133,26 @@ impl Component for Frame {
                 } else {
                     widgets.overlay.add_css_class("frame-disabled");
                 }
+                // Toggling `.frame-disabled` changes each bar's natural height
+                // (the frameless bar adds an inset floating panel). Push the
+                // inset (margin = `frameless_gap`, or 0 when the frame is back
+                // on) to both bars now: that re-measures them and refreshes the
+                // layer-shell exclusive zone immediately, so windows follow the
+                // toggle instead of staying tiled under the old reserve. (relm4
+                // queues these, so they run after the CSS class is applied.)
+                let gap = config_manager()
+                    .config()
+                    .bars()
+                    .frame()
+                    .frameless_gap()
+                    .get_untracked();
+                let disabled = !draw_frame;
+                self.top_bar
+                    .sender()
+                    .emit(BarInput::SetFrameInset { disabled, gap });
+                self.bottom_bar
+                    .sender()
+                    .emit(BarInput::SetFrameInset { disabled, gap });
             }
             FrameInput::QueueFrameRedraw => {
                 widgets.frame_draw_widget.queue_draw();

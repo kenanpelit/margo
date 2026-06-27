@@ -102,6 +102,10 @@ poison races.
   (set by start-margo under a systemd watchdog), the compositor keeps the
   readiness pipe open and beats it from its calloop loop, proving the loop is
   still turning.
+- **Adjustable frameless bar gap (Settings → Bar).** With "Enable frame drawing"
+  off, each bar floats as its own inset panel; the inset is now a setting
+  (`bars.frame.frameless_gap`, px) with a live slider instead of a hardcoded
+  SCSS value.
 
 - **mlogind's baked default palette now matches the desktop.** The greeter's
   in-code/`/etc/mlogind/variables.toml` default was a generic Dracula baseline;
@@ -142,6 +146,14 @@ poison races.
   per-keystroke xkb layout read, the clipboard watcher's Wayland read
   preparation, and the shell's per-output frame init each `unwrap()`-panicked
   on an unlikely-but-possible race; all three now recover gracefully.
+- **Frameless bars overlapped windows until something else nudged the layout.**
+  Turning "Enable frame drawing" off makes each bar paint its own inset floating
+  panel, but the layer-shell exclusive zone wasn't re-measured on the toggle, so
+  windows kept their old tiling and the bar's inset overlapped the window's top
+  until an unrelated event (a wallpaper rotation, any bar setting) happened to
+  re-measure it. The toggle now re-measures both bars immediately, and the inset
+  is applied as a GTK margin so it's reserved in the exclusive zone — windows
+  tile below the floating bar right away.
 - **Customised shell settings could be silently reset by a later update.** The
   shell rewrote the *entire* resolved profile to `active.yaml`, baking every
   field at its then-current default; a field you never touched kept that stale

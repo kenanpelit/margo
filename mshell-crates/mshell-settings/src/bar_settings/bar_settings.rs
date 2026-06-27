@@ -44,6 +44,9 @@ pub(crate) struct BarSettingsModel {
     separator_color: gdk::RGBA,
     /// Bar show/hide slide animation duration (ms); `bars.slide_duration_ms`.
     slide_duration: i32,
+    /// Frameless floating-bar inset gap (px); `bars.frame.frameless_gap`. Only
+    /// has an effect while "Enable frame drawing" is off.
+    frameless_gap: i32,
     chips: FactoryVecDeque<MonitorChipModel>,
     available_monitors: Vec<String>,
     selected_monitors: Vec<String>,
@@ -94,6 +97,10 @@ const MIN_HEIGHT_DEBOUNCE_MS: u64 = 350;
 pub(crate) enum BarSettingsInput {
     EnableFrameToggled(bool),
     EnableFrameChanged(bool),
+    /// SpinButton edited → write `bars.frame.frameless_gap`.
+    FramelessGapSet(i32),
+    /// Config changed elsewhere → mirror into the SpinButton.
+    FramelessGapChanged(i32),
     FrameColorCustomToggled(bool),
     FrameFillColorSet(gdk::RGBA),
     FrameBorderColorSet(gdk::RGBA),
@@ -235,6 +242,36 @@ impl Component for BarSettingsModel {
                                 glib::Propagation::Proceed
                             } @enable_frame_handler,
                         }
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Frameless bar gap (px). When frame drawing is off, each bar floats as its own panel inset from the screen edges by this much; windows tile below the gap. Ignored while the frame is on. Applies immediately.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 40.0),
+                            set_increments: (1.0, 4.0),
+                            #[watch]
+                            set_sensitive: !model.enable_frame,
+                            #[watch]
+                            #[block_signal(frameless_gap_handler)]
+                            set_value: model.frameless_gap as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(BarSettingsInput::FramelessGapSet(s.value() as i32));
+                            } @frameless_gap_handler,
+                        },
                     },
 
                     gtk::Box {
@@ -899,6 +936,17 @@ impl Component for BarSettingsModel {
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
+            let gap = config_manager()
+                .config()
+                .bars()
+                .frame()
+                .frameless_gap()
+                .get();
+            sender_clone.input(BarSettingsInput::FramelessGapChanged(gap));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
             let config = config_manager().config();
             let islands = config.bars().islands().get();
             sender_clone.input(BarSettingsInput::IslandsChanged(islands));
@@ -1182,6 +1230,12 @@ impl Component for BarSettingsModel {
                 .bars()
                 .slide_duration_ms()
                 .get_untracked() as i32,
+            frameless_gap: config_manager()
+                .config()
+                .bars()
+                .frame()
+                .frameless_gap()
+                .get_untracked(),
             chips,
             available_monitors: Vec::new(),
             selected_monitors: Vec::new(),
@@ -1276,6 +1330,14 @@ impl Component for BarSettingsModel {
             }
             BarSettingsInput::EnableFrameChanged(enable) => {
                 self.enable_frame = enable;
+            }
+            BarSettingsInput::FramelessGapSet(gap) => {
+                config_manager().update_config(|config| {
+                    config.bars.frame.frameless_gap = gap;
+                });
+            }
+            BarSettingsInput::FramelessGapChanged(gap) => {
+                self.frameless_gap = gap;
             }
             BarSettingsInput::FrameColorCustomToggled(on) => {
                 self.frame_color_custom = on;

@@ -166,6 +166,18 @@ pub(crate) enum BarInput {
     /// `hidden_widgets` config changed — rebuild the slot holding the drawer
     /// so it re-reads its contents (live add/remove from Settings).
     RebuildHidden,
+    /// Apply (or clear) the frameless floating-panel inset and re-measure.
+    /// Sent by the frame when "Enable frame drawing" or `bars.frame.frameless_gap`
+    /// changes: with the frame OFF each bar paints its own inset floating panel
+    /// (`.frame-disabled`), and `gap` px of margin separates it from the screen
+    /// edges and the windows below. The margin is a GTK property (so it counts
+    /// in `bar_center.measure()`), which means the tail re-measure re-emits a
+    /// `ReserveHeight` that already includes the inset — windows tile below the
+    /// floating bar instead of under it. `disabled = false` clears the inset.
+    SetFrameInset {
+        disabled: bool,
+        gap: i32,
+    },
 }
 
 #[derive(Debug)]
@@ -714,6 +726,19 @@ impl Component for BarModel {
                         self.end_widgets.push(c);
                     }
                 }
+            }
+            BarInput::SetFrameInset { disabled, gap } => {
+                // Apply the floating-panel inset as GTK margins on `bar_center`
+                // (the `.bar` widget). A GTK margin counts in `measure()`, so
+                // the reserve re-measure in the tail below picks it up and the
+                // exclusive zone grows to keep windows clear of the bar. The
+                // rest of the frameless look (border, radius, fill, shadow)
+                // stays in `_frame_fallback.scss`, keyed on `.frame-disabled`.
+                let m = if disabled { gap.max(0) } else { 0 };
+                widgets.bar_center.set_margin_top(m);
+                widgets.bar_center.set_margin_bottom(m);
+                widgets.bar_center.set_margin_start(m);
+                widgets.bar_center.set_margin_end(m);
             }
         }
         self.update_view(widgets, sender.clone());
