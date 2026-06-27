@@ -301,7 +301,13 @@ fn send_notify_message(socket_path: &OsStr, state: &str) -> io::Result<()> {
     result
 }
 
-fn signal_session_ready(ready_fd: Option<libc::c_int>) {
+/// Tell start-margo / systemd the compositor is genuinely usable.
+///
+/// When `keep_open` is set the readiness pipe fd is left open for the
+/// caller to drive watchdog heartbeats over (see the heartbeat timer in
+/// `run`); otherwise it is closed right after the `READY=1` line, which is
+/// the default, watchdog-less path.
+fn signal_session_ready(ready_fd: Option<libc::c_int>, keep_open: bool) {
     if let Some(fd) = ready_fd {
         let msg = b"READY=1\n";
         // SAFETY: fd is inherited from start-margo and points at a pipe
@@ -309,7 +315,9 @@ fn signal_session_ready(ready_fd: Option<libc::c_int>) {
         // no longer waiting.
         unsafe {
             libc::write(fd, msg.as_ptr().cast(), msg.len());
-            libc::close(fd);
+            if !keep_open {
+                libc::close(fd);
+            }
         }
         return;
     }
@@ -426,6 +434,17 @@ fn main() -> Result<()> {
     if ready_fd.is_some() {
         // SAFETY: still single-threaded during argument/config bootstrap.
         unsafe { std::env::remove_var("MARGO_READY_FD") };
+    }
+    // start-margo asks for watchdog heartbeats by passing an interval (µs).
+    // When set we keep the readiness pipe open after READY and write
+    // `WATCHDOG=1` from the event loop at this cadence so start-margo can
+    // prove the compositor's loop is still turning to systemd's WatchdogSec.
+    let heartbeat_usec = std::env::var_os("MARGO_HEARTBEAT_USEC")
+        .and_then(|raw| raw.to_string_lossy().parse::<u64>().ok())
+        .filter(|&usec| usec > 0);
+    if heartbeat_usec.is_some() {
+        // SAFETY: still single-threaded during argument/config bootstrap.
+        unsafe { std::env::remove_var("MARGO_HEARTBEAT_USEC") };
     }
 
     // First-run bootstrap: write a usable default config if none exists, so a
@@ -1045,7 +1064,33 @@ fn main() -> Result<()> {
     // and XWayland / portal services have been attempted. Do this before
     // exec_once/startup commands so dependent services do not race a half-built
     // compositor.
-    signal_session_ready(ready_fd);
+    signal_session_ready(ready_fd, heartbeat_usec.is_some());
+
+    // ── Watchdog heartbeat ────────────────────────────────────────────────────
+    // When start-margo requested heartbeats (systemd WatchdogSec is set), beat
+    // the readiness pipe from the event loop. A wedged loop stops beating, so
+    // start-margo stops pinging systemd and the watchdog recovers a *hung*
+    // compositor — not just a crashed one. A broken pipe (supervisor gone)
+    // closes the fd and drops the timer.
+    if let (Some(fd), Some(usec)) = (ready_fd, heartbeat_usec) {
+        let interval = std::time::Duration::from_micros(usec);
+        let timer = calloop::timer::Timer::from_duration(interval);
+        let _ = event_loop
+            .handle()
+            .insert_source(timer, move |_, _, _state: &mut MargoState| {
+                let msg = b"WATCHDOG=1\n";
+                // SAFETY: fd is the readiness pipe write end kept open by
+                // signal_session_ready. Rust ignores SIGPIPE, so a dead reader
+                // yields an error return, not a signal.
+                let n = unsafe { libc::write(fd, msg.as_ptr().cast(), msg.len()) };
+                if n < 0 {
+                    // SAFETY: fd is owned here and we are dropping the timer.
+                    unsafe { libc::close(fd) };
+                    return calloop::timer::TimeoutAction::Drop;
+                }
+                calloop::timer::TimeoutAction::ToDuration(interval)
+            });
+    }
 
     // ── exec_once commands ────────────────────────────────────────────────────
     for cmd in margo.config.exec_once.clone() {

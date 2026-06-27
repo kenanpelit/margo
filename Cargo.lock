@@ -7270,8 +7270,8 @@ dependencies = [
  "anyhow",
  "clap",
  "libc",
+ "margo-logging",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

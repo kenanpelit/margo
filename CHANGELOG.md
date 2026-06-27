@@ -70,6 +70,39 @@ poison races.
   the same menu it opened before); it just sheds ~80 lines of parallel
   boilerplate and a class of "forgot to wire one of the four places" bugs.
 
+### Added
+
+- **`start-margo` is now an event-driven, hang-aware supervisor.** The session
+  watchdog was rebuilt around a single `poll(2)` over a `signalfd`, the child's
+  `pidfd`, and margo's readiness pipe — it sleeps until something actually
+  happens instead of waking 20×/second for the whole session (zero idle CPU,
+  instant shutdown/readiness handling). On top of that:
+  - **systemd watchdog support.** When the unit sets `WatchdogSec=`,
+    start-margo forwards `WATCHDOG=1` keep-alives driven by a heartbeat margo
+    writes from its own event loop, so a *hung* (live-locked) compositor is
+    now detected and recovered — previously only outright crashes were.
+  - **Race-free signal forwarding.** SIGTERM/SIGINT/SIGHUP are blocked
+    process-wide and drained from the `signalfd`, so a signal arriving in the
+    window before the child is spawned is still delivered to it — with the
+    original signal preserved — and margo's graceful teardown always runs
+    instead of being skipped in favour of a SIGKILL.
+  - **Exponential restart backoff** (250 ms → 5 s) so a config that crashes on
+    every start can't hammer the GPU init path.
+  - **`--safe-config <PATH>`** makes one last attempt with a known-good config
+    when the crash budget is exhausted, instead of dropping straight to the
+    display-manager.
+  - **A small readiness protocol** over the pipe (`READY=1`, `WATCHDOG=1`,
+    `STATUS=…`, `FATAL=1`) forwarded to systemd; `FATAL=1` skips the restart
+    loop for an unrecoverable init failure.
+  - **Durable logging** through the shared `margo-logging` file sink, so the
+    reason a session bounced back to the DM survives without a journal.
+  - **Distinct exit codes** for the supervisor's own conditions (`78` config
+    preflight, `69` crash budget, `127` spawn failure).
+- **margo readiness-pipe heartbeat.** When launched with `MARGO_HEARTBEAT_USEC`
+  (set by start-margo under a systemd watchdog), the compositor keeps the
+  readiness pipe open and beats it from its calloop loop, proving the loop is
+  still turning.
+
 ### Fixed
 
 - **`l` (lock-apply) keybinds were a silent no-op.** Binds tagged `l` to keep
@@ -117,6 +150,11 @@ poison races.
 - Config persistence is pinned: a customised profile round-trips through the
   diff-against-default serialiser unchanged, and a field left at its default is
   confirmed omitted from the written `active.yaml`.
+- `start-margo` gains end-to-end integration tests that drive the real binary
+  against a fake `margo` script — clean exit, crash-budget exhaustion,
+  `--no-restart` propagation, `--safe-config` fallback, and race-free SIGTERM
+  forwarding — plus unit coverage for the backoff curve, the readiness-line
+  parser, and the poll-timeout computation.
 
 ## [1.0.11] – 2026-06-26
 
