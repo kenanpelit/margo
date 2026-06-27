@@ -25,6 +25,9 @@ use crate::menus::menu_widgets::ip::ip_menu_widget::{IpMenuWidgetInput, IpMenuWi
 use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
     KeepAwakeMenuWidgetInput, KeepAwakeMenuWidgetModel,
 };
+use crate::menus::menu_widgets::margo_layout::margo_layout_menu_widget::{
+    MargoLayoutMenuWidgetInput, MargoLayoutMenuWidgetModel,
+};
 use crate::menus::menu_widgets::media_player::media_players::{
     MediaPlayersInput, MediaPlayersModel,
 };
@@ -783,6 +786,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(SessionMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<MargoLayoutMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(MargoLayoutMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =

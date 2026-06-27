@@ -62,6 +62,11 @@ pub(crate) enum MargoLayoutMenuWidgetInput {
     /// Move keyboard focus to the previous row (Shift+Tab / Up /
     /// Ctrl+P / Ctrl+K), wrapping at the start.
     FocusPrev,
+    /// The host menu was revealed / hidden. On reveal we grab keyboard
+    /// focus onto a row so the focus-walk controller starts receiving
+    /// Tab / Ctrl+N — without a focused descendant the root controller
+    /// stays dormant. Mirrors the session menu.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -261,6 +266,22 @@ impl Component for MargoLayoutMenuWidgetModel {
                 if !buttons.is_empty() {
                     self.focused = (self.focused + buttons.len() - 1) % buttons.len();
                     buttons[self.focused].grab_focus();
+                }
+            }
+            MargoLayoutMenuWidgetInput::ParentRevealChanged(revealed) => {
+                if revealed {
+                    self.focused = 0;
+                    // The layer-shell surface only takes keyboard focus after
+                    // the frame's `sync_keyboard_mode` debounce; grabbing a row
+                    // synchronously here sets the window focus pointer but it
+                    // doesn't stick. Re-grab once the surface is actually
+                    // keyboard-focused so the focus-walk controller (Tab /
+                    // Ctrl+N) starts receiving keys. Mirrors the session menu.
+                    if let Some(first) = self.buttons.borrow().first().cloned() {
+                        glib::timeout_add_local_once(Duration::from_millis(160), move || {
+                            first.grab_focus();
+                        });
+                    }
                 }
             }
         }
