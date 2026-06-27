@@ -204,7 +204,6 @@ impl Component for MargoLayoutMenuWidgetModel {
                 gtk::Shortcut::builder()
                     .trigger(&gtk::KeyvalTrigger::new(key, mods))
                     .action(&gtk::CallbackAction::new(move |_, _| {
-                        tracing::info!(?key, next, "kbd: shortcut fired");
                         s.input(if next {
                             MargoLayoutMenuWidgetInput::FocusNext
                         } else {
@@ -269,24 +268,17 @@ impl Component for MargoLayoutMenuWidgetModel {
                 let buttons = self.buttons.borrow();
                 if !buttons.is_empty() {
                     self.focused = (self.focused + 1) % buttons.len();
-                    let ok = buttons[self.focused].grab_focus();
-                    tracing::info!(idx = self.focused, grabbed = ok, "kbd: FocusNext");
+                    buttons[self.focused].grab_focus();
                 }
             }
             MargoLayoutMenuWidgetInput::FocusPrev => {
                 let buttons = self.buttons.borrow();
                 if !buttons.is_empty() {
                     self.focused = (self.focused + buttons.len() - 1) % buttons.len();
-                    let ok = buttons[self.focused].grab_focus();
-                    tracing::info!(idx = self.focused, grabbed = ok, "kbd: FocusPrev");
+                    buttons[self.focused].grab_focus();
                 }
             }
             MargoLayoutMenuWidgetInput::ParentRevealChanged(revealed) => {
-                tracing::info!(
-                    revealed,
-                    n = self.buttons.borrow().len(),
-                    "kbd: ParentRevealChanged"
-                );
                 if revealed {
                     self.focused = 0;
                     // The layer-shell surface only takes keyboard focus after
@@ -298,8 +290,7 @@ impl Component for MargoLayoutMenuWidgetModel {
                     // walk regardless). Mirrors the session menu.
                     if let Some(first) = self.buttons.borrow().first().cloned() {
                         glib::timeout_add_local_once(Duration::from_millis(160), move || {
-                            let ok = first.grab_focus();
-                            tracing::info!(grabbed = ok, "kbd: reveal grab_focus");
+                            first.grab_focus();
                         });
                     }
                 }

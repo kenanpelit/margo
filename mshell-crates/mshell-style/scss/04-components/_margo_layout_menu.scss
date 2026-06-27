@@ -23,6 +23,22 @@
       font-weight: 600;
     }
   }
+
+  // Keyboard focus = the row the Tab / Shift+Tab / Ctrl+N / Ctrl+P walk
+  // currently sits on. Fill with the matugen --primary accent (the same
+  // treatment as the session menu's focused tile, `.session-button:focus`)
+  // so stepping through the list is visible — the focus-walk moves the row
+  // focus correctly, but without this the highlight never showed and Tab
+  // looked dead. Declared after `.selected` so focus wins on the active row.
+  &:focus,
+  &:focus-visible {
+    background-color: var(--primary);
+
+    .margo-layout-menu-icon,
+    .margo-layout-menu-label {
+      color: var(--on-primary);
+    }
+  }
 }
 
 .margo-layout-menu-icon {
