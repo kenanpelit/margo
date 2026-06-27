@@ -187,39 +187,50 @@ impl Component for MargoLayoutMenuWidgetModel {
             glib::ControlFlow::Continue
         });
 
-        // Keyboard focus-walk (Tab / Shift+Tab, Ctrl+N / Ctrl+P, the
-        // arrow keys, Ctrl+J / Ctrl+K) — same scheme as the session
-        // menu. A Capture-phase EventControllerKey on the root means a
-        // focused row routes the key through us first; we translate it
-        // to Focus{Next,Prev} and Stop so GTK's built-in Tab handler
-        // doesn't also move focus (which would double-step). Plain
-        // keys (Enter / Space) fall through as Proceed so the focused
-        // button still activates via GTK's default handler.
+        // Keyboard focus-walk (Tab / Shift+Tab, the arrow keys, Ctrl+N /
+        // Ctrl+P, Ctrl+J / Ctrl+K) — via a Capture-phase ShortcutController,
+        // the same mechanism the session menu uses for its number keys. An
+        // EventControllerKey only fires while a *descendant* of its widget
+        // holds keyboard focus; on a freshly-revealed layer-shell menu that
+        // grab is fragile (focus can sit on the menu's ScrolledWindow instead
+        // of a row), leaving the controller dormant. A ShortcutController's
+        // KeyvalTrigger instead fires as long as the layer *surface* holds
+        // keyboard focus — which `sync_keyboard_mode` guarantees (Exclusive)
+        // while any menu is revealed — so it doesn't depend on the grab
+        // landing. Capture phase so Tab preempts GTK's built-in focus-move.
         {
-            let sender_walk = sender.clone();
-            let key_controller = gtk::EventControllerKey::new();
-            key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
-            key_controller.connect_key_pressed(move |_, keyval, _, modifiers| {
-                let shift = modifiers.contains(gdk::ModifierType::SHIFT_MASK);
-                let ctrl = modifiers.contains(gdk::ModifierType::CONTROL_MASK);
-                let dir = match keyval {
-                    gdk::Key::Tab if !shift && !ctrl => 1i32,
-                    gdk::Key::Down if !ctrl => 1i32,
-                    gdk::Key::n | gdk::Key::j if ctrl => 1i32,
-                    gdk::Key::ISO_Left_Tab => -1i32,
-                    gdk::Key::Tab if shift => -1i32,
-                    gdk::Key::Up if !ctrl => -1i32,
-                    gdk::Key::p | gdk::Key::k if ctrl => -1i32,
-                    _ => return glib::Propagation::Proceed,
-                };
-                sender_walk.input(if dir > 0 {
-                    MargoLayoutMenuWidgetInput::FocusNext
-                } else {
-                    MargoLayoutMenuWidgetInput::FocusPrev
-                });
-                glib::Propagation::Stop
-            });
-            root.add_controller(key_controller);
+            let nav = |key: gdk::Key, mods: gdk::ModifierType, next: bool| {
+                let s = sender.clone();
+                gtk::Shortcut::builder()
+                    .trigger(&gtk::KeyvalTrigger::new(key, mods))
+                    .action(&gtk::CallbackAction::new(move |_, _| {
+                        tracing::info!(target: "margo_layout_kbd", ?key, next, "shortcut fired");
+                        s.input(if next {
+                            MargoLayoutMenuWidgetInput::FocusNext
+                        } else {
+                            MargoLayoutMenuWidgetInput::FocusPrev
+                        });
+                        glib::Propagation::Stop
+                    }))
+                    .build()
+            };
+            let sc = gtk::ShortcutController::new();
+            sc.set_scope(gtk::ShortcutScope::Local);
+            sc.set_propagation_phase(gtk::PropagationPhase::Capture);
+            let e = gdk::ModifierType::empty();
+            let ctrl = gdk::ModifierType::CONTROL_MASK;
+            let shift = gdk::ModifierType::SHIFT_MASK;
+            sc.add_shortcut(nav(gdk::Key::Tab, e, true));
+            sc.add_shortcut(nav(gdk::Key::Down, e, true));
+            sc.add_shortcut(nav(gdk::Key::n, ctrl, true));
+            sc.add_shortcut(nav(gdk::Key::j, ctrl, true));
+            sc.add_shortcut(nav(gdk::Key::ISO_Left_Tab, e, false));
+            sc.add_shortcut(nav(gdk::Key::ISO_Left_Tab, shift, false));
+            sc.add_shortcut(nav(gdk::Key::Tab, shift, false));
+            sc.add_shortcut(nav(gdk::Key::Up, e, false));
+            sc.add_shortcut(nav(gdk::Key::p, ctrl, false));
+            sc.add_shortcut(nav(gdk::Key::k, ctrl, false));
+            root.add_controller(sc);
         }
 
         let model = MargoLayoutMenuWidgetModel {
@@ -258,28 +269,33 @@ impl Component for MargoLayoutMenuWidgetModel {
                 let buttons = self.buttons.borrow();
                 if !buttons.is_empty() {
                     self.focused = (self.focused + 1) % buttons.len();
-                    buttons[self.focused].grab_focus();
+                    let ok = buttons[self.focused].grab_focus();
+                    tracing::info!(target: "margo_layout_kbd", idx = self.focused, grabbed = ok, "FocusNext");
                 }
             }
             MargoLayoutMenuWidgetInput::FocusPrev => {
                 let buttons = self.buttons.borrow();
                 if !buttons.is_empty() {
                     self.focused = (self.focused + buttons.len() - 1) % buttons.len();
-                    buttons[self.focused].grab_focus();
+                    let ok = buttons[self.focused].grab_focus();
+                    tracing::info!(target: "margo_layout_kbd", idx = self.focused, grabbed = ok, "FocusPrev");
                 }
             }
             MargoLayoutMenuWidgetInput::ParentRevealChanged(revealed) => {
+                tracing::info!(target: "margo_layout_kbd", revealed, n = self.buttons.borrow().len(), "ParentRevealChanged");
                 if revealed {
                     self.focused = 0;
                     // The layer-shell surface only takes keyboard focus after
                     // the frame's `sync_keyboard_mode` debounce; grabbing a row
                     // synchronously here sets the window focus pointer but it
                     // doesn't stick. Re-grab once the surface is actually
-                    // keyboard-focused so the focus-walk controller (Tab /
-                    // Ctrl+N) starts receiving keys. Mirrors the session menu.
+                    // keyboard-focused so a row shows the focus ring and Enter
+                    // activates it (the ShortcutController above handles the
+                    // walk regardless). Mirrors the session menu.
                     if let Some(first) = self.buttons.borrow().first().cloned() {
                         glib::timeout_add_local_once(Duration::from_millis(160), move || {
-                            first.grab_focus();
+                            let ok = first.grab_focus();
+                            tracing::info!(target: "margo_layout_kbd", grabbed = ok, "reveal grab_focus");
                         });
                     }
                 }
