@@ -17,6 +17,7 @@ use crate::default_apps_settings::{DefaultAppsSettingsInit, DefaultAppsSettingsM
 use crate::display_settings::{DisplaySettingsInit, DisplaySettingsModel};
 use crate::effects_settings::{EffectsInit, EffectsModel};
 use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
+use crate::game_mode_settings::{GameModeSettingsInit, GameModeSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
 use crate::helium_theme_settings::{HeliumThemeSettingsInit, HeliumThemeSettingsModel};
 use crate::hidden_bar_settings::{HiddenBarSettingsInit, HiddenBarSettingsModel};
@@ -111,6 +112,7 @@ pub struct SettingsWindowModel {
     notification_settings_controller: Controller<NotificationSettingsModel>,
     idle_settings_controller: Controller<IdleSettingsModel>,
     toast_settings_controller: Controller<ToastSettingsModel>,
+    game_mode_settings_controller: Controller<GameModeSettingsModel>,
     keyboard_settings_controller: Controller<KeyboardSettingsModel>,
     lock_settings_controller: Controller<LockSettingsModel>,
     tag_layout_settings_controller: Controller<TagLayoutSettingsModel>,
@@ -451,6 +453,7 @@ impl Component for SettingsWindowModel {
             notification_settings_controller = NotificationSettingsModel => NotificationSettingsInit {},
             idle_settings_controller = IdleSettingsModel => IdleSettingsInit {},
             toast_settings_controller = ToastSettingsModel => ToastSettingsInit {},
+            game_mode_settings_controller = GameModeSettingsModel => GameModeSettingsInit {},
             keyboard_settings_controller = KeyboardSettingsModel => KeyboardSettingsInit {},
             tag_layout_settings_controller = TagLayoutSettingsModel => TagLayoutSettingsInit {},
             launcher_settings_controller = LauncherSettingsModel => LauncherSettingsInit {},
@@ -532,6 +535,7 @@ impl Component for SettingsWindowModel {
             notification_settings_controller,
             idle_settings_controller,
             toast_settings_controller,
+            game_mode_settings_controller,
             keyboard_settings_controller,
             lock_settings_controller,
             tag_layout_settings_controller,
@@ -953,6 +957,11 @@ impl Component for SettingsWindowModel {
                 "toasts",
                 "Toasts",
                 model.toast_settings_controller.widget().clone().into(),
+            ),
+            (
+                "game_mode",
+                "Game Mode",
+                model.game_mode_settings_controller.widget().clone().into(),
             ),
             (
                 "keyboard",
@@ -1982,6 +1991,10 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
         "toast popup state change charging battery low caps lock num lock keyboard layout audio device vpn now playing notify",
     ),
     (
+        "game_mode",
+        "game mode gaming performance disable effects animations blur shadows tearing do not disturb keep awake idle inhibitor",
+    ),
+    (
         "keyboard",
         "on-screen keyboard osk virtual keyboard touch type mkeys layout turkish",
     ),
@@ -2056,6 +2069,8 @@ const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("idle", "idle"),
     ("toasts", "toasts"),
     ("toast", "toasts"),
+    ("game mode", "game_mode"),
+    ("gamemode", "game_mode"),
     ("on-screen keyboard", "keyboard"),
     ("keyboard", "keyboard"),
     ("lock", "lock"),
@@ -2268,6 +2283,11 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "toasts",
         icon: "preferences-system-notifications-symbolic",
         label: "Toasts",
+    },
+    Page {
+        route: "game_mode",
+        icon: "input-gaming-symbolic",
+        label: "Game Mode",
     },
     Page {
         route: "keyboard",

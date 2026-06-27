@@ -181,6 +181,14 @@ pub enum Commands {
         #[arg(long, default_value = "calm")]
         severity: String,
     },
+    /// Game Mode — drop compositor effects, silence notifications, and keep
+    /// the session awake while gaming. Configure what it affects in
+    /// Settings → Game Mode.
+    Gamemode {
+        /// on | off | toggle | status (default: toggle).
+        #[arg(value_enum, default_value = "toggle")]
+        action: GameModeAction,
+    },
     /// Health check — is the shell on the session bus, is it the same
     /// version as this `mshellctl`, are its key services up. Run
     /// `mctl doctor` for the compositor side.
@@ -191,4 +199,12 @@ pub enum Commands {
         #[arg(value_enum)]
         shell: Shell,
     },
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub enum GameModeAction {
+    On,
+    Off,
+    Toggle,
+    Status,
 }

@@ -1,6 +1,6 @@
 use clap::Parser;
-use mshellctl::app::{Cli, Commands};
-use mshellctl::bus::{bus_command, bus_command_with_arg};
+use mshellctl::app::{Cli, Commands, GameModeAction};
+use mshellctl::bus::{bus_command, bus_command_with_arg, bus_command_with_reply};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -48,6 +48,17 @@ async fn main() -> anyhow::Result<()> {
             )
             .await?;
         }
+        Commands::Gamemode { action } => match action {
+            GameModeAction::Status => {
+                let s: String = bus_command_with_reply("GameModeStatus").await?;
+                println!("{s}");
+            }
+            GameModeAction::On => bus_command_with_arg("GameMode", &"on".to_string()).await?,
+            GameModeAction::Off => bus_command_with_arg("GameMode", &"off".to_string()).await?,
+            GameModeAction::Toggle => {
+                bus_command_with_arg("GameMode", &"toggle".to_string()).await?
+            }
+        },
         Commands::Lock { command } => mshellctl::subcommands::lock::execute(command).await?,
         Commands::Settings { command } => {
             mshellctl::subcommands::settings::execute(command).await?

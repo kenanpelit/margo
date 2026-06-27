@@ -72,6 +72,18 @@ poison races.
 
 ### Added
 
+- **Game Mode** — one toggle that drops compositor effects (animations, blur,
+  shadows, optionally screen tearing), turns on Do Not Disturb, and holds the
+  idle inhibitor so the session stays awake while gaming. Effects are dropped
+  via a managed `conf.d/gamemode.conf` fragment margo sources after
+  `config.conf` (so it wins) while engaged, and cleared on exit — the original
+  values come straight back, nothing in `config.conf` is rewritten. Toggle it
+  live with `mshellctl gamemode on|off|toggle` (or `status`), or from
+  **Settings → Game Mode**, which also picks *what* the mode affects. State is
+  reconciled by a single reactive effect, so the CLI, the Settings switch, and
+  a mid-game shell restart all share one apply path; the idle inhibitor
+  remembers and restores its prior state so it never clobbers a manual hold.
+  Port of the caelestia-dots game-mode toggle.
 - **State-change toasts** — a small opaque corner card that announces a system
   *state change* and auto-dismisses, distinct from app notifications (which
   carry history) and the volume/brightness OSD (a value pulse). A single

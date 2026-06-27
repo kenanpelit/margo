@@ -34,6 +34,7 @@ mod display_settings;
 mod dock_settings;
 mod effects_settings;
 mod fonts_settings;
+mod game_mode_settings;
 mod general_settings;
 mod helium_theme_settings;
 mod hidden_bar_settings;

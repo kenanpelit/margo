@@ -46,6 +46,7 @@ pub struct Config {
     pub logging: LoggingConfig,
     pub osd: Osd,
     pub toasts: Toasts,
+    pub game_mode: GameMode,
 }
 
 /// On-screen-display capsule (volume / brightness / mic / network pulse)
@@ -154,6 +155,53 @@ fn default_battery_warn_levels() -> Vec<u8> {
 
 fn default_battery_critical_level() -> u8 {
     3
+}
+
+/// Game Mode — a single toggle that drops compositor effects, silences
+/// notifications, and keeps the session awake while gaming. Effects are
+/// disabled via a managed `conf.d/gamemode.conf` fragment margo sources after
+/// `config.conf` (so it wins) while active, and that is cleared on exit. The
+/// `active` flag persists so the state survives a shell restart; the rest pick
+/// *what* the mode affects.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct GameMode {
+    /// Whether game mode is currently engaged.
+    #[serde(default)]
+    pub active: bool,
+    /// Disable window + layer animations while active.
+    #[serde(default = "default_true")]
+    pub disable_animations: bool,
+    /// Disable blur while active.
+    #[serde(default = "default_true")]
+    pub disable_blur: bool,
+    /// Disable window + layer shadows while active.
+    #[serde(default = "default_true")]
+    pub disable_shadows: bool,
+    /// Hold the idle inhibitor while active (no dim / lock / suspend).
+    #[serde(default = "default_true")]
+    pub inhibit_idle: bool,
+    /// Turn on Do Not Disturb (suppress notification popups) while active.
+    #[serde(default = "default_true")]
+    pub enable_dnd: bool,
+    /// Allow screen tearing (`allow_tearing = 1`) while active — lower latency
+    /// for fullscreen games. Off by default.
+    #[serde(default)]
+    pub allow_tearing: bool,
+}
+
+impl Default for GameMode {
+    fn default() -> Self {
+        Self {
+            active: false,
+            disable_animations: true,
+            disable_blur: true,
+            disable_shadows: true,
+            inhibit_idle: true,
+            enable_dnd: true,
+            allow_tearing: false,
+        }
+    }
 }
 
 /// One configured alarm. `repeat_mask` bit `i` (0 = Sunday … 6 = Saturday)

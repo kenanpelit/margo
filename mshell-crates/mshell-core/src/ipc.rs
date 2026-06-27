@@ -476,6 +476,22 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         .to_string();
                     let _ = reply.send(current);
                 }
+                IPCCommand::GameMode(action) => {
+                    // Just flip the persisted `active` flag; the reactive
+                    // reconcile effect (mshell-core `run`) does the apply, so
+                    // the CLI, the Settings toggle, and startup share one path.
+                    let active = config_manager().config().game_mode().get_untracked().active;
+                    let target = match action.trim().to_ascii_lowercase().as_str() {
+                        "on" | "1" | "true" | "enable" => true,
+                        "off" | "0" | "false" | "disable" => false,
+                        _ => !active, // toggle
+                    };
+                    config_manager().update_config(|c| c.game_mode.active = target);
+                }
+                IPCCommand::GameModeStatus(reply) => {
+                    let on = config_manager().config().game_mode().get_untracked().active;
+                    let _ = reply.send(if on { "on" } else { "off" }.to_string());
+                }
                 IPCCommand::OpenSettings => {
                     open_settings();
                 }
@@ -572,6 +588,11 @@ enum IPCCommand {
     SystemUpdate,
     Valent,
     KeepAwake,
+    /// `mshellctl gamemode on|off|toggle` — engage/release Game Mode (drops
+    /// compositor effects, DND, idle inhibitor). The String is the verb.
+    GameMode(String),
+    /// `mshellctl gamemode status` — reply "on" / "off".
+    GameModeStatus(tokio::sync::oneshot::Sender<String>),
     Twilight,
     MargoLayoutMenu,
     Weather,
@@ -1456,6 +1477,16 @@ impl IPCService {
             body: (!body.trim().is_empty()).then_some(body),
             severity,
         });
+    }
+    /// `mshellctl gamemode on|off|toggle` — engage/release Game Mode.
+    async fn game_mode(&self, action: String) {
+        let _ = self.tx.send(IPCCommand::GameMode(action));
+    }
+    /// `mshellctl gamemode status` — "on" / "off".
+    async fn game_mode_status(&self) -> String {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ = self.tx.send(IPCCommand::GameModeStatus(tx));
+        rx.await.unwrap_or_default()
     }
     /// Standalone mdock surface controls.
     async fn dock_toggle(&self) {
