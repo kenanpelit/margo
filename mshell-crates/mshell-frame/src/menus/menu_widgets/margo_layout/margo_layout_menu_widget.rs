@@ -204,7 +204,7 @@ impl Component for MargoLayoutMenuWidgetModel {
                 gtk::Shortcut::builder()
                     .trigger(&gtk::KeyvalTrigger::new(key, mods))
                     .action(&gtk::CallbackAction::new(move |_, _| {
-                        tracing::info!(target: "margo_layout_kbd", ?key, next, "shortcut fired");
+                        tracing::info!(?key, next, "kbd: shortcut fired");
                         s.input(if next {
                             MargoLayoutMenuWidgetInput::FocusNext
                         } else {
@@ -270,7 +270,7 @@ impl Component for MargoLayoutMenuWidgetModel {
                 if !buttons.is_empty() {
                     self.focused = (self.focused + 1) % buttons.len();
                     let ok = buttons[self.focused].grab_focus();
-                    tracing::info!(target: "margo_layout_kbd", idx = self.focused, grabbed = ok, "FocusNext");
+                    tracing::info!(idx = self.focused, grabbed = ok, "kbd: FocusNext");
                 }
             }
             MargoLayoutMenuWidgetInput::FocusPrev => {
@@ -278,11 +278,15 @@ impl Component for MargoLayoutMenuWidgetModel {
                 if !buttons.is_empty() {
                     self.focused = (self.focused + buttons.len() - 1) % buttons.len();
                     let ok = buttons[self.focused].grab_focus();
-                    tracing::info!(target: "margo_layout_kbd", idx = self.focused, grabbed = ok, "FocusPrev");
+                    tracing::info!(idx = self.focused, grabbed = ok, "kbd: FocusPrev");
                 }
             }
             MargoLayoutMenuWidgetInput::ParentRevealChanged(revealed) => {
-                tracing::info!(target: "margo_layout_kbd", revealed, n = self.buttons.borrow().len(), "ParentRevealChanged");
+                tracing::info!(
+                    revealed,
+                    n = self.buttons.borrow().len(),
+                    "kbd: ParentRevealChanged"
+                );
                 if revealed {
                     self.focused = 0;
                     // The layer-shell surface only takes keyboard focus after
@@ -295,7 +299,7 @@ impl Component for MargoLayoutMenuWidgetModel {
                     if let Some(first) = self.buttons.borrow().first().cloned() {
                         glib::timeout_add_local_once(Duration::from_millis(160), move || {
                             let ok = first.grab_focus();
-                            tracing::info!(target: "margo_layout_kbd", grabbed = ok, "reveal grab_focus");
+                            tracing::info!(grabbed = ok, "kbd: reveal grab_focus");
                         });
                     }
                 }
