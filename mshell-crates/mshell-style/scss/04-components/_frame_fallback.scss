@@ -33,6 +33,17 @@
     // `BarInput::SetFrameInset`.
   }
 
+  // Gap == 0: the bar is flush to the screen edges, not floating. Square it
+  // off and drop the shadow — on the bottomless full-screen frame overlay a
+  // drop shadow paints past the reserved exclusive zone, over the window's top
+  // (the 1-2px overlap at gap 0), and rounded corners would cut wallpaper into
+  // the screen corners. Toggled from bar.rs (`frameless-flush`) only when the
+  // gap is 0; any gap keeps the floating-panel look above.
+  .bar.frameless-flush:not(.islands) {
+    border-radius: 0;
+    box-shadow: none;
+  }
+
   // Menu surfaces (clipboard, dashboard, control-center, …) get the same
   // rounded treatment so they're legible without the frame behind.
   .menu-scroll-window {

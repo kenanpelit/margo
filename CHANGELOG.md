@@ -153,7 +153,9 @@ poison races.
   until an unrelated event (a wallpaper rotation, any bar setting) happened to
   re-measure it. The toggle now re-measures both bars immediately, and the inset
   is applied as a GTK margin so it's reserved in the exclusive zone — windows
-  tile below the floating bar right away.
+  tile below the floating bar right away. At gap 0 the bar squares off flush to
+  the screen edges (no rounded corners or drop shadow), so its shadow can't
+  paint past the reserved zone over the window's top.
 - **Customised shell settings could be silently reset by a later update.** The
   shell rewrote the *entire* resolved profile to `active.yaml`, baking every
   field at its then-current default; a field you never touched kept that stale

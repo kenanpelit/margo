@@ -739,6 +739,20 @@ impl Component for BarModel {
                 widgets.bar_center.set_margin_bottom(m);
                 widgets.bar_center.set_margin_start(m);
                 widgets.bar_center.set_margin_end(m);
+                // gap == 0 → the bar is flush to the screen edges, not floating.
+                // Drop the rounded corners + drop shadow then: a shadow on the
+                // bottomless full-screen frame overlay paints *past* the
+                // reserved exclusive zone, over the window's top edge (the 1-2px
+                // "still under the bar" at gap 0); rounded corners would also cut
+                // wallpaper into the screen corners. `.frameless-flush` (SCSS)
+                // squares it off and removes the shadow. Any gap > 0 keeps the
+                // floating-panel look (its shadow falls in the gap, not on a
+                // window).
+                if disabled && m == 0 {
+                    widgets.bar_center.add_css_class("frameless-flush");
+                } else {
+                    widgets.bar_center.remove_css_class("frameless-flush");
+                }
             }
         }
         self.update_view(widgets, sender.clone());
