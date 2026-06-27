@@ -1,0 +1,53 @@
+// State-change toasts (mshell-osd::toast). A small opaque corner card that
+// auto-dismisses — distinct from notification popups and the volume/brightness
+// OSD. DESIGN.md §20: a toast stays opaque regardless of the surface-opacity
+// knob, so it's always legible over arbitrary content (never color-mixed with
+// transparent). Severity follows the §2 ladder via a class on the card.
+
+// The layer-shell window itself is transparent; the card paints the surface.
+.toast-window {
+  background-color: transparent;
+}
+
+.toast-card {
+  background-color: var(--surface-container-high);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  // One soft, wide, low-opacity shadow — the §0/§14 "hovering surface",
+  // never a hard drop shadow.
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+.toast-icon {
+  color: var(--on-surface);
+  -gtk-icon-size: var(--icon-md);
+}
+
+// Title SemiBold --on-surface; body the dim secondary tier (§1 Fonts).
+.toast-title {
+  color: var(--on-surface);
+  font-weight: 600;
+  font-size: var(--font-sm);
+}
+
+.toast-body {
+  color: var(--on-surface-variant);
+  font-size: var(--font-xs);
+}
+
+// Severity tint (§2). calm inherits the defaults above. warn/danger/positive
+// tint the icon (and the title on danger) with the wallpaper-independent
+// status colours so the signal reads instantly.
+.toast-card.warn .toast-icon {
+  color: var(--warning);
+}
+
+.toast-card.danger .toast-icon,
+.toast-card.danger .toast-title {
+  color: var(--error);
+}
+
+.toast-card.positive .toast-icon {
+  color: var(--success);
+}

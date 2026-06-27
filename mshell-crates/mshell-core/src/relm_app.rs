@@ -20,6 +20,8 @@ use mshell_osd::brightness_osd::{BrightnessOsdInit, BrightnessOsdModel};
 use mshell_osd::mic_osd::{MicOsdInit, MicOsdModel};
 use mshell_osd::network_osd::{NetworkOsdInit, NetworkOsdModel};
 use mshell_osd::sound_alerts::SoundAlertsModel;
+use mshell_osd::toast::{ToastSurfaceInit, ToastSurfaceModel};
+use mshell_osd::toast_producer::ToastProducerModel;
 use mshell_osd::volume_osd::{VolumeOsdInit, VolumeOsdModel};
 use mshell_polkit::PolkitPromptModel;
 use mshell_services::margo_service;
@@ -46,6 +48,10 @@ pub(crate) struct WindowGroup {
     pub _volume_osd: Option<Controller<VolumeOsdModel>>,
     pub _mic_osd: Option<Controller<MicOsdModel>>,
     pub _brightness_osd: Option<Controller<BrightnessOsdModel>>,
+    /// Per-output state-change toast surface (power / lock keys / layout /
+    /// audio device / VPN / now-playing). Fed by the singleton
+    /// `ToastProducerModel` over the toast bus.
+    pub _toast: Option<Controller<ToastSurfaceModel>>,
     /// Network-state OSD — flashes on connect / disconnect.
     /// Gated by `general.network_osd_enabled`; the controller
     /// itself stays mounted in either case (cheap, idle) and
@@ -92,6 +98,9 @@ pub(crate) struct Shell {
     _lock_screen_manager: Controller<LockScreenManagerModel>,
     _polkit: Controller<PolkitPromptModel>,
     _sound_alerts: Controller<SoundAlertsModel>,
+    /// Singleton producer that subscribes to every state-change event source
+    /// once and broadcasts toasts to the per-output toast surfaces.
+    _toast_producer: Controller<ToastProducerModel>,
     _style_manager: Controller<StyleManagerModel>,
     /// Holds the idle inhibitor while media plays (DMS audio-inhibit port);
     /// gated on `idle.inhibit_while_media`. Singleton, kept alive for the
@@ -245,6 +254,7 @@ impl Component for Shell {
         let polkit = PolkitPromptModel::builder().launch(()).detach();
 
         let sound_alerts = SoundAlertsModel::builder().launch(()).detach();
+        let toast_producer = ToastProducerModel::builder().launch(()).detach();
         let audio_inhibit = AudioInhibitModel::builder()
             .launch(AudioInhibitInit {})
             .detach();
@@ -384,6 +394,7 @@ impl Component for Shell {
             _lock_screen_manager: lock_screen_manager,
             _polkit: polkit,
             _sound_alerts: sound_alerts,
+            _toast_producer: toast_producer,
             _style_manager: style_manager,
             _audio_inhibit: audio_inhibit,
             monitor_filter,
@@ -541,6 +552,14 @@ impl Component for Shell {
                         .detach(),
                 );
 
+                let toast = Some(
+                    ToastSurfaceModel::builder()
+                        .launch(ToastSurfaceInit {
+                            monitor: monitor.clone(),
+                        })
+                        .detach(),
+                );
+
                 // Rounded screen corners — one tiny overlay per
                 // corner. Reads config once at monitor-add time;
                 // live toggling needs a reload (or a future
@@ -573,6 +592,7 @@ impl Component for Shell {
                     _volume_osd: volume_osd,
                     _mic_osd: mic_osd,
                     _brightness_osd: brightness_osd,
+                    _toast: toast,
                     _network_osd: network_osd,
                     _screen_corners: screen_corners,
                 };
@@ -598,6 +618,9 @@ impl Component for Shell {
                     }
                     if let Some(bright) = &group._brightness_osd {
                         bright.widget().close();
+                    }
+                    if let Some(toast) = &group._toast {
+                        toast.widget().close();
                     }
                 }
             }

@@ -72,6 +72,21 @@ poison races.
 
 ### Added
 
+- **State-change toasts** — a small opaque corner card that announces a system
+  *state change* and auto-dismisses, distinct from app notifications (which
+  carry history) and the volume/brightness OSD (a value pulse). A single
+  headless producer (`mshell-osd::toast_producer`) subscribes to every source
+  once — AC power plug/unplug, Caps/Num Lock, keyboard layout, default audio
+  output/input device, VPN connect/disconnect, now-playing — tracks each
+  previous value so it only fires on a *change*, and broadcasts to a per-output
+  toast surface; centralising it keeps the `mvpn` and lock-key pollers running
+  once total rather than once per monitor. Battery warnings became a ladder
+  (warn at 20/10/5 %, danger at a configurable critical level) that re-arms on
+  recharge, replacing the single low-battery threshold. Every event has its own
+  switch under **Settings → Toasts**, and `mshellctl toast "<title>" [body]
+  [--icon NAME] [--severity calm|warn|danger|positive]` is the `notify-send`
+  equivalent for scripts and startup services. Port of the caelestia-dots toast
+  framework.
 - **`start-margo` is now an event-driven, hang-aware supervisor.** The session
   watchdog was rebuilt around a single `poll(2)` over a `signalfd`, the child's
   `pidfd`, and margo's readiness pipe — it sleeps until something actually

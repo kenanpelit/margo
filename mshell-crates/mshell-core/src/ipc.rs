@@ -4,6 +4,7 @@ use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     AlarmConfigStoreFields, AudioConfigStoreFields, ConfigStoreFields, WallpaperStoreFields,
 };
+use mshell_osd::toast::{ToastEvent, ToastSeverity, push_toast};
 use mshell_services::{
     audio_service, brightness_service, margo_service, media_service, notification_service, tokio_rt,
 };
@@ -1430,6 +1431,31 @@ impl IPCService {
 impl IPCService {
     async fn quit(&self) {
         let _ = self.tx.send(IPCCommand::Quit);
+    }
+    /// `mshellctl toast <title> [body] [--icon NAME] [--severity …]` — show a
+    /// transient state-change toast. The `notify-send` equivalent for the
+    /// toast surface: ephemeral (no notification history), usable from scripts
+    /// and startup services. `push_toast` only fans out to the per-output
+    /// surfaces (a thread-safe broadcast), so this is safe to call straight
+    /// from the bus task. Explicit intent — it bypasses the per-event toggles.
+    async fn toast(&self, title: String, body: String, icon: String, severity: String) {
+        let severity = match severity.to_ascii_lowercase().as_str() {
+            "warn" | "warning" => ToastSeverity::Warn,
+            "danger" | "error" | "critical" => ToastSeverity::Danger,
+            "positive" | "success" | "ok" => ToastSeverity::Positive,
+            _ => ToastSeverity::Calm,
+        };
+        let icon = if icon.trim().is_empty() {
+            "dialog-information-symbolic".to_string()
+        } else {
+            icon
+        };
+        push_toast(ToastEvent {
+            icon,
+            title,
+            body: (!body.trim().is_empty()).then_some(body),
+            severity,
+        });
     }
     /// Standalone mdock surface controls.
     async fn dock_toggle(&self) {

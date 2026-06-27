@@ -45,6 +45,7 @@ use crate::startup_env_settings::{StartupEnvInit, StartupEnvModel};
 use crate::tag_layout_settings::{TagLayoutSettingsInit, TagLayoutSettingsModel};
 use crate::tag_rules_settings::{TagRulesInit, TagRulesModel};
 use crate::theme_settings::theme_settings::{ThemeSettingsInit, ThemeSettingsModel};
+use crate::toast_settings::{ToastSettingsInit, ToastSettingsModel};
 use crate::users_settings::{UsersSettingsInit, UsersSettingsModel};
 use crate::vpn_settings::{VpnSettingsInit, VpnSettingsModel};
 use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
@@ -109,6 +110,7 @@ pub struct SettingsWindowModel {
     menu_settings_controller: Controller<MenuSettingsModel>,
     notification_settings_controller: Controller<NotificationSettingsModel>,
     idle_settings_controller: Controller<IdleSettingsModel>,
+    toast_settings_controller: Controller<ToastSettingsModel>,
     keyboard_settings_controller: Controller<KeyboardSettingsModel>,
     lock_settings_controller: Controller<LockSettingsModel>,
     tag_layout_settings_controller: Controller<TagLayoutSettingsModel>,
@@ -448,6 +450,7 @@ impl Component for SettingsWindowModel {
             menu_settings_controller = MenuSettingsModel => MenuSettingsInit {},
             notification_settings_controller = NotificationSettingsModel => NotificationSettingsInit {},
             idle_settings_controller = IdleSettingsModel => IdleSettingsInit {},
+            toast_settings_controller = ToastSettingsModel => ToastSettingsInit {},
             keyboard_settings_controller = KeyboardSettingsModel => KeyboardSettingsInit {},
             tag_layout_settings_controller = TagLayoutSettingsModel => TagLayoutSettingsInit {},
             launcher_settings_controller = LauncherSettingsModel => LauncherSettingsInit {},
@@ -528,6 +531,7 @@ impl Component for SettingsWindowModel {
             menu_settings_controller,
             notification_settings_controller,
             idle_settings_controller,
+            toast_settings_controller,
             keyboard_settings_controller,
             lock_settings_controller,
             tag_layout_settings_controller,
@@ -944,6 +948,11 @@ impl Component for SettingsWindowModel {
                 "idle",
                 "Idle",
                 model.idle_settings_controller.widget().clone().into(),
+            ),
+            (
+                "toasts",
+                "Toasts",
+                model.toast_settings_controller.widget().clone().into(),
             ),
             (
                 "keyboard",
@@ -1969,6 +1978,10 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
         "screensaver dim timeout inhibitor dpms blank suspend",
     ),
     (
+        "toasts",
+        "toast popup state change charging battery low caps lock num lock keyboard layout audio device vpn now playing notify",
+    ),
+    (
         "keyboard",
         "on-screen keyboard osk virtual keyboard touch type mkeys layout turkish",
     ),
@@ -2041,6 +2054,8 @@ const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("display", "display"),
     ("fonts", "theme/fonts"),
     ("idle", "idle"),
+    ("toasts", "toasts"),
+    ("toast", "toasts"),
     ("on-screen keyboard", "keyboard"),
     ("keyboard", "keyboard"),
     ("lock", "lock"),
@@ -2248,6 +2263,11 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "idle",
         icon: "coffee-symbolic",
         label: "Idle",
+    },
+    Page {
+        route: "toasts",
+        icon: "preferences-system-notifications-symbolic",
+        label: "Toasts",
     },
     Page {
         route: "keyboard",

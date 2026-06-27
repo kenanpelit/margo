@@ -166,6 +166,21 @@ pub enum Commands {
         #[command(subcommand)]
         command: crate::subcommands::clipboard::ClipboardCommands,
     },
+    /// Show a transient state-change toast — the `notify-send` equivalent for
+    /// the toast surface. Ephemeral (no notification history); usable from
+    /// scripts and startup services.
+    Toast {
+        /// Toast title (the bold first line).
+        title: String,
+        /// Optional body line.
+        body: Option<String>,
+        /// Symbolic icon name (default: dialog-information-symbolic).
+        #[arg(long)]
+        icon: Option<String>,
+        /// Severity tint: calm | warn | danger | positive.
+        #[arg(long, default_value = "calm")]
+        severity: String,
+    },
     /// Health check — is the shell on the session bus, is it the same
     /// version as this `mshellctl`, are its key services up. Run
     /// `mctl doctor` for the compositor side.

@@ -45,6 +45,7 @@ pub struct Config {
     pub control_center: ControlCenterConfig,
     pub logging: LoggingConfig,
     pub osd: Osd,
+    pub toasts: Toasts,
 }
 
 /// On-screen-display capsule (volume / brightness / mic / network pulse)
@@ -81,6 +82,78 @@ impl Default for Osd {
             border_width: 2,
         }
     }
+}
+
+/// Transient state-change toasts — a small opaque corner card that auto-
+/// dismisses (DESIGN.md §20: a toast stays opaque regardless of the surface-
+/// opacity knob). Distinct from the notification popups and the
+/// volume/brightness OSD: these announce *system state changes* (AC power,
+/// lock keys, keyboard layout, default audio device, VPN, now-playing) plus
+/// a battery warning ladder. A single central producer
+/// (`mshell-osd::toast_producer`) subscribes once and broadcasts to the
+/// per-output toast surfaces. Each event carries its own on/off switch;
+/// `enabled` is the master gate.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct Toasts {
+    /// Master switch for the whole toast surface.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Toast when AC power is plugged in / unplugged.
+    #[serde(default = "default_true")]
+    pub charging: bool,
+    /// Toast when Caps Lock / Num Lock toggles.
+    #[serde(default = "default_true")]
+    pub lock_keys: bool,
+    /// Toast when the keyboard layout changes.
+    #[serde(default = "default_true")]
+    pub kb_layout: bool,
+    /// Toast when the default audio output / input device changes.
+    #[serde(default = "default_true")]
+    pub audio_device: bool,
+    /// Toast when the VPN tunnel connects / disconnects.
+    #[serde(default = "default_true")]
+    pub vpn: bool,
+    /// Toast on every now-playing track change. Off by default — it's noisy.
+    #[serde(default)]
+    pub now_playing: bool,
+    /// Toast as the battery crosses a warning / critical level.
+    #[serde(default = "default_true")]
+    pub battery: bool,
+    /// Battery warning thresholds (percent). A warn toast fires once as the
+    /// charge crosses each level downward while discharging; the ladder
+    /// re-arms on recharge. Order doesn't matter.
+    #[serde(default = "default_battery_warn_levels")]
+    pub battery_warn_levels: Vec<u8>,
+    /// Battery critical threshold (percent) — fires a danger toast. `0`
+    /// disables the critical step (warning levels still apply).
+    #[serde(default = "default_battery_critical_level")]
+    pub battery_critical_level: u8,
+}
+
+impl Default for Toasts {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            charging: true,
+            lock_keys: true,
+            kb_layout: true,
+            audio_device: true,
+            vpn: true,
+            now_playing: false,
+            battery: true,
+            battery_warn_levels: default_battery_warn_levels(),
+            battery_critical_level: default_battery_critical_level(),
+        }
+    }
+}
+
+fn default_battery_warn_levels() -> Vec<u8> {
+    vec![20, 10, 5]
+}
+
+fn default_battery_critical_level() -> u8 {
+    3
 }
 
 /// One configured alarm. `repeat_mask` bit `i` (0 = Sunday … 6 = Saturday)

@@ -31,6 +31,23 @@ async fn main() -> anyhow::Result<()> {
         Commands::SetWallpaper { path } => {
             bus_command_with_arg("SetWallpaper", &path.to_string_lossy().as_ref()).await?;
         }
+        Commands::Toast {
+            title,
+            body,
+            icon,
+            severity,
+        } => {
+            bus_command_with_arg(
+                "Toast",
+                &(
+                    title,
+                    body.unwrap_or_default(),
+                    icon.unwrap_or_default(),
+                    severity,
+                ),
+            )
+            .await?;
+        }
         Commands::Lock { command } => mshellctl::subcommands::lock::execute(command).await?,
         Commands::Settings { command } => {
             mshellctl::subcommands::settings::execute(command).await?
