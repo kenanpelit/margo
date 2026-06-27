@@ -1,6 +1,6 @@
 //! Linux-VT colour bridge — make the bare-TTY greeter match `--preview`.
 //!
-//! mlogind's theme uses 24-bit hex colours (`#282A36`, `#BD93F9`, …) which
+//! mlogind's theme uses 24-bit hex colours (`#1b1e2b`, `#5ec8c5`, …) which
 //! `config::get_color` turns into `ratatui::Color::Rgb`. A **terminal
 //! emulator** (where `mlogind --preview` runs) renders those truecolor SGR
 //! sequences exactly, so preview shows the real margo palette. The **bare

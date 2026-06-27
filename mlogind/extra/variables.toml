@@ -3,23 +3,24 @@
 # margo's matugen palette mapped to the greeter's roles. `mlogind sync-theme`
 # repaints these from the active wallpaper (margo writes them to
 # ~/.config/margo/mlogind-variables.toml on every theme change); until then
-# these defaults are margo's baseline palette: a high-contrast Dracula tuned
-# so the greeter reads cleanly even with no synced theme.
+# these defaults are margo's baseline palette — baked from the active matugen
+# wallpaper theme so the greeter reads cleanly (and matches the desktop) even
+# with no synced theme.
 
 # Surfaces / structure
-bg           = "#282A36"   # window background  (--surface)
-panel_border = "#44475A"   # panel/background border  (--surface-variant)
-field_border = "#6272A4"   # username/password field border
+bg           = "#1b1e2b"   # window background  (--surface)
+panel_border = "#2f3346"   # panel/background border  (--surface-variant)
+field_border = "#5b6184"   # username/password field border  (--outline)
 
 # Text
-text         = "#CDD6F4"   # primary text  (--on-surface)
-subtext      = "#CDD6F4"   # secondary text / unfocused neighbours
-muted        = "#CDD6F4"   # hints / movers  (--on-surface-variant)
+text         = "#d9def0"   # primary text  (--on-surface)
+subtext      = "#a6acc9"   # secondary text / unfocused neighbours
+muted        = "#a6acc9"   # hints / movers  (--on-surface-variant)
 
 # Accent / state
-accent       = "#BD93F9"   # focus / active  (--primary)
-accent_soft  = "#8BE9FD"   # softer accent for selected text  (cyan)
-danger       = "#FF5555"   # error / no-sessions  (--error)
+accent       = "#5ec8c5"   # focus / active  (--primary)
+accent_soft  = "#f5b97a"   # softer accent for selected text  (--tertiary)
+danger       = "#f7768e"   # error / no-sessions  (--error)
 
 # Field titles (plain text, not colours)
 login_title    = "User"

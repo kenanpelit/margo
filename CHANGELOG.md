@@ -103,6 +103,12 @@ poison races.
   readiness pipe open and beats it from its calloop loop, proving the loop is
   still turning.
 
+- **mlogind's baked default palette now matches the desktop.** The greeter's
+  in-code/`/etc/mlogind/variables.toml` default was a generic Dracula baseline;
+  it's now baked from the active matugen wallpaper theme, so a fresh install (or
+  a config reset before `mlogind sync-theme` runs) shows a login screen that
+  already matches margo's look instead of an off-palette fallback.
+
 ### Fixed
 
 - **`l` (lock-apply) keybinds were a silent no-op.** Binds tagged `l` to keep
