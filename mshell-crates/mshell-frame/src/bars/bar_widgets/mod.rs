@@ -23,6 +23,7 @@ pub(crate) mod keyboard_layout;
 pub(crate) mod lock;
 pub(crate) mod lock_keys;
 pub(crate) mod logout;
+pub(crate) mod lyrics;
 pub(crate) mod margo_dock;
 pub(crate) mod margo_dock_item;
 pub(crate) mod margo_layout;

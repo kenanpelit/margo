@@ -36,6 +36,9 @@ pub(crate) enum MenuKind {
     Mdash,
     MargoLayout,
     MediaPlayer,
+    /// The lyrics menu (`lyrics_menu`), opened by the Lyrics bar pill /
+    /// `mshellctl menu lyrics`.
+    Lyrics,
     /// The combined VPN menu (the `mvpn` pill's menu — `vpn_menu` config).
     /// Carries the Mullvad controls + the collapsible DNS section.
     Vpn,
@@ -78,6 +81,7 @@ macro_rules! menu_read {
             MenuKind::Clock => m.clock_menu().$field().$g(),
             MenuKind::Mdash => m.mdash_menu().$field().$g(),
             MenuKind::MediaPlayer => m.media_player_menu().$field().$g(),
+            MenuKind::Lyrics => m.lyrics_menu().$field().$g(),
             MenuKind::Vpn => m.vpn_menu().$field().$g(),
             MenuKind::Dns => m.dns_menu().$field().$g(),
             MenuKind::Ai => m.ai_menu().$field().$g(),
@@ -115,6 +119,7 @@ macro_rules! menu_write {
             MenuKind::Clock => c.menus.clock_menu.$field = $val,
             MenuKind::Mdash => c.menus.mdash_menu.$field = $val,
             MenuKind::MediaPlayer => c.menus.media_player_menu.$field = $val,
+            MenuKind::Lyrics => c.menus.lyrics_menu.$field = $val,
             MenuKind::Vpn => c.menus.vpn_menu.$field = $val,
             MenuKind::Dns => c.menus.dns_menu.$field = $val,
             MenuKind::Ai => c.menus.ai_menu.$field = $val,
@@ -156,6 +161,7 @@ impl MenuKind {
             Self::Mdash => "Mdash",
             Self::MargoLayout => "Margo Layout",
             Self::MediaPlayer => "Media Player",
+            Self::Lyrics => "Lyrics",
             Self::Vpn => "VPN",
             Self::Dns => "DNS",
             Self::Ai => "AI",
@@ -193,6 +199,7 @@ impl MenuKind {
             MenuKind::AppLauncher,
             MenuKind::Wallpaper,
             MenuKind::MediaPlayer,
+            MenuKind::Lyrics,
             MenuKind::Power,
             MenuKind::Bluetooth,
             MenuKind::CpuDashboard,

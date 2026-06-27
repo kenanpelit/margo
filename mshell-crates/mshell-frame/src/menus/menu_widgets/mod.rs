@@ -19,6 +19,7 @@ pub(crate) mod dns;
 pub(crate) mod ip;
 pub(crate) mod keep_awake;
 pub(crate) mod keybinds;
+pub(crate) mod lyrics;
 pub(crate) mod margo_layout;
 pub(crate) mod media_player;
 pub(crate) mod network;

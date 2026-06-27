@@ -84,6 +84,18 @@ poison races.
   a mid-game shell restart all share one apply path; the idle inhibitor
   remembers and restores its prior state so it never clobbers a manual hold.
   Port of the caelestia-dots game-mode toggle.
+- **Lyrics widget** — a native synced-lyrics bar pill + panel for the
+  now-playing track, replacing the external `musiclyrics` WASM plugin. The pill
+  scrolls the current line in the bar; the panel (`mshellctl menu lyrics`, or
+  click the pill) renders the whole song as a scrolling column with the active
+  line lit and auto-centred as it plays. Lyrics are resolved off-thread from
+  lrclib.net (exact `/api/get`, then a fuzzy `/api/search`), parsed from LRC,
+  and disk-cached under `~/.cache/mshell/lyrics/` — including a definitive "no
+  lyrics", so a re-play is offline and instant while a transient network error
+  still retries. The position is read from MPRIS, so any player works (Spotify,
+  mpd, browsers, mpv). Fetching only runs when the pill is on a bar or the panel
+  is open, so a user who never adds the widget never hits the network. Size /
+  position live under **Settings → Widgets → Lyrics**.
 - **State-change toasts** — a small opaque corner card that announces a system
   *state change* and auto-dismisses, distinct from app notifications (which
   carry history) and the volume/brightness OSD (a value pulse). A single

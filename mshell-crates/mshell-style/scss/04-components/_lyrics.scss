@@ -1,0 +1,90 @@
+// Lyrics — the synced-lyrics menu surface plus its bar pill.
+//
+// The menu (`lyrics-menu-widget`) renders the now-playing track's lyrics as a
+// scrolling column with the active line lit in the matugen accent; the pill
+// (`lyrics-bar-widget`) mirrors just the current line in the bar.
+
+.lyrics-menu-widget {
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-high);
+  padding: var(--space-2);
+}
+
+.lyrics-menu-artist {
+  font-size: var(--font-sm);
+  color: var(--on-surface-variant);
+  line-height: 1.25;
+}
+
+// Empty states (nothing playing / loading / no lyrics).
+.lyrics-status {
+  font-size: var(--font-sm);
+  color: var(--on-surface-variant);
+  padding: var(--space-4) var(--space-2);
+}
+
+.lyrics-scroller {
+  margin-top: var(--space-1);
+}
+
+// The scrolling column of lines. Inter-line gap is GtkBox spacing-free; the
+// breathing room is per-line padding so the active pill has room to grow.
+.lyrics-lines {
+  padding: var(--space-1) 0;
+}
+
+.lyrics-line {
+  font-size: var(--font-md);
+  font-weight: 500;
+  color: var(--on-surface-variant);
+  // Dimmed by default so the active line reads as the focus; the inactive
+  // body is deliberately recessive.
+  opacity: 0.55;
+  line-height: 1.3;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
+}
+
+// Unsynced lyrics can't track position, so every line stays at full presence
+// (there is no "active" line to contrast against).
+.lyrics-line-plain {
+  opacity: 0.9;
+}
+
+// The line at the current playback position — accent colour, full weight, a
+// soft accent wash behind it.
+.lyrics-line-active {
+  color: var(--primary);
+  opacity: 1;
+  font-weight: 700;
+  background-color: var(--primary-container);
+}
+
+// ── Bar pill ────────────────────────────────────────────────
+.lyrics-bar-label {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-style: italic;
+}
+
+.lyrics-bar-icon {
+  -gtk-icon-size: 16px;
+}
+
+// No player / no lyrics → recede; synced lyrics present → tint the glyph with
+// the accent so a glance tells the pill is live.
+.lyrics-bar-widget {
+  transition: opacity var(--motion-medium) var(--ease-standard);
+
+  &.dim {
+    opacity: 0.55;
+  }
+
+  &.has-lyrics .lyrics-bar-icon {
+    color: var(--primary);
+  }
+}

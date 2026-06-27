@@ -116,6 +116,8 @@ pub enum MenuCommands {
     Power,
     /// Toggle the Media Player menu
     MediaPlayer,
+    /// Toggle the Lyrics menu (synced lyrics of the now-playing track)
+    Lyrics,
     /// Toggle the session / power menu, or run a session action
     Session {
         #[command(subcommand)]
@@ -253,6 +255,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::MediaPlayer => {
             bus_command("MediaPlayer").await?;
+        }
+        MenuCommands::Lyrics => {
+            bus_command("Lyrics").await?;
         }
         MenuCommands::Session { action } => match action {
             None => {

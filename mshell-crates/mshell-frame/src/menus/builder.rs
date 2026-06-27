@@ -44,6 +44,9 @@ use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
 use crate::menus::menu_widgets::keybinds::keybinds_menu_widget::{
     KeybindsMenuWidgetInit, KeybindsMenuWidgetModel,
 };
+use crate::menus::menu_widgets::lyrics::lyrics_menu_widget::{
+    LyricsMenuWidgetInit, LyricsMenuWidgetModel,
+};
 use crate::menus::menu_widgets::margo_layout::margo_layout_menu_widget::{
     MargoLayoutMenuWidgetInit, MargoLayoutMenuWidgetModel, MargoLayoutMenuWidgetOutput,
 };
@@ -256,6 +259,11 @@ pub fn build_widget(
         MenuWidget::MediaPlayer => Box::new(
             MediaPlayersModel::builder()
                 .launch(MediaPlayersInit {})
+                .detach(),
+        ),
+        MenuWidget::Lyrics => Box::new(
+            LyricsMenuWidgetModel::builder()
+                .launch(LyricsMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Dns => Box::new(

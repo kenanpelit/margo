@@ -188,6 +188,7 @@ pub(crate) enum ShellInput {
     ToggleNetworkMenu(Option<String>),
     TogglePowerMenu(Option<String>),
     ToggleMediaPlayerMenu(Option<String>),
+    ToggleLyricsMenu(Option<String>),
     ToggleSessionMenu(Option<String>),
     ToggleSettingsMenu(Option<String>),
     /// Toggle the in-shell setup wizard menu on the active monitor.
@@ -874,6 +875,11 @@ impl Component for Shell {
             ShellInput::ToggleMediaPlayerMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleMenu(MenuId::MediaPlayer));
+                }
+            }
+            ShellInput::ToggleLyricsMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Lyrics));
                 }
             }
             ShellInput::ToggleSessionMenu(monitor_name) => {

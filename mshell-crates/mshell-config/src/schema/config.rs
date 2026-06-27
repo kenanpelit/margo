@@ -1194,6 +1194,7 @@ pub struct Menus {
     #[serde(default = "default_privacy_menu")]
     pub privacy_menu: Menu,
     pub media_player_menu: Menu,
+    pub lyrics_menu: Menu,
     pub session_menu: Menu,
     /// Settings panel — embeds in the frame's menu stack instead
     /// of launching a separate `gtk::Window` toplevel.
@@ -1610,6 +1611,12 @@ impl Default for Menus {
                 widgets: vec![MenuWidget::MediaPlayer],
                 minimum_width: 380,
                 maximum_height: 0,
+            },
+            lyrics_menu: Menu {
+                position: Position::TopRight,
+                widgets: vec![MenuWidget::Lyrics],
+                minimum_width: 420,
+                maximum_height: 560,
             },
             session_menu: Menu {
                 position: Position::Top,

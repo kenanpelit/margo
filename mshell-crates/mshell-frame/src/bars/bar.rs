@@ -17,6 +17,7 @@ use crate::bars::bar_widgets::keyboard_layout::{KeyboardLayoutInit, KeyboardLayo
 use crate::bars::bar_widgets::lock::{LockInit, LockModel, LockOutput};
 use crate::bars::bar_widgets::lock_keys::{LockKeysInit, LockKeysModel};
 use crate::bars::bar_widgets::logout::{LogoutInit, LogoutModel};
+use crate::bars::bar_widgets::lyrics::{LyricsInit, LyricsModel, LyricsOutput};
 use crate::bars::bar_widgets::margo_dock::{MargoDockInit, MargoDockModel, MargoDockOutput};
 use crate::bars::bar_widgets::margo_layout::{
     MargoLayoutInit, MargoLayoutModel, MargoLayoutOutput,
@@ -224,6 +225,7 @@ pub(crate) enum BarOutput {
     PowerClicked,
     PrivacyClicked,
     MediaPlayerClicked,
+    LyricsClicked,
     /// Margo layout switcher bar pill clicked. Frame catches and
     /// toggles the in-stack MargoLayout menu (replaces the
     /// legacy in-popover layout chooser).
@@ -1227,6 +1229,12 @@ impl BarModel {
                         MediaPlayerOutput::Clicked => BarOutput::MediaPlayerClicked,
                     }),
             ),
+            BarWidget::Lyrics => Box::new(LyricsModel::builder().launch(LyricsInit {}).forward(
+                sender.output_sender(),
+                |msg| match msg {
+                    LyricsOutput::Clicked => BarOutput::LyricsClicked,
+                },
+            )),
             BarWidget::Ufw => Box::new(UfwModel::builder().launch(UfwInit {}).forward(
                 sender.output_sender(),
                 |msg| match msg {

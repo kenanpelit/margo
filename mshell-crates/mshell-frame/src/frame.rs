@@ -52,6 +52,7 @@ const NIP_MENU: &str = "ip";
 const NNETWORK_MENU: &str = "network";
 const NPOWER_MENU: &str = "power";
 const MEDIA_PLAYER_MENU: &str = "media_player";
+const LYRICS_MENU: &str = "lyrics";
 const SESSION_MENU: &str = "session";
 const SETTINGS_MENU: &str = "settings";
 const MDASH_MENU: &str = "mdash";
@@ -139,6 +140,7 @@ pub struct Frame {
     network_menu: Controller<MenuModel>,
     power_menu: Controller<MenuModel>,
     media_player_menu: Controller<MenuModel>,
+    lyrics_menu: Controller<MenuModel>,
     session_menu: Controller<MenuModel>,
     /// Settings panel — uses its own dedicated model (not
     /// `MenuModel`) because its content is a custom sidebar +
@@ -202,6 +204,7 @@ pub enum MenuId {
     Network,
     Power,
     MediaPlayer,
+    Lyrics,
     Session,
     Mdash,
     MargoLayout,
@@ -243,6 +246,7 @@ impl MenuId {
             MenuId::Network => NNETWORK_MENU,
             MenuId::Power => NPOWER_MENU,
             MenuId::MediaPlayer => MEDIA_PLAYER_MENU,
+            MenuId::Lyrics => LYRICS_MENU,
             MenuId::Session => SESSION_MENU,
             MenuId::Mdash => MDASH_MENU,
             MenuId::MargoLayout => MARGO_LAYOUT_MENU,
@@ -903,6 +907,7 @@ impl Component for Frame {
         let network_menu = Self::build_menu(&sender, MenuType::Network);
         let power_menu = Self::build_menu(&sender, MenuType::Power);
         let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer);
+        let lyrics_menu = Self::build_menu(&sender, MenuType::Lyrics);
         let session_menu = Self::build_menu(&sender, MenuType::Session);
         let mdash_menu = Self::build_menu(&sender, MenuType::Mdash);
         let margo_layout_menu = Self::build_menu(&sender, MenuType::MargoLayout);
@@ -981,6 +986,7 @@ impl Component for Frame {
             pos!(network_menu);
             pos!(power_menu);
             pos!(media_player_menu);
+            pos!(lyrics_menu);
             pos!(session_menu);
             pos!(settings_menu);
             pos!(cpu_dashboard_menu);
@@ -1095,6 +1101,7 @@ impl Component for Frame {
             network_menu,
             power_menu,
             media_player_menu,
+            lyrics_menu,
             session_menu,
             settings_menu: None,
             mdash_menu,
@@ -2206,6 +2213,7 @@ impl Frame {
         let network_menu_position = menu_pos!(network_menu);
         let power_menu_position = menu_pos!(power_menu);
         let media_player_menu_position = menu_pos!(media_player_menu);
+        let lyrics_menu_position = menu_pos!(lyrics_menu);
         let session_menu_position = menu_pos!(session_menu);
         let settings_menu_position = menu_pos!(settings_menu);
         let clock_widget: Widget = self.clock_menu.widget().clone().upcast();
@@ -2345,6 +2353,7 @@ impl Frame {
         let network_menu_widget: Widget = self.network_menu.widget().clone().upcast();
         let power_menu_widget: Widget = self.power_menu.widget().clone().upcast();
         let media_player_menu_widget: Widget = self.media_player_menu.widget().clone().upcast();
+        let lyrics_menu_widget: Widget = self.lyrics_menu.widget().clone().upcast();
         let session_menu_widget: Widget = self.session_menu.widget().clone().upcast();
         // Settings is built lazily (`ensure_settings_built`); only attach
         // it once it exists. `None` until the user first opens it.
@@ -2533,6 +2542,12 @@ impl Frame {
         );
         Self::add_to_stack(
             widgets,
+            &lyrics_menu_widget,
+            LYRICS_MENU,
+            &lyrics_menu_position,
+        );
+        Self::add_to_stack(
+            widgets,
             &session_menu_widget,
             SESSION_MENU,
             &session_menu_position,
@@ -2703,6 +2718,7 @@ impl Frame {
                 BarOutput::NetworkClicked => FrameInput::ToggleMenu(MenuId::Network),
                 BarOutput::PowerClicked => FrameInput::ToggleMenu(MenuId::Power),
                 BarOutput::MediaPlayerClicked => FrameInput::ToggleMenu(MenuId::MediaPlayer),
+                BarOutput::LyricsClicked => FrameInput::ToggleMenu(MenuId::Lyrics),
                 BarOutput::MargoLayoutClicked => FrameInput::ToggleMenu(MenuId::MargoLayout),
                 BarOutput::CloseMenu => FrameInput::CloseMenus,
             },

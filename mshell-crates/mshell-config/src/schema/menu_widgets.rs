@@ -58,6 +58,8 @@ pub enum MenuWidget {
     /// `mshellctl dock`.
     MargoDock,
     MediaPlayer,
+    /// Lyrics menu content — the scrolling synced-lyrics column.
+    Lyrics,
     Dns,
     /// VPN menu — the full Mullvad control surface the `mvpn` bar pill
     /// opens: status hero, connect / random / fastest, lockdown /
@@ -161,6 +163,7 @@ impl MenuWidget {
             MenuWidget::MargoLayout => "Margo Layout",
             MenuWidget::MargoDock => "mdock",
             MenuWidget::MediaPlayer => "Media Player",
+            MenuWidget::Lyrics => "Lyrics",
             MenuWidget::Dns => "DNS / VPN",
             MenuWidget::Vpn => "VPN",
             MenuWidget::Ai => "AI Assistant",
@@ -225,6 +228,7 @@ impl MenuWidget {
             MenuWidget::Divider,
             MenuWidget::MargoLayout,
             MenuWidget::MediaPlayer,
+            MenuWidget::Lyrics,
             MenuWidget::Dns,
             MenuWidget::Vpn,
             MenuWidget::Ai,

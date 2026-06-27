@@ -99,6 +99,9 @@ pub enum BarWidget {
     /// setup wizard) — a layer-shell surface, not a separate window.
     Setup,
     MediaPlayer,
+    /// Lyrics pill — current synced line of the now-playing track. Opens the
+    /// scrolling lyrics panel (`MenuType::Lyrics`).
+    Lyrics,
     /// Mullvad VPN pill — native status pill driving the `mvpn` binary. Opens
     /// the combined VPN menu (VPN controls + a collapsible DNS section).
     Vpn,
@@ -178,6 +181,7 @@ impl BarWidget {
             BarWidget::Logout => "Logout",
             BarWidget::Setup => "Setup",
             BarWidget::MediaPlayer => "Media Player",
+            BarWidget::Lyrics => "Lyrics",
             BarWidget::Vpn => "VPN",
             BarWidget::Dns => "DNS",
             BarWidget::Ai => "AI",
@@ -239,6 +243,7 @@ impl BarWidget {
             BarWidget::Logout,
             BarWidget::Setup,
             BarWidget::MediaPlayer,
+            BarWidget::Lyrics,
             BarWidget::Vpn,
             BarWidget::Dns,
             BarWidget::Ai,

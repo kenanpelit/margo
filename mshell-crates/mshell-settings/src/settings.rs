@@ -1193,6 +1193,12 @@ impl Component for SettingsWindowModel {
                 icon: "starred-symbolic",
             },
             WidgetEntry::MediaPlayer,
+            WidgetEntry::Menu {
+                kind: MenuKind::Lyrics,
+                stack_name: "lyrics",
+                label: "Lyrics",
+                icon: "music-note-single-symbolic",
+            },
             WidgetEntry::HiddenBar,
             WidgetEntry::Catwalk,
             WidgetEntry::Menu {

@@ -25,6 +25,9 @@ use crate::menus::menu_widgets::ip::ip_menu_widget::{IpMenuWidgetInput, IpMenuWi
 use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
     KeepAwakeMenuWidgetInput, KeepAwakeMenuWidgetModel,
 };
+use crate::menus::menu_widgets::lyrics::lyrics_menu_widget::{
+    LyricsMenuWidgetInput, LyricsMenuWidgetModel,
+};
 use crate::menus::menu_widgets::margo_layout::margo_layout_menu_widget::{
     MargoLayoutMenuWidgetInput, MargoLayoutMenuWidgetModel,
 };
@@ -134,6 +137,9 @@ pub(crate) enum MenuType {
     /// clearable mic / camera / screen-share access log.
     Privacy,
     MediaPlayer,
+    /// `lyrics` bar pill's panel — scrolling synced lyrics of the
+    /// now-playing track.
+    Lyrics,
     Session,
     /// `mdash` — the dashboard menu. Renders a greeting header, then the
     /// two-pane calendar/weather + intel/connectivity/audio/system/media
@@ -569,6 +575,12 @@ impl Component for MenuModel {
                 effect_min_width!(effects, base_config, sender, media_player_menu);
                 effect_max_height!(effects, base_config, sender, media_player_menu);
             }
+            MenuType::Lyrics => {
+                css_class = "lyrics-menu".to_string();
+                effect_widgets!(effects, base_config, sender, lyrics_menu);
+                effect_min_width!(effects, base_config, sender, lyrics_menu);
+                effect_max_height!(effects, base_config, sender, lyrics_menu);
+            }
             MenuType::Session => {
                 css_class = "session-menu".to_string();
                 effect_widgets!(effects, base_config, sender, session_menu);
@@ -922,6 +934,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(MediaPlayersInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<LyricsMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(LyricsMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =
