@@ -355,7 +355,8 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                             let v = (audio_cfg.default_output_volume.clamp(0, 100) as f64) / 100.0;
                             let _ = devs[i].set_volume(Volume::stereo(v, v)).await;
                         }
-                        notify_audio("Audio output", &devs[i].description.get());
+                        // No notify-send here: the OSD toast producer already
+                        // toasts "Audio output" on the default-device change.
                     }
                 }
                 IPCCommand::SwitchInput(target) => {
@@ -375,7 +376,8 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                             let v = (audio_cfg.default_input_volume.clamp(0, 100) as f64) / 100.0;
                             let _ = devs[i].set_volume(Volume::stereo(v, v)).await;
                         }
-                        notify_audio("Audio input", &devs[i].description.get());
+                        // No notify-send here: the OSD toast producer already
+                        // toasts "Audio input" on the default-device change.
                     }
                 }
                 IPCCommand::MediaToggle(target) => {
@@ -745,26 +747,6 @@ fn usable_inputs() -> Vec<Arc<InputDevice>> {
 
 /// Fire-and-forget desktop notification (replaces the previous one via the
 /// synchronous hint so rapid switches don't stack), mirroring osc-soundctl.
-fn notify_audio(summary: &str, body: &str) {
-    let summary = summary.to_string();
-    let body = body.to_string();
-    relm4::spawn(async move {
-        let _ = tokio::process::Command::new("notify-send")
-            .args([
-                "-a",
-                "mshell",
-                "-i",
-                "audio-volume-high-symbolic",
-                "-h",
-                "string:x-canonical-private-synchronous:mshell-audio",
-                &summary,
-                &body,
-            ])
-            .status()
-            .await;
-    });
-}
-
 /// Toast the player + current track after a media action (osc-media style).
 /// Spawned with a short settle delay because MPRIS pushes the new track /
 /// playback state asynchronously after `next` / `play_pause` returns — reading
