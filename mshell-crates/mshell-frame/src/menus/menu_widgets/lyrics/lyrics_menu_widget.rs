@@ -165,6 +165,12 @@ impl Component for LyricsMenuWidgetModel {
                 add_css_class: "lyrics-scroller",
                 set_hexpand: true,
                 set_vexpand: true,
+                // A GtkScrolledWindow reports ~0 natural height, so in a menu
+                // that sizes to its content the lyrics viewport would collapse
+                // to nothing and no lines render (header + badge show, body is
+                // blank). Give it an explicit content height — the active line
+                // auto-centres within it and long songs scroll internally.
+                set_min_content_height: 360,
                 set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
                 #[watch]
                 set_visible: model.status_message().is_none(),

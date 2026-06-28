@@ -159,6 +159,12 @@ poison races.
 
 ### Fixed
 
+- **The lyrics panel showed its header but no lyrics.** The scrolling lyrics
+  column lived in a `GtkScrolledWindow`, which reports ~0 natural height, so in
+  a menu that sizes to its content the viewport collapsed and no lines rendered
+  (the header, source badge and separator showed; the body was blank). The
+  viewport now has an explicit height — the active line auto-centres in it and
+  long songs scroll internally.
 - **Menus baked into an older profile opened empty.** A menu the profile was
   saved before it existed (e.g. the new Lyrics panel, or Media Player) was
   serialised as nothing, so it deserialised to an empty widget list and opened
