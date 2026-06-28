@@ -15,9 +15,15 @@
 
 use crate::lyrics::{self, Lyrics, TrackKey};
 use futures::StreamExt;
+use mshell_common::scoped_effects::EffectScope;
 use mshell_common::{WatcherToken, watch_cancellable};
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{
+    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, LyricsBarWidgetStoreFields,
+};
 use mshell_services::media_service;
 use mshell_utils::media::spawn_media_players_watcher;
+use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::pango;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -41,6 +47,13 @@ pub(crate) struct LyricsModel {
     loading: bool,
     position_ms: u64,
     active_idx: Option<usize>,
+    /// Whether to show the current line in the bar (else icon-only; words live
+    /// in the menu). Live from `bars.widgets.lyrics.show_line_in_bar`.
+    show_line: bool,
+    /// Max width of the bar line in characters. Live from
+    /// `bars.widgets.lyrics.max_width_chars`, clamped 8..=120.
+    max_width_chars: i32,
+    _effects: EffectScope,
 }
 
 #[derive(Debug)]
@@ -65,6 +78,10 @@ pub(crate) enum LyricsCommandOutput {
     Position(Duration),
     /// Background lyrics fetch finished (for the given track key).
     Fetched(TrackKey, Lyrics),
+    /// `show_line_in_bar` config changed.
+    ShowLineChanged(bool),
+    /// `max_width_chars` config changed.
+    MaxWidthChanged(i32),
 }
 
 #[relm4::component(pub)]
@@ -127,6 +144,36 @@ impl Component for LyricsModel {
             || LyricsCommandOutput::PlayersChanged,
         );
 
+        // Track the "show line in bar" config live so toggling it in Settings
+        // updates the pill without a restart.
+        let mut effects = EffectScope::new();
+        let cs = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .lyrics()
+                .show_line_in_bar()
+                .get();
+            let _ = cs
+                .command_sender()
+                .send(LyricsCommandOutput::ShowLineChanged(v));
+        });
+        let cs = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .lyrics()
+                .max_width_chars()
+                .get();
+            let _ = cs
+                .command_sender()
+                .send(LyricsCommandOutput::MaxWidthChanged(clamp_width(v)));
+        });
+
         let mut model = LyricsModel {
             players_token: WatcherToken::new(),
             position_token: WatcherToken::new(),
@@ -137,6 +184,23 @@ impl Component for LyricsModel {
             loading: false,
             position_ms: 0,
             active_idx: None,
+            show_line: config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .lyrics()
+                .show_line_in_bar()
+                .get_untracked(),
+            max_width_chars: clamp_width(
+                config_manager()
+                    .config()
+                    .bars()
+                    .widgets()
+                    .lyrics()
+                    .max_width_chars()
+                    .get_untracked(),
+            ),
+            _effects: effects,
         };
 
         subscribe_players(&sender, &mut model.players_token);
@@ -190,6 +254,12 @@ impl Component for LyricsModel {
                 self.lyrics = lyrics;
                 self.loading = false;
                 self.active_idx = self.compute_active();
+            }
+            LyricsCommandOutput::ShowLineChanged(v) => {
+                self.show_line = v;
+            }
+            LyricsCommandOutput::MaxWidthChanged(v) => {
+                self.max_width_chars = v;
             }
         }
         apply_visual(widgets, self);
@@ -321,8 +391,15 @@ fn kick_fetch(sender: &ComponentSender<LyricsModel>, key: TrackKey) {
     });
 }
 
+/// Clamp a configured bar-line width (chars) to a sane range so a stray value
+/// can't collapse the pill or let it eat the whole bar.
+fn clamp_width(chars: i32) -> i32 {
+    chars.clamp(8, 120)
+}
+
 fn apply_visual(widgets: &LyricsModelWidgets, model: &LyricsModel) {
     let root = &widgets.root;
+    widgets.label.set_max_width_chars(model.max_width_chars);
     root.remove_css_class("has-lyrics");
     root.remove_css_class("dim");
 
@@ -335,7 +412,7 @@ fn apply_visual(widgets: &LyricsModelWidgets, model: &LyricsModel) {
 
     if model.loading {
         widgets.label.set_label("…");
-        widgets.label.set_visible(true);
+        widgets.label.set_visible(model.show_line);
         root.set_tooltip_text(Some("Loading lyrics…"));
         return;
     }
@@ -349,7 +426,7 @@ fn apply_visual(widgets: &LyricsModelWidgets, model: &LyricsModel) {
                 .filter(|t| !t.trim().is_empty())
                 .unwrap_or("♪");
             widgets.label.set_label(text);
-            widgets.label.set_visible(true);
+            widgets.label.set_visible(model.show_line);
             root.add_css_class("has-lyrics");
             root.set_tooltip_text(Some("Synced lyrics — click for the full panel"));
         }

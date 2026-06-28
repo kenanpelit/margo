@@ -94,8 +94,10 @@ poison races.
   lyrics", so a re-play is offline and instant while a transient network error
   still retries. The position is read from MPRIS, so any player works (Spotify,
   mpd, browsers, mpv). Fetching only runs when the pill is on a bar or the panel
-  is open, so a user who never adds the widget never hits the network. Size /
-  position live under **Settings → Widgets → Lyrics**.
+  is open, so a user who never adds the widget never hits the network. Whether
+  the current line shows in the bar (vs. icon-only, words only in the menu), the
+  bar line's width in characters, and the menu's size / position all live under
+  **Settings → Widgets → Lyrics**.
 - **State-change toasts** — a small opaque corner card that announces a system
   *state change* and auto-dismisses, distinct from app notifications (which
   carry history) and the volume/brightness OSD (a value pulse). A single

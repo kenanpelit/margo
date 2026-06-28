@@ -828,6 +828,9 @@ impl Default for Bars {
 #[derive(Default)]
 pub struct BarWidgets {
     pub system_update: SystemUpdateBarWidget,
+    /// Lyrics bar pill behaviour (whether the current line shows in the bar).
+    #[serde(default)]
+    pub lyrics: LyricsBarWidget,
     /// Hidden Bar drawer behaviour (hover-expand, auto-collapse, …) for the
     /// bar's default (`!HiddenBar`) drawer.
     pub hidden_bar: HiddenBarConfig,
@@ -1162,6 +1165,35 @@ impl Default for SystemUpdateBarWidget {
             check_repo: true,
             check_aur: true,
             check_flatpak: true,
+        }
+    }
+}
+
+/// Lyrics bar pill behaviour.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct LyricsBarWidget {
+    /// Show the current synced line scrolling in the bar. When off, the pill is
+    /// just an icon (tinted when lyrics are available) and the words live only
+    /// in the menu.
+    #[serde(default = "default_true")]
+    pub show_line_in_bar: bool,
+    /// Max width of the scrolling line in the bar, in characters. The label
+    /// ellipsizes past this so a long line can't stretch the bar. Clamped
+    /// 8..=120 when applied.
+    #[serde(default = "default_lyrics_max_width_chars")]
+    pub max_width_chars: i32,
+}
+
+fn default_lyrics_max_width_chars() -> i32 {
+    32
+}
+
+impl Default for LyricsBarWidget {
+    fn default() -> Self {
+        Self {
+            show_line_in_bar: true,
+            max_width_chars: default_lyrics_max_width_chars(),
         }
     }
 }

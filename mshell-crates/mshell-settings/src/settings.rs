@@ -1129,6 +1129,7 @@ impl Component for SettingsWindowModel {
             Session,
             Weather,
             MediaPlayer,
+            Lyrics,
             HiddenBar,
             Catwalk,
             Privacy,
@@ -1150,6 +1151,7 @@ impl Component for SettingsWindowModel {
                     Self::Session => "Session",
                     Self::Weather => "Weather",
                     Self::MediaPlayer => "Media Player",
+                    Self::Lyrics => "Lyrics",
                     Self::HiddenBar => "Hidden Bar",
                     Self::Catwalk => "Catwalk",
                     Self::Privacy => "Privacy",
@@ -1193,12 +1195,7 @@ impl Component for SettingsWindowModel {
                 icon: "starred-symbolic",
             },
             WidgetEntry::MediaPlayer,
-            WidgetEntry::Menu {
-                kind: MenuKind::Lyrics,
-                stack_name: "lyrics",
-                label: "Lyrics",
-                icon: "lyrics-symbolic",
-            },
+            WidgetEntry::Lyrics,
             WidgetEntry::HiddenBar,
             WidgetEntry::Catwalk,
             WidgetEntry::Menu {
@@ -1548,6 +1545,45 @@ impl Component for SettingsWindowModel {
                         .child(&inner)
                         .build();
                     widgets_sub_stack.add_named(&outer, Some("media_player"));
+                    Box::leak(Box::new(menu_ctrl));
+                }
+                WidgetEntry::Lyrics => {
+                    let btn =
+                        make_sub_btn("Lyrics", "lyrics-symbolic", "lyrics", group_anchor.as_ref());
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
+                    widgets_sub_sidebar_box.append(&btn);
+                    // Lyrics has two config domains: the bar-pill behaviour (show
+                    // the current line in the bar) and the menu surface geometry
+                    // (the generic per-menu page). Compose both into one page.
+                    let bar_ctrl = crate::lyrics_settings::LyricsSettingsModel::builder()
+                        .launch(crate::lyrics_settings::LyricsSettingsInit {})
+                        .detach();
+                    let menu_ctrl = WidgetMenuSettingsModel::builder()
+                        .launch(WidgetMenuSettingsInit {
+                            kind: MenuKind::Lyrics,
+                        })
+                        .detach();
+                    let bs = bar_ctrl.widget().clone();
+                    let ms = menu_ctrl.widget().clone();
+                    for sw in [&bs, &ms] {
+                        sw.set_vscrollbar_policy(gtk::PolicyType::Never);
+                        sw.set_propagate_natural_height(true);
+                        sw.set_vexpand(false);
+                    }
+                    let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    inner.append(&bs);
+                    inner.append(&ms);
+                    let outer = gtk::ScrolledWindow::builder()
+                        .hscrollbar_policy(gtk::PolicyType::Never)
+                        .vscrollbar_policy(gtk::PolicyType::Automatic)
+                        .hexpand(true)
+                        .vexpand(true)
+                        .child(&inner)
+                        .build();
+                    widgets_sub_stack.add_named(&outer, Some("lyrics"));
+                    Box::leak(Box::new(bar_ctrl));
                     Box::leak(Box::new(menu_ctrl));
                 }
                 WidgetEntry::HiddenBar => {
