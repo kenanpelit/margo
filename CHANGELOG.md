@@ -107,10 +107,11 @@ poison races.
   once total rather than once per monitor. Battery warnings became a ladder
   (warn at 20/10/5 %, danger at a configurable critical level) that re-arms on
   recharge, replacing the single low-battery threshold. Every event has its own
-  switch under **Settings → Toasts**, and `mshellctl toast "<title>" [body]
-  [--icon NAME] [--severity calm|warn|danger|positive]` is the `notify-send`
-  equivalent for scripts and startup services. Port of the caelestia-dots toast
-  framework.
+  switch under **Settings → Toasts**, which also picks where toasts dock (any
+  screen edge or corner), the margin from it, and an optional fixed card width —
+  the OSD-style geometry knobs. `mshellctl toast "<title>" [body] [--icon NAME]
+  [--severity calm|warn|danger|positive]` is the `notify-send` equivalent for
+  scripts and startup services. Port of the caelestia-dots toast framework.
 - **`start-margo` is now an event-driven, hang-aware supervisor.** The session
   watchdog was rebuilt around a single `poll(2)` over a `signalfd`, the child's
   `pidfd`, and margo's readiness pipe — it sleeps until something actually

@@ -19,6 +19,10 @@ use gtk4::gdk;
 use gtk4::prelude::{BoxExt, GtkWindowExt, OrientableExt, WidgetExt};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use mshell_common::WatcherToken;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, ToastsStoreFields};
+use mshell_config::schema::position::Position;
+use reactive_graph::prelude::GetUntracked;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::OnceLock;
 use tokio::sync::broadcast;
@@ -71,6 +75,52 @@ fn subscribe() -> broadcast::Receiver<ToastEvent> {
     bus().subscribe()
 }
 
+/// Anchor the toast window per the `toasts` config: a single edge (the
+/// compositor centres the card on it) or a corner (two edges), with `distance`
+/// px of margin from each anchored edge.
+fn apply_placement(root: &gtk::Window) {
+    let position = config_manager()
+        .config()
+        .toasts()
+        .position()
+        .get_untracked();
+    let distance = config_manager()
+        .config()
+        .toasts()
+        .distance()
+        .get_untracked();
+    for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+        root.set_anchor(edge, false);
+        root.set_margin(edge, 0);
+    }
+    let dock = |edge: Edge| {
+        root.set_anchor(edge, true);
+        root.set_margin(edge, distance);
+    };
+    match position {
+        Position::Top => dock(Edge::Top),
+        Position::Bottom => dock(Edge::Bottom),
+        Position::Left => dock(Edge::Left),
+        Position::Right => dock(Edge::Right),
+        Position::TopLeft => {
+            dock(Edge::Top);
+            dock(Edge::Left);
+        }
+        Position::TopRight => {
+            dock(Edge::Top);
+            dock(Edge::Right);
+        }
+        Position::BottomLeft => {
+            dock(Edge::Bottom);
+            dock(Edge::Left);
+        }
+        Position::BottomRight => {
+            dock(Edge::Bottom);
+            dock(Edge::Right);
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ToastSurfaceModel {
     icon: String,
@@ -118,6 +168,7 @@ impl Component for ToastSurfaceModel {
             set_visible: false,
             set_default_height: 1,
 
+            #[name = "card"]
             gtk::Box {
                 #[watch]
                 set_css_classes: &["toast-card", model.severity_class],
@@ -166,10 +217,9 @@ impl Component for ToastSurfaceModel {
         root.set_namespace(Some("mshell-toast"));
         root.set_layer(Layer::Overlay);
         root.set_exclusive_zone(0);
-        // Top-centre, clear of a typical top bar. Anchoring only the top edge
-        // leaves the surface horizontally centred by the compositor.
-        root.set_anchor(Edge::Top, true);
-        root.set_margin(Edge::Top, 56);
+        // Dock per the toast config (edge / corner + margin). Read once here —
+        // a shell restart picks up a position change, like the OSD windows.
+        apply_placement(&root);
 
         // Mirror the bus into this surface's command stream.
         sender.command(|out, shutdown| async move {
@@ -201,6 +251,12 @@ impl Component for ToastSurfaceModel {
         };
 
         let widgets = view_output!();
+
+        // Fixed card width (0 = size to content).
+        let width = config_manager().config().toasts().width().get_untracked();
+        if width > 0 {
+            widgets.card.set_size_request(width, -1);
+        }
 
         ComponentParts { model, widgets }
     }

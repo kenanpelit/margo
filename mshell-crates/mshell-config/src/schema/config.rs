@@ -130,6 +130,17 @@ pub struct Toasts {
     /// disables the critical step (warning levels still apply).
     #[serde(default = "default_battery_critical_level")]
     pub battery_critical_level: u8,
+    /// Which screen edge / corner the toast card docks against (like the OSD,
+    /// plus the four corners). Read when the toast surfaces are created — a
+    /// shell restart picks up a change.
+    #[serde(default = "default_toast_position")]
+    pub position: Position,
+    /// Margin from the docked edge(s) in px.
+    #[serde(default = "default_toast_distance")]
+    pub distance: i32,
+    /// Fixed card width in px; `0` sizes the card to its content.
+    #[serde(default)]
+    pub width: i32,
 }
 
 impl Default for Toasts {
@@ -145,6 +156,9 @@ impl Default for Toasts {
             battery: true,
             battery_warn_levels: default_battery_warn_levels(),
             battery_critical_level: default_battery_critical_level(),
+            position: default_toast_position(),
+            distance: default_toast_distance(),
+            width: 0,
         }
     }
 }
@@ -155,6 +169,14 @@ fn default_battery_warn_levels() -> Vec<u8> {
 
 fn default_battery_critical_level() -> u8 {
     3
+}
+
+fn default_toast_position() -> Position {
+    Position::Top
+}
+
+fn default_toast_distance() -> i32 {
+    56
 }
 
 /// Game Mode — a single toggle that drops compositor effects, silences

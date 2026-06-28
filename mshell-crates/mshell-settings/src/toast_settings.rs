@@ -9,6 +9,7 @@
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, ToastsStoreFields};
+use mshell_config::schema::position::Position;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
@@ -25,6 +26,9 @@ pub(crate) struct ToastSettingsModel {
     now_playing: bool,
     battery: bool,
     battery_critical: u32,
+    position: Position,
+    distance: i32,
+    width: i32,
     _effects: EffectScope,
 }
 
@@ -39,6 +43,9 @@ pub(crate) enum ToastSettingsInput {
     NowPlayingChanged(bool),
     BatteryChanged(bool),
     BatteryCriticalChanged(u32),
+    PositionChanged(Position),
+    DistanceChanged(i32),
+    WidthChanged(i32),
 
     EnabledEffect(bool),
     ChargingEffect(bool),
@@ -49,6 +56,9 @@ pub(crate) enum ToastSettingsInput {
     NowPlayingEffect(bool),
     BatteryEffect(bool),
     BatteryCriticalEffect(u8),
+    PositionEffect(Position),
+    DistanceEffect(i32),
+    WidthEffect(i32),
 }
 
 #[derive(Debug)]
@@ -106,6 +116,127 @@ impl Component for ToastSettingsModel {
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
                             set_wrap: true,
+                        },
+                    },
+                },
+
+                // ── Placement & size ─────────────────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Placement & size",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Position",
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Where toasts appear — a screen edge or corner. Applies after restarting mshell (systemctl --user restart mshell).",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::DropDown {
+                            set_width_request: 150,
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&Position::display_names())),
+                            #[watch]
+                            #[block_signal(position_handler)]
+                            set_selected: model.position.to_index(),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(ToastSettingsInput::PositionChanged(
+                                    Position::from_index(dd.selected())
+                                ));
+                            } @position_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Distance (px)",
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Margin from the docked edge(s). Applies after an mshell restart.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 400.0),
+                            set_increments: (2.0, 16.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(distance_handler)]
+                            set_value: model.distance as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ToastSettingsInput::DistanceChanged(s.value() as i32));
+                            } @distance_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Width (px)",
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Fixed card width; 0 sizes the card to its content. Applies after an mshell restart.",
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 1200.0),
+                            set_increments: (10.0, 50.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(width_handler)]
+                            set_value: model.width as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(ToastSettingsInput::WidthChanged(s.value() as i32));
+                            } @width_handler,
                         },
                     },
                 },
@@ -486,6 +617,9 @@ impl Component for ToastSettingsModel {
         push_effect!(now_playing, NowPlayingEffect);
         push_effect!(battery, BatteryEffect);
         push_effect!(battery_critical_level, BatteryCriticalEffect);
+        push_effect!(position, PositionEffect);
+        push_effect!(distance, DistanceEffect);
+        push_effect!(width, WidthEffect);
 
         let model = ToastSettingsModel {
             enabled: config_manager().config().toasts().enabled().get_untracked(),
@@ -521,6 +655,17 @@ impl Component for ToastSettingsModel {
                 .toasts()
                 .battery_critical_level()
                 .get_untracked() as u32,
+            position: config_manager()
+                .config()
+                .toasts()
+                .position()
+                .get_untracked(),
+            distance: config_manager()
+                .config()
+                .toasts()
+                .distance()
+                .get_untracked(),
+            width: config_manager().config().toasts().width().get_untracked(),
             _effects: effects,
         };
 
@@ -564,6 +709,17 @@ impl Component for ToastSettingsModel {
             ToastSettingsInput::BatteryCriticalChanged(v) => {
                 config_manager().update_config(|c| c.toasts.battery_critical_level = v as u8);
             }
+            ToastSettingsInput::PositionChanged(p) => {
+                config_manager().update_config(|c| c.toasts.position = p.clone());
+            }
+            ToastSettingsInput::DistanceChanged(v) => {
+                let v = v.clamp(0, 400);
+                config_manager().update_config(|c| c.toasts.distance = v);
+            }
+            ToastSettingsInput::WidthChanged(v) => {
+                let v = v.clamp(0, 1200);
+                config_manager().update_config(|c| c.toasts.width = v);
+            }
 
             ToastSettingsInput::EnabledEffect(v) => self.enabled = v,
             ToastSettingsInput::ChargingEffect(v) => self.charging = v,
@@ -574,6 +730,9 @@ impl Component for ToastSettingsModel {
             ToastSettingsInput::NowPlayingEffect(v) => self.now_playing = v,
             ToastSettingsInput::BatteryEffect(v) => self.battery = v,
             ToastSettingsInput::BatteryCriticalEffect(v) => self.battery_critical = v as u32,
+            ToastSettingsInput::PositionEffect(p) => self.position = p,
+            ToastSettingsInput::DistanceEffect(v) => self.distance = v,
+            ToastSettingsInput::WidthEffect(v) => self.width = v,
         }
 
         self.update_view(widgets, sender);
