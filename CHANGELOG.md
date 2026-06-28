@@ -180,6 +180,15 @@ poison races.
   toast producer's "Audio device" toast for the same change. The redundant
   `notify-send` is gone; the toast (gated under **Settings → Toasts**) is now
   the single source of feedback.
+- **`mshellctl bluetooth …` did the same — `notify-send` on top of a toast.**
+  The auto-connect engine popped a `notify-send` on connect / disconnect /
+  audio-routing, but the toast producer already toasts Bluetooth device
+  connect/disconnect (**Settings → Toasts → Bluetooth**) and the default-audio
+  change, so toggling gave you both. All `notify-send` is dropped; the reactive
+  toasts are the single source, and an explicit toggle on a host with no adapter
+  now toasts "Bluetooth — No adapter" from the IPC layer. The redundant
+  per-widget *Notifications* switch under Settings → Bluetooth is removed —
+  `toasts.bluetooth` is the one control.
 - **The lyrics panel showed its header but no lyrics.** The scrolling lyrics
   column lived in a `GtkScrolledWindow`, which reports ~0 natural height, so in
   a menu that sizes to its content the viewport collapsed and no lines rendered
