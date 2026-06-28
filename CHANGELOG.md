@@ -105,10 +105,15 @@ poison races.
   carry history) and the volume/brightness OSD (a value pulse). A single
   headless producer (`mshell-osd::toast_producer`) subscribes to every source
   once — AC power plug/unplug, Caps/Num Lock, keyboard layout, default audio
-  output/input device, VPN connect/disconnect, now-playing — tracks each
-  previous value so it only fires on a *change*, and broadcasts to a per-output
-  toast surface; centralising it keeps the `mvpn` and lock-key pollers running
-  once total rather than once per monitor. Battery warnings became a ladder
+  output/input device, VPN connect/disconnect, now-playing, primary network
+  link connect/disconnect, Bluetooth device connect/disconnect, power-profile
+  change, Do Not Disturb, idle inhibitor ("keep awake"), and Game Mode — tracks
+  each previous value so it only fires on a *change* (and stays quiet at login),
+  and broadcasts to a per-output toast surface; centralising it keeps the
+  `mvpn` and lock-key pollers running once total rather than once per monitor.
+  The network and Bluetooth sources reuse the same per-device watcher
+  re-subscribe pattern as their bar pills, so a `connected` flip on an
+  already-listed device still surfaces. Battery warnings became a ladder
   (warn at 20/10/5 %, danger at a configurable critical level) that re-arms on
   recharge, replacing the single low-battery threshold. Every event has its own
   switch under **Settings → Toasts**, which also picks where toasts dock (any
@@ -159,6 +164,11 @@ poison races.
 
 ### Fixed
 
+- **`mshellctl audio switch` fired a duplicate notification.** Switching the
+  default output/input raised a `notify-send` desktop notification *and* the
+  toast producer's "Audio device" toast for the same change. The redundant
+  `notify-send` is gone; the toast (gated under **Settings → Toasts**) is now
+  the single source of feedback.
 - **The lyrics panel showed its header but no lyrics.** The scrolling lyrics
   column lived in a `GtkScrolledWindow`, which reports ~0 natural height, so in
   a menu that sizes to its content the viewport collapsed and no lines rendered
