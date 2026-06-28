@@ -265,7 +265,17 @@ macro_rules! effect_widgets {
         let sender_clone = $s.clone();
         $e.push(move |_| {
             let config = config.clone();
-            sender_clone.input(MenuInput::SetWidget(config.menus().$acc().widgets().get()));
+            let mut widgets = config.menus().$acc().widgets().get();
+            // A profile baked before this menu existed (or one that never
+            // customised it) serialises nothing for it, so it deserialises to
+            // `Menu::default()` with an EMPTY widget list — the rich per-menu
+            // default in `Menus::default()` is shadowed. An empty menu is never
+            // intended, so fall back to that per-menu default here. (See the
+            // serde-default rebake trap.)
+            if widgets.is_empty() {
+                widgets = mshell_config::schema::config::Menus::default().$acc.widgets;
+            }
+            sender_clone.input(MenuInput::SetWidget(widgets));
         });
     }};
 }

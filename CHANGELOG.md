@@ -159,6 +159,12 @@ poison races.
 
 ### Fixed
 
+- **Menus baked into an older profile opened empty.** A menu the profile was
+  saved before it existed (e.g. the new Lyrics panel, or Media Player) was
+  serialised as nothing, so it deserialised to an empty widget list and opened
+  blank — the rich per-menu default was shadowed by the empty `Menu::default()`.
+  An empty menu is never intended, so the builder now falls back to the
+  per-menu default widget set when the configured list is empty.
 - **`l` (lock-apply) keybinds were a silent no-op.** Binds tagged `l` to keep
   working over the lock screen (volume / brightness / media keys) were never
   actually dispatched while locked — only `force_unlock` was, and everything
