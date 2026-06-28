@@ -88,7 +88,7 @@ impl Component for LyricsMenuWidgetModel {
                 gtk::Image {
                     add_css_class: "panel-header-icon",
                     set_valign: gtk::Align::Center,
-                    set_icon_name: Some("music-note-single-symbolic"),
+                    set_icon_name: Some("media-view-subtitles-symbolic"),
                 },
 
                 gtk::Box {

@@ -100,7 +100,7 @@ impl Component for LyricsModel {
                         add_css_class: "lyrics-bar-icon",
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
-                        set_icon_name: Some("music-note-single-symbolic"),
+                        set_icon_name: Some("media-view-subtitles-symbolic"),
                     },
 
                     #[name = "label"]
