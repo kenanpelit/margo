@@ -193,9 +193,9 @@ impl Component for BluetoothMenuWidgetModel {
         });
 
         let mut model = BluetoothMenuWidgetModel {
-            available: bt.available.get(),
-            enabled: bt.enabled.get(),
-            devices: bt.devices.get(),
+            available: bt.as_ref().map(|b| b.available.get()).unwrap_or(false),
+            enabled: bt.as_ref().map(|b| b.enabled.get()).unwrap_or(false),
+            devices: bt.as_ref().map(|b| b.devices.get()).unwrap_or_default(),
             device_watcher_token: WatcherToken::new(),
             busy: HashMap::new(),
             autoconnect_macs: read_autoconnect_macs(),
@@ -220,9 +220,9 @@ impl Component for BluetoothMenuWidgetModel {
             BluetoothMenuWidgetCommandOutput::BluetoothStateChanged
             | BluetoothMenuWidgetCommandOutput::BluetoothDevicesChanged => {
                 let bt = bluetooth_service();
-                self.available = bt.available.get();
-                self.enabled = bt.enabled.get();
-                self.devices = bt.devices.get();
+                self.available = bt.as_ref().map(|b| b.available.get()).unwrap_or(false);
+                self.enabled = bt.as_ref().map(|b| b.enabled.get()).unwrap_or(false);
+                self.devices = bt.as_ref().map(|b| b.devices.get()).unwrap_or_default();
                 // Device set may have changed — re-subscribe per-device watchers.
                 self.spawn_device_watchers(&sender);
                 sender.input(BluetoothMenuWidgetInput::RefreshState);
@@ -245,15 +245,16 @@ impl Component for BluetoothMenuWidgetModel {
         match message {
             // ── Power ────────────────────────────────────────────
             BluetoothMenuWidgetInput::SetEnabled(enabled) => {
-                let bt = bluetooth_service();
-                if enabled {
-                    tokio::spawn(async move {
-                        let _ = bt.enable().await;
-                    });
-                } else {
-                    tokio::spawn(async move {
-                        let _ = bt.disable().await;
-                    });
+                if let Some(bt) = bluetooth_service() {
+                    if enabled {
+                        tokio::spawn(async move {
+                            let _ = bt.enable().await;
+                        });
+                    } else {
+                        tokio::spawn(async move {
+                            let _ = bt.disable().await;
+                        });
+                    }
                 }
             }
 
@@ -304,15 +305,16 @@ impl Component for BluetoothMenuWidgetModel {
 
             // ── Discovery routing (frame drives this) ────────────
             BluetoothMenuWidgetInput::ParentRevealChanged(revealed) => {
-                let bt = bluetooth_service();
-                if revealed {
-                    tokio::spawn(async move {
-                        let _ = bt.start_discovery().await;
-                    });
-                } else {
-                    tokio::spawn(async move {
-                        let _ = bt.stop_discovery().await;
-                    });
+                if let Some(bt) = bluetooth_service() {
+                    if revealed {
+                        tokio::spawn(async move {
+                            let _ = bt.start_discovery().await;
+                        });
+                    } else {
+                        tokio::spawn(async move {
+                            let _ = bt.stop_discovery().await;
+                        });
+                    }
                 }
             }
 

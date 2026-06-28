@@ -1,7 +1,7 @@
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use tracing::info;
+use tracing::{info, warn};
 
 static TOKIO_RT: OnceLock<Runtime> = OnceLock::new();
 
@@ -87,7 +87,22 @@ pub async fn init_services(
     ) = tokio::try_join!(
         async { Ok::<_, anyhow::Error>(AudioService::new().await?) },
         async { Ok::<_, anyhow::Error>(BatteryService::new().await?) },
-        async { Ok::<_, anyhow::Error>(BluetoothService::new().await?) },
+        // Bluetooth is best-effort. `BluetoothService::new()` registers a BlueZ
+        // pairing agent, which requires a running `org.bluez`. A host with no
+        // adapter (e.g. a VM) has bluez installed but `bluetooth.service`
+        // condition-skipped (`ConditionPathIsDirectory=/sys/class/bluetooth`),
+        // so activating org.bluez fails — without this guard that error aborts
+        // the whole `try_join!` and the shell never starts. Degrade to "no
+        // Bluetooth" instead; `bluetooth_service()` is then `None`.
+        async {
+            Ok::<_, anyhow::Error>(match BluetoothService::new().await {
+                Ok(bt) => Some(bt),
+                Err(e) => {
+                    warn!("Bluetooth unavailable; continuing without it: {e:#}");
+                    None
+                }
+            })
+        },
         async { Ok::<_, anyhow::Error>(BrightnessService::new().await?) },
         async { MargoService::new().await },
         line_power_fut,
@@ -112,7 +127,7 @@ pub async fn init_services(
 
     AUDIO_SERVICE.set(audio).ok();
     BATTERY_SERVICE.set(Arc::new(battery)).ok();
-    BLUETOOTH_SERVICE.set(Arc::new(bluetooth)).ok();
+    BLUETOOTH_SERVICE.set(bluetooth.map(Arc::new)).ok();
     BRIGHTNESS_SERVICE.set(brightness).ok();
     MARGO_SERVICE.set(hyprland).ok();
     if let Some(line_power) = line_power {
@@ -171,9 +186,12 @@ pub fn battery_service() -> Arc<BatteryService> {
         .clone()
 }
 
-static BLUETOOTH_SERVICE: OnceLock<Arc<BluetoothService>> = OnceLock::new();
+static BLUETOOTH_SERVICE: OnceLock<Option<Arc<BluetoothService>>> = OnceLock::new();
 
-pub fn bluetooth_service() -> Arc<BluetoothService> {
+/// The Bluetooth service, or `None` when no usable adapter / `org.bluez` was
+/// found at startup (e.g. a VM with no Bluetooth hardware). Callers degrade
+/// gracefully — the bar pill hides, watchers no-op, menus show "no adapter".
+pub fn bluetooth_service() -> Option<Arc<BluetoothService>> {
     BLUETOOTH_SERVICE
         .get()
         .expect("BluetoothService not initialized")

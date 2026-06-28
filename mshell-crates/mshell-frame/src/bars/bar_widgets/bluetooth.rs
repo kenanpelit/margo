@@ -122,10 +122,12 @@ impl Component for BluetoothModel {
         // without a per-device listener `connected` flips would only
         // surface on the next adapter event.
         let token = model.devices_token.reset();
-        for device in bluetooth_service().devices.get() {
-            spawn_bluetooth_device_watcher(&device, token.clone(), &sender, || {
-                BluetoothCommandOutput::ConnectionChanged
-            });
+        if let Some(bt) = bluetooth_service() {
+            for device in bt.devices.get() {
+                spawn_bluetooth_device_watcher(&device, token.clone(), &sender, || {
+                    BluetoothCommandOutput::ConnectionChanged
+                });
+            }
         }
 
         ComponentParts { model, widgets }
@@ -155,10 +157,12 @@ impl Component for BluetoothModel {
                 // with the new set. WatcherToken::reset() cancels
                 // every clone of the previous token in one shot.
                 let token = self.devices_token.reset();
-                for device in bluetooth_service().devices.get() {
-                    spawn_bluetooth_device_watcher(&device, token.clone(), &sender, || {
-                        BluetoothCommandOutput::ConnectionChanged
-                    });
+                if let Some(bt) = bluetooth_service() {
+                    for device in bt.devices.get() {
+                        spawn_bluetooth_device_watcher(&device, token.clone(), &sender, || {
+                            BluetoothCommandOutput::ConnectionChanged
+                        });
+                    }
                 }
             }
             BluetoothCommandOutput::ConnectionChanged => {
@@ -171,19 +175,21 @@ impl Component for BluetoothModel {
 fn refresh(image: &gtk::Image, label: &gtk::Label, root: &gtk::Box) {
     set_bluetooth_icon(image);
 
-    let svc = bluetooth_service();
     // Name of the first currently-connected device, if any. Only the
     // adapter being present + on counts — a stale `connected` flag on a
-    // disabled adapter shouldn't surface a name.
-    let connected_name = if svc.available.get() && svc.enabled.get() {
-        svc.devices
-            .get()
-            .iter()
-            .find(|d| d.connected.get())
-            .map(|d| d.alias.get().to_string())
-    } else {
-        None
-    };
+    // disabled adapter shouldn't surface a name. No service at all (a host
+    // with no Bluetooth) reads the same as "nothing connected".
+    let connected_name = bluetooth_service().and_then(|svc| {
+        if svc.available.get() && svc.enabled.get() {
+            svc.devices
+                .get()
+                .iter()
+                .find(|d| d.connected.get())
+                .map(|d| d.alias.get().to_string())
+        } else {
+            None
+        }
+    });
 
     match connected_name {
         Some(name) => {

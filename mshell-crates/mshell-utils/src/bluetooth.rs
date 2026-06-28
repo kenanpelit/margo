@@ -8,7 +8,10 @@ use tokio_util::sync::CancellationToken;
 use wayle_bluetooth::core::device::Device;
 
 pub fn set_bluetooth_icon(image: &gtk::Image) {
-    let bluetooth = bluetooth_service();
+    let Some(bluetooth) = bluetooth_service() else {
+        image.set_icon_name(Some("bluetooth-hardware-disabled-symbolic"));
+        return;
+    };
     let available = bluetooth.available.get();
     let enabled = bluetooth.enabled.get();
 
@@ -22,13 +25,16 @@ pub fn set_bluetooth_icon(image: &gtk::Image) {
 }
 
 pub fn set_bluetooth_label(label: &gtk::Label) {
-    let bluetooth = bluetooth_service();
-    let available = bluetooth.available.get();
-    let enabled = bluetooth.enabled.get();
-
     // Drop the live-connection tint up front; re-added below only
     // when at least one device is actually connected.
     label.remove_css_class("bt-connected");
+
+    let Some(bluetooth) = bluetooth_service() else {
+        label.set_label("Bluetooth Hardware Missing");
+        return;
+    };
+    let available = bluetooth.available.get();
+    let enabled = bluetooth.enabled.get();
 
     if !available {
         label.set_label("Bluetooth Hardware Missing");
@@ -86,7 +92,9 @@ pub fn spawn_bluetooth_devices_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let bluetooth = bluetooth_service();
+    let Some(bluetooth) = bluetooth_service() else {
+        return;
+    };
     let devices = bluetooth.devices.clone();
 
     watch!(sender, [devices.watch()], |out| {
@@ -101,7 +109,9 @@ pub fn spawn_bluetooth_enabled_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let bluetooth = bluetooth_service();
+    let Some(bluetooth) = bluetooth_service() else {
+        return;
+    };
     let available = bluetooth.available.clone();
     let enabled = bluetooth.enabled.clone();
 

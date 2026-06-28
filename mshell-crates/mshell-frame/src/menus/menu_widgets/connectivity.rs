@@ -137,10 +137,12 @@ impl Component for ConnectivityModel {
         // Initial per-device connection watchers — see model
         // doc-comment for why this matters.
         let token = model.bt_device_token.reset();
-        for device in bluetooth_service().devices.get() {
-            spawn_bluetooth_device_watcher(&device, token.clone(), &sender, || {
-                ConnectivityCommandOutput::BluetoothConnectionChanged
-            });
+        if let Some(bt) = bluetooth_service() {
+            for device in bt.devices.get() {
+                spawn_bluetooth_device_watcher(&device, token.clone(), &sender, || {
+                    ConnectivityCommandOutput::BluetoothConnectionChanged
+                });
+            }
         }
 
         let _ = root;
@@ -161,10 +163,12 @@ impl Component for ConnectivityModel {
                 // Device list may have grown / shrunk — recycle
                 // the per-device watchers against the new set.
                 let token = self.bt_device_token.reset();
-                for device in bluetooth_service().devices.get() {
-                    spawn_bluetooth_device_watcher(&device, token.clone(), &sender, || {
-                        ConnectivityCommandOutput::BluetoothConnectionChanged
-                    });
+                if let Some(bt) = bluetooth_service() {
+                    for device in bt.devices.get() {
+                        spawn_bluetooth_device_watcher(&device, token.clone(), &sender, || {
+                            ConnectivityCommandOutput::BluetoothConnectionChanged
+                        });
+                    }
                 }
             }
             ConnectivityCommandOutput::BluetoothConnectionChanged => apply_bluetooth(widgets),
@@ -184,6 +188,7 @@ fn apply_bluetooth(widgets: &ConnectivityModelWidgets) {
     // to those too, but here we accept the limitation: clicking
     // through to the BT menu refreshes once the user acts.
     set_bluetooth_label(&widgets.bt_label);
-    // Touch the service so the closure-captured Arcs stay alive.
-    let _ = bluetooth_service().enabled.get();
+    // Touch the service so the closure-captured Arcs stay alive (no-op when
+    // there's no Bluetooth adapter).
+    let _ = bluetooth_service().map(|b| b.enabled.get());
 }

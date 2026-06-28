@@ -577,8 +577,11 @@ impl ToastProducerModel {
     /// device list changes, mirroring the bluetooth bar pill — without it a
     /// `connected` flip on an already-listed device would never fire.
     fn arm_bt_watchers(&mut self, sender: &ComponentSender<Self>) {
+        let Some(bt) = bluetooth_service() else {
+            return;
+        };
         let token = self.bt_token.reset();
-        for device in bluetooth_service().devices.get() {
+        for device in bt.devices.get() {
             spawn_bluetooth_device_watcher(&device, token.clone(), sender, || {
                 ToastProducerCmd::BluetoothConn
             });
@@ -618,7 +621,9 @@ impl ToastProducerModel {
     }
 
     fn on_bluetooth(&mut self) {
-        let svc = bluetooth_service();
+        let Some(svc) = bluetooth_service() else {
+            return;
+        };
         // Only the adapter being present + on counts — a stale `connected`
         // flag on a disabled adapter shouldn't surface as a device.
         let mut connected: Vec<String> = if svc.available.get() && svc.enabled.get() {

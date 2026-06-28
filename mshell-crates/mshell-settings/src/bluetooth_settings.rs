@@ -465,9 +465,9 @@ impl Component for BluetoothSettingsModel {
         spawn_bluetooth_devices_watcher(&sender, || BluetoothSettingsCommandOutput::DevicesChanged);
 
         let model = BluetoothSettingsModel {
-            available: bt.available.get(),
-            enabled: bt.enabled.get(),
-            devices: bt.devices.get(),
+            available: bt.as_ref().map(|b| b.available.get()).unwrap_or(false),
+            enabled: bt.as_ref().map(|b| b.enabled.get()).unwrap_or(false),
+            devices: bt.as_ref().map(|b| b.devices.get()).unwrap_or_default(),
             ac: config_manager().config().bluetooth().get_untracked(),
         };
 
@@ -483,16 +483,18 @@ impl Component for BluetoothSettingsModel {
         {
             let root_widget = root.clone();
             root_widget.connect_map(|_| {
-                let bt = bluetooth_service();
-                tokio::spawn(async move {
-                    let _ = bt.start_discovery().await;
-                });
+                if let Some(bt) = bluetooth_service() {
+                    tokio::spawn(async move {
+                        let _ = bt.start_discovery().await;
+                    });
+                }
             });
             root_widget.connect_unmap(|_| {
-                let bt = bluetooth_service();
-                tokio::spawn(async move {
-                    let _ = bt.stop_discovery().await;
-                });
+                if let Some(bt) = bluetooth_service() {
+                    tokio::spawn(async move {
+                        let _ = bt.stop_discovery().await;
+                    });
+                }
             });
         }
 
@@ -509,9 +511,9 @@ impl Component for BluetoothSettingsModel {
             BluetoothSettingsCommandOutput::StateChanged
             | BluetoothSettingsCommandOutput::DevicesChanged => {
                 let bt = bluetooth_service();
-                self.available = bt.available.get();
-                self.enabled = bt.enabled.get();
-                self.devices = bt.devices.get();
+                self.available = bt.as_ref().map(|b| b.available.get()).unwrap_or(false);
+                self.enabled = bt.as_ref().map(|b| b.enabled.get()).unwrap_or(false);
+                self.devices = bt.as_ref().map(|b| b.devices.get()).unwrap_or_default();
                 // Trigger a view rebuild (update_with_view will be called via
                 // a RefreshState input so the device_list_box is repopulated).
                 sender.input(BluetoothSettingsInput::RefreshState);
@@ -529,15 +531,16 @@ impl Component for BluetoothSettingsModel {
         match message {
             // ── Power toggle ─────────────────────────────────────
             BluetoothSettingsInput::SetEnabled(enabled) => {
-                let bt = bluetooth_service();
-                if enabled {
-                    tokio::spawn(async move {
-                        let _ = bt.enable().await;
-                    });
-                } else {
-                    tokio::spawn(async move {
-                        let _ = bt.disable().await;
-                    });
+                if let Some(bt) = bluetooth_service() {
+                    if enabled {
+                        tokio::spawn(async move {
+                            let _ = bt.enable().await;
+                        });
+                    } else {
+                        tokio::spawn(async move {
+                            let _ = bt.disable().await;
+                        });
+                    }
                 }
             }
 
@@ -580,15 +583,16 @@ impl Component for BluetoothSettingsModel {
 
             // ── Discovery routing (map/unmap drives this; kept for API completeness) ──
             BluetoothSettingsInput::ParentRevealChanged(revealed) => {
-                let bt = bluetooth_service();
-                if revealed {
-                    tokio::spawn(async move {
-                        let _ = bt.start_discovery().await;
-                    });
-                } else {
-                    tokio::spawn(async move {
-                        let _ = bt.stop_discovery().await;
-                    });
+                if let Some(bt) = bluetooth_service() {
+                    if revealed {
+                        tokio::spawn(async move {
+                            let _ = bt.start_discovery().await;
+                        });
+                    } else {
+                        tokio::spawn(async move {
+                            let _ = bt.stop_discovery().await;
+                        });
+                    }
                 }
             }
 

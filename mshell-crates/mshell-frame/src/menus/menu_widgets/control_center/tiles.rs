@@ -1120,16 +1120,18 @@ impl Component for ControlCenterTilesModel {
 
             ControlCenterTilesInput::ToggleBluetooth => {
                 // Right-click quick toggle: flip the adapter power. The 5s
-                // subtitle poller picks up the new state.
-                let bt = bluetooth_service();
-                let enabled = bt.enabled.get();
-                tokio::spawn(async move {
-                    if enabled {
-                        let _ = bt.disable().await;
-                    } else {
-                        let _ = bt.enable().await;
-                    }
-                });
+                // subtitle poller picks up the new state. No-op without an
+                // adapter.
+                if let Some(bt) = bluetooth_service() {
+                    let enabled = bt.enabled.get();
+                    tokio::spawn(async move {
+                        if enabled {
+                            let _ = bt.disable().await;
+                        } else {
+                            let _ = bt.enable().await;
+                        }
+                    });
+                }
             }
 
             ControlCenterTilesInput::ToggleUfw => {
@@ -1813,7 +1815,9 @@ fn read_wifi_state() -> (String, bool) {
 
 /// Returns (subtitle, is_connected). Connected = at least one device connected.
 fn read_bt_state() -> (String, bool) {
-    let bt = bluetooth_service();
+    let Some(bt) = bluetooth_service() else {
+        return ("Unavailable".to_string(), false);
+    };
     if !bt.available.get() {
         return ("Unavailable".to_string(), false);
     }

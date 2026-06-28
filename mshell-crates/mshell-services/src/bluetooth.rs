@@ -53,7 +53,7 @@ fn mac_colon(mac: &str) -> String {
 /// Find a discovered/paired device by MAC (case-insensitive).
 fn find_device(mac: &str) -> Option<Arc<Device>> {
     let want = mac_colon(mac);
-    bluetooth_service()
+    bluetooth_service()?
         .devices
         .get()
         .into_iter()
@@ -62,7 +62,10 @@ fn find_device(mac: &str) -> Option<Arc<Device>> {
 
 /// True if any configured device currently reports connected.
 fn any_configured_connected(cfg: &BluetoothConfig) -> bool {
-    let connected: Vec<String> = bluetooth_service()
+    let Some(bt) = bluetooth_service() else {
+        return false;
+    };
+    let connected: Vec<String> = bt
         .connected
         .get()
         .into_iter()
@@ -101,7 +104,9 @@ fn notify(cfg: &BluetoothConfig, summary: &str, body: &str) {
 /// Power the adapter on if it is off, then wait (bounded) for it to report
 /// enabled. Returns whether an adapter is usable.
 async fn ensure_adapter_on() -> bool {
-    let bt = bluetooth_service();
+    let Some(bt) = bluetooth_service() else {
+        return false;
+    };
     if !bt.available.get() {
         return false;
     }
@@ -111,7 +116,8 @@ async fn ensure_adapter_on() -> bool {
     if bt.enable().await.is_err() {
         return false;
     }
-    wait_until(ADAPTER_WAIT, || bluetooth_service().enabled.get()).await
+    let probe = bt.clone();
+    wait_until(ADAPTER_WAIT, move || probe.enabled.get()).await
 }
 
 /// Poll `cond` until true or `timeout` elapses (250 ms granularity).
@@ -266,11 +272,15 @@ pub async fn disconnect_configured() -> bool {
 /// - on + nothing connected → connect
 pub async fn toggle() {
     let cfg = config();
-    if !bluetooth_service().available.get() {
+    let Some(bt) = bluetooth_service() else {
+        notify(&cfg, "Bluetooth", "No adapter");
+        return;
+    };
+    if !bt.available.get() {
         notify(&cfg, "Bluetooth", "No adapter");
         return;
     }
-    if !bluetooth_service().enabled.get() {
+    if !bt.enabled.get() {
         connect_configured().await;
         return;
     }
