@@ -57,6 +57,8 @@ theme:
 nav:
   - Overview: index.md
   - Install: install.md
+  - Features: features.md
+  - Bar widgets: widgets.md
   - Configuration:
       - Overview: configuration.md
       - Full reference: config-reference.md
