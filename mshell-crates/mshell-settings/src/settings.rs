@@ -1197,7 +1197,7 @@ impl Component for SettingsWindowModel {
                 kind: MenuKind::Lyrics,
                 stack_name: "lyrics",
                 label: "Lyrics",
-                icon: "media-view-subtitles-symbolic",
+                icon: "lyrics-symbolic",
             },
             WidgetEntry::HiddenBar,
             WidgetEntry::Catwalk,

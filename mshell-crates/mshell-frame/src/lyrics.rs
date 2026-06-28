@@ -55,9 +55,11 @@ pub(crate) struct TrackKey {
 }
 
 impl TrackKey {
-    /// Whether this names a real track we can look up (lrclib needs both).
+    /// Whether this names a real track we can look up. lrclib matches on the
+    /// title alone (artist refines it), so a title is enough — players like mpv
+    /// and browsers often leave the artist blank.
     pub(crate) fn is_valid(&self) -> bool {
-        !self.title.trim().is_empty() && !self.artist.trim().is_empty()
+        !self.title.trim().is_empty()
     }
 
     /// Stable, collision-resistant cache filename stem. Case-insensitive so
@@ -71,6 +73,105 @@ impl TrackKey {
         self.duration_secs.hash(&mut h);
         format!("{:016x}", h.finish())
     }
+}
+
+/// Build a lookup key from raw MPRIS metadata, cleaning the noise browsers /
+/// YouTube bake into titles and splitting an "Artist - Title" when no separate
+/// artist is given — without this, lrclib can't match and players that leave
+/// the artist blank (mpv, browser tabs) never resolve.
+pub(crate) fn key_for(title: &str, artist: &str, album: &str, duration_secs: u64) -> TrackKey {
+    let (title, artist) = clean_track(title, artist);
+    TrackKey {
+        artist,
+        title,
+        album: album.trim().to_string(),
+        duration_secs,
+    }
+}
+
+/// Strip MPRIS title noise so lrclib can match: bracketed tags
+/// (`(Official Video)`, `[HD]`, …) whose contents look like noise, a trailing
+/// `feat./ft. …`, a `" - Topic"` artist suffix, and — when the artist is empty
+/// — an `"Artist - Title"` title split. Ported from the musiclyrics plugin.
+fn clean_track(title: &str, artist: &str) -> (String, String) {
+    const NOISE: &[&str] = &[
+        "official",
+        "video",
+        "audio",
+        "lyric",
+        "lyrics",
+        "visualizer",
+        "mv",
+        "hd",
+        "4k",
+        "remaster",
+        "remastered",
+        "live",
+        "explicit",
+        "hq",
+        "music video",
+        "color coded",
+        "performance",
+    ];
+
+    // Drop bracketed groups whose contents look like noise; keep the rest.
+    let mut t = String::new();
+    let mut depth = 0i32;
+    let mut buf = String::new();
+    for ch in title.chars() {
+        match ch {
+            '(' | '[' => {
+                if depth == 0 {
+                    buf.clear();
+                }
+                depth += 1;
+            }
+            ')' | ']' if depth > 0 => {
+                depth -= 1;
+                if depth == 0 {
+                    let low = buf.to_lowercase();
+                    if !NOISE.iter().any(|n| low.contains(n)) {
+                        t.push('(');
+                        t.push_str(&buf);
+                        t.push(')');
+                    }
+                }
+            }
+            _ if depth > 0 => buf.push(ch),
+            _ => t.push(ch),
+        }
+    }
+
+    // "feat. …" / "ft. …" → drop to the end of that segment. Guarded on equal
+    // byte length so a non-ASCII title can't desync the lowercase byte offset
+    // from `t` and slice on a non-char-boundary.
+    let lower = t.to_lowercase();
+    if lower.len() == t.len() {
+        for sep in [" feat.", " feat ", " ft.", " ft ", " featuring "] {
+            if let Some(idx) = lower.find(sep) {
+                t.truncate(idx);
+                break;
+            }
+        }
+    }
+
+    let mut title = t.trim().trim_end_matches('-').trim().to_string();
+    let mut artist = artist
+        .trim()
+        .trim_end_matches(" - Topic")
+        .trim()
+        .to_string();
+
+    // "Artist - Title" with no separate artist → split it.
+    if artist.is_empty() {
+        let whole = title.clone();
+        if let Some((left, right)) = whole.split_once(" - ") {
+            artist = left.trim().to_string();
+            title = right.trim().to_string();
+        }
+    }
+
+    (title, artist)
 }
 
 const LRCLIB_BASE: &str = "https://lrclib.net/api";
@@ -104,22 +205,43 @@ pub(crate) fn fetch(key: &TrackKey) -> Lyrics {
 /// `Some` = a definitive answer from lrclib (content or "nothing exists");
 /// `None` = a transport/parse error we should not cache.
 fn fetch_lrclib(key: &TrackKey) -> Option<Lyrics> {
-    // Exact match first — artist + title + album + duration.
-    let get = ureq::get(&format!("{LRCLIB_BASE}/get"))
-        .query("artist_name", &key.artist)
-        .query("track_name", &key.title)
-        .query("album_name", &key.album)
-        .query("duration", &key.duration_secs.to_string());
+    // Exact match first — title, refined by artist / album / duration when
+    // known. An empty artist must be *omitted*, not sent blank, or lrclib's
+    // exact endpoint won't match.
+    let mut get = ureq::get(&format!("{LRCLIB_BASE}/get")).query("track_name", &key.title);
+    if !key.artist.is_empty() {
+        get = get.query("artist_name", &key.artist);
+    }
+    if !key.album.is_empty() {
+        get = get.query("album_name", &key.album);
+    }
+    if key.duration_secs > 0 {
+        get = get.query("duration", &key.duration_secs.to_string());
+    }
     match call_json(get) {
-        Ok(Some(v)) => return Some(lyrics_from_json(&v)),
+        Ok(Some(v)) => {
+            // Instrumental → no lyrics exist anywhere; don't waste a search.
+            if v.get("instrumental")
+                .and_then(|b| b.as_bool())
+                .unwrap_or(false)
+            {
+                return Some(Lyrics::None);
+            }
+            let lyrics = lyrics_from_json(&v);
+            if !lyrics.is_empty() {
+                return Some(lyrics);
+            }
+            // 200 but no usable lyrics — fall through to the fuzzy search.
+        }
         Ok(None) => {} // 404 — fall through to the fuzzy search.
         Err(()) => return None,
     }
 
     // Fuzzy fallback — pick the first hit that actually has synced lyrics.
-    let search = ureq::get(&format!("{LRCLIB_BASE}/search"))
-        .query("artist_name", &key.artist)
-        .query("track_name", &key.title);
+    let mut search = ureq::get(&format!("{LRCLIB_BASE}/search")).query("track_name", &key.title);
+    if !key.artist.is_empty() {
+        search = search.query("artist_name", &key.artist);
+    }
     match call_json(search) {
         Ok(Some(v)) => {
             let arr = v.as_array().cloned().unwrap_or_default();
@@ -306,5 +428,29 @@ mod tests {
         assert_eq!(index_for_time(&lines, 4_999), Some(0));
         assert_eq!(index_for_time(&lines, 5_000), Some(1));
         assert_eq!(index_for_time(&lines, 99_000), Some(2));
+    }
+
+    #[test]
+    fn cleans_noise_and_splits_artist() {
+        // No artist + "Artist - Title" with bracketed noise.
+        let (t, a) = clean_track("Daft Punk - Get Lucky (Official Video)", "");
+        assert_eq!(a, "Daft Punk");
+        assert_eq!(t, "Get Lucky");
+
+        // "feat. …" dropped, real artist kept.
+        let (t, a) = clean_track("Get Lucky feat. Pharrell", "Daft Punk");
+        assert_eq!(a, "Daft Punk");
+        assert_eq!(t, "Get Lucky");
+
+        // " - Topic" YouTube artist suffix stripped.
+        let (_t, a) = clean_track("Some Song", "Daft Punk - Topic");
+        assert_eq!(a, "Daft Punk");
+
+        // A non-noise parenthetical is preserved.
+        let (t, _a) = clean_track("Hurt (Acoustic)", "Johnny Cash");
+        assert_eq!(t, "Hurt (Acoustic)");
+
+        // A title-only key is still valid (artist optional).
+        assert!(key_for("Clocks", "", "", 0).is_valid());
     }
 }

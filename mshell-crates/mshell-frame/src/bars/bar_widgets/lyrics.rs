@@ -100,7 +100,7 @@ impl Component for LyricsModel {
                         add_css_class: "lyrics-bar-icon",
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
-                        set_icon_name: Some("media-view-subtitles-symbolic"),
+                        set_icon_name: Some("lyrics-symbolic"),
                     },
 
                     #[name = "label"]
@@ -230,17 +230,17 @@ impl LyricsModel {
             self.position_ms = 0;
         }
 
-        let key = TrackKey {
-            artist: player.metadata.artist.get(),
-            title: player.metadata.title.get(),
-            album: player.metadata.album.get(),
-            duration_secs: player
+        let key = lyrics::key_for(
+            &player.metadata.title.get(),
+            &player.metadata.artist.get(),
+            &player.metadata.album.get(),
+            player
                 .metadata
                 .length
                 .get()
                 .map(|d| d.as_secs())
                 .unwrap_or(0),
-        };
+        );
 
         if self.key.as_ref() == Some(&key) {
             return; // Same track — keep the lyrics we already have.

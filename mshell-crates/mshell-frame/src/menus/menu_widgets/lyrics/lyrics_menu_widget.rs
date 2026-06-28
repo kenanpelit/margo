@@ -88,7 +88,7 @@ impl Component for LyricsMenuWidgetModel {
                 gtk::Image {
                     add_css_class: "panel-header-icon",
                     set_valign: gtk::Align::Center,
-                    set_icon_name: Some("media-view-subtitles-symbolic"),
+                    set_icon_name: Some("lyrics-symbolic"),
                 },
 
                 gtk::Box {
@@ -397,17 +397,17 @@ fn scroll_center(scroller: &gtk::ScrolledWindow, label: &gtk::Label) {
 }
 
 fn track_key(player: &Player) -> TrackKey {
-    TrackKey {
-        artist: player.metadata.artist.get(),
-        title: player.metadata.title.get(),
-        album: player.metadata.album.get(),
-        duration_secs: player
+    lyrics::key_for(
+        &player.metadata.title.get(),
+        &player.metadata.artist.get(),
+        &player.metadata.album.get(),
+        player
             .metadata
             .length
             .get()
             .map(|d| d.as_secs())
             .unwrap_or(0),
-    }
+    )
 }
 
 /// The player to mirror: first actually playing, else active, else first.
