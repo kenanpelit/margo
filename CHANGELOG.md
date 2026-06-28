@@ -164,6 +164,17 @@ poison races.
 
 ### Fixed
 
+- **The shell wouldn't start on a machine with no Bluetooth adapter.** On a host
+  with no BT hardware (e.g. a VM), bluez is installed but `bluetooth.service` is
+  condition-skipped, so when mshell asked D-Bus to activate `org.bluez` it failed
+  (`NameHasNoOwner: … unit failed`). Because every backend service is built in one
+  `try_join!` and `BluetoothService::new()` registers a BlueZ agent that requires
+  a live `org.bluez`, that one failure aborted the whole startup — the shell
+  crash-looped to `start-limit-hit` and never came up (the compositor was fine, so
+  you got a bar-less desktop). Bluetooth is now best-effort: it logs a warning and
+  degrades to "no adapter" (`bluetooth_service()` is `Option`), so the bar, menus,
+  and the rest of the shell start normally; the Bluetooth pill simply shows the
+  hardware-missing state.
 - **`mshellctl audio switch` fired a duplicate notification.** Switching the
   default output/input raised a `notify-send` desktop notification *and* the
   toast producer's "Audio device" toast for the same change. The redundant
