@@ -88,7 +88,9 @@ poison races.
   now-playing track, replacing the external `musiclyrics` WASM plugin. The pill
   scrolls the current line in the bar; the panel (`mshellctl menu lyrics`, or
   click the pill) renders the whole song as a scrolling column with the active
-  line lit and auto-centred as it plays. Lyrics are resolved off-thread from
+  line lit and auto-centred as it plays, topped by a source/state badge
+  (`Synced · lrclib.net`, `Instrumental`, …) and a manual re-fetch button.
+  Lyrics are resolved off-thread from
   lrclib.net (exact `/api/get`, then a fuzzy `/api/search`), parsed from LRC,
   and disk-cached under `~/.cache/mshell/lyrics/` — including a definitive "no
   lyrics", so a re-play is offline and instant while a transient network error

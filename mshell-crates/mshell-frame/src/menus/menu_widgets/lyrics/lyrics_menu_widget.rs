@@ -49,6 +49,8 @@ pub(crate) enum LyricsMenuWidgetInput {
     /// Menu reveal toggled — start the fetch + position watch on show, stop on
     /// hide.
     ParentRevealChanged(bool),
+    /// Refresh button — re-fetch the current track's lyrics, bypassing cache.
+    Refresh,
 }
 
 #[derive(Debug)]
@@ -76,6 +78,7 @@ impl Component for LyricsMenuWidgetModel {
         gtk::Box {
             add_css_class: "lyrics-menu-widget",
             set_orientation: gtk::Orientation::Vertical,
+            set_spacing: 8,
             set_hexpand: true,
             set_vexpand: true,
 
@@ -114,6 +117,35 @@ impl Component for LyricsMenuWidgetModel {
                         set_ellipsize: pango::EllipsizeMode::End,
                     },
                 },
+
+                // Manual re-fetch — bypasses the cache and re-hits lrclib.
+                gtk::Button {
+                    add_css_class: "lyrics-refresh",
+                    set_valign: gtk::Align::Center,
+                    set_tooltip_text: Some("Re-fetch lyrics"),
+                    #[watch]
+                    set_visible: model.has_player,
+                    set_icon_name: "view-refresh-symbolic",
+                    connect_clicked => LyricsMenuWidgetInput::Refresh,
+                },
+            },
+
+            // Terse source/state badge — visible whenever a player is present,
+            // mirrors the musiclyrics panel ("Synced · lrclib.net", …).
+            gtk::Label {
+                #[watch]
+                set_css_classes: &model.badge_classes(),
+                set_halign: gtk::Align::Center,
+                #[watch]
+                set_label: model.badge_text(),
+                #[watch]
+                set_visible: !model.badge_text().is_empty(),
+            },
+
+            gtk::Separator {
+                set_orientation: gtk::Orientation::Horizontal,
+                #[watch]
+                set_visible: model.has_player,
             },
 
             #[name = "status"]
@@ -203,6 +235,18 @@ impl Component for LyricsMenuWidgetModel {
                     self.position_player_id = None;
                 }
             }
+            LyricsMenuWidgetInput::Refresh => {
+                if self.revealed
+                    && self.has_player
+                    && let Some(key) = self.key.clone().filter(TrackKey::is_valid)
+                {
+                    self.lyrics = Lyrics::None;
+                    self.active_idx = None;
+                    self.loading = true;
+                    kick_refetch(&sender, key);
+                    self.rebuild_lines(widgets);
+                }
+            }
         }
         self.apply_active(widgets);
         self.update_view(widgets, sender);
@@ -253,17 +297,48 @@ impl Component for LyricsMenuWidgetModel {
 }
 
 impl LyricsMenuWidgetModel {
-    /// Status line for the non-list states; `None` once there are lines to show.
+    /// Verbose body message for the non-list states; `None` once there are
+    /// lines to show. Mirrors the musiclyrics panel's centred message.
     fn status_message(&self) -> Option<&'static str> {
         if !self.has_player {
-            Some("Nothing playing")
-        } else if self.loading {
-            Some("Loading lyrics…")
-        } else if self.lyrics.is_empty() {
-            Some("No lyrics found for this track")
-        } else {
-            None
+            return Some("Nothing playing right now.");
         }
+        if self.loading {
+            return Some("Searching lyrics…");
+        }
+        match &self.lyrics {
+            Lyrics::Instrumental => Some("This track is instrumental."),
+            Lyrics::None => Some("No lyrics found for this track."),
+            l if l.is_empty() => Some("No lyrics found for this track."),
+            _ => None,
+        }
+    }
+
+    /// Terse source/state badge text, or `""` when no badge should show (no
+    /// player). Matches the musiclyrics panel's status pill.
+    fn badge_text(&self) -> &'static str {
+        if !self.has_player {
+            return "";
+        }
+        if self.loading {
+            return "Searching lyrics…";
+        }
+        match &self.lyrics {
+            Lyrics::Synced(_) => "Synced · lrclib.net",
+            Lyrics::Plain(_) => "Unsynced · lrclib.net",
+            Lyrics::Instrumental => "Instrumental",
+            Lyrics::None => "No lyrics found",
+        }
+    }
+
+    /// CSS classes for the badge — the `-ok` accent variant when we actually
+    /// have lyrics to show.
+    fn badge_classes(&self) -> Vec<&'static str> {
+        let mut classes = vec!["lyrics-status-badge"];
+        if !self.loading && matches!(self.lyrics, Lyrics::Synced(_) | Lyrics::Plain(_)) {
+            classes.push("lyrics-status-badge-ok");
+        }
+        classes
     }
 
     fn compute_active(&self) -> Option<usize> {
@@ -339,7 +414,7 @@ impl LyricsMenuWidgetModel {
                     widgets.lines_box.append(&label);
                 }
             }
-            Lyrics::None => {}
+            Lyrics::Instrumental | Lyrics::None => {}
         }
     }
 
@@ -460,6 +535,17 @@ fn kick_fetch(sender: &ComponentSender<LyricsMenuWidgetModel>, key: TrackKey) {
     sender.command(move |out, _shutdown| async move {
         let for_fetch = key.clone();
         let lyrics = tokio::task::spawn_blocking(move || lyrics::fetch(&for_fetch))
+            .await
+            .unwrap_or(Lyrics::None);
+        let _ = out.send(LyricsMenuWidgetCommandOutput::Fetched(key, lyrics));
+    });
+}
+
+/// Like [`kick_fetch`] but bypasses the disk cache (manual refresh).
+fn kick_refetch(sender: &ComponentSender<LyricsMenuWidgetModel>, key: TrackKey) {
+    sender.command(move |out, _shutdown| async move {
+        let for_fetch = key.clone();
+        let lyrics = tokio::task::spawn_blocking(move || lyrics::refetch(&for_fetch))
             .await
             .unwrap_or(Lyrics::None);
         let _ = out.send(LyricsMenuWidgetCommandOutput::Fetched(key, lyrics));

@@ -435,6 +435,11 @@ fn apply_visual(widgets: &LyricsModelWidgets, model: &LyricsModel) {
             root.add_css_class("has-lyrics");
             root.set_tooltip_text(Some("Lyrics available (unsynced) — click to view"));
         }
+        Lyrics::Instrumental => {
+            widgets.label.set_visible(false);
+            root.add_css_class("dim");
+            root.set_tooltip_text(Some("Instrumental — no lyrics"));
+        }
         Lyrics::None => {
             widgets.label.set_visible(false);
             root.add_css_class("dim");

@@ -30,7 +30,9 @@ pub(crate) enum Lyrics {
     Synced(Vec<LyricLine>),
     /// Unsynced plain text, one entry per source line.
     Plain(Vec<String>),
-    /// Looked up and there are none (instrumental, or genuinely absent).
+    /// lrclib flagged the track instrumental — no lyrics exist by design.
+    Instrumental,
+    /// Looked up and there are none (genuinely absent).
     None,
 }
 
@@ -40,7 +42,7 @@ impl Lyrics {
         match self {
             Lyrics::Synced(v) => v.is_empty(),
             Lyrics::Plain(v) => v.iter().all(|l| l.trim().is_empty()),
-            Lyrics::None => true,
+            Lyrics::Instrumental | Lyrics::None => true,
         }
     }
 }
@@ -186,10 +188,20 @@ const TIMEOUT: Duration = Duration::from_secs(12);
 /// main thread. A transient network failure returns [`Lyrics::None`] without
 /// caching it, so the caller can retry on the next track change.
 pub(crate) fn fetch(key: &TrackKey) -> Lyrics {
+    fetch_inner(key, false)
+}
+
+/// Like [`fetch`] but always re-hits lrclib, bypassing (and overwriting) the
+/// disk cache. Backs the menu's manual refresh button.
+pub(crate) fn refetch(key: &TrackKey) -> Lyrics {
+    fetch_inner(key, true)
+}
+
+fn fetch_inner(key: &TrackKey, force: bool) -> Lyrics {
     if !key.is_valid() {
         return Lyrics::None;
     }
-    if let Some(cached) = load_cache(key) {
+    if !force && let Some(cached) = load_cache(key) {
         return cached;
     }
     match fetch_lrclib(key) {
@@ -225,7 +237,7 @@ fn fetch_lrclib(key: &TrackKey) -> Option<Lyrics> {
                 .and_then(|b| b.as_bool())
                 .unwrap_or(false)
             {
-                return Some(Lyrics::None);
+                return Some(Lyrics::Instrumental);
             }
             let lyrics = lyrics_from_json(&v);
             if !lyrics.is_empty() {
@@ -281,7 +293,7 @@ fn lyrics_from_json(v: &serde_json::Value) -> Lyrics {
         .and_then(|b| b.as_bool())
         .unwrap_or(false)
     {
-        return Lyrics::None;
+        return Lyrics::Instrumental;
     }
     if let Some(synced) = v.get("syncedLyrics").and_then(|s| s.as_str())
         && !synced.trim().is_empty()

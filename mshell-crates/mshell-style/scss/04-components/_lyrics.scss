@@ -23,6 +23,45 @@
   padding: var(--space-4) var(--space-2);
 }
 
+// Terse source/state pill under the header ("Synced · lrclib.net", …) — the
+// calm capsule the musiclyrics panel shows. `-ok` accents it when lyrics are
+// actually present.
+.lyrics-status-badge {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  background-color: var(--surface-container-high);
+  color: var(--on-surface-variant);
+
+  &.lyrics-status-badge-ok {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+  }
+}
+
+// Circular flat re-fetch button in the header.
+.lyrics-refresh {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  background-color: transparent;
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  image {
+    -gtk-icon-size: 16px;
+    color: var(--on-surface-variant);
+  }
+
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+  }
+  &:active {
+    background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
+  }
+}
+
 .lyrics-scroller {
   margin-top: var(--space-1);
 }
