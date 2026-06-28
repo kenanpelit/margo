@@ -20,15 +20,28 @@ use gtk4::prelude::{GtkWindowExt, WidgetExt};
 use gtk4_layer_shell::{Layer, LayerShell};
 use mshell_common::{WatcherToken, watch_cancellable};
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, Toasts};
+use mshell_config::schema::config::{ConfigStoreFields, GameModeStoreFields, Toasts};
 use mshell_services::{
-    audio_service, battery_service, line_power_service, margo_service, media_service,
+    audio_service, battery_service, bluetooth_service, line_power_service, margo_service,
+    media_service, notification_service, power_profile_service,
 };
 use mshell_utils::audio::{spawn_default_input_watcher, spawn_default_output_watcher};
 use mshell_utils::battery::{
     get_battery_icon, spawn_battery_online_watcher, spawn_battery_watcher,
 };
+use mshell_utils::bluetooth::{
+    spawn_bluetooth_device_watcher, spawn_bluetooth_devices_watcher,
+    spawn_bluetooth_enabled_watcher,
+};
+use mshell_utils::idle::{idle_inhibited, spawn_idle_inhibitor_watcher};
 use mshell_utils::media::spawn_media_players_watcher;
+use mshell_utils::network::{
+    active_network_label, spawn_network_watcher, spawn_wifi_watcher, spawn_wired_watcher,
+};
+use mshell_utils::notifications::spawn_dnd_watcher;
+use mshell_utils::power_profile::{
+    get_power_profile_icon, get_power_profile_label, spawn_active_profile_watcher,
+};
 use reactive_graph::traits::GetUntracked;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
@@ -47,8 +60,25 @@ pub struct ToastProducerModel {
     prev_num: Option<bool>,
     prev_vpn: Option<bool>,
     prev_track: Option<String>,
+    /// Active primary network link label (`None` inner = disconnected). Outer
+    /// `None` = not yet baselined.
+    prev_net: Option<Option<String>>,
+    /// Sorted names of the currently-connected Bluetooth devices. Outer `None`
+    /// = not yet baselined.
+    prev_bt: Option<Vec<String>>,
+    prev_profile: Option<String>,
+    prev_dnd: Option<bool>,
+    prev_idle: Option<bool>,
+    prev_game_mode: Option<bool>,
     /// Cancels the per-player metadata watchers when the player list changes.
     media_token: WatcherToken,
+    /// Cancels the per-Bluetooth-device connectivity watchers when the device
+    /// list changes (re-armed on every list change, like the bluetooth pill).
+    bt_token: WatcherToken,
+    /// Cancel + re-arm the Wi-Fi / wired sub-watchers on hot-plug (the
+    /// top-level network watcher only re-fires when a device appears/vanishes).
+    net_wifi_token: WatcherToken,
+    net_wired_token: WatcherToken,
     /// Lowest battery warn level already toasted this discharge cycle.
     bat_warned: Option<u8>,
     bat_crit_warned: bool,
@@ -72,6 +102,19 @@ pub enum ToastProducerCmd {
     Vpn(bool),
     MediaListChanged,
     Track,
+    /// Primary network link changed.
+    Network,
+    /// Wi-Fi device (un)plugged — re-arm its sub-watcher, then re-check.
+    NetworkWifi,
+    /// Wired device (un)plugged — re-arm its sub-watcher, then re-check.
+    NetworkWired,
+    /// Bluetooth adapter or device list changed — re-arm per-device watchers.
+    Bluetooth,
+    /// A per-device `connected` flag flipped — re-check the connected set.
+    BluetoothConn,
+    PowerProfile,
+    Dnd,
+    Idle,
 }
 
 /// Poll cadence for the `mvpn` subprocess (no push API; mirrors the VPN pill).
@@ -120,6 +163,17 @@ impl Component for ToastProducerModel {
             || ToastProducerCmd::MediaListChanged,
             || ToastProducerCmd::MediaListChanged,
         );
+        spawn_network_watcher(
+            &sender,
+            || ToastProducerCmd::Network,
+            || ToastProducerCmd::NetworkWifi,
+            || ToastProducerCmd::NetworkWired,
+        );
+        spawn_bluetooth_enabled_watcher(&sender, || ToastProducerCmd::Bluetooth);
+        spawn_bluetooth_devices_watcher(&sender, || ToastProducerCmd::Bluetooth);
+        spawn_active_profile_watcher(&sender, None, || ToastProducerCmd::PowerProfile);
+        spawn_dnd_watcher(&sender, || ToastProducerCmd::Dnd);
+        spawn_idle_inhibitor_watcher(&sender, || ToastProducerCmd::Idle);
 
         // Keyboard layout — reactive String mirrored from the compositor.
         sender.command(|out, shutdown| async move {
@@ -172,7 +226,7 @@ impl Component for ToastProducerModel {
             });
         }
 
-        let model = ToastProducerModel {
+        let mut model = ToastProducerModel {
             line_power_first: false,
             prev_online: None,
             prev_layout: None,
@@ -182,10 +236,28 @@ impl Component for ToastProducerModel {
             prev_num: None,
             prev_vpn: None,
             prev_track: None,
+            prev_net: None,
+            prev_bt: None,
+            prev_profile: None,
+            prev_dnd: None,
+            prev_idle: None,
+            prev_game_mode: None,
             media_token: WatcherToken::new(),
+            bt_token: WatcherToken::new(),
+            net_wifi_token: WatcherToken::new(),
+            net_wired_token: WatcherToken::new(),
             bat_warned: None,
             bat_crit_warned: false,
         };
+
+        // Arm the per-device Bluetooth connectivity watchers + the Wi-Fi /
+        // wired sub-watchers for whatever's already present — the list /
+        // top-level watchers only re-fire when a device appears or vanishes.
+        model.arm_bt_watchers(&sender);
+        let wifi_token = model.net_wifi_token.reset();
+        spawn_wifi_watcher(&sender, wifi_token, || ToastProducerCmd::Network);
+        let wired_token = model.net_wired_token.reset();
+        spawn_wired_watcher(&sender, wired_token, || ToastProducerCmd::Network);
 
         let widgets = view_output!();
         ComponentParts { model, widgets }
@@ -200,6 +272,10 @@ impl Component for ToastProducerModel {
                 lock_key_step(self.prev_num, num, "Num Lock", &cfg);
                 self.prev_caps = Some(caps);
                 self.prev_num = Some(num);
+                // Game Mode is config-driven (no service watcher), so poll it on
+                // the same slow tick — it toggles rarely and the cost is one bool
+                // read.
+                self.on_game_mode();
             }
         }
     }
@@ -219,6 +295,25 @@ impl Component for ToastProducerModel {
             ToastProducerCmd::Vpn(connected) => self.on_vpn(connected),
             ToastProducerCmd::MediaListChanged => self.on_media_list_changed(&sender),
             ToastProducerCmd::Track => self.on_track(),
+            ToastProducerCmd::Network => self.on_network(),
+            ToastProducerCmd::NetworkWifi => {
+                let token = self.net_wifi_token.reset();
+                spawn_wifi_watcher(&sender, token, || ToastProducerCmd::Network);
+                self.on_network();
+            }
+            ToastProducerCmd::NetworkWired => {
+                let token = self.net_wired_token.reset();
+                spawn_wired_watcher(&sender, token, || ToastProducerCmd::Network);
+                self.on_network();
+            }
+            ToastProducerCmd::Bluetooth => {
+                self.arm_bt_watchers(&sender);
+                self.on_bluetooth();
+            }
+            ToastProducerCmd::BluetoothConn => self.on_bluetooth(),
+            ToastProducerCmd::PowerProfile => self.on_power_profile(),
+            ToastProducerCmd::Dnd => self.on_dnd(),
+            ToastProducerCmd::Idle => self.on_idle(),
         }
     }
 }
@@ -473,6 +568,218 @@ impl ToastProducerModel {
             icon: "media-playback-start-symbolic".to_string(),
             title: "Now playing".to_string(),
             body: Some(track),
+            severity: ToastSeverity::Calm,
+        });
+    }
+
+    /// Re-attach the per-Bluetooth-device connectivity watchers under a fresh
+    /// token (cancelling the previous batch). Called on init and whenever the
+    /// device list changes, mirroring the bluetooth bar pill — without it a
+    /// `connected` flip on an already-listed device would never fire.
+    fn arm_bt_watchers(&mut self, sender: &ComponentSender<Self>) {
+        let token = self.bt_token.reset();
+        for device in bluetooth_service().devices.get() {
+            spawn_bluetooth_device_watcher(&device, token.clone(), sender, || {
+                ToastProducerCmd::BluetoothConn
+            });
+        }
+    }
+
+    fn on_network(&mut self) {
+        let label = active_network_label();
+        match &self.prev_net {
+            None => {
+                self.prev_net = Some(label);
+                return;
+            }
+            Some(p) if *p == label => return,
+            Some(_) => {}
+        }
+        self.prev_net = Some(label.clone());
+
+        let cfg = toasts_cfg();
+        if !cfg.enabled || !cfg.network {
+            return;
+        }
+        match label {
+            Some(name) => push_toast(ToastEvent {
+                icon: "network-wireless-symbolic".to_string(),
+                title: "Network".to_string(),
+                body: Some(name),
+                severity: ToastSeverity::Positive,
+            }),
+            None => push_toast(ToastEvent {
+                icon: "network-wireless-offline-symbolic".to_string(),
+                title: "Network disconnected".to_string(),
+                body: None,
+                severity: ToastSeverity::Calm,
+            }),
+        }
+    }
+
+    fn on_bluetooth(&mut self) {
+        let svc = bluetooth_service();
+        // Only the adapter being present + on counts — a stale `connected`
+        // flag on a disabled adapter shouldn't surface as a device.
+        let mut connected: Vec<String> = if svc.available.get() && svc.enabled.get() {
+            svc.devices
+                .get()
+                .iter()
+                .filter(|d| d.connected.get())
+                .map(|d| d.alias.get().to_string())
+                .collect()
+        } else {
+            Vec::new()
+        };
+        connected.sort();
+
+        let prev = match self.prev_bt.take() {
+            None => {
+                self.prev_bt = Some(connected);
+                return;
+            }
+            Some(p) => p,
+        };
+        if prev == connected {
+            self.prev_bt = Some(prev);
+            return;
+        }
+        let newly: Vec<String> = connected
+            .iter()
+            .filter(|n| !prev.contains(n))
+            .cloned()
+            .collect();
+        let gone: Vec<String> = prev
+            .iter()
+            .filter(|n| !connected.contains(n))
+            .cloned()
+            .collect();
+        self.prev_bt = Some(connected);
+
+        let cfg = toasts_cfg();
+        if !cfg.enabled || !cfg.bluetooth {
+            return;
+        }
+        for name in newly {
+            push_toast(ToastEvent {
+                icon: "bluetooth-active-symbolic".to_string(),
+                title: "Bluetooth connected".to_string(),
+                body: Some(name),
+                severity: ToastSeverity::Positive,
+            });
+        }
+        for name in gone {
+            push_toast(ToastEvent {
+                icon: "bluetooth-disabled-symbolic".to_string(),
+                title: "Bluetooth disconnected".to_string(),
+                body: Some(name),
+                severity: ToastSeverity::Calm,
+            });
+        }
+    }
+
+    fn on_power_profile(&mut self) {
+        let profile = power_profile_service().power_profiles.active_profile.get();
+        let label = get_power_profile_label(&profile).to_string();
+        match &self.prev_profile {
+            None => {
+                self.prev_profile = Some(label);
+                return;
+            }
+            Some(p) if *p == label => return,
+            Some(_) => {}
+        }
+        self.prev_profile = Some(label.clone());
+
+        let cfg = toasts_cfg();
+        if !cfg.enabled || !cfg.power_profile {
+            return;
+        }
+        push_toast(ToastEvent {
+            icon: get_power_profile_icon(&profile).to_string(),
+            title: "Power profile".to_string(),
+            body: Some(label),
+            severity: ToastSeverity::Calm,
+        });
+    }
+
+    fn on_dnd(&mut self) {
+        let on = notification_service().dnd.get();
+        match self.prev_dnd {
+            None => {
+                self.prev_dnd = Some(on);
+                return;
+            }
+            Some(p) if p == on => return,
+            Some(_) => {}
+        }
+        self.prev_dnd = Some(on);
+
+        let cfg = toasts_cfg();
+        if !cfg.enabled || !cfg.dnd {
+            return;
+        }
+        push_toast(ToastEvent {
+            icon: if on {
+                "notifications-disabled-symbolic"
+            } else {
+                "notification-symbolic"
+            }
+            .to_string(),
+            title: format!("Do Not Disturb {}", if on { "on" } else { "off" }),
+            body: None,
+            severity: ToastSeverity::Calm,
+        });
+    }
+
+    fn on_idle(&mut self) {
+        let on = idle_inhibited();
+        match self.prev_idle {
+            None => {
+                self.prev_idle = Some(on);
+                return;
+            }
+            Some(p) if p == on => return,
+            Some(_) => {}
+        }
+        self.prev_idle = Some(on);
+
+        let cfg = toasts_cfg();
+        if !cfg.enabled || !cfg.idle_inhibitor {
+            return;
+        }
+        push_toast(ToastEvent {
+            icon: "preferences-desktop-screensaver-symbolic".to_string(),
+            title: format!("Keep awake {}", if on { "on" } else { "off" }),
+            body: None,
+            severity: ToastSeverity::Calm,
+        });
+    }
+
+    fn on_game_mode(&mut self) {
+        let active = config_manager()
+            .config()
+            .game_mode()
+            .active()
+            .get_untracked();
+        match self.prev_game_mode {
+            None => {
+                self.prev_game_mode = Some(active);
+                return;
+            }
+            Some(p) if p == active => return,
+            Some(_) => {}
+        }
+        self.prev_game_mode = Some(active);
+
+        let cfg = toasts_cfg();
+        if !cfg.enabled || !cfg.game_mode {
+            return;
+        }
+        push_toast(ToastEvent {
+            icon: "applications-games-symbolic".to_string(),
+            title: format!("Game Mode {}", if active { "on" } else { "off" }),
+            body: None,
             severity: ToastSeverity::Calm,
         });
     }

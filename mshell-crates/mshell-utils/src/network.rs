@@ -289,3 +289,42 @@ pub fn spawn_wired_watcher<C>(
         let _ = out.send(map());
     });
 }
+
+/// A concise label for the active primary network link — for toasts / tooltips.
+/// `Some("Wi-Fi: <ssid>")` or `Some("Wired")` when connected, `None` when the
+/// machine has no active link. Mirrors the bar pill's `read_network_state`
+/// primary-kind logic without the AP scan.
+pub fn active_network_label() -> Option<String> {
+    let net = network_service();
+    let wifi = net.wifi.get();
+    let wired = net.wired.get();
+
+    let wired_connected = wired
+        .as_ref()
+        .map(|w| w.connectivity.get() == NetworkStatus::Connected)
+        .unwrap_or(false);
+    let wifi_connected = wifi
+        .as_ref()
+        .map(|w| w.connectivity.get() == NetworkStatus::Connected)
+        .unwrap_or(false);
+
+    // Trust NetworkManager's primary type, falling back to whichever link
+    // actually reports Connected (the primary can read Unknown mid-transition).
+    let is_wired = match net.primary.get() {
+        ConnectionType::Wired => true,
+        ConnectionType::Wifi => false,
+        _ if wired_connected => true,
+        _ if wifi_connected => false,
+        _ => return None,
+    };
+
+    if is_wired {
+        return Some("Wired".to_string());
+    }
+    let ssid = wifi.as_ref().and_then(|w| w.ssid.get()).unwrap_or_default();
+    if ssid.is_empty() {
+        Some("Wi-Fi".to_string())
+    } else {
+        Some(format!("Wi-Fi: {ssid}"))
+    }
+}

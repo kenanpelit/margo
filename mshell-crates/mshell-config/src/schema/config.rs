@@ -118,6 +118,24 @@ pub struct Toasts {
     /// Toast on every now-playing track change. Off by default — it's noisy.
     #[serde(default)]
     pub now_playing: bool,
+    /// Toast when the primary network link connects / disconnects (Wi-Fi or wired).
+    #[serde(default = "default_true")]
+    pub network: bool,
+    /// Toast when a Bluetooth device connects / disconnects.
+    #[serde(default = "default_true")]
+    pub bluetooth: bool,
+    /// Toast when the power profile changes (performance / balanced / power-saver).
+    #[serde(default = "default_true")]
+    pub power_profile: bool,
+    /// Toast when Do Not Disturb is turned on / off.
+    #[serde(default = "default_true")]
+    pub dnd: bool,
+    /// Toast when the idle inhibitor ("keep awake") is turned on / off.
+    #[serde(default = "default_true")]
+    pub idle_inhibitor: bool,
+    /// Toast when Game Mode is engaged / released.
+    #[serde(default = "default_true")]
+    pub game_mode: bool,
     /// Toast as the battery crosses a warning / critical level.
     #[serde(default = "default_true")]
     pub battery: bool,
@@ -153,6 +171,12 @@ impl Default for Toasts {
             audio_device: true,
             vpn: true,
             now_playing: false,
+            network: true,
+            bluetooth: true,
+            power_profile: true,
+            dnd: true,
+            idle_inhibitor: true,
+            game_mode: true,
             battery: true,
             battery_warn_levels: default_battery_warn_levels(),
             battery_critical_level: default_battery_critical_level(),

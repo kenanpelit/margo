@@ -24,6 +24,12 @@ pub(crate) struct ToastSettingsModel {
     audio_device: bool,
     vpn: bool,
     now_playing: bool,
+    network: bool,
+    bluetooth: bool,
+    power_profile: bool,
+    dnd: bool,
+    idle_inhibitor: bool,
+    game_mode: bool,
     battery: bool,
     battery_critical: u32,
     position: Position,
@@ -41,6 +47,12 @@ pub(crate) enum ToastSettingsInput {
     AudioDeviceChanged(bool),
     VpnChanged(bool),
     NowPlayingChanged(bool),
+    NetworkChanged(bool),
+    BluetoothChanged(bool),
+    PowerProfileChanged(bool),
+    DndChanged(bool),
+    IdleInhibitorChanged(bool),
+    GameModeChanged(bool),
     BatteryChanged(bool),
     BatteryCriticalChanged(u32),
     PositionChanged(Position),
@@ -54,6 +66,12 @@ pub(crate) enum ToastSettingsInput {
     AudioDeviceEffect(bool),
     VpnEffect(bool),
     NowPlayingEffect(bool),
+    NetworkEffect(bool),
+    BluetoothEffect(bool),
+    PowerProfileEffect(bool),
+    DndEffect(bool),
+    IdleInhibitorEffect(bool),
+    GameModeEffect(bool),
     BatteryEffect(bool),
     BatteryCriticalEffect(u8),
     PositionEffect(Position),
@@ -502,6 +520,222 @@ impl Component for ToastSettingsModel {
                             } @now_playing_handler,
                         },
                     },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Network",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "When the primary Wi-Fi or wired link connects or disconnects.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(network_handler)]
+                            set_active: model.network,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(ToastSettingsInput::NetworkChanged(v));
+                                glib::Propagation::Proceed
+                            } @network_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Bluetooth",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "When a Bluetooth device connects or disconnects.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(bluetooth_handler)]
+                            set_active: model.bluetooth,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(ToastSettingsInput::BluetoothChanged(v));
+                                glib::Propagation::Proceed
+                            } @bluetooth_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Power profile",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "When the power profile changes (performance / balanced / power-saver).",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(power_profile_handler)]
+                            set_active: model.power_profile,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(ToastSettingsInput::PowerProfileChanged(v));
+                                glib::Propagation::Proceed
+                            } @power_profile_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Do Not Disturb",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "When Do Not Disturb is turned on or off.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(dnd_handler)]
+                            set_active: model.dnd,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(ToastSettingsInput::DndChanged(v));
+                                glib::Propagation::Proceed
+                            } @dnd_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Keep awake",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "When the idle inhibitor (keep awake) is turned on or off.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(idle_inhibitor_handler)]
+                            set_active: model.idle_inhibitor,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(ToastSettingsInput::IdleInhibitorChanged(v));
+                                glib::Propagation::Proceed
+                            } @idle_inhibitor_handler,
+                        },
+                    },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Game Mode",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "When Game Mode is engaged or released.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(game_mode_handler)]
+                            set_active: model.game_mode,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(ToastSettingsInput::GameModeChanged(v));
+                                glib::Propagation::Proceed
+                            } @game_mode_handler,
+                        },
+                    },
                 },
 
                 gtk::Label {
@@ -615,6 +849,12 @@ impl Component for ToastSettingsModel {
         push_effect!(audio_device, AudioDeviceEffect);
         push_effect!(vpn, VpnEffect);
         push_effect!(now_playing, NowPlayingEffect);
+        push_effect!(network, NetworkEffect);
+        push_effect!(bluetooth, BluetoothEffect);
+        push_effect!(power_profile, PowerProfileEffect);
+        push_effect!(dnd, DndEffect);
+        push_effect!(idle_inhibitor, IdleInhibitorEffect);
+        push_effect!(game_mode, GameModeEffect);
         push_effect!(battery, BatteryEffect);
         push_effect!(battery_critical_level, BatteryCriticalEffect);
         push_effect!(position, PositionEffect);
@@ -648,6 +888,28 @@ impl Component for ToastSettingsModel {
                 .config()
                 .toasts()
                 .now_playing()
+                .get_untracked(),
+            network: config_manager().config().toasts().network().get_untracked(),
+            bluetooth: config_manager()
+                .config()
+                .toasts()
+                .bluetooth()
+                .get_untracked(),
+            power_profile: config_manager()
+                .config()
+                .toasts()
+                .power_profile()
+                .get_untracked(),
+            dnd: config_manager().config().toasts().dnd().get_untracked(),
+            idle_inhibitor: config_manager()
+                .config()
+                .toasts()
+                .idle_inhibitor()
+                .get_untracked(),
+            game_mode: config_manager()
+                .config()
+                .toasts()
+                .game_mode()
                 .get_untracked(),
             battery: config_manager().config().toasts().battery().get_untracked(),
             battery_critical: config_manager()
@@ -703,6 +965,24 @@ impl Component for ToastSettingsModel {
             ToastSettingsInput::NowPlayingChanged(v) => {
                 config_manager().update_config(|c| c.toasts.now_playing = v);
             }
+            ToastSettingsInput::NetworkChanged(v) => {
+                config_manager().update_config(|c| c.toasts.network = v);
+            }
+            ToastSettingsInput::BluetoothChanged(v) => {
+                config_manager().update_config(|c| c.toasts.bluetooth = v);
+            }
+            ToastSettingsInput::PowerProfileChanged(v) => {
+                config_manager().update_config(|c| c.toasts.power_profile = v);
+            }
+            ToastSettingsInput::DndChanged(v) => {
+                config_manager().update_config(|c| c.toasts.dnd = v);
+            }
+            ToastSettingsInput::IdleInhibitorChanged(v) => {
+                config_manager().update_config(|c| c.toasts.idle_inhibitor = v);
+            }
+            ToastSettingsInput::GameModeChanged(v) => {
+                config_manager().update_config(|c| c.toasts.game_mode = v);
+            }
             ToastSettingsInput::BatteryChanged(v) => {
                 config_manager().update_config(|c| c.toasts.battery = v);
             }
@@ -728,6 +1008,12 @@ impl Component for ToastSettingsModel {
             ToastSettingsInput::AudioDeviceEffect(v) => self.audio_device = v,
             ToastSettingsInput::VpnEffect(v) => self.vpn = v,
             ToastSettingsInput::NowPlayingEffect(v) => self.now_playing = v,
+            ToastSettingsInput::NetworkEffect(v) => self.network = v,
+            ToastSettingsInput::BluetoothEffect(v) => self.bluetooth = v,
+            ToastSettingsInput::PowerProfileEffect(v) => self.power_profile = v,
+            ToastSettingsInput::DndEffect(v) => self.dnd = v,
+            ToastSettingsInput::IdleInhibitorEffect(v) => self.idle_inhibitor = v,
+            ToastSettingsInput::GameModeEffect(v) => self.game_mode = v,
             ToastSettingsInput::BatteryEffect(v) => self.battery = v,
             ToastSettingsInput::BatteryCriticalEffect(v) => self.battery_critical = v as u32,
             ToastSettingsInput::PositionEffect(p) => self.position = p,
