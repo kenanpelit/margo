@@ -150,18 +150,32 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     app_sender.emit(ShellInput::ToggleBluetoothMenu(active_monitor().await));
                 }
                 IPCCommand::BluetoothCtl(action) => {
-                    // Spawn so a 10–12s connect wait never blocks the IPC loop.
-                    tokio_rt().spawn(async move {
-                        match action.as_str() {
-                            "connect" => {
-                                mshell_services::bluetooth::connect_configured().await;
+                    // No usable adapter (e.g. a VM): surface a toast here, where
+                    // we can reach the toast surface — the services layer can't.
+                    let usable = mshell_services::bluetooth_service()
+                        .map(|bt| bt.available.get())
+                        .unwrap_or(false);
+                    if usable {
+                        // Spawn so a 10–12s connect wait never blocks the IPC loop.
+                        tokio_rt().spawn(async move {
+                            match action.as_str() {
+                                "connect" => {
+                                    mshell_services::bluetooth::connect_configured().await;
+                                }
+                                "disconnect" => {
+                                    mshell_services::bluetooth::disconnect_configured().await;
+                                }
+                                _ => mshell_services::bluetooth::toggle().await,
                             }
-                            "disconnect" => {
-                                mshell_services::bluetooth::disconnect_configured().await;
-                            }
-                            _ => mshell_services::bluetooth::toggle().await,
-                        }
-                    });
+                        });
+                    } else {
+                        push_toast(ToastEvent {
+                            icon: "bluetooth-disabled-symbolic".to_string(),
+                            title: "Bluetooth".to_string(),
+                            body: Some("No adapter".to_string()),
+                            severity: ToastSeverity::Warn,
+                        });
+                    }
                 }
                 IPCCommand::CpuDashboard => {
                     app_sender.emit(ShellInput::ToggleCpuDashboardMenu(active_monitor().await));

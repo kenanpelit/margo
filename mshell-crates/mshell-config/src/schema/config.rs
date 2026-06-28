@@ -2609,8 +2609,6 @@ pub struct BluetoothConfig {
     /// headset mic on usually drops the codec from A2DP to HSP/HFP and
     /// noticeably degrades playback quality.
     pub route_audio_input: bool,
-    /// Pop desktop notifications on connect / disconnect / routing.
-    pub notifications: bool,
 }
 
 impl Default for BluetoothConfig {
@@ -2621,7 +2619,6 @@ impl Default for BluetoothConfig {
             devices: Vec::new(),
             route_audio_output: true,
             route_audio_input: false,
-            notifications: true,
         }
     }
 }

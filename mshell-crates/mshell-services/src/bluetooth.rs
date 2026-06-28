@@ -76,31 +76,6 @@ fn any_configured_connected(cfg: &BluetoothConfig) -> bool {
         .any(|d| connected.contains(&mac_colon(&d.mac)))
 }
 
-/// Fire-and-forget notification, gated on the config flag. Uses the same
-/// synchronous-replace hint as the audio toasts so repeats don't stack.
-fn notify(cfg: &BluetoothConfig, summary: &str, body: &str) {
-    if !cfg.notifications {
-        return;
-    }
-    let summary = summary.to_string();
-    let body = body.to_string();
-    tokio_rt().spawn(async move {
-        let _ = tokio::process::Command::new("notify-send")
-            .args([
-                "-a",
-                "mshell",
-                "-i",
-                "bluetooth-symbolic",
-                "-h",
-                "string:x-canonical-private-synchronous:mshell-bluetooth",
-                &summary,
-                &body,
-            ])
-            .status()
-            .await;
-    });
-}
-
 /// Power the adapter on if it is off, then wait (bounded) for it to report
 /// enabled. Returns whether an adapter is usable.
 async fn ensure_adapter_on() -> bool {
@@ -173,13 +148,10 @@ async fn route_audio(cfg: &BluetoothConfig, mac: &str) {
             .get()
             .into_iter()
             .find(|d| device_matches(&d.name.get(), &d.properties.get(), &needle, &colon))
-            && dev.set_as_default().await.is_ok()
         {
-            notify(
-                cfg,
-                "Bluetooth audio",
-                &format!("Output → {}", dev.description.get()),
-            );
+            // The default-output change is announced by the audio-device toast
+            // (Settings → Toasts), so no separate notification here.
+            let _ = dev.set_as_default().await;
         }
     }
 
@@ -189,13 +161,8 @@ async fn route_audio(cfg: &BluetoothConfig, mac: &str) {
             .get()
             .into_iter()
             .find(|d| device_matches(&d.name.get(), &d.properties.get(), &needle, &colon))
-        && dev.set_as_default().await.is_ok()
     {
-        notify(
-            cfg,
-            "Bluetooth audio",
-            &format!("Input → {}", dev.name.get()),
-        );
+        let _ = dev.set_as_default().await;
     }
 }
 
@@ -224,20 +191,15 @@ pub async fn connect_configured() -> bool {
         return false;
     }
     if !ensure_adapter_on().await {
-        notify(&cfg, "Bluetooth", "No usable adapter");
         return false;
     }
     for d in &cfg.devices {
         let Some(dev) = find_device(&d.mac) else {
             continue;
         };
-        let label = if d.name.is_empty() {
-            d.mac.clone()
-        } else {
-            d.name.clone()
-        };
         if connect_device(&dev).await {
-            notify(&cfg, "Bluetooth connected", &label);
+            // Connect is announced by the Bluetooth toast (Settings → Toasts);
+            // just route audio to the device here.
             route_audio(&cfg, &d.mac).await;
             return true;
         }
@@ -254,13 +216,8 @@ pub async fn disconnect_configured() -> bool {
             && dev.connected.get()
             && dev.disconnect().await.is_ok()
         {
+            // Disconnect is announced by the Bluetooth toast (Settings → Toasts).
             any = true;
-            let label = if d.name.is_empty() {
-                d.mac.clone()
-            } else {
-                d.name.clone()
-            };
-            notify(&cfg, "Bluetooth disconnected", &label);
         }
     }
     any
@@ -272,12 +229,12 @@ pub async fn disconnect_configured() -> bool {
 /// - on + nothing connected → connect
 pub async fn toggle() {
     let cfg = config();
+    // The "no adapter" feedback toast is emitted by the IPC layer (which can
+    // reach the toast surface); here we just no-op.
     let Some(bt) = bluetooth_service() else {
-        notify(&cfg, "Bluetooth", "No adapter");
         return;
     };
     if !bt.available.get() {
-        notify(&cfg, "Bluetooth", "No adapter");
         return;
     }
     if !bt.enabled.get() {

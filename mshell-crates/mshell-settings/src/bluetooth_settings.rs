@@ -46,8 +46,6 @@ pub(crate) enum BluetoothSettingsInput {
     AcToggleRouteOutput(bool),
     /// Also route it as the default mic (degrades A2DP → HSP/HFP).
     AcToggleRouteInput(bool),
-    /// Desktop notifications on connect/disconnect/routing.
-    AcToggleNotify(bool),
     /// Add a device to the auto-connect list (MAC, friendly name).
     AcAddDevice(String, String),
     /// Remove a device from the auto-connect list (by MAC).
@@ -332,26 +330,6 @@ impl Component for BluetoothSettingsModel {
                                 },
                             },
                         },
-
-                        // Notifications
-                        gtk::Box {
-                            add_css_class: "action-row",
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 20,
-                            gtk::Label {
-                                add_css_class: "label-medium-bold",
-                                set_label: "Notifications",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                            gtk::Switch {
-                                set_valign: gtk::Align::Center,
-                                set_active: model.ac.notifications,
-                                connect_active_notify[sender] => move |sw| {
-                                    sender.input(BluetoothSettingsInput::AcToggleNotify(sw.is_active()));
-                                },
-                            },
-                        },
                     },
 
                     // Add a device by MAC
@@ -616,10 +594,6 @@ impl Component for BluetoothSettingsModel {
             }
             BluetoothSettingsInput::AcToggleRouteInput(v) => {
                 self.ac.route_audio_input = v;
-                persist_ac(&self.ac);
-            }
-            BluetoothSettingsInput::AcToggleNotify(v) => {
-                self.ac.notifications = v;
                 persist_ac(&self.ac);
             }
             BluetoothSettingsInput::AcAddDevice(mac, name) => {
