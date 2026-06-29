@@ -69,7 +69,7 @@ use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
 use relm4::gtk::{RevealerTransitionType, ScrolledWindow, gdk, gio, pango};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 pub(crate) struct AppLauncherModel {
@@ -118,7 +118,16 @@ pub(crate) struct AppLauncherModel {
     /// Pending debounce timer for the search box. Typing only updates
     /// `filter` immediately; the (provider-sweep + row-clone) recompute
     /// is coalesced so a fast burst of keystrokes runs it once.
-    search_debounce: Option<glib::SourceId>,
+    ///
+    /// Shared `Rc<Cell<…>>` (not a plain `Option`) so the one-shot
+    /// closure can clear *its own* handle the moment it fires —
+    /// before the queued `ApplyFilter` is processed. Without that, a
+    /// keystroke landing in the window between "timer fired (source
+    /// auto-destroyed)" and "`ApplyFilter` ran" would call
+    /// `SourceId::remove()` on an already-removed source, which panics
+    /// in glib; from this main-loop context that panic can't unwind
+    /// and aborts the whole process.
+    search_debounce: Rc<Cell<Option<glib::SourceId>>>,
     _effects: EffectScope,
 }
 
@@ -267,11 +276,19 @@ impl Component for AppLauncherModel {
                     add_css_class: "ok-entry",
                     set_placeholder_text: Some("Search apps, calc, > commands…"),
                     set_hexpand: true,
+                    // Fallible sends, never `input()`: `changed` also fires
+                    // when the entry text is set programmatically (e.g. the
+                    // open-clear at `ParentRevealChanged`) or as the widget
+                    // tree is disposed on teardown. From this glib signal
+                    // trampoline a panic can't unwind — `input()` on a
+                    // shut-down runtime would abort the whole process.
                     connect_changed[sender] => move |entry| {
-                        sender.input(AppLauncherInput::SearchTyped(entry.text().to_string()));
+                        let _ = sender
+                            .input_sender()
+                            .send(AppLauncherInput::SearchTyped(entry.text().to_string()));
                     },
                     connect_activate[sender] => move |_| {
-                        sender.input(AppLauncherInput::Activate);
+                        let _ = sender.input_sender().send(AppLauncherInput::Activate);
                     },
                 },
 
@@ -783,7 +800,7 @@ impl Component for AppLauncherModel {
                 .launcher()
                 .large_app_icons()
                 .get_untracked(),
-            search_debounce: None,
+            search_debounce: Rc::new(Cell::new(None)),
             _effects: effect_scope,
         };
 
@@ -829,19 +846,34 @@ impl Component for AppLauncherModel {
                 // the expensive recompute: cancel any pending timer and
                 // (re)arm a short one that fires `ApplyFilter`.
                 self.filter = filter;
+                // Cancel a still-pending debounce. `take()` yields `None`
+                // once the one-shot has already fired (the closure clears
+                // the slot below), so we never call `remove()` on an
+                // auto-destroyed source — that panics in glib and, from a
+                // main-loop callback, aborts the process.
                 if let Some(id) = self.search_debounce.take() {
                     id.remove();
                 }
                 let s = sender.clone();
-                self.search_debounce = Some(glib::timeout_add_local_once(
-                    std::time::Duration::from_millis(60),
-                    move || s.input(AppLauncherInput::ApplyFilter),
-                ));
+                let slot = self.search_debounce.clone();
+                let id =
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(60), move || {
+                        // Clear our own handle *before* dispatching so a
+                        // keystroke that lands before `ApplyFilter` is
+                        // processed sees an empty slot, not a dead SourceId.
+                        slot.set(None);
+                        // Fallible send: this timer can fire after the
+                        // component is torn down, and `input()` would panic
+                        // (→ abort) if the runtime is gone.
+                        let _ = s.input_sender().send(AppLauncherInput::ApplyFilter);
+                    });
+                self.search_debounce.set(Some(id));
             }
             AppLauncherInput::ApplyFilter => {
-                // The one-shot timer already auto-removed; just drop the
-                // handle (no `remove()`) and recompute for `self.filter`.
-                self.search_debounce = None;
+                // The one-shot timer already auto-removed *and* cleared its
+                // own slot when it fired; this `set(None)` is just a
+                // belt-and-braces no-op. Never call `remove()` here.
+                self.search_debounce.set(None);
                 self.recompute_results();
                 self.push_results_to_dynamic_box();
                 self.broadcast_selection();
