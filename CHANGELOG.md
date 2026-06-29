@@ -164,6 +164,19 @@ poison races.
 
 ### Fixed
 
+- **The shell could abort (SIGABRT) while typing fast in the app launcher.**
+  The search box debounces its recompute with a one-shot `glib` timeout. A
+  one-shot source auto-destroys the instant it fires, but the launcher only
+  cleared its stored handle when the queued `ApplyFilter` was later processed —
+  so a keystroke landing in the window between "timer fired" and "`ApplyFilter`
+  ran" called `SourceId::remove()` on an already-dead source, which panics in
+  glib. From a main-loop callback that panic can't unwind, so it aborted the
+  whole process (the still-live search `Entry`'s `changed` handler then tried to
+  `input()` into the now-shut-down component, compounding the abort). The
+  one-shot now clears its own handle the moment it fires, and the search
+  entry's `changed`/`activate` handlers use fallible sends — mirroring the
+  hardening already in the media-player seek slider — so neither a stale timer
+  nor a teardown-time signal can crash the shell.
 - **The shell wouldn't start on a machine with no Bluetooth adapter.** On a host
   with no BT hardware (e.g. a VM), bluez is installed but `bluetooth.service` is
   condition-skipped, so when mshell asked D-Bus to activate `org.bluez` it failed
