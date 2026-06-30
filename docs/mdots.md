@@ -108,7 +108,7 @@ packages:
   - rustup
   - cargo-edit
 pre_install_hook: scripts/setup-rust.sh
-hook_behavior: once          # "ask" | "always" | "once" | "skip"
+hook_behavior: once          # "ask" | "always" | "once" | "skip" | "never"
 conflicts: [dev/go]
 ```
 
@@ -153,8 +153,8 @@ Lua modules (`.lua` files for host configs and modules) receive a pre-populated 
 | `mdots.network` | Network interface / connectivity state |
 | `mdots.audio` | PipeWire / PulseAudio detection |
 | `mdots.storage` | Filesystem and disk info |
-| `mdots.file` | Filesystem helpers (existence, content, globs) |
-| `mdots.system` | OS, kernel, hostname, uptime |
+| `mdots.file` | Filesystem helpers — `exists`, `is_dir`, `is_file`, `read`, `read_lines` |
+| `mdots.system` | hostname, kernel version, arch, OS, distro / name / version, total memory, CPU cores |
 | `mdots.log` | Logging from within a Lua module |
 | `mdots.env` | Read environment variables |
 | `mdots.util` | String / path utilities |
@@ -273,7 +273,7 @@ mdots nix status         # show Nix and Home Manager status
 | `mdots diff` | Compute declared-vs-installed package diff and print it — read-only, no changes applied. Equivalent to the drift section of `status` but always machine-readable with `--json`. |
 | `mdots doctor` | Run environment health checks (age key, sops, AUR helper, nix, home-manager, git repo) and report each item as PASS / WARN / FAIL. |
 | `mdots validate [--check-packages]` | Parse and validate the config structure and all enabled modules. `--check-packages` additionally queries the package repos (slower). |
-| `mdots sync [--dry-run]` | Install declared packages, enable/disable services, decrypt secrets, run home-manager — everything in one pass. `--dry-run` previews changes without applying. Other flags: `--prune` (remove untracked packages), `--force` (skip confirmation prompts), `--no-backup`, `--no-hooks`, `--auto-commit`. |
+| `mdots sync [--dry-run]` | Install declared packages, enable/disable services, decrypt secrets, run home-manager — everything in one pass. `--dry-run` previews changes without applying. Other flags: `--prune` (remove untracked packages), `--force` (skip confirmation prompts), `--no-backup`, `--no-hooks`, `--force-dotfiles` (re-sync dotfiles even if already synced), `--auto-commit`. |
 | `mdots find <PACKAGE>` | Search all host files, modules, and the base set for where a package name is declared. |
 | `mdots module list\|enable\|disable\|run-hook\|create` | List available modules, toggle them in the host file, manually run a module's hook, or scaffold a new module. |
 | `mdots service list\|enable\|disable\|show` | Manage systemd service profiles (from the `services/` directory). |
@@ -287,11 +287,12 @@ mdots nix status         # show Nix and Home Manager status
 | `mdots search` | Interactive TUI package search. |
 | `mdots edit` | Interactive TUI config-file selector (opens the chosen file in `$EDITOR`). |
 | `mdots merge` | Add currently installed but untracked packages into `system-packages.yaml`. |
+| `mdots migrate` | Migrate an old `packages/`-layout repo to the new `hosts/` + `modules/` structure. |
 | `mdots generate` | Generate derived config files (completions, man page, declared-packages snapshot). |
 | `mdots completion <SHELL>` | Print a shell completion script (bash, zsh, fish, …). |
 | `mdots man` | Print the man page to stdout (roff format). |
 
-All commands accept `-j` / `--json` for machine-readable output.
+All commands accept `-j` / `--json` for machine-readable output. This guide covers the common commands — run `mdots --help` for the full command surface (which also includes `save-config`, `restore-config`, `hooks`, `repo`, `backup`, `restore`, `self-update`, and `source`).
 
 ## Quick-start example
 
