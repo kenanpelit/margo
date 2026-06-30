@@ -13,6 +13,7 @@ Margo ships several binaries that share its workspace:
 | **`mpower`** | automatic power-profile daemon + manual `cycle` / `set` |
 | **`mkeys`** | on-screen keyboard (layer-shell, virtual-keyboard protocol) |
 | **`mlogind`** | TUI login / display manager (matugen-themed) |
+| **`mdots`** | declarative Arch package + dotfiles manager (pacman/AUR/Flatpak/Nix, Lua modules, SOPS/age secrets) |
 
 Run any of them with `--help` for the full command surface.
 
@@ -257,6 +258,12 @@ On-screen keyboard** page expose the toggle + layout.
 ## Shell completions
 
 Bash, zsh, and fish completions ship under `/usr/share/{bash-completion,zsh,fish}/...` and pull dispatch action names from `mctl actions --names` at completion time. They auto-load — no rc-file work needed.
+
+## `mdots`
+
+Declarative Arch package + dotfiles manager — declares which pacman/AUR/Flatpak/Nix packages, systemd services, and SOPS/age-encrypted secrets each machine should have, then drives the appropriate package managers to converge reality to the declaration. Supports static YAML modules, Lua modules with runtime hardware/service detection, and Nix/home-manager integration.
+
+Full user guide: **[mdots](mdots.md)**
 
 ## See also
 
