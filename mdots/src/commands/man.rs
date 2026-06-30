@@ -1,4 +1,4 @@
-//! `dcli man` — render the man page.
+//! `mdots man` — render the man page.
 //!
 //! Generated from the live clap command definition (via clap_mangen), so the
 //! manual never drifts out of sync with the actual CLI.
@@ -32,6 +32,6 @@ mod tests {
         assert!(!roff.is_empty(), "man page must not be empty");
         // roff man pages start with a .TH (title heading) macro naming the page.
         assert!(roff.contains(".TH"), "should contain a roff title heading");
-        assert!(roff.contains("dcli"), "should reference the binary name");
+        assert!(roff.contains("mdots"), "should reference the binary name");
     }
 }

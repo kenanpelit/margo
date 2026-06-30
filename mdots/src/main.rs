@@ -25,7 +25,7 @@ use clap_complete::Shell;
 use config::ConfigPaths;
 
 #[derive(Parser)]
-#[command(name = "dcli")]
+#[command(name = "mdots")]
 #[command(author, version, about = "A declarative package management CLI tool for Linux", long_about = None)]
 struct Cli {
     /// Output in JSON format (for programmatic use)
@@ -38,7 +38,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize dcli configuration directory structure
+    /// Initialize mdots configuration directory structure
     Init {
         /// Bootstrap from BlackDon's config
         #[arg(short = 'b', long = "bd")]
@@ -57,13 +57,13 @@ enum Commands {
         nix_init: bool,
     },
 
-    /// Install a package and add to dcli management
+    /// Install a package and add to mdots management
     Install {
         /// Package name
         package: String,
     },
 
-    /// Remove a package and untrack from dcli
+    /// Remove a package and untrack from mdots
     Remove {
         /// Package name
         package: String,
@@ -167,19 +167,19 @@ enum Commands {
         dry_run: bool,
     },
 
-    /// Find where a package is defined in your dcli config
+    /// Find where a package is defined in your mdots config
     Find {
         /// Package name to search for
         package: String,
     },
 
-    /// Remove a package from dcli tracking without uninstalling it
+    /// Remove a package from mdots tracking without uninstalling it
     Forget {
         /// Package name to forget
         package: String,
     },
 
-    /// Validate dcli config structure and modules
+    /// Validate mdots config structure and modules
     Validate {
         /// Also check if packages exist in repos (slower)
         #[arg(long)]
@@ -219,7 +219,7 @@ enum Commands {
         snapshot: Option<String>,
     },
 
-    /// Update dcli from git repository
+    /// Update mdots from git repository
     SelfUpdate,
 
     /// Nix package manager and Home Manager integration
@@ -319,10 +319,10 @@ enum HooksAction {
 
 #[derive(Subcommand)]
 enum RepoAction {
-    /// Initialize git repository for dcli config
+    /// Initialize git repository for mdots config
     Init,
 
-    /// Clone existing dcli config repository
+    /// Clone existing mdots config repository
     Clone,
 
     /// Commit and push changes
@@ -422,7 +422,7 @@ enum SecretsAction {
 
     /// Edit an encrypted secret with `sops`
     Edit {
-        /// Secret name (see `dcli secrets list`)
+        /// Secret name (see `mdots secrets list`)
         name: String,
     },
 

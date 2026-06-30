@@ -1,4 +1,4 @@
-//! `dcli completion <shell>` — generate shell completion scripts.
+//! `mdots completion <shell>` — generate shell completion scripts.
 //!
 //! Generated from the live clap command definition, so completions never
 //! drift out of sync with the actual CLI surface. Supports every shell
@@ -11,7 +11,7 @@ use std::io::Write;
 /// Write the completion script for `shell` to `out`.
 pub fn write_completion<W: Write>(shell: Shell, out: &mut W) {
     let mut cmd = crate::Cli::command();
-    generate(shell, &mut cmd, "dcli", out);
+    generate(shell, &mut cmd, "mdots", out);
 }
 
 /// CLI entry point: print the completion script for `shell` to stdout.
@@ -31,7 +31,7 @@ mod tests {
 
         assert!(!script.is_empty(), "completion script must not be empty");
         assert!(
-            script.contains("dcli"),
+            script.contains("mdots"),
             "completion must reference the binary name"
         );
         // A real completion enumerates the actual subcommands, proving it was
