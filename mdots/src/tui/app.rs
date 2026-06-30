@@ -95,6 +95,10 @@ pub enum Action {
         flatpak_install: usize,
         prune: usize,
     },
+    /// Enable a service profile — dispatches to `commands::service::enable`.
+    EnableService { name: String },
+    /// Disable a service profile — dispatches to `commands::service::disable`.
+    DisableService { name: String },
 }
 
 impl Action {
@@ -109,6 +113,14 @@ impl Action {
                 flatpak_install,
                 prune,
             } => run_sync_confirm(*native_install, *flatpak_install, *prune),
+            Action::EnableService { name } => (
+                "Enable service profile".to_string(),
+                format!("Enable service profile `{name}`? This starts its services now."),
+            ),
+            Action::DisableService { name } => (
+                "Disable service profile".to_string(),
+                format!("Disable service profile `{name}`? This stops its services now."),
+            ),
         }
     }
 }
@@ -269,6 +281,7 @@ impl App {
                     1 => Screen::Modules(Default::default()),
                     2 => Screen::Packages(Default::default()),
                     3 => Screen::Sync(Default::default()),
+                    4 => Screen::Services(Default::default()),
                     _ => return Ok(false),
                 };
                 self.navigate_to(new_screen);
@@ -301,6 +314,10 @@ impl SidebarState {
                 SidebarItem {
                     name: "Sync",
                     icon: "🔄",
+                },
+                SidebarItem {
+                    name: "Services",
+                    icon: "🧩",
                 },
             ],
         }

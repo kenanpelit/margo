@@ -151,6 +151,18 @@ fn dispatch_action(app: &mut App, terminal: &mut terminal::Tui, action: Action) 
                 },
             )
         }),
+        Action::EnableService { name } => {
+            let name = name.clone();
+            terminal::with_suspended(terminal, move || {
+                crate::commands::service::enable(&paths, &name, false)
+            })
+        }
+        Action::DisableService { name } => {
+            let name = name.clone();
+            terminal::with_suspended(terminal, move || {
+                crate::commands::service::disable(&paths, &name, false)
+            })
+        }
     };
 
     match result {
@@ -161,6 +173,8 @@ fn dispatch_action(app: &mut App, terminal: &mut terminal::Tui, action: Action) 
                 }
                 Action::ToggleModule { name, .. } => format!("Disabled module `{name}`."),
                 Action::RunSync { .. } => "Sync complete.".to_string(),
+                Action::EnableService { name } => format!("Enabled service profile `{name}`."),
+                Action::DisableService { name } => format!("Disabled service profile `{name}`."),
             };
             app.show_message(text, MessageLevel::Success, 4);
         }
