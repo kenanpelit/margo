@@ -299,6 +299,9 @@ debian_install_files() {
   # dcli compatibility symlink (mdots was forked from dcli; keeps the
   # user's `dcli sync` muscle memory + mshell pipewire trigger working).
   $SUDO ln -sf mdots "/usr/bin/dcli"
+  # record it so uninstall removes the symlink too (install_file isn't
+  # used here because the target is a symlink, not a copied file).
+  printf '%s\n' "/usr/bin/dcli" | $SUDO tee -a "$MANIFEST" >/dev/null
   # margo-portal lives under /usr/lib (D-Bus-activated, not a CLI)
   install_file 755 "${tgt}/margo-portal" "/usr/lib/margo/margo-portal"
 
@@ -432,7 +435,7 @@ debian_uninstall() {
   if [[ ! -f "$MANIFEST" ]]; then
     warn "no manifest at ${MANIFEST} — removing known fixed paths only"
     local p
-    for p in /usr/bin/{margo,start-margo,mctl,mlock,mlayout,mscreenshot,mvisual,mplay,mshell,mshellctl,mshellshare,mpicker,mwizard} \
+    for p in /usr/bin/{margo,start-margo,mctl,mlock,mlayout,mscreenshot,mvisual,mplay,mdots,dcli,mshell,mshellctl,mshellshare,mpicker,mwizard} \
              /usr/bin/margo-uwsm-session /usr/bin/margo-session \
              /usr/lib/margo/margo-portal \
              /usr/share/wayland-sessions/margo-uwsm.desktop \
