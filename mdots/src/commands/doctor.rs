@@ -152,18 +152,25 @@ fn check_backend(config_opt: Option<&crate::config::Config>, out: &mut Vec<Check
         )),
     }
 
-    // Resolve AUR helper
+    // Resolve AUR helper. `resolve_aur_helper` can return Ok(name) for an
+    // auto-detected helper that is not actually on PATH, so verify with `which`
+    // and downgrade to a warning when the binary is missing.
     match crate::config::resolve_aur_helper(config) {
-        Ok(helper) => {
-            let path_str = which::which(&helper)
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|_| helper.clone());
-            out.push(Check::ok(
+        Ok(helper) => match which::which(&helper) {
+            Ok(path) => out.push(Check::ok(
                 AREA,
                 "AUR helper",
-                format!("{} found at {}", helper, path_str),
-            ));
-        }
+                format!("{} found at {}", helper, path.display()),
+            )),
+            Err(_) => out.push(Check::warn(
+                AREA,
+                "AUR helper",
+                format!(
+                    "{} configured but not in PATH — AUR packages will fail",
+                    helper
+                ),
+            )),
+        },
         Err(e) => out.push(Check::warn(
             AREA,
             "AUR helper",
@@ -237,9 +244,13 @@ fn check_secrets(
     };
 
     let repo_root = &paths.config_dir;
-    let key_path = resolve_key_path(config.sops_key_path.as_deref(), &home);
+    // When no `sops_key_path` is configured, sops falls back to its default
+    // location (~/.config/sops/age/keys.txt — the same path `secrets keygen`
+    // writes). Probe that rather than assuming the key is present.
+    let key_path = resolve_key_path(config.sops_key_path.as_deref(), &home)
+        .unwrap_or_else(|| home.join(".config/sops/age/keys.txt"));
     let sops = sops_available();
-    let key_available = key_path.as_ref().map(|k| k.exists()).unwrap_or(true);
+    let key_available = key_path.exists();
 
     for entry in &config.secrets {
         let name = secret_name(entry);
@@ -269,13 +280,7 @@ fn check_secrets(
             SecretState::KeyMissing => Check::fail(
                 AREA,
                 name,
-                format!(
-                    "age key not found (sops_key_path = {})",
-                    key_path
-                        .as_deref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "~/.config/sops/age/keys.txt".to_string())
-                ),
+                format!("age key not found at {}", key_path.display()),
             ),
         };
         out.push(check);
@@ -296,7 +301,6 @@ fn check_lua(
 
     let modules_dir = paths.modules_dir();
     let mut lua_checked = 0u32;
-    let mut lua_errors = 0u32;
 
     for module_name in &config.enabled_modules {
         let lua_path = modules_dir.join(format!("{}.lua", module_name));
@@ -322,7 +326,6 @@ fn check_lua(
                 format!("{} evaluates OK", effective_path.display()),
             ));
         } else {
-            lua_errors += 1;
             let msgs: Vec<String> = result.errors.iter().map(|e| e.message.clone()).collect();
             out.push(Check::fail(
                 AREA,
@@ -338,10 +341,6 @@ fn check_lua(
             "Lua modules",
             "no enabled Lua modules to check",
         ));
-    } else if lua_errors == 0 {
-        // Individual Ok checks were already pushed; add a summary too
-        // (individual per-module checks already printed; no extra summary needed)
-        let _ = lua_errors; // already zero
     }
 }
 
@@ -544,9 +543,14 @@ mod tests {
     }
 
     #[test]
-    fn health_variants_are_distinguishable() {
-        assert_ne!(Health::Ok, Health::Warn);
-        assert_ne!(Health::Warn, Health::Fail);
-        assert_ne!(Health::Ok, Health::Fail);
+    fn summarize_counts_each_severity_bucket_independently() {
+        // A mixed vector with all three severities must count each bucket
+        // separately and still fail overall because a Fail is present.
+        let checks = vec![ok("A"), ok("B"), warn("C"), fail("D")];
+        let (ok_c, warn_c, fail_c, code) = summarize(&checks);
+        assert_eq!(ok_c, 2, "two Ok checks");
+        assert_eq!(warn_c, 1, "one Warn check");
+        assert_eq!(fail_c, 1, "one Fail check");
+        assert_eq!(code, 1, "presence of a Fail must exit 1");
     }
 }
