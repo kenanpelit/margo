@@ -1323,21 +1323,41 @@ pub struct ConfigPaths {
     pub config_backups_dir: PathBuf,
 }
 
+/// One-shot: if the user still has a legacy ~/.config/dcli and no
+/// ~/.config/mdots yet, copy it across so the rename is transparent.
+/// Honoured only when MDOTS_CONFIG_DIR is unset.
+fn migrate_legacy_dcli_dir(home: &str) {
+    if std::env::var("MDOTS_CONFIG_DIR").is_ok() {
+        return;
+    }
+    let new_dir = PathBuf::from(home).join(".config/mdots");
+    let old_dir = PathBuf::from(home).join(".config/dcli");
+    if new_dir.exists() || !old_dir.is_dir() {
+        return;
+    }
+    if let Err(e) = crate::commands::migrate::copy_dir_recursive(&old_dir, &new_dir) {
+        log::warn!("mdots: legacy ~/.config/dcli migration failed: {e}");
+    } else {
+        log::info!("mdots: migrated ~/.config/dcli -> ~/.config/mdots");
+    }
+}
+
 impl ConfigPaths {
     /// Create configuration paths from environment or defaults.
     /// Checks for config directories in this order:
-    /// 1. DCLI_CONFIG_DIR env var (if set)
+    /// 1. MDOTS_CONFIG_DIR env var (if set)
     /// 2. ARCH_CONFIG_DIR env var (legacy, if set)
-    /// 3. ~/.config/dcli/ (new default)
+    /// 3. ~/.config/mdots/ (new default)
     /// 4. ~/.config/arch-config/ (legacy fallback)
     pub fn new() -> Result<Self> {
-        let config_dir = if let Ok(custom) = std::env::var("DCLI_CONFIG_DIR") {
+        let config_dir = if let Ok(custom) = std::env::var("MDOTS_CONFIG_DIR") {
             PathBuf::from(custom)
         } else if let Ok(custom) = std::env::var("ARCH_CONFIG_DIR") {
             PathBuf::from(custom)
         } else {
             let home = std::env::var("HOME").context("HOME environment variable not set")?;
-            let new_path = PathBuf::from(&home).join(".config/dcli");
+            migrate_legacy_dcli_dir(&home);
+            let new_path = PathBuf::from(&home).join(".config/mdots");
             let legacy_path = PathBuf::from(&home).join(".config/arch-config");
 
             if new_path.exists() {

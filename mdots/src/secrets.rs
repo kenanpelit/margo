@@ -535,7 +535,7 @@ mod tests {
         PathBuf::from("/home/alice")
     }
     fn repo() -> PathBuf {
-        PathBuf::from("/home/alice/.config/dcli")
+        PathBuf::from("/home/alice/.config/mdots")
     }
 
     #[test]
@@ -546,7 +546,7 @@ mod tests {
 
     #[test]
     fn resolve_target_rejects_path_inside_repo() {
-        let err = resolve_secret_target("/home/alice/.config/dcli/secrets/leak", &home(), &repo());
+        let err = resolve_secret_target("/home/alice/.config/mdots/secrets/leak", &home(), &repo());
         assert!(
             err.is_err(),
             "must refuse plaintext targets inside the repo"
@@ -555,7 +555,7 @@ mod tests {
 
     #[test]
     fn resolve_target_rejects_repo_escape_via_dotdot() {
-        let err = resolve_secret_target("~/.config/dcli/../dcli/x", &home(), &repo());
+        let err = resolve_secret_target("~/.config/mdots/../mdots/x", &home(), &repo());
         assert!(
             err.is_err(),
             "lexical normalization must catch .. that lands back in the repo"
@@ -564,8 +564,8 @@ mod tests {
 
     #[test]
     fn resolve_target_allows_sibling_with_shared_prefix() {
-        // /home/alice/.config/dcli-other is NOT inside /home/alice/.config/dcli
-        assert!(resolve_secret_target("~/.config/dcli-other/x", &home(), &repo()).is_ok());
+        // /home/alice/.config/mdots-other is NOT inside /home/alice/.config/mdots
+        assert!(resolve_secret_target("~/.config/mdots-other/x", &home(), &repo()).is_ok());
     }
 
     #[test]
