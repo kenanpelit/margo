@@ -74,15 +74,19 @@ pub fn screen_hints(screen: &Screen) -> &'static [KeyHint] {
     }
 }
 
-/// Short, one-line hint set for the statusbar footer: the active screen's
-/// context keys (its filter-mode keys if a filter is currently focused)
-/// plus the two keys that are always reachable.
+/// Short, one-line hint set for the statusbar footer.
+///
+/// While a filter field is focused the footer shows only the
+/// [`FILTER_HINTS`] (Enter/Esc/Backspace): `?` is a valid filter character
+/// in that state — it types into the query rather than opening help — and
+/// `q` likewise types `q`, so neither may be advertised as a shortcut there.
+/// Otherwise it shows the screen's context keys plus the two globals that
+/// are always reachable (`?` help, `q` quit).
 pub fn footer_hints(screen: &Screen) -> Vec<KeyHint> {
-    let mut hints: Vec<KeyHint> = if screen.is_filtering() {
-        FILTER_HINTS.to_vec()
-    } else {
-        screen_hints(screen).to_vec()
-    };
+    if screen.is_filtering() {
+        return FILTER_HINTS.to_vec();
+    }
+    let mut hints: Vec<KeyHint> = screen_hints(screen).to_vec();
     hints.push(KeyHint::new("?", "help"));
     hints.push(KeyHint::new("q", "quit"));
     hints
@@ -126,6 +130,12 @@ mod tests {
         let hints = footer_hints(&screen);
         assert!(hints.iter().any(|h| h.key == "Enter / Esc"));
         assert!(!hints.iter().any(|h| h.key == "/"));
+        // `?` and `q` are valid filter characters while filtering, so the
+        // footer must NOT advertise them as shortcuts in that state — only
+        // the FILTER_HINTS are authoritative here.
+        assert!(!hints.iter().any(|h| h.key == "?"));
+        assert!(!hints.iter().any(|h| h.key == "q"));
+        assert_eq!(hints, FILTER_HINTS.to_vec());
     }
 
     #[test]

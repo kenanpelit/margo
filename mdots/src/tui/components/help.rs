@@ -35,12 +35,6 @@ pub fn render_help_overlay(screen: &Screen, frame: &mut Frame, area: Rect) -> Re
     lines.push(section_heading(&format!("This screen — {}", screen.name())));
     lines.extend(hint_lines(keybindings::screen_hints(screen)));
 
-    if screen.is_filtering() {
-        lines.push(Line::from(""));
-        lines.push(section_heading("Filter field (active)"));
-        lines.extend(hint_lines(keybindings::FILTER_HINTS));
-    }
-
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Press ? or Esc to close",
