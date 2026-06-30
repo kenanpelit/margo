@@ -32,6 +32,11 @@ pub struct App {
     /// Whether the `?` keybinding help overlay is currently shown
     pub help_visible: bool,
 
+    /// The modal doctor health-check overlay (opened with `D`), or `None`
+    /// when closed. Holds the checks gathered when it was opened plus the
+    /// current scroll offset.
+    pub doctor: Option<DoctorOverlay>,
+
     /// Global message/notification
     pub status_message: Option<StatusMessage>,
 
@@ -74,6 +79,14 @@ pub struct StatusMessage {
     pub text: String,
     pub level: MessageLevel,
     pub expires_at: Instant,
+}
+
+/// State for the modal doctor health-check overlay. The `checks` are
+/// gathered once (read-only) when the overlay opens; `scroll` is the
+/// vertical line offset driven by j/k while it's shown.
+pub struct DoctorOverlay {
+    pub checks: Vec<crate::commands::doctor::Check>,
+    pub scroll: u16,
 }
 
 /// A confirmed, system-mutating action a screen can request via
@@ -211,6 +224,7 @@ impl App {
             dialog: None,
             pending_action: None,
             help_visible: false,
+            doctor: None,
             status_message: None,
             should_quit: false,
             needs_refresh: true,
@@ -251,6 +265,25 @@ impl App {
 
     /// Handle global keybindings (works across all screens)
     pub fn handle_global_key(&mut self, key: KeyCode) -> Result<bool> {
+        // The doctor overlay is modal: while it's open it swallows every key
+        // except scroll (j/k, ↑/↓) and the keys that close it. Checked before
+        // help since the two are mutually exclusive but both fully modal.
+        if let Some(doctor) = &mut self.doctor {
+            match key {
+                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('D') | KeyCode::Char('d') => {
+                    self.doctor = None;
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    doctor.scroll = doctor.scroll.saturating_add(1);
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    doctor.scroll = doctor.scroll.saturating_sub(1);
+                }
+                _ => {}
+            }
+            return Ok(true);
+        }
+
         // The help overlay is modal: while it's open it swallows every key
         // except the two that close it, so nothing scrolls/navigates
         // invisibly underneath it.
@@ -271,6 +304,14 @@ impl App {
             // "what?").
             KeyCode::Char('?') if self.dialog.is_none() && !self.current_screen.is_filtering() => {
                 self.help_visible = true;
+                return Ok(true);
+            }
+            // Shift+D opens the read-only doctor health-check overlay. Gathered
+            // synchronously here — `gather_checks` only probes, never writes,
+            // so it's safe to run without suspending the TUI.
+            KeyCode::Char('D') if self.dialog.is_none() && !self.current_screen.is_filtering() => {
+                let checks = crate::commands::doctor::gather_checks(&self.paths);
+                self.doctor = Some(DoctorOverlay { checks, scroll: 0 });
                 return Ok(true);
             }
             KeyCode::Char('m') => {

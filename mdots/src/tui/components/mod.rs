@@ -1,10 +1,12 @@
 pub mod dialog;
+pub mod doctor;
 pub mod help;
 pub mod sidebar;
 pub mod statusbar;
 pub mod titlebar;
 
 pub use dialog::render_dialog;
+pub use doctor::render_doctor_overlay;
 pub use help::render_help_overlay;
 pub use sidebar::render_sidebar;
 pub use statusbar::render_statusbar;

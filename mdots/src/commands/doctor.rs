@@ -428,15 +428,10 @@ fn print_report(checks: &[Check]) {
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
-/// Run all health checks, print the report, and return the exit code.
-///
-/// Returns `Ok(0)` when all checks pass (or only warn), `Ok(1)` when at least
-/// one check fails. The caller is responsible for calling
-/// `std::process::exit(code)` when appropriate.
-pub fn run(paths: &ConfigPaths) -> Result<i32> {
-    println!("{}", "=== mdots doctor ===".bold().blue());
-    println!();
-
+/// Run every probe and return the collected check results, in report order,
+/// without printing anything. Shared by the CLI [`run`] and the TUI doctor
+/// overlay so both see exactly the same checks.
+pub fn gather_checks(paths: &ConfigPaths) -> Vec<Check> {
     let mut checks: Vec<Check> = Vec::new();
 
     // 1. Config — must come first so subsequent checks can reuse the loaded Config
@@ -460,6 +455,20 @@ pub fn run(paths: &ConfigPaths) -> Result<i32> {
 
     // 6. Nix / home-manager
     check_nix(config_opt.as_ref(), &mut checks);
+
+    checks
+}
+
+/// Run all health checks, print the report, and return the exit code.
+///
+/// Returns `Ok(0)` when all checks pass (or only warn), `Ok(1)` when at least
+/// one check fails. The caller is responsible for calling
+/// `std::process::exit(code)` when appropriate.
+pub fn run(paths: &ConfigPaths) -> Result<i32> {
+    println!("{}", "=== mdots doctor ===".bold().blue());
+    println!();
+
+    let checks = gather_checks(paths);
 
     // Print grouped report
     print_report(&checks);

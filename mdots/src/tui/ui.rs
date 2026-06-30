@@ -6,7 +6,8 @@ use ratatui::{
 
 use super::app::App;
 use super::components::{
-    render_dialog, render_help_overlay, render_sidebar, render_statusbar, render_titlebar,
+    render_dialog, render_doctor_overlay, render_help_overlay, render_sidebar, render_statusbar,
+    render_titlebar,
 };
 
 /// Main UI rendering function
@@ -64,6 +65,11 @@ pub fn render(app: &mut App, frame: &mut Frame) -> Result<()> {
     // while no dialog is active, but render order stays defensive).
     if app.help_visible {
         render_help_overlay(&app.current_screen, frame, size)?;
+    }
+
+    // Render the doctor health-check overlay (if open) - topmost of all.
+    if let Some(doctor) = &app.doctor {
+        render_doctor_overlay(&doctor.checks, doctor.scroll, frame, size)?;
     }
 
     Ok(())

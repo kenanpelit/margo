@@ -23,6 +23,7 @@ impl KeyHint {
 /// Keybindings that work on every screen, regardless of mode.
 pub const GLOBAL_HINTS: &[KeyHint] = &[
     KeyHint::new("?", "toggle this help"),
+    KeyHint::new("D", "health check (doctor)"),
     KeyHint::new("q", "quit"),
     KeyHint::new("m", "toggle sidebar"),
     KeyHint::new("Esc", "back / close"),
