@@ -186,37 +186,11 @@ impl PackageManager {
             _ => Ok(Vec::new()), // Flatpak not installed or no packages
         }
     }
-
-    /// Check if a package needs to be installed
-    #[allow(dead_code)]
-    pub fn check_package_status(
-        &self,
-        pkg: &Package,
-        installed: &HashMap<String, String>,
-    ) -> PackageStatus {
-        match &pkg.package_type {
-            PackageType::Native => {
-                if installed.contains_key(&pkg.name) {
-                    PackageStatus::Satisfied
-                } else {
-                    PackageStatus::NeedsInstall
-                }
-            }
-            PackageType::Flatpak => PackageStatus::NeedsInstall,
-            PackageType::Nix => PackageStatus::NeedsInstall,
-        }
-    }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
-pub enum PackageStatus {
-    Satisfied,
-    NeedsInstall,
-}
-
-/// Compare two version strings (simple implementation)
+/// Compare two version strings using `vercmp` if available, falling back to lexicographic order.
 /// Returns: -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
+// kept: tested utility; Lua helpers has an independent copy but this one delegates to `vercmp`
 #[allow(dead_code)]
 pub fn compare_versions(v1: &str, v2: &str) -> i32 {
     // Use vercmp from pacman if available, otherwise do simple comparison
@@ -241,8 +215,8 @@ pub fn compare_versions(v1: &str, v2: &str) -> i32 {
 }
 
 /// Represents the sync plan (what needs to be done)
+#[allow(dead_code)] // kept: package sync-plan API exercised by tests; not yet wired into sync flow
 #[derive(Debug, Default)]
-#[allow(dead_code)]
 pub struct SyncPlan {
     pub to_install: Vec<Package>,
     pub to_remove: Vec<String>,
@@ -251,33 +225,12 @@ pub struct SyncPlan {
 }
 
 impl SyncPlan {
-    #[allow(dead_code)]
+    #[allow(dead_code)] // kept: see SyncPlan; exercised by tests, not yet wired into sync flow
     pub fn is_empty(&self) -> bool {
         self.to_install.is_empty()
             && self.to_remove.is_empty()
             && self.flatpak_to_install.is_empty()
             && self.flatpak_to_remove.is_empty()
-    }
-
-    #[allow(dead_code)]
-    pub fn summary(&self) -> String {
-        let mut lines = Vec::new();
-
-        if !self.to_install.is_empty() {
-            lines.push(format!("Packages to install: {}", self.to_install.len()));
-        }
-        if !self.flatpak_to_install.is_empty() {
-            lines.push(format!(
-                "Flatpaks to install: {}",
-                self.flatpak_to_install.len()
-            ));
-        }
-
-        if lines.is_empty() {
-            "No changes needed".to_string()
-        } else {
-            lines.join("\n")
-        }
     }
 }
 

@@ -688,14 +688,16 @@ fn main() -> Result<()> {
         } => {
             commands::sync::run(
                 &paths,
-                dry_run,
-                prune,
-                force,
-                no_backup,
-                no_hooks,
-                force_dotfiles,
-                cli.json,
-                auto_commit,
+                commands::sync::SyncOptions {
+                    dry_run,
+                    prune,
+                    force,
+                    no_backup,
+                    no_hooks,
+                    force_dotfiles,
+                    json: cli.json,
+                    auto_commit,
+                },
             )?;
         }
         Commands::Validate { check_packages } => {

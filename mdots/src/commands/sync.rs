@@ -321,6 +321,8 @@ fn execute_module_hook(
         return Err(anyhow!("Hook script not found: {:?}", hook_path));
     }
 
+    let hook_path_str = hook_path.to_str().context("hook path is not valid UTF-8")?;
+
     let hook_type = if is_pre_install {
         "pre-install"
     } else {
@@ -337,7 +339,7 @@ fn execute_module_hook(
                     "-u",
                     &username,
                     "bash",
-                    hook_path.to_str().unwrap(),
+                    hook_path_str,
                 ])
                 .env("MDOTS_LOG_INDENT", " ".repeat(crate::ui::DETAIL_INDENT))
                 .stdin(std::process::Stdio::inherit())
@@ -360,11 +362,7 @@ fn execute_module_hook(
         None => {
             // Run with sudo as root (default)
             std::process::Command::new("sudo")
-                .args([
-                    "--preserve-env=MDOTS_LOG_INDENT",
-                    "bash",
-                    hook_path.to_str().unwrap(),
-                ])
+                .args(["--preserve-env=MDOTS_LOG_INDENT", "bash", hook_path_str])
                 .env("MDOTS_LOG_INDENT", " ".repeat(crate::ui::DETAIL_INDENT))
                 .stdin(std::process::Stdio::inherit())
                 .stdout(if json {
@@ -478,14 +476,14 @@ fn auto_commit_changes(paths: &ConfigPaths, json: bool) -> anyhow::Result<()> {
         anyhow::bail!("Not a git repository");
     }
 
+    let config_dir = paths
+        .config_dir
+        .to_str()
+        .context("config dir path is not valid UTF-8")?;
+
     // Check if there are any changes to commit
     let status_output = Command::new("git")
-        .args([
-            "-C",
-            paths.config_dir.to_str().unwrap(),
-            "status",
-            "--porcelain",
-        ])
+        .args(["-C", config_dir, "status", "--porcelain"])
         .output()?;
 
     if status_output.stdout.is_empty() {
@@ -499,7 +497,7 @@ fn auto_commit_changes(paths: &ConfigPaths, json: bool) -> anyhow::Result<()> {
 
     // Stage all changes
     let add_result = Command::new("git")
-        .args(["-C", paths.config_dir.to_str().unwrap(), "add", "."])
+        .args(["-C", config_dir, "add", "."])
         .status()?;
 
     if !add_result.success() {
@@ -515,13 +513,7 @@ fn auto_commit_changes(paths: &ConfigPaths, json: bool) -> anyhow::Result<()> {
     // Commit changes
     let commit_message = format!("Synced changes from {}", hostname);
     let commit_result = Command::new("git")
-        .args([
-            "-C",
-            paths.config_dir.to_str().unwrap(),
-            "commit",
-            "-m",
-            &commit_message,
-        ])
+        .args(["-C", config_dir, "commit", "-m", &commit_message])
         .status()?;
 
     if !commit_result.success() {
@@ -1153,19 +1145,29 @@ fn create_sync_backups(paths: &ConfigPaths, config: &Config) {
     }
 }
 
-// CLI flag set: this command exposes one parameter per sync flag.
-#[allow(clippy::too_many_arguments)]
-pub fn run(
-    paths: &ConfigPaths,
-    dry_run: bool,
-    prune: bool,
-    force: bool,
-    no_backup: bool,
-    no_hooks: bool,
-    force_dotfiles: bool,
-    json: bool,
-    auto_commit: bool,
-) -> Result<()> {
+/// CLI flag set passed to [`run`]; one field per sync flag.
+pub struct SyncOptions {
+    pub dry_run: bool,
+    pub prune: bool,
+    pub force: bool,
+    pub no_backup: bool,
+    pub no_hooks: bool,
+    pub force_dotfiles: bool,
+    pub json: bool,
+    pub auto_commit: bool,
+}
+
+pub fn run(paths: &ConfigPaths, opts: SyncOptions) -> Result<()> {
+    let SyncOptions {
+        dry_run,
+        prune,
+        force,
+        no_backup,
+        no_hooks,
+        force_dotfiles,
+        json,
+        auto_commit,
+    } = opts;
     let started = std::time::Instant::now();
 
     // If a previous sync left an in-progress marker, it did not finish — the
@@ -1858,7 +1860,8 @@ fn run_pre_install_hooks(
             continue;
         }
 
-        execute_command("sudo", &["bash", hook_path.to_str().unwrap()], json, false)?;
+        let hook_path_str = hook_path.to_str().context("hook path is not valid UTF-8")?;
+        execute_command("sudo", &["bash", hook_path_str], json, false)?;
 
         mark_hook_executed(paths, &format!("pre_{}", module_name), &hook_path)?;
 
@@ -2068,7 +2071,8 @@ fn run_post_install_hooks(
             continue;
         }
 
-        match execute_command("sudo", &["bash", hook_path.to_str().unwrap()], json, false) {
+        let hook_path_str = hook_path.to_str().context("hook path is not valid UTF-8")?;
+        match execute_command("sudo", &["bash", hook_path_str], json, false) {
             Ok(()) => {
                 mark_hook_executed(paths, &module_name, &hook_path)?;
                 if !json {

@@ -44,7 +44,7 @@ pub struct SidebarItem {
     pub icon: &'static str,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // kept: complete TUI dialog-kind set; not every kind is constructed yet
 pub enum Dialog {
     Confirm {
         title: String,
@@ -67,8 +67,8 @@ pub struct StatusMessage {
     pub expires_at: Instant,
 }
 
+#[allow(dead_code)] // kept: complete status-severity set; not every level is emitted yet
 #[derive(Clone, Copy)]
-#[allow(dead_code)]
 pub enum MessageLevel {
     Info,
     Success,

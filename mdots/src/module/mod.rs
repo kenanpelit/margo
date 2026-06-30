@@ -352,8 +352,8 @@ impl ModuleManager {
     }
 }
 
+#[allow(dead_code)] // kept: module metadata parsed for introspection; not all fields consumed yet
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ModuleInfo {
     pub name: String,
     pub description: String,

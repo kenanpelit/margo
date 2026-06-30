@@ -95,8 +95,12 @@ fn add_package_to_host_config(package: &str, paths: &ConfigPaths) -> Result<()> 
             "→".blue(),
             declared_packages_file.display()
         );
-        fs::create_dir_all(declared_packages_file.parent().unwrap())
-            .context("Failed to create parent directory")?;
+        fs::create_dir_all(
+            declared_packages_file
+                .parent()
+                .context("declared-packages file has no parent directory")?,
+        )
+        .context("Failed to create parent directory")?;
     }
 
     write_package_list_any(&declared_packages_file, &pkg_list).with_context(|| {
@@ -185,8 +189,12 @@ fn remove_package_from_host_config(package: &str, paths: &ConfigPaths) -> Result
     }
 
     if !declared_packages_file.exists() {
-        fs::create_dir_all(declared_packages_file.parent().unwrap())
-            .context("Failed to create parent directory")?;
+        fs::create_dir_all(
+            declared_packages_file
+                .parent()
+                .context("declared-packages file has no parent directory")?,
+        )
+        .context("Failed to create parent directory")?;
     }
 
     write_package_list_any(&declared_packages_file, &pkg_list).with_context(|| {

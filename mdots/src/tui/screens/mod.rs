@@ -25,7 +25,7 @@ pub trait ScreenTrait {
 }
 
 /// Actions that screens can request
-#[allow(dead_code)]
+#[allow(dead_code)] // kept: complete screen-action set; None/Refresh reserved for screens
 pub enum ScreenAction {
     None,
     Back,

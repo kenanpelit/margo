@@ -22,7 +22,7 @@ pub fn load_nix_config(path: &Path) -> Result<Config> {
         .with_context(|| format!("Failed to evaluate Nix config: {:?}", path))?;
     let raw: types::NixConfigRaw = parse_nix_config(value)
         .with_context(|| format!("Failed to parse Nix config JSON from {:?}", path))?;
-    Ok(raw.to_config())
+    Ok(raw.into_config())
 }
 
 pub fn load_nix_module(path: &Path) -> Result<NixModule> {
@@ -31,7 +31,7 @@ pub fn load_nix_module(path: &Path) -> Result<NixModule> {
         .with_context(|| format!("Failed to evaluate Nix module: {:?}", path))?;
     let raw: NixModuleRaw = parse_nix_module(value)
         .with_context(|| format!("Failed to parse Nix module JSON from {:?}", path))?;
-    Ok(raw.to_nix_module(path.to_path_buf()))
+    Ok(raw.into_nix_module(path.to_path_buf()))
 }
 
 pub fn load_nix_module_as_module_structure(path: &Path) -> Result<ModuleStructure> {
@@ -68,7 +68,7 @@ pub fn load_nix_directory_module(path: &Path) -> Result<(ModuleManifest, Vec<Pac
     let raw: NixModuleRaw = parse_nix_module(value)
         .with_context(|| format!("Failed to parse Nix module JSON from {:?}", path))?;
 
-    let manifest = raw.clone().to_module_manifest();
+    let manifest = raw.clone().into_module_manifest();
 
     let mut packages: Vec<PackageEntry> =
         raw.packages.iter().map(|e| e.to_package_entry()).collect();

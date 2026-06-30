@@ -97,6 +97,7 @@ fn extract_services(table: &Table) -> Result<ServicesConfig> {
 }
 
 /// Validate a service profile file
+// kept: pub API for validating service profiles (validates parse without returning parsed result)
 #[allow(dead_code)]
 pub fn validate_service_profile(path: &Path) -> Result<()> {
     load_service_profile(path)?;

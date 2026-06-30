@@ -3,7 +3,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent}
 use std::time::Duration;
 
 /// Events that the TUI can handle
-#[allow(dead_code)]
+#[allow(dead_code)] // kept: complete terminal-event set; mouse/resize payloads not consumed yet
 pub enum TuiEvent {
     /// Keyboard input
     Key(KeyEvent),

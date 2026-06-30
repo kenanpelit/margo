@@ -99,11 +99,9 @@ fn is_flatpak_installed() -> bool {
 }
 
 fn run_pre_update_hook(paths: &ConfigPaths, config: &crate::config::Config) -> Result<()> {
-    if config.update_hooks.pre_update.is_none() {
+    let Some(hook_script) = config.update_hooks.pre_update.as_ref() else {
         return Ok(());
-    }
-
-    let hook_script = config.update_hooks.pre_update.as_ref().unwrap();
+    };
     let hook_path = if std::path::Path::new(hook_script).is_absolute() {
         std::path::PathBuf::from(hook_script)
     } else {
@@ -124,11 +122,9 @@ fn run_pre_update_hook(paths: &ConfigPaths, config: &crate::config::Config) -> R
 }
 
 fn run_post_update_hook(paths: &ConfigPaths, config: &crate::config::Config) -> Result<()> {
-    if config.update_hooks.post_update.is_none() {
+    let Some(hook_script) = config.update_hooks.post_update.as_ref() else {
         return Ok(());
-    }
-
-    let hook_script = config.update_hooks.post_update.as_ref().unwrap();
+    };
     let hook_path = if std::path::Path::new(hook_script).is_absolute() {
         std::path::PathBuf::from(hook_script)
     } else {

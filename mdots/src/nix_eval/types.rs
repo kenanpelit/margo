@@ -450,9 +450,7 @@ fn parse_run_hooks_as_user(value: &Option<serde_json::Value>) -> RunHooksAsUser 
 
 impl NixConfigRaw {
     #[allow(deprecated)]
-    // Consuming conversion: takes `self` by value intentionally.
-    #[allow(clippy::wrong_self_convention)]
-    pub fn to_config(self) -> Config {
+    pub fn into_config(self) -> Config {
         let mut packages: Vec<PackageEntry> =
             self.packages.iter().map(|e| e.to_package_entry()).collect();
 
@@ -645,9 +643,7 @@ impl NixConfigRaw {
 }
 
 impl NixModuleRaw {
-    // Consuming conversion: takes `self` by value intentionally.
-    #[allow(clippy::wrong_self_convention)]
-    pub fn to_nix_module(self, path: PathBuf) -> NixModule {
+    pub fn into_nix_module(self, path: PathBuf) -> NixModule {
         let mut packages: Vec<PackageEntry> =
             self.packages.iter().map(|e| e.to_package_entry()).collect();
 
@@ -704,9 +700,7 @@ impl NixModuleRaw {
         }
     }
 
-    // Consuming conversion: takes `self` by value intentionally.
-    #[allow(clippy::wrong_self_convention)]
-    pub fn to_module_manifest(self) -> ModuleManifest {
+    pub fn into_module_manifest(self) -> ModuleManifest {
         let run_hooks_as_user = parse_run_hooks_as_user(&self.run_hooks_as_user);
 
         ModuleManifest {

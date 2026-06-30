@@ -388,7 +388,17 @@ fn prompt_for_sync(paths: &ConfigPaths) -> Result<()> {
     if input.is_empty() || input == "y" || input == "yes" {
         println!();
         crate::commands::sync::run(
-            paths, false, false, false, false, false, false, false, false,
+            paths,
+            crate::commands::sync::SyncOptions {
+                dry_run: false,
+                prune: false,
+                force: false,
+                no_backup: false,
+                no_hooks: false,
+                force_dotfiles: false,
+                json: false,
+                auto_commit: false,
+            },
         )?;
     } else {
         println!("Skipped sync. Run 'mdots sync' later to install packages.");

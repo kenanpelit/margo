@@ -251,15 +251,7 @@ pub enum FlatpakScope {
     System,
 }
 
-impl FlatpakScope {
-    #[allow(dead_code)]
-    pub fn as_flag(&self) -> &str {
-        match self {
-            FlatpakScope::User => "--user",
-            FlatpakScope::System => "--system",
-        }
-    }
-}
+impl FlatpakScope {}
 
 /// Hook execution user configuration
 /// Can be specified as a boolean (backward compat) or username string
@@ -498,15 +490,7 @@ pub enum DefaultsScope {
     System,
 }
 
-impl DefaultsScope {
-    #[allow(dead_code)]
-    pub fn as_flag(&self) -> &str {
-        match self {
-            DefaultsScope::User => "--user",
-            DefaultsScope::System => "--system",
-        }
-    }
-}
+impl DefaultsScope {}
 
 fn default_defaults_scope() -> DefaultsScope {
     DefaultsScope::System
@@ -899,6 +883,7 @@ pub enum ModuleStructure {
 }
 
 /// Dynamic module structure for Nix-based modules
+#[allow(dead_code)] // kept: fields parsed from Nix module config; retained for round-trip fidelity
 #[derive(Debug, Clone)]
 pub struct DynamicModule {
     /// Path to the .nix file
@@ -981,41 +966,6 @@ impl ModuleStructure {
             ModuleStructure::Directory(dir) => dir.manifest.post_disable_hook.as_deref(),
             ModuleStructure::Lua(lua) => lua.post_disable_hook.as_deref(),
             ModuleStructure::Nix(dyn_mod) => dyn_mod.post_disable_hook.as_deref(),
-        }
-    }
-
-    /// Get post-disable hook behavior (with fallback to hook_behavior)
-    #[allow(dead_code)]
-    pub fn post_disable_behavior(&self) -> &str {
-        match self {
-            ModuleStructure::Legacy { content, .. } => content
-                .post_disable_behavior
-                .as_deref()
-                .unwrap_or(&content.hook_behavior),
-            ModuleStructure::Directory(dir) => dir
-                .manifest
-                .post_disable_behavior
-                .as_deref()
-                .unwrap_or(&dir.manifest.hook_behavior),
-            ModuleStructure::Lua(lua) => lua
-                .post_disable_behavior
-                .as_deref()
-                .unwrap_or(&lua.hook_behavior),
-            ModuleStructure::Nix(dyn_mod) => dyn_mod
-                .post_disable_behavior
-                .as_deref()
-                .unwrap_or(&dyn_mod.hook_behavior),
-        }
-    }
-
-    /// Get hook behavior from any format
-    #[allow(dead_code)]
-    pub fn hook_behavior(&self) -> &str {
-        match self {
-            ModuleStructure::Legacy { content, .. } => &content.hook_behavior,
-            ModuleStructure::Directory(dir) => &dir.manifest.hook_behavior,
-            ModuleStructure::Lua(lua) => &lua.hook_behavior,
-            ModuleStructure::Nix(dyn_mod) => &dyn_mod.hook_behavior,
         }
     }
 
@@ -1117,17 +1067,6 @@ impl ModuleStructure {
         matches!(self, ModuleStructure::Nix(_))
     }
 
-    /// Get services configuration
-    #[allow(dead_code)]
-    pub fn services(&self) -> Option<&ServicesConfig> {
-        match self {
-            ModuleStructure::Legacy { .. } => None,
-            ModuleStructure::Directory(_) => None,
-            ModuleStructure::Lua(lua) => Some(&lua.services),
-            ModuleStructure::Nix(dyn_mod) => Some(&dyn_mod.services),
-        }
-    }
-
     /// Get the username to run hooks as (None = use sudo/root)
     pub fn run_hooks_as_user(&self) -> Option<String> {
         match self {
@@ -1156,10 +1095,6 @@ pub struct DirectoryModule {
 
     /// Scripts directory (if exists)
     pub scripts_dir: Option<PathBuf>,
-
-    /// Dotfiles directory (if exists)
-    #[allow(dead_code)]
-    pub dotfiles_dir: Option<PathBuf>,
 }
 
 /// Module manifest (module.yaml in directory-based modules)
@@ -1281,35 +1216,8 @@ pub struct SecretEntry {
     pub name: Option<String>,
 }
 
-/// State file tracking installed packages
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
-pub struct StateFile {
-    /// List of installed packages with versions
-    #[serde(default)]
-    pub packages: Vec<InstalledPackage>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
-pub struct InstalledPackage {
-    pub name: String,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-
-    #[serde(default = "default_package_type")]
-    pub r#type: PackageType,
-}
-
-#[allow(dead_code)]
-fn default_package_type() -> PackageType {
-    PackageType::Native
-}
-
 /// Configuration paths
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ConfigPaths {
     pub config_dir: PathBuf,
     pub config_file: PathBuf,
@@ -1482,11 +1390,6 @@ impl ConfigPaths {
         }
 
         new_yaml_path
-    }
-
-    #[allow(dead_code)]
-    pub fn module_file(&self, module_name: &str) -> PathBuf {
-        self.modules_dir().join(format!("{}.yaml", module_name))
     }
 }
 
@@ -2139,20 +2042,12 @@ pub fn load_module<P: AsRef<Path>>(path: P) -> Result<ModuleStructure> {
             None
         };
 
-        let dotfiles_dir = path.join("dotfiles");
-        let dotfiles_dir = if dotfiles_dir.exists() && dotfiles_dir.is_dir() {
-            Some(dotfiles_dir)
-        } else {
-            None
-        };
-
         Ok(ModuleStructure::Directory(DirectoryModule {
             root: path.to_path_buf(),
             manifest,
             package_lists,
             package_file_paths,
             scripts_dir,
-            dotfiles_dir,
         }))
     } else {
         anyhow::bail!("Module path is neither a file nor directory: {:?}", path)
@@ -2187,8 +2082,8 @@ fn discover_package_files(dir: &Path) -> Result<Vec<PathBuf>> {
 
 /// Validation result for modules
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ModuleValidationResult {
+    #[allow(dead_code)] // kept: populated for diagnostics; not yet surfaced to the user
     pub module_name: String,
     pub errors: Vec<String>,
     pub warnings: Vec<String>,
@@ -2201,11 +2096,6 @@ impl ModuleValidationResult {
             errors: Vec::new(),
             warnings: Vec::new(),
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn has_errors(&self) -> bool {
-        !self.errors.is_empty()
     }
 
     pub fn is_clean(&self) -> bool {
@@ -2465,31 +2355,6 @@ pub fn validate_module(module: &ModuleStructure, module_name: &str) -> ModuleVal
     }
 
     result
-}
-
-/// Load state file
-#[allow(dead_code)]
-pub fn load_state(paths: &ConfigPaths) -> Result<StateFile> {
-    if !paths.state_file.exists() {
-        return Ok(StateFile {
-            packages: Vec::new(),
-        });
-    }
-
-    let content =
-        std::fs::read_to_string(&paths.state_file).context("Failed to read state file")?;
-
-    serde_yaml::from_str(&content).context("Failed to parse state file")
-}
-
-/// Save state file
-#[allow(dead_code)]
-pub fn save_state(paths: &ConfigPaths, state: &StateFile) -> Result<()> {
-    std::fs::create_dir_all(&paths.state_dir).context("Failed to create state directory")?;
-
-    let content = serde_yaml::to_string(state).context("Failed to serialize state")?;
-
-    std::fs::write(&paths.state_file, content).context("Failed to write state file")
 }
 
 /// Resolve the editor to use for editing config files

@@ -244,7 +244,8 @@ fn suggest_field_name(input: &str, valid: &[&str]) -> Option<String> {
     None
 }
 
-// Matrix indices are needed on both axes, so range loops are intentional.
+// allow: Levenshtein matrix needs both axes for `a_chars[i-1]` and `b_chars[j-1]` lookups;
+//        iterator rewrite would require unsafe indexing or equivalent complexity.
 #[allow(clippy::needless_range_loop)]
 fn levenshtein_distance(a: &str, b: &str) -> usize {
     let a_chars: Vec<char> = a.chars().collect();

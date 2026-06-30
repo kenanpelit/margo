@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use colored::*;
 use serde_json::json;
 use std::collections::HashMap;
@@ -280,7 +280,9 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
 
             module_count += 1;
 
-            let rel_path = path.strip_prefix(&modules_dir).unwrap();
+            let rel_path = path
+                .strip_prefix(&modules_dir)
+                .context("module path is not under the modules directory")?;
             let module_name = rel_path
                 .to_string_lossy()
                 .trim_end_matches(".yaml")

@@ -205,6 +205,7 @@ pub fn load_lua_module(path: &Path) -> Result<LuaModule> {
 }
 
 /// Validate a Lua module without fully loading it
+// kept: pub API convenience wrapper over validate_lua_module_detailed for callers wanting Result<()>
 #[allow(dead_code)]
 pub fn validate_lua_module(path: &Path) -> Result<()> {
     let result = validate_lua_module_detailed(path);
@@ -728,7 +729,8 @@ fn suggest_field_name(input: &str, valid_fields: &[&str]) -> Option<String> {
 }
 
 /// Simple Levenshtein distance calculation
-// Matrix indices are needed on both axes, so range loops are intentional.
+// allow: Levenshtein matrix needs both axes for `a_chars[i-1]` and `b_chars[j-1]` lookups;
+//        iterator rewrite would require unsafe indexing or equivalent complexity.
 #[allow(clippy::needless_range_loop)]
 fn levenshtein_distance(a: &str, b: &str) -> usize {
     let a_chars: Vec<char> = a.chars().collect();
@@ -1033,18 +1035,8 @@ fn extract_services(table: &Table) -> Result<ServicesConfig> {
     }
 }
 
-/// Validate module table has required structure (legacy simple validation)
-#[allow(dead_code)]
-fn validate_module_table(table: &Table) -> Result<()> {
-    // packages field should exist (can be empty array)
-    let _: Value = table
-        .get("packages")
-        .map_err(|e| anyhow!("Lua module must return a 'packages' field: {}", e))?;
-
-    Ok(())
-}
-
 /// Format a Lua validation result for display
+// kept: pub API counterpart to validate_lua_module_detailed used by callers wanting formatted output
 #[allow(dead_code)]
 pub fn format_validation_result(result: &LuaValidationResult, module_name: &str) -> String {
     let mut output = String::new();
@@ -1071,6 +1063,7 @@ pub fn format_validation_result(result: &LuaValidationResult, module_name: &str)
 
 /// Load a Lua manifest file for a directory module
 /// This is used when a directory module has module.lua instead of module.yaml
+// kept: pub API for loading a standalone Lua manifest (directory-module variant)
 #[allow(dead_code)]
 pub fn load_lua_manifest(path: &Path) -> Result<ModuleManifest> {
     let lua = create_sandboxed_lua()?;
@@ -1959,6 +1952,7 @@ fn extract_mime_types(table: &Table) -> Result<std::collections::HashMap<String,
 }
 
 /// Validate a Lua config file
+// kept: pub API for Lua config validation (counterpart to validate_lua_module)
 #[allow(dead_code)]
 pub fn validate_lua_config(path: &Path) -> Result<()> {
     let result = validate_lua_config_detailed(path);
@@ -1972,6 +1966,7 @@ pub fn validate_lua_config(path: &Path) -> Result<()> {
 }
 
 /// Validate a Lua config file with detailed error information
+// kept: pub API for Lua config validation (counterpart to validate_lua_module_detailed)
 #[allow(dead_code)]
 pub fn validate_lua_config_detailed(path: &Path) -> LuaValidationResult {
     let mut result = LuaValidationResult::new();
@@ -2152,7 +2147,6 @@ pub fn validate_lua_config_detailed(path: &Path) -> LuaValidationResult {
 }
 
 /// Validate the config table structure with detailed reporting
-#[allow(dead_code)]
 fn validate_config_table_detailed(table: &Table, result: &mut LuaValidationResult) {
     // Check for required 'host' field
     match table.get::<Value>("host") {

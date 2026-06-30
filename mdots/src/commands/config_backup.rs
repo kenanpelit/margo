@@ -174,14 +174,14 @@ pub fn save_config(paths: &ConfigPaths, backup_type: &str, json: bool) -> Result
         println!("  {} Compressing archive...", "→".blue());
     }
 
+    let backup_file_str = backup_file
+        .to_str()
+        .context("backup file path is not valid UTF-8")?;
+    let staging_dir_str = staging_dir
+        .to_str()
+        .context("staging dir path is not valid UTF-8")?;
     let tar_status = Command::new("tar")
-        .args([
-            "-czf",
-            backup_file.to_str().unwrap(),
-            "-C",
-            staging_dir.to_str().unwrap(),
-            ".",
-        ])
+        .args(["-czf", backup_file_str, "-C", staging_dir_str, "."])
         .status()
         .context("Failed to create tar archive")?;
 
@@ -378,13 +378,14 @@ pub fn restore_config(paths: &ConfigPaths, backup_name: Option<String>, json: bo
     let temp_dir = tempfile::tempdir()?;
     let extract_dir = temp_dir.path();
 
+    let backup_file_str = backup_file
+        .to_str()
+        .context("backup file path is not valid UTF-8")?;
+    let extract_dir_str = extract_dir
+        .to_str()
+        .context("extract dir path is not valid UTF-8")?;
     let tar_status = Command::new("tar")
-        .args([
-            "-xzf",
-            backup_file.to_str().unwrap(),
-            "-C",
-            extract_dir.to_str().unwrap(),
-        ])
+        .args(["-xzf", backup_file_str, "-C", extract_dir_str])
         .status()
         .context("Failed to extract tar archive")?;
 
