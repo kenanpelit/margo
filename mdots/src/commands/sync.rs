@@ -122,8 +122,10 @@ fn compute_prunable(
 /// Pure prune-preview: from the recorded state packages, the set that a
 /// `--prune` would actually remove — undeclared-but-still-installed packages
 /// with critical system packages filtered out (they are never auto-removed).
-/// Returns `(native_to_remove, flatpak_to_remove)`. Shared by the real sync
-/// path and the read-only TUI preview so the two never diverge.
+/// Returns `(native_to_remove, flatpak_to_remove)`. Used by the read-only TUI
+/// preview via [`compute_prune_preview`]; the real sync path calls
+/// `compute_prunable`/`partition_protected` directly so it can also report the
+/// protected-package skip warning that this helper discards.
 fn prune_set_filtered(
     state_packages: &[StatePackage],
     declared_names: &HashSet<String>,
