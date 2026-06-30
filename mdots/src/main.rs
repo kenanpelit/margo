@@ -521,17 +521,26 @@ fn main() -> Result<()> {
         eprintln!("mdots: log bridge already installed: {e}");
     }
     // Stand up the shared margo-logging engine: per-start session file under
-    // ~/.local/state/margo/logs/mdots-*.log, with a `warn,mdots=info` default
-    // (overridden by RUST_LOG).  Degrades gracefully if the log dir is absent
-    // (falls back to stderr-only, never panics).
+    // ~/.local/state/margo/logs/mdots-*.log, keep-5 rotation. Degrades
+    // gracefully if the log dir is absent (falls back to console-only, never
+    // panics).
     let _log_handle = margo_logging::init(margo_logging::LogInit {
         app_name: "mdots".to_string(),
         dir: margo_logging::logs_dir(),
-        // CLI runs are short-lived: default to debug so the per-session file
-        // captures everything useful for post-hoc diagnosis.
-        level: "debug".to_string(),
+        // File sink at `warn`: routine runs (status/find/diff) produce near-empty
+        // files — only genuine warnings/errors — which is what keep-N rotation is
+        // for. The file layer ignores RUST_LOG by design, so a higher level here
+        // would write full debug dumps on every invocation with no escape hatch.
+        // Users who want live verbosity set RUST_LOG (drives the console layer).
+        level: "warn".to_string(),
         enabled: true,
         keep_sessions: 5,
+        // The console layer writes to STDOUT (margo-logging's `fmt` default), and
+        // its filter is RUST_LOG-driven (falling back to `warn,mdots=warn` when
+        // unset). So routine runs emit no diagnostic noise on stdout; setting
+        // RUST_LOG=debug surfaces debug lines there on demand. Note this differs
+        // from env_logger, which wrote to stderr — diagnostics now share stdout
+        // when RUST_LOG is set.
         to_stdout: true,
         env_override: Some("RUST_LOG".to_string()),
     });
