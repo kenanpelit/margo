@@ -172,6 +172,19 @@ fn dispatch_action(app: &mut App, terminal: &mut terminal::Tui, action: Action) 
         Action::SyncSecrets => terminal::with_suspended(terminal, move || {
             crate::commands::secrets::sync(&paths, false, false, false)
         }),
+        Action::RunHook {
+            module,
+            pre,
+            disable,
+            ..
+        } => {
+            let module = module.clone();
+            let pre = *pre;
+            let disable = *disable;
+            terminal::with_suspended(terminal, move || {
+                crate::commands::hooks::run(&paths, &module, pre, disable)
+            })
+        }
     };
 
     match result {
@@ -186,6 +199,9 @@ fn dispatch_action(app: &mut App, terminal: &mut terminal::Tui, action: Action) 
                 Action::DisableService { name } => format!("Disabled service profile `{name}`."),
                 Action::EditSecret { name } => format!("Edited secret `{name}`."),
                 Action::SyncSecrets => "Secrets synced.".to_string(),
+                Action::RunHook { module, label, .. } => {
+                    format!("Ran `{label}` hook for `{module}`.")
+                }
             };
             app.show_message(text, MessageLevel::Success, 4);
         }

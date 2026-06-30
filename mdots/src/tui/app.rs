@@ -103,6 +103,16 @@ pub enum Action {
     EditSecret { name: String },
     /// Decrypt declared secrets into place — dispatches to `commands::secrets::sync`.
     SyncSecrets,
+    /// Run a single module hook — dispatches to `commands::hooks::run`. The
+    /// `pre`/`disable` flags select which of the module's hooks to run; the
+    /// `label` (e.g. `pre-install`) is carried only for the confirm/status
+    /// text, so they can be built from the `Action` alone.
+    RunHook {
+        module: String,
+        pre: bool,
+        disable: bool,
+        label: String,
+    },
 }
 
 impl Action {
@@ -132,6 +142,10 @@ impl Action {
             Action::SyncSecrets => (
                 "Sync secrets".to_string(),
                 "Decrypt all declared secrets into place (0600)?".to_string(),
+            ),
+            Action::RunHook { module, label, .. } => (
+                "Run hook".to_string(),
+                format!("Run the `{label}` hook for module `{module}` now?"),
             ),
         }
     }
@@ -295,6 +309,7 @@ impl App {
                     3 => Screen::Sync(Default::default()),
                     4 => Screen::Services(Default::default()),
                     5 => Screen::Secrets(Default::default()),
+                    6 => Screen::Hooks(Default::default()),
                     _ => return Ok(false),
                 };
                 self.navigate_to(new_screen);
@@ -335,6 +350,10 @@ impl SidebarState {
                 SidebarItem {
                     name: "Secrets",
                     icon: "🔐",
+                },
+                SidebarItem {
+                    name: "Hooks",
+                    icon: "🪝",
                 },
             ],
         }

@@ -11,20 +11,22 @@ struct HooksListOutput {
     hooks: Vec<HookStatus>,
 }
 
-#[derive(Serialize)]
-struct HookStatus {
-    module: String,
-    hook_type: String, // "pre-install" or "post-install"
-    script: Option<String>,
-    status: String, // "executed", "skipped", "not_run"
+#[derive(Serialize, Clone)]
+pub(crate) struct HookStatus {
+    pub(crate) module: String,
+    pub(crate) hook_type: String, // "pre-install" or "post-install"
+    pub(crate) script: Option<String>,
+    pub(crate) status: String, // "executed", "skipped", "not_run"
     #[serde(skip_serializing_if = "Option::is_none")]
-    executed_at: Option<String>,
+    pub(crate) executed_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    script_hash: Option<String>,
+    pub(crate) script_hash: Option<String>,
 }
 
-/// List all hooks and their execution status
-pub fn list(paths: &ConfigPaths, json: bool) -> Result<()> {
+/// Gather the status of every hook in enabled modules plus the global update
+/// hooks. Shared by the `hooks list` command and the TUI Hooks screen so the
+/// two never diverge.
+pub(crate) fn gather_hooks(paths: &ConfigPaths) -> Result<Vec<HookStatus>> {
     let config = load_config(paths)?;
     let mut hooks = Vec::new();
 
@@ -207,6 +209,12 @@ pub fn list(paths: &ConfigPaths, json: bool) -> Result<()> {
         }
     }
 
+    Ok(hooks)
+}
+
+/// List all hooks and their execution status (CLI command).
+pub fn list(paths: &ConfigPaths, json: bool) -> Result<()> {
+    let hooks = gather_hooks(paths)?;
     if json {
         let output = HooksListOutput { hooks };
         println!("{}", serde_json::to_string_pretty(&output)?);

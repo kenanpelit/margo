@@ -78,6 +78,12 @@ const SECRETS_HINTS: &[KeyHint] = &[
     KeyHint::new("r", "refresh"),
 ];
 
+const HOOKS_HINTS: &[KeyHint] = &[
+    KeyHint::new("j/k, ↓/↑", "navigate"),
+    KeyHint::new("Enter", "run hook"),
+    KeyHint::new("r", "refresh"),
+];
+
 /// Context keybindings for a screen's normal mode (i.e. not while a filter
 /// text field is capturing raw characters — see [`FILTER_HINTS`] for that).
 pub fn screen_hints(screen: &Screen) -> &'static [KeyHint] {
@@ -88,6 +94,7 @@ pub fn screen_hints(screen: &Screen) -> &'static [KeyHint] {
         Screen::Sync(_) => SYNC_HINTS,
         Screen::Services(_) => SERVICES_HINTS,
         Screen::Secrets(_) => SECRETS_HINTS,
+        Screen::Hooks(_) => HOOKS_HINTS,
     }
 }
 
