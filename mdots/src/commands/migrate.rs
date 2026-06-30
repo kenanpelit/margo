@@ -160,7 +160,7 @@ fn create_backup(config_dir: &Path) -> Result<PathBuf> {
     Ok(backup_dir)
 }
 
-pub(crate) fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     fs::create_dir_all(dst).context(format!("Failed to create directory: {}", dst.display()))?;
 
     for entry in

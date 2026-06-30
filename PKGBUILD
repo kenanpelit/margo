@@ -284,9 +284,6 @@ package() {
       mshell mshellctl mshellshare mpicker mwizard mkeys; do
     install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
   done
-  # dcli compatibility symlink (mdots was forked from dcli; keeps the
-  # user's `dcli sync` muscle memory + mshell pipewire trigger working).
-  ln -sf mdots "$pkgdir/usr/bin/dcli"
 
   # ── Wayland session entries ────────────────────────────────────
   # Display managers (gdm, sddm, ly, greetd-tuigreet) pick these up

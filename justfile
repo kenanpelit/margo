@@ -47,11 +47,10 @@ cli:
     sudo install -m755 target/release/mscreenshot {{bindir}}/mscreenshot
     sudo install -m755 target/release/mpicker {{bindir}}/mpicker
 
-# Build + install mdots (declarative package/dotfiles manager, forked from dcli).
+# Build + install mdots (declarative package/dotfiles manager).
 dots:
     cargo build --release -p mdots
     sudo install -m755 target/release/mdots {{bindir}}/mdots
-    sudo ln -sf mdots {{bindir}}/dcli
 
 # Everything: compositor + shell + CLI tools.
 all: margo shell cli dots
