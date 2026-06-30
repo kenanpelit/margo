@@ -15,30 +15,6 @@ use crate::tui::screens::{ScreenAction, ScreenTrait};
 
 // ── Pure helpers (unit-tested below) ─────────────────────────────────────────
 
-/// Compute which native packages would need to be installed (declared but
-/// absent from `installed_native`).
-pub fn missing_native(
-    declared: &[Package],
-    installed_native: &HashMap<String, String>,
-) -> Vec<String> {
-    declared
-        .iter()
-        .filter(|p| matches!(p.package_type, PackageType::Native))
-        .filter(|p| !installed_native.contains_key(&p.name))
-        .map(|p| p.name.clone())
-        .collect()
-}
-
-/// Compute which flatpak packages would need to be installed.
-pub fn missing_flatpak(declared: &[Package], installed_flatpak: &HashSet<String>) -> Vec<String> {
-    declared
-        .iter()
-        .filter(|p| matches!(p.package_type, PackageType::Flatpak))
-        .filter(|p| !installed_flatpak.contains(&p.name))
-        .map(|p| p.name.clone())
-        .collect()
-}
-
 /// Count how many declared native/flatpak packages are already satisfied.
 pub fn already_installed_count(
     declared: &[Package],
@@ -97,18 +73,17 @@ impl SyncScreenState {
         let installed_native: HashMap<String, String> =
             pm.get_installed_native_packages(config).unwrap_or_default();
 
-        let scope = match config.flatpak_scope {
-            crate::config::FlatpakScope::User => "user",
-            crate::config::FlatpakScope::System => "system",
-        };
         let installed_flatpak: HashSet<String> = pm
-            .get_installed_flatpaks(scope)
+            .get_installed_flatpaks(config.flatpak_scope.as_arg())
             .unwrap_or_default()
             .into_iter()
             .collect();
 
-        let native_to_install = missing_native(&declared, &installed_native);
-        let flatpak_to_install = missing_flatpak(&declared, &installed_flatpak);
+        let (native_to_install, flatpak_to_install) = crate::commands::sync::compute_installable(
+            &declared,
+            &installed_native,
+            &installed_flatpak,
+        );
         let already_ok = already_installed_count(&declared, &installed_native, &installed_flatpak);
         let nix_count = declared
             .iter()
@@ -498,7 +473,6 @@ impl SyncScreenState {
 mod tests {
     use super::*;
     use crate::config::PackageType;
-    use crate::package::Package;
 
     fn pkg(name: &str, pkg_type: PackageType) -> Package {
         Package {
@@ -519,41 +493,6 @@ mod tests {
     }
 
     #[test]
-    fn missing_native_finds_absent_packages() {
-        let declared = vec![
-            pkg("vim", PackageType::Native),
-            pkg("git", PackageType::Native),
-            pkg("htop", PackageType::Native),
-        ];
-        let installed = inst(&["vim", "git"]);
-        let result = missing_native(&declared, &installed);
-        assert_eq!(result, vec!["htop"]);
-    }
-
-    #[test]
-    fn missing_native_ignores_flatpak_entries() {
-        let declared = vec![
-            pkg("vim", PackageType::Native),
-            pkg("com.spotify.Client", PackageType::Flatpak),
-        ];
-        let installed = inst(&["vim"]);
-        // flatpak entry must NOT appear in native-missing list
-        let result = missing_native(&declared, &installed);
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn missing_flatpak_finds_absent_flatpaks() {
-        let declared = vec![
-            pkg("com.spotify.Client", PackageType::Flatpak),
-            pkg("com.github.tchx84.Flatseal", PackageType::Flatpak),
-        ];
-        let fp = fpi(&["com.spotify.Client"]);
-        let result = missing_flatpak(&declared, &fp);
-        assert_eq!(result, vec!["com.github.tchx84.Flatseal"]);
-    }
-
-    #[test]
     fn already_installed_count_correct() {
         let declared = vec![
             pkg("vim", PackageType::Native),
@@ -563,12 +502,5 @@ mod tests {
         let native = inst(&["vim"]);
         let fp = fpi(&["com.spotify.Client"]);
         assert_eq!(already_installed_count(&declared, &native, &fp), 2);
-    }
-
-    #[test]
-    fn missing_native_all_installed_returns_empty() {
-        let declared = vec![pkg("vim", PackageType::Native)];
-        let installed = inst(&["vim"]);
-        assert!(missing_native(&declared, &installed).is_empty());
     }
 }

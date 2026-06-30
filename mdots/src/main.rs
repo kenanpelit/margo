@@ -579,7 +579,7 @@ fn main() -> Result<()> {
             commands::status::run(&paths, cli.json)?;
         }
         Commands::Diff => {
-            commands::diff::run(&paths)?;
+            commands::diff::run(&paths, cli.json)?;
         }
         Commands::Module { action } => match action {
             ModuleAction::List => {

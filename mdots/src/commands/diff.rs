@@ -1,8 +1,9 @@
 use anyhow::Result;
 use colored::*;
+use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
-use crate::config::{ConfigPaths, FlatpakScope};
+use crate::config::ConfigPaths;
 use crate::package::{Package, PackageManager};
 
 /// The package drift between what is declared and what is installed / tracked.
@@ -11,7 +12,7 @@ use crate::package::{Package, PackageManager};
 /// - `native_to_remove` / `flatpak_to_remove`: tracked in state, no longer
 ///   declared, still installed, and not a protected system package.  These are
 ///   what a `mdots sync --prune` would remove.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub(crate) struct Drift {
     pub native_to_install: Vec<String>,
     pub flatpak_to_install: Vec<String>,
@@ -89,7 +90,7 @@ pub(crate) fn compute_drift(
 }
 
 /// `mdots diff` — print a colorized declared-vs-installed diff.  Read-only.
-pub fn run(paths: &ConfigPaths) -> Result<()> {
+pub fn run(paths: &ConfigPaths, json: bool) -> Result<()> {
     let config = crate::config::load_config(paths)?;
     let pkg_manager = PackageManager::new(paths.clone());
     let declared = pkg_manager.get_declared_packages(&config)?;
@@ -98,17 +99,18 @@ pub fn run(paths: &ConfigPaths) -> Result<()> {
         .get_installed_native_packages(&config)
         .unwrap_or_default();
 
-    let flatpak_scope_str = match config.flatpak_scope {
-        FlatpakScope::User => "--user",
-        FlatpakScope::System => "--system",
-    };
     let installed_flatpak: HashSet<String> = pkg_manager
-        .get_installed_flatpaks(flatpak_scope_str)
+        .get_installed_flatpaks(config.flatpak_scope.as_arg())
         .unwrap_or_default()
         .into_iter()
         .collect();
 
     let drift = compute_drift(paths, &declared, &installed_native, &installed_flatpak);
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&drift)?);
+        return Ok(());
+    }
 
     if drift.is_in_sync() {
         println!("{}", "✓ in sync — no package changes needed".green().bold());

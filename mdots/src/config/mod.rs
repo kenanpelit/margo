@@ -251,6 +251,15 @@ pub enum FlatpakScope {
     System,
 }
 
+impl FlatpakScope {
+    pub fn as_arg(&self) -> &'static str {
+        match self {
+            FlatpakScope::User => "--user",
+            FlatpakScope::System => "--system",
+        }
+    }
+}
+
 /// Hook execution user configuration
 /// Can be specified as a boolean (backward compat) or username string
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

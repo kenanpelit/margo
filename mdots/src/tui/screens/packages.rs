@@ -84,16 +84,11 @@ impl PackagesScreenState {
             pm.get_installed_native_packages(config).unwrap_or_default();
 
         // Get installed flatpaks — tolerate failure
-        let installed_flatpak: std::collections::HashSet<String> = {
-            let scope = match config.flatpak_scope {
-                crate::config::FlatpakScope::User => "user",
-                crate::config::FlatpakScope::System => "system",
-            };
-            pm.get_installed_flatpaks(scope)
-                .unwrap_or_default()
-                .into_iter()
-                .collect()
-        };
+        let installed_flatpak: std::collections::HashSet<String> = pm
+            .get_installed_flatpaks(config.flatpak_scope.as_arg())
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
 
         self.all_packages = declared
             .into_iter()
