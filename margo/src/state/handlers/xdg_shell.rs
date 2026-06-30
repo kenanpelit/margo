@@ -117,6 +117,12 @@ impl XdgShellHandler for MargoState {
     }
 
     fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
+        // Popup placement is a recurring source of "menu opens in the wrong
+        // spot" bugs (esp. repeated/second opens). Log the raw client
+        // positioner at debug so `mctl log level debug` reveals exactly what
+        // the client asked for vs where we end up placing it (see the paired
+        // log in `unconstrain_popup`).
+        tracing::debug!(?positioner, geometry = ?positioner.get_geometry(), "new_popup: client positioner");
         surface.with_pending_state(|state| {
             state.positioner = positioner;
             state.geometry = positioner.get_geometry();
@@ -136,6 +142,7 @@ impl XdgShellHandler for MargoState {
         positioner: PositionerState,
         token: u32,
     ) {
+        tracing::debug!(?positioner, token, geometry = ?positioner.get_geometry(), "reposition_request: client positioner");
         surface.with_pending_state(|state| {
             state.geometry = positioner.get_geometry();
             state.positioner = positioner;
@@ -611,10 +618,25 @@ impl MargoState {
         // then let smithay clamp the geometry to it.
         let mut target = output_geo;
         target.loc -= root_geo.loc;
-        target.loc -= get_popup_toplevel_coords(&kind);
+        let toplevel_coords = get_popup_toplevel_coords(&kind);
+        target.loc -= toplevel_coords;
 
-        popup.with_pending_state(|state| {
+        let final_geo = popup.with_pending_state(|state| {
             state.geometry = state.positioner.get_unconstrained_geometry(target);
+            state.geometry
         });
+        // Paired with the `new_popup` / `reposition_request` logs: shows the
+        // parent root + output geometry and the final placed geometry, so a
+        // drifting second popup can be pinned to either a stale parent
+        // `root_geo` / `toplevel_coords` (compositor) or a changed client
+        // positioner (client).
+        tracing::debug!(
+            ?root_geo,
+            ?output_geo,
+            ?toplevel_coords,
+            ?target,
+            ?final_geo,
+            "unconstrain_popup: placed"
+        );
     }
 }
