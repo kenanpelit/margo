@@ -19,7 +19,7 @@ pub fn run_quiet(paths: &ConfigPaths, check_packages: bool, json: bool) -> Resul
 
 fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bool) -> Result<()> {
     if !json && !quiet {
-        println!("{}", "=== Validating dcli Config ===".blue().bold());
+        println!("{}", "=== Validating mdots Config ===".blue().bold());
         println!();
     }
 
@@ -27,26 +27,26 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
     let mut warnings = 0;
     let mut checks = Vec::new();
 
-    // 1. Check if dcli config directory exists
+    // 1. Check if mdots config directory exists
     if !json && !quiet {
-        println!("{} Checking dcli config directory...", "→".blue());
+        println!("{} Checking mdots config directory...", "→".blue());
     }
     if !paths.config_dir.exists() {
         if json {
             checks.push(json!({
                 "check": "config_dir",
                 "status": "error",
-                "message": format!("dcli config directory not found: {}", paths.config_dir.display())
+                "message": format!("mdots config directory not found: {}", paths.config_dir.display())
             }));
         } else {
             println!(
-                "  {} dcli config directory not found: {}",
+                "  {} mdots config directory not found: {}",
                 "✗".red(),
                 paths.config_dir.display()
             );
-            println!("    Run 'dcli init' to create it");
+            println!("    Run 'mdots init' to create it");
         }
-        anyhow::bail!("dcli config directory not found");
+        anyhow::bail!("mdots config directory not found");
     }
     if !json && !quiet {
         println!("  {} Directory exists", "✓".green());
@@ -395,7 +395,7 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
                     println!("        - {}", existing);
                     println!("        - {}", module_name);
                     println!(
-                        "      Users won't know which one to enable with 'dcli module enable {}'",
+                        "      Users won't know which one to enable with 'mdots module enable {}'",
                         base_name
                     );
                 }
@@ -793,7 +793,7 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
                                     println!("      - {}", pkg);
                                 }
                                 println!(
-                                    "  {} These packages will fail during 'dcli sync'",
+                                    "  {} These packages will fail during 'mdots sync'",
                                     "ℹ".blue()
                                 );
                             }
@@ -930,7 +930,7 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
             println!("Errors: {}", errors);
             println!("Warnings: {}", warnings);
             println!();
-            println!("Please fix the errors above before running 'dcli sync'.");
+            println!("Please fix the errors above before running 'mdots sync'.");
             anyhow::bail!("Validation failed");
         }
     }

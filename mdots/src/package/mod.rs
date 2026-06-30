@@ -44,7 +44,7 @@ impl PackageManager {
             }
         }
 
-        // 2. Load declared-packages (created by dcli install/search)
+        // 2. Load declared-packages (created by mdots install/search)
         let (preferred_declared, fallback_declared) =
             crate::config::declared_packages_paths(&self.paths)?;
         let declared_packages_file = if preferred_declared.exists() {
@@ -61,7 +61,7 @@ impl PackageManager {
             }
         }
 
-        // 3. Load system-packages-{host}.yaml (created by dcli merge)
+        // 3. Load system-packages-{host}.yaml (created by mdots merge)
         let system_packages_file = self
             .paths
             .config_dir

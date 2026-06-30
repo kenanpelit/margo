@@ -338,7 +338,7 @@ fn run_packages_merge(paths: &ConfigPaths, dry_run: bool, include_deps: bool) ->
     {
         println!();
         println!(
-            "{} All installed packages and flatpaks are already managed by dcli",
+            "{} All installed packages and flatpaks are already managed by mdots",
             "✓".green()
         );
         return Ok(());
@@ -431,7 +431,7 @@ fn run_packages_merge(paths: &ConfigPaths, dry_run: bool, include_deps: bool) ->
     println!();
     println!(
         "{}",
-        "The dcli author is not responsible for any system issues.".dimmed()
+        "The mdots author is not responsible for any system issues.".dimmed()
     );
     println!(
         "{}",
@@ -492,7 +492,7 @@ fn run_packages_merge(paths: &ConfigPaths, dry_run: bool, include_deps: bool) ->
         crate::config::load_package_list(&packages_file)?
     } else {
         crate::config::PackageList {
-            description: "Packages installed manually on the system (auto-synced by dcli)"
+            description: "Packages installed manually on the system (auto-synced by mdots)"
                 .to_string(),
             packages: Vec::new(),
             exclude: Vec::new(),
@@ -578,9 +578,9 @@ fn run_packages_merge(paths: &ConfigPaths, dry_run: bool, include_deps: bool) ->
         packages_file.display().to_string().cyan()
     );
     println!();
-    println!("  • These packages are automatically loaded by dcli");
+    println!("  • These packages are automatically loaded by mdots");
     println!("  • No need to enable a module — they're part of declared-packages");
-    println!("  • Run 'dcli sync' to install any missing packages");
+    println!("  • Run 'mdots sync' to install any missing packages");
     println!("  • Gradually move packages to named modules for better organization");
 
     Ok(())
@@ -637,7 +637,7 @@ fn create_dependencies_module(
     // Create packages.yaml for dependencies
     let mut deps_list = crate::config::PackageList {
         description: format!(
-            "Dependency packages for {} (auto-synced by dcli merge --include-deps)",
+            "Dependency packages for {} (auto-synced by mdots merge --include-deps)",
             config.host
         ),
         packages: Vec::new(),
@@ -672,7 +672,7 @@ fn create_dependencies_module(
     // Create module.yaml manifest
     let deps_manifest = crate::config::ModuleManifest {
         description: format!(
-            "Dependency packages for {} (auto-synced by dcli merge --include-deps)",
+            "Dependency packages for {} (auto-synced by mdots merge --include-deps)",
             config.host
         ),
         conflicts: Vec::new(),
@@ -793,7 +793,7 @@ fn run_services_merge(paths: &ConfigPaths, dry_run: bool, user_scope: bool) -> R
     if unmanaged.is_empty() {
         println!();
         println!(
-            "{} All enabled services are already managed by dcli or are system-critical",
+            "{} All enabled services are already managed by mdots or are system-critical",
             "✓".green()
         );
         return Ok(());
@@ -811,7 +811,7 @@ fn run_services_merge(paths: &ConfigPaths, dry_run: bool, user_scope: bool) -> R
     println!();
     println!(
         "{}",
-        "These services are currently enabled but not in your dcli config:".dimmed()
+        "These services are currently enabled but not in your mdots config:".dimmed()
     );
     println!();
     for svc in &unmanaged {
@@ -829,7 +829,7 @@ fn run_services_merge(paths: &ConfigPaths, dry_run: bool, user_scope: bool) -> R
         println!("{}", "What will happen:".bold());
         println!("  • Services will be added to 'services.enabled' section");
         println!("  • Your host configuration will be updated");
-        println!("  • Run 'dcli sync' to keep them enabled");
+        println!("  • Run 'mdots sync' to keep them enabled");
         return Ok(());
     }
 
@@ -844,7 +844,7 @@ fn run_services_merge(paths: &ConfigPaths, dry_run: bool, user_scope: bool) -> R
     println!();
     println!(
         "{}",
-        "The dcli author is not responsible for any system issues.".dimmed()
+        "The mdots author is not responsible for any system issues.".dimmed()
     );
     println!(
         "{}",
@@ -980,15 +980,15 @@ fn run_services_merge(paths: &ConfigPaths, dry_run: bool, user_scope: bool) -> R
     );
     println!();
     println!("{}", "What's next:".bold());
-    println!("  • These services are now managed by dcli");
+    println!("  • These services are now managed by mdots");
     println!("  • File: {}", host_file.display());
-    println!("  • Services will remain enabled during 'dcli sync'");
+    println!("  • Services will remain enabled during 'mdots sync'");
     println!("  • You can move services to modules later for better organization");
 
     Ok(())
 }
 
-/// Get list of system-critical services that should NOT be managed by dcli
+/// Get list of system-critical services that should NOT be managed by mdots
 /// These are essential services that should always be left alone
 fn get_system_critical_services() -> HashSet<&'static str> {
     HashSet::from([
@@ -1131,7 +1131,7 @@ fn run_defaults_merge(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
     if unmanaged.is_empty() {
         println!();
         println!(
-            "{} All current default applications are already managed by dcli",
+            "{} All current default applications are already managed by mdots",
             "✓".green()
         );
         return Ok(());
@@ -1149,7 +1149,7 @@ fn run_defaults_merge(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
     println!();
     println!(
         "{}",
-        "These default applications are set but not in your dcli config:".dimmed()
+        "These default applications are set but not in your mdots config:".dimmed()
     );
     println!();
     for (category, desktop_file) in &unmanaged {
@@ -1171,7 +1171,7 @@ fn run_defaults_merge(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
         println!("{}", "What will happen:".bold());
         println!("  • Defaults will be added to 'default_apps' section");
         println!("  • Your host configuration will be updated");
-        println!("  • Run 'dcli sync' to maintain these settings");
+        println!("  • Run 'mdots sync' to maintain these settings");
         return Ok(());
     }
 
@@ -1180,7 +1180,7 @@ fn run_defaults_merge(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
     println!();
     println!("This command captures your current default application settings.");
     println!("  • Review the list carefully before proceeding");
-    println!("  • These settings will be managed by dcli going forward");
+    println!("  • These settings will be managed by mdots going forward");
     println!("  • You can modify them later in your host config");
     println!();
 
@@ -1329,9 +1329,9 @@ fn run_defaults_merge(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
     );
     println!();
     println!("{}", "What's next:".bold());
-    println!("  • These defaults are now managed by dcli");
+    println!("  • These defaults are now managed by mdots");
     println!("  • File: {}", host_file.display());
-    println!("  • Defaults will be maintained during 'dcli sync'");
+    println!("  • Defaults will be maintained during 'mdots sync'");
     println!("  • Edit the config to change your default applications");
 
     Ok(())

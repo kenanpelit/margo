@@ -1,4 +1,4 @@
-//! `dcli secrets` — manage SOPS/age-encrypted secrets.
+//! `mdots secrets` — manage SOPS/age-encrypted secrets.
 //!
 //! Decryption logic lives in `crate::secrets`; this module is the CLI surface:
 //! `status`, `sync`, `edit`, `list`, and `keygen`.
@@ -26,7 +26,7 @@ fn default_age_key_path(home: &std::path::Path) -> PathBuf {
     home.join(".config/sops/age/keys.txt")
 }
 
-/// `dcli secrets status` — read-only health report for declared secrets.
+/// `mdots secrets status` — read-only health report for declared secrets.
 pub fn status(paths: &ConfigPaths, json: bool) -> Result<()> {
     let config = load_config(paths)?;
     let home = home_dir()?;
@@ -104,7 +104,7 @@ pub fn status(paths: &ConfigPaths, json: bool) -> Result<()> {
     }
     for orphan in &orphans {
         println!(
-            "  {} {}  [orphaned — run `dcli secrets sync --prune` to remove]",
+            "  {} {}  [orphaned — run `mdots secrets sync --prune` to remove]",
             "⚠".yellow(),
             orphan.display().to_string().dimmed()
         );
@@ -112,13 +112,13 @@ pub fn status(paths: &ConfigPaths, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// `dcli secrets sync` — decrypt declared secrets without a full system sync.
+/// `mdots secrets sync` — decrypt declared secrets without a full system sync.
 pub fn sync(paths: &ConfigPaths, dry_run: bool, prune: bool, json: bool) -> Result<()> {
     let config = load_config(paths)?;
     crate::secrets::sync_secrets(paths, &config, dry_run, prune, json)
 }
 
-/// `dcli secrets list` — list declared secrets (config only, no filesystem).
+/// `mdots secrets list` — list declared secrets (config only, no filesystem).
 pub fn list(paths: &ConfigPaths, json: bool) -> Result<()> {
     let config = load_config(paths)?;
 
@@ -156,14 +156,14 @@ pub fn list(paths: &ConfigPaths, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// `dcli secrets edit <name>` — open the encrypted source in `sops`.
+/// `mdots secrets edit <name>` — open the encrypted source in `sops`.
 pub fn edit(paths: &ConfigPaths, name: &str) -> Result<()> {
     let config = load_config(paths)?;
     let entry = config
         .secrets
         .iter()
         .find(|e| secret_name(e) == name)
-        .ok_or_else(|| anyhow::anyhow!("no secret named {:?} (see `dcli secrets list`)", name))?;
+        .ok_or_else(|| anyhow::anyhow!("no secret named {:?} (see `mdots secrets list`)", name))?;
 
     if !sops_available() {
         bail!("sops is not installed — cannot edit secrets");
@@ -186,7 +186,7 @@ pub fn edit(paths: &ConfigPaths, name: &str) -> Result<()> {
     Ok(())
 }
 
-/// `dcli secrets keygen` — generate an age key if one does not exist.
+/// `mdots secrets keygen` — generate an age key if one does not exist.
 pub fn keygen(paths: &ConfigPaths) -> Result<()> {
     let config = load_config(paths)?;
     let home = home_dir()?;

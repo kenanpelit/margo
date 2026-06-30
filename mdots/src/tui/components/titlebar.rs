@@ -14,7 +14,7 @@ pub fn render_titlebar(_app: &App, frame: &mut Frame, area: Rect) -> Result<()> 
 
     let title = Line::from(vec![
         Span::styled(
-            " DCLI System Manager ",
+            " MDOTS System Manager ",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),

@@ -192,7 +192,7 @@ pub fn find_source(paths: &ConfigPaths, name: &str) -> Result<SourceInfo> {
         .find(|s| s.config.name == name)
         .with_context(|| {
             format!(
-                "Source '{}' not found. Run 'dcli source list' to see available sources.",
+                "Source '{}' not found. Run 'mdots source list' to see available sources.",
                 name
             )
         })

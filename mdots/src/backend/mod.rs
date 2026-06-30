@@ -11,13 +11,13 @@ pub trait PkgBackend {
     /// Install packages non-interactively (batch mode, used by sync)
     fn install_packages_batch(&self, packages: &[&str]) -> Result<bool>;
 
-    /// Install a single package interactively (used by `dcli install`)
+    /// Install a single package interactively (used by `mdots install`)
     fn install_interactive(&self, package: &str) -> Result<bool>;
 
     /// Remove packages non-interactively (batch mode, used by sync prune)
     fn remove_packages_batch(&self, packages: &[&str]) -> Result<bool>;
 
-    /// Remove a single package interactively (used by `dcli remove`)
+    /// Remove a single package interactively (used by `mdots remove`)
     fn remove_interactive(&self, package: &str) -> Result<bool>;
 
     /// Refresh the package database

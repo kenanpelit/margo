@@ -28,7 +28,7 @@ pub fn install(package: &str, paths: &ConfigPaths) -> Result<()> {
         println!();
         println!(
             "{}",
-            "Package installed and added to dcli management".green()
+            "Package installed and added to mdots management".green()
         );
         Ok(())
     } else {
@@ -53,7 +53,7 @@ fn add_package_to_host_config(package: &str, paths: &ConfigPaths) -> Result<()> 
     let declared: HashSet<String> = declared_packages.iter().map(|p| p.name.clone()).collect();
 
     if declared.contains(package) {
-        println!("  {} {} already managed by dcli", "✓".green(), package);
+        println!("  {} {} already managed by mdots", "✓".green(), package);
         return Ok(());
     }
 
@@ -63,7 +63,7 @@ fn add_package_to_host_config(package: &str, paths: &ConfigPaths) -> Result<()> 
         load_package_list_any(&fallback_declared)?
     } else {
         PackageList {
-            description: "Packages installed via dcli install or dcli search commands".to_string(),
+            description: "Packages installed via mdots install or mdots search commands".to_string(),
             packages: Vec::new(),
             exclude: Vec::new(),
             conflicts: Vec::new(),
@@ -80,7 +80,7 @@ fn add_package_to_host_config(package: &str, paths: &ConfigPaths) -> Result<()> 
 
     if pkg_list.description.is_empty() {
         pkg_list.description =
-            "Packages installed via dcli install or dcli search commands".to_string();
+            "Packages installed via mdots install or mdots search commands".to_string();
     }
 
     // Add package to packages array
@@ -134,7 +134,7 @@ pub fn remove(package: &str, paths: &ConfigPaths) -> Result<()> {
         println!();
         println!(
             "{}",
-            "Package removed and removed from dcli management".green()
+            "Package removed and removed from mdots management".green()
         );
         Ok(())
     } else {

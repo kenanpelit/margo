@@ -31,7 +31,7 @@ fn discover_config_files(paths: &ConfigPaths) -> Result<Vec<PathBuf>> {
                     || name_str == "scripts"
                     || name_str == "wallpapers" // User assets, not config
                     || name_str == "dotfiles"
-                // User dotfiles, not dcli config
+                // User dotfiles, not mdots config
                 {
                     return false;
                 }
@@ -104,7 +104,7 @@ fn select_file_with_fzf(config_files: &[PathBuf], config_dir: &PathBuf) -> Resul
             "--prompt=Search files > ",
             "--height=100%",
             "--border=rounded",
-            "--border-label= dcli edit ",
+            "--border-label= mdots edit ",
             "--border-label-pos=2",
             "--color=border:blue,label:cyan",
             "--no-multi", // Single selection only
@@ -215,7 +215,7 @@ pub fn run(paths: &ConfigPaths) -> Result<()> {
     println!();
     println!(
         "{}",
-        "Tip: Run 'dcli validate' to check for configuration errors.".yellow()
+        "Tip: Run 'mdots validate' to check for configuration errors.".yellow()
     );
 
     Ok(())

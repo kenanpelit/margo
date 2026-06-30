@@ -1,6 +1,6 @@
 //! Power management detection helpers for Lua modules
 //!
-//! Provides the `dcli.power.*` API for querying power management features.
+//! Provides the `mdots.power.*` API for querying power management features.
 
 use anyhow::{anyhow, Result};
 use mlua::{Lua, Table};
@@ -10,15 +10,15 @@ use std::path::Path;
 /// Register power management helpers
 pub fn register_power_helpers(lua: &Lua) -> Result<()> {
     let globals = lua.globals();
-    let dcli: Table = globals
-        .get("dcli")
+    let mdots: Table = globals
+        .get("mdots")
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     let power = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.power.on_battery() -> boolean
+    // mdots.power.on_battery() -> boolean
     power
         .set(
             "on_battery",
@@ -27,7 +27,7 @@ pub fn register_power_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.power.on_ac() -> boolean
+    // mdots.power.on_ac() -> boolean
     power
         .set(
             "on_ac",
@@ -36,7 +36,7 @@ pub fn register_power_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.power.battery_percent() -> number or nil
+    // mdots.power.battery_percent() -> number or nil
     power
         .set(
             "battery_percent",
@@ -45,7 +45,7 @@ pub fn register_power_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.power.battery_status() -> "charging" | "discharging" | "full" | "unknown"
+    // mdots.power.battery_status() -> "charging" | "discharging" | "full" | "unknown"
     power
         .set(
             "battery_status",
@@ -54,7 +54,7 @@ pub fn register_power_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.power.has_suspend() -> boolean
+    // mdots.power.has_suspend() -> boolean
     power
         .set(
             "has_suspend",
@@ -63,7 +63,7 @@ pub fn register_power_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.power.has_hibernate() -> boolean
+    // mdots.power.has_hibernate() -> boolean
     power
         .set(
             "has_hibernate",
@@ -72,7 +72,7 @@ pub fn register_power_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.power.cpu_governor() -> "performance" | "powersave" | "schedutil" | etc.
+    // mdots.power.cpu_governor() -> "performance" | "powersave" | "schedutil" | etc.
     power
         .set(
             "cpu_governor",
@@ -81,7 +81,7 @@ pub fn register_power_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.power.available_governors() -> array of governor names
+    // mdots.power.available_governors() -> array of governor names
     power
         .set(
             "available_governors",
@@ -97,7 +97,7 @@ pub fn register_power_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.power.supports_turbo() -> boolean
+    // mdots.power.supports_turbo() -> boolean
     power
         .set(
             "supports_turbo",
@@ -106,7 +106,7 @@ pub fn register_power_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.power.turbo_enabled() -> boolean
+    // mdots.power.turbo_enabled() -> boolean
     power
         .set(
             "turbo_enabled",
@@ -115,7 +115,7 @@ pub fn register_power_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    dcli.set("power", power)
+    mdots.set("power", power)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

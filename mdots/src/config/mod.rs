@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Main configuration structure for dcli
+/// Main configuration structure for mdots
 /// Can be used as both config.yaml (pointer) and host file (full config)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -105,7 +105,7 @@ pub struct Config {
     pub editor: Option<String>,
 
     /// Package manager type: pacman (Arch and Arch-based distros)
-    /// Auto-detected during `dcli init`, can be overridden
+    /// Auto-detected during `mdots init`, can be overridden
     #[serde(default)]
     pub package_manager: Option<PackageManagerType>,
 
@@ -150,7 +150,7 @@ pub struct NixConfig {
     #[serde(default)]
     pub enabled: bool,
 
-    /// Run home-manager switch during dcli sync
+    /// Run home-manager switch during mdots sync
     #[serde(default)]
     pub home_manager_enabled: bool,
 
@@ -348,11 +348,11 @@ pub struct SystemBackupsSettings {
     #[serde(default = "default_true")]
     pub enabled: bool,
 
-    /// Create backup during dcli sync
+    /// Create backup during mdots sync
     #[serde(default = "default_true")]
     pub backup_on_sync: bool,
 
-    /// Create backup during dcli update
+    /// Create backup during mdots update
     #[serde(default = "default_true")]
     pub backup_on_update: bool,
 
@@ -1275,7 +1275,7 @@ pub struct SecretEntry {
     #[serde(default)]
     pub mode: Option<String>,
 
-    /// Stable identifier for `dcli secrets edit/status/list`.
+    /// Stable identifier for `mdots secrets edit/status/list`.
     /// Defaults to the target's file name when absent.
     #[serde(default)]
     pub name: Option<String>,
@@ -1323,22 +1323,22 @@ pub struct ConfigPaths {
     pub config_backups_dir: PathBuf,
 }
 
-/// One-shot: if the user still has a legacy ~/.config/dcli and no
+/// One-shot: if the user still has a legacy ~/.config/mdots and no
 /// ~/.config/mdots yet, copy it across so the rename is transparent.
 /// Honoured only when MDOTS_CONFIG_DIR is unset.
-fn migrate_legacy_dcli_dir(home: &str) {
+fn migrate_legacy_mdots_dir(home: &str) {
     if std::env::var("MDOTS_CONFIG_DIR").is_ok() {
         return;
     }
     let new_dir = PathBuf::from(home).join(".config/mdots");
-    let old_dir = PathBuf::from(home).join(".config/dcli");
+    let old_dir = PathBuf::from(home).join(".config/mdots");
     if new_dir.exists() || !old_dir.is_dir() {
         return;
     }
     if let Err(e) = crate::commands::migrate::copy_dir_recursive(&old_dir, &new_dir) {
-        log::warn!("mdots: legacy ~/.config/dcli migration failed: {e}");
+        log::warn!("mdots: legacy ~/.config/mdots migration failed: {e}");
     } else {
-        log::info!("mdots: migrated ~/.config/dcli -> ~/.config/mdots");
+        log::info!("mdots: migrated ~/.config/mdots -> ~/.config/mdots");
     }
 }
 
@@ -1356,7 +1356,7 @@ impl ConfigPaths {
             PathBuf::from(custom)
         } else {
             let home = std::env::var("HOME").context("HOME environment variable not set")?;
-            migrate_legacy_dcli_dir(&home);
+            migrate_legacy_mdots_dir(&home);
             let new_path = PathBuf::from(&home).join(".config/mdots");
             let legacy_path = PathBuf::from(&home).join(".config/arch-config");
 
@@ -1526,7 +1526,7 @@ pub fn resolve_config_path(paths: &ConfigPaths) -> Result<PathBuf> {
         if nix_config_file.exists() {
             anyhow::bail!(
                 "Cannot have both config.lua and config.nix. Please remove one.\n\
-                 Run 'dcli init --lua' for Lua or 'dcli init --nix' for Nix."
+                 Run 'mdots init --lua' for Lua or 'mdots init --nix' for Nix."
             );
         }
 
@@ -2594,7 +2594,7 @@ pub fn detect_package_manager_type() -> Result<PackageManagerType> {
     }
 
     anyhow::bail!(
-        "dcli officially supports only Arch and Arch-based distributions (pacman). pacman was not found on this system. If you are building dcli on another distro, ensure pacman is available."
+        "mdots officially supports only Arch and Arch-based distributions (pacman). pacman was not found on this system. If you are building mdots on another distro, ensure pacman is available."
     )
 }
 

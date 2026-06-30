@@ -163,7 +163,7 @@ impl OverviewScreenState {
         let dir_name = config_dir
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("dcli");
+            .unwrap_or("mdots");
         tree.push(format!("📁 {}/", dir_name));
 
         // Walk the directory structure

@@ -41,7 +41,7 @@ pub fn build_source(source: &SourceInfo, force: bool) -> Result<BuildResult> {
             .with_context(|| format!("Failed to create cache dir: {}", cache_dir.display()))?;
         cache_dir
     } else {
-        let tmp_dir = std::env::temp_dir().join(format!("dcli-source-{}", name));
+        let tmp_dir = std::env::temp_dir().join(format!("mdots-source-{}", name));
         // Clean temp dir for fresh build
         if tmp_dir.exists() {
             std::fs::remove_dir_all(&tmp_dir)
@@ -164,7 +164,7 @@ fn dirs_build_cache(name: &str) -> Result<PathBuf> {
     let home = std::env::var("HOME").context("HOME environment variable not set")?;
     Ok(PathBuf::from(home)
         .join(".cache")
-        .join("dcli")
+        .join("mdots")
         .join("sources")
         .join(name))
 }

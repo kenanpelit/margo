@@ -1,6 +1,6 @@
 //! Security features detection helpers for Lua modules
 //!
-//! Provides the `dcli.security.*` API for detecting security features.
+//! Provides the `mdots.security.*` API for detecting security features.
 
 use anyhow::{anyhow, Result};
 use mlua::{Lua, Table};
@@ -11,15 +11,15 @@ use std::process::Command;
 /// Register security detection helpers
 pub fn register_security_helpers(lua: &Lua) -> Result<()> {
     let globals = lua.globals();
-    let dcli: Table = globals
-        .get("dcli")
+    let mdots: Table = globals
+        .get("mdots")
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     let security = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.security.has_selinux() -> boolean
+    // mdots.security.has_selinux() -> boolean
     security
         .set(
             "has_selinux",
@@ -28,7 +28,7 @@ pub fn register_security_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.security.selinux_enabled() -> boolean
+    // mdots.security.selinux_enabled() -> boolean
     security
         .set(
             "selinux_enabled",
@@ -37,7 +37,7 @@ pub fn register_security_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.security.has_apparmor() -> boolean
+    // mdots.security.has_apparmor() -> boolean
     security
         .set(
             "has_apparmor",
@@ -46,7 +46,7 @@ pub fn register_security_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.security.apparmor_enabled() -> boolean
+    // mdots.security.apparmor_enabled() -> boolean
     security
         .set(
             "apparmor_enabled",
@@ -55,7 +55,7 @@ pub fn register_security_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.security.has_secureboot() -> boolean
+    // mdots.security.has_secureboot() -> boolean
     security
         .set(
             "has_secureboot",
@@ -64,7 +64,7 @@ pub fn register_security_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.security.secureboot_enabled() -> boolean
+    // mdots.security.secureboot_enabled() -> boolean
     security
         .set(
             "secureboot_enabled",
@@ -73,7 +73,7 @@ pub fn register_security_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.security.has_tpm() -> boolean
+    // mdots.security.has_tpm() -> boolean
     security
         .set(
             "has_tpm",
@@ -82,7 +82,7 @@ pub fn register_security_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.security.tpm_version() -> "1.2" | "2.0" | nil
+    // mdots.security.tpm_version() -> "1.2" | "2.0" | nil
     security
         .set(
             "tpm_version",
@@ -91,7 +91,7 @@ pub fn register_security_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.security.firewall_active() -> boolean
+    // mdots.security.firewall_active() -> boolean
     security
         .set(
             "firewall_active",
@@ -100,7 +100,7 @@ pub fn register_security_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.security.firewall_type() -> "ufw" | "firewalld" | "iptables" | "nftables" | "none"
+    // mdots.security.firewall_type() -> "ufw" | "firewalld" | "iptables" | "nftables" | "none"
     security
         .set(
             "firewall_type",
@@ -109,7 +109,7 @@ pub fn register_security_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.security.has_luks() -> boolean
+    // mdots.security.has_luks() -> boolean
     security
         .set(
             "has_luks",
@@ -118,7 +118,7 @@ pub fn register_security_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.security.kernel_lockdown() -> "none" | "integrity" | "confidentiality"
+    // mdots.security.kernel_lockdown() -> "none" | "integrity" | "confidentiality"
     security
         .set(
             "kernel_lockdown",
@@ -127,7 +127,7 @@ pub fn register_security_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    dcli.set("security", security)
+    mdots.set("security", security)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

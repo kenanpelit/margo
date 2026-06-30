@@ -13,7 +13,7 @@ use crate::config::{ServiceProfile, ServicesConfig};
 pub fn load_service_profile(path: &Path) -> Result<ServiceProfile> {
     let lua = super::create_sandboxed_lua()?;
 
-    // Register dcli helpers (for conditional logic)
+    // Register mdots helpers (for conditional logic)
     super::helpers::register_helpers(&lua)?;
     super::hardware::register_hardware_helpers(&lua)?;
     super::package::register_package_helpers(&lua)?;

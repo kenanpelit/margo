@@ -174,7 +174,7 @@ pub fn create_backup_if_enabled(
 }
 
 /// Rotate system backups according to max_backups setting
-/// Only deletes dcli-created snapshots (identified by comment containing "dcli")
+/// Only deletes mdots-created snapshots (identified by comment containing "mdots")
 fn rotate_system_backups(paths: &ConfigPaths, backup_tool: &str, max_backups: u32) -> Result<()> {
     if max_backups == 0 {
         return Ok(()); // Unlimited backups
@@ -187,7 +187,7 @@ fn rotate_system_backups(paths: &ConfigPaths, backup_tool: &str, max_backups: u3
     }
 }
 
-/// Rotate timeshift backups - keeps only max_backups dcli snapshots
+/// Rotate timeshift backups - keeps only max_backups mdots snapshots
 fn rotate_timeshift_backups(max_backups: u32) -> Result<()> {
     // Get list of timeshift snapshots
     let output = Command::new("sudo")
@@ -200,9 +200,9 @@ fn rotate_timeshift_backups(max_backups: u32) -> Result<()> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Parse timeshift output to find dcli snapshots
+    // Parse timeshift output to find mdots snapshots
     // Format: snapshot_name | date | tags | description
-    let mut dcli_snapshots: Vec<String> = Vec::new();
+    let mut mdots_snapshots: Vec<String> = Vec::new();
 
     for line in stdout.lines() {
         // Skip header lines and empty lines
@@ -210,21 +210,21 @@ fn rotate_timeshift_backups(max_backups: u32) -> Result<()> {
             continue;
         }
 
-        // Check if this is a dcli snapshot (comment contains "dcli")
-        if line.to_lowercase().contains("dcli") {
+        // Check if this is a mdots snapshot (comment contains "mdots")
+        if line.to_lowercase().contains("mdots") {
             // Extract snapshot name (first field)
             if let Some(snapshot_name) = line.split_whitespace().next() {
-                dcli_snapshots.push(snapshot_name.to_string());
+                mdots_snapshots.push(snapshot_name.to_string());
             }
         }
     }
 
     // Sort by name (which includes timestamp)
-    dcli_snapshots.sort();
+    mdots_snapshots.sort();
 
     // Delete oldest snapshots if we exceed max_backups
-    while dcli_snapshots.len() > max_backups as usize {
-        if let Some(snapshot) = dcli_snapshots.first() {
+    while mdots_snapshots.len() > max_backups as usize {
+        if let Some(snapshot) = mdots_snapshots.first() {
             let _ = Command::new("sudo")
                 .args([
                     "timeshift",
@@ -236,14 +236,14 @@ fn rotate_timeshift_backups(max_backups: u32) -> Result<()> {
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .status();
-            dcli_snapshots.remove(0);
+            mdots_snapshots.remove(0);
         }
     }
 
     Ok(())
 }
 
-/// Rotate snapper backups - keeps only max_backups dcli snapshots
+/// Rotate snapper backups - keeps only max_backups mdots snapshots
 fn rotate_snapper_backups(paths: &ConfigPaths, max_backups: u32) -> Result<()> {
     let snapper_cfg = get_snapper_config(paths);
 
@@ -265,9 +265,9 @@ fn rotate_snapper_backups(paths: &ConfigPaths, max_backups: u32) -> Result<()> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Parse snapper output to find dcli snapshots
+    // Parse snapper output to find mdots snapshots
     // Format: number | description
-    let mut dcli_snapshots: Vec<u32> = Vec::new();
+    let mut mdots_snapshots: Vec<u32> = Vec::new();
 
     for line in stdout.lines() {
         // Skip header lines
@@ -275,24 +275,24 @@ fn rotate_snapper_backups(paths: &ConfigPaths, max_backups: u32) -> Result<()> {
             continue;
         }
 
-        // Check if this is a dcli snapshot (description contains "dcli")
-        if line.to_lowercase().contains("dcli") {
+        // Check if this is a mdots snapshot (description contains "mdots")
+        if line.to_lowercase().contains("mdots") {
             // Extract snapshot number (first field)
             let parts: Vec<&str> = line.split_whitespace().collect();
             if let Some(num_str) = parts.first() {
                 if let Ok(num) = num_str.parse::<u32>() {
-                    dcli_snapshots.push(num);
+                    mdots_snapshots.push(num);
                 }
             }
         }
     }
 
     // Sort by number (older snapshots have lower numbers)
-    dcli_snapshots.sort();
+    mdots_snapshots.sort();
 
     // Delete oldest snapshots if we exceed max_backups
-    while dcli_snapshots.len() > max_backups as usize {
-        if let Some(snapshot_num) = dcli_snapshots.first() {
+    while mdots_snapshots.len() > max_backups as usize {
+        if let Some(snapshot_num) = mdots_snapshots.first() {
             let _ = Command::new("sudo")
                 .args([
                     "snapper",
@@ -304,7 +304,7 @@ fn rotate_snapper_backups(paths: &ConfigPaths, max_backups: u32) -> Result<()> {
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .status();
-            dcli_snapshots.remove(0);
+            mdots_snapshots.remove(0);
         }
     }
 
@@ -324,7 +324,7 @@ pub fn create(paths: &ConfigPaths) -> Result<()> {
                     "timeshift",
                     "--create",
                     "--comments",
-                    "dcli backup (manual)",
+                    "mdots backup (manual)",
                 ])
                 .status()?;
 
@@ -345,7 +345,7 @@ pub fn create(paths: &ConfigPaths) -> Result<()> {
                     &config,
                     "create",
                     "-d",
-                    "dcli backup (manual)",
+                    "mdots backup (manual)",
                 ])
                 .status()?;
 
@@ -442,7 +442,7 @@ pub fn restore(paths: &ConfigPaths, snapshot: Option<String>) -> Result<()> {
                     "{}",
                     "Snapper requires a snapshot number to restore.".yellow()
                 );
-                println!("Usage: dcli restore <snapshot-number>");
+                println!("Usage: mdots restore <snapshot-number>");
                 println!();
                 println!("Available snapshots:");
 
@@ -498,7 +498,7 @@ fn select_snapshot_interactive(backup_tool: &str, paths: &ConfigPaths) -> Result
             "--prompt=Select snapshot > ",
             "--height=100%",
             "--border=rounded",
-            "--border-label= dcli restore ",
+            "--border-label= mdots restore ",
             "--border-label-pos=2",
             "--color=border:blue,label:cyan",
             "--no-multi",

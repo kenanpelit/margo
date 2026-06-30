@@ -1,4 +1,4 @@
-//! Lua module support for dcli
+//! Lua module support for mdots
 //!
 //! This module provides the infrastructure for loading and executing
 //! Lua-based module configurations.
@@ -175,7 +175,7 @@ pub struct LuaModule {
 pub fn load_lua_module(path: &Path) -> Result<LuaModule> {
     let lua = create_sandboxed_lua()?;
 
-    // Register dcli helpers
+    // Register mdots helpers
     helpers::register_helpers(&lua)?;
     hardware::register_hardware_helpers(&lua)?;
     package::register_package_helpers(&lua)?;
@@ -434,9 +434,9 @@ fn generate_error_hint(error: &str) -> Option<String> {
     }
 
     if error_lower.contains("attempt to index a nil value") {
-        if error_lower.contains("dcli") {
+        if error_lower.contains("mdots") {
             return Some(
-                "Make sure you're using the correct dcli.* API (e.g., dcli.hardware.cpu_vendor())"
+                "Make sure you're using the correct mdots.* API (e.g., mdots.hardware.cpu_vendor())"
                     .to_string(),
             );
         }
@@ -1075,7 +1075,7 @@ pub fn format_validation_result(result: &LuaValidationResult, module_name: &str)
 pub fn load_lua_manifest(path: &Path) -> Result<ModuleManifest> {
     let lua = create_sandboxed_lua()?;
 
-    // Register dcli helpers
+    // Register mdots helpers
     helpers::register_helpers(&lua)?;
     hardware::register_hardware_helpers(&lua)?;
     package::register_package_helpers(&lua)?;
@@ -1112,7 +1112,7 @@ pub struct LuaDirectoryModule {
 pub fn load_lua_directory_module(path: &Path) -> Result<LuaDirectoryModule> {
     let lua = create_sandboxed_lua()?;
 
-    // Register dcli helpers
+    // Register mdots helpers
     helpers::register_helpers(&lua)?;
     hardware::register_hardware_helpers(&lua)?;
     package::register_package_helpers(&lua)?;
@@ -1346,7 +1346,7 @@ pub fn detect_pointer_lua_config(path: &Path) -> Result<Option<String>> {
 fn create_config_lua_env() -> Result<Lua> {
     let lua = create_sandboxed_lua()?;
 
-    // Register dcli helpers
+    // Register mdots helpers
     helpers::register_helpers(&lua)?;
     hardware::register_hardware_helpers(&lua)?;
     package::register_package_helpers(&lua)?;
@@ -1367,7 +1367,7 @@ fn create_config_lua_env() -> Result<Lua> {
 fn create_config_lua_env_silent() -> Result<Lua> {
     let lua = create_sandboxed_lua()?;
 
-    // Register dcli helpers (excluding log helpers)
+    // Register mdots helpers (excluding log helpers)
     helpers::register_helpers_silent(&lua)?;
     hardware::register_hardware_helpers(&lua)?;
     package::register_package_helpers(&lua)?;

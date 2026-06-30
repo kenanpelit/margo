@@ -260,8 +260,8 @@ pub fn collect_nix_packages(config: &Config, paths: &ConfigPaths) -> Result<Vec<
     Ok(packages)
 }
 
-/// Generate dcli-packages.nix file
-pub fn generate_dcli_packages_nix(packages: &[String], output_path: &Path) -> Result<()> {
+/// Generate mdots-packages.nix file
+pub fn generate_mdots_packages_nix(packages: &[String], output_path: &Path) -> Result<()> {
     let mut content = String::from("{ pkgs, ... }:\n{\n  home.packages = with pkgs; [\n");
 
     for pkg in packages {
@@ -285,7 +285,7 @@ pub fn generate_shared_home_nix(output_path: &Path) -> Result<()> {
     let content = r#"{ config, pkgs, lib, hostname, ... }:
 {
   imports =
-    [ ./hosts/${hostname}/dcli-packages.nix ]
+    [ ./hosts/${hostname}/mdots-packages.nix ]
     ++ lib.optionals (builtins.pathExists ./hosts/${hostname}/packages.nix) [
       ./hosts/${hostname}/packages.nix
     ];
@@ -330,7 +330,7 @@ pub fn generate_home_nix_template(
   home.enableNixpkgsReleaseCheck = false;
 
   imports = [
-    ./dcli-packages.nix
+    ./mdots-packages.nix
     # Add your own imports here:
     # ./packages.nix
     # ./dev.nix
@@ -359,7 +359,7 @@ pub fn generate_home_nix_template(
 /// Generate per-host flake.nix that discovers hosts from subdirectories
 pub fn generate_per_host_flake_nix(system_arch: &str, output_path: &Path) -> Result<()> {
     let content = format!(
-        r#"{{ description = "Home Manager configuration managed by dcli"; inputs = {{
+        r#"{{ description = "Home Manager configuration managed by mdots"; inputs = {{
   nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
   home-manager.url = "github:nix-community/home-manager";
   home-manager.inputs.nixpkgs.follows = "nixpkgs";
@@ -435,12 +435,12 @@ pub fn home_manager_switch(paths: &ConfigPaths, config: &Config) -> Result<()> {
         let flake_nix = hm_dir.join("flake.nix");
         if !flake_nix.exists() {
             anyhow::bail!(
-                "flake.nix not found at {}. Run 'dcli init --nix-init' to set up flakes.",
+                "flake.nix not found at {}. Run 'mdots init --nix-init' to set up flakes.",
                 flake_nix.display()
             );
         }
 
-        // Use the hostname from dcli config for the flake target
+        // Use the hostname from mdots config for the flake target
         let flake_target = if use_per_host_structure(paths) {
             config.host.clone()
         } else {
@@ -569,10 +569,10 @@ pub fn nix_status(paths: &ConfigPaths, config: &Config) -> Result<NixStatus> {
     let home_nix_exists = hm_dir.join("home.nix").exists();
     let flake_nix_exists = hm_dir.join("flake.nix").exists();
     let file_exists = |p: std::path::PathBuf| p.exists();
-    let current_dcli_exists = if per_host {
-        file_exists(home_manager_host_dir(paths, &config.host).join("dcli-packages.nix"))
+    let current_mdots_exists = if per_host {
+        file_exists(home_manager_host_dir(paths, &config.host).join("mdots-packages.nix"))
     } else {
-        file_exists(hm_dir.join("dcli-packages.nix"))
+        file_exists(hm_dir.join("mdots-packages.nix"))
     };
 
     Ok(NixStatus {
@@ -582,7 +582,7 @@ pub fn nix_status(paths: &ConfigPaths, config: &Config) -> Result<NixStatus> {
         hm_installed,
         hm_version,
         home_nix_exists,
-        dcli_packages_exists: current_dcli_exists,
+        mdots_packages_exists: current_mdots_exists,
         flake_enabled: config.nix.flake_enabled,
         flake_nix_exists,
     })
@@ -596,12 +596,12 @@ pub struct NixStatus {
     pub hm_installed: bool,
     pub hm_version: Option<String>,
     pub home_nix_exists: bool,
-    pub dcli_packages_exists: bool,
+    pub mdots_packages_exists: bool,
     pub flake_enabled: bool,
     pub flake_nix_exists: bool,
 }
 
-/// Migrate existing home-manager config to dcli management
+/// Migrate existing home-manager config to mdots management
 pub fn migrate_existing_hm(paths: &ConfigPaths) -> Result<bool> {
     let old_hm_dir = dirs::home_dir()
         .map(|h| h.join(".config/home-manager"))
@@ -617,7 +617,7 @@ pub fn migrate_existing_hm(paths: &ConfigPaths) -> Result<bool> {
         "{} Existing home-manager config found at ~/.config/home-manager/home.nix",
         "→".blue()
     );
-    print!("Migrate it to dcli management? [Y/n] ");
+    print!("Migrate it to mdots management? [Y/n] ");
     io::stdout().flush()?;
 
     let mut input = String::new();
@@ -628,7 +628,7 @@ pub fn migrate_existing_hm(paths: &ConfigPaths) -> Result<bool> {
         return Ok(false);
     }
 
-    // Create dcli home-manager directory
+    // Create mdots home-manager directory
     std::fs::create_dir_all(paths.home_manager_dir())
         .context("Failed to create home-manager directory")?;
 
@@ -642,22 +642,22 @@ pub fn migrate_existing_hm(paths: &ConfigPaths) -> Result<bool> {
         new_home_nix.display()
     );
 
-    // Create empty dcli-packages.nix
-    let dcli_packages = paths.home_manager_dir().join("dcli-packages.nix");
-    generate_dcli_packages_nix(&[], &dcli_packages)?;
-    println!("  {} Created {}", "✓".green(), dcli_packages.display());
+    // Create empty mdots-packages.nix
+    let mdots_packages = paths.home_manager_dir().join("mdots-packages.nix");
+    generate_mdots_packages_nix(&[], &mdots_packages)?;
+    println!("  {} Created {}", "✓".green(), mdots_packages.display());
 
     // Add imports to migrated home.nix if not already present
     let content = std::fs::read_to_string(&new_home_nix)?;
-    if !content.contains("dcli-packages.nix") {
+    if !content.contains("mdots-packages.nix") {
         let updated = content.replacen(
             "{ config, pkgs, ... }:\n{",
-            "{ config, pkgs, ... }:\n{\n  imports = [\n    ./dcli-packages.nix\n  ];\n",
+            "{ config, pkgs, ... }:\n{\n  imports = [\n    ./mdots-packages.nix\n  ];\n",
             1,
         );
         std::fs::write(&new_home_nix, updated)?;
         println!(
-            "  {} Added dcli-packages.nix import to home.nix",
+            "  {} Added mdots-packages.nix import to home.nix",
             "✓".green()
         );
     }

@@ -16,7 +16,7 @@ struct BackupMetadata {
     active_host_file: String,
     enabled_modules: Vec<String>,
     backup_type: String,
-    dcli_version: String,
+    mdots_version: String,
     package_count: usize,
     validation_passed: bool,
 }
@@ -43,7 +43,7 @@ pub fn save_config(paths: &ConfigPaths, backup_type: &str, json: bool) -> Result
                     .bold()
             );
             println!();
-            println!("Run 'dcli validate' to see detailed validation results.");
+            println!("Run 'mdots validate' to see detailed validation results.");
         }
         anyhow::bail!("Validation failed: {}", e);
     }
@@ -164,7 +164,7 @@ pub fn save_config(paths: &ConfigPaths, backup_type: &str, json: bool) -> Result
             .to_string(),
         enabled_modules: config.enabled_modules.clone(),
         backup_type: backup_type.to_string(),
-        dcli_version: env!("CARGO_PKG_VERSION").to_string(),
+        mdots_version: env!("CARGO_PKG_VERSION").to_string(),
         package_count,
         validation_passed: true,
     };
@@ -511,15 +511,15 @@ pub fn restore_config(paths: &ConfigPaths, backup_name: Option<String>, json: bo
         println!("{}", "✓ Configuration restored successfully!".green());
         println!();
         println!("{}", "Next steps:".bold());
-        println!("  1. Review restored configuration: dcli status");
-        println!("  2. Run validation: dcli validate");
-        println!("  3. Apply package changes: dcli sync");
+        println!("  1. Review restored configuration: mdots status");
+        println!("  2. Run validation: mdots validate");
+        println!("  3. Apply package changes: mdots sync");
         println!();
         println!(
             "{}",
             "Note: Packages are NOT automatically installed/removed.".yellow()
         );
-        println!("Run 'dcli sync' to apply the restored package configuration.");
+        println!("Run 'mdots sync' to apply the restored package configuration.");
     } else {
         println!(
             "{}",
@@ -597,7 +597,7 @@ fn select_backup_interactive(paths: &ConfigPaths, hostname: &str) -> Result<Stri
             "--prompt=Select backup > ",
             "--height=100%",
             "--border=rounded",
-            "--border-label= dcli restore-config ",
+            "--border-label= mdots restore-config ",
             "--border-label-pos=2",
             "--color=border:blue,label:cyan",
             "--no-multi",

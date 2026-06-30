@@ -1,76 +1,76 @@
-//! dcli helper functions exposed to Lua
+//! mdots helper functions exposed to Lua
 //!
-//! Provides the `dcli.*` API for Lua modules.
+//! Provides the `mdots.*` API for Lua modules.
 
 use anyhow::{anyhow, Result};
 use mlua::{Lua, Table, Value};
 
 use super::sandbox;
 
-/// Register all dcli helpers in Lua globals
+/// Register all mdots helpers in Lua globals
 pub fn register_helpers(lua: &Lua) -> Result<()> {
     let globals = lua.globals();
 
-    // Create dcli table
-    let dcli = lua
+    // Create mdots table
+    let mdots = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     // Add sub-tables
-    dcli.set("file", create_file_helpers(lua)?)
+    mdots.set("file", create_file_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    dcli.set("system", create_system_helpers(lua)?)
+    mdots.set("system", create_system_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    dcli.set("log", create_log_helpers(lua)?)
+    mdots.set("log", create_log_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    dcli.set("env", create_env_helpers(lua)?)
+    mdots.set("env", create_env_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    dcli.set("util", create_util_helpers(lua)?)
+    mdots.set("util", create_util_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     globals
-        .set("dcli", dcli)
+        .set("mdots", mdots)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())
 }
 
-/// Register dcli helpers with silent/no-op log functions
+/// Register mdots helpers with silent/no-op log functions
 /// Used during config detection to avoid duplicate log output
 pub fn register_helpers_silent(lua: &Lua) -> Result<()> {
     let globals = lua.globals();
 
-    // Create dcli table
-    let dcli = lua
+    // Create mdots table
+    let mdots = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     // Add sub-tables
-    dcli.set("file", create_file_helpers(lua)?)
+    mdots.set("file", create_file_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    dcli.set("system", create_system_helpers(lua)?)
+    mdots.set("system", create_system_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    dcli.set("log", create_silent_log_helpers(lua)?)
+    mdots.set("log", create_silent_log_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    dcli.set("env", create_env_helpers(lua)?)
+    mdots.set("env", create_env_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    dcli.set("util", create_util_helpers(lua)?)
+    mdots.set("util", create_util_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     globals
-        .set("dcli", dcli)
+        .set("mdots", mdots)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())
 }
 
-/// Create dcli.file helpers
+/// Create mdots.file helpers
 fn create_file_helpers(lua: &Lua) -> Result<Table> {
     let file = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.file.exists(path)
+    // mdots.file.exists(path)
     file.set(
         "exists",
         lua.create_function(|_, path: String| Ok(std::path::Path::new(&path).exists()))
@@ -78,7 +78,7 @@ fn create_file_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.file.is_dir(path)
+    // mdots.file.is_dir(path)
     file.set(
         "is_dir",
         lua.create_function(|_, path: String| Ok(std::path::Path::new(&path).is_dir()))
@@ -86,7 +86,7 @@ fn create_file_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.file.is_file(path)
+    // mdots.file.is_file(path)
     file.set(
         "is_file",
         lua.create_function(|_, path: String| Ok(std::path::Path::new(&path).is_file()))
@@ -94,7 +94,7 @@ fn create_file_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.file.read(path) - sandboxed
+    // mdots.file.read(path) - sandboxed
     file.set(
         "read",
         lua.create_function(|_, path: String| {
@@ -114,7 +114,7 @@ fn create_file_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.file.read_lines(path) - returns array of lines
+    // mdots.file.read_lines(path) - returns array of lines
     file.set(
         "read_lines",
         lua.create_function(|lua, path: String| {
@@ -144,13 +144,13 @@ fn create_file_helpers(lua: &Lua) -> Result<Table> {
     Ok(file)
 }
 
-/// Create dcli.system helpers
+/// Create mdots.system helpers
 fn create_system_helpers(lua: &Lua) -> Result<Table> {
     let system = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.system.hostname()
+    // mdots.system.hostname()
     system
         .set(
             "hostname",
@@ -164,7 +164,7 @@ fn create_system_helpers(lua: &Lua) -> Result<Table> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.system.kernel_version()
+    // mdots.system.kernel_version()
     system
         .set(
             "kernel_version",
@@ -182,7 +182,7 @@ fn create_system_helpers(lua: &Lua) -> Result<Table> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.system.arch() -> "x86_64" | "aarch64" | etc.
+    // mdots.system.arch() -> "x86_64" | "aarch64" | etc.
     system
         .set(
             "arch",
@@ -191,7 +191,7 @@ fn create_system_helpers(lua: &Lua) -> Result<Table> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.system.os() -> "linux" | "macos" | "windows"
+    // mdots.system.os() -> "linux" | "macos" | "windows"
     system
         .set(
             "os",
@@ -200,7 +200,7 @@ fn create_system_helpers(lua: &Lua) -> Result<Table> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.system.distro() -> "arch" | "endeavouros" | "manjaro" | etc.
+    // mdots.system.distro() -> "arch" | "endeavouros" | "manjaro" | etc.
     system
         .set(
             "distro",
@@ -209,7 +209,7 @@ fn create_system_helpers(lua: &Lua) -> Result<Table> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.system.distro_name() -> "Arch Linux" | "EndeavourOS" | etc.
+    // mdots.system.distro_name() -> "Arch Linux" | "EndeavourOS" | etc.
     system
         .set(
             "distro_name",
@@ -218,7 +218,7 @@ fn create_system_helpers(lua: &Lua) -> Result<Table> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.system.distro_version() -> version string or "rolling"
+    // mdots.system.distro_version() -> version string or "rolling"
     system
         .set(
             "distro_version",
@@ -227,7 +227,7 @@ fn create_system_helpers(lua: &Lua) -> Result<Table> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.system.memory_total_mb() -> total RAM in MB
+    // mdots.system.memory_total_mb() -> total RAM in MB
     system
         .set(
             "memory_total_mb",
@@ -236,7 +236,7 @@ fn create_system_helpers(lua: &Lua) -> Result<Table> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.system.cpu_cores() -> number of CPU cores
+    // mdots.system.cpu_cores() -> number of CPU cores
     system
         .set(
             "cpu_cores",
@@ -248,13 +248,13 @@ fn create_system_helpers(lua: &Lua) -> Result<Table> {
     Ok(system)
 }
 
-/// Create dcli.log helpers
+/// Create mdots.log helpers
 fn create_log_helpers(lua: &Lua) -> Result<Table> {
     let log_table = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.log.info(msg)
+    // mdots.log.info(msg)
     log_table
         .set(
             "info",
@@ -266,7 +266,7 @@ fn create_log_helpers(lua: &Lua) -> Result<Table> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.log.warn(msg)
+    // mdots.log.warn(msg)
     log_table
         .set(
             "warn",
@@ -278,7 +278,7 @@ fn create_log_helpers(lua: &Lua) -> Result<Table> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.log.debug(msg)
+    // mdots.log.debug(msg)
     log_table
         .set(
             "debug",
@@ -290,7 +290,7 @@ fn create_log_helpers(lua: &Lua) -> Result<Table> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.log.error(msg)
+    // mdots.log.error(msg)
     log_table
         .set(
             "error",
@@ -348,13 +348,13 @@ fn create_silent_log_helpers(lua: &Lua) -> Result<Table> {
     Ok(log_table)
 }
 
-/// Create dcli.env helpers for environment variables
+/// Create mdots.env helpers for environment variables
 fn create_env_helpers(lua: &Lua) -> Result<Table> {
     let env = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.env.get(name) -> string or nil
+    // mdots.env.get(name) -> string or nil
     env.set(
         "get",
         lua.create_function(|_, name: String| Ok(std::env::var(&name).ok()))
@@ -362,7 +362,7 @@ fn create_env_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.env.home() -> home directory path
+    // mdots.env.home() -> home directory path
     env.set(
         "home",
         lua.create_function(|_, ()| {
@@ -375,7 +375,7 @@ fn create_env_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.env.user() -> current username
+    // mdots.env.user() -> current username
     env.set(
         "user",
         lua.create_function(|_, ()| {
@@ -387,7 +387,7 @@ fn create_env_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.env.config_dir() -> XDG config directory
+    // mdots.env.config_dir() -> XDG config directory
     env.set(
         "config_dir",
         lua.create_function(|_, ()| {
@@ -400,7 +400,7 @@ fn create_env_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.env.data_dir() -> XDG data directory
+    // mdots.env.data_dir() -> XDG data directory
     env.set(
         "data_dir",
         lua.create_function(|_, ()| {
@@ -413,7 +413,7 @@ fn create_env_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.env.cache_dir() -> XDG cache directory
+    // mdots.env.cache_dir() -> XDG cache directory
     env.set(
         "cache_dir",
         lua.create_function(|_, ()| {
@@ -426,7 +426,7 @@ fn create_env_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.env.shell() -> current shell
+    // mdots.env.shell() -> current shell
     env.set(
         "shell",
         lua.create_function(|_, ()| {
@@ -439,13 +439,13 @@ fn create_env_helpers(lua: &Lua) -> Result<Table> {
     Ok(env)
 }
 
-/// Create dcli.util helpers for utility functions
+/// Create mdots.util helpers for utility functions
 fn create_util_helpers(lua: &Lua) -> Result<Table> {
     let util = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.contains(table, value) -> boolean
+    // mdots.util.contains(table, value) -> boolean
     // Check if an array-like table contains a value
     util.set(
         "contains",
@@ -461,7 +461,7 @@ fn create_util_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.keys(table) -> array of keys
+    // mdots.util.keys(table) -> array of keys
     util.set(
         "keys",
         lua.create_function(|lua, table: Table| {
@@ -475,7 +475,7 @@ fn create_util_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.values(table) -> array of values
+    // mdots.util.values(table) -> array of values
     util.set(
         "values",
         lua.create_function(|lua, table: Table| {
@@ -489,7 +489,7 @@ fn create_util_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.merge(t1, t2) -> merged table (t2 values override t1)
+    // mdots.util.merge(t1, t2) -> merged table (t2 values override t1)
     util.set(
         "merge",
         lua.create_function(|lua, (t1, t2): (Table, Table)| {
@@ -511,7 +511,7 @@ fn create_util_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.extend(target, source) -> extends target array with source values
+    // mdots.util.extend(target, source) -> extends target array with source values
     util.set(
         "extend",
         lua.create_function(|_, (target, source): (Table, Table)| {
@@ -533,7 +533,7 @@ fn create_util_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.version_compare(v1, v2) -> -1, 0, or 1
+    // mdots.util.version_compare(v1, v2) -> -1, 0, or 1
     // Compares semantic version strings
     util.set(
         "version_compare",
@@ -542,7 +542,7 @@ fn create_util_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.version_gte(v1, v2) -> boolean (v1 >= v2)
+    // mdots.util.version_gte(v1, v2) -> boolean (v1 >= v2)
     util.set(
         "version_gte",
         lua.create_function(|_, (v1, v2): (String, String)| Ok(compare_versions(&v1, &v2) >= 0))
@@ -550,7 +550,7 @@ fn create_util_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.version_gt(v1, v2) -> boolean (v1 > v2)
+    // mdots.util.version_gt(v1, v2) -> boolean (v1 > v2)
     util.set(
         "version_gt",
         lua.create_function(|_, (v1, v2): (String, String)| Ok(compare_versions(&v1, &v2) > 0))
@@ -558,7 +558,7 @@ fn create_util_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.version_lte(v1, v2) -> boolean (v1 <= v2)
+    // mdots.util.version_lte(v1, v2) -> boolean (v1 <= v2)
     util.set(
         "version_lte",
         lua.create_function(|_, (v1, v2): (String, String)| Ok(compare_versions(&v1, &v2) <= 0))
@@ -566,7 +566,7 @@ fn create_util_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.version_lt(v1, v2) -> boolean (v1 < v2)
+    // mdots.util.version_lt(v1, v2) -> boolean (v1 < v2)
     util.set(
         "version_lt",
         lua.create_function(|_, (v1, v2): (String, String)| Ok(compare_versions(&v1, &v2) < 0))
@@ -574,7 +574,7 @@ fn create_util_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.split(str, delimiter) -> array of strings
+    // mdots.util.split(str, delimiter) -> array of strings
     util.set(
         "split",
         lua.create_function(|lua, (s, delim): (String, String)| {
@@ -589,7 +589,7 @@ fn create_util_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.trim(str) -> trimmed string
+    // mdots.util.trim(str) -> trimmed string
     util.set(
         "trim",
         lua.create_function(|_, s: String| Ok(s.trim().to_string()))
@@ -597,7 +597,7 @@ fn create_util_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.starts_with(str, prefix) -> boolean
+    // mdots.util.starts_with(str, prefix) -> boolean
     util.set(
         "starts_with",
         lua.create_function(|_, (s, prefix): (String, String)| Ok(s.starts_with(&prefix)))
@@ -605,7 +605,7 @@ fn create_util_helpers(lua: &Lua) -> Result<Table> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.util.ends_with(str, suffix) -> boolean
+    // mdots.util.ends_with(str, suffix) -> boolean
     util.set(
         "ends_with",
         lua.create_function(|_, (s, suffix): (String, String)| Ok(s.ends_with(&suffix)))

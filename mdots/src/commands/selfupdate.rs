@@ -5,10 +5,10 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Find the dcli git repository
-fn find_dcli_repo() -> Option<PathBuf> {
-    // Check DCLI_REPO_PATH environment variable first
-    if let Ok(path) = env::var("DCLI_REPO_PATH") {
+/// Find the mdots git repository
+fn find_mdots_repo() -> Option<PathBuf> {
+    // Check MDOTS_REPO_PATH environment variable first
+    if let Ok(path) = env::var("MDOTS_REPO_PATH") {
         let repo_path = PathBuf::from(path);
         if repo_path.join(".git").exists() {
             return Some(repo_path);
@@ -18,10 +18,10 @@ fn find_dcli_repo() -> Option<PathBuf> {
     // Search common locations
     let home = env::var("HOME").ok()?;
     let search_paths = vec![
-        format!("{}/dcli", home),
-        format!("{}/projects/dcli", home),
-        format!("{}/git/dcli", home),
-        "/home/don/dcli".to_string(), // Hardcoded fallback
+        format!("{}/mdots", home),
+        format!("{}/projects/mdots", home),
+        format!("{}/git/mdots", home),
+        "/home/don/mdots".to_string(), // Hardcoded fallback
     ];
 
     for path in search_paths {
@@ -60,21 +60,21 @@ fn has_uncommitted_changes(repo_path: &Path) -> Result<bool> {
     Ok(!status.success())
 }
 
-/// Self-update dcli from git repository
+/// Self-update mdots from git repository
 pub fn run() -> Result<()> {
-    println!("{}", "=== dcli Self-Update ===".blue());
+    println!("{}", "=== mdots Self-Update ===".blue());
     println!();
 
-    // Find dcli repository
-    let dcli_repo = match find_dcli_repo() {
+    // Find mdots repository
+    let mdots_repo = match find_mdots_repo() {
         Some(repo) => repo,
         None => {
             println!(
                 "{}",
-                "Could not auto-detect dcli repository location".yellow()
+                "Could not auto-detect mdots repository location".yellow()
             );
             println!();
-            println!("Please enter the path to your dcli git repository:");
+            println!("Please enter the path to your mdots git repository:");
             print!("Path: ");
             io::stdout().flush()?;
 
@@ -91,21 +91,21 @@ pub fn run() -> Result<()> {
     };
 
     println!(
-        "{} Found dcli repository at: {}",
+        "{} Found mdots repository at: {}",
         "→".blue(),
-        dcli_repo.display().to_string().green()
+        mdots_repo.display().to_string().green()
     );
     println!();
 
     // Check for uncommitted changes
-    if has_uncommitted_changes(&dcli_repo)? {
+    if has_uncommitted_changes(&mdots_repo)? {
         println!(
             "{}",
-            "Warning: You have uncommitted changes in the dcli repository".yellow()
+            "Warning: You have uncommitted changes in the mdots repository".yellow()
         );
 
         Command::new("git")
-            .current_dir(&dcli_repo)
+            .current_dir(&mdots_repo)
             .args(["status", "--short"])
             .status()?;
 
@@ -123,7 +123,7 @@ pub fn run() -> Result<()> {
     }
 
     // Show current version
-    let current_commit = get_current_commit(&dcli_repo)?;
+    let current_commit = get_current_commit(&mdots_repo)?;
     println!("{} {}", "Current version:".blue(), current_commit);
 
     // Pull latest changes
@@ -131,7 +131,7 @@ pub fn run() -> Result<()> {
     let spinner = crate::progress::create_spinner("Pulling latest changes from git...");
 
     let status = Command::new("git")
-        .current_dir(&dcli_repo)
+        .current_dir(&mdots_repo)
         .arg("pull")
         .status()
         .context("Failed to run git pull")?;
@@ -143,7 +143,7 @@ pub fn run() -> Result<()> {
     spinner.finish_with_message("✓ Git pull complete");
 
     // Check new version
-    let new_commit = get_current_commit(&dcli_repo)?;
+    let new_commit = get_current_commit(&mdots_repo)?;
 
     if current_commit == new_commit {
         println!();
@@ -160,7 +160,7 @@ pub fn run() -> Result<()> {
     } else {
         println!("{}", "Error: cargo (Rust toolchain) not found".red());
         println!();
-        println!("dcli self-update requires Rust to build from source.");
+        println!("mdots self-update requires Rust to build from source.");
         println!();
         println!("Would you like to install Rust now with rustup? [Y/n]");
         print!("> ");
@@ -191,9 +191,9 @@ pub fn run() -> Result<()> {
             println!();
             println!(
                 "{}",
-                "Please restart your terminal and run 'dcli self-update' again.".yellow()
+                "Please restart your terminal and run 'mdots self-update' again.".yellow()
             );
-            println!("Or run: source $HOME/.cargo/env && dcli self-update");
+            println!("Or run: source $HOME/.cargo/env && mdots self-update");
             return Ok(());
         } else {
             println!(
@@ -210,14 +210,14 @@ pub fn run() -> Result<()> {
     );
 
     let build_status = Command::new(&cargo_cmd)
-        .current_dir(&dcli_repo)
+        .current_dir(&mdots_repo)
         .args(["build", "--release"])
         .status()
         .context("Failed to run cargo build")?;
 
     if !build_status.success() {
         build_spinner.finish_with_message("✗ Build failed");
-        anyhow::bail!("Failed to build dcli binary");
+        anyhow::bail!("Failed to build mdots binary");
     }
 
     build_spinner.finish_with_message("✓ Build completed successfully");
@@ -225,11 +225,11 @@ pub fn run() -> Result<()> {
     // Install updated version
     println!();
     println!(
-        "{} Installing updated dcli to /usr/local/bin...",
+        "{} Installing updated mdots to /usr/local/bin...",
         "→".blue()
     );
 
-    let binary_path = dcli_repo.join("target/release/dcli");
+    let binary_path = mdots_repo.join("target/release/mdots");
 
     if !binary_path.exists() {
         anyhow::bail!("Built binary not found at: {}", binary_path.display());
@@ -242,16 +242,16 @@ pub fn run() -> Result<()> {
             "-m",
             "755",
             &binary_path.to_string_lossy(),
-            "/usr/local/bin/dcli",
+            "/usr/local/bin/mdots",
         ])
         .status()
         .context("Failed to install binary")?;
 
     if !install_status.success() {
-        anyhow::bail!("Failed to install updated dcli");
+        anyhow::bail!("Failed to install updated mdots");
     }
 
-    println!("{} Installed to /usr/local/bin/dcli", "✓".green());
+    println!("{} Installed to /usr/local/bin/mdots", "✓".green());
 
     // Success message
     println!();
@@ -262,7 +262,7 @@ pub fn run() -> Result<()> {
     println!("To see what changed, run:");
     println!(
         "  cd {} && git log --oneline {}..{}",
-        dcli_repo.display(),
+        mdots_repo.display(),
         current_commit,
         new_commit
     );

@@ -22,7 +22,7 @@ pub fn run(paths: &ConfigPaths, no_backup: bool, no_hooks: bool, devel: bool) ->
         match crate::commands::backup::create_backup_if_enabled(
             paths,
             "update",
-            "dcli update autobackup",
+            "mdots update autobackup",
         ) {
             Ok(true) => {
                 println!();

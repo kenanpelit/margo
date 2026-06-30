@@ -21,7 +21,7 @@ use crate::services::{
 use crate::theming::state::{create_theming_state, load_theming_state, save_theming_state};
 use crate::theming::ThemingManager;
 
-/// Native packages dcli must never auto-remove during `--prune`, even if they
+/// Native packages mdots must never auto-remove during `--prune`, even if they
 /// fall out of the declared set. Removing any of these can make the system
 /// unbootable or break the package manager itself.
 const PROTECTED_PACKAGES: &[&str] = &[
@@ -46,7 +46,7 @@ const PROTECTED_PACKAGES: &[&str] = &[
     "grub",
     "systemd-boot",
     "efibootmgr",
-    "dcli",
+    "mdots",
 ];
 
 /// Split a prune removal list into (removable, protected-skipped), so critical
@@ -289,13 +289,13 @@ fn execute_module_hook(
             // Run as specified user using sudo -u
             std::process::Command::new("sudo")
                 .args([
-                    "--preserve-env=DCLI_LOG_INDENT",
+                    "--preserve-env=MDOTS_LOG_INDENT",
                     "-u",
                     &username,
                     "bash",
                     hook_path.to_str().unwrap(),
                 ])
-                .env("DCLI_LOG_INDENT", " ".repeat(crate::ui::DETAIL_INDENT))
+                .env("MDOTS_LOG_INDENT", " ".repeat(crate::ui::DETAIL_INDENT))
                 .stdin(std::process::Stdio::inherit())
                 .stdout(if json {
                     std::process::Stdio::null()
@@ -317,11 +317,11 @@ fn execute_module_hook(
             // Run with sudo as root (default)
             std::process::Command::new("sudo")
                 .args([
-                    "--preserve-env=DCLI_LOG_INDENT",
+                    "--preserve-env=MDOTS_LOG_INDENT",
                     "bash",
                     hook_path.to_str().unwrap(),
                 ])
-                .env("DCLI_LOG_INDENT", " ".repeat(crate::ui::DETAIL_INDENT))
+                .env("MDOTS_LOG_INDENT", " ".repeat(crate::ui::DETAIL_INDENT))
                 .stdin(std::process::Stdio::inherit())
                 .stdout(if json {
                     std::process::Stdio::null()
@@ -1093,7 +1093,7 @@ fn create_sync_backups(paths: &ConfigPaths, config: &Config) {
         match crate::commands::backup::create_backup_if_enabled(
             paths,
             "sync",
-            "dcli sync autobackup",
+            "mdots sync autobackup",
         ) {
             Ok(true) => {}
             Ok(false) => {
@@ -1148,7 +1148,7 @@ pub fn run(
                 "Validating",
                 &format!("{} error(s) — refusing to sync", validation_errors),
             );
-            crate::ui::detail("fix the errors above, or run `dcli validate` for details");
+            crate::ui::detail("fix the errors above, or run `mdots validate` for details");
         }
         anyhow::bail!("Validation failed with {} error(s)", validation_errors);
     }
@@ -1420,7 +1420,7 @@ pub fn run(
         if let Err(e) = run_post_install_hooks(paths, &config, json) {
             eprintln!("{} {}", "⚠".yellow(), e);
             eprintln!(
-                "  Packages are installed and tracked; fix the hook(s) and re-run `dcli hooks run`."
+                "  Packages are installed and tracked; fix the hook(s) and re-run `mdots hooks run`."
             );
         }
     }
@@ -2158,7 +2158,7 @@ fn update_state_file(paths: &ConfigPaths, declared: &[Package]) -> Result<()> {
 
     writeln!(
         file,
-        "# Auto-generated state file - tracks dcli-managed packages"
+        "# Auto-generated state file - tracks mdots-managed packages"
     )?;
     writeln!(file, "# Generated: {}", Utc::now().to_rfc3339())?;
     writeln!(file)?;
@@ -2203,8 +2203,8 @@ fn begin_sync_marker(state_dir: &Path) -> std::io::Result<()> {
     std::fs::write(
         sync_marker_path(state_dir),
         format!(
-            "# dcli sync in progress (pid {})\n# If this file lingers, a previous \
-             sync did not finish. Re-run `dcli sync` to reconcile.\n",
+            "# mdots sync in progress (pid {})\n# If this file lingers, a previous \
+             sync did not finish. Re-run `mdots sync` to reconcile.\n",
             std::process::id()
         ),
     )
@@ -2217,7 +2217,7 @@ fn clear_sync_marker(state_dir: &Path) {
 }
 
 /// True if a previous sync left an in-progress marker behind (interrupted run).
-/// Surfaced both at the start of `sync` and by `dcli status`.
+/// Surfaced both at the start of `sync` and by `mdots status`.
 pub(crate) fn sync_was_interrupted(state_dir: &Path) -> bool {
     sync_marker_path(state_dir).exists()
 }
@@ -2705,7 +2705,7 @@ fn sync_home_manager(paths: &ConfigPaths, config: &Config, json: bool) -> Result
                 "{}",
                 "⚠ Home Manager is not installed. Skipping nix package sync.".yellow()
             );
-            println!("  Run {} to set it up.", "dcli init --nix-init".cyan());
+            println!("  Run {} to set it up.", "mdots init --nix-init".cyan());
         }
         return Ok(());
     }
@@ -2732,26 +2732,26 @@ fn sync_home_manager(paths: &ConfigPaths, config: &Config, json: bool) -> Result
         }
     }
 
-    // Determine where to write dcli-packages.nix
-    let dcli_packages_path = if crate::nix::use_per_host_structure(paths) {
-        // Per-host structure: hosts/{hostname}/dcli-packages.nix
-        crate::nix::home_manager_host_dir(paths, &config.host).join("dcli-packages.nix")
+    // Determine where to write mdots-packages.nix
+    let mdots_packages_path = if crate::nix::use_per_host_structure(paths) {
+        // Per-host structure: hosts/{hostname}/mdots-packages.nix
+        crate::nix::home_manager_host_dir(paths, &config.host).join("mdots-packages.nix")
     } else {
-        // Flat structure (backward compat): root dcli-packages.nix
-        paths.home_manager_dir().join("dcli-packages.nix")
+        // Flat structure (backward compat): root mdots-packages.nix
+        paths.home_manager_dir().join("mdots-packages.nix")
     };
 
-    if let Some(parent) = dcli_packages_path.parent() {
+    if let Some(parent) = mdots_packages_path.parent() {
         std::fs::create_dir_all(parent).context("Failed to create home-manager directory")?;
     }
 
-    crate::nix::generate_dcli_packages_nix(&nix_packages, &dcli_packages_path)?;
+    crate::nix::generate_mdots_packages_nix(&nix_packages, &mdots_packages_path)?;
 
     if !json {
         println!(
             "  {} Generated {}",
             "✓".green(),
-            dcli_packages_path.display()
+            mdots_packages_path.display()
         );
     }
 

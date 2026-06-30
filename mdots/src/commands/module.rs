@@ -391,7 +391,7 @@ fn prompt_for_sync(paths: &ConfigPaths) -> Result<()> {
             paths, false, false, false, false, false, false, false, false,
         )?;
     } else {
-        println!("Skipped sync. Run 'dcli sync' later to install packages.");
+        println!("Skipped sync. Run 'mdots sync' later to install packages.");
     }
 
     Ok(())
@@ -511,7 +511,7 @@ pub fn disable(paths: &ConfigPaths, module_name: &str, json: bool) -> Result<()>
             "{}",
             format!("✓ Disabled module '{}'", resolved_name).green()
         );
-        println!("Run 'dcli sync --prune' to remove packages");
+        println!("Run 'mdots sync --prune' to remove packages");
     }
 
     Ok(())
@@ -564,7 +564,7 @@ echo 'Module file not found'"#,
             "--prompt=Select modules > ",
             "--height=100%",
             "--border=rounded",
-            "--border-label= dcli module enable ",
+            "--border-label= mdots module enable ",
             "--border-label-pos=2",
             "--color=border:blue,label:cyan",
         ])
@@ -641,7 +641,7 @@ echo 'Module file not found'"#,
             "--prompt=Select modules > ",
             "--height=100%",
             "--border=rounded",
-            "--border-label= dcli module disable ",
+            "--border-label= mdots module disable ",
             "--border-label-pos=2",
             "--color=border:blue,label:cyan",
         ])
@@ -706,7 +706,7 @@ echo 'Module file not found'"#,
             "✓".green(),
             disabled_count
         );
-        println!("Run 'dcli sync --prune' to remove packages");
+        println!("Run 'mdots sync --prune' to remove packages");
     }
     if failed_count > 0 {
         println!(
@@ -941,7 +941,7 @@ pub fn run_hook_interactive(paths: &ConfigPaths) -> Result<()> {
             "--prompt=Select module > ",
             "--height=100%",
             "--border=rounded",
-            "--border-label= dcli hooks run ",
+            "--border-label= mdots hooks run ",
             "--border-label-pos=2",
             "--color=border:blue,label:cyan",
             "--no-multi",
@@ -1088,7 +1088,7 @@ pub fn create(
     println!();
     println!(
         "{}",
-        "Tip: Run 'dcli module enable <module>' to enable this module.".yellow()
+        "Tip: Run 'mdots module enable <module>' to enable this module.".yellow()
     );
 
     Ok(())
@@ -1097,7 +1097,7 @@ pub fn create(
 /// Generate YAML module template
 fn generate_yaml_template() -> String {
     r#"# Module configuration
-# See dcli documentation for full syntax reference
+# See mdots documentation for full syntax reference
 
 description: "Brief description of what this module provides"
 
@@ -1166,7 +1166,7 @@ fn generate_nix_template() -> String {
 
 fn generate_lua_template() -> String {
     r#"-- Module configuration
--- See dcli documentation for full API reference
+-- See mdots documentation for full API reference
 
 local packages = {
     "package1",

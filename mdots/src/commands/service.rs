@@ -218,7 +218,7 @@ pub fn enable(paths: &ConfigPaths, profile_name: &str, json: bool) -> Result<()>
             "{}",
             format!("✓ Enabled service profile '{}'", profile_name).green()
         );
-        println!("Run 'dcli sync' to apply service changes");
+        println!("Run 'mdots sync' to apply service changes");
     }
 
     Ok(())
@@ -269,7 +269,7 @@ pub fn disable(paths: &ConfigPaths, profile_name: &str, json: bool) -> Result<()
             "{}",
             format!("✓ Disabled service profile '{}'", profile_name).green()
         );
-        println!("Run 'dcli sync' to apply service changes");
+        println!("Run 'mdots sync' to apply service changes");
     }
 
     Ok(())
@@ -364,7 +364,7 @@ pub fn enable_interactive(paths: &ConfigPaths) -> Result<()> {
             "--prompt=Select profiles > ",
             "--height=100%",
             "--border=rounded",
-            "--border-label= dcli service enable ",
+            "--border-label= mdots service enable ",
             "--border-label-pos=2",
             "--color=border:blue,label:cyan",
         ])
@@ -443,7 +443,7 @@ pub fn disable_interactive(paths: &ConfigPaths) -> Result<()> {
             "--prompt=Select profiles > ",
             "--height=100%",
             "--border=rounded",
-            "--border-label= dcli service disable ",
+            "--border-label= mdots service disable ",
             "--border-label-pos=2",
             "--color=border:blue,label:cyan",
         ])

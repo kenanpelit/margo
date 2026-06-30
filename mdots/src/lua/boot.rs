@@ -1,6 +1,6 @@
 //! Bootloader detection helpers for Lua modules
 //!
-//! Provides the `dcli.boot.*` API for detecting bootloader configuration.
+//! Provides the `mdots.boot.*` API for detecting bootloader configuration.
 
 use anyhow::{anyhow, Result};
 use mlua::{Lua, Table};
@@ -11,15 +11,15 @@ use std::process::Command;
 /// Register bootloader detection helpers
 pub fn register_boot_helpers(lua: &Lua) -> Result<()> {
     let globals = lua.globals();
-    let dcli: Table = globals
-        .get("dcli")
+    let mdots: Table = globals
+        .get("mdots")
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     let boot = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.boot.bootloader() -> "grub" | "systemd-boot" | "refind" | "unknown"
+    // mdots.boot.bootloader() -> "grub" | "systemd-boot" | "refind" | "unknown"
     boot.set(
         "bootloader",
         lua.create_function(|_, ()| Ok(detect_bootloader()))
@@ -27,7 +27,7 @@ pub fn register_boot_helpers(lua: &Lua) -> Result<()> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.boot.is_uefi() -> boolean
+    // mdots.boot.is_uefi() -> boolean
     boot.set(
         "is_uefi",
         lua.create_function(|_, ()| Ok(is_uefi()))
@@ -35,7 +35,7 @@ pub fn register_boot_helpers(lua: &Lua) -> Result<()> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.boot.is_bios() -> boolean
+    // mdots.boot.is_bios() -> boolean
     boot.set(
         "is_bios",
         lua.create_function(|_, ()| Ok(!is_uefi()))
@@ -43,7 +43,7 @@ pub fn register_boot_helpers(lua: &Lua) -> Result<()> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.boot.init_system() -> "systemd" | "openrc" | "runit" | "unknown"
+    // mdots.boot.init_system() -> "systemd" | "openrc" | "runit" | "unknown"
     boot.set(
         "init_system",
         lua.create_function(|_, ()| Ok(detect_init_system()))
@@ -51,7 +51,7 @@ pub fn register_boot_helpers(lua: &Lua) -> Result<()> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.boot.kernel_params() -> array of kernel parameters
+    // mdots.boot.kernel_params() -> array of kernel parameters
     boot.set(
         "kernel_params",
         lua.create_function(|lua, ()| {
@@ -66,7 +66,7 @@ pub fn register_boot_helpers(lua: &Lua) -> Result<()> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.boot.has_kernel_param(param) -> boolean
+    // mdots.boot.has_kernel_param(param) -> boolean
     boot.set(
         "has_kernel_param",
         lua.create_function(|_, param: String| Ok(has_kernel_param(&param)))
@@ -74,7 +74,7 @@ pub fn register_boot_helpers(lua: &Lua) -> Result<()> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.boot.efi_vars_supported() -> boolean
+    // mdots.boot.efi_vars_supported() -> boolean
     boot.set(
         "efi_vars_supported",
         lua.create_function(|_, ()| Ok(efi_vars_supported()))
@@ -82,7 +82,7 @@ pub fn register_boot_helpers(lua: &Lua) -> Result<()> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.boot.boot_id() -> boot ID string
+    // mdots.boot.boot_id() -> boot ID string
     boot.set(
         "boot_id",
         lua.create_function(|_, ()| Ok(get_boot_id()))
@@ -90,7 +90,7 @@ pub fn register_boot_helpers(lua: &Lua) -> Result<()> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    dcli.set("boot", boot)
+    mdots.set("boot", boot)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

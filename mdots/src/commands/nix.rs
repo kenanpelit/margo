@@ -35,12 +35,12 @@ pub fn install(paths: &ConfigPaths) -> Result<()> {
     println!();
     println!("Next steps:");
     println!(
-        "  1. Run {} to set up dcli home-manager config",
-        "dcli init --nix-init".cyan()
+        "  1. Run {} to set up mdots home-manager config",
+        "mdots init --nix-init".cyan()
     );
     println!(
         "  2. Or manually create {}",
-        "~/.config/dcli/home-manager/home.nix".cyan()
+        "~/.config/mdots/home-manager/home.nix".cyan()
     );
 
     Ok(())
@@ -55,7 +55,7 @@ pub fn switch(paths: &ConfigPaths) -> Result<()> {
     }
 
     if !crate::nix::is_home_manager_installed() {
-        anyhow::bail!("Home Manager is not installed. Run 'dcli nix install' first.");
+        anyhow::bail!("Home Manager is not installed. Run 'mdots nix install' first.");
     }
 
     crate::nix::home_manager_switch(paths, &config)
@@ -70,7 +70,7 @@ pub fn update(paths: &ConfigPaths) -> Result<()> {
     }
 
     if !crate::nix::is_home_manager_installed() {
-        anyhow::bail!("Home Manager is not installed. Run 'dcli nix install' first.");
+        anyhow::bail!("Home Manager is not installed. Run 'mdots nix install' first.");
     }
 
     crate::nix::home_manager_update(paths, &config)
@@ -79,7 +79,7 @@ pub fn update(paths: &ConfigPaths) -> Result<()> {
 /// Search nixpkgs for a package
 pub fn search(query: &str) -> Result<()> {
     if !crate::nix::is_nix_installed() {
-        anyhow::bail!("Nix is not installed. Run 'dcli nix install' first.");
+        anyhow::bail!("Nix is not installed. Run 'mdots nix install' first.");
     }
 
     crate::nix::nix_search(query)
@@ -102,7 +102,7 @@ pub fn status(paths: &ConfigPaths, json: bool) -> Result<()> {
                 "version": nix_status.hm_version,
                 "enabled_in_config": config.nix.home_manager_enabled,
                 "home_nix_exists": nix_status.home_nix_exists,
-                "dcli_packages_exists": nix_status.dcli_packages_exists,
+                "mdots_packages_exists": nix_status.mdots_packages_exists,
                 "flake_enabled": nix_status.flake_enabled,
             },
         });
@@ -180,9 +180,9 @@ pub fn status(paths: &ConfigPaths, json: bool) -> Result<()> {
             }
         );
         println!(
-            "  {} dcli-packages.nix: {}",
+            "  {} mdots-packages.nix: {}",
             "✓".green(),
-            if nix_status.dcli_packages_exists {
+            if nix_status.mdots_packages_exists {
                 "exists".green().to_string()
             } else {
                 "not found".yellow().to_string()

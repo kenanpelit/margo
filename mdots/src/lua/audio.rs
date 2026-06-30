@@ -1,6 +1,6 @@
 //! Audio system detection helpers for Lua modules
 //!
-//! Provides the `dcli.audio.*` API for detecting audio system configuration.
+//! Provides the `mdots.audio.*` API for detecting audio system configuration.
 
 use anyhow::{anyhow, Result};
 use mlua::{Lua, Table};
@@ -11,15 +11,15 @@ use std::process::Command;
 /// Register audio system helpers
 pub fn register_audio_helpers(lua: &Lua) -> Result<()> {
     let globals = lua.globals();
-    let dcli: Table = globals
-        .get("dcli")
+    let mdots: Table = globals
+        .get("mdots")
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     let audio = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.audio.server() -> "pulseaudio" | "pipewire" | "alsa" | "none"
+    // mdots.audio.server() -> "pulseaudio" | "pipewire" | "alsa" | "none"
     audio
         .set(
             "server",
@@ -28,7 +28,7 @@ pub fn register_audio_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.audio.has_pulseaudio() -> boolean
+    // mdots.audio.has_pulseaudio() -> boolean
     audio
         .set(
             "has_pulseaudio",
@@ -37,7 +37,7 @@ pub fn register_audio_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.audio.has_pipewire() -> boolean
+    // mdots.audio.has_pipewire() -> boolean
     audio
         .set(
             "has_pipewire",
@@ -46,7 +46,7 @@ pub fn register_audio_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.audio.has_jack() -> boolean
+    // mdots.audio.has_jack() -> boolean
     audio
         .set(
             "has_jack",
@@ -55,7 +55,7 @@ pub fn register_audio_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.audio.has_alsa() -> boolean
+    // mdots.audio.has_alsa() -> boolean
     audio
         .set(
             "has_alsa",
@@ -64,7 +64,7 @@ pub fn register_audio_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.audio.list_cards() -> array of sound card names
+    // mdots.audio.list_cards() -> array of sound card names
     audio
         .set(
             "list_cards",
@@ -80,7 +80,7 @@ pub fn register_audio_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.audio.default_sink() -> sink name or nil
+    // mdots.audio.default_sink() -> sink name or nil
     audio
         .set(
             "default_sink",
@@ -89,7 +89,7 @@ pub fn register_audio_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.audio.default_source() -> source name or nil
+    // mdots.audio.default_source() -> source name or nil
     audio
         .set(
             "default_source",
@@ -98,7 +98,7 @@ pub fn register_audio_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.audio.bluetooth_available() -> boolean
+    // mdots.audio.bluetooth_available() -> boolean
     audio
         .set(
             "bluetooth_available",
@@ -107,7 +107,7 @@ pub fn register_audio_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    dcli.set("audio", audio)
+    mdots.set("audio", audio)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

@@ -1,4 +1,4 @@
-//! Consistent cargo-style status output for `dcli sync` and friends.
+//! Consistent cargo-style status output for `mdots sync` and friends.
 //!
 //! A status line is a right-aligned, bold, colored verb followed by a message:
 //!

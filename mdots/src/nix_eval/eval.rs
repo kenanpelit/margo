@@ -8,7 +8,7 @@ use super::types::{NixConfigRaw, NixError, NixErrorKind, NixModuleRaw, NixValida
 pub fn check_nix_installed() -> Result<()> {
     if !crate::nix::is_nix_installed() {
         return Err(anyhow!(
-            "nix is not installed. Install it with: dcli nix install\n\
+            "nix is not installed. Install it with: mdots nix install\n\
              Or visit: https://nixos.org/download.html"
         ));
     }
@@ -26,7 +26,7 @@ pub fn evaluate_nix_file_to_json(
         .context("Failed to serialize system facts")?;
 
     let tmpdir = tempfile::Builder::new()
-        .prefix("dcli-nix-eval-")
+        .prefix("mdots-nix-eval-")
         .tempdir()
         .context("Failed to create temp dir")?;
 

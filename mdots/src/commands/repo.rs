@@ -310,14 +310,14 @@ pub fn clone(paths: &ConfigPaths) -> Result<()> {
     if !config_file.exists() {
         println!("{} Creating config.yaml (not found in repo)...", "→".blue());
         let config_content = format!(
-            r#"# Main configuration for dcli declarative package management
+            r#"# Main configuration for mdots declarative package management
 # Edit this file to customize your system configuration
 
 # Hostname of this machine
 host: {}
 
 # List of enabled modules
-# Enable modules with: dcli module enable <module-name>
+# Enable modules with: mdots module enable <module-name>
 enabled_modules: []
 
 # Additional packages not in any module
@@ -422,13 +422,13 @@ exclude: []
             println!();
             println!("Next steps:");
             println!("  1. Review: {}", host_file);
-            println!("  2. Run: dcli module list");
-            println!("  3. Run: dcli sync");
+            println!("  2. Run: mdots module list");
+            println!("  3. Run: mdots sync");
         }
         Err(_) => {
             println!();
             println!("{}", "Cloned successfully, but push failed.".yellow());
-            println!("Fix authentication, then run: dcli repo push");
+            println!("Fix authentication, then run: mdots repo push");
         }
     }
 
@@ -442,7 +442,7 @@ pub fn push(paths: &ConfigPaths) -> Result<()> {
 
     if !is_git_repo() {
         println!("{}", "Not a git repository".red());
-        println!("Run 'dcli repo init' first");
+        println!("Run 'mdots repo init' first");
         anyhow::bail!("Not a git repository");
     }
 
@@ -524,7 +524,7 @@ pub fn pull(paths: &ConfigPaths) -> Result<()> {
 
     if !is_git_repo() {
         println!("{}", "Not a git repository".red());
-        println!("Run 'dcli repo init' or 'dcli repo clone' first");
+        println!("Run 'mdots repo init' or 'mdots repo clone' first");
         anyhow::bail!("Not a git repository");
     }
 
@@ -536,7 +536,7 @@ pub fn pull(paths: &ConfigPaths) -> Result<()> {
         Ok(_) => {
             spinner.finish_with_message("✓ Updates pulled successfully");
             println!();
-            println!("Run 'dcli sync' to install any new packages");
+            println!("Run 'mdots sync' to install any new packages");
         }
         Err(e) => {
             spinner.finish_with_message("✗ Pull failed");
@@ -555,7 +555,7 @@ pub fn status(paths: &ConfigPaths) -> Result<()> {
 
     if !is_git_repo() {
         println!("{}", "Not a git repository".red());
-        println!("Run 'dcli repo init' or 'dcli repo clone' first");
+        println!("Run 'mdots repo init' or 'mdots repo clone' first");
         anyhow::bail!("Not a git repository");
     }
 
@@ -576,7 +576,7 @@ pub fn status(paths: &ConfigPaths) -> Result<()> {
 
     println!();
     println!(
-        "{} Use 'dcli repo push' to save your changes",
+        "{} Use 'mdots repo push' to save your changes",
         "Tip:".blue()
     );
 

@@ -53,11 +53,11 @@ pub struct ServicesState {
     #[serde(default = "Utc::now")]
     pub last_updated: DateTime<Utc>,
 
-    /// Services that are currently enabled by dcli
+    /// Services that are currently enabled by mdots
     #[serde(default)]
     pub enabled_services: Vec<String>,
 
-    /// Services that are currently disabled by dcli
+    /// Services that are currently disabled by mdots
     #[serde(default)]
     pub disabled_services: Vec<String>,
 }

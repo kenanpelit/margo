@@ -8,7 +8,7 @@ use crate::config::ConfigPaths;
 
 /// Migrate from old structure (packages/) to new structure (hosts/, modules/)
 pub fn run(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
-    println!("{}", "=== dcli Configuration Migration ===".blue());
+    println!("{}", "=== mdots Configuration Migration ===".blue());
     println!();
 
     // Check if already using new structure
@@ -29,7 +29,7 @@ pub fn run(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
     if !old_packages_dir.exists() {
         println!("{}", "✗ No packages/ directory found".red());
         println!();
-        println!("Nothing to migrate. Run 'dcli init' to create a new configuration.");
+        println!("Nothing to migrate. Run 'mdots init' to create a new configuration.");
         return Ok(());
     }
 
@@ -97,7 +97,7 @@ pub fn run(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
         println!("{}", "[DRY RUN - No changes will be made]".yellow());
         println!();
         println!("Run without --dry-run to perform migration:");
-        println!("  dcli migrate");
+        println!("  mdots migrate");
         return Ok(());
     }
 
@@ -135,9 +135,9 @@ pub fn run(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
     println!("Backup saved to: {}", backup_dir.display());
     println!();
     println!("Next steps:");
-    println!("  1. Run: dcli validate");
-    println!("  2. Run: dcli status");
-    println!("  3. Run: dcli sync --dry-run");
+    println!("  1. Run: mdots validate");
+    println!("  2. Run: mdots status");
+    println!("  3. Run: mdots sync --dry-run");
 
     Ok(())
 }
@@ -379,8 +379,8 @@ fn migrate_structure(paths: &ConfigPaths, old_packages_dir: &Path, hostname: &st
 # System backup settings
 system_backups:
   enabled: true           # Global toggle for system backups
-  backup_on_sync: true    # Create backup during dcli sync
-  backup_on_update: true  # Create backup during dcli update
+  backup_on_sync: true    # Create backup during mdots sync
+  backup_on_update: true  # Create backup during mdots update
   tool: {}                # Backup tool: timeshift or snapper
   snapper_config: {}      # Snapper config name (if using snapper)
   max_backups: 5          # Keep last N backups (0 = unlimited)"#,
@@ -448,7 +448,7 @@ auto_prune: {}
 
     // 6. Convert config.yaml to pointer
     let pointer_content = format!(
-        r#"# dcli configuration pointer
+        r#"# mdots configuration pointer
 # This file points to the active host configuration
 # Migrated from old structure
 

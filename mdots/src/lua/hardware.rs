@@ -1,6 +1,6 @@
 //! Hardware detection helpers for Lua modules
 //!
-//! Provides the `dcli.hardware.*` API for detecting system hardware.
+//! Provides the `mdots.hardware.*` API for detecting system hardware.
 
 use anyhow::{anyhow, Result};
 use mlua::{Lua, Table};
@@ -9,15 +9,15 @@ use std::fs;
 /// Register hardware detection helpers
 pub fn register_hardware_helpers(lua: &Lua) -> Result<()> {
     let globals = lua.globals();
-    let dcli: Table = globals
-        .get("dcli")
+    let mdots: Table = globals
+        .get("mdots")
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     let hardware = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.hardware.cpu_vendor() -> "intel" | "amd" | "unknown"
+    // mdots.hardware.cpu_vendor() -> "intel" | "amd" | "unknown"
     hardware
         .set(
             "cpu_vendor",
@@ -26,7 +26,7 @@ pub fn register_hardware_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.hardware.gpu_vendors() -> {"nvidia", "amd", "intel"}
+    // mdots.hardware.gpu_vendors() -> {"nvidia", "amd", "intel"}
     hardware
         .set(
             "gpu_vendors",
@@ -42,7 +42,7 @@ pub fn register_hardware_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.hardware.has_nvidia() -> boolean
+    // mdots.hardware.has_nvidia() -> boolean
     hardware
         .set(
             "has_nvidia",
@@ -51,7 +51,7 @@ pub fn register_hardware_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.hardware.has_amd_gpu() -> boolean
+    // mdots.hardware.has_amd_gpu() -> boolean
     hardware
         .set(
             "has_amd_gpu",
@@ -60,7 +60,7 @@ pub fn register_hardware_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.hardware.has_intel_gpu() -> boolean
+    // mdots.hardware.has_intel_gpu() -> boolean
     hardware
         .set(
             "has_intel_gpu",
@@ -69,7 +69,7 @@ pub fn register_hardware_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.hardware.is_laptop() -> boolean
+    // mdots.hardware.is_laptop() -> boolean
     hardware
         .set(
             "is_laptop",
@@ -78,7 +78,7 @@ pub fn register_hardware_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.hardware.has_battery() -> boolean
+    // mdots.hardware.has_battery() -> boolean
     hardware
         .set(
             "has_battery",
@@ -87,7 +87,7 @@ pub fn register_hardware_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.hardware.chassis_type() -> "desktop" | "laptop" | "server" | "unknown"
+    // mdots.hardware.chassis_type() -> "desktop" | "laptop" | "server" | "unknown"
     hardware
         .set(
             "chassis_type",
@@ -96,7 +96,7 @@ pub fn register_hardware_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    dcli.set("hardware", hardware)
+    mdots.set("hardware", hardware)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

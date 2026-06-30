@@ -1,6 +1,6 @@
 //! Storage device detection helpers for Lua modules
 //!
-//! Provides the `dcli.storage.*` API for detecting storage devices and filesystems.
+//! Provides the `mdots.storage.*` API for detecting storage devices and filesystems.
 
 use anyhow::{anyhow, Result};
 use mlua::{Lua, Table};
@@ -10,15 +10,15 @@ use std::process::Command;
 /// Register storage detection helpers
 pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
     let globals = lua.globals();
-    let dcli: Table = globals
-        .get("dcli")
+    let mdots: Table = globals
+        .get("mdots")
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     let storage = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.storage.has_ssd() -> boolean
+    // mdots.storage.has_ssd() -> boolean
     storage
         .set(
             "has_ssd",
@@ -27,7 +27,7 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.storage.has_hdd() -> boolean
+    // mdots.storage.has_hdd() -> boolean
     storage
         .set(
             "has_hdd",
@@ -36,7 +36,7 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.storage.has_nvme() -> boolean
+    // mdots.storage.has_nvme() -> boolean
     storage
         .set(
             "has_nvme",
@@ -45,7 +45,7 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.storage.list_disks() -> array of disk names
+    // mdots.storage.list_disks() -> array of disk names
     storage
         .set(
             "list_disks",
@@ -61,7 +61,7 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.storage.disk_type(name) -> "ssd" | "hdd" | "nvme" | "unknown"
+    // mdots.storage.disk_type(name) -> "ssd" | "hdd" | "nvme" | "unknown"
     storage
         .set(
             "disk_type",
@@ -70,7 +70,7 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.storage.disk_size(name) -> size in bytes or nil
+    // mdots.storage.disk_size(name) -> size in bytes or nil
     storage
         .set(
             "disk_size",
@@ -79,7 +79,7 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.storage.filesystem(path) -> filesystem type or nil
+    // mdots.storage.filesystem(path) -> filesystem type or nil
     storage
         .set(
             "filesystem",
@@ -88,7 +88,7 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.storage.mount_point(device) -> mount point or nil
+    // mdots.storage.mount_point(device) -> mount point or nil
     storage
         .set(
             "mount_point",
@@ -97,7 +97,7 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.storage.is_mounted(device) -> boolean
+    // mdots.storage.is_mounted(device) -> boolean
     storage
         .set(
             "is_mounted",
@@ -106,7 +106,7 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.storage.free_space(path) -> free space in bytes or nil
+    // mdots.storage.free_space(path) -> free space in bytes or nil
     storage
         .set(
             "free_space",
@@ -115,7 +115,7 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.storage.total_space(path) -> total space in bytes or nil
+    // mdots.storage.total_space(path) -> total space in bytes or nil
     storage
         .set(
             "total_space",
@@ -124,7 +124,7 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.storage.has_swap() -> boolean
+    // mdots.storage.has_swap() -> boolean
     storage
         .set(
             "has_swap",
@@ -133,7 +133,7 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.storage.swap_size() -> swap size in bytes or nil
+    // mdots.storage.swap_size() -> swap size in bytes or nil
     storage
         .set(
             "swap_size",
@@ -142,7 +142,7 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    dcli.set("storage", storage)
+    mdots.set("storage", storage)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

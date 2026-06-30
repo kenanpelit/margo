@@ -4,7 +4,7 @@
 //! with strict permissions — a symlink would point back at the encrypted blob
 //! in the repo, and decrypting in place would leak plaintext into git.
 //!
-//! dcli does not implement crypto; it shells out to `sops`. See
+//! mdots does not implement crypto; it shells out to `sops`. See
 //! `docs/superpowers/specs/2026-06-30-sops-secrets-design.md`.
 
 use anyhow::{bail, Context, Result};
@@ -16,7 +16,7 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::config::{Config, ConfigPaths, SecretEntry};
 
-/// Observable state of a declared secret, for `dcli secrets status`.
+/// Observable state of a declared secret, for `mdots secrets status`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SecretState {
     /// The `sops` binary is not installed — nothing can be decrypted.
@@ -149,8 +149,8 @@ pub(crate) fn write_secret_atomically(target: &Path, bytes: &[u8], mode: u32) ->
         .ok_or_else(|| anyhow::anyhow!("secret target {} has no file name", target.display()))?
         .to_string_lossy();
     // Same directory → rename is atomic (same filesystem). PID-tagged to avoid
-    // collisions with a concurrent dcli run.
-    let tmp = parent.join(format!(".{}.dcli-tmp.{}", file_name, std::process::id()));
+    // collisions with a concurrent mdots run.
+    let tmp = parent.join(format!(".{}.mdots-tmp.{}", file_name, std::process::id()));
 
     let result = (|| -> Result<()> {
         let mut f = OpenOptions::new()
@@ -305,8 +305,8 @@ pub(crate) fn prune_orphan_targets(orphans: &[PathBuf]) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Tracks the plaintext targets dcli has materialized, so removed secrets can
-/// be pruned. Stored as `secrets-state.yaml` (consistent with other dcli state).
+/// Tracks the plaintext targets mdots has materialized, so removed secrets can
+/// be pruned. Stored as `secrets-state.yaml` (consistent with other mdots state).
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct SecretsState {
     #[serde(default)]
@@ -343,9 +343,9 @@ pub(crate) fn resolve_key_path(sops_key_path: Option<&str>, home: &Path) -> Opti
 }
 
 /// Decrypt all declared secrets into place. Per-secret failures are warned and
-/// skipped — never fatal — so a broken secret cannot abort `dcli sync`.
+/// skipped — never fatal — so a broken secret cannot abort `mdots sync`.
 ///
-/// Wired into `run_post_sync_steps`; also the core of `dcli secrets sync`.
+/// Wired into `run_post_sync_steps`; also the core of `mdots secrets sync`.
 pub fn sync_secrets(
     paths: &ConfigPaths,
     config: &Config,
@@ -666,7 +666,7 @@ mod tests {
             .unwrap()
             .filter_map(|e| e.ok())
             .map(|e| e.file_name().to_string_lossy().into_owned())
-            .filter(|n| n.contains("dcli-tmp"))
+            .filter(|n| n.contains("mdots-tmp"))
             .collect();
         assert!(leftovers.is_empty(), "temp files leaked: {:?}", leftovers);
     }

@@ -17,12 +17,12 @@ fn machine_description(input: &str, hostname: &str) -> String {
     }
 }
 
-/// Create the top-level dcli config directory tree (hosts/, modules/, scripts/,
+/// Create the top-level mdots config directory tree (hosts/, modules/, scripts/,
 /// state/) and report each created path.
-fn create_dcli_dirs(paths: &ConfigPaths) -> Result<()> {
+fn create_mdots_dirs(paths: &ConfigPaths) -> Result<()> {
     println!("{} Creating directory structure...", "→".blue());
 
-    fs::create_dir_all(&paths.config_dir).context("Failed to create dcli config directory")?;
+    fs::create_dir_all(&paths.config_dir).context("Failed to create mdots config directory")?;
 
     // New structure: hosts/, modules/, scripts/, state/ at top level
     fs::create_dir_all(paths.config_dir.join("hosts"))
@@ -60,14 +60,14 @@ fn gitignore_with_system_packages(existing: Option<&str>) -> Option<String> {
 /// User-facing documentation files to include in arch-config
 const USER_DOCS: &[&str] = &[
     "CHEAT-SHEET.md",
-    "DCLI-LUA-API.md",
+    "MDOTS-LUA-API.md",
     "DIRECTORY-MODULES.md",
     "LUA-HOSTS.md",
     "LUA-MODULES.md",
     "SERVICES.md",
 ];
 
-/// Initialize dcli configuration directory structure
+/// Initialize mdots configuration directory structure
 pub fn run(
     paths: &ConfigPaths,
     bootstrap_blackdon: bool,
@@ -91,12 +91,12 @@ pub fn run(
         return run_nix_init(paths);
     }
 
-    println!("{}", "=== Initializing dcli configuration ===".blue());
+    println!("{}", "=== Initializing mdots configuration ===".blue());
     println!();
 
     // Check if already exists
     if paths.config_dir.exists() {
-        println!("{}", "dcli config directory already exists".yellow());
+        println!("{}", "mdots config directory already exists".yellow());
         println!("Location: {}", paths.config_dir.display());
         print!("Reinitialize? [y/N] ");
         io::stdout().flush()?;
@@ -131,7 +131,7 @@ pub fn run(
     println!();
 
     // Create NEW directory structure (no packages/ parent directory)
-    create_dcli_dirs(paths)?;
+    create_mdots_dirs(paths)?;
 
     // Copy user-facing documentation
     println!("{} Copying documentation...", "→".blue());
@@ -197,7 +197,7 @@ fn write_config_pointer(paths: &ConfigPaths, hostname: &str, pkg_manager_str: &s
     println!("{} Creating config.yaml (pointer)...", "→".blue());
 
     let config_content = format!(
-        r#"# dcli configuration pointer
+        r#"# mdots configuration pointer
 # This file points to the active host configuration
 # The full configuration lives in hosts/{hostname}.yaml
 
@@ -255,10 +255,10 @@ packages:
   # - neovim
   # - htop
 
-  # dcli dependencies
+  # mdots dependencies
   - paru         # AUR helper (required for AUR package management)
-  - fzf          # Fuzzy finder (required for dcli search/module/backup TUI)
-  - timeshift    # System backup tool (required for dcli backup commands)
+  - fzf          # Fuzzy finder (required for mdots search/module/backup TUI)
+  - timeshift    # System backup tool (required for mdots backup commands)
 "#
         .to_string(),
     };
@@ -331,8 +331,8 @@ config_backups:
 # System backup settings
 system_backups:
   enabled: true           # Global toggle for system backups
-  backup_on_sync: true    # Create backup during dcli sync
-  backup_on_update: true  # Create backup during dcli update
+  backup_on_sync: true    # Create backup during mdots sync
+  backup_on_update: true  # Create backup during mdots update
   tool: {backup_tool}     # Backup tool: timeshift or snapper
   snapper_config: root    # Snapper config name (if using snapper)
   max_backups: 5          # Keep last N backups (0 = unlimited)
@@ -390,7 +390,7 @@ post_install_hook: ""
 /// Print the post-init summary: the directory layout and suggested next steps.
 fn print_init_summary(hostname: &str, pkg_manager_str: &str) {
     println!();
-    println!("{}", "✓ dcli initialized successfully!".green());
+    println!("{}", "✓ mdots initialized successfully!".green());
     println!();
     println!("{}", "Structure:".bold());
     println!("  config.yaml          → Points to hosts/{}.yaml", hostname);
@@ -402,19 +402,19 @@ fn print_init_summary(hostname: &str, pkg_manager_str: &str) {
     println!("  modules/base.yaml    → Base packages for all hosts");
     println!("  modules/             → Optional package modules");
     println!("  scripts/             → Post-install hook scripts");
-    println!("  docs/                → dcli documentation");
+    println!("  docs/                → mdots documentation");
     println!();
     println!("Next steps:");
     println!("  1. Edit host config: hosts/{}.yaml", hostname);
     println!("  2. Edit base packages: modules/base.yaml");
-    println!("  3. Run: dcli validate");
-    println!("  4. Run: dcli module list");
-    println!("  5. Run: dcli sync --dry-run");
+    println!("  3. Run: mdots validate");
+    println!("  4. Run: mdots module list");
+    println!("  5. Run: mdots sync --dry-run");
     println!();
     println!("{}", "Advanced features:".bold());
     println!("  • Create shared configs in hosts/shared/");
     println!("  • Use 'import:' in host files to include shared configs");
-    println!("  • Version control: dcli repo init");
+    println!("  • Version control: mdots repo init");
 }
 
 /// Initialize arch-config with advanced Lua configuration
@@ -554,7 +554,7 @@ fn run_advanced_lua(paths: &ConfigPaths) -> Result<()> {
             println!("{} Creating config.lua (pointer)...", "→".blue());
 
             let pointer_content = format!(
-                r#"-- dcli configuration pointer
+                r#"-- mdots configuration pointer
 -- This file points to the active host configuration
 -- The full configuration lives in hosts/{hostname}.lua
 
@@ -578,10 +578,10 @@ return {{
 -- {desc}
 -- See LUA-HOSTS.md for full documentation
 
-local is_laptop = dcli.hardware.is_laptop()
-local memory_mb = dcli.system.memory_total_mb()
+local is_laptop = mdots.hardware.is_laptop()
+local memory_mb = mdots.system.memory_total_mb()
 
-dcli.log.info(string.format("Loading config for {hostname} (%d MB RAM)", memory_mb))
+mdots.log.info(string.format("Loading config for {hostname} (%d MB RAM)", memory_mb))
 
 -- ═══════════════════════════════════════════════════════════════════
 -- MODULE SELECTION
@@ -593,9 +593,9 @@ local enabled_modules = {{
 }}
 
 -- Example: Add GPU drivers based on hardware detection
--- if dcli.hardware.has_nvidia() then
+-- if mdots.hardware.has_nvidia() then
 --     table.insert(enabled_modules, "nvidia-drivers")
--- elseif dcli.hardware.has_amd_gpu() then
+-- elseif mdots.hardware.has_amd_gpu() then
 --     table.insert(enabled_modules, "amd-drivers")
 -- end
 
@@ -614,7 +614,7 @@ local services = {{
 }}
 
 -- Example: Enable docker if module is enabled
--- if dcli.util.contains(enabled_modules, "docker") then
+-- if mdots.util.contains(enabled_modules, "docker") then
 --     table.insert(services.enabled, "docker.service")
 -- end
 
@@ -683,15 +683,15 @@ return {{
             println!("{} Creating config.lua...", "→".blue());
 
             let config_content = format!(
-                r#"-- dcli configuration
+                r#"-- mdots configuration
 -- This is a dynamic Lua configuration that adapts to your system
 -- See LUA-HOSTS.md for full documentation
 
-local hostname = dcli.system.hostname()
-local is_laptop = dcli.hardware.is_laptop()
-local memory_mb = dcli.system.memory_total_mb()
+local hostname = mdots.system.hostname()
+local is_laptop = mdots.hardware.is_laptop()
+local memory_mb = mdots.system.memory_total_mb()
 
-dcli.log.info(string.format("Loading config for %s (%d MB RAM)", hostname, memory_mb))
+mdots.log.info(string.format("Loading config for %s (%d MB RAM)", hostname, memory_mb))
 
 -- ═══════════════════════════════════════════════════════════════════
 -- MODULE SELECTION
@@ -703,9 +703,9 @@ local enabled_modules = {{
 }}
 
 -- Example: Add GPU drivers based on hardware detection
--- if dcli.hardware.has_nvidia() then
+-- if mdots.hardware.has_nvidia() then
 --     table.insert(enabled_modules, "nvidia-drivers")
--- elseif dcli.hardware.has_amd_gpu() then
+-- elseif mdots.hardware.has_amd_gpu() then
 --     table.insert(enabled_modules, "amd-drivers")
 -- end
 
@@ -724,7 +724,7 @@ local services = {{
 }}
 
 -- Example: Enable docker if module is enabled
--- if dcli.util.contains(enabled_modules, "docker") then
+-- if mdots.util.contains(enabled_modules, "docker") then
 --     table.insert(services.enabled, "docker.service")
 -- end
 
@@ -821,19 +821,19 @@ local packages = {{
     -- "neovim",
     -- "htop",
 
-    -- dcli dependencies (uncomment as needed)
+    -- mdots dependencies (uncomment as needed)
     -- "{aur_helper}",       -- AUR helper
-    -- "fzf",                -- Fuzzy finder (for dcli TUI)
+    -- "fzf",                -- Fuzzy finder (for mdots TUI)
 {backup_tool_line}
 }}
 
 -- Add CPU microcode based on vendor
-local cpu = dcli.hardware.cpu_vendor()
+local cpu = mdots.hardware.cpu_vendor()
 if cpu == "intel" then
-    dcli.log.info("Intel CPU detected - adding intel-ucode")
+    mdots.log.info("Intel CPU detected - adding intel-ucode")
     table.insert(packages, "intel-ucode")
 elseif cpu == "amd" then
-    dcli.log.info("AMD CPU detected - adding amd-ucode")
+    mdots.log.info("AMD CPU detected - adding amd-ucode")
     table.insert(packages, "amd-ucode")
 end
 
@@ -874,8 +874,8 @@ local description_parts = {}
 -- GPU DRIVERS
 -- ═══════════════════════════════════════════════════════════════════
 
-if dcli.hardware.has_nvidia() then
-    dcli.log.info("NVIDIA GPU detected")
+if mdots.hardware.has_nvidia() then
+    mdots.log.info("NVIDIA GPU detected")
     table.insert(description_parts, "NVIDIA")
 
     -- Proprietary drivers
@@ -885,8 +885,8 @@ if dcli.hardware.has_nvidia() then
     table.insert(packages, "lib32-nvidia-utils")
 end
 
-if dcli.hardware.has_amd_gpu() then
-    dcli.log.info("AMD GPU detected")
+if mdots.hardware.has_amd_gpu() then
+    mdots.log.info("AMD GPU detected")
     table.insert(description_parts, "AMD GPU")
 
     table.insert(packages, "mesa")
@@ -895,8 +895,8 @@ if dcli.hardware.has_amd_gpu() then
     table.insert(packages, "libva-mesa-driver")
 end
 
-if dcli.hardware.has_intel_gpu() then
-    dcli.log.info("Intel GPU detected")
+if mdots.hardware.has_intel_gpu() then
+    mdots.log.info("Intel GPU detected")
     table.insert(description_parts, "Intel GPU")
 
     table.insert(packages, "mesa")
@@ -908,8 +908,8 @@ end
 -- LAPTOP PACKAGES
 -- ═══════════════════════════════════════════════════════════════════
 
-if dcli.hardware.is_laptop() then
-    dcli.log.info("Laptop detected - adding power management")
+if mdots.hardware.is_laptop() then
+    mdots.log.info("Laptop detected - adding power management")
     table.insert(description_parts, "Laptop")
 
     table.insert(packages, "tlp")
@@ -926,7 +926,7 @@ end
 
 -- Services for laptop
 local services = { enabled = {}, disabled = {} }
-if dcli.hardware.is_laptop() then
+if mdots.hardware.is_laptop() then
     table.insert(services.enabled, "tlp.service")
     table.insert(services.disabled, "power-profiles-daemon.service")
 end
@@ -999,15 +999,15 @@ return {
     println!("  modules/hardware.lua → Auto-detected GPU/laptop drivers");
     println!("  modules/gaming.lua   → Example gaming module");
     println!("  scripts/             → Hook scripts");
-    println!("  docs/                → dcli documentation");
+    println!("  docs/                → mdots documentation");
     println!();
-    println!("{}", "Available dcli APIs in Lua:".bold());
-    println!("  dcli.hardware        → cpu_vendor(), has_nvidia(), is_laptop(), etc.");
-    println!("  dcli.system          → hostname(), memory_total_mb(), cpu_cores(), etc.");
-    println!("  dcli.package         → is_installed(), version(), flatpak_installed()");
-    println!("  dcli.env             → home(), user(), config_dir()");
-    println!("  dcli.util            → contains(), extend(), merge()");
-    println!("  dcli.log             → info(), warn(), debug(), error()");
+    println!("{}", "Available mdots APIs in Lua:".bold());
+    println!("  mdots.hardware        → cpu_vendor(), has_nvidia(), is_laptop(), etc.");
+    println!("  mdots.system          → hostname(), memory_total_mb(), cpu_cores(), etc.");
+    println!("  mdots.package         → is_installed(), version(), flatpak_installed()");
+    println!("  mdots.env             → home(), user(), config_dir()");
+    println!("  mdots.util            → contains(), extend(), merge()");
+    println!("  mdots.log             → info(), warn(), debug(), error()");
     println!();
     println!("Next steps:");
     if multi_host {
@@ -1018,13 +1018,13 @@ return {
     } else {
         println!("  1. Edit config: {}", "config.lua".cyan());
     }
-    println!("  2. Review modules: {}", "dcli module list".cyan());
+    println!("  2. Review modules: {}", "mdots module list".cyan());
     println!(
         "  3. Enable hardware module: {}",
-        "dcli module enable hardware".cyan()
+        "mdots module enable hardware".cyan()
     );
-    println!("  4. Validate: {}", "dcli validate".cyan());
-    println!("  5. Preview: {}", "dcli sync --dry-run".cyan());
+    println!("  4. Validate: {}", "mdots validate".cyan());
+    println!("  5. Preview: {}", "mdots sync --dry-run".cyan());
     println!();
     println!("Documentation:");
     println!(
@@ -1178,7 +1178,7 @@ fn bootstrap_blackdon_config(paths: &ConfigPaths) -> Result<()> {
 
     // Create config.yaml as POINTER file (NEW format)
     let config_content = format!(
-        r#"# dcli configuration pointer
+        r#"# mdots configuration pointer
 # This file points to the active host configuration
 # The full configuration lives in hosts/{}.yaml
 # Bootstrapped from BlackDon's configuration
@@ -1230,8 +1230,8 @@ config_backups:
 # System backup settings
 system_backups:
   enabled: true           # Global toggle for system backups
-  backup_on_sync: true    # Create backup during dcli sync
-  backup_on_update: true  # Create backup during dcli update
+  backup_on_sync: true    # Create backup during mdots sync
+  backup_on_update: true  # Create backup during mdots update
   tool: timeshift         # Backup tool: timeshift or snapper
   snapper_config: root    # Snapper config name (if using snapper)
   max_backups: 5          # Keep last N backups (0 = unlimited)
@@ -1273,17 +1273,17 @@ auto_prune: false
     println!("  hosts/{}.yaml   → Your full configuration", hostname);
     println!("  modules/             → Package modules from BlackDon");
     println!("  scripts/             → Post-install hook scripts");
-    println!("  docs/                → dcli documentation");
+    println!("  docs/                → mdots documentation");
     println!();
     println!("Next steps:");
     println!("  1. Edit host config: hosts/{}.yaml", hostname);
-    println!("  2. Review modules: dcli module list");
-    println!("  3. Enable modules: dcli module enable <module-name>");
-    println!("  4. Validate config: dcli validate");
-    println!("  5. Preview sync: dcli sync --dry-run");
+    println!("  2. Review modules: mdots module list");
+    println!("  3. Enable modules: mdots module enable <module-name>");
+    println!("  4. Validate config: mdots validate");
+    println!("  5. Preview sync: mdots sync --dry-run");
     println!();
     println!("Optional:");
-    println!("  • Initialize your own git repo: dcli repo init");
+    println!("  • Initialize your own git repo: mdots repo init");
 
     Ok(())
 }
@@ -1426,7 +1426,7 @@ fn detect_terminal() -> Option<String> {
 
 /// Copy user-facing documentation to arch-config/docs
 fn copy_user_docs(config_dir: &Path) -> Result<()> {
-    // Find the dcli installation directory by looking for the docs folder
+    // Find the mdots installation directory by looking for the docs folder
     // Try common locations in order of preference
     let exe_path = std::env::current_exe().ok();
 
@@ -1434,7 +1434,7 @@ fn copy_user_docs(config_dir: &Path) -> Result<()> {
     let mut possible_paths: Vec<std::path::PathBuf> = Vec::new();
 
     // Development: relative to executable (target/debug or target/release)
-    // e.g., /home/user/dcli/target/release/dcli -> /home/user/dcli/docs
+    // e.g., /home/user/mdots/target/release/mdots -> /home/user/mdots/docs
     if let Some(ref exe) = exe_path {
         if let Some(docs_path) = exe
             .parent()
@@ -1451,12 +1451,12 @@ fn copy_user_docs(config_dir: &Path) -> Result<()> {
     let manifest_docs = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs");
     possible_paths.push(manifest_docs);
 
-    // Installed: /usr/share/dcli/docs (system-wide install)
-    possible_paths.push(std::path::PathBuf::from("/usr/share/dcli/docs"));
+    // Installed: /usr/share/mdots/docs (system-wide install)
+    possible_paths.push(std::path::PathBuf::from("/usr/share/mdots/docs"));
 
-    // Local install: ~/.local/share/dcli/docs
+    // Local install: ~/.local/share/mdots/docs
     if let Some(data_local) = dirs::data_local_dir() {
-        possible_paths.push(data_local.join("dcli/docs"));
+        possible_paths.push(data_local.join("mdots/docs"));
     }
 
     let docs_src = possible_paths
@@ -1540,14 +1540,14 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
     Ok(())
 }
 
-/// Create Lua type definitions for editor support (silences "undefined global 'dcli'" warnings)
+/// Create Lua type definitions for editor support (silences "undefined global 'mdots'" warnings)
 fn create_lua_type_definitions(config_dir: &Path) -> Result<()> {
     // Create .luarc.json for lua-language-server configuration
     let luarc_path = config_dir.join(".luarc.json");
     if !luarc_path.exists() {
         let luarc_content = r#"{
     "workspace.library": [".lua"],
-    "diagnostics.globals": ["dcli"],
+    "diagnostics.globals": ["mdots"],
     "runtime.version": "Lua 5.4"
 }
 "#;
@@ -1558,31 +1558,31 @@ fn create_lua_type_definitions(config_dir: &Path) -> Result<()> {
     let lua_types_dir = config_dir.join(".lua");
     fs::create_dir_all(&lua_types_dir).context("Failed to create .lua directory")?;
 
-    // Create dcli type definitions
-    let dcli_types_path = lua_types_dir.join("dcli.lua");
-    let dcli_types_content = r#"---@meta
--- dcli Lua API type definitions
+    // Create mdots type definitions
+    let mdots_types_path = lua_types_dir.join("mdots.lua");
+    let mdots_types_content = r#"---@meta
+-- mdots Lua API type definitions
 -- This file provides type hints for editors/IDEs
 
----@class dcli
----@field hardware dcli.hardware
----@field system dcli.system
----@field package dcli.package
----@field file dcli.file
----@field env dcli.env
----@field util dcli.util
----@field log dcli.log
----@field service dcli.service
----@field power dcli.power
----@field security dcli.security
----@field desktop dcli.desktop
----@field boot dcli.boot
----@field network dcli.network
----@field audio dcli.audio
----@field storage dcli.storage
-dcli = {}
+---@class mdots
+---@field hardware mdots.hardware
+---@field system mdots.system
+---@field package mdots.package
+---@field file mdots.file
+---@field env mdots.env
+---@field util mdots.util
+---@field log mdots.log
+---@field service mdots.service
+---@field power mdots.power
+---@field security mdots.security
+---@field desktop mdots.desktop
+---@field boot mdots.boot
+---@field network mdots.network
+---@field audio mdots.audio
+---@field storage mdots.storage
+mdots = {}
 
----@class dcli.hardware
+---@class mdots.hardware
 ---@field cpu_vendor fun(): string Returns "intel", "amd", or "unknown"
 ---@field gpu_vendors fun(): string[] Returns array of GPU vendors
 ---@field has_nvidia fun(): boolean Check if NVIDIA GPU is present
@@ -1591,9 +1591,9 @@ dcli = {}
 ---@field is_laptop fun(): boolean Check if system is a laptop
 ---@field has_battery fun(): boolean Check if battery is present
 ---@field chassis_type fun(): string Returns "desktop", "laptop", "server", "tablet", or "unknown"
-dcli.hardware = {}
+mdots.hardware = {}
 
----@class dcli.system
+---@class mdots.system
 ---@field hostname fun(): string Get system hostname
 ---@field kernel_version fun(): string Get kernel version
 ---@field arch fun(): string Get system architecture
@@ -1603,9 +1603,9 @@ dcli.hardware = {}
 ---@field distro_version fun(): string Get distribution version
 ---@field memory_total_mb fun(): number Get total RAM in MB
 ---@field cpu_cores fun(): number Get number of CPU cores
-dcli.system = {}
+mdots.system = {}
 
----@class dcli.package
+---@class mdots.package
 ---@field is_installed fun(name: string): boolean Check if package is installed
 ---@field version fun(name: string): string|nil Get package version
 ---@field is_available fun(name: string): boolean Check if package is in repos
@@ -1616,17 +1616,17 @@ dcli.system = {}
 ---@field flatpak_installed fun(id: string): boolean Check if flatpak is installed
 ---@field flatpak_version fun(id: string): string|nil Get flatpak version
 ---@field aur_available fun(name: string): boolean Check if package is in AUR
-dcli.package = {}
+mdots.package = {}
 
----@class dcli.file
+---@class mdots.file
 ---@field exists fun(path: string): boolean Check if file/directory exists
 ---@field is_file fun(path: string): boolean Check if path is a file
 ---@field is_dir fun(path: string): boolean Check if path is a directory
 ---@field read fun(path: string): string|nil Read file contents (sandboxed)
 ---@field read_lines fun(path: string): string[]|nil Read file as lines (sandboxed)
-dcli.file = {}
+mdots.file = {}
 
----@class dcli.env
+---@class mdots.env
 ---@field get fun(name: string): string|nil Get environment variable
 ---@field home fun(): string Get home directory
 ---@field user fun(): string Get current username
@@ -1634,9 +1634,9 @@ dcli.file = {}
 ---@field data_dir fun(): string Get XDG data directory
 ---@field cache_dir fun(): string Get XDG cache directory
 ---@field shell fun(): string Get user's default shell
-dcli.env = {}
+mdots.env = {}
 
----@class dcli.util
+---@class mdots.util
 ---@field contains fun(tbl: table, value: any): boolean Check if array contains value
 ---@field keys fun(tbl: table): any[] Get table keys
 ---@field values fun(tbl: table): any[] Get table values
@@ -1651,16 +1651,16 @@ dcli.env = {}
 ---@field version_gt fun(v1: string, v2: string): boolean Check if v1 > v2
 ---@field version_lte fun(v1: string, v2: string): boolean Check if v1 <= v2
 ---@field version_lt fun(v1: string, v2: string): boolean Check if v1 < v2
-dcli.util = {}
+mdots.util = {}
 
----@class dcli.log
+---@class mdots.log
 ---@field info fun(msg: string) Log info message
 ---@field warn fun(msg: string) Log warning message
 ---@field debug fun(msg: string) Log debug message
 ---@field error fun(msg: string) Log error message
-dcli.log = {}
+mdots.log = {}
 
----@class dcli.service
+---@class mdots.service
 ---@field is_enabled fun(name: string): boolean Check if service is enabled
 ---@field is_active fun(name: string): boolean Check if service is active
 ---@field is_running fun(name: string): boolean Alias for is_active
@@ -1670,9 +1670,9 @@ dcli.log = {}
 ---@field list_active fun(): string[] Get active services
 ---@field list_failed fun(): string[] Get failed services
 ---@field is_user_service fun(name: string): boolean Check user service status
-dcli.service = {}
+mdots.service = {}
 
----@class dcli.power
+---@class mdots.power
 ---@field on_battery fun(): boolean Check if on battery power
 ---@field on_ac fun(): boolean Check if on AC power
 ---@field battery_percent fun(): number|nil Get battery percentage
@@ -1683,9 +1683,9 @@ dcli.service = {}
 ---@field available_governors fun(): string[] Get available governors
 ---@field supports_turbo fun(): boolean Check turbo boost support
 ---@field turbo_enabled fun(): boolean Check if turbo is enabled
-dcli.power = {}
+mdots.power = {}
 
----@class dcli.security
+---@class mdots.security
 ---@field has_selinux fun(): boolean Check SELinux availability
 ---@field selinux_enabled fun(): boolean Check if SELinux is enabled
 ---@field has_apparmor fun(): boolean Check AppArmor availability
@@ -1698,9 +1698,9 @@ dcli.power = {}
 ---@field firewall_type fun(): string Get firewall type
 ---@field has_luks fun(): boolean Check for LUKS encryption
 ---@field kernel_lockdown fun(): string Get kernel lockdown mode
-dcli.security = {}
+mdots.security = {}
 
----@class dcli.desktop
+---@class mdots.desktop
 ---@field environment fun(): string Get desktop environment
 ---@field display_server fun(): string Get display server type
 ---@field is_wayland fun(): boolean Check if running Wayland
@@ -1712,9 +1712,9 @@ dcli.security = {}
 ---@field theme fun(): string|nil Get desktop theme
 ---@field icon_theme fun(): string|nil Get icon theme
 ---@field screen_resolution fun(): string|nil Get screen resolution
-dcli.desktop = {}
+mdots.desktop = {}
 
----@class dcli.boot
+---@class mdots.boot
 ---@field bootloader fun(): string Get bootloader name
 ---@field is_uefi fun(): boolean Check if UEFI boot
 ---@field is_bios fun(): boolean Check if BIOS boot
@@ -1723,47 +1723,47 @@ dcli.desktop = {}
 ---@field has_kernel_param fun(param: string): boolean Check kernel parameter
 ---@field efi_vars_supported fun(): boolean Check EFI variable support
 ---@field boot_id fun(): string Get boot session ID
-dcli.boot = {}
+mdots.boot = {}
 
----@class dcli.network
+---@class mdots.network
 ---@field has_wifi fun(): boolean Check WiFi hardware
 ---@field has_ethernet fun(): boolean Check Ethernet hardware
 ---@field has_bluetooth fun(): boolean Check Bluetooth hardware
 ---@field is_connected fun(): boolean Check network connectivity
 ---@field connection_type fun(): string Get connection type
 ---@field list_interfaces fun(): string[] Get network interfaces
-dcli.network = {}
+mdots.network = {}
 
----@class dcli.audio
+---@class mdots.audio
 ---@field has_pipewire fun(): boolean Check if PipeWire is running
 ---@field has_pulseaudio fun(): boolean Check if PulseAudio is running
 ---@field has_alsa fun(): boolean Check ALSA availability
 ---@field audio_server fun(): string Get audio server type
-dcli.audio = {}
+mdots.audio = {}
 
----@class dcli.storage
+---@class mdots.storage
 ---@field has_ssd fun(): boolean Check for SSD
 ---@field has_nvme fun(): boolean Check for NVMe drive
 ---@field has_hdd fun(): boolean Check for HDD
 ---@field root_filesystem fun(): string Get root filesystem type
 ---@field list_disks fun(): string[] Get disk devices
 ---@field disk_info fun(device: string): table|nil Get disk information
-dcli.storage = {}
+mdots.storage = {}
 
-return dcli
+return mdots
 "#;
 
-    fs::write(&dcli_types_path, dcli_types_content)
-        .context("Failed to create dcli type definitions")?;
+    fs::write(&mdots_types_path, mdots_types_content)
+        .context("Failed to create mdots type definitions")?;
 
-    println!("  {} .lua/dcli.lua (editor type hints)", "✓".green());
+    println!("  {} .lua/mdots.lua (editor type hints)", "✓".green());
 
     Ok(())
 }
 
-/// Initialize dcli configuration with Nix configuration files
+/// Initialize mdots configuration with Nix configuration files
 fn run_nix_config_init(paths: &ConfigPaths) -> Result<()> {
-    println!("{}", "=== Initializing dcli (Nix Mode) ===".blue());
+    println!("{}", "=== Initializing mdots (Nix Mode) ===".blue());
     println!();
     println!(
         "{}",
@@ -1784,7 +1784,7 @@ fn run_nix_config_init(paths: &ConfigPaths) -> Result<()> {
             "{}",
             "  Install Nix first: curl -L https://nixos.org/nix/install | sh".yellow()
         );
-        println!("{}", "  Or run: dcli init --nix-init".yellow());
+        println!("{}", "  Or run: mdots init --nix-init".yellow());
         println!();
         print!("Continue anyway? [y/N] ");
         io::stdout().flush()?;
@@ -1798,7 +1798,7 @@ fn run_nix_config_init(paths: &ConfigPaths) -> Result<()> {
     }
 
     if paths.config_dir.exists() {
-        println!("{}", "dcli config directory already exists".yellow());
+        println!("{}", "mdots config directory already exists".yellow());
         println!("Location: {}", paths.config_dir.display());
         print!("Reinitialize with Nix config? [y/N] ");
         io::stdout().flush()?;
@@ -1908,7 +1908,7 @@ fn run_nix_config_init(paths: &ConfigPaths) -> Result<()> {
     }
 
     println!();
-    println!("{}", "✓ dcli initialized with Nix configuration!".green());
+    println!("{}", "✓ mdots initialized with Nix configuration!".green());
     println!();
     println!("{}", "Structure:".bold());
     println!("  config.nix          → Points to hosts/{}.nix", hostname);
@@ -1925,9 +1925,9 @@ fn run_nix_config_init(paths: &ConfigPaths) -> Result<()> {
     println!("Next steps:");
     println!("  1. Edit host config: hosts/{}.nix", hostname);
     println!("  2. Edit base packages: modules/base.nix");
-    println!("  3. Run: dcli validate");
-    println!("  4. Run: dcli module list");
-    println!("  5. Run: dcli sync --dry-run");
+    println!("  3. Run: mdots validate");
+    println!("  4. Run: mdots module list");
+    println!("  5. Run: mdots sync --dry-run");
 
     Ok(())
 }
@@ -1972,7 +1972,7 @@ fn run_nix_init(paths: &ConfigPaths) -> Result<()> {
         );
         println!(
             "{}",
-            "Then run 'dcli init --nix-init' again to continue.".yellow()
+            "Then run 'mdots init --nix-init' again to continue.".yellow()
         );
         return Ok(());
     }
@@ -2003,10 +2003,10 @@ fn run_nix_init(paths: &ConfigPaths) -> Result<()> {
         crate::nix::generate_home_nix_template(&username, &home_dir, &home_nix_path)?;
         println!("  {} Created {}", "✓".green(), home_nix_path.display());
 
-        // Generate empty dcli-packages.nix
-        let dcli_packages_path = paths.home_manager_dir().join("dcli-packages.nix");
-        crate::nix::generate_dcli_packages_nix(&[], &dcli_packages_path)?;
-        println!("  {} Created {}", "✓".green(), dcli_packages_path.display());
+        // Generate empty mdots-packages.nix
+        let mdots_packages_path = paths.home_manager_dir().join("mdots-packages.nix");
+        crate::nix::generate_mdots_packages_nix(&[], &mdots_packages_path)?;
+        println!("  {} Created {}", "✓".green(), mdots_packages_path.display());
     }
 
     // Step 4: Ask about flakes
@@ -2028,9 +2028,9 @@ fn run_nix_init(paths: &ConfigPaths) -> Result<()> {
 
         // Create hosts/ directory structure if migrating from flat
         if !hm_dir.join("hosts").exists() {
-            // Migrate existing dcli-packages.nix from root if it exists
-            let old_dcli = hm_dir.join("dcli-packages.nix");
-            if old_dcli.exists() {
+            // Migrate existing mdots-packages.nix from root if it exists
+            let old_mdots = hm_dir.join("mdots-packages.nix");
+            if old_mdots.exists() {
                 println!(
                     "  {} Migrating from flat to per-host structure...",
                     "→".blue()
@@ -2044,12 +2044,12 @@ fn run_nix_init(paths: &ConfigPaths) -> Result<()> {
         std::fs::create_dir_all(&host_dir)
             .context("Failed to create host home-manager directory")?;
 
-        // Generate dcli-packages.nix for this host
-        let dcli_packages_path = host_dir.join("dcli-packages.nix");
-        if !dcli_packages_path.exists() || is_new_host {
-            crate::nix::generate_dcli_packages_nix(&[], &dcli_packages_path)?;
+        // Generate mdots-packages.nix for this host
+        let mdots_packages_path = host_dir.join("mdots-packages.nix");
+        if !mdots_packages_path.exists() || is_new_host {
+            crate::nix::generate_mdots_packages_nix(&[], &mdots_packages_path)?;
             println!(
-                "  {} Created hosts/{}/dcli-packages.nix",
+                "  {} Created hosts/{}/mdots-packages.nix",
                 "✓".green(),
                 hostname
             );
@@ -2142,16 +2142,16 @@ fn run_nix_init(paths: &ConfigPaths) -> Result<()> {
         println!("Next steps:");
         println!(
             "  1. Edit your config: {}",
-            "nano ~/.config/dcli/home-manager/home.nix".cyan()
+            "nano ~/.config/mdots/home-manager/home.nix".cyan()
         );
         println!(
             "  2. Add nix packages to modules with {}",
             "type: nix".cyan()
         );
-        println!("  3. Run {} to apply changes", "dcli sync".cyan());
+        println!("  3. Run {} to apply changes", "mdots sync".cyan());
         println!(
             "  4. Run {} to update flake inputs and apply",
-            "dcli nix update".cyan()
+            "mdots nix update".cyan()
         );
     } else {
         println!("Mode: Channels");
@@ -2159,16 +2159,16 @@ fn run_nix_init(paths: &ConfigPaths) -> Result<()> {
         println!("Next steps:");
         println!(
             "  1. Edit your config: {}",
-            "nano ~/.config/dcli/home-manager/home.nix".cyan()
+            "nano ~/.config/mdots/home-manager/home.nix".cyan()
         );
         println!(
             "  2. Add nix packages to modules with {}",
             "type: nix".cyan()
         );
-        println!("  3. Run {} to apply changes", "dcli sync".cyan());
+        println!("  3. Run {} to apply changes", "mdots sync".cyan());
         println!(
             "  4. Run {} to manually apply home-manager",
-            "dcli nix switch".cyan()
+            "mdots nix switch".cyan()
         );
     }
 
@@ -2281,7 +2281,7 @@ fn ensure_nix_on_path() {
                 let _ = std::fs::create_dir_all(&fish_conf_d);
                 let content = format!(
                     "{}\n{}\n",
-                    "# nix profile PATH set by dcli",
+                    "# nix profile PATH set by mdots",
                     "fish_add_path --move --prepend $HOME/.nix-profile/bin"
                 );
                 if std::fs::write(&nix_file, &content).is_ok() {
@@ -2296,11 +2296,11 @@ fn ensure_nix_on_path() {
             None
         }
         "bash" => Some(format!(
-            "\n# nix profile PATH set by dcli\nexport PATH=\"{}:\"$PATH\n",
+            "\n# nix profile PATH set by mdots\nexport PATH=\"{}:\"$PATH\n",
             nix_profile_bin
         )),
         "zsh" => Some(format!(
-            "\n# nix profile PATH set by dcli\nexport PATH=\"{}:\"$PATH\n",
+            "\n# nix profile PATH set by mdots\nexport PATH=\"{}:\"$PATH\n",
             nix_profile_bin
         )),
         _ => None,
@@ -2318,7 +2318,7 @@ fn ensure_nix_on_path() {
         };
 
         if let Ok(existing) = std::fs::read_to_string(&rc_file) {
-            if !existing.contains("dcli")
+            if !existing.contains("mdots")
                 && !existing.contains(nix_profile_bin)
                 && std::fs::write(&rc_file, format!("{}{}", existing, line)).is_ok()
             {

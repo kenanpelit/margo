@@ -343,7 +343,7 @@ impl DefaultsManager {
                 }
             }
             eprintln!();
-            eprintln!("Install the required applications before running 'dcli sync'");
+            eprintln!("Install the required applications before running 'mdots sync'");
 
             return Err(anyhow!(
                 "Validation failed: {} desktop file(s) not found",

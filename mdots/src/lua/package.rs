@@ -1,24 +1,24 @@
 //! Package query helpers for Lua modules
 //!
-//! Provides the `dcli.package.*` API for querying installed packages
+//! Provides the `mdots.package.*` API for querying installed packages
 //! and package availability.
 
 use anyhow::{anyhow, Result};
 use mlua::{Lua, Table};
 use std::process::Command;
 
-/// Register package query helpers in the dcli table
+/// Register package query helpers in the mdots table
 pub fn register_package_helpers(lua: &Lua) -> Result<()> {
     let globals = lua.globals();
-    let dcli: Table = globals
-        .get("dcli")
+    let mdots: Table = globals
+        .get("mdots")
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     let package = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.package.is_installed(name) -> boolean
+    // mdots.package.is_installed(name) -> boolean
     // Check if a pacman package is installed
     package
         .set(
@@ -28,7 +28,7 @@ pub fn register_package_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.package.version(name) -> string or nil
+    // mdots.package.version(name) -> string or nil
     // Get the installed version of a pacman package
     package
         .set(
@@ -38,7 +38,7 @@ pub fn register_package_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.package.is_available(name) -> boolean
+    // mdots.package.is_available(name) -> boolean
     // Check if a package is available in the repos (pacman -Ss)
     package
         .set(
@@ -48,7 +48,7 @@ pub fn register_package_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.package.repo(name) -> string or nil
+    // mdots.package.repo(name) -> string or nil
     // Get the repository a package belongs to (core, extra, multilib, etc.)
     package
         .set(
@@ -58,7 +58,7 @@ pub fn register_package_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.package.flatpak_installed(app_id) -> boolean
+    // mdots.package.flatpak_installed(app_id) -> boolean
     // Check if a Flatpak application is installed
     package
         .set(
@@ -68,7 +68,7 @@ pub fn register_package_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.package.flatpak_version(app_id) -> string or nil
+    // mdots.package.flatpak_version(app_id) -> string or nil
     // Get the installed version of a Flatpak application
     package
         .set(
@@ -78,7 +78,7 @@ pub fn register_package_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.package.aur_available(name) -> boolean
+    // mdots.package.aur_available(name) -> boolean
     // Check if a package is available in the AUR
     // Note: This requires network access and may be slow
     package
@@ -89,7 +89,7 @@ pub fn register_package_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.package.list_installed() -> array of package names
+    // mdots.package.list_installed() -> array of package names
     // Get a list of all installed pacman packages
     package
         .set(
@@ -106,7 +106,7 @@ pub fn register_package_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.package.list_explicit() -> array of explicitly installed package names
+    // mdots.package.list_explicit() -> array of explicitly installed package names
     // Get a list of explicitly installed packages (not dependencies)
     package
         .set(
@@ -123,7 +123,7 @@ pub fn register_package_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.package.is_foreign(name) -> boolean
+    // mdots.package.is_foreign(name) -> boolean
     // Check if a package is foreign (AUR/manual install, not in repos)
     package
         .set(
@@ -133,7 +133,7 @@ pub fn register_package_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.package.depends_on(name) -> array of dependencies
+    // mdots.package.depends_on(name) -> array of dependencies
     // Get the dependencies of an installed package
     package
         .set(
@@ -150,7 +150,7 @@ pub fn register_package_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.package.required_by(name) -> array of packages that depend on this one
+    // mdots.package.required_by(name) -> array of packages that depend on this one
     // Get packages that depend on the given package
     package
         .set(
@@ -167,7 +167,7 @@ pub fn register_package_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    dcli.set("package", package)
+    mdots.set("package", package)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

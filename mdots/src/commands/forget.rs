@@ -14,12 +14,12 @@ struct RemovalLocation {
     file: PathBuf,
 }
 
-/// Remove a package from dcli tracking without uninstalling it
+/// Remove a package from mdots tracking without uninstalling it
 pub fn run(paths: &ConfigPaths, package_name: &str) -> Result<()> {
     println!("{}", "=== Forget Package ===".blue());
     println!();
     println!(
-        "Removing '{}' from dcli tracking (package will remain installed)",
+        "Removing '{}' from mdots tracking (package will remain installed)",
         package_name.yellow()
     );
     println!();
@@ -144,7 +144,7 @@ pub fn run(paths: &ConfigPaths, package_name: &str) -> Result<()> {
     // Output results
     if removed_from.is_empty() && found_in_readonly.is_empty() {
         println!(
-            "{} Package '{}' is not tracked by dcli",
+            "{} Package '{}' is not tracked by mdots",
             "!".yellow(),
             package_name
         );
@@ -176,13 +176,13 @@ pub fn run(paths: &ConfigPaths, package_name: &str) -> Result<()> {
 
     if !removed_from.is_empty() {
         println!(
-            "{} Package '{}' forgotten from dcli tracking",
+            "{} Package '{}' forgotten from mdots tracking",
             "✓".green(),
             package_name
         );
         println!();
         println!("The package remains installed on your system.");
-        println!("It will no longer be managed by dcli sync or dcli merge.");
+        println!("It will no longer be managed by mdots sync or mdots merge.");
     }
 
     Ok(())

@@ -150,7 +150,7 @@ pub fn run(paths: &ConfigPaths, package_name: &str, json: bool) -> Result<()> {
             println!("The package is not declared in:");
             println!("  • Base packages");
             println!("  • Host-specific packages");
-            println!("  • Declared packages (from dcli install/search)");
+            println!("  • Declared packages (from mdots install/search)");
             println!("  • Enabled modules");
             println!("  • Additional packages");
         } else {

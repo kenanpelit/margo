@@ -195,7 +195,7 @@ pub fn status(paths: &ConfigPaths) -> Result<()> {
     Ok(())
 }
 
-/// Build sources as part of dcli sync (only uninstalled ones)
+/// Build sources as part of mdots sync (only uninstalled ones)
 pub fn sync_sources(paths: &ConfigPaths) -> Result<()> {
     let sources = discover_sources(paths)?;
 

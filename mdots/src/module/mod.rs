@@ -297,7 +297,7 @@ impl ModuleManager {
 
         match found_modules.len() {
             0 => anyhow::bail!(
-                "Module '{}' not found. Run 'dcli module list' to see available modules.",
+                "Module '{}' not found. Run 'mdots module list' to see available modules.",
                 module_input
             ),
             1 => Ok(found_modules[0].clone()),
@@ -307,7 +307,7 @@ impl ModuleManager {
                     err_msg.push_str(&format!("  - {}\n", m));
                 }
                 err_msg.push_str(&format!(
-                    "Please specify the full path (e.g., 'dcli module enable {}')",
+                    "Please specify the full path (e.g., 'mdots module enable {}')",
                     found_modules[0]
                 ));
                 anyhow::bail!(err_msg);

@@ -23,7 +23,7 @@ struct StatusOutput {
     enabled_modules: Vec<String>,
     declared_packages: PackageStats,
     installed_packages: InstalledStats,
-    /// True if a previous `dcli sync` did not finish (system may be partial).
+    /// True if a previous `mdots sync` did not finish (system may be partial).
     sync_interrupted: bool,
 }
 
@@ -100,14 +100,14 @@ pub fn run(paths: &ConfigPaths, json: bool) -> Result<()> {
         }
     }
 
-    // Count installed nix packages from dcli-packages.nix and packages.nix
+    // Count installed nix packages from mdots-packages.nix and packages.nix
     let nix_installed_count = if config.nix.enabled {
         let host_dir = if crate::nix::use_per_host_structure(paths) {
             crate::nix::home_manager_host_dir(paths, &config.host)
         } else {
             paths.home_manager_dir().to_path_buf()
         };
-        count_nix_packages_in_file(&host_dir.join("dcli-packages.nix"))
+        count_nix_packages_in_file(&host_dir.join("mdots-packages.nix"))
             + count_nix_packages_in_file(&host_dir.join("packages.nix"))
     } else {
         0
@@ -168,7 +168,7 @@ pub fn run(paths: &ConfigPaths, json: bool) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
         // Human-readable format
-        println!("{}", "=== dcli Status ===".blue().bold());
+        println!("{}", "=== mdots Status ===".blue().bold());
         println!();
 
         if sync_interrupted {
@@ -178,7 +178,7 @@ pub fn run(paths: &ConfigPaths, json: bool) -> Result<()> {
                     .yellow()
                     .bold()
             );
-            println!("  Run 'dcli sync' to reconcile it to your configuration.");
+            println!("  Run 'mdots sync' to reconcile it to your configuration.");
             println!();
         }
 
@@ -355,7 +355,7 @@ pub fn run(paths: &ConfigPaths, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Count nix package entries in a dcli-packages.nix or packages.nix file
+/// Count nix package entries in a mdots-packages.nix or packages.nix file
 fn count_nix_packages_in_file(path: &std::path::Path) -> usize {
     if !path.exists() {
         return 0;

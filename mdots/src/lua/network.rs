@@ -1,6 +1,6 @@
 //! Network detection helpers for Lua modules
 //!
-//! Provides the `dcli.network.*` API for detecting network configuration and connectivity.
+//! Provides the `mdots.network.*` API for detecting network configuration and connectivity.
 
 use anyhow::{anyhow, Result};
 use mlua::{Lua, Table};
@@ -11,15 +11,15 @@ use std::process::Command;
 /// Register network detection helpers
 pub fn register_network_helpers(lua: &Lua) -> Result<()> {
     let globals = lua.globals();
-    let dcli: Table = globals
-        .get("dcli")
+    let mdots: Table = globals
+        .get("mdots")
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     let network = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.network.has_wifi() -> boolean
+    // mdots.network.has_wifi() -> boolean
     network
         .set(
             "has_wifi",
@@ -28,7 +28,7 @@ pub fn register_network_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.network.has_ethernet() -> boolean
+    // mdots.network.has_ethernet() -> boolean
     network
         .set(
             "has_ethernet",
@@ -37,7 +37,7 @@ pub fn register_network_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.network.has_bluetooth() -> boolean
+    // mdots.network.has_bluetooth() -> boolean
     network
         .set(
             "has_bluetooth",
@@ -46,7 +46,7 @@ pub fn register_network_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.network.is_connected() -> boolean
+    // mdots.network.is_connected() -> boolean
     network
         .set(
             "is_connected",
@@ -55,7 +55,7 @@ pub fn register_network_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.network.connection_type() -> "wifi" | "ethernet" | "none" | "unknown"
+    // mdots.network.connection_type() -> "wifi" | "ethernet" | "none" | "unknown"
     network
         .set(
             "connection_type",
@@ -64,7 +64,7 @@ pub fn register_network_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.network.list_interfaces() -> array of interface names
+    // mdots.network.list_interfaces() -> array of interface names
     network
         .set(
             "list_interfaces",
@@ -80,7 +80,7 @@ pub fn register_network_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.network.active_interface() -> interface name or nil
+    // mdots.network.active_interface() -> interface name or nil
     network
         .set(
             "active_interface",
@@ -89,7 +89,7 @@ pub fn register_network_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.network.interface_type(name) -> "wifi" | "ethernet" | "loopback" | "unknown"
+    // mdots.network.interface_type(name) -> "wifi" | "ethernet" | "loopback" | "unknown"
     network
         .set(
             "interface_type",
@@ -98,7 +98,7 @@ pub fn register_network_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.network.interface_up(name) -> boolean
+    // mdots.network.interface_up(name) -> boolean
     network
         .set(
             "interface_up",
@@ -107,7 +107,7 @@ pub fn register_network_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.network.has_ipv6() -> boolean
+    // mdots.network.has_ipv6() -> boolean
     network
         .set(
             "has_ipv6",
@@ -116,7 +116,7 @@ pub fn register_network_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.network.hostname() -> hostname string
+    // mdots.network.hostname() -> hostname string
     network
         .set(
             "hostname",
@@ -125,7 +125,7 @@ pub fn register_network_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    dcli.set("network", network)
+    mdots.set("network", network)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

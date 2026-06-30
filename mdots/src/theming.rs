@@ -213,7 +213,7 @@ impl ThemingManager {
                 PathBuf::from(&home).join(format!(".config/gtk-{}/settings.ini", version));
             if gtk_config.exists() {
                 let backup_path =
-                    gtk_config.with_extension(format!("ini.dcli-backup-{}", timestamp));
+                    gtk_config.with_extension(format!("ini.mdots-backup-{}", timestamp));
                 fs::copy(&gtk_config, &backup_path)
                     .with_context(|| format!("Failed to backup {:?}", gtk_config))?;
                 debug!("Backed up {:?} to {:?}", gtk_config, backup_path);
@@ -226,7 +226,7 @@ impl ThemingManager {
                 PathBuf::from(&home).join(format!(".config/{}/{}ct.conf", version, &version[..3]));
             if qt_config.exists() {
                 let backup_path =
-                    qt_config.with_extension(format!("conf.dcli-backup-{}", timestamp));
+                    qt_config.with_extension(format!("conf.mdots-backup-{}", timestamp));
                 fs::copy(&qt_config, &backup_path)
                     .with_context(|| format!("Failed to backup {:?}", qt_config))?;
                 debug!("Backed up {:?} to {:?}", qt_config, backup_path);
@@ -588,15 +588,15 @@ impl ThemingManager {
         Ok(())
     }
 
-    /// Apply environment variables to ~/.dcli/environment
+    /// Apply environment variables to ~/.mdots/environment
     fn apply_environment_vars(
         config: &ThemingConfig,
         dry_run: bool,
         report: &mut ThemingReport,
     ) -> Result<()> {
         let home = std::env::var("HOME").context("HOME environment variable not set")?;
-        let dcli_dir = PathBuf::from(&home).join(".dcli");
-        let env_file = dcli_dir.join("environment");
+        let mdots_dir = PathBuf::from(&home).join(".mdots");
+        let env_file = mdots_dir.join("environment");
 
         let mut env_vars: HashMap<String, String> = HashMap::new();
 
@@ -642,11 +642,11 @@ impl ThemingManager {
         if dry_run {
             info!("Would write environment variables to {:?}", env_file);
         } else {
-            fs::create_dir_all(&dcli_dir)
-                .with_context(|| format!("Failed to create {:?}", dcli_dir))?;
+            fs::create_dir_all(&mdots_dir)
+                .with_context(|| format!("Failed to create {:?}", mdots_dir))?;
 
             let mut content =
-                String::from("# dcli theming - auto-generated, do not edit manually\n\n");
+                String::from("# mdots theming - auto-generated, do not edit manually\n\n");
             for (key, value) in &env_vars {
                 content.push_str(&format!("export {}=\"{}\"\n", key, value));
             }
@@ -655,7 +655,7 @@ impl ThemingManager {
                 .with_context(|| format!("Failed to write {:?}", env_file))?;
 
             println!(
-                "  {} Updated environment variables in ~/.dcli/environment",
+                "  {} Updated environment variables in ~/.mdots/environment",
                 "✓".green()
             );
 
@@ -667,7 +667,7 @@ impl ThemingManager {
         Ok(())
     }
 
-    /// Update shell configs to source ~/.dcli/environment
+    /// Update shell configs to source ~/.mdots/environment
     fn update_shell_configs(dry_run: bool) -> Result<()> {
         let home = std::env::var("HOME").context("HOME environment variable not set")?;
 
@@ -679,9 +679,9 @@ impl ThemingManager {
         ];
 
         let source_line =
-            "# dcli theming\n[ -f ~/.dcli/environment ] && source ~/.dcli/environment\n";
+            "# mdots theming\n[ -f ~/.mdots/environment ] && source ~/.mdots/environment\n";
         let fish_source_line =
-            "# dcli theming\nif test -f ~/.dcli/environment\n  source ~/.dcli/environment\nend\n";
+            "# mdots theming\nif test -f ~/.mdots/environment\n  source ~/.mdots/environment\nend\n";
 
         for (config_file, shell) in &shell_configs {
             let config_path = PathBuf::from(&home).join(config_file);
@@ -693,13 +693,13 @@ impl ThemingManager {
             let content = fs::read_to_string(&config_path)?;
 
             // Check if already sourced
-            if content.contains(".dcli/environment") {
-                debug!("{} already sources .dcli/environment", config_file);
+            if content.contains(".mdots/environment") {
+                debug!("{} already sources .mdots/environment", config_file);
                 continue;
             }
 
             if dry_run {
-                info!("Would update {} to source .dcli/environment", config_file);
+                info!("Would update {} to source .mdots/environment", config_file);
             } else {
                 let append_content = if *shell == "fish" {
                     fish_source_line

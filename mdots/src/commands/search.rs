@@ -30,7 +30,7 @@ pub fn run(paths: &ConfigPaths) -> Result<()> {
                 --prompt='Search packages > ' \
                 --height=100% \
                 --border=rounded \
-                --border-label=' dcli search ' \
+                --border-label=' mdots search ' \
                 --border-label-pos=2 \
                 --color=border:blue,label:cyan",
                 cmd = info_cmd
@@ -65,14 +65,14 @@ pub fn run(paths: &ConfigPaths) -> Result<()> {
     println!("{} Installing {} package(s)...", "→".blue(), packages.len());
     println!();
 
-    // Install each package using dcli install
+    // Install each package using mdots install
     let mut installed_count = 0;
     let mut failed_count = 0;
 
     for package in &packages {
         println!("{} Installing: {}", "→".blue(), package.green());
 
-        let status = Command::new("dcli")
+        let status = Command::new("mdots")
             .args(["install", package])
             .status()
             .context(format!("Failed to install package: {}", package))?;

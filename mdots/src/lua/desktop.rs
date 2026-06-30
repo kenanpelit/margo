@@ -1,6 +1,6 @@
 //! Desktop environment detection helpers for Lua modules
 //!
-//! Provides the `dcli.desktop.*` API for detecting desktop environments and display servers.
+//! Provides the `mdots.desktop.*` API for detecting desktop environments and display servers.
 
 use anyhow::{anyhow, Result};
 use mlua::{Lua, Table};
@@ -11,15 +11,15 @@ use std::process::Command;
 /// Register desktop environment helpers
 pub fn register_desktop_helpers(lua: &Lua) -> Result<()> {
     let globals = lua.globals();
-    let dcli: Table = globals
-        .get("dcli")
+    let mdots: Table = globals
+        .get("mdots")
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     let desktop = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.desktop.environment() -> "kde" | "gnome" | "xfce" | "hyprland" | etc.
+    // mdots.desktop.environment() -> "kde" | "gnome" | "xfce" | "hyprland" | etc.
     desktop
         .set(
             "environment",
@@ -28,7 +28,7 @@ pub fn register_desktop_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.desktop.display_server() -> "wayland" | "x11" | "unknown"
+    // mdots.desktop.display_server() -> "wayland" | "x11" | "unknown"
     desktop
         .set(
             "display_server",
@@ -37,7 +37,7 @@ pub fn register_desktop_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.desktop.is_wayland() -> boolean
+    // mdots.desktop.is_wayland() -> boolean
     desktop
         .set(
             "is_wayland",
@@ -46,7 +46,7 @@ pub fn register_desktop_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.desktop.is_x11() -> boolean
+    // mdots.desktop.is_x11() -> boolean
     desktop
         .set(
             "is_x11",
@@ -55,7 +55,7 @@ pub fn register_desktop_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.desktop.window_manager() -> "kwin" | "mutter" | "i3" | "sway" | etc.
+    // mdots.desktop.window_manager() -> "kwin" | "mutter" | "i3" | "sway" | etc.
     desktop
         .set(
             "window_manager",
@@ -64,7 +64,7 @@ pub fn register_desktop_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.desktop.session_type() -> "x11" | "wayland" | "tty" | "unknown"
+    // mdots.desktop.session_type() -> "x11" | "wayland" | "tty" | "unknown"
     desktop
         .set(
             "session_type",
@@ -73,7 +73,7 @@ pub fn register_desktop_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.desktop.has_display() -> boolean
+    // mdots.desktop.has_display() -> boolean
     desktop
         .set(
             "has_display",
@@ -82,7 +82,7 @@ pub fn register_desktop_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.desktop.compositor() -> compositor name or nil
+    // mdots.desktop.compositor() -> compositor name or nil
     desktop
         .set(
             "compositor",
@@ -91,7 +91,7 @@ pub fn register_desktop_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.desktop.theme() -> current GTK/Qt theme or nil
+    // mdots.desktop.theme() -> current GTK/Qt theme or nil
     desktop
         .set(
             "theme",
@@ -100,7 +100,7 @@ pub fn register_desktop_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.desktop.icon_theme() -> current icon theme or nil
+    // mdots.desktop.icon_theme() -> current icon theme or nil
     desktop
         .set(
             "icon_theme",
@@ -109,7 +109,7 @@ pub fn register_desktop_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.desktop.screen_resolution() -> "1920x1080" or nil
+    // mdots.desktop.screen_resolution() -> "1920x1080" or nil
     desktop
         .set(
             "screen_resolution",
@@ -118,7 +118,7 @@ pub fn register_desktop_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    dcli.set("desktop", desktop)
+    mdots.set("desktop", desktop)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

@@ -1,6 +1,6 @@
 //! Systemd service detection helpers for Lua modules
 //!
-//! Provides the `dcli.service.*` API for querying systemd services.
+//! Provides the `mdots.service.*` API for querying systemd services.
 
 use anyhow::{anyhow, Result};
 use mlua::{Lua, Table};
@@ -9,15 +9,15 @@ use std::process::Command;
 /// Register service detection helpers
 pub fn register_service_helpers(lua: &Lua) -> Result<()> {
     let globals = lua.globals();
-    let dcli: Table = globals
-        .get("dcli")
+    let mdots: Table = globals
+        .get("mdots")
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     let service = lua
         .create_table()
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.service.is_enabled(name) -> boolean
+    // mdots.service.is_enabled(name) -> boolean
     service
         .set(
             "is_enabled",
@@ -26,7 +26,7 @@ pub fn register_service_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.service.is_active(name) -> boolean
+    // mdots.service.is_active(name) -> boolean
     service
         .set(
             "is_active",
@@ -35,7 +35,7 @@ pub fn register_service_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.service.is_running(name) -> boolean (alias for is_active)
+    // mdots.service.is_running(name) -> boolean (alias for is_active)
     service
         .set(
             "is_running",
@@ -44,7 +44,7 @@ pub fn register_service_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.service.exists(name) -> boolean
+    // mdots.service.exists(name) -> boolean
     service
         .set(
             "exists",
@@ -53,7 +53,7 @@ pub fn register_service_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.service.status(name) -> "active" | "inactive" | "failed" | "unknown"
+    // mdots.service.status(name) -> "active" | "inactive" | "failed" | "unknown"
     service
         .set(
             "status",
@@ -62,7 +62,7 @@ pub fn register_service_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.service.list_enabled() -> array of enabled service names
+    // mdots.service.list_enabled() -> array of enabled service names
     service
         .set(
             "list_enabled",
@@ -78,7 +78,7 @@ pub fn register_service_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.service.list_active() -> array of active service names
+    // mdots.service.list_active() -> array of active service names
     service
         .set(
             "list_active",
@@ -94,7 +94,7 @@ pub fn register_service_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.service.list_failed() -> array of failed service names
+    // mdots.service.list_failed() -> array of failed service names
     service
         .set(
             "list_failed",
@@ -110,7 +110,7 @@ pub fn register_service_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    // dcli.service.is_user_service(name) -> boolean
+    // mdots.service.is_user_service(name) -> boolean
     service
         .set(
             "is_user_service",
@@ -119,7 +119,7 @@ pub fn register_service_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    dcli.set("service", service)
+    mdots.set("service", service)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())
