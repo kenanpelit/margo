@@ -5,6 +5,58 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] – 2026-06-30
+
+**mdots grows a real TUI.** 1.1.0 shipped mdots as a CLI; this release makes
+its terminal UI fully interactive — you can now *act* from it, not just look.
+Every system-mutating action suspends the UI, runs the exact same
+`commands::*` code path the CLI uses, then restores the screen, so there is
+one implementation and one set of confirmations behind both front ends. Also
+new: a read-only `doctor` health check (CLI and in-TUI overlay), a `diff`
+drift summary, native file logging, and a hardening pass.
+
+### Added
+
+- **Interactive mdots TUI.** Seven screens — Overview, Modules, Packages,
+  Sync, Services, Secrets, and Hooks — reachable from a sidebar with keyboard
+  navigation (Tab/Enter, `j`/`k`, `/` to filter), a `?` help overlay, and
+  per-screen footer hints. From the UI you can now enable/disable modules,
+  run a sync, enable/disable service profiles, edit and sync SOPS/age
+  secrets, and run a module's pre/post-install or disable hook — each behind
+  a confirm dialog, each reusing the CLI command verbatim via a
+  suspend → run → restore handoff.
+- **Doctor.** `mdots doctor` is a read-only environment health check —
+  config, package backend, flatpak, secrets, Lua manifests, and
+  nix/home-manager — reporting pass/warn/fail and exiting non-zero on any
+  failure. The same report is available inside the TUI as a scrollable
+  `Shift+D` overlay.
+- **Diff.** `mdots diff` summarises drift between the declared config and the
+  installed system.
+- **Mouse + matugen theming in the TUI.** Wheel scrolling routes to whatever
+  is focused (overlay, sidebar, or screen) and a left-click on the sidebar
+  navigates; accent borders and the sidebar selection follow margo's matugen
+  palette (read from `~/.cache/margo/mshell-colors.toml`), with a built-in
+  fallback when it is absent.
+- **User guide** for mdots covering the config model, secrets, nix, and the
+  full command surface.
+
+### Changed
+
+- **mdots logs through margo-logging.** Routine CLI runs now write to the
+  shared durable file sink (per-start rotation, reloadable level) at warn
+  level instead of going through `env_logger`.
+
+### Fixed
+
+- **Flatpak scope.** The TUI sync preview now passes the canonical
+  `--user`/`--system` scope argument to flatpak instead of a bare
+  `user`/`system`, so its install/prune counts match a real sync.
+- **Doctor PATH probe.** A missing AUR helper is reported as a warning rather
+  than silently passing.
+- **No `dcli` left behind.** Every `dcli` identity string, compat symlink,
+  and migration path was removed; mdots reads its config solely from
+  `~/.config/mdots`.
+
 ## [1.1.0] – 2026-06-27
 
 A deep performance and robustness pass over the whole stack — the
