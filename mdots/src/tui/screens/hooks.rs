@@ -223,7 +223,10 @@ impl HooksScreenState {
                 Line::from(""),
                 Line::from(vec![
                     Span::styled("Module: ", Style::default().fg(Color::Cyan)),
-                    Span::styled(entry.module.clone(), Style::default().add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        entry.module.clone(),
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
                 ]),
                 Line::from(vec![
                     Span::styled("Type: ", Style::default().fg(Color::Cyan)),
