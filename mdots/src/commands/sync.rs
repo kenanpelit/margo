@@ -119,6 +119,48 @@ fn compute_prunable(
     (native, flatpak)
 }
 
+/// Pure prune-preview: from the recorded state packages, the set that a
+/// `--prune` would actually remove — undeclared-but-still-installed packages
+/// with critical system packages filtered out (they are never auto-removed).
+/// Returns `(native_to_remove, flatpak_to_remove)`. Shared by the real sync
+/// path and the read-only TUI preview so the two never diverge.
+fn prune_set_filtered(
+    state_packages: &[StatePackage],
+    declared_names: &HashSet<String>,
+    installed_native: &HashMap<String, String>,
+    installed_flatpak: &HashSet<String>,
+) -> (Vec<String>, Vec<String>) {
+    let (native, flatpak) = compute_prunable(
+        state_packages,
+        declared_names,
+        installed_native,
+        installed_flatpak,
+    );
+    let (native, _protected_skipped) = partition_protected(native);
+    (native, flatpak)
+}
+
+/// Read-only prune preview for the TUI sync screen. Loads the state file
+/// (best-effort — a missing/unreadable state file means "nothing tracked", so
+/// nothing to prune) and computes the prune set via [`prune_set_filtered`].
+/// Returns `(native_to_remove, flatpak_to_remove)`. Never mutates anything.
+pub(crate) fn compute_prune_preview(
+    paths: &ConfigPaths,
+    declared_names: &HashSet<String>,
+    installed_native: &HashMap<String, String>,
+    installed_flatpak: &HashSet<String>,
+) -> (Vec<String>, Vec<String>) {
+    match load_state_file(paths) {
+        Ok(state) => prune_set_filtered(
+            &state.packages,
+            declared_names,
+            installed_native,
+            installed_flatpak,
+        ),
+        Err(_) => (Vec::new(), Vec::new()),
+    }
+}
+
 /// The set of package changes a sync will apply, after diffing declared vs
 /// installed and filtering protected packages. Bundles the four lists that were
 /// previously threaded through the sync functions individually.
@@ -2859,6 +2901,37 @@ mod tests {
             compute_prunable(&state, &HashSet::new(), &installed_native, &HashSet::new());
         assert_eq!(native, vec!["mystery".to_string()]);
         assert!(flatpak.is_empty());
+    }
+
+    #[test]
+    fn test_prune_set_filtered_excludes_protected_and_keeps_declared() {
+        // Mixed state: a declared pkg (keep), a normal undeclared+installed pkg
+        // (prune), a PROTECTED undeclared+installed pkg (must be filtered out),
+        // and an undeclared+installed flatpak (prune).
+        let state = vec![
+            sp("vim", Some("native")),        // declared → keep
+            sp("htop", Some("native")),       // undeclared + installed → prune
+            sp("systemd", Some("native")),    // protected → never removed
+            sp("org.x.App", Some("flatpak")), // undeclared flatpak + installed → prune
+        ];
+        let declared: HashSet<String> = ["vim".to_string()].into_iter().collect();
+        let installed_native: HashMap<String, String> = [
+            ("htop".to_string(), "1".to_string()),
+            ("systemd".to_string(), "255".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let installed_flatpak: HashSet<String> = ["org.x.App".to_string()].into_iter().collect();
+
+        let (native, flatpak) =
+            prune_set_filtered(&state, &declared, &installed_native, &installed_flatpak);
+        // "systemd" is protected and must not appear; "htop" must.
+        assert_eq!(native, vec!["htop".to_string()]);
+        assert!(
+            !native.contains(&"systemd".to_string()),
+            "protected packages must never be in the prune set"
+        );
+        assert_eq!(flatpak, vec!["org.x.App".to_string()]);
     }
 
     #[test]

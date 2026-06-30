@@ -61,6 +61,8 @@ pub fn already_installed_count(
 struct SyncPlan {
     native_to_install: Vec<String>,
     flatpak_to_install: Vec<String>,
+    native_to_remove: Vec<String>,
+    flatpak_to_remove: Vec<String>,
     already_ok: usize,
     total_declared: usize,
     nix_count: usize,
@@ -69,7 +71,10 @@ struct SyncPlan {
 
 impl SyncPlan {
     fn is_up_to_date(&self) -> bool {
-        self.native_to_install.is_empty() && self.flatpak_to_install.is_empty()
+        self.native_to_install.is_empty()
+            && self.flatpak_to_install.is_empty()
+            && self.native_to_remove.is_empty()
+            && self.flatpak_to_remove.is_empty()
     }
 }
 
@@ -110,9 +115,22 @@ impl SyncScreenState {
             .filter(|p| matches!(p.package_type, PackageType::Nix))
             .count();
 
+        // Prune side: packages tracked in state but no longer declared and still
+        // installed (protected system packages excluded). Reuses the command-side
+        // computation so the read-only preview matches what a real `--prune` does.
+        let declared_names: HashSet<String> = declared.iter().map(|p| p.name.clone()).collect();
+        let (native_to_remove, flatpak_to_remove) = crate::commands::sync::compute_prune_preview(
+            paths,
+            &declared_names,
+            &installed_native,
+            &installed_flatpak,
+        );
+
         self.plan = SyncPlan {
             native_to_install,
             flatpak_to_install,
+            native_to_remove,
+            flatpak_to_remove,
             already_ok,
             total_declared: declared.len(),
             nix_count,
@@ -191,7 +209,7 @@ impl ScreenTrait for SyncScreenState {
         // Vertical split: summary header (top) | plan details (bottom)
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(7), Constraint::Min(0)])
+            .constraints([Constraint::Length(8), Constraint::Min(0)])
             .split(content_area);
 
         self.render_summary(frame, chunks[0]);
@@ -214,7 +232,7 @@ impl SyncScreenState {
         let status_text = if self.plan.is_up_to_date() {
             "System is up to date"
         } else {
-            "Packages pending installation"
+            "Changes pending (install / prune)"
         };
         let status_color = if self.plan.is_up_to_date() {
             Color::Green
@@ -269,6 +287,31 @@ impl SyncScreenState {
                             Color::Green
                         } else {
                             Color::Yellow
+                        })
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("To prune (native): ", Style::default().fg(Color::Red)),
+                Span::styled(
+                    format!("{}", self.plan.native_to_remove.len()),
+                    Style::default()
+                        .fg(if self.plan.native_to_remove.is_empty() {
+                            Color::Green
+                        } else {
+                            Color::Red
+                        })
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw("  "),
+                Span::styled("To prune (flatpak): ", Style::default().fg(Color::Red)),
+                Span::styled(
+                    format!("{}", self.plan.flatpak_to_remove.len()),
+                    Style::default()
+                        .fg(if self.plan.flatpak_to_remove.is_empty() {
+                            Color::Green
+                        } else {
+                            Color::Red
                         })
                         .add_modifier(Modifier::BOLD),
                 ),
@@ -361,6 +404,41 @@ impl SyncScreenState {
                 for pkg in &self.plan.flatpak_to_install {
                     items.push(ListItem::new(Line::from(vec![
                         Span::styled("  + ", Style::default().fg(Color::Yellow)),
+                        Span::raw(pkg.as_str()),
+                    ])));
+                }
+            }
+
+            let has_installs =
+                !self.plan.native_to_install.is_empty() || !self.plan.flatpak_to_install.is_empty();
+
+            if !self.plan.native_to_remove.is_empty() {
+                if has_installs {
+                    items.push(ListItem::new(Line::from("")));
+                }
+                items.push(ListItem::new(Line::from(vec![Span::styled(
+                    "  Native packages to prune:",
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                )])));
+                for pkg in &self.plan.native_to_remove {
+                    items.push(ListItem::new(Line::from(vec![
+                        Span::styled("  - ", Style::default().fg(Color::Red)),
+                        Span::raw(pkg.as_str()),
+                    ])));
+                }
+            }
+
+            if !self.plan.flatpak_to_remove.is_empty() {
+                if has_installs || !self.plan.native_to_remove.is_empty() {
+                    items.push(ListItem::new(Line::from("")));
+                }
+                items.push(ListItem::new(Line::from(vec![Span::styled(
+                    "  Flatpak packages to prune:",
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                )])));
+                for pkg in &self.plan.flatpak_to_remove {
+                    items.push(ListItem::new(Line::from(vec![
+                        Span::styled("  - ", Style::default().fg(Color::Red)),
                         Span::raw(pkg.as_str()),
                     ])));
                 }

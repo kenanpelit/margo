@@ -111,11 +111,10 @@ impl PackagesScreenState {
             })
             .collect();
 
-        // Sort: uninstalled first, then by name
+        // Sort: uninstalled first (false < true), then by name
         self.all_packages.sort_by(|a, b| {
-            b.installed
-                .cmp(&a.installed)
-                .reverse()
+            a.installed
+                .cmp(&b.installed)
                 .then_with(|| a.name.cmp(&b.name))
         });
 
