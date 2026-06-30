@@ -115,7 +115,8 @@ pub fn register_power_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    mdots.set("power", power)
+    mdots
+        .set("power", power)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

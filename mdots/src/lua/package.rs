@@ -167,7 +167,8 @@ pub fn register_package_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    mdots.set("package", package)
+    mdots
+        .set("package", package)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

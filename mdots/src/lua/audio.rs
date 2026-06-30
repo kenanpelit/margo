@@ -107,7 +107,8 @@ pub fn register_audio_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    mdots.set("audio", audio)
+    mdots
+        .set("audio", audio)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

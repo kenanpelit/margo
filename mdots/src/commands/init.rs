@@ -2012,7 +2012,11 @@ fn run_nix_init(paths: &ConfigPaths) -> Result<()> {
         // Generate empty mdots-packages.nix
         let mdots_packages_path = paths.home_manager_dir().join("mdots-packages.nix");
         crate::nix::generate_mdots_packages_nix(&[], &mdots_packages_path)?;
-        println!("  {} Created {}", "✓".green(), mdots_packages_path.display());
+        println!(
+            "  {} Created {}",
+            "✓".green(),
+            mdots_packages_path.display()
+        );
     }
 
     // Step 4: Ask about flakes

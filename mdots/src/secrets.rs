@@ -883,7 +883,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let f = dir.path().join("orphan.env");
         std::fs::write(&f, b"x").unwrap();
-        let removed = prune_orphan_targets(&[f.clone()]);
+        let removed = prune_orphan_targets(std::slice::from_ref(&f));
         assert_eq!(removed, vec![f.clone()]);
         assert!(!f.exists());
     }

@@ -118,7 +118,8 @@ pub fn register_desktop_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    mdots.set("desktop", desktop)
+    mdots
+        .set("desktop", desktop)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

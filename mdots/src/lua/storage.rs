@@ -142,7 +142,8 @@ pub fn register_storage_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    mdots.set("storage", storage)
+    mdots
+        .set("storage", storage)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

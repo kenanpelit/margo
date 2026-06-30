@@ -127,7 +127,8 @@ pub fn register_security_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    mdots.set("security", security)
+    mdots
+        .set("security", security)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

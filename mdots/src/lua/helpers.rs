@@ -17,15 +17,20 @@ pub fn register_helpers(lua: &Lua) -> Result<()> {
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     // Add sub-tables
-    mdots.set("file", create_file_helpers(lua)?)
+    mdots
+        .set("file", create_file_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    mdots.set("system", create_system_helpers(lua)?)
+    mdots
+        .set("system", create_system_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    mdots.set("log", create_log_helpers(lua)?)
+    mdots
+        .set("log", create_log_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    mdots.set("env", create_env_helpers(lua)?)
+    mdots
+        .set("env", create_env_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    mdots.set("util", create_util_helpers(lua)?)
+    mdots
+        .set("util", create_util_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     globals
@@ -46,15 +51,20 @@ pub fn register_helpers_silent(lua: &Lua) -> Result<()> {
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     // Add sub-tables
-    mdots.set("file", create_file_helpers(lua)?)
+    mdots
+        .set("file", create_file_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    mdots.set("system", create_system_helpers(lua)?)
+    mdots
+        .set("system", create_system_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    mdots.set("log", create_silent_log_helpers(lua)?)
+    mdots
+        .set("log", create_silent_log_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    mdots.set("env", create_env_helpers(lua)?)
+    mdots
+        .set("env", create_env_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
-    mdots.set("util", create_util_helpers(lua)?)
+    mdots
+        .set("util", create_util_helpers(lua)?)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     globals

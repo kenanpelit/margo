@@ -96,7 +96,8 @@ pub fn register_hardware_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    mdots.set("hardware", hardware)
+    mdots
+        .set("hardware", hardware)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

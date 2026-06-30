@@ -63,7 +63,8 @@ fn add_package_to_host_config(package: &str, paths: &ConfigPaths) -> Result<()> 
         load_package_list_any(&fallback_declared)?
     } else {
         PackageList {
-            description: "Packages installed via mdots install or mdots search commands".to_string(),
+            description: "Packages installed via mdots install or mdots search commands"
+                .to_string(),
             packages: Vec::new(),
             exclude: Vec::new(),
             conflicts: Vec::new(),

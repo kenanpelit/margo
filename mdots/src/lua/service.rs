@@ -119,7 +119,8 @@ pub fn register_service_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    mdots.set("service", service)
+    mdots
+        .set("service", service)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

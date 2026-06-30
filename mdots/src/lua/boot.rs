@@ -90,7 +90,8 @@ pub fn register_boot_helpers(lua: &Lua) -> Result<()> {
     )
     .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    mdots.set("boot", boot)
+    mdots
+        .set("boot", boot)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())

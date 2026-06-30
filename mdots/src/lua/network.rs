@@ -125,7 +125,8 @@ pub fn register_network_helpers(lua: &Lua) -> Result<()> {
         )
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
-    mdots.set("network", network)
+    mdots
+        .set("network", network)
         .map_err(|e| anyhow!("Lua error: {}", e))?;
 
     Ok(())
