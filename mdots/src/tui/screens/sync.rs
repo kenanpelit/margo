@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::config::{Config, ConfigPaths, PackageType};
 use crate::package::{Package, PackageManager};
+use crate::tui::app::Action;
 use crate::tui::screens::{ScreenAction, ScreenTrait};
 use crate::tui::scroll::{clamp_scroll, scroll_hint};
 
@@ -137,9 +138,21 @@ impl ScreenTrait for SyncScreenState {
             }
             KeyCode::Down | KeyCode::Char('j') => self.scroll_down(),
             KeyCode::Up | KeyCode::Char('k') => self.scroll_up(),
+            KeyCode::Char('s') | KeyCode::Enter => {
+                return Ok(Some(ScreenAction::Request(Action::RunSync {
+                    native_install: self.plan.native_to_install.len(),
+                    flatpak_install: self.plan.flatpak_to_install.len(),
+                    prune: self.plan.native_to_remove.len() + self.plan.flatpak_to_remove.len(),
+                })));
+            }
             _ => {}
         }
         Ok(None)
+    }
+
+    fn refresh(&mut self) {
+        self.loaded = false;
+        self.load_error = None;
     }
 
     fn render(

@@ -23,6 +23,12 @@ pub struct App {
     /// Dialog state (if any dialog is open)
     pub dialog: Option<Dialog>,
 
+    /// A confirmed-but-not-yet-dispatched [`Action`], stashed while its
+    /// `Dialog::Confirm` is shown. Set by `tui::run` when a screen returns
+    /// `ScreenAction::Request`; consumed (dispatched via suspend → the
+    /// matching `commands::*` call → restore) on y/Enter, dropped on n/Esc.
+    pub pending_action: Option<Action>,
+
     /// Whether the `?` keybinding help overlay is currently shown
     pub help_visible: bool,
 
@@ -70,6 +76,83 @@ pub struct StatusMessage {
     pub expires_at: Instant,
 }
 
+/// A confirmed, system-mutating action a screen can request via
+/// `ScreenAction::Request`. Screens only ever build and return one of
+/// these — `tui::run` (which owns the `Terminal`) is the sole place that
+/// turns a confirmed `Action` into a real `commands::*` call, via
+/// suspend → run → restore (see `tui::terminal::with_suspended`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Action {
+    /// Enable or disable a module — dispatches to
+    /// `commands::module::{enable,disable}`.
+    ToggleModule { name: String, enable: bool },
+    /// Run a full package sync — dispatches to `commands::sync::run` with
+    /// the standard (no extra flags) options, exactly like `mdots sync`.
+    /// The plan counts are carried here (not re-derived at dispatch time)
+    /// purely so the confirm message can be built from the `Action` alone.
+    RunSync {
+        native_install: usize,
+        flatpak_install: usize,
+        prune: usize,
+    },
+}
+
+impl Action {
+    /// Build the (title, message) pair the confirm dialog shows for this
+    /// action. Pure — no I/O, no `App`/screen access — so it's directly
+    /// unit-testable.
+    pub fn confirm_text(&self) -> (String, String) {
+        match self {
+            Action::ToggleModule { name, enable } => toggle_module_confirm(name, *enable),
+            Action::RunSync {
+                native_install,
+                flatpak_install,
+                prune,
+            } => run_sync_confirm(*native_install, *flatpak_install, *prune),
+        }
+    }
+}
+
+/// Pure confirm-text builder for [`Action::ToggleModule`].
+pub fn toggle_module_confirm(name: &str, enable: bool) -> (String, String) {
+    if enable {
+        (
+            "Enable module".to_string(),
+            format!(
+                "Enable module `{name}`? This may run a sync afterward to install its packages."
+            ),
+        )
+    } else {
+        (
+            "Disable module".to_string(),
+            format!(
+                "Disable module `{name}`? Its packages stay installed until you run sync --prune."
+            ),
+        )
+    }
+}
+
+/// Pure confirm-text builder for [`Action::RunSync`], summarizing the
+/// previewed plan counts (matches the Sync screen's preview).
+pub fn run_sync_confirm(
+    native_install: usize,
+    flatpak_install: usize,
+    prune: usize,
+) -> (String, String) {
+    (
+        "Run sync".to_string(),
+        format!(
+            "Run sync? +{native_install} native, +{flatpak_install} flatpak to install, \u{2212}{prune} to prune."
+        ),
+    )
+}
+
+/// Decide the new `enable` flag for a module-toggle request: the opposite
+/// of its current enabled state.
+pub fn module_toggle_enable(currently_enabled: bool) -> bool {
+    !currently_enabled
+}
+
 #[allow(dead_code)] // kept: complete status-severity set; not every level is emitted yet
 #[derive(Clone, Copy)]
 pub enum MessageLevel {
@@ -88,6 +171,7 @@ impl App {
             screen_history: Vec::new(),
             sidebar: SidebarState::new(),
             dialog: None,
+            pending_action: None,
             help_visible: false,
             status_message: None,
             should_quit: false,
@@ -119,7 +203,6 @@ impl App {
     }
 
     /// Show a status message for N seconds
-    #[allow(dead_code)]
     pub fn show_message(&mut self, text: String, level: MessageLevel, duration_secs: u64) {
         self.status_message = Some(StatusMessage {
             text,
@@ -237,5 +320,71 @@ impl SidebarState {
         } else {
             self.selected_index -= 1;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn module_toggle_enable_flips_disabled_to_enabled() {
+        assert!(module_toggle_enable(false));
+    }
+
+    #[test]
+    fn module_toggle_enable_flips_enabled_to_disabled() {
+        assert!(!module_toggle_enable(true));
+    }
+
+    #[test]
+    fn toggle_module_confirm_enable_names_module_and_mentions_sync() {
+        let (title, message) = toggle_module_confirm("zsh", true);
+        assert_eq!(title, "Enable module");
+        assert!(message.contains("zsh"));
+        assert!(message.to_lowercase().contains("sync"));
+    }
+
+    #[test]
+    fn toggle_module_confirm_disable_names_module_and_mentions_prune() {
+        let (title, message) = toggle_module_confirm("zsh", false);
+        assert_eq!(title, "Disable module");
+        assert!(message.contains("zsh"));
+        assert!(message.contains("prune"));
+    }
+
+    #[test]
+    fn run_sync_confirm_formats_plan_counts() {
+        let (title, message) = run_sync_confirm(3, 1, 2);
+        assert_eq!(title, "Run sync");
+        assert!(message.contains("+3 native"));
+        assert!(message.contains("+1 flatpak"));
+        assert!(message.contains('2'));
+    }
+
+    #[test]
+    fn run_sync_confirm_zero_counts_still_formats() {
+        let (_, message) = run_sync_confirm(0, 0, 0);
+        assert!(message.contains("+0 native"));
+        assert!(message.contains("+0 flatpak"));
+    }
+
+    #[test]
+    fn action_confirm_text_delegates_to_toggle_module_confirm() {
+        let action = Action::ToggleModule {
+            name: "audio".to_string(),
+            enable: true,
+        };
+        assert_eq!(action.confirm_text(), toggle_module_confirm("audio", true));
+    }
+
+    #[test]
+    fn action_confirm_text_delegates_to_run_sync_confirm() {
+        let action = Action::RunSync {
+            native_install: 5,
+            flatpak_install: 0,
+            prune: 1,
+        };
+        assert_eq!(action.confirm_text(), run_sync_confirm(5, 0, 1));
     }
 }

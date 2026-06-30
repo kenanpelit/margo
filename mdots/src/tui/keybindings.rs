@@ -48,6 +48,7 @@ const OVERVIEW_HINTS: &[KeyHint] = &[
 
 const MODULES_HINTS: &[KeyHint] = &[
     KeyHint::new("j/k, ↓/↑", "navigate"),
+    KeyHint::new("space/Enter", "toggle enable"),
     KeyHint::new("/", "filter"),
     KeyHint::new("r", "refresh"),
 ];
@@ -60,6 +61,7 @@ const PACKAGES_HINTS: &[KeyHint] = &[
 
 const SYNC_HINTS: &[KeyHint] = &[
     KeyHint::new("j/k, ↓/↑", "scroll plan"),
+    KeyHint::new("s/Enter", "run sync"),
     KeyHint::new("r", "refresh"),
 ];
 

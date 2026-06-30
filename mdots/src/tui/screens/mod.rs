@@ -3,6 +3,7 @@ use crossterm::event::KeyEvent;
 use ratatui::{layout::Rect, Frame};
 
 use crate::config::{Config, ConfigPaths};
+use crate::tui::app::Action;
 
 /// Trait that all screens must implement
 pub trait ScreenTrait {
@@ -30,6 +31,13 @@ pub trait ScreenTrait {
     fn is_filtering(&self) -> bool {
         false
     }
+
+    /// Force the screen to reload its data on next render. Called by the
+    /// main loop after a dispatched [`Action`] mutates the system state the
+    /// screen was displaying (e.g. a module's enabled flag, or the sync
+    /// plan). Defaults to no-op; screens with a `loaded` reload-gate
+    /// override it (the same effect as their own `r` refresh key).
+    fn refresh(&mut self) {}
 }
 
 /// Actions that screens can request
@@ -38,6 +46,11 @@ pub enum ScreenAction {
     None,
     Back,
     Refresh,
+    /// Request a confirmed, system-mutating [`Action`]. The main loop
+    /// (`tui::run`) shows a `Dialog::Confirm` built from
+    /// `Action::confirm_text` and only dispatches on y/Enter; screens never
+    /// touch the terminal or call `commands::*` directly.
+    Request(Action),
 }
 
 /// Enum of all possible screens
@@ -101,6 +114,16 @@ impl Screen {
             Screen::Modules(s) => s.is_filtering(),
             Screen::Packages(s) => s.is_filtering(),
             Screen::Sync(s) => s.is_filtering(),
+        }
+    }
+
+    /// See [`ScreenTrait::refresh`].
+    pub fn refresh(&mut self) {
+        match self {
+            Screen::Overview(s) => s.refresh(),
+            Screen::Modules(s) => s.refresh(),
+            Screen::Packages(s) => s.refresh(),
+            Screen::Sync(s) => s.refresh(),
         }
     }
 }

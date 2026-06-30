@@ -10,6 +10,7 @@ use ratatui::{
 
 use crate::config::{Config, ConfigPaths};
 use crate::module::ModuleManager;
+use crate::tui::app::{module_toggle_enable, Action};
 use crate::tui::screens::{ScreenAction, ScreenTrait};
 
 /// A row of data about one module, kept separately from the heavy `ModuleInfo`.
@@ -155,6 +156,15 @@ impl ScreenTrait for ModulesScreenState {
             }
             KeyCode::Down | KeyCode::Char('j') => self.select_next(),
             KeyCode::Up | KeyCode::Char('k') => self.select_prev(),
+            KeyCode::Char(' ') | KeyCode::Enter => {
+                if let Some(entry) = self.selected_entry() {
+                    let enable = module_toggle_enable(entry.enabled);
+                    return Ok(Some(ScreenAction::Request(Action::ToggleModule {
+                        name: entry.name.clone(),
+                        enable,
+                    })));
+                }
+            }
             _ => {}
         }
         Ok(None)
@@ -162,6 +172,11 @@ impl ScreenTrait for ModulesScreenState {
 
     fn is_filtering(&self) -> bool {
         self.filter_active
+    }
+
+    fn refresh(&mut self) {
+        self.loaded = false;
+        self.load_error = None;
     }
 
     fn render(
