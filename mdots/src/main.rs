@@ -513,8 +513,28 @@ enum SourceAction {
 }
 
 fn main() -> Result<()> {
-    // Initialize logger
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // Bridge the `log` facade (log::info!, log::debug!, …) into tracing so that
+    // all existing log:: call sites reach the margo-logging file sink.
+    // SetLoggerError means another logger is already installed (unlikely in a
+    // CLI, but safe to ignore — the existing backend will do the job).
+    if let Err(e) = tracing_log::LogTracer::init() {
+        eprintln!("mdots: log bridge already installed: {e}");
+    }
+    // Stand up the shared margo-logging engine: per-start session file under
+    // ~/.local/state/margo/logs/mdots-*.log, with a `warn,mdots=info` default
+    // (overridden by RUST_LOG).  Degrades gracefully if the log dir is absent
+    // (falls back to stderr-only, never panics).
+    let _log_handle = margo_logging::init(margo_logging::LogInit {
+        app_name: "mdots".to_string(),
+        dir: margo_logging::logs_dir(),
+        // CLI runs are short-lived: default to debug so the per-session file
+        // captures everything useful for post-hoc diagnosis.
+        level: "debug".to_string(),
+        enabled: true,
+        keep_sessions: 5,
+        to_stdout: true,
+        env_override: Some("RUST_LOG".to_string()),
+    });
 
     let cli = Cli::parse();
 
