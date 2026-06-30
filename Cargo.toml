@@ -6,6 +6,7 @@ members = [
     "margo-logging",
     "margo-portal",
     "mctl",
+    "mdots",
     "mkeys",
     "mlayout",
     "mlock",
