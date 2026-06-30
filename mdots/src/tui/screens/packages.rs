@@ -296,7 +296,7 @@ impl PackagesScreenState {
         let para = Paragraph::new(vec![Line::from(""), line]).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Blue))
+                .border_style(Style::default().fg(crate::tui::theme::accent()))
                 .title(" Package Summary "),
         );
 
@@ -341,7 +341,7 @@ impl PackagesScreenState {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Blue))
+                    .border_style(Style::default().fg(crate::tui::theme::accent()))
                     .title(title),
             )
             .highlight_style(

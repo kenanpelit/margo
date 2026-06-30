@@ -1,5 +1,6 @@
 use anyhow::Result;
 use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -11,7 +12,7 @@ pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 /// Initialize the terminal for TUI mode
 pub fn init() -> Result<Tui> {
     enable_raw_mode()?;
-    execute!(io::stdout(), EnterAlternateScreen)?;
+    execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(io::stdout());
     let terminal = Terminal::new(backend)?;
     Ok(terminal)
@@ -20,26 +21,27 @@ pub fn init() -> Result<Tui> {
 /// Restore the terminal to normal mode
 pub fn restore() -> Result<()> {
     disable_raw_mode()?;
-    execute!(io::stdout(), LeaveAlternateScreen)?;
+    execute!(io::stdout(), DisableMouseCapture, LeaveAlternateScreen)?;
     Ok(())
 }
 
 /// Leave the TUI's alternate screen and disable raw mode so a reused CLI
 /// `commands::*` function gets the real terminal (its normal stdout,
 /// progress spinners, and `y/N` prompts all work exactly as they do from
-/// the plain CLI).
+/// the plain CLI). Mouse capture is released too, so the suspended command
+/// never receives stray mouse-escape sequences on its stdin.
 fn suspend() -> Result<()> {
     disable_raw_mode()?;
-    execute!(io::stdout(), LeaveAlternateScreen)?;
+    execute!(io::stdout(), DisableMouseCapture, LeaveAlternateScreen)?;
     Ok(())
 }
 
-/// Re-enter the TUI's alternate screen, re-enable raw mode, and clear the
-/// terminal so the next `Frame` draws over a blank screen instead of
-/// whatever the suspended command printed.
+/// Re-enter the TUI's alternate screen, re-enable raw mode + mouse capture,
+/// and clear the terminal so the next `Frame` draws over a blank screen
+/// instead of whatever the suspended command printed.
 fn resume(terminal: &mut Tui) -> Result<()> {
     enable_raw_mode()?;
-    execute!(io::stdout(), EnterAlternateScreen)?;
+    execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
     terminal.clear()?;
     Ok(())
 }

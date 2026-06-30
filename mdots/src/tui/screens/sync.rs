@@ -316,7 +316,7 @@ impl SyncScreenState {
         let para = Paragraph::new(lines).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Blue))
+                .border_style(Style::default().fg(crate::tui::theme::accent()))
                 .title(" Sync Plan Preview "),
         );
         frame.render_widget(para, area);
@@ -340,7 +340,7 @@ impl SyncScreenState {
         let list = List::new(items).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Blue))
+                .border_style(Style::default().fg(crate::tui::theme::accent()))
                 .title(title),
         );
         frame.render_widget(list, area);
@@ -449,7 +449,7 @@ impl SyncScreenState {
         let list = List::new(visible_items).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Blue))
+                .border_style(Style::default().fg(crate::tui::theme::accent()))
                 .title(title),
         );
 

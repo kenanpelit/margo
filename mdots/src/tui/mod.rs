@@ -9,6 +9,7 @@ mod keybindings;
 mod screens;
 mod scroll;
 pub mod terminal;
+mod theme;
 mod ui;
 
 use app::{Action, App, Dialog, MessageLevel};
@@ -90,8 +91,24 @@ pub fn run(paths: ConfigPaths, mut terminal: terminal::Tui) -> Result<()> {
                     }
                 }
             }
-            TuiEvent::Mouse(_) => {
-                // Mouse support (optional for MVP)
+            TuiEvent::Mouse(mouse) => {
+                use crossterm::event::{MouseButton, MouseEventKind};
+                match mouse.kind {
+                    MouseEventKind::ScrollDown => {
+                        if let Err(e) = app.handle_scroll(true) {
+                            app.show_message(format!("{e:#}"), MessageLevel::Error, 4);
+                        }
+                    }
+                    MouseEventKind::ScrollUp => {
+                        if let Err(e) = app.handle_scroll(false) {
+                            app.show_message(format!("{e:#}"), MessageLevel::Error, 4);
+                        }
+                    }
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        app.handle_left_click(mouse.column, mouse.row);
+                    }
+                    _ => {}
+                }
             }
             TuiEvent::Resize(_, _) => {
                 // Terminal resized - ratatui handles this automatically

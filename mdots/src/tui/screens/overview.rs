@@ -252,7 +252,7 @@ impl OverviewScreenState {
         let paragraph = Paragraph::new(info_lines).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Blue))
+                .border_style(Style::default().fg(crate::tui::theme::accent()))
                 .title(" System Information "),
         );
 
@@ -292,7 +292,7 @@ impl OverviewScreenState {
         let paragraph = Paragraph::new(stats_lines).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Blue))
+                .border_style(Style::default().fg(crate::tui::theme::accent()))
                 .title(" Quick Stats "),
         );
 
@@ -320,7 +320,7 @@ impl OverviewScreenState {
         let list = List::new(items).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Blue))
+                .border_style(Style::default().fg(crate::tui::theme::accent()))
                 .title(title),
         );
 

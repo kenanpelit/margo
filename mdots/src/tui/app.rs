@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::Instant;
 
 use crate::config::{Config, ConfigPaths};
@@ -204,6 +204,22 @@ pub fn module_toggle_enable(currently_enabled: bool) -> bool {
     !currently_enabled
 }
 
+/// Map a sidebar index to a fresh screen. Single source of truth shared by
+/// keyboard navigation (Enter on a sidebar item) and mouse clicks, so the
+/// two can't drift. Returns `None` for an out-of-range index.
+fn screen_for_index(index: usize) -> Option<Screen> {
+    Some(match index {
+        0 => Screen::Overview(Default::default()),
+        1 => Screen::Modules(Default::default()),
+        2 => Screen::Packages(Default::default()),
+        3 => Screen::Sync(Default::default()),
+        4 => Screen::Services(Default::default()),
+        5 => Screen::Secrets(Default::default()),
+        6 => Screen::Hooks(Default::default()),
+        _ => return None,
+    })
+}
+
 #[allow(dead_code)] // kept: complete status-severity set; not every level is emitted yet
 #[derive(Clone, Copy)]
 pub enum MessageLevel {
@@ -342,23 +358,81 @@ impl App {
             // Only handle Enter when sidebar is expanded (for navigation)
             KeyCode::Enter if !self.sidebar.collapsed => {
                 // Navigate to selected sidebar item
-                let screen_index = self.sidebar.selected_index;
-                let new_screen = match screen_index {
-                    0 => Screen::Overview(Default::default()),
-                    1 => Screen::Modules(Default::default()),
-                    2 => Screen::Packages(Default::default()),
-                    3 => Screen::Sync(Default::default()),
-                    4 => Screen::Services(Default::default()),
-                    5 => Screen::Secrets(Default::default()),
-                    6 => Screen::Hooks(Default::default()),
-                    _ => return Ok(false),
-                };
-                self.navigate_to(new_screen);
-                return Ok(true);
+                match screen_for_index(self.sidebar.selected_index) {
+                    Some(new_screen) => {
+                        self.navigate_to(new_screen);
+                        return Ok(true);
+                    }
+                    None => return Ok(false),
+                }
             }
             _ => {}
         }
         Ok(false)
+    }
+
+    /// Route one mouse-wheel notch to whatever currently has focus: the
+    /// doctor overlay if open, else the expanded sidebar, else the active
+    /// screen (driven as if Up/Down were pressed). A modal help overlay
+    /// swallows the wheel. Wheel scrolling never triggers a confirm-gated
+    /// action, so any `ScreenAction` an arrow key yields (always `None` for
+    /// navigation) is intentionally ignored.
+    pub fn handle_scroll(&mut self, down: bool) -> Result<()> {
+        if self.help_visible {
+            return Ok(());
+        }
+        if let Some(doctor) = &mut self.doctor {
+            doctor.scroll = if down {
+                doctor.scroll.saturating_add(1)
+            } else {
+                doctor.scroll.saturating_sub(1)
+            };
+            return Ok(());
+        }
+        if !self.sidebar.collapsed {
+            if down {
+                self.sidebar.select_next();
+            } else {
+                self.sidebar.select_prev();
+            }
+            return Ok(());
+        }
+        let code = if down { KeyCode::Down } else { KeyCode::Up };
+        let _ = self
+            .current_screen
+            .handle_key(KeyEvent::new(code, KeyModifiers::NONE))?;
+        Ok(())
+    }
+
+    /// Handle a left-click at terminal cell (`col`, `row`). Only meaningful
+    /// while the sidebar is expanded and no overlay is up: a click on a
+    /// sidebar row selects that item and navigates to it (same as Tab +
+    /// Enter). Clicks elsewhere are ignored. The geometry mirrors
+    /// `ui::render`'s fixed layout — titlebar height 3, sidebar width 20,
+    /// one-cell block border — so a change there must be reflected here.
+    pub fn handle_left_click(&mut self, col: u16, row: u16) {
+        if self.help_visible || self.doctor.is_some() || self.sidebar.collapsed {
+            return;
+        }
+        const SIDEBAR_WIDTH: u16 = 20;
+        const TITLEBAR_HEIGHT: u16 = 3;
+        if col >= SIDEBAR_WIDTH {
+            return;
+        }
+        // The first item sits one row below the content top (the sidebar
+        // block's own top border).
+        let first_item_row = TITLEBAR_HEIGHT + 1;
+        if row < first_item_row {
+            return;
+        }
+        let index = (row - first_item_row) as usize;
+        if index >= self.sidebar.items.len() {
+            return;
+        }
+        if let Some(new_screen) = screen_for_index(index) {
+            self.sidebar.selected_index = index;
+            self.navigate_to(new_screen);
+        }
     }
 }
 

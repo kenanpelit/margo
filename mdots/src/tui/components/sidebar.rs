@@ -18,8 +18,8 @@ pub fn render_sidebar(app: &App, frame: &mut Frame, area: Rect) -> Result<()> {
         .map(|(i, item)| {
             let style = if i == app.sidebar.selected_index {
                 Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Blue)
+                    .fg(crate::tui::theme::accent_fg())
+                    .bg(crate::tui::theme::accent())
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
@@ -33,7 +33,7 @@ pub fn render_sidebar(app: &App, frame: &mut Frame, area: Rect) -> Result<()> {
     let list = List::new(items).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Blue))
+            .border_style(Style::default().fg(crate::tui::theme::accent()))
             .title(" Navigation "),
     );
 

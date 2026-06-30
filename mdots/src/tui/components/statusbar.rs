@@ -49,7 +49,7 @@ pub fn render_statusbar(app: &App, frame: &mut Frame, area: Rect) -> Result<()> 
     let paragraph = Paragraph::new(content).block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Blue)),
+            .border_style(Style::default().fg(crate::tui::theme::accent())),
     );
 
     frame.render_widget(paragraph, area);

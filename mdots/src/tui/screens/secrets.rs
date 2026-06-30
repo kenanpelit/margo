@@ -234,7 +234,7 @@ impl SecretsScreenState {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Blue))
+                    .border_style(Style::default().fg(crate::tui::theme::accent()))
                     .title(title),
             )
             .highlight_style(
@@ -312,7 +312,7 @@ impl SecretsScreenState {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Blue))
+                    .border_style(Style::default().fg(crate::tui::theme::accent()))
                     .title(" Detail "),
             )
             .wrap(ratatui::widgets::Wrap { trim: true });
