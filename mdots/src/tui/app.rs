@@ -99,6 +99,10 @@ pub enum Action {
     EnableService { name: String },
     /// Disable a service profile — dispatches to `commands::service::disable`.
     DisableService { name: String },
+    /// Open a secret in `sops`/$EDITOR — dispatches to `commands::secrets::edit`.
+    EditSecret { name: String },
+    /// Decrypt declared secrets into place — dispatches to `commands::secrets::sync`.
+    SyncSecrets,
 }
 
 impl Action {
@@ -120,6 +124,14 @@ impl Action {
             Action::DisableService { name } => (
                 "Disable service profile".to_string(),
                 format!("Disable service profile `{name}`? This stops its services now."),
+            ),
+            Action::EditSecret { name } => (
+                "Edit secret".to_string(),
+                format!("Edit secret `{name}` with sops? This opens your editor."),
+            ),
+            Action::SyncSecrets => (
+                "Sync secrets".to_string(),
+                "Decrypt all declared secrets into place (0600)?".to_string(),
             ),
         }
     }
@@ -282,6 +294,7 @@ impl App {
                     2 => Screen::Packages(Default::default()),
                     3 => Screen::Sync(Default::default()),
                     4 => Screen::Services(Default::default()),
+                    5 => Screen::Secrets(Default::default()),
                     _ => return Ok(false),
                 };
                 self.navigate_to(new_screen);
@@ -318,6 +331,10 @@ impl SidebarState {
                 SidebarItem {
                     name: "Services",
                     icon: "🧩",
+                },
+                SidebarItem {
+                    name: "Secrets",
+                    icon: "🔐",
                 },
             ],
         }

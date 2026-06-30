@@ -61,6 +61,7 @@ pub enum Screen {
     Packages(PackagesScreenState),
     Sync(SyncScreenState),
     Services(ServicesScreenState),
+    Secrets(SecretsScreenState),
 }
 
 impl Screen {
@@ -72,6 +73,7 @@ impl Screen {
             Screen::Packages(s) => s.handle_key(key),
             Screen::Sync(s) => s.handle_key(key),
             Screen::Services(s) => s.handle_key(key),
+            Screen::Secrets(s) => s.handle_key(key),
         }
     }
 
@@ -88,6 +90,7 @@ impl Screen {
             Screen::Packages(s) => s.render(paths, config, frame, area),
             Screen::Sync(s) => s.render(paths, config, frame, area),
             Screen::Services(s) => s.render(paths, config, frame, area),
+            Screen::Secrets(s) => s.render(paths, config, frame, area),
         }
     }
 
@@ -98,6 +101,7 @@ impl Screen {
             Screen::Packages(s) => s.on_activate(paths, config),
             Screen::Sync(s) => s.on_activate(paths, config),
             Screen::Services(s) => s.on_activate(paths, config),
+            Screen::Secrets(s) => s.on_activate(paths, config),
         }
     }
 
@@ -109,6 +113,7 @@ impl Screen {
             Screen::Packages(_) => "Packages",
             Screen::Sync(_) => "Sync",
             Screen::Services(_) => "Services",
+            Screen::Secrets(_) => "Secrets",
         }
     }
 
@@ -120,6 +125,7 @@ impl Screen {
             Screen::Packages(s) => s.is_filtering(),
             Screen::Sync(s) => s.is_filtering(),
             Screen::Services(s) => s.is_filtering(),
+            Screen::Secrets(s) => s.is_filtering(),
         }
     }
 
@@ -131,6 +137,7 @@ impl Screen {
             Screen::Packages(s) => s.refresh(),
             Screen::Sync(s) => s.refresh(),
             Screen::Services(s) => s.refresh(),
+            Screen::Secrets(s) => s.refresh(),
         }
     }
 }
@@ -139,11 +146,13 @@ impl Screen {
 pub use modules::ModulesScreenState;
 pub use overview::OverviewScreenState;
 pub use packages::PackagesScreenState;
+pub use secrets::SecretsScreenState;
 pub use services::ServicesScreenState;
 pub use sync::SyncScreenState;
 
 mod modules;
 mod overview;
 mod packages;
+mod secrets;
 mod services;
 mod sync;

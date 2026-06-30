@@ -163,6 +163,15 @@ fn dispatch_action(app: &mut App, terminal: &mut terminal::Tui, action: Action) 
                 crate::commands::service::disable(&paths, &name, false)
             })
         }
+        Action::EditSecret { name } => {
+            let name = name.clone();
+            terminal::with_suspended(terminal, move || {
+                crate::commands::secrets::edit(&paths, &name)
+            })
+        }
+        Action::SyncSecrets => terminal::with_suspended(terminal, move || {
+            crate::commands::secrets::sync(&paths, false, false, false)
+        }),
     };
 
     match result {
@@ -175,6 +184,8 @@ fn dispatch_action(app: &mut App, terminal: &mut terminal::Tui, action: Action) 
                 Action::RunSync { .. } => "Sync complete.".to_string(),
                 Action::EnableService { name } => format!("Enabled service profile `{name}`."),
                 Action::DisableService { name } => format!("Disabled service profile `{name}`."),
+                Action::EditSecret { name } => format!("Edited secret `{name}`."),
+                Action::SyncSecrets => "Secrets synced.".to_string(),
             };
             app.show_message(text, MessageLevel::Success, 4);
         }

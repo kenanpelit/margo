@@ -15,7 +15,7 @@ use crate::secrets::{
     resolve_secret_target, secret_name, sops_available, SecretState,
 };
 
-fn home_dir() -> Result<PathBuf> {
+pub(crate) fn home_dir() -> Result<PathBuf> {
     Ok(PathBuf::from(
         std::env::var("HOME").context("HOME environment variable not set")?,
     ))
