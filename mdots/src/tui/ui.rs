@@ -5,7 +5,9 @@ use ratatui::{
 };
 
 use super::app::App;
-use super::components::{render_dialog, render_sidebar, render_statusbar, render_titlebar};
+use super::components::{
+    render_dialog, render_help_overlay, render_sidebar, render_statusbar, render_titlebar,
+};
 
 /// Main UI rendering function
 pub fn render(app: &mut App, frame: &mut Frame) -> Result<()> {
@@ -55,6 +57,13 @@ pub fn render(app: &mut App, frame: &mut Frame) -> Result<()> {
     // Render dialog (if any) - on top of everything
     if let Some(dialog) = &app.dialog {
         render_dialog(dialog, frame, size)?;
+    }
+
+    // Render the keybinding help overlay (if toggled) - on top of everything,
+    // including any dialog (the global key handler only allows opening it
+    // while no dialog is active, but render order stays defensive).
+    if app.help_visible {
+        render_help_overlay(&app.current_screen, frame, size)?;
     }
 
     Ok(())

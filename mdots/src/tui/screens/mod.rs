@@ -22,6 +22,14 @@ pub trait ScreenTrait {
     fn on_activate(&mut self, _paths: &ConfigPaths, _config: &Config) -> Result<()> {
         Ok(())
     }
+
+    /// Whether the screen is currently capturing raw text input (e.g. a `/`
+    /// filter field). Global single-key shortcuts like `?` must not fire
+    /// while this is true, since the keystroke belongs to the text field.
+    /// Defaults to false; screens with a text-input mode override it.
+    fn is_filtering(&self) -> bool {
+        false
+    }
 }
 
 /// Actions that screens can request
@@ -73,6 +81,26 @@ impl Screen {
             Screen::Modules(s) => s.on_activate(paths, config),
             Screen::Packages(s) => s.on_activate(paths, config),
             Screen::Sync(s) => s.on_activate(paths, config),
+        }
+    }
+
+    /// Human-readable label for the active screen (used by the help overlay).
+    pub fn name(&self) -> &'static str {
+        match self {
+            Screen::Overview(_) => "Overview",
+            Screen::Modules(_) => "Modules",
+            Screen::Packages(_) => "Packages",
+            Screen::Sync(_) => "Sync",
+        }
+    }
+
+    /// See [`ScreenTrait::is_filtering`].
+    pub fn is_filtering(&self) -> bool {
+        match self {
+            Screen::Overview(s) => s.is_filtering(),
+            Screen::Modules(s) => s.is_filtering(),
+            Screen::Packages(s) => s.is_filtering(),
+            Screen::Sync(s) => s.is_filtering(),
         }
     }
 }

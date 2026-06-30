@@ -8,9 +8,12 @@ use ratatui::{
 };
 
 use crate::tui::app::{App, MessageLevel};
+use crate::tui::keybindings::footer_hints;
 
 pub fn render_statusbar(app: &App, frame: &mut Frame, area: Rect) -> Result<()> {
-    // Show status message if any, otherwise show keybindings
+    // Show status message if any, otherwise show the active screen's
+    // context keybindings (sourced from `keybindings`, the same place the
+    // `?` help overlay reads from, so the two can't drift apart).
     let content = if let Some(msg) = &app.status_message {
         let color = match msg.level {
             MessageLevel::Info => Color::Cyan,
@@ -24,18 +27,23 @@ pub fn render_statusbar(app: &App, frame: &mut Frame, area: Rect) -> Result<()> 
             Style::default().fg(color).add_modifier(Modifier::BOLD),
         )])
     } else {
-        // Default keybindings
-        Line::from(vec![
-            Span::raw(" ["),
-            Span::styled("q", Style::default().fg(Color::Yellow)),
-            Span::raw("] Quit  ["),
-            Span::styled("m", Style::default().fg(Color::Yellow)),
-            Span::raw("] Toggle Menu  ["),
-            Span::styled("Tab", Style::default().fg(Color::Yellow)),
-            Span::raw("] Navigate  ["),
-            Span::styled("Esc", Style::default().fg(Color::Yellow)),
-            Span::raw("] Back "),
-        ])
+        let mut spans = vec![Span::raw(" ")];
+        for (i, hint) in footer_hints(&app.current_screen).iter().enumerate() {
+            if i > 0 {
+                spans.push(Span::raw("  "));
+            }
+            spans.push(Span::styled(
+                format!("[{}]", hint.key),
+                Style::default().fg(Color::Yellow),
+            ));
+            spans.push(Span::styled(
+                format!(" {}", hint.desc),
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::DIM),
+            ));
+        }
+        Line::from(spans)
     };
 
     let paragraph = Paragraph::new(content).block(

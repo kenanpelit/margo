@@ -12,6 +12,7 @@ use walkdir::WalkDir;
 
 use crate::config::{Config, ConfigPaths};
 use crate::tui::screens::{ScreenAction, ScreenTrait};
+use crate::tui::scroll::{clamp_scroll, scroll_hint};
 
 #[derive(Clone)]
 pub struct OverviewScreenState {
@@ -20,6 +21,8 @@ pub struct OverviewScreenState {
     declared_packages_count: usize,
     installed_packages_count: usize,
     config_tree: Vec<String>,
+    /// Vertical scroll offset for the config tree list
+    scroll: usize,
     hostname: String,
     auto_prune: bool,
     flatpak_scope: String,
@@ -35,6 +38,7 @@ impl Default for OverviewScreenState {
             declared_packages_count: 0,
             installed_packages_count: 0,
             config_tree: Vec::new(),
+            scroll: 0,
             hostname: String::new(),
             auto_prune: false,
             flatpak_scope: String::from("user"),
@@ -50,6 +54,14 @@ impl ScreenTrait for OverviewScreenState {
             KeyCode::Char('r') => {
                 // Mark as not loaded so it will refresh on next render
                 self.loaded = false;
+                Ok(None)
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.scroll = self.scroll.saturating_add(1);
+                Ok(None)
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.scroll = self.scroll.saturating_sub(1);
                 Ok(None)
             }
             KeyCode::Esc => Ok(Some(ScreenAction::Back)),
@@ -139,6 +151,7 @@ impl OverviewScreenState {
 
         // Build config tree
         self.config_tree = self.build_config_tree(&paths.config_dir)?;
+        self.scroll = 0;
 
         // Mark as loaded
         self.loaded = true;
@@ -288,17 +301,27 @@ impl OverviewScreenState {
     }
 
     fn render_config_tree(&self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let total = self.config_tree.len();
+        let visible_height = area.height.saturating_sub(2) as usize; // subtract borders
+        let scroll = clamp_scroll(self.scroll, total, visible_height);
+
         let items: Vec<ListItem> = self
             .config_tree
             .iter()
+            .skip(scroll)
             .map(|line| ListItem::new(Line::from(line.as_str())))
             .collect();
+
+        let title = format!(
+            " Configuration Structure{} ",
+            scroll_hint(scroll, total, visible_height)
+        );
 
         let list = List::new(items).block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Blue))
-                .title(" Configuration Structure "),
+                .title(title),
         );
 
         frame.render_widget(list, area);

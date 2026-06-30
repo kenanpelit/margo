@@ -160,6 +160,10 @@ impl ScreenTrait for ModulesScreenState {
         Ok(None)
     }
 
+    fn is_filtering(&self) -> bool {
+        self.filter_active
+    }
+
     fn render(
         &mut self,
         paths: &ConfigPaths,
@@ -356,26 +360,6 @@ impl ModulesScreenState {
             .wrap(ratatui::widgets::Wrap { trim: true });
 
         frame.render_widget(para, area);
-
-        // Render help hints at the bottom-right corner if space allows
-        if area.height > 6 {
-            let help = Paragraph::new(vec![Line::from(vec![
-                Span::styled("[j/k]", Style::default().fg(Color::Yellow)),
-                Span::raw(" navigate  "),
-                Span::styled("[/]", Style::default().fg(Color::Yellow)),
-                Span::raw(" filter  "),
-                Span::styled("[r]", Style::default().fg(Color::Yellow)),
-                Span::raw(" refresh"),
-            ])]);
-            // hints go in the last line of the detail block
-            let hint_area = Rect {
-                x: area.x,
-                y: area.y + area.height.saturating_sub(2),
-                width: area.width,
-                height: 1,
-            };
-            frame.render_widget(help, hint_area);
-        }
     }
 }
 

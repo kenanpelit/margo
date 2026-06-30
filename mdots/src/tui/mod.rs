@@ -4,7 +4,9 @@ use std::time::{Duration, Instant};
 mod app;
 mod components;
 mod events;
+mod keybindings;
 mod screens;
+mod scroll;
 pub mod terminal;
 mod ui;
 

@@ -204,6 +204,10 @@ impl ScreenTrait for PackagesScreenState {
         Ok(None)
     }
 
+    fn is_filtering(&self) -> bool {
+        self.filter_active
+    }
+
     fn render(
         &mut self,
         paths: &ConfigPaths,
@@ -333,24 +337,6 @@ impl PackagesScreenState {
             })
             .collect();
 
-        // Bottom help line
-        let help_lines = vec![Line::from(vec![
-            Span::styled("[j/k]", Style::default().fg(Color::Yellow)),
-            Span::raw(" navigate  "),
-            Span::styled("[/]", Style::default().fg(Color::Yellow)),
-            Span::raw(" filter  "),
-            Span::styled("[r]", Style::default().fg(Color::Yellow)),
-            Span::raw(" refresh  "),
-            Span::styled("[Esc]", Style::default().fg(Color::Yellow)),
-            Span::raw(" back"),
-        ])];
-
-        // Reserve bottom line for help
-        let list_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Length(1)])
-            .split(area);
-
         let list = List::new(items)
             .block(
                 Block::default()
@@ -365,8 +351,7 @@ impl PackagesScreenState {
             )
             .highlight_symbol("> ");
 
-        frame.render_stateful_widget(list, list_chunks[0], &mut self.list_state);
-        frame.render_widget(Paragraph::new(help_lines), list_chunks[1]);
+        frame.render_stateful_widget(list, area, &mut self.list_state);
     }
 }
 

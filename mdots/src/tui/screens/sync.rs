@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use crate::config::{Config, ConfigPaths, PackageType};
 use crate::package::{Package, PackageManager};
 use crate::tui::screens::{ScreenAction, ScreenTrait};
+use crate::tui::scroll::{clamp_scroll, scroll_hint};
 
 // ── Pure helpers (unit-tested below) ─────────────────────────────────────────
 
@@ -422,22 +423,15 @@ impl SyncScreenState {
 
         let total_items = items.len();
         let visible_height = area.height.saturating_sub(2) as usize; // subtract borders
-        let scroll = self.scroll.min(total_items.saturating_sub(visible_height));
+        let scroll = clamp_scroll(self.scroll, total_items, visible_height);
 
         // Apply scroll: drop the first `scroll` items
         let visible_items: Vec<ListItem> = items.into_iter().skip(scroll).collect();
 
-        let scroll_hint = if total_items > visible_height {
-            format!(
-                " ({}/{}) ",
-                scroll + 1,
-                total_items.saturating_sub(visible_height) + 1
-            )
-        } else {
-            String::new()
-        };
-
-        let title = format!(" Plan Details{} ", scroll_hint);
+        let title = format!(
+            " Plan Details{} ",
+            scroll_hint(scroll, total_items, visible_height)
+        );
 
         let list = List::new(visible_items).block(
             Block::default()
@@ -447,25 +441,6 @@ impl SyncScreenState {
         );
 
         frame.render_widget(list, area);
-
-        // Help hints at the bottom
-        if area.height > 5 {
-            let help = Paragraph::new(vec![Line::from(vec![
-                Span::styled("[j/k]", Style::default().fg(Color::Yellow)),
-                Span::raw(" scroll  "),
-                Span::styled("[r]", Style::default().fg(Color::Yellow)),
-                Span::raw(" refresh  "),
-                Span::styled("[Esc]", Style::default().fg(Color::Yellow)),
-                Span::raw(" back"),
-            ])]);
-            let hint_area = Rect {
-                x: area.x,
-                y: area.y + area.height.saturating_sub(2),
-                width: area.width,
-                height: 1,
-            };
-            frame.render_widget(help, hint_area);
-        }
     }
 }
 

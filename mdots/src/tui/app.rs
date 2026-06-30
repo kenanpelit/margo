@@ -23,6 +23,9 @@ pub struct App {
     /// Dialog state (if any dialog is open)
     pub dialog: Option<Dialog>,
 
+    /// Whether the `?` keybinding help overlay is currently shown
+    pub help_visible: bool,
+
     /// Global message/notification
     pub status_message: Option<StatusMessage>,
 
@@ -85,6 +88,7 @@ impl App {
             screen_history: Vec::new(),
             sidebar: SidebarState::new(),
             dialog: None,
+            help_visible: false,
             status_message: None,
             should_quit: false,
             needs_refresh: true,
@@ -126,9 +130,26 @@ impl App {
 
     /// Handle global keybindings (works across all screens)
     pub fn handle_global_key(&mut self, key: KeyCode) -> Result<bool> {
+        // The help overlay is modal: while it's open it swallows every key
+        // except the two that close it, so nothing scrolls/navigates
+        // invisibly underneath it.
+        if self.help_visible {
+            if matches!(key, KeyCode::Char('?') | KeyCode::Esc) {
+                self.help_visible = false;
+            }
+            return Ok(true);
+        }
+
         match key {
             KeyCode::Char('q') if self.dialog.is_none() => {
                 self.should_quit = true;
+                return Ok(true);
+            }
+            // Don't let `?` hijack a keystroke meant for an active filter
+            // text field (e.g. searching for a package literally named
+            // "what?").
+            KeyCode::Char('?') if self.dialog.is_none() && !self.current_screen.is_filtering() => {
+                self.help_visible = true;
                 return Ok(true);
             }
             KeyCode::Char('m') => {
