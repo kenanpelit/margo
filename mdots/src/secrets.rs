@@ -1005,8 +1005,7 @@ mod tests {
             name: Some("test-creds".to_string()),
         };
 
-        let key_file_ref = key_file.clone();
-        let decryptor = |source: &Path| run_sops_decrypt(source, Some(&key_file_ref));
+        let decryptor = |source: &Path| run_sops_decrypt(source, Some(key_file.as_path()));
         let outcomes = apply_secrets(
             &[entry],
             home.path(),

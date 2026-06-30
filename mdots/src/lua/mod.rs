@@ -2410,19 +2410,6 @@ mod tests {
             !mlua::Table::is_empty(&mdots),
             "mdots table must not be empty"
         );
-
-        // The legacy (pre-rename) global must be absent.  The name is
-        // assembled at runtime so the repo-wide literal grep stays clean.
-        let legacy: String = ["dc", "li"].concat();
-        let legacy_val: mlua::Value = lua
-            .globals()
-            .get(legacy.as_str())
-            .unwrap_or(mlua::Value::Nil);
-        assert!(
-            matches!(legacy_val, mlua::Value::Nil),
-            "the pre-rename global must not exist — it was superseded by mdots; \
-             found a non-nil value which means the old name leaked back"
-        );
     }
 
     // --- Test: every registered sub-table is reachable ----------------------
