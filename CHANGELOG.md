@@ -15,6 +15,15 @@ how you drive it; it just does less work to get there, holds the desktop
 asleep when nothing's happening, and no longer panics on a few hotplug and
 poison races.
 
+### Added
+
+- **mdots** — a declarative, NixOS-style package + dotfiles manager for Arch
+  (pacman/AUR/flatpak, Lua-scriptable config, a TUI, services, SOPS/age
+  secrets), now a first-party workspace binary reading its config from
+  `~/.config/mdots`. Built and packaged alongside the other `m*` tools
+  (`just dots`, install.sh, PKGBUILD) with a generated man page and shell
+  completions.
+
 ### Changed
 
 - **The compositor does far less work per state change.** Every IPC `watch`
