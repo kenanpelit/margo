@@ -227,7 +227,7 @@ build() {
   # out to powerprofilesctl) with no zbus/tokio, so it's safe here too.
   cargo build --frozen --release \
     -p margo -p start-margo \
-    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay
+    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay -p mdots
 
   # mshell trio + mpicker + mwizard. mpicker pulls
   # mshell-screenshot (→ wayle-* → zbus/tokio), so it has to
@@ -260,7 +260,8 @@ check() {
     --package margo-config \
     --package margo-layouts \
     --package mctl \
-    --package mlayout ||
+    --package mlayout \
+    --package mdots ||
     echo "::: margo: test suite reported failures (non-blocking)"
 }
 
@@ -279,10 +280,13 @@ package() {
   local bin
   for bin in \
       margo start-margo \
-      mctl mlock mlayout mscreenshot mvisual mlogind mpower mplay \
+      mctl mlock mlayout mscreenshot mvisual mlogind mpower mplay mdots \
       mshell mshellctl mshellshare mpicker mwizard mkeys; do
     install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
   done
+  # dcli compatibility symlink (mdots was forked from dcli; keeps the
+  # user's `dcli sync` muscle memory + mshell pipewire trigger working).
+  ln -sf mdots "$pkgdir/usr/bin/dcli"
 
   # ── Wayland session entries ────────────────────────────────────
   # Display managers (gdm, sddm, ly, greetd-tuigreet) pick these up
@@ -509,6 +513,18 @@ package() {
   if [[ -f "contrib/completions/mshellctl.fish" ]]; then
     install -Dm644 "contrib/completions/mshellctl.fish" \
       "$pkgdir/usr/share/fish/vendor_completions.d/mshellctl.fish"
+  fi
+  if [[ -f "contrib/completions/mdots.bash" ]]; then
+    install -Dm644 "contrib/completions/mdots.bash" \
+      "$pkgdir/usr/share/bash-completion/completions/mdots"
+  fi
+  if [[ -f "contrib/completions/_mdots" ]]; then
+    install -Dm644 "contrib/completions/_mdots" \
+      "$pkgdir/usr/share/zsh/site-functions/_mdots"
+  fi
+  if [[ -f "contrib/completions/mdots.fish" ]]; then
+    install -Dm644 "contrib/completions/mdots.fish" \
+      "$pkgdir/usr/share/fish/vendor_completions.d/mdots.fish"
   fi
 
   # ── mshell sound assets ────────────────────────────────────────

@@ -1,0 +1,2738 @@
+#compdef mdots
+
+autoload -U is-at-least
+
+_mdots() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+":: :_mdots_commands" \
+"*::: :->mdots" \
+&& ret=0
+    case $state in
+    (mdots)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-command-$line[1]:"
+        case $line[1] in
+            (init)
+_arguments "${_arguments_options[@]}" : \
+'-b[Bootstrap from BlackDon'\''s config]' \
+'--bd[Bootstrap from BlackDon'\''s config]' \
+'-a[Advanced setup with Lua configuration files]' \
+'--adv[Advanced setup with Lua configuration files]' \
+'--lua[Advanced setup with Lua configuration files]' \
+'--nix[Initialize with Nix configuration files]' \
+'--nix-init[Install Nix and set up Home Manager integration]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(install)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':package -- Package name:_default' \
+&& ret=0
+;;
+(remove)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':package -- Package name:_default' \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(sync)
+_arguments "${_arguments_options[@]}" : \
+'-d[Preview changes without applying]' \
+'--dry-run[Preview changes without applying]' \
+'--prune[Remove packages not in configuration]' \
+'--force[Skip confirmation prompts]' \
+'--no-backup[Skip automatic backup]' \
+'--no-hooks[Skip post-install hooks]' \
+'--force-dotfiles[Force re-sync dotfiles even if already synced]' \
+'--auto-commit[Automatically commit changes to git after successful sync]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(module)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_mdots__subcmd__module_commands" \
+"*::: :->module" \
+&& ret=0
+
+    case $state in
+    (module)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-module-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(enable)
+_arguments "${_arguments_options[@]}" : \
+'--skip-sync[Enable modules without prompting to run sync afterward]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'*::module_names -- Module name(s) or path(s):_default' \
+&& ret=0
+;;
+(disable)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::name -- Module name or path:_default' \
+&& ret=0
+;;
+(run-hook)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::name -- Module name or path (if not provided, shows interactive list):_default' \
+&& ret=0
+;;
+(create)
+_arguments "${_arguments_options[@]}" : \
+'--lua[Force Lua format even if using YAML config]' \
+'--nix[Force Nix format even if using YAML config]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':path -- Module path (e.g., "sddm" or "login-managers/sddm"):_default' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__module__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-module-help-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(enable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(disable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(run-hook)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(create)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(service)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_mdots__subcmd__service_commands" \
+"*::: :->service" \
+&& ret=0
+
+    case $state in
+    (service)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-service-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(enable)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::name -- Service profile name:_default' \
+&& ret=0
+;;
+(disable)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::name -- Service profile name:_default' \
+&& ret=0
+;;
+(show)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':name -- Service profile name:_default' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__service__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-service-help-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(enable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(disable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(show)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(secrets)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_mdots__subcmd__secrets_commands" \
+"*::: :->secrets" \
+&& ret=0
+
+    case $state in
+    (secrets)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-secrets-command-$line[1]:"
+        case $line[1] in
+            (status)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(sync)
+_arguments "${_arguments_options[@]}" : \
+'--dry-run[Show what would change without writing anything]' \
+'--prune[Remove plaintext targets of secrets that are no longer declared]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(list)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(edit)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':name -- Secret name (see `mdots secrets list`):_default' \
+&& ret=0
+;;
+(keygen)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__secrets__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-secrets-help-command-$line[1]:"
+        case $line[1] in
+            (status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(sync)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(edit)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(keygen)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(update)
+_arguments "${_arguments_options[@]}" : \
+'--no-backup[Skip automatic backup]' \
+'--no-hooks[Skip update hooks]' \
+'--devel[Update VCS packages (e.g., -git packages) by passing --devel to AUR helper]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(merge)
+_arguments "${_arguments_options[@]}" : \
+'-d[Preview packages that would be added]' \
+'--dry-run[Preview packages that would be added]' \
+'--services[Merge currently enabled services instead of packages]' \
+'--user[Merge user-scope services (systemctl --user) instead of system services]' \
+'--defaults[Merge current default applications]' \
+'--include-deps[Include all installed packages (including dependencies) in a separate module]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(migrate)
+_arguments "${_arguments_options[@]}" : \
+'-d[Preview migration without applying changes]' \
+'--dry-run[Preview migration without applying changes]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(find)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':package -- Package name to search for:_default' \
+&& ret=0
+;;
+(forget)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':package -- Package name to forget:_default' \
+&& ret=0
+;;
+(validate)
+_arguments "${_arguments_options[@]}" : \
+'--check-packages[Also check if packages exist in repos (slower)]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(save-config)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(restore-config)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::backup -- Optional backup name (will prompt interactively if not provided):_default' \
+&& ret=0
+;;
+(hooks)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_mdots__subcmd__hooks_commands" \
+"*::: :->hooks" \
+&& ret=0
+
+    case $state in
+    (hooks)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-hooks-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(reset)
+_arguments "${_arguments_options[@]}" : \
+'--pre[Reset the pre-install hook instead of post-install]' \
+'--disable[Reset the disable hook instead of post-install]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':module -- Module name:_default' \
+&& ret=0
+;;
+(skip)
+_arguments "${_arguments_options[@]}" : \
+'--pre[Skip the pre-install hook instead of post-install]' \
+'--disable[Skip the disable hook instead of post-install]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':module -- Module name:_default' \
+&& ret=0
+;;
+(run)
+_arguments "${_arguments_options[@]}" : \
+'--pre[Run the pre-install hook instead of post-install]' \
+'--disable[Run the disable hook instead of post-install]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':module -- Module name:_default' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__hooks__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-hooks-help-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(reset)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(skip)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(run)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(repo)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_mdots__subcmd__repo_commands" \
+"*::: :->repo" \
+&& ret=0
+
+    case $state in
+    (repo)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-repo-command-$line[1]:"
+        case $line[1] in
+            (init)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(clone)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(push)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(pull)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__repo__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-repo-help-command-$line[1]:"
+        case $line[1] in
+            (init)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(clone)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(push)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(pull)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(backup)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_mdots__subcmd__backup_commands" \
+"*::: :->backup" \
+&& ret=0
+
+    case $state in
+    (backup)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-backup-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(delete)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':snapshot -- Snapshot ID/name:_default' \
+&& ret=0
+;;
+(check)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__backup__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-backup-help-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(delete)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(check)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(restore)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::snapshot -- Snapshot ID/name:_default' \
+&& ret=0
+;;
+(self-update)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(nix)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_mdots__subcmd__nix_commands" \
+"*::: :->nix" \
+&& ret=0
+
+    case $state in
+    (nix)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-nix-command-$line[1]:"
+        case $line[1] in
+            (install)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(switch)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(update)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(search)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':query -- Search query:_default' \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__nix__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-nix-help-command-$line[1]:"
+        case $line[1] in
+            (install)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(switch)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(update)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(search)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(search)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(edit)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(tui)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(generate)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_mdots__subcmd__generate_commands" \
+"*::: :->generate" \
+&& ret=0
+
+    case $state in
+    (generate)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-generate-command-$line[1]:"
+        case $line[1] in
+            (hardware)
+_arguments "${_arguments_options[@]}" : \
+'-f[Overwrite existing hardware.lua if it exists]' \
+'--force[Overwrite existing hardware.lua if it exists]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(service)
+_arguments "${_arguments_options[@]}" : \
+'-f[Overwrite existing service.lua if it exists]' \
+'--force[Overwrite existing service.lua if it exists]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(storage)
+_arguments "${_arguments_options[@]}" : \
+'-f[Overwrite existing storage.lua if it exists]' \
+'--force[Overwrite existing storage.lua if it exists]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(util)
+_arguments "${_arguments_options[@]}" : \
+'-f[Overwrite existing util.lua if it exists]' \
+'--force[Overwrite existing util.lua if it exists]' \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__generate__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-generate-help-command-$line[1]:"
+        case $line[1] in
+            (hardware)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(service)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(storage)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(util)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(source)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_mdots__subcmd__source_commands" \
+"*::: :->source" \
+&& ret=0
+
+    case $state in
+    (source)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-source-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(build)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::name -- Source name to build (builds all if not specified):_default' \
+&& ret=0
+;;
+(rebuild)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::name -- Source name to rebuild (rebuilds all if not specified):_default' \
+&& ret=0
+;;
+(remove)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':name -- Source package name to remove:_default' \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__source__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-source-help-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(build)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(rebuild)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(remove)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(completion)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':shell -- Shell to generate completions for:(bash elvish fish powershell zsh)' \
+&& ret=0
+;;
+(man)
+_arguments "${_arguments_options[@]}" : \
+'-j[Output in JSON format (for programmatic use)]' \
+'--json[Output in JSON format (for programmatic use)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-help-command-$line[1]:"
+        case $line[1] in
+            (init)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(install)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(remove)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(sync)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(module)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__help__subcmd__module_commands" \
+"*::: :->module" \
+&& ret=0
+
+    case $state in
+    (module)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-help-module-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(enable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(disable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(run-hook)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(create)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(service)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__help__subcmd__service_commands" \
+"*::: :->service" \
+&& ret=0
+
+    case $state in
+    (service)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-help-service-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(enable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(disable)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(show)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(secrets)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__help__subcmd__secrets_commands" \
+"*::: :->secrets" \
+&& ret=0
+
+    case $state in
+    (secrets)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-help-secrets-command-$line[1]:"
+        case $line[1] in
+            (status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(sync)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(edit)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(keygen)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(update)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(merge)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(migrate)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(find)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(forget)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(validate)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(save-config)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(restore-config)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(hooks)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__help__subcmd__hooks_commands" \
+"*::: :->hooks" \
+&& ret=0
+
+    case $state in
+    (hooks)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-help-hooks-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(reset)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(skip)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(run)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(repo)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__help__subcmd__repo_commands" \
+"*::: :->repo" \
+&& ret=0
+
+    case $state in
+    (repo)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-help-repo-command-$line[1]:"
+        case $line[1] in
+            (init)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(clone)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(push)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(pull)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(backup)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__help__subcmd__backup_commands" \
+"*::: :->backup" \
+&& ret=0
+
+    case $state in
+    (backup)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-help-backup-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(delete)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(check)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(restore)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(self-update)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(nix)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__help__subcmd__nix_commands" \
+"*::: :->nix" \
+&& ret=0
+
+    case $state in
+    (nix)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-help-nix-command-$line[1]:"
+        case $line[1] in
+            (install)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(switch)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(update)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(search)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(search)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(edit)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(tui)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(generate)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__help__subcmd__generate_commands" \
+"*::: :->generate" \
+&& ret=0
+
+    case $state in
+    (generate)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-help-generate-command-$line[1]:"
+        case $line[1] in
+            (hardware)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(service)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(storage)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(util)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(source)
+_arguments "${_arguments_options[@]}" : \
+":: :_mdots__subcmd__help__subcmd__source_commands" \
+"*::: :->source" \
+&& ret=0
+
+    case $state in
+    (source)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mdots-help-source-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(build)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(rebuild)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(remove)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(completion)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(man)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+}
+
+(( $+functions[_mdots_commands] )) ||
+_mdots_commands() {
+    local commands; commands=(
+'init:Initialize mdots configuration directory structure' \
+'install:Install a package and add to mdots management' \
+'remove:Remove a package and untrack from mdots' \
+'status:Show current configuration and sync status' \
+'sync:Sync packages to match configuration' \
+'module:Module management commands' \
+'service:Service profile management commands' \
+'secrets:SOPS/age secrets management commands' \
+'update:Update system (respects version constraints)' \
+'merge:Add unmanaged installed packages to system-packages.yaml' \
+'migrate:Migrate from old structure (packages/) to new structure (hosts/, modules/)' \
+'find:Find where a package is defined in your mdots config' \
+'forget:Remove a package from mdots tracking without uninstalling it' \
+'validate:Validate mdots config structure and modules' \
+'save-config:Save current configuration as a backup' \
+'restore-config:Restore configuration from a backup' \
+'hooks:Post-install hook management' \
+'repo:Git repository management' \
+'backup:Backup/snapshot management' \
+'restore:Restore from backup snapshot' \
+'self-update:Update mdots from git repository' \
+'nix:Nix package manager and Home Manager integration' \
+'search:Search for packages with interactive TUI' \
+'edit:Edit configuration files with interactive TUI selector' \
+'tui:Launch interactive TUI' \
+'generate:Generate configuration files' \
+'source:Build packages from source using makepkg' \
+'completion:Generate a shell completion script (bash, zsh, fish, …)' \
+'man:Print the man page (roff) to stdout' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__backup_commands] )) ||
+_mdots__subcmd__backup_commands() {
+    local commands; commands=(
+'list:List backup snapshots' \
+'delete:Delete a snapshot' \
+'check:Check backup configuration' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots backup commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__backup__subcmd__check_commands] )) ||
+_mdots__subcmd__backup__subcmd__check_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots backup check commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__backup__subcmd__delete_commands] )) ||
+_mdots__subcmd__backup__subcmd__delete_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots backup delete commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__backup__subcmd__help_commands] )) ||
+_mdots__subcmd__backup__subcmd__help_commands() {
+    local commands; commands=(
+'list:List backup snapshots' \
+'delete:Delete a snapshot' \
+'check:Check backup configuration' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots backup help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__backup__subcmd__help__subcmd__check_commands] )) ||
+_mdots__subcmd__backup__subcmd__help__subcmd__check_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots backup help check commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__backup__subcmd__help__subcmd__delete_commands] )) ||
+_mdots__subcmd__backup__subcmd__help__subcmd__delete_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots backup help delete commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__backup__subcmd__help__subcmd__help_commands] )) ||
+_mdots__subcmd__backup__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots backup help help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__backup__subcmd__help__subcmd__list_commands] )) ||
+_mdots__subcmd__backup__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots backup help list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__backup__subcmd__list_commands] )) ||
+_mdots__subcmd__backup__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots backup list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__completion_commands] )) ||
+_mdots__subcmd__completion_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots completion commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__edit_commands] )) ||
+_mdots__subcmd__edit_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots edit commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__find_commands] )) ||
+_mdots__subcmd__find_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots find commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__forget_commands] )) ||
+_mdots__subcmd__forget_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots forget commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__generate_commands] )) ||
+_mdots__subcmd__generate_commands() {
+    local commands; commands=(
+'hardware:Generate hardware.lua module with auto-detection' \
+'service:Generate service.lua module with detected services' \
+'storage:Generate storage.lua module with detected storage configuration' \
+'util:Generate util.lua module with system utilities' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots generate commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__generate__subcmd__hardware_commands] )) ||
+_mdots__subcmd__generate__subcmd__hardware_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots generate hardware commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__generate__subcmd__help_commands] )) ||
+_mdots__subcmd__generate__subcmd__help_commands() {
+    local commands; commands=(
+'hardware:Generate hardware.lua module with auto-detection' \
+'service:Generate service.lua module with detected services' \
+'storage:Generate storage.lua module with detected storage configuration' \
+'util:Generate util.lua module with system utilities' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots generate help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__generate__subcmd__help__subcmd__hardware_commands] )) ||
+_mdots__subcmd__generate__subcmd__help__subcmd__hardware_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots generate help hardware commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__generate__subcmd__help__subcmd__help_commands] )) ||
+_mdots__subcmd__generate__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots generate help help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__generate__subcmd__help__subcmd__service_commands] )) ||
+_mdots__subcmd__generate__subcmd__help__subcmd__service_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots generate help service commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__generate__subcmd__help__subcmd__storage_commands] )) ||
+_mdots__subcmd__generate__subcmd__help__subcmd__storage_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots generate help storage commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__generate__subcmd__help__subcmd__util_commands] )) ||
+_mdots__subcmd__generate__subcmd__help__subcmd__util_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots generate help util commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__generate__subcmd__service_commands] )) ||
+_mdots__subcmd__generate__subcmd__service_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots generate service commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__generate__subcmd__storage_commands] )) ||
+_mdots__subcmd__generate__subcmd__storage_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots generate storage commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__generate__subcmd__util_commands] )) ||
+_mdots__subcmd__generate__subcmd__util_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots generate util commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help_commands] )) ||
+_mdots__subcmd__help_commands() {
+    local commands; commands=(
+'init:Initialize mdots configuration directory structure' \
+'install:Install a package and add to mdots management' \
+'remove:Remove a package and untrack from mdots' \
+'status:Show current configuration and sync status' \
+'sync:Sync packages to match configuration' \
+'module:Module management commands' \
+'service:Service profile management commands' \
+'secrets:SOPS/age secrets management commands' \
+'update:Update system (respects version constraints)' \
+'merge:Add unmanaged installed packages to system-packages.yaml' \
+'migrate:Migrate from old structure (packages/) to new structure (hosts/, modules/)' \
+'find:Find where a package is defined in your mdots config' \
+'forget:Remove a package from mdots tracking without uninstalling it' \
+'validate:Validate mdots config structure and modules' \
+'save-config:Save current configuration as a backup' \
+'restore-config:Restore configuration from a backup' \
+'hooks:Post-install hook management' \
+'repo:Git repository management' \
+'backup:Backup/snapshot management' \
+'restore:Restore from backup snapshot' \
+'self-update:Update mdots from git repository' \
+'nix:Nix package manager and Home Manager integration' \
+'search:Search for packages with interactive TUI' \
+'edit:Edit configuration files with interactive TUI selector' \
+'tui:Launch interactive TUI' \
+'generate:Generate configuration files' \
+'source:Build packages from source using makepkg' \
+'completion:Generate a shell completion script (bash, zsh, fish, …)' \
+'man:Print the man page (roff) to stdout' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__backup_commands] )) ||
+_mdots__subcmd__help__subcmd__backup_commands() {
+    local commands; commands=(
+'list:List backup snapshots' \
+'delete:Delete a snapshot' \
+'check:Check backup configuration' \
+    )
+    _describe -t commands 'mdots help backup commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__backup__subcmd__check_commands] )) ||
+_mdots__subcmd__help__subcmd__backup__subcmd__check_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help backup check commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__backup__subcmd__delete_commands] )) ||
+_mdots__subcmd__help__subcmd__backup__subcmd__delete_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help backup delete commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__backup__subcmd__list_commands] )) ||
+_mdots__subcmd__help__subcmd__backup__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help backup list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__completion_commands] )) ||
+_mdots__subcmd__help__subcmd__completion_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help completion commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__edit_commands] )) ||
+_mdots__subcmd__help__subcmd__edit_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help edit commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__find_commands] )) ||
+_mdots__subcmd__help__subcmd__find_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help find commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__forget_commands] )) ||
+_mdots__subcmd__help__subcmd__forget_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help forget commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__generate_commands] )) ||
+_mdots__subcmd__help__subcmd__generate_commands() {
+    local commands; commands=(
+'hardware:Generate hardware.lua module with auto-detection' \
+'service:Generate service.lua module with detected services' \
+'storage:Generate storage.lua module with detected storage configuration' \
+'util:Generate util.lua module with system utilities' \
+    )
+    _describe -t commands 'mdots help generate commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__generate__subcmd__hardware_commands] )) ||
+_mdots__subcmd__help__subcmd__generate__subcmd__hardware_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help generate hardware commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__generate__subcmd__service_commands] )) ||
+_mdots__subcmd__help__subcmd__generate__subcmd__service_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help generate service commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__generate__subcmd__storage_commands] )) ||
+_mdots__subcmd__help__subcmd__generate__subcmd__storage_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help generate storage commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__generate__subcmd__util_commands] )) ||
+_mdots__subcmd__help__subcmd__generate__subcmd__util_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help generate util commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__help_commands] )) ||
+_mdots__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__hooks_commands] )) ||
+_mdots__subcmd__help__subcmd__hooks_commands() {
+    local commands; commands=(
+'list:List all hooks and their execution status' \
+'reset:Reset a hook to "not run" state (will run on next sync)' \
+'skip:Skip a hook permanently (mark as "don'\''t run")' \
+'run:Manually run a module'\''s hook' \
+    )
+    _describe -t commands 'mdots help hooks commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__hooks__subcmd__list_commands] )) ||
+_mdots__subcmd__help__subcmd__hooks__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help hooks list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__hooks__subcmd__reset_commands] )) ||
+_mdots__subcmd__help__subcmd__hooks__subcmd__reset_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help hooks reset commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__hooks__subcmd__run_commands] )) ||
+_mdots__subcmd__help__subcmd__hooks__subcmd__run_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help hooks run commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__hooks__subcmd__skip_commands] )) ||
+_mdots__subcmd__help__subcmd__hooks__subcmd__skip_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help hooks skip commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__init_commands] )) ||
+_mdots__subcmd__help__subcmd__init_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help init commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__install_commands] )) ||
+_mdots__subcmd__help__subcmd__install_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help install commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__man_commands] )) ||
+_mdots__subcmd__help__subcmd__man_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help man commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__merge_commands] )) ||
+_mdots__subcmd__help__subcmd__merge_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help merge commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__migrate_commands] )) ||
+_mdots__subcmd__help__subcmd__migrate_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help migrate commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__module_commands] )) ||
+_mdots__subcmd__help__subcmd__module_commands() {
+    local commands; commands=(
+'list:List all available modules' \
+'enable:Enable a module' \
+'disable:Disable a module' \
+'run-hook:Run a module'\''s post-install hook' \
+'create:Create a new module with template' \
+    )
+    _describe -t commands 'mdots help module commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__module__subcmd__create_commands] )) ||
+_mdots__subcmd__help__subcmd__module__subcmd__create_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help module create commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__module__subcmd__disable_commands] )) ||
+_mdots__subcmd__help__subcmd__module__subcmd__disable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help module disable commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__module__subcmd__enable_commands] )) ||
+_mdots__subcmd__help__subcmd__module__subcmd__enable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help module enable commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__module__subcmd__list_commands] )) ||
+_mdots__subcmd__help__subcmd__module__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help module list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__module__subcmd__run-hook_commands] )) ||
+_mdots__subcmd__help__subcmd__module__subcmd__run-hook_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help module run-hook commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__nix_commands] )) ||
+_mdots__subcmd__help__subcmd__nix_commands() {
+    local commands; commands=(
+'install:Install Nix and Home Manager' \
+'switch:Run Home Manager switch' \
+'update:Update Nix channels and run Home Manager switch' \
+'search:Search Nixpkgs for packages' \
+'status:Show Nix and Home Manager status' \
+    )
+    _describe -t commands 'mdots help nix commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__nix__subcmd__install_commands] )) ||
+_mdots__subcmd__help__subcmd__nix__subcmd__install_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help nix install commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__nix__subcmd__search_commands] )) ||
+_mdots__subcmd__help__subcmd__nix__subcmd__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help nix search commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__nix__subcmd__status_commands] )) ||
+_mdots__subcmd__help__subcmd__nix__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help nix status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__nix__subcmd__switch_commands] )) ||
+_mdots__subcmd__help__subcmd__nix__subcmd__switch_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help nix switch commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__nix__subcmd__update_commands] )) ||
+_mdots__subcmd__help__subcmd__nix__subcmd__update_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help nix update commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__remove_commands] )) ||
+_mdots__subcmd__help__subcmd__remove_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help remove commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__repo_commands] )) ||
+_mdots__subcmd__help__subcmd__repo_commands() {
+    local commands; commands=(
+'init:Initialize git repository for mdots config' \
+'clone:Clone existing mdots config repository' \
+'push:Commit and push changes' \
+'pull:Pull updates from remote' \
+'status:Show repository status' \
+    )
+    _describe -t commands 'mdots help repo commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__repo__subcmd__clone_commands] )) ||
+_mdots__subcmd__help__subcmd__repo__subcmd__clone_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help repo clone commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__repo__subcmd__init_commands] )) ||
+_mdots__subcmd__help__subcmd__repo__subcmd__init_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help repo init commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__repo__subcmd__pull_commands] )) ||
+_mdots__subcmd__help__subcmd__repo__subcmd__pull_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help repo pull commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__repo__subcmd__push_commands] )) ||
+_mdots__subcmd__help__subcmd__repo__subcmd__push_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help repo push commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__repo__subcmd__status_commands] )) ||
+_mdots__subcmd__help__subcmd__repo__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help repo status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__restore_commands] )) ||
+_mdots__subcmd__help__subcmd__restore_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help restore commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__restore-config_commands] )) ||
+_mdots__subcmd__help__subcmd__restore-config_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help restore-config commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__save-config_commands] )) ||
+_mdots__subcmd__help__subcmd__save-config_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help save-config commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__search_commands] )) ||
+_mdots__subcmd__help__subcmd__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help search commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__secrets_commands] )) ||
+_mdots__subcmd__help__subcmd__secrets_commands() {
+    local commands; commands=(
+'status:Show the status of declared secrets (read-only)' \
+'sync:Decrypt declared secrets into place (without a full sync)' \
+'list:List declared secrets (from config, no filesystem access)' \
+'edit:Edit an encrypted secret with \`sops\`' \
+'keygen:Generate an age key if one does not already exist' \
+    )
+    _describe -t commands 'mdots help secrets commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__secrets__subcmd__edit_commands] )) ||
+_mdots__subcmd__help__subcmd__secrets__subcmd__edit_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help secrets edit commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__secrets__subcmd__keygen_commands] )) ||
+_mdots__subcmd__help__subcmd__secrets__subcmd__keygen_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help secrets keygen commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__secrets__subcmd__list_commands] )) ||
+_mdots__subcmd__help__subcmd__secrets__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help secrets list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__secrets__subcmd__status_commands] )) ||
+_mdots__subcmd__help__subcmd__secrets__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help secrets status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__secrets__subcmd__sync_commands] )) ||
+_mdots__subcmd__help__subcmd__secrets__subcmd__sync_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help secrets sync commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__self-update_commands] )) ||
+_mdots__subcmd__help__subcmd__self-update_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help self-update commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__service_commands] )) ||
+_mdots__subcmd__help__subcmd__service_commands() {
+    local commands; commands=(
+'list:List all available service profiles' \
+'enable:Enable a service profile' \
+'disable:Disable a service profile' \
+'show:Show details of a service profile' \
+    )
+    _describe -t commands 'mdots help service commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__service__subcmd__disable_commands] )) ||
+_mdots__subcmd__help__subcmd__service__subcmd__disable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help service disable commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__service__subcmd__enable_commands] )) ||
+_mdots__subcmd__help__subcmd__service__subcmd__enable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help service enable commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__service__subcmd__list_commands] )) ||
+_mdots__subcmd__help__subcmd__service__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help service list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__service__subcmd__show_commands] )) ||
+_mdots__subcmd__help__subcmd__service__subcmd__show_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help service show commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__source_commands] )) ||
+_mdots__subcmd__help__subcmd__source_commands() {
+    local commands; commands=(
+'list:List all declared sources and their install status' \
+'build:Build and install sources (all by default, or a specific one by name)' \
+'rebuild:Force clean rebuild of sources (all by default, or a specific one by name)' \
+'remove:Uninstall a source-built package via pacman' \
+'status:Show install status of all sources' \
+    )
+    _describe -t commands 'mdots help source commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__source__subcmd__build_commands] )) ||
+_mdots__subcmd__help__subcmd__source__subcmd__build_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help source build commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__source__subcmd__list_commands] )) ||
+_mdots__subcmd__help__subcmd__source__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help source list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__source__subcmd__rebuild_commands] )) ||
+_mdots__subcmd__help__subcmd__source__subcmd__rebuild_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help source rebuild commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__source__subcmd__remove_commands] )) ||
+_mdots__subcmd__help__subcmd__source__subcmd__remove_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help source remove commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__source__subcmd__status_commands] )) ||
+_mdots__subcmd__help__subcmd__source__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help source status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__status_commands] )) ||
+_mdots__subcmd__help__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__sync_commands] )) ||
+_mdots__subcmd__help__subcmd__sync_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help sync commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__tui_commands] )) ||
+_mdots__subcmd__help__subcmd__tui_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help tui commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__update_commands] )) ||
+_mdots__subcmd__help__subcmd__update_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help update commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__help__subcmd__validate_commands] )) ||
+_mdots__subcmd__help__subcmd__validate_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots help validate commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__hooks_commands] )) ||
+_mdots__subcmd__hooks_commands() {
+    local commands; commands=(
+'list:List all hooks and their execution status' \
+'reset:Reset a hook to "not run" state (will run on next sync)' \
+'skip:Skip a hook permanently (mark as "don'\''t run")' \
+'run:Manually run a module'\''s hook' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots hooks commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__hooks__subcmd__help_commands] )) ||
+_mdots__subcmd__hooks__subcmd__help_commands() {
+    local commands; commands=(
+'list:List all hooks and their execution status' \
+'reset:Reset a hook to "not run" state (will run on next sync)' \
+'skip:Skip a hook permanently (mark as "don'\''t run")' \
+'run:Manually run a module'\''s hook' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots hooks help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__hooks__subcmd__help__subcmd__help_commands] )) ||
+_mdots__subcmd__hooks__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots hooks help help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__hooks__subcmd__help__subcmd__list_commands] )) ||
+_mdots__subcmd__hooks__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots hooks help list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__hooks__subcmd__help__subcmd__reset_commands] )) ||
+_mdots__subcmd__hooks__subcmd__help__subcmd__reset_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots hooks help reset commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__hooks__subcmd__help__subcmd__run_commands] )) ||
+_mdots__subcmd__hooks__subcmd__help__subcmd__run_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots hooks help run commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__hooks__subcmd__help__subcmd__skip_commands] )) ||
+_mdots__subcmd__hooks__subcmd__help__subcmd__skip_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots hooks help skip commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__hooks__subcmd__list_commands] )) ||
+_mdots__subcmd__hooks__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots hooks list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__hooks__subcmd__reset_commands] )) ||
+_mdots__subcmd__hooks__subcmd__reset_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots hooks reset commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__hooks__subcmd__run_commands] )) ||
+_mdots__subcmd__hooks__subcmd__run_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots hooks run commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__hooks__subcmd__skip_commands] )) ||
+_mdots__subcmd__hooks__subcmd__skip_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots hooks skip commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__init_commands] )) ||
+_mdots__subcmd__init_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots init commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__install_commands] )) ||
+_mdots__subcmd__install_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots install commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__man_commands] )) ||
+_mdots__subcmd__man_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots man commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__merge_commands] )) ||
+_mdots__subcmd__merge_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots merge commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__migrate_commands] )) ||
+_mdots__subcmd__migrate_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots migrate commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__module_commands] )) ||
+_mdots__subcmd__module_commands() {
+    local commands; commands=(
+'list:List all available modules' \
+'enable:Enable a module' \
+'disable:Disable a module' \
+'run-hook:Run a module'\''s post-install hook' \
+'create:Create a new module with template' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots module commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__module__subcmd__create_commands] )) ||
+_mdots__subcmd__module__subcmd__create_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots module create commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__module__subcmd__disable_commands] )) ||
+_mdots__subcmd__module__subcmd__disable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots module disable commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__module__subcmd__enable_commands] )) ||
+_mdots__subcmd__module__subcmd__enable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots module enable commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__module__subcmd__help_commands] )) ||
+_mdots__subcmd__module__subcmd__help_commands() {
+    local commands; commands=(
+'list:List all available modules' \
+'enable:Enable a module' \
+'disable:Disable a module' \
+'run-hook:Run a module'\''s post-install hook' \
+'create:Create a new module with template' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots module help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__module__subcmd__help__subcmd__create_commands] )) ||
+_mdots__subcmd__module__subcmd__help__subcmd__create_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots module help create commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__module__subcmd__help__subcmd__disable_commands] )) ||
+_mdots__subcmd__module__subcmd__help__subcmd__disable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots module help disable commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__module__subcmd__help__subcmd__enable_commands] )) ||
+_mdots__subcmd__module__subcmd__help__subcmd__enable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots module help enable commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__module__subcmd__help__subcmd__help_commands] )) ||
+_mdots__subcmd__module__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots module help help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__module__subcmd__help__subcmd__list_commands] )) ||
+_mdots__subcmd__module__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots module help list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__module__subcmd__help__subcmd__run-hook_commands] )) ||
+_mdots__subcmd__module__subcmd__help__subcmd__run-hook_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots module help run-hook commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__module__subcmd__list_commands] )) ||
+_mdots__subcmd__module__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots module list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__module__subcmd__run-hook_commands] )) ||
+_mdots__subcmd__module__subcmd__run-hook_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots module run-hook commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__nix_commands] )) ||
+_mdots__subcmd__nix_commands() {
+    local commands; commands=(
+'install:Install Nix and Home Manager' \
+'switch:Run Home Manager switch' \
+'update:Update Nix channels and run Home Manager switch' \
+'search:Search Nixpkgs for packages' \
+'status:Show Nix and Home Manager status' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots nix commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__nix__subcmd__help_commands] )) ||
+_mdots__subcmd__nix__subcmd__help_commands() {
+    local commands; commands=(
+'install:Install Nix and Home Manager' \
+'switch:Run Home Manager switch' \
+'update:Update Nix channels and run Home Manager switch' \
+'search:Search Nixpkgs for packages' \
+'status:Show Nix and Home Manager status' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots nix help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__nix__subcmd__help__subcmd__help_commands] )) ||
+_mdots__subcmd__nix__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots nix help help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__nix__subcmd__help__subcmd__install_commands] )) ||
+_mdots__subcmd__nix__subcmd__help__subcmd__install_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots nix help install commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__nix__subcmd__help__subcmd__search_commands] )) ||
+_mdots__subcmd__nix__subcmd__help__subcmd__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots nix help search commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__nix__subcmd__help__subcmd__status_commands] )) ||
+_mdots__subcmd__nix__subcmd__help__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots nix help status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__nix__subcmd__help__subcmd__switch_commands] )) ||
+_mdots__subcmd__nix__subcmd__help__subcmd__switch_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots nix help switch commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__nix__subcmd__help__subcmd__update_commands] )) ||
+_mdots__subcmd__nix__subcmd__help__subcmd__update_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots nix help update commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__nix__subcmd__install_commands] )) ||
+_mdots__subcmd__nix__subcmd__install_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots nix install commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__nix__subcmd__search_commands] )) ||
+_mdots__subcmd__nix__subcmd__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots nix search commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__nix__subcmd__status_commands] )) ||
+_mdots__subcmd__nix__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots nix status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__nix__subcmd__switch_commands] )) ||
+_mdots__subcmd__nix__subcmd__switch_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots nix switch commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__nix__subcmd__update_commands] )) ||
+_mdots__subcmd__nix__subcmd__update_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots nix update commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__remove_commands] )) ||
+_mdots__subcmd__remove_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots remove commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__repo_commands] )) ||
+_mdots__subcmd__repo_commands() {
+    local commands; commands=(
+'init:Initialize git repository for mdots config' \
+'clone:Clone existing mdots config repository' \
+'push:Commit and push changes' \
+'pull:Pull updates from remote' \
+'status:Show repository status' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots repo commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__repo__subcmd__clone_commands] )) ||
+_mdots__subcmd__repo__subcmd__clone_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots repo clone commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__repo__subcmd__help_commands] )) ||
+_mdots__subcmd__repo__subcmd__help_commands() {
+    local commands; commands=(
+'init:Initialize git repository for mdots config' \
+'clone:Clone existing mdots config repository' \
+'push:Commit and push changes' \
+'pull:Pull updates from remote' \
+'status:Show repository status' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots repo help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__repo__subcmd__help__subcmd__clone_commands] )) ||
+_mdots__subcmd__repo__subcmd__help__subcmd__clone_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots repo help clone commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__repo__subcmd__help__subcmd__help_commands] )) ||
+_mdots__subcmd__repo__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots repo help help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__repo__subcmd__help__subcmd__init_commands] )) ||
+_mdots__subcmd__repo__subcmd__help__subcmd__init_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots repo help init commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__repo__subcmd__help__subcmd__pull_commands] )) ||
+_mdots__subcmd__repo__subcmd__help__subcmd__pull_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots repo help pull commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__repo__subcmd__help__subcmd__push_commands] )) ||
+_mdots__subcmd__repo__subcmd__help__subcmd__push_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots repo help push commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__repo__subcmd__help__subcmd__status_commands] )) ||
+_mdots__subcmd__repo__subcmd__help__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots repo help status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__repo__subcmd__init_commands] )) ||
+_mdots__subcmd__repo__subcmd__init_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots repo init commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__repo__subcmd__pull_commands] )) ||
+_mdots__subcmd__repo__subcmd__pull_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots repo pull commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__repo__subcmd__push_commands] )) ||
+_mdots__subcmd__repo__subcmd__push_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots repo push commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__repo__subcmd__status_commands] )) ||
+_mdots__subcmd__repo__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots repo status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__restore_commands] )) ||
+_mdots__subcmd__restore_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots restore commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__restore-config_commands] )) ||
+_mdots__subcmd__restore-config_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots restore-config commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__save-config_commands] )) ||
+_mdots__subcmd__save-config_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots save-config commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__search_commands] )) ||
+_mdots__subcmd__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots search commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__secrets_commands] )) ||
+_mdots__subcmd__secrets_commands() {
+    local commands; commands=(
+'status:Show the status of declared secrets (read-only)' \
+'sync:Decrypt declared secrets into place (without a full sync)' \
+'list:List declared secrets (from config, no filesystem access)' \
+'edit:Edit an encrypted secret with \`sops\`' \
+'keygen:Generate an age key if one does not already exist' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots secrets commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__secrets__subcmd__edit_commands] )) ||
+_mdots__subcmd__secrets__subcmd__edit_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots secrets edit commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__secrets__subcmd__help_commands] )) ||
+_mdots__subcmd__secrets__subcmd__help_commands() {
+    local commands; commands=(
+'status:Show the status of declared secrets (read-only)' \
+'sync:Decrypt declared secrets into place (without a full sync)' \
+'list:List declared secrets (from config, no filesystem access)' \
+'edit:Edit an encrypted secret with \`sops\`' \
+'keygen:Generate an age key if one does not already exist' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots secrets help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__secrets__subcmd__help__subcmd__edit_commands] )) ||
+_mdots__subcmd__secrets__subcmd__help__subcmd__edit_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots secrets help edit commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__secrets__subcmd__help__subcmd__help_commands] )) ||
+_mdots__subcmd__secrets__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots secrets help help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__secrets__subcmd__help__subcmd__keygen_commands] )) ||
+_mdots__subcmd__secrets__subcmd__help__subcmd__keygen_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots secrets help keygen commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__secrets__subcmd__help__subcmd__list_commands] )) ||
+_mdots__subcmd__secrets__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots secrets help list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__secrets__subcmd__help__subcmd__status_commands] )) ||
+_mdots__subcmd__secrets__subcmd__help__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots secrets help status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__secrets__subcmd__help__subcmd__sync_commands] )) ||
+_mdots__subcmd__secrets__subcmd__help__subcmd__sync_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots secrets help sync commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__secrets__subcmd__keygen_commands] )) ||
+_mdots__subcmd__secrets__subcmd__keygen_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots secrets keygen commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__secrets__subcmd__list_commands] )) ||
+_mdots__subcmd__secrets__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots secrets list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__secrets__subcmd__status_commands] )) ||
+_mdots__subcmd__secrets__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots secrets status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__secrets__subcmd__sync_commands] )) ||
+_mdots__subcmd__secrets__subcmd__sync_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots secrets sync commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__self-update_commands] )) ||
+_mdots__subcmd__self-update_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots self-update commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__service_commands] )) ||
+_mdots__subcmd__service_commands() {
+    local commands; commands=(
+'list:List all available service profiles' \
+'enable:Enable a service profile' \
+'disable:Disable a service profile' \
+'show:Show details of a service profile' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots service commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__service__subcmd__disable_commands] )) ||
+_mdots__subcmd__service__subcmd__disable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots service disable commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__service__subcmd__enable_commands] )) ||
+_mdots__subcmd__service__subcmd__enable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots service enable commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__service__subcmd__help_commands] )) ||
+_mdots__subcmd__service__subcmd__help_commands() {
+    local commands; commands=(
+'list:List all available service profiles' \
+'enable:Enable a service profile' \
+'disable:Disable a service profile' \
+'show:Show details of a service profile' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots service help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__service__subcmd__help__subcmd__disable_commands] )) ||
+_mdots__subcmd__service__subcmd__help__subcmd__disable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots service help disable commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__service__subcmd__help__subcmd__enable_commands] )) ||
+_mdots__subcmd__service__subcmd__help__subcmd__enable_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots service help enable commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__service__subcmd__help__subcmd__help_commands] )) ||
+_mdots__subcmd__service__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots service help help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__service__subcmd__help__subcmd__list_commands] )) ||
+_mdots__subcmd__service__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots service help list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__service__subcmd__help__subcmd__show_commands] )) ||
+_mdots__subcmd__service__subcmd__help__subcmd__show_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots service help show commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__service__subcmd__list_commands] )) ||
+_mdots__subcmd__service__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots service list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__service__subcmd__show_commands] )) ||
+_mdots__subcmd__service__subcmd__show_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots service show commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__source_commands] )) ||
+_mdots__subcmd__source_commands() {
+    local commands; commands=(
+'list:List all declared sources and their install status' \
+'build:Build and install sources (all by default, or a specific one by name)' \
+'rebuild:Force clean rebuild of sources (all by default, or a specific one by name)' \
+'remove:Uninstall a source-built package via pacman' \
+'status:Show install status of all sources' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots source commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__source__subcmd__build_commands] )) ||
+_mdots__subcmd__source__subcmd__build_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots source build commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__source__subcmd__help_commands] )) ||
+_mdots__subcmd__source__subcmd__help_commands() {
+    local commands; commands=(
+'list:List all declared sources and their install status' \
+'build:Build and install sources (all by default, or a specific one by name)' \
+'rebuild:Force clean rebuild of sources (all by default, or a specific one by name)' \
+'remove:Uninstall a source-built package via pacman' \
+'status:Show install status of all sources' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mdots source help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__source__subcmd__help__subcmd__build_commands] )) ||
+_mdots__subcmd__source__subcmd__help__subcmd__build_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots source help build commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__source__subcmd__help__subcmd__help_commands] )) ||
+_mdots__subcmd__source__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots source help help commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__source__subcmd__help__subcmd__list_commands] )) ||
+_mdots__subcmd__source__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots source help list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__source__subcmd__help__subcmd__rebuild_commands] )) ||
+_mdots__subcmd__source__subcmd__help__subcmd__rebuild_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots source help rebuild commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__source__subcmd__help__subcmd__remove_commands] )) ||
+_mdots__subcmd__source__subcmd__help__subcmd__remove_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots source help remove commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__source__subcmd__help__subcmd__status_commands] )) ||
+_mdots__subcmd__source__subcmd__help__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots source help status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__source__subcmd__list_commands] )) ||
+_mdots__subcmd__source__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots source list commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__source__subcmd__rebuild_commands] )) ||
+_mdots__subcmd__source__subcmd__rebuild_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots source rebuild commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__source__subcmd__remove_commands] )) ||
+_mdots__subcmd__source__subcmd__remove_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots source remove commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__source__subcmd__status_commands] )) ||
+_mdots__subcmd__source__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots source status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__status_commands] )) ||
+_mdots__subcmd__status_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots status commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__sync_commands] )) ||
+_mdots__subcmd__sync_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots sync commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__tui_commands] )) ||
+_mdots__subcmd__tui_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots tui commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__update_commands] )) ||
+_mdots__subcmd__update_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots update commands' commands "$@"
+}
+(( $+functions[_mdots__subcmd__validate_commands] )) ||
+_mdots__subcmd__validate_commands() {
+    local commands; commands=()
+    _describe -t commands 'mdots validate commands' commands "$@"
+}
+
+if [ "$funcstack[1]" = "_mdots" ]; then
+    _mdots "$@"
+else
+    compdef _mdots mdots
+fi

@@ -47,8 +47,14 @@ cli:
     sudo install -m755 target/release/mscreenshot {{bindir}}/mscreenshot
     sudo install -m755 target/release/mpicker {{bindir}}/mpicker
 
+# Build + install mdots (declarative package/dotfiles manager, forked from dcli).
+dots:
+    cargo build --release -p mdots
+    sudo install -m755 target/release/mdots {{bindir}}/mdots
+    sudo ln -sf mdots {{bindir}}/dcli
+
 # Everything: compositor + shell + CLI tools.
-all: margo shell cli
+all: margo shell cli dots
 
 # Re-read the compositor config (config.conf + sourced fragments). Does NOT
 # install or swap the margo binary — use `just margo` + re-login for that.

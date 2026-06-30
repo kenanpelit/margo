@@ -1,0 +1,114 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH mdots 1  "mdots 1.1.0" 
+.SH NAME
+mdots \- A declarative package management CLI tool for Linux
+.SH SYNOPSIS
+\fBmdots\fR [\fB\-j\fR|\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+A declarative package management CLI tool for Linux
+.SH OPTIONS
+.TP
+\fB\-j\fR, \fB\-\-json\fR
+Output in JSON format (for programmatic use)
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+mdots\-init(1)
+Initialize mdots configuration directory structure
+.TP
+mdots\-install(1)
+Install a package and add to mdots management
+.TP
+mdots\-remove(1)
+Remove a package and untrack from mdots
+.TP
+mdots\-status(1)
+Show current configuration and sync status
+.TP
+mdots\-sync(1)
+Sync packages to match configuration
+.TP
+mdots\-module(1)
+Module management commands
+.TP
+mdots\-service(1)
+Service profile management commands
+.TP
+mdots\-secrets(1)
+SOPS/age secrets management commands
+.TP
+mdots\-update(1)
+Update system (respects version constraints)
+.TP
+mdots\-merge(1)
+Add unmanaged installed packages to system\-packages.yaml
+.TP
+mdots\-migrate(1)
+Migrate from old structure (packages/) to new structure (hosts/, modules/)
+.TP
+mdots\-find(1)
+Find where a package is defined in your mdots config
+.TP
+mdots\-forget(1)
+Remove a package from mdots tracking without uninstalling it
+.TP
+mdots\-validate(1)
+Validate mdots config structure and modules
+.TP
+mdots\-save\-config(1)
+Save current configuration as a backup
+.TP
+mdots\-restore\-config(1)
+Restore configuration from a backup
+.TP
+mdots\-hooks(1)
+Post\-install hook management
+.TP
+mdots\-repo(1)
+Git repository management
+.TP
+mdots\-backup(1)
+Backup/snapshot management
+.TP
+mdots\-restore(1)
+Restore from backup snapshot
+.TP
+mdots\-self\-update(1)
+Update mdots from git repository
+.TP
+mdots\-nix(1)
+Nix package manager and Home Manager integration
+.TP
+mdots\-search(1)
+Search for packages with interactive TUI
+.TP
+mdots\-edit(1)
+Edit configuration files with interactive TUI selector
+.TP
+mdots\-tui(1)
+Launch interactive TUI
+.TP
+mdots\-generate(1)
+Generate configuration files
+.TP
+mdots\-source(1)
+Build packages from source using makepkg
+.TP
+mdots\-completion(1)
+Generate a shell completion script (bash, zsh, fish, …)
+.TP
+mdots\-man(1)
+Print the man page (roff) to stdout
+.TP
+mdots\-help(1)
+Print this message or the help of the given subcommand(s)
+.SH VERSION
+v1.1.0
+.SH AUTHORS
+Kenan Pelit <kenanpelit@gmail.com>

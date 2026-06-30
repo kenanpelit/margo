@@ -255,7 +255,7 @@ debian_build() {
   # faster, smaller installed binary. `just` / CI stay on `release`.
   log "building compositor group (dist)"
   cargo build --profile dist -p margo -p start-margo \
-    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mplay
+    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mplay -p mdots
   log "building shell group (dist)"
   cargo build --profile dist -p mshell -p mshellctl -p mshellshare \
     -p mpicker -p mwizard -p margo-portal
@@ -292,10 +292,13 @@ debian_install_files() {
 
   # ── binaries ──
   local bin
-  for bin in margo start-margo mctl mlock mlayout mscreenshot mvisual mplay \
+  for bin in margo start-margo mctl mlock mlayout mscreenshot mvisual mplay mdots \
              mshell mshellctl mshellshare mpicker mwizard; do
     install_file 755 "${tgt}/${bin}" "/usr/bin/${bin}"
   done
+  # dcli compatibility symlink (mdots was forked from dcli; keeps the
+  # user's `dcli sync` muscle memory + mshell pipewire trigger working).
+  $SUDO ln -sf mdots "/usr/bin/dcli"
   # margo-portal lives under /usr/lib (D-Bus-activated, not a CLI)
   install_file 755 "${tgt}/margo-portal" "/usr/lib/margo/margo-portal"
 
@@ -387,6 +390,14 @@ debian_install_files() {
     "/usr/share/zsh/site-functions/_mctl"
   install_file 644 "${REPO_ROOT}/contrib/completions/mctl.fish" \
     "/usr/share/fish/vendor_completions.d/mctl.fish"
+
+  # ── shell completions for mdots ──
+  install_file 644 "${REPO_ROOT}/contrib/completions/mdots.bash" \
+    "/usr/share/bash-completion/completions/mdots"
+  install_file 644 "${REPO_ROOT}/contrib/completions/_mdots" \
+    "/usr/share/zsh/site-functions/_mdots"
+  install_file 644 "${REPO_ROOT}/contrib/completions/mdots.fish" \
+    "/usr/share/fish/vendor_completions.d/mdots.fish"
 
   # ── license ──
   install_file 644 "${REPO_ROOT}/LICENSE" "/usr/share/licenses/${DEB_DOCNAME}/LICENSE"
