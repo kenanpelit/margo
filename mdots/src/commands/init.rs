@@ -1756,6 +1756,12 @@ return mdots
     fs::write(&mdots_types_path, mdots_types_content)
         .context("Failed to create mdots type definitions")?;
 
+    // Remove legacy dcli.lua if present — best-effort, non-fatal
+    let dcli_types_path = lua_types_dir.join("dcli.lua");
+    if dcli_types_path.exists() {
+        let _ = std::fs::remove_file(&dcli_types_path);
+    }
+
     println!("  {} .lua/mdots.lua (editor type hints)", "✓".green());
 
     Ok(())
@@ -2318,7 +2324,7 @@ fn ensure_nix_on_path() {
         };
 
         if let Ok(existing) = std::fs::read_to_string(&rc_file) {
-            if !existing.contains("mdots")
+            if (!existing.contains("mdots") && !existing.contains("dcli"))
                 && !existing.contains(nix_profile_bin)
                 && std::fs::write(&rc_file, format!("{}{}", existing, line)).is_ok()
             {

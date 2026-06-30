@@ -16,6 +16,7 @@ struct BackupMetadata {
     active_host_file: String,
     enabled_modules: Vec<String>,
     backup_type: String,
+    #[serde(alias = "dcli_version")]
     mdots_version: String,
     package_count: usize,
     validation_passed: bool,

@@ -210,8 +210,9 @@ fn rotate_timeshift_backups(max_backups: u32) -> Result<()> {
             continue;
         }
 
-        // Check if this is a mdots snapshot (comment contains "mdots")
-        if line.to_lowercase().contains("mdots") {
+        // Check if this is a mdots-managed snapshot (comment contains "mdots" or legacy "dcli")
+        let l = line.to_lowercase();
+        if l.contains("mdots") || l.contains("dcli") {
             // Extract snapshot name (first field)
             if let Some(snapshot_name) = line.split_whitespace().next() {
                 mdots_snapshots.push(snapshot_name.to_string());
@@ -275,8 +276,9 @@ fn rotate_snapper_backups(paths: &ConfigPaths, max_backups: u32) -> Result<()> {
             continue;
         }
 
-        // Check if this is a mdots snapshot (description contains "mdots")
-        if line.to_lowercase().contains("mdots") {
+        // Check if this is a mdots-managed snapshot (description contains "mdots" or legacy "dcli")
+        let l = line.to_lowercase();
+        if l.contains("mdots") || l.contains("dcli") {
             // Extract snapshot number (first field)
             let parts: Vec<&str> = line.split_whitespace().collect();
             if let Some(num_str) = parts.first() {
