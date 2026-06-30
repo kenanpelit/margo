@@ -1,6 +1,7 @@
 use anyhow::Result;
 use colored::*;
 use serde::Serialize;
+use std::collections::HashSet;
 
 use crate::config::{load_config, resolve_config_path, ConfigPaths, PackageManagerType};
 use crate::package::PackageManager;
@@ -18,6 +19,13 @@ fn get_distro_name() -> String {
 }
 
 #[derive(Serialize)]
+struct DriftInfo {
+    to_install: usize,
+    to_remove: usize,
+    in_sync: bool,
+}
+
+#[derive(Serialize)]
 struct StatusOutput {
     configuration: ConfigInfo,
     enabled_modules: Vec<String>,
@@ -25,6 +33,7 @@ struct StatusOutput {
     installed_packages: InstalledStats,
     /// True if a previous `mdots sync` did not finish (system may be partial).
     sync_interrupted: bool,
+    drift: DriftInfo,
 }
 
 #[derive(Serialize)]
@@ -126,6 +135,11 @@ pub fn run(paths: &ConfigPaths, json: bool) -> Result<()> {
     // A leftover marker means the last sync did not finish cleanly.
     let sync_interrupted = crate::commands::sync::sync_was_interrupted(&paths.state_dir);
 
+    // Compute drift (read-only): declared vs installed+tracked.
+    let installed_flatpak_set: HashSet<String> = installed_flatpaks.iter().cloned().collect();
+    let drift =
+        crate::commands::diff::compute_drift(paths, &declared, &installed, &installed_flatpak_set);
+
     if json {
         // Output JSON format
         #[allow(deprecated)]
@@ -164,6 +178,11 @@ pub fn run(paths: &ConfigPaths, json: bool) -> Result<()> {
                 nix: nix_installed_count,
             },
             sync_interrupted,
+            drift: DriftInfo {
+                to_install: drift.install_count(),
+                to_remove: drift.remove_count(),
+                in_sync: drift.is_in_sync(),
+            },
         };
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
@@ -349,6 +368,19 @@ pub fn run(paths: &ConfigPaths, json: bool) -> Result<()> {
                     }
                 );
             }
+        }
+
+        // Drift summary line
+        println!();
+        if drift.is_in_sync() {
+            println!("drift: {}", "in sync".green());
+        } else {
+            println!(
+                "drift: {} to install, {} to remove {}",
+                drift.install_count().to_string().yellow(),
+                drift.remove_count().to_string().red(),
+                "(run 'mdots diff')".dimmed(),
+            );
         }
     }
 

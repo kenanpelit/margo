@@ -72,6 +72,9 @@ enum Commands {
     /// Show current configuration and sync status
     Status,
 
+    /// Show declared-vs-installed package diff (read-only)
+    Diff,
+
     /// Sync packages to match configuration
     Sync {
         /// Preview changes without applying
@@ -545,6 +548,9 @@ fn main() -> Result<()> {
         }
         Commands::Status => {
             commands::status::run(&paths, cli.json)?;
+        }
+        Commands::Diff => {
+            commands::diff::run(&paths)?;
         }
         Commands::Module { action } => match action {
             ModuleAction::List => {

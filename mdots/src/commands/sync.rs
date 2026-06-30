@@ -60,7 +60,7 @@ fn partition_protected(names: Vec<String>) -> (Vec<String>, Vec<String>) {
 /// From the declared packages, pick those not yet installed — the install set.
 /// Returns `(native, flatpak)`. Nix packages are applied by home-manager, so
 /// they are skipped here.
-fn compute_installable(
+pub(crate) fn compute_installable(
     declared: &[Package],
     installed_native: &HashMap<String, String>,
     installed_flatpak: &HashSet<String>,
