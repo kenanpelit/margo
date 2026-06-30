@@ -288,6 +288,7 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
                 .trim_end_matches(".yaml")
                 .trim_end_matches(".lua")
                 .to_string();
+            // SAFETY: WalkDir yields real file entries, so file_stem() is always Some.
             let base_name = path.file_stem().unwrap().to_string_lossy().to_string();
 
             // Skip module.yaml files - they're part of directory modules, not standalone modules

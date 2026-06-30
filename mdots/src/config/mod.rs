@@ -251,8 +251,6 @@ pub enum FlatpakScope {
     System,
 }
 
-impl FlatpakScope {}
-
 /// Hook execution user configuration
 /// Can be specified as a boolean (backward compat) or username string
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -489,8 +487,6 @@ pub enum DefaultsScope {
     User,
     System,
 }
-
-impl DefaultsScope {}
 
 fn default_defaults_scope() -> DefaultsScope {
     DefaultsScope::System
