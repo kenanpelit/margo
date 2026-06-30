@@ -1,6 +1,7 @@
 pub mod backup;
 pub mod completion;
 pub mod config_backup;
+pub mod doctor;
 pub mod edit;
 pub mod find;
 pub mod forget;

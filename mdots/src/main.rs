@@ -258,6 +258,9 @@ enum Commands {
 
     /// Print the man page (roff) to stdout
     Man,
+
+    /// Run environment health checks and report pass/warn/fail status
+    Doctor,
 }
 
 #[derive(Subcommand)]
@@ -797,6 +800,12 @@ fn main() -> Result<()> {
         }
         Commands::Man => {
             commands::man::run()?;
+        }
+        Commands::Doctor => {
+            let exit_code = commands::doctor::run(&paths)?;
+            if exit_code != 0 {
+                std::process::exit(exit_code);
+            }
         }
     }
 
