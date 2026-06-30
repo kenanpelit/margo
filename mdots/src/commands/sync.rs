@@ -2982,4 +2982,137 @@ mod tests {
         assert!(native.is_empty());
         assert!(flatpak.is_empty());
     }
+
+    // --- Dry-run smoke: config-tree loading + plan computation (no pacman) ------
+    //
+    // BOUNDARY: `compute_installable` and `compute_prune_preview` are pure
+    // functions that take already-resolved package/installed sets. The pacman
+    // query (`PackageManager::get_installed_native_packages`) is invoked by
+    // `sync::run()` before the dry-run guard and is NOT called here. These tests
+    // exercise config loading (pure file I/O) and plan computation (pure logic)
+    // in isolation — no external binaries are required.
+    //
+    // `ConfigPaths` is built as a struct literal pointing at the tempdir, so
+    // there is no env-var mutation and no race across parallel tests.
+
+    fn make_paths(root: &std::path::Path) -> ConfigPaths {
+        ConfigPaths {
+            config_dir: root.to_path_buf(),
+            config_file: root.join("config.yaml"),
+            packages_dir: root.join("packages"),
+            state_dir: root.join("state"),
+            state_file: root.join("state/installed.yaml"),
+            hooks_state_file: root.join("state/hooks-executed.yaml"),
+            services_state_file: root.join("state/services-state.yaml"),
+            defaults_state_file: root.join("state/defaults-state.yaml"),
+            theming_state_file: root.join("state/theming-state.yaml"),
+            config_backups_dir: root.join("state/config-backups"),
+        }
+    }
+
+    #[test]
+    fn dry_run_plan_loads_minimal_config_tree_and_resolves_packages() {
+        // Config tree:
+        //   <root>/config.yaml                (full, not a pointer)
+        //   <root>/modules/trivial.yaml
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        std::fs::create_dir_all(root.join("modules")).unwrap();
+        std::fs::create_dir_all(root.join("state")).unwrap();
+
+        std::fs::write(
+            root.join("config.yaml"),
+            b"host: test-host\nenabled_modules:\n  - trivial\npackages:\n  - vim\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("modules/trivial.yaml"),
+            b"description: Trivial test module\npackages:\n  - git\n",
+        )
+        .unwrap();
+
+        let paths = make_paths(root);
+
+        // Config loading is pure file I/O — no external binaries.
+        let config = load_config(&paths).expect("load_config must succeed");
+        assert_eq!(config.host, "test-host");
+        assert!(config.enabled_modules.contains(&"trivial".to_string()));
+
+        // Declared-package resolution reads YAML — no pacman call.
+        let pkg_manager = PackageManager::new(paths.clone());
+        let declared = pkg_manager
+            .get_declared_packages(&config)
+            .expect("get_declared_packages must succeed");
+
+        let names: Vec<&str> = declared.iter().map(|p| p.name.as_str()).collect();
+        assert!(
+            names.contains(&"vim"),
+            "host package 'vim' must appear in declared set"
+        );
+        assert!(
+            names.contains(&"git"),
+            "module package 'git' (from trivial.yaml) must appear in declared set"
+        );
+
+        // Dry-run plan: empty installed sets simulate a fresh system.
+        let (to_install, flatpak_to_install) =
+            compute_installable(&declared, &HashMap::new(), &HashSet::new());
+
+        assert!(
+            to_install.contains(&"vim".to_string()),
+            "vim must be in the install plan on a fresh system"
+        );
+        assert!(
+            to_install.contains(&"git".to_string()),
+            "git (from module) must be in the install plan on a fresh system"
+        );
+        assert!(
+            flatpak_to_install.is_empty(),
+            "no flatpak packages declared in minimal config"
+        );
+    }
+
+    #[test]
+    fn dry_run_plan_already_installed_package_not_reinstalled() {
+        // If the installed map already contains "vim", it must not appear in the
+        // install plan — pure logic, no external binaries.
+        let declared = vec![pkg("vim", PackageType::Native)];
+        let installed: HashMap<String, String> = [("vim".to_string(), "9.1.0001-1".to_string())]
+            .into_iter()
+            .collect();
+        let (to_install, _) = compute_installable(&declared, &installed, &HashSet::new());
+        assert!(
+            to_install.is_empty(),
+            "installed packages must not appear in the dry-run install plan"
+        );
+    }
+
+    #[test]
+    fn dry_run_plan_empty_state_means_nothing_to_prune() {
+        // No state file → `compute_prune_preview` must return empty lists.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("state")).unwrap();
+
+        let paths = make_paths(root);
+        let declared_names: HashSet<String> = ["vim".to_string()].into_iter().collect();
+        let installed_native: HashMap<String, String> = HashMap::new();
+        let installed_flatpak: HashSet<String> = HashSet::new();
+
+        let (native, flatpak) = compute_prune_preview(
+            &paths,
+            &declared_names,
+            &installed_native,
+            &installed_flatpak,
+        );
+        assert!(
+            native.is_empty(),
+            "no state file → nothing to prune (native)"
+        );
+        assert!(
+            flatpak.is_empty(),
+            "no state file → nothing to prune (flatpak)"
+        );
+    }
 }

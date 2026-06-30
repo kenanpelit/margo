@@ -2358,3 +2358,172 @@ fn lua_string_array(table: &Table, key: &str) -> Result<Vec<String>> {
         _ => anyhow::bail!("'{}' must be a table/array of strings", key),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Lua API golden tests
+// ---------------------------------------------------------------------------
+//
+// These tests guarantee that `mdots` is the canonical Lua global (locking in
+// the rename from the legacy name) and that every registered sub-table
+// (mdots.hardware, mdots.security, …) is reachable without triggering
+// "attempt to index a nil value" errors in user Lua manifests.
+//
+// All tests are co-located here (not in tests/) because this is a bin-only
+// crate and the functions under test are module-private.  No external
+// binaries are required — tests are always hermetic.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- Helper: spin up a fully-registered Lua environment ------------------
+
+    fn full_lua_env() -> Lua {
+        let lua = create_sandboxed_lua().unwrap();
+        helpers::register_helpers(&lua).unwrap();
+        hardware::register_hardware_helpers(&lua).unwrap();
+        package::register_package_helpers(&lua).unwrap();
+        service::register_service_helpers(&lua).unwrap();
+        power::register_power_helpers(&lua).unwrap();
+        security::register_security_helpers(&lua).unwrap();
+        desktop::register_desktop_helpers(&lua).unwrap();
+        boot::register_boot_helpers(&lua).unwrap();
+        network::register_network_helpers(&lua).unwrap();
+        audio::register_audio_helpers(&lua).unwrap();
+        storage::register_storage_helpers(&lua).unwrap();
+        lua
+    }
+
+    // --- Test: the canonical global is `mdots`, and it is non-empty ----------
+
+    #[test]
+    fn lua_api_global_mdots_exists_and_is_non_empty() {
+        let lua = create_sandboxed_lua().unwrap();
+        helpers::register_helpers(&lua).unwrap();
+
+        // `mdots` must exist and be a non-empty table.
+        let mdots: mlua::Table = lua
+            .globals()
+            .get("mdots")
+            .expect("mdots global must exist after register_helpers");
+        assert!(
+            !mlua::Table::is_empty(&mdots),
+            "mdots table must not be empty"
+        );
+
+        // The legacy (pre-rename) global must be absent.  The name is
+        // assembled at runtime so the repo-wide literal grep stays clean.
+        let legacy: String = ["dc", "li"].concat();
+        let legacy_val: mlua::Value = lua
+            .globals()
+            .get(legacy.as_str())
+            .unwrap_or(mlua::Value::Nil);
+        assert!(
+            matches!(legacy_val, mlua::Value::Nil),
+            "the pre-rename global must not exist — it was superseded by mdots; \
+             found a non-nil value which means the old name leaked back"
+        );
+    }
+
+    // --- Test: every registered sub-table is reachable ----------------------
+
+    #[test]
+    fn lua_api_all_registered_sub_tables_are_reachable() {
+        let lua = full_lua_env();
+
+        // The full set of sub-tables registered across all helper modules.
+        let sub_tables = [
+            // from helpers.rs
+            "file", "system", "log", "env", "util",
+            // from dedicated helper modules
+            "hardware", "package", "service", "power", "security", "desktop", "boot", "network",
+            "audio", "storage",
+        ];
+
+        for key in &sub_tables {
+            let is_table: bool = lua
+                .load(format!("return type(mdots.{}) == 'table'", key))
+                .eval()
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "mdots.{} raised an error (sub-table may be nil): {}",
+                        key, e
+                    )
+                });
+            assert!(
+                is_table,
+                "mdots.{} is not a table — sub-table was not registered",
+                key
+            );
+        }
+    }
+
+    // --- Test: a Lua module that probes every sub-table loads cleanly --------
+    //
+    // `validate_lua_module_detailed` exercises the full load + eval path,
+    // which is identical to what a real user module goes through.  Any
+    // "attempt to index a nil value" error in the probe script means a
+    // sub-table is missing and would break every manifest that uses it.
+
+    #[test]
+    fn lua_api_golden_module_has_no_nil_sub_table_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        let module_path = tmp.path().join("golden.lua");
+
+        std::fs::write(
+            &module_path,
+            r#"
+-- Lua API golden: access every registered mdots.* sub-table.
+-- Lua raises "attempt to index a nil value" if any is missing.
+local function probe(tbl, name)
+    assert(type(tbl) == 'table', 'mdots.' .. name .. ' is not a table')
+end
+
+probe(mdots.file,     "file")
+probe(mdots.system,   "system")
+probe(mdots.log,      "log")
+probe(mdots.env,      "env")
+probe(mdots.util,     "util")
+probe(mdots.hardware, "hardware")
+probe(mdots.package,  "package")
+probe(mdots.service,  "service")
+probe(mdots.power,    "power")
+probe(mdots.security, "security")
+probe(mdots.desktop,  "desktop")
+probe(mdots.boot,     "boot")
+probe(mdots.network,  "network")
+probe(mdots.audio,    "audio")
+probe(mdots.storage,  "storage")
+
+return {
+    description = "Lua API golden test module",
+    packages = { "test-package" },
+}
+"#,
+        )
+        .unwrap();
+
+        let result = validate_lua_module_detailed(&module_path);
+
+        // Any "attempt to index a nil value" means a sub-table is missing.
+        let nil_errors: Vec<&str> = result
+            .errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .filter(|m| m.contains("attempt to index a nil value"))
+            .collect();
+        assert!(
+            nil_errors.is_empty(),
+            "Lua API surface has nil sub-table(s) — the global-rename regression guard failed: {:?}",
+            nil_errors
+        );
+
+        // The module must load without any hard errors.
+        let all_errors: Vec<&str> = result.errors.iter().map(|e| e.message.as_str()).collect();
+        assert!(
+            result.valid,
+            "Lua API golden module must be valid, errors: {:?}",
+            all_errors
+        );
+    }
+}

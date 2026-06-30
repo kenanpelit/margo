@@ -914,4 +914,133 @@ mod tests {
             .decrypted_targets
             .is_empty());
     }
+
+    // --- Integration: real sops/age round-trip (self-skips when binaries absent) ---
+    //
+    // Gates on `sops_available() && which::which("age-keygen").is_ok()`.
+    // When either binary is absent the test prints a notice and returns — it
+    // does NOT fail, so CI stays green on any host.
+    //
+    // The test exercises the full encrypt → decrypt cycle through the real
+    // `run_sops_decrypt` decryptor, using a freshly generated age key and a
+    // temporary repo + home directory.  No env-var mutation: `apply_secrets`
+    // accepts `home` and `repo_root` as explicit `&Path` arguments.
+
+    #[test]
+    fn sops_age_secrets_round_trip() {
+        if !sops_available() || which::which("age-keygen").is_err() {
+            eprintln!(
+                "skipping sops/age round-trip: sops or age-keygen not installed on this host"
+            );
+            return;
+        }
+
+        let repo = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+
+        // 1. Generate an age key.
+        let key_dir = repo.path().join("age-keys");
+        std::fs::create_dir_all(&key_dir).unwrap();
+        let key_file = key_dir.join("keys.txt");
+
+        let keygen = std::process::Command::new("age-keygen")
+            .arg("-o")
+            .arg(&key_file)
+            .output()
+            .expect("age-keygen must be runnable");
+        assert!(
+            keygen.status.success(),
+            "age-keygen failed: {}",
+            String::from_utf8_lossy(&keygen.stderr)
+        );
+
+        // 2. Extract the public recipient (age1…).
+        let pubkey_out = std::process::Command::new("age-keygen")
+            .arg("-y")
+            .arg(&key_file)
+            .output()
+            .expect("age-keygen -y must be runnable");
+        assert!(
+            pubkey_out.status.success(),
+            "age-keygen -y failed: {}",
+            String::from_utf8_lossy(&pubkey_out.stderr)
+        );
+        let recipient = String::from_utf8_lossy(&pubkey_out.stdout)
+            .trim()
+            .to_string();
+        assert!(
+            recipient.starts_with("age1"),
+            "recipient must start with age1, got: {:?}",
+            recipient
+        );
+
+        // 3. Write a plaintext YAML file and encrypt it in-place with sops.
+        let secrets_dir = repo.path().join("secrets");
+        std::fs::create_dir_all(&secrets_dir).unwrap();
+        let plain_path = secrets_dir.join("creds.yaml");
+        let plaintext = b"token: s3cr3t_value\n";
+        std::fs::write(&plain_path, plaintext).unwrap();
+
+        let enc_status = std::process::Command::new("sops")
+            .args([
+                "--encrypt",
+                "--age",
+                &recipient,
+                "--in-place",
+                plain_path.to_str().unwrap(),
+            ])
+            .status()
+            .expect("sops encrypt must be runnable");
+        assert!(enc_status.success(), "sops --encrypt failed");
+
+        // Rename to the source path the entry will reference.
+        let enc_path = secrets_dir.join("creds.sops.yaml");
+        std::fs::rename(&plain_path, &enc_path).unwrap();
+
+        // 4. Run apply_secrets with the real run_sops_decrypt decryptor.
+        let entry = SecretEntry {
+            source: "secrets/creds.sops.yaml".to_string(),
+            target: "~/.config/mdots-test/creds.yaml".to_string(),
+            mode: Some("0600".to_string()),
+            name: Some("test-creds".to_string()),
+        };
+
+        let key_file_ref = key_file.clone();
+        let decryptor = |source: &Path| run_sops_decrypt(source, Some(&key_file_ref));
+        let outcomes = apply_secrets(
+            &[entry],
+            home.path(),
+            repo.path(),
+            Some(&key_file),
+            true,  // sops_available
+            false, // dry_run = false: actually decrypt
+            &decryptor,
+        );
+
+        assert_eq!(outcomes.len(), 1, "one entry must produce one outcome");
+        assert_eq!(
+            outcomes[0].result,
+            ApplyResult::Decrypted,
+            "secret must be Decrypted, got: {:?}",
+            outcomes[0].result
+        );
+
+        // 5. Target must exist with the original plaintext and mode 0600.
+        let target = home.path().join(".config/mdots-test/creds.yaml");
+        assert!(
+            target.exists(),
+            "decrypted target must exist at {:?}",
+            target
+        );
+
+        let content = std::fs::read(&target).unwrap();
+        assert_eq!(
+            content, plaintext,
+            "decrypted content must equal the original plaintext"
+        );
+
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "target must have mode 0600, got {:04o}", mode);
+    }
 }
