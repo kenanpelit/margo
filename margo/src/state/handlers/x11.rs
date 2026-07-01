@@ -68,9 +68,20 @@ impl XwmHandler for MargoState {
         // `or_positions`. Prefer it; `X11Surface::geometry()` still reads the
         // stale (0,0) creation rect here, which would dump the menu in the
         // top-left corner.
+        //
+        // Read with `get`, NOT `remove`: Qt REUSES one X11 window for a menu
+        // and, on a repeated open at the same spot, re-maps it WITHOUT sending
+        // a fresh ConfigureNotify (nothing moved from its POV). If we consumed
+        // the stash on the first map, that second open would find no entry,
+        // fall back to the stale (0,0) geometry, and drift to the top-left
+        // corner — the exact "second open lands wrong" symptom. Keeping the
+        // entry lets a re-used, un-reconfigured window remember its last anchor;
+        // a real move still overwrites it via `configure_notify`, and
+        // `destroyed_window` clears it for good.
         let pos = self
             .or_positions
-            .remove(&id)
+            .get(&id)
+            .copied()
             .or_else(|| stale.map(|g| (g.loc.x, g.loc.y)))
             .unwrap_or((0, 0));
         tracing::debug!(
@@ -83,7 +94,11 @@ impl XwmHandler for MargoState {
     }
 
     fn unmapped_window(&mut self, _xwm: XwmId, window: X11Surface) {
-        self.or_positions.remove(&window.window_id());
+        // Deliberately do NOT drop the `or_positions` entry here: an unmap is
+        // often just a menu being hidden, and Qt re-maps the SAME window for
+        // the next open without re-anchoring it. Keeping the stashed position
+        // is what lets that re-open land at its last spot instead of (0,0).
+        // The entry is cleared for real in `destroyed_window`.
         self.remove_x11_window(&window);
     }
 
