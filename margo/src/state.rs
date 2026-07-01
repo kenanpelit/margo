@@ -2483,6 +2483,27 @@ impl MargoState {
             // Wayland toplevel_destroyed handler uses.
             self.emit_windows_changed();
             crate::scripting::fire_window_close(self, &app_id, &title);
+            return;
+        }
+
+        // Override-redirect window (menu / popup / tooltip). These are never
+        // in `self.clients` — they live only in the space, mapped by
+        // `mapped_override_redirect_window`. Without unmapping them here a
+        // dismissed menu lingers in the space forever; the next menu from the
+        // same client then opens on top of a stale element and the
+        // `or_positions` handoff drifts (the classic "second open lands in the
+        // wrong place" XWayland-menu symptom). Unmap it explicitly.
+        let id = x11surface.window_id();
+        let elem = self
+            .space
+            .elements()
+            .find(
+                |e| matches!(e.underlying_surface(), WindowSurface::X11(s) if s.window_id() == id),
+            )
+            .cloned();
+        if let Some(elem) = elem {
+            self.space.unmap_elem(&elem);
+            self.request_repaint();
         }
     }
 }
