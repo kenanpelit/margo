@@ -1446,10 +1446,20 @@ fn copy_user_docs(config_dir: &Path) -> Result<()> {
         }
     }
 
-    // Compile-time path: embedded from CARGO_MANIFEST_DIR during build
-    // This works for `cargo install --path .` when built from source
-    let manifest_docs = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs");
-    possible_paths.push(manifest_docs);
+    // Compile-time path: embedded from CARGO_MANIFEST_DIR during build.
+    // Debug builds only — baking the absolute manifest dir into a *release*
+    // binary leaks the build directory (makepkg's "reference to $srcdir"
+    // warning) and is useless off the build machine anyway. `env!` values
+    // are not touched by `--remap-path-prefix`, so gating it out is the only
+    // way to keep the packaged binary clean. Dev iteration (`cargo run`) is
+    // already covered by the exe-relative path above; system/local installs
+    // use the `/usr/share/mdots/docs` and `~/.local/share/mdots/docs` paths
+    // below.
+    #[cfg(debug_assertions)]
+    {
+        let manifest_docs = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs");
+        possible_paths.push(manifest_docs);
+    }
 
     // Installed: /usr/share/mdots/docs (system-wide install)
     possible_paths.push(std::path::PathBuf::from("/usr/share/mdots/docs"));
