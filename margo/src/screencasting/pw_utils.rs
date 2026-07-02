@@ -430,7 +430,11 @@ impl PipeWire {
                     }
 
                     let mut format = VideoInfoRaw::new();
-                    format.parse(pod).unwrap();
+                    if let Err(err) = format.parse(pod) {
+                        warn!("error parsing video format, stopping cast: {err:?}");
+                        stop_cast();
+                        return;
+                    }
                     debug!("got format = {format:?}");
 
                     let format_size = Size::from((format.size().width, format.size().height));
@@ -460,7 +464,14 @@ impl PipeWire {
                     );
                     inner.min_time_between_frames = min_frame_time;
 
-                    let object = pod.as_object().unwrap();
+                    let object = match pod.as_object() {
+                        Ok(object) => object,
+                        Err(err) => {
+                            warn!("format pod is not an object, stopping cast: {err:?}");
+                            stop_cast();
+                            return;
+                        }
+                    };
                     let Some(prop_modifier) =
                         object.find_prop(spa::utils::Id(FormatProperties::VideoModifier.0))
                     else {
@@ -1140,12 +1151,23 @@ impl Cast {
         if self.cursor_mode == CursorMode::Metadata || self.cursor_mode == CursorMode::Hidden {
             elements = &elements[cursor_data.elem_count..];
         }
-        let (damage, states) = damage_tracker.damage_output(1, elements).unwrap();
+        let (damage, states) = match damage_tracker.damage_output(1, elements) {
+            Ok(x) => x,
+            Err(err) => {
+                warn!("damage tracking failed, skipping frame: {err:?}");
+                return false;
+            }
+        };
 
         if self.cursor_mode == CursorMode::Metadata {
-            let (damage, _states) = cursor_damage_tracker
-                .damage_output(1, &cursor_data.relocated)
-                .unwrap();
+            let (damage, _states) =
+                match cursor_damage_tracker.damage_output(1, &cursor_data.relocated) {
+                    Ok(x) => x,
+                    Err(err) => {
+                        warn!("cursor damage tracking failed, skipping frame: {err:?}");
+                        return false;
+                    }
+                };
             redraw_cursor = damage.is_some();
             has_cursor_update =
                 redraw_cursor || *last_cursor_location != Some(cursor_data.location);
@@ -1169,7 +1191,10 @@ impl Cast {
         let CastState::Ready { damage_tracker, .. } = &mut inner_.state else {
             unreachable!()
         };
-        let damage_tracker = damage_tracker.as_mut().unwrap();
+        let Some(damage_tracker) = damage_tracker.as_mut() else {
+            warn!("cast damage tracker missing, skipping frame");
+            return false;
+        };
 
         unsafe {
             let spa_buffer = (*buffer).buffer;

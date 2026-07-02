@@ -161,7 +161,9 @@ impl ScreenCast {
         );
         match server.at(&path, session.clone()).await {
             Ok(true) => {
-                let iface = server.interface(&path).await.unwrap();
+                let iface = server.interface(&path).await.map_err(|err| {
+                    fdo::Error::Failed(format!("error getting session interface: {err}"))
+                })?;
                 self.sessions.lock().unwrap().push((session, iface));
             }
             Ok(false) => return Err(fdo::Error::Failed("session path already exists".to_owned())),
@@ -203,7 +205,9 @@ impl Session {
             return;
         }
 
-        Session::closed(&ctxt).await.unwrap();
+        if let Err(err) = Session::closed(&ctxt).await {
+            warn!("error emitting session Closed signal: {err:?}");
+        }
 
         if let Err(err) = self.to_compositor.send(ScreenCastToCompositor::StopCast {
             session_id: self.id,
@@ -213,13 +217,17 @@ impl Session {
 
         let streams = mem::take(&mut *self.streams.lock().unwrap());
         for (_, iface) in streams.iter() {
-            server
+            if let Err(err) = server
                 .remove::<Stream, _>(iface.signal_emitter().path())
                 .await
-                .unwrap();
+            {
+                warn!("error removing stream object: {err:?}");
+            }
         }
 
-        server.remove::<Session, _>(ctxt.path()).await.unwrap();
+        if let Err(err) = server.remove::<Session, _>(ctxt.path()).await {
+            warn!("error removing session object: {err:?}");
+        }
     }
 
     async fn record_monitor(
