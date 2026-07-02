@@ -58,12 +58,13 @@ files, and overlapping feature mechanisms.**
   and `apply_theme_preset` beside its `ThemeBaseline` in `state/theme.rs`.
   Still oversized (optional next): `udev/mod.rs` 3868, `frame.rs` 2885,
   `mctl.rs` 2620, `settings.rs` ~2480.
-- [ ] **Unify overlapping mechanisms.** Per-tag layout exists twice
-  (`tagrule layout_name` *and* `taglayout`) with previously-undefined
-  precedence (caused a bug, fixed in e42c0bb). Menu sizing had min/max +
-  plugin panel min/max + auto (since reverted) on the same axis. Make
-  "is there already a mechanism for this, and how does it compose?" a design
-  step before adding new knobs.
+- [x] **Unify overlapping mechanisms.** ✅ The per-tag layout ambiguity is
+  resolved: `state/window_rules.rs` builds a `taglayout_tags` set and gates
+  `tagrule layout_name` behind `!taglayout_tags.contains(tag)`, with the
+  documented precedence `taglayout > tagrule > default` (`state.rs`) plus a
+  `taglayout_force` snapshot override. Menu sizing collapsed to min/max (the
+  `auto` axis was reverted). Keep the design step for future knobs: "is there
+  already a mechanism for this, and how does it compose?"
 
 ## Medium priority
 
@@ -82,18 +83,26 @@ files, and overlapping feature mechanisms.**
   effect bound to that store, so menus carry a manual `widget_kinds` guard to
   avoid destructive rebuilds (which re-run dns/ufw/podman probes). Extract the
   guard pattern into one helper, or move to finer-grained signals.
-- [ ] **Close shell-side test gaps on testable logic.** GTK is hard to test
-  (fair), but `mplugin-sdk`, `mshell-plugin-host` (capability/path-sandbox —
-  a security boundary!), `mshell-core` (D-Bus/IPC), `mshell-services` are pure
-  logic and currently have zero tests.
-- [ ] **Reduce `unwrap`/`expect`/`panic` on external input.** 334 in
-  non-test code (2026-06-12). In a compositor a panic kills the whole
-  desktop; in mshell it kills the bar. Sweep hot paths (render, input, IPC
-  handlers, config/file I/O) toward `Result` + graceful degrade.
-  **The count is now CI-ratcheted**: `scripts/panic-ratchet.sh` +
-  `scripts/panic-baseline.txt` gate every push — the number can only go
-  down (raising it needs an explicit baseline bump with rationale; lowering
-  it requires locking the new floor in).
+- [~] **Close shell-side test gaps on testable logic.** *Mostly done.*
+  `mshell-plugin-host` now covers both boundaries — the path sandbox
+  (`sandbox.rs`, 11 tests) **and** the new capability model (deny-by-default
+  process/network/clipboard gating, with a `denies_network_without_capability`
+  integration test); `mshell-core` and `mshell-services` have tests too. The
+  security story also hardened: plugins declare `[capabilities]` in their
+  manifest and the WASM host refuses ungated `run`/`http`/`clipboard` calls (it
+  was previously FS-sandbox-only — the "capability sandbox" name was aspirational).
+  Still open: `mplugin-sdk` (out-of-tree) has zero tests, and the auth/lock
+  boundary crates (`mlock`, `mshell-auth`, `mshell-polkit`) are thin.
+- [ ] **Reduce `unwrap`/`expect`/`panic` on external input.** In a compositor a
+  panic kills the whole desktop; in mshell it kills the bar. Sweep hot paths
+  (render, input, IPC handlers, config/file I/O) toward `Result` + graceful
+  degrade. **CI-ratcheted** via `scripts/panic-ratchet.sh` +
+  `scripts/panic-baseline.txt` (baseline **370**) — the count can only go down.
+  The ratchet now also counts `unreachable!`/`todo!`/`unimplemented!` and skips
+  test code by brace depth (so a mid-file `#[cfg(test)]` no longer hides the
+  production code after it). The screencast pod-parsing path (`pw_utils.rs`,
+  `mutter_screen_cast.rs`) was swept to `stop_cast()`/warn instead of panicking
+  the compositor on malformed PipeWire input.
 
 ## Low priority / quick wins
 
