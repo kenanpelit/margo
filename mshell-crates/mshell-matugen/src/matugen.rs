@@ -187,10 +187,28 @@ fn apply_matugen(
     matugen: Matugen,
     theme: MatugenThemeCustomOnly,
 ) -> MatugenResult {
+    let Some(wallpaper_str) = wallpaper.to_str() else {
+        return MatugenResult {
+            css: Err(anyhow::anyhow!(
+                "wallpaper path is not valid UTF-8: {}",
+                wallpaper.display()
+            )),
+            waiter: None,
+        };
+    };
+    let theme_json = match serde_json::to_string(&theme) {
+        Ok(s) => s,
+        Err(e) => {
+            return MatugenResult {
+                css: Err(e.into()),
+                waiter: None,
+            };
+        }
+    };
     let child = Command::new("matugen")
         .args([
             "image",
-            wallpaper.to_str().unwrap(),
+            wallpaper_str,
             "--quiet",
             "--json",
             "hex",
@@ -203,7 +221,7 @@ fn apply_matugen(
             "--contrast",
             matugen.contrast.to_string().as_str(),
             "--import-json-string",
-            serde_json::to_string(&theme).unwrap().as_str(),
+            theme_json.as_str(),
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -219,6 +237,15 @@ fn apply_matugen(
 }
 
 fn apply_matugen_from_theme(theme: &MatugenTheme) -> MatugenResult {
+    let theme_json = match serde_json::to_string(&theme) {
+        Ok(s) => s,
+        Err(e) => {
+            return MatugenResult {
+                css: Err(e.into()),
+                waiter: None,
+            };
+        }
+    };
     let child = Command::new("matugen")
         .args([
             "color",
@@ -228,7 +255,7 @@ fn apply_matugen_from_theme(theme: &MatugenTheme) -> MatugenResult {
             "--json",
             "hex",
             "--import-json-string",
-            serde_json::to_string(&theme).unwrap().as_str(),
+            theme_json.as_str(),
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
