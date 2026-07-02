@@ -480,8 +480,12 @@ pub fn fetch_models(cfg: &AiConfig) -> Result<Vec<String>, String> {
     let key = cfg.api_key.trim();
     let mut models: Vec<String> = match cfg.provider {
         Provider::Gemini => {
-            let url = format!("{base}/v1beta/models?key={key}&pageSize=200");
-            let v = http_get_json(&url, &[])?;
+            // Pass the key via the `x-goog-api-key` header (as the streaming
+            // path does), NOT `?key=` in the URL — a key in the query string
+            // leaks into server access logs, proxies, and any request-URL
+            // tracing.
+            let url = format!("{base}/v1beta/models?pageSize=200");
+            let v = http_get_json(&url, &[("x-goog-api-key", key)])?;
             v["models"]
                 .as_array()
                 .map(|a| {

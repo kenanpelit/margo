@@ -1,13 +1,16 @@
-//! Schema for `$XDG_RUNTIME_DIR/margo/state.json`.
+//! Schema for margo's state document.
 //!
-//! margo writes the file on every state change (focus / tag / arrange
-//! / hotplug / config reload). We deserialize the subset we care
-//! about and project it into the reactive `Workspace` / `Client` /
-//! `Monitor` properties the mshell widgets read.
+//! Delivered over margo's IPC socket — pushed on every state change via
+//! `watch state`, or fetched one-shot via `get state` ([`read`]). The
+//! polled `$XDG_RUNTIME_DIR/margo/state.json` file this once described was
+//! removed with dwl-ipc-v2 (2026-06-01); the `StateJson` type name is kept
+//! for the wire schema. We deserialize the subset we care about and project
+//! it into the reactive `Workspace` / `Client` / `Monitor` properties the
+//! mshell widgets read.
 
 use serde::Deserialize;
 
-/// Top-level state.json document.
+/// Top-level margo state document (the `get`/`watch state` reply body).
 #[derive(Debug, Clone, Deserialize)]
 pub struct StateJson {
     pub active_output: String,
