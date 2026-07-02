@@ -34,7 +34,7 @@ use mshell_utils::audio::{
 };
 use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::Orientation;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -184,7 +184,6 @@ pub(crate) struct AudioRouteModel {
     orientation: Orientation,
     root_box: gtk::Box,
     icon: gtk::Image,
-    label: gtk::Label,
     // ── Port-level (combo-jack) state: routes on the current default devices.
     in_dev: Option<Arc<InputDevice>>,
     out_dev: Option<Arc<OutputDevice>>,
@@ -256,18 +255,11 @@ impl Component for AudioRouteModel {
                     sender.input(AudioRouteInput::Clicked);
                 },
 
-                gtk::Box {
-                    set_spacing: 6,
+                #[local_ref]
+                icon_widget -> gtk::Image {
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
-                    #[local_ref]
-                    icon_widget -> gtk::Image {
-                        set_icon_name: Some("audio-volume-high-symbolic"),
-                    },
-                    #[local_ref]
-                    label_widget -> gtk::Label {
-                        add_css_class: "audio-route-label",
-                    },
+                    set_icon_name: Some("audio-volume-high-symbolic"),
                 },
             }
         }
@@ -279,7 +271,6 @@ impl Component for AudioRouteModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let icon_widget = gtk::Image::new();
-        let label_widget = gtk::Label::new(None);
 
         spawn_default_input_watcher(&sender, None, || AudioRouteCommandOutput::InDeviceChanged);
         spawn_default_output_watcher(&sender, None, || AudioRouteCommandOutput::OutDeviceChanged);
@@ -300,7 +291,6 @@ impl Component for AudioRouteModel {
             orientation: params.orientation,
             root_box: root.clone(),
             icon: icon_widget.clone(),
-            label: label_widget.clone(),
             in_dev: None,
             out_dev: None,
             in_route: None,
@@ -397,14 +387,14 @@ impl AudioRouteModel {
         if !visible {
             return;
         }
+        // Icon-only: the glyph (headset vs speaker) carries the state; the full
+        // "Built-in / Headset" wording lives in the tooltip.
         if on_headset {
             self.icon.set_icon_name(Some("audio-headset-symbolic"));
-            self.label.set_label("Headset");
             self.root_box
                 .set_tooltip_text(Some("Audio on headset — click for built-in"));
         } else {
             self.icon.set_icon_name(Some("audio-volume-high-symbolic"));
-            self.label.set_label("Built-in");
             self.root_box
                 .set_tooltip_text(Some("Audio on built-in — click for headset"));
         }
