@@ -62,12 +62,14 @@ reload:
 
 # The exact pre-push CI gate set (ci.yml). Run this before pushing — a clean
 # `cargo check` is NOT enough: CI fails on clippy --all-targets -D warnings,
-# fmt, the panic ratchet, and the design lint that a plain check never sees.
+# fmt, the panic ratchet, the design lint, and the example-config parse that a
+# plain check never sees.
 check:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets -- -D warnings
     ./scripts/panic-ratchet.sh
     ./scripts/design-lint.sh
+    cargo run -q -p mctl -- check-config --config margo/src/config.example.conf
     cargo test --workspace
 
 # Format the whole workspace.

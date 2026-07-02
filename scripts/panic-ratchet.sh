@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # panic-ratchet.sh — keep the panic-prone call count from growing.
 #
-# Counts `.unwrap()` / `.expect(` / `panic!(` in non-test Rust code and
-# compares against the committed baseline (scripts/panic-baseline.txt).
+# Counts `.unwrap()` / `.expect(` / `panic!(` / `unreachable!(` / `todo!(` /
+# `unimplemented!(` in non-test Rust code and compares against the committed
+# baseline (scripts/panic-baseline.txt).
 # In a compositor a panic kills the whole desktop (and in mshell, the bar),
 # so the count may only go DOWN over time:
 #
@@ -19,8 +20,11 @@
 #   * benchmark trees (any path containing /benches/) — dev-only, never
 #     shipped; a panic in a bench can't take down the desktop
 #   * build.rs (compile-time, panicking is fine)
-#   * everything after the first `#[cfg(test)]` in a file — in-file unit-test
-#     modules conventionally sit at the end of the file.
+#   * the braced item introduced by each `#[cfg(test)]` attribute (the in-file
+#     unit-test module or a test-only fn), tracked by brace depth so production
+#     code that follows the module — even mid-file — is still counted. A
+#     `#[cfg(test)]` on a non-braced item (e.g. `use super::*;`) skips just that
+#     statement.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -33,11 +37,28 @@ count=$(find . -name '*.rs' \
     -not -path '*/benches/*' \
     -not -name 'build.rs' \
     -print0 | sort -z | xargs -0 awk '
-      FNR == 1   { in_test = 0 }
-      /#\[cfg\(test\)\]/ { in_test = 1 }
-      in_test    { next }
-      /\.unwrap\(\)|\.expect\(|panic!\(/ { n++ }
-      END        { print n + 0 }
+      FNR == 1 { in_test = 0; depth = 0; arming = 0 }
+      # Inside a #[cfg(test)] braced item: skip and track depth to its close.
+      in_test {
+        depth += gsub(/{/, "{") - gsub(/}/, "}")
+        if (depth <= 0) in_test = 0
+        next
+      }
+      # After a #[cfg(test)] attribute, wait for the items opening brace (a `{`)
+      # or bail on a `;` (a non-braced test-only statement like `use super::*;`).
+      arming {
+        if (/{/) {
+          depth = gsub(/{/, "{") - gsub(/}/, "}")
+          arming = 0
+          if (depth > 0) in_test = 1
+          next
+        }
+        if (/;/) { arming = 0 }
+        next
+      }
+      /#\[cfg\(test\)\]/ { arming = 1; next }
+      /\.unwrap\(\)|\.expect\(|panic!\(|unreachable!\(|todo!\(|unimplemented!\(/ { n++ }
+      END { print n + 0 }
     ')
 
 baseline=$(tr -d '[:space:]' < "$baseline_file")
