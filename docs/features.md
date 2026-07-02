@@ -74,6 +74,7 @@ Standalone tools that ship with margo. Full guide:
 | `mlock` | Lock screen (PAM + ext-session-lock-v1). |
 | `mlogind` | TUI login / display manager. |
 | `mlayout` | Saved tiling-layout snapshots. |
+| `mdots` | Declarative Arch package + dotfiles manager (pacman/AUR/Flatpak/Nix, SOPS/age secrets). |
 | `start-margo` | Hang-aware session supervisor (systemd watchdog, restart backoff). |
 
 ## Configuration & IPC

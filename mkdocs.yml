@@ -2,7 +2,7 @@ site_name: margo
 site_description: >-
   A modern Wayland tiling compositor — Rust + Smithay, with a
   tag-based workflow. Daily-driver-grade. dwm/dwl-style tags,
-  14-layout catalogue, niri-grade animations, embedded Rhai
+  15-layout catalogue, niri-grade animations, embedded Rhai
   scripting, HDR scaffolding, in-compositor screencast portal.
 site_url: https://kenanpelit.github.io/margo/
 repo_url: https://github.com/kenanpelit/margo

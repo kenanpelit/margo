@@ -255,6 +255,37 @@ mkeys hide
 Config lives in `~/.config/margo/mkeys.toml`; a bar pill and a **Settings →
 On-screen keyboard** page expose the toggle + layout.
 
+## `mpicker`
+
+A native **screen colour picker**. Freezes the screen via `wlr-screencopy`,
+overlays a zoom lens, and copies the pixel under the cursor as hex / rgb to the
+clipboard — no external `hyprpicker`/`grim` pipeline.
+
+```bash
+mpicker           # pick a colour → clipboard
+```
+
+Bind it, or use the **ColorPicker** bar pill.
+
+## `mlock`
+
+The **lock-screen** binary — PAM authentication over `ext-session-lock-v1`
+(the fail-secure protocol: a crash keeps the session locked). It's the locker
+`loginctl lock-session`, the **Lock** bar pill, and the idle/lid triggers all
+resolve to. Matugen-themed, with media-key + keyboard-layout support.
+
+```bash
+mlock             # lock now (usually invoked for you, not by hand)
+```
+
+## `start-margo`
+
+The **TTY session launcher / supervisor**. Forks the compositor, forwards
+signals, sets `PR_SET_PDEATHSIG` so nothing is orphaned if it dies, and pairs
+with the systemd watchdog + restart backoff so a hung compositor is recovered
+rather than left frozen. This is what a display manager (or `exec start-margo`
+from a TTY) runs — not `margo` directly.
+
 ## Shell completions
 
 Bash, zsh, and fish completions ship under `/usr/share/{bash-completion,zsh,fish}/...` and pull dispatch action names from `mctl actions --names` at completion time. They auto-load — no rc-file work needed.

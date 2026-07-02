@@ -45,6 +45,7 @@ parameter and use YAML tag syntax:
 | `CpuDashboard` | CPU Dashboard | One chip showing live CPU load + package temperature with calm/warn/danger colour states. Click opens the dashboard (per-core bars, RAM, load averages); right-click toggles RAM% in the chip. |
 | `AudioDashboard` | Audio Dashboard | Default output **and** input volume in one cluster (`🔊 42% · 🎙 5%`). Right-click cycles which side shows; click opens the mixer menu (sliders, mute, per-app streams, device + port pickers). |
 | `AudioVisualizer` | Audio Visualizer | Live audio spectrum — a strip of bars driven by the `cava` CLI. Pulses with whatever is playing; flat strip on silence. Needs `cava` installed. |
+| `AudioRoute` | Audio Route | One-click switch of the whole default audio path (mic **and** speaker together) between the built-in device and a headset / external port. Shows the live route (Built-in / Headset); click flips it. Appears only on machines with a routable combo jack / dual port, and stays put while the headset is unplugged (the click just waits until a headset port is available). |
 | `Catwalk` | Catwalk | A CPU-reactive animated cat (noctalia / RunCat sprites). Idles below a CPU threshold, walks faster as load climbs. Click opens the CPU dashboard. |
 | `Weather` | Weather | Current condition icon + temperature for the configured location. Click opens the Current / Hourly / Daily weather menu. Location is set in Settings → General. |
 | `SystemUpdate` | System Updates | Count of pending updates across official repo / AUR / Flatpak. Click opens the package list; right-click re-probes. Sources + interval in Settings → System Updates. |
@@ -104,6 +105,7 @@ parameter and use YAML tag syntax:
 | `Clipboard` | Clipboard | Clipboard history (wl-clipboard); click opens the searchable history menu. |
 | `Notes` | Notes Hub | Scratchpad + notes + todos with counts; click opens the Notes menu. |
 | `AlarmClock` | Alarm Clock | Alarm-bell pill that opens the Alarm Clock menu (alarms + stopwatch). Shows a running stopwatch inline and pulses while a tone rings. |
+| `Countdown` | Countdown | Shows the soonest enabled Alarm Clock countdown (hourglass glyph + remaining time). Click opens the Alarm Clock menu on its Countdown tab. Hidden when no enabled, parseable target remains. |
 | `Ai` | AI | Opens the native streaming-chat menu. Provider / model / key live in Settings → AI. |
 | `Keybinds` | Keyboard Shortcuts | Opens a searchable cheatsheet of every shortcut, parsed live from `config.conf`. |
 | `Ufw` | UFW Firewall | UFW status (privilege-free poll); click opens the firewall panel. |
