@@ -264,46 +264,114 @@ pub fn prune_dotfiles(paths: &ConfigPaths, config: &Config, json: bool) -> Resul
         config.enabled_modules.iter().map(|s| s.as_str()).collect();
 
     let mut pruned_count = 0;
+    let mut restored_count = 0;
     let mut kept_backups: Vec<BackedUpDotfile> = Vec::new();
 
     // Check each backed up dotfile
     for backed_up in &state.backed_up {
-        if !enabled_modules.contains(backed_up.module.as_str()) {
-            // Module no longer enabled, remove symlink if it exists
-            let target = PathBuf::from(&backed_up.target);
+        if enabled_modules.contains(backed_up.module.as_str()) {
+            // Still enabled — leave its symlink and backup record untouched.
+            kept_backups.push(backed_up.clone());
+            continue;
+        }
 
-            if target.exists() && target.is_symlink() {
-                fs::remove_file(&target)
-                    .context(format!("Failed to remove symlink: {:?}", target))?;
+        // Module no longer enabled: remove our symlink AND restore the user's
+        // original file, which `sync_single_dotfile` renamed aside to `backup`
+        // before linking. The old behaviour dropped the backup record without
+        // restoring — the original was left orphaned at the backup path and the
+        // live location empty: silent data loss. Restore it, and only drop the
+        // record once the original is safely back (or there is genuinely
+        // nothing on disk to restore).
+        let target = PathBuf::from(&backed_up.target);
+        let backup = PathBuf::from(&backed_up.backup);
 
-                if !json {
-                    println!(
-                        "  {} Removed symlink: {}",
-                        "✗".yellow(),
-                        target.file_name().unwrap().to_str().unwrap()
-                    );
-                }
+        // 1. Remove our symlink if it is still the thing at `target`
+        //    (`is_symlink` also catches a dangling link whose source is gone).
+        if target.is_symlink() {
+            fs::remove_file(&target).context(format!("Failed to remove symlink: {:?}", target))?;
 
-                pruned_count += 1;
+            if !json {
+                println!(
+                    "  {} Removed symlink: {}",
+                    "✗".yellow(),
+                    target.file_name().unwrap().to_str().unwrap()
+                );
             }
 
-            // Don't keep this backup record
-        } else {
-            kept_backups.push(backed_up.clone());
+            pruned_count += 1;
         }
+
+        // 2. Restore the original from its backup. Guard hard against
+        //    clobbering: only when the backup still exists and the target slot
+        //    is now free. If the user has since placed a real file at `target`,
+        //    never overwrite it — keep the backup and its record so nothing is
+        //    silently orphaned.
+        if backup.exists() {
+            if target.exists() {
+                // A real file/dir the user created now occupies the slot —
+                // leave it, and keep the record so the backup stays tracked.
+                if !json {
+                    eprintln!(
+                        "  {} {} exists; kept original backup at {}",
+                        "!".yellow(),
+                        backed_up.target,
+                        backed_up.backup
+                    );
+                }
+                kept_backups.push(backed_up.clone());
+                continue;
+            }
+            match fs::rename(&backup, &target) {
+                Ok(()) => {
+                    if !json {
+                        println!("  {} Restored original: {}", "↩".green(), backed_up.target);
+                    }
+                    restored_count += 1;
+                }
+                Err(e) => {
+                    // Couldn't restore — KEEP the record so the backup stays
+                    // tracked and a later prune can retry, rather than
+                    // orphaning the user's original.
+                    if !json {
+                        eprintln!(
+                            "  {} Failed to restore {} from {}: {}",
+                            "✗".red(),
+                            backed_up.target,
+                            backed_up.backup,
+                            e
+                        );
+                    }
+                    kept_backups.push(backed_up.clone());
+                    continue;
+                }
+            }
+        }
+
+        // Original restored, or nothing on disk to restore — safe to drop the
+        // record by not pushing it into `kept_backups`.
     }
 
     // Update state
     state.backed_up = kept_backups;
     save_dotfiles_state(paths, &state)?;
 
-    if !json && pruned_count > 0 {
-        println!(
-            "  {} {} dotfile symlink{} pruned",
-            "✓".green(),
-            pruned_count,
-            if pruned_count == 1 { "" } else { "s" }
-        );
+    if !json {
+        if pruned_count > 0 {
+            println!(
+                "  {} {} dotfile symlink{} pruned",
+                "✓".green(),
+                pruned_count,
+                if pruned_count == 1 { "" } else { "s" }
+            );
+        }
+        if restored_count > 0 {
+            println!(
+                "  {} {} original{} restored",
+                "✓".green(),
+                restored_count,
+                if restored_count == 1 { "" } else { "s" }
+            );
+        }
     }
 
     Ok(())
@@ -646,5 +714,110 @@ mod tests {
             preserved, "SECRET_DATA",
             "user data must be preserved in the backup"
         );
+    }
+
+    /// Regression test for the dotfiles data-loss bug in `prune_dotfiles`:
+    /// disabling a module must RESTORE the user's original file (which sync
+    /// renamed aside to a backup), not just delete the symlink and orphan the
+    /// backup. The old code left the live location empty and dropped the
+    /// record — from the user's view, the original config was gone.
+    #[test]
+    fn test_prune_restores_original_when_module_disabled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let paths = make_paths(root);
+
+        // The user's original file at the target location.
+        let target = root.join("home/.config/hypr/hyprland.conf");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, "USER_ORIGINAL").unwrap();
+
+        // Module source the symlink will point at.
+        let source = root.join("module/hyprland.conf");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, "from module").unwrap();
+
+        // Sync backs up the original and symlinks the target (module "hypr").
+        let df = ResolvedDotfile {
+            source: source.clone(),
+            target: target.clone(),
+            module_name: "hypr".to_string(),
+        };
+        let mut state = DotfilesState {
+            backed_up: Vec::new(),
+        };
+        let mut stats = SyncStats::default();
+        sync_single_dotfile(&df, &mut state, &mut stats, false, true, &paths).unwrap();
+        assert!(target.is_symlink(), "sync should have symlinked the target");
+        assert!(
+            find_backup(&target).is_some(),
+            "sync should have backed up the original"
+        );
+        save_dotfiles_state(&paths, &state).unwrap();
+
+        // The module is now disabled (empty enabled_modules) → prune must
+        // restore the original, not leave it orphaned.
+        let config: Config = serde_yaml::from_str("host: testhost\n").unwrap();
+        prune_dotfiles(&paths, &config, true).unwrap();
+
+        assert!(
+            !target.is_symlink(),
+            "prune should have removed our symlink"
+        );
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "USER_ORIGINAL",
+            "the user's original file must be restored at the target — not lost"
+        );
+        assert!(
+            find_backup(&target).is_none(),
+            "the backup must be consumed by the restore, not orphaned on disk"
+        );
+        let after = load_dotfiles_state(&paths).unwrap();
+        assert!(
+            after.backed_up.is_empty(),
+            "the backup record must be dropped only after a successful restore"
+        );
+    }
+
+    /// A real file the user placed at the target after the symlink was removed
+    /// must never be clobbered by the restore, and its backup record is kept so
+    /// the original isn't silently orphaned.
+    #[test]
+    fn test_prune_does_not_clobber_user_replaced_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let paths = make_paths(root);
+
+        let target = root.join("home/.config/foo.conf");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        let backup = root.join("home/.config/foo.conf.backup.old");
+        fs::write(&backup, "ORIGINAL").unwrap();
+        // The user has since created a fresh real file at the target.
+        fs::write(&target, "USER_REPLACED").unwrap();
+
+        let state = DotfilesState {
+            backed_up: vec![BackedUpDotfile {
+                target: target.to_string_lossy().to_string(),
+                backup: backup.to_string_lossy().to_string(),
+                module: "foo".to_string(),
+                backed_up_at: "2020-01-01T00:00:00Z".to_string(),
+            }],
+        };
+        save_dotfiles_state(&paths, &state).unwrap();
+
+        let config: Config = serde_yaml::from_str("host: testhost\n").unwrap();
+        prune_dotfiles(&paths, &config, true).unwrap();
+
+        // The user's replacement file is untouched...
+        assert_eq!(fs::read_to_string(&target).unwrap(), "USER_REPLACED");
+        // ...the backup is left in place...
+        assert!(
+            backup.exists(),
+            "backup must not be dropped when it can't be restored"
+        );
+        // ...and its record is kept so the original isn't orphaned/forgotten.
+        let after = load_dotfiles_state(&paths).unwrap();
+        assert_eq!(after.backed_up.len(), 1, "record must be kept, not dropped");
     }
 }
