@@ -2743,6 +2743,12 @@ pub struct AudioConfig {
     pub default_output_volume: i32,
     /// Default input (microphone) level as a percentage `0..=100`.
     pub default_input_volume: i32,
+    /// Audio Route bar pill: when it flips the audio path to/from a headset,
+    /// also move the default **microphone**, not just the speaker. On by
+    /// default (a headset's mic follows its speaker); turn off to keep your
+    /// current capture device (e.g. a good USB mic) while only the speaker
+    /// hops to the headset.
+    pub route_switch_microphone: bool,
 }
 
 impl Default for AudioConfig {
@@ -2752,6 +2758,7 @@ impl Default for AudioConfig {
             restore_volume_on_start: false,
             default_output_volume: 50,
             default_input_volume: 50,
+            route_switch_microphone: true,
         }
     }
 }

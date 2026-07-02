@@ -12,6 +12,9 @@
 //! Updates, CPU Dashboard, …) are configured under Widgets →
 //! Menus instead, not here.
 
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{AudioConfigStoreFields, ConfigStoreFields};
+use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
@@ -61,7 +64,7 @@ impl BarPillKind {
                 "Shows the title of the currently focused window. Click to cycle through windows on the active tag."
             }
             Self::AudioRoute => {
-                "One-click switch of the whole default audio path (mic + speaker together) between the built-in device and a headset / external port. Shows the live route (Built-in / Headset); click flips it. Appears only on machines with a routable combo jack or dual port, and stays visible while the headset is unplugged — the click just waits until a headset port is available."
+                "One-click switch of the whole default audio path between your built-in output and a headset. The headset is detected from PipeWire's device metadata (Bluetooth / USB / a combo-jack port), so it works across machines without hardcoding device names. Shows the live route (Built-in / Headset) and flips it on click; hidden when there's no headset to switch to. \"Built-in\" is whatever non-headset device you were last on, so a click always returns you there."
             }
             Self::AudioVisualizer => {
                 "Live audio spectrum — a strip of bars driven by the `cava` CLI (raw mode). Pulses with whatever is playing; sits as a flat resting strip on silence. Needs `cava` installed."
@@ -96,10 +99,17 @@ impl BarPillKind {
 
 pub(crate) struct BarPillSettingsModel {
     kind: BarPillKind,
+    /// Audio Route only: mirror of `audio.route_switch_microphone` backing the
+    /// page's toggle. The config value is only ever written from this page, so
+    /// a plain mirror (no reactive resync) is enough.
+    route_switch_microphone: bool,
 }
 
 #[derive(Debug)]
-pub(crate) enum BarPillSettingsInput {}
+pub(crate) enum BarPillSettingsInput {
+    /// Audio Route only: "also switch the microphone" toggled.
+    SetRouteSwitchMicrophone(bool),
+}
 
 #[derive(Debug)]
 pub(crate) enum BarPillSettingsOutput {}
@@ -176,6 +186,62 @@ impl Component for BarPillSettingsModel {
                     set_natural_wrap_mode: gtk::NaturalWrapMode::None,
                 },
 
+                // Audio Route is the one bar-only pill with behaviour worth
+                // tuning, so it gets a real control here. Hidden for every
+                // other kind, keeping the generic page a plain info page.
+                gtk::Box {
+                    set_visible: model.kind == BarPillKind::AudioRoute,
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 8,
+
+                    gtk::Label {
+                        add_css_class: "label-large-bold",
+                        set_label: "Options",
+                        set_halign: gtk::Align::Start,
+                    },
+
+                    gtk::Box {
+                        add_css_class: "boxed-list",
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            set_margin_start: 12,
+                            set_margin_end: 12,
+                            set_margin_top: 8,
+                            set_margin_bottom: 8,
+
+                            gtk::Box {
+                                set_orientation: gtk::Orientation::Vertical,
+                                set_hexpand: true,
+                                gtk::Label {
+                                    add_css_class: "label-medium",
+                                    set_label: "Switch the microphone too",
+                                    set_halign: gtk::Align::Start,
+                                },
+                                gtk::Label {
+                                    add_css_class: "label-small",
+                                    set_label: "Move the default mic to the headset as well, not just the speaker. Turn off to keep your current capture device (e.g. a good USB mic).",
+                                    set_halign: gtk::Align::Start,
+                                    set_xalign: 0.0,
+                                    set_wrap: true,
+                                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                                },
+                            },
+
+                            gtk::Switch {
+                                set_valign: gtk::Align::Center,
+                                set_active: model.route_switch_microphone,
+                                connect_state_set[sender] => move |_, on| {
+                                    sender.input(BarPillSettingsInput::SetRouteSwitchMicrophone(on));
+                                    gtk::glib::Propagation::Proceed
+                                },
+                            },
+                        },
+                    },
+                },
+
                 gtk::Separator {},
 
                 gtk::Label {
@@ -199,14 +265,27 @@ impl Component for BarPillSettingsModel {
     fn init(
         params: Self::Init,
         root: Self::Root,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = BarPillSettingsModel { kind: params.kind };
+        let route_switch_microphone = config_manager()
+            .config()
+            .audio()
+            .route_switch_microphone()
+            .get_untracked();
+        let model = BarPillSettingsModel {
+            kind: params.kind,
+            route_switch_microphone,
+        };
         let widgets = view_output!();
         ComponentParts { model, widgets }
     }
 
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
-        match message {}
+        match message {
+            BarPillSettingsInput::SetRouteSwitchMicrophone(on) => {
+                self.route_switch_microphone = on;
+                config_manager().update_config(|c| c.audio.route_switch_microphone = on);
+            }
+        }
     }
 }
