@@ -88,6 +88,26 @@ fn normalize_lexical(path: &Path) -> PathBuf {
     out
 }
 
+/// Resolve the real on-disk location a (possibly not-yet-existing) path would
+/// occupy by canonicalizing its **nearest existing ancestor** (which follows
+/// symlinks) and re-attaching the not-yet-existing tail. Unlike a purely lexical
+/// check this sees through a symlinked path component.
+fn resolve_existing_prefix(path: &Path) -> PathBuf {
+    let mut ancestor: &Path = path;
+    loop {
+        if let Ok(real) = ancestor.canonicalize() {
+            return match path.strip_prefix(ancestor) {
+                Ok(tail) => real.join(tail),
+                Err(_) => real,
+            };
+        }
+        match ancestor.parent() {
+            Some(parent) => ancestor = parent,
+            None => return path.to_path_buf(),
+        }
+    }
+}
+
 /// Resolve a secret's plaintext target: expand `~`, normalize, and **refuse any
 /// target inside `repo_root`** so decrypted plaintext can never land in git.
 /// Relative targets are rejected as ambiguous.
@@ -110,6 +130,20 @@ pub(crate) fn resolve_secret_target(
             normalized.display(),
             repo_norm.display()
         );
+    }
+    // Symlink-aware guard: a lexically-fine target can still resolve *into* the
+    // repo through a symlinked path component (e.g. this user's ~/.config/mdots
+    // symlinks to the repo). Canonicalize both sides and re-check on real paths.
+    if let Ok(repo_canon) = repo_root.canonicalize() {
+        let target_canon = resolve_existing_prefix(&normalized);
+        if target_canon.starts_with(&repo_canon) {
+            bail!(
+                "secret target {} resolves inside the config repo {} via a symlinked \
+                 path component — refusing to write plaintext into git",
+                target_canon.display(),
+                repo_canon.display()
+            );
+        }
     }
     Ok(normalized)
 }
@@ -152,17 +186,22 @@ pub(crate) fn write_secret_atomically(target: &Path, bytes: &[u8], mode: u32) ->
     // collisions with a concurrent mdots run.
     let tmp = parent.join(format!(".{}.mdots-tmp.{}", file_name, std::process::id()));
 
+    // Clear any stale temp from a crashed run, then create the temp *exclusively*
+    // (`create_new` → O_EXCL): `remove_file` unlinks a symlink itself rather than
+    // following it to its target, and O_EXCL makes the open fail (instead of
+    // following) if an attacker re-plants a symlink at this path between the
+    // unlink and the open. Together these guarantee plaintext is never written
+    // through a pre-planted symlink. The exclusive create also means the file is
+    // always freshly made at 0600, so no post-open re-chmod is needed.
+    let _ = fs::remove_file(&tmp);
+
     let result = (|| -> Result<()> {
         let mut f = OpenOptions::new()
             .write(true)
-            .create(true)
-            .truncate(true)
+            .create_new(true)
             .mode(0o600)
             .open(&tmp)
             .with_context(|| format!("creating temp file {}", tmp.display()))?;
-        // Belt-and-suspenders: if the temp path somehow pre-existed with wider
-        // bits, .mode() (creation-only) would not have tightened it.
-        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))?;
         f.write_all(bytes)?;
         f.flush()?;
         f.sync_all()?;
@@ -581,6 +620,27 @@ mod tests {
         );
     }
 
+    #[test]
+    fn resolve_target_rejects_symlinked_component_into_repo() {
+        use std::os::unix::fs::symlink;
+        // Reproduces this user's real layout: ~/.config/mdots is a symlink to the
+        // repo. A target under it is lexically OUTSIDE the repo but resolves INTO
+        // it — only the canonicalize-based guard catches this.
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        let repo = home.join(".cachy");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(home.join(".config")).unwrap();
+        symlink(&repo, home.join(".config").join("mdots")).unwrap();
+
+        let target = home.join(".config/mdots/secrets/wifi");
+        let err = resolve_secret_target(&target.to_string_lossy(), &home, &repo);
+        assert!(
+            err.is_err(),
+            "must refuse a target that resolves into the repo via a symlinked component"
+        );
+    }
+
     // --- classify_secret_status -----------------------------------------------
 
     #[test]
@@ -669,6 +729,29 @@ mod tests {
             .filter(|n| n.contains("mdots-tmp"))
             .collect();
         assert!(leftovers.is_empty(), "temp files leaked: {:?}", leftovers);
+    }
+
+    #[test]
+    fn write_does_not_follow_a_preplanted_temp_symlink() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("creds");
+        // A victim the attacker's symlink points at; plaintext must never reach it.
+        let victim = dir.path().join("victim");
+        std::fs::write(&victim, b"UNTOUCHED").unwrap();
+        // Pre-plant a symlink at the exact temp path the writer will use.
+        let tmp = dir
+            .path()
+            .join(format!(".creds.mdots-tmp.{}", std::process::id()));
+        symlink(&victim, &tmp).unwrap();
+
+        write_secret_atomically(&target, b"SECRET", 0o600).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"SECRET");
+        assert_eq!(
+            std::fs::read(&victim).unwrap(),
+            b"UNTOUCHED",
+            "plaintext must not be written through a pre-planted temp symlink"
+        );
     }
 
     // --- apply_secrets (orchestration with an injected decryptor) -------------
