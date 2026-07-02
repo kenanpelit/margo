@@ -95,3 +95,83 @@ fn parse_helper_line(line: &str) -> HelperEvent {
     error!("[polkit-helper] unrecognized line: {line}");
     HelperEvent::Info(line.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn success_and_failure_terminate_with_the_right_flag() {
+        // Mis-mapping either verdict would authenticate on failure or reject
+        // on success — the whole point of the agent.
+        assert!(matches!(
+            parse_helper_line("SUCCESS"),
+            HelperEvent::Completed { success: true }
+        ));
+        assert!(matches!(
+            parse_helper_line("FAILURE"),
+            HelperEvent::Completed { success: false }
+        ));
+    }
+
+    #[test]
+    fn echo_off_prompt_hides_input() {
+        // ECHO_OFF is the password prompt — `echo` must be false so the entry
+        // masks the characters.
+        match parse_helper_line("PAM_PROMPT_ECHO_OFF Password: ") {
+            HelperEvent::Request { prompt, echo } => {
+                assert_eq!(prompt, "Password: ");
+                assert!(!echo);
+            }
+            other => panic!("expected Request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn echo_on_prompt_shows_input() {
+        match parse_helper_line("PAM_PROMPT_ECHO_ON Username:") {
+            HelperEvent::Request { prompt, echo } => {
+                assert_eq!(prompt, "Username:");
+                assert!(echo, "ECHO_ON must show the typed text");
+            }
+            other => panic!("expected Request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn info_and_error_messages_strip_their_prefix() {
+        match parse_helper_line("PAM_TEXT_INFO Insert your smartcard") {
+            HelperEvent::Info(msg) => assert_eq!(msg, "Insert your smartcard"),
+            other => panic!("expected Info, got {other:?}"),
+        }
+        match parse_helper_line("PAM_ERROR_MSG Account expired") {
+            HelperEvent::Error(msg) => assert_eq!(msg, "Account expired"),
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unrecognised_lines_degrade_to_info_verbatim() {
+        // An unknown protocol line must not be treated as SUCCESS/FAILURE or
+        // as a prompt — it surfaces as Info carrying the raw text.
+        match parse_helper_line("SOMETHING ELSE") {
+            HelperEvent::Info(msg) => assert_eq!(msg, "SOMETHING ELSE"),
+            other => panic!("expected Info, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn prefixes_require_the_trailing_space() {
+        // The parser keys off `"PREFIX "` (with the space). A bare token that
+        // merely starts like a keyword is NOT a prompt — it falls through to
+        // Info, so a spoofed `SUCCESSFUL` can't read as a completion.
+        assert!(matches!(
+            parse_helper_line("PAM_PROMPT_ECHO_OFF"),
+            HelperEvent::Info(_)
+        ));
+        assert!(matches!(
+            parse_helper_line("SUCCESSFUL"),
+            HelperEvent::Info(_)
+        ));
+    }
+}

@@ -18,6 +18,20 @@ use wayland_protocols::ext::session_lock::v1::client::{
 use crate::seat::SeatState;
 use crate::surface::MlockSurface;
 
+/// Build the on-screen failure banner from the running fail count.
+///
+/// First failure shows a plain "Wrong password"; every subsequent one
+/// appends the attempt tally as a soft deterrent. Split out from
+/// `try_authenticate` so the retry-message formatting is unit-testable
+/// without a PAM round-trip.
+pub(crate) fn fail_message(fail_count: u32) -> String {
+    if fail_count > 1 {
+        format!("Wrong password · {fail_count} attempts")
+    } else {
+        "Wrong password".to_string()
+    }
+}
+
 pub struct MlockState {
     pub conn: Connection,
     /// Decoded + blurred wallpaper for the active output. Loaded once
@@ -234,11 +248,7 @@ impl MlockState {
             Err(e) => {
                 warn!("authentication failed: {e}");
                 self.seat_state.fail_count = self.seat_state.fail_count.saturating_add(1);
-                self.seat_state.fail_message = Some(if self.seat_state.fail_count > 1 {
-                    format!("Wrong password · {} attempts", self.seat_state.fail_count)
-                } else {
-                    "Wrong password".to_string()
-                });
+                self.seat_state.fail_message = Some(fail_message(self.seat_state.fail_count));
                 // Trigger a ~400 ms shake animation.
                 self.seat_state.shake_until =
                     Some(std::time::Instant::now() + std::time::Duration::from_millis(400));
@@ -301,10 +311,7 @@ impl MlockState {
     /// down regardless).
     pub fn power_request(&mut self, action: crate::power::PowerAction) {
         let now = std::time::Instant::now();
-        let confirmed = matches!(
-            self.seat_state.power_confirm,
-            Some((pending, deadline)) if pending == action && deadline > now
-        );
+        let confirmed = crate::power::is_confirmed(self.seat_state.power_confirm, action, now);
         if confirmed {
             info!(?action, "power action confirmed — executing");
             crate::power::execute(action);
@@ -582,5 +589,23 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for M
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fail_message;
+
+    #[test]
+    fn first_failure_shows_plain_message() {
+        // fail_count is bumped BEFORE formatting, so the first wrong password
+        // arrives here as 1 → no attempt tally yet.
+        assert_eq!(fail_message(1), "Wrong password");
+    }
+
+    #[test]
+    fn repeated_failures_append_the_attempt_tally() {
+        assert_eq!(fail_message(2), "Wrong password · 2 attempts");
+        assert_eq!(fail_message(5), "Wrong password · 5 attempts");
     }
 }

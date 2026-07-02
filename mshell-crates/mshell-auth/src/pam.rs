@@ -160,3 +160,31 @@ pub fn current_user() -> Option<String> {
             .map(String::from)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_error_display_is_stable() {
+        assert_eq!(AuthError::BadInput.to_string(), "bad input");
+        assert_eq!(AuthError::Failed(7).to_string(), "PAM failed (code 7)");
+        // The raw PAM return code is surfaced so logs are diagnosable.
+        assert_eq!(AuthError::Failed(-4).to_string(), "PAM failed (code -4)");
+    }
+
+    #[test]
+    fn interior_nul_in_password_is_rejected_before_pam() {
+        // `CString::new` fails on an embedded NUL, so this returns `BadInput`
+        // *before* any FFI/PAM call — a pure input-validation path. It also
+        // guards against a NUL smuggling a truncated password past PAM.
+        let err = authenticate("someuser", "pass\0word").unwrap_err();
+        assert!(matches!(err, AuthError::BadInput), "got {err:?}");
+    }
+
+    #[test]
+    fn interior_nul_in_username_is_rejected_before_pam() {
+        let err = authenticate("us\0er", "pw").unwrap_err();
+        assert!(matches!(err, AuthError::BadInput), "got {err:?}");
+    }
+}

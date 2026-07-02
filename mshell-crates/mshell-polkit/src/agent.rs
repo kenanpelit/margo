@@ -264,3 +264,29 @@ async fn resolve_session_id(connection: &Connection) -> String {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_identities_yields_no_username() {
+        assert_eq!(pick_username(&[]), None);
+    }
+
+    #[test]
+    fn unix_user_without_a_uid_is_not_resolved() {
+        // A malformed identity (right kind, missing `uid`) must not panic or
+        // guess — it returns None so the caller fails the auth cleanly.
+        let identities = vec![("unix-user".to_string(), HashMap::new())];
+        assert_eq!(pick_username(&identities), None);
+    }
+
+    #[test]
+    fn non_unix_user_kinds_are_ignored() {
+        // Only `unix-user` identities are honoured; a `unix-group` entry (even
+        // if it carried a uid) must be skipped rather than resolved.
+        let identities = vec![("unix-group".to_string(), HashMap::new())];
+        assert_eq!(pick_username(&identities), None);
+    }
+}
