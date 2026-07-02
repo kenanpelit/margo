@@ -5,6 +5,66 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] – 2026-07-02
+
+**A security & robustness hardening pass.** This release closes three real
+weaknesses — an ungated WASM-plugin host, symlink-unsafe secret writes, and a
+compositor that could panic on malformed screencast input — brings the
+previously-untested auth/lock crates under test, and tightens the panic ratchet
+so more abort vectors are gated. No feature removals; it is a drop-in upgrade.
+
+### Added
+
+- **WASM plugin capabilities (deny-by-default).** A plugin's `manifest.toml`
+  now declares a `[capabilities]` table (`process`, `network`, `clipboard`, all
+  `false` by default). The shell threads the granted set to the WASM host, which
+  refuses any ungated `run`/`process-start`, `http`/`http-start`, or
+  `copy`/`clipboard-read` call — returning a capability error to the guest and
+  logging a `denied …` warning rather than performing the action. Previously
+  only the filesystem path-sandbox was enforced, so any loaded plugin could
+  spawn processes or reach the network. Covered by a new
+  `denies_network_without_capability` integration test.
+- **Tests for the auth/lock boundary.** `mlock`, `mshell-auth`, and
+  `mshell-polkit` (previously zero tests) gain unit coverage for their pure
+  logic: config/sidecar parsers, battery classification, the power double-press
+  confirmation window, fprintd→event mapping, interior-NUL input rejection, and
+  the PAM-helper wire-protocol parser (including the trailing-space guard that
+  stops a spoofed `SUCCESSFUL` from reading as completion).
+
+### Security
+
+- **Secrets writes are now symlink-safe (`mdots`).** `resolve_secret_target`
+  gained a `canonicalize`-based guard so a target reaching the config repo
+  through a symlinked path component (e.g. `~/.config/mdots` → the repo) is
+  refused, not just the lexical case — decrypted plaintext can no longer slip
+  into git that way. The atomic writer now creates its temp file with
+  `create_new` (`O_EXCL`) after unlinking any stale temp, closing a TOCTOU where
+  a pre-planted symlink at the temp path was written through.
+- **Compositor no longer panics on malformed screencast input.** The PipeWire
+  format-negotiation and cast-render paths (`pw_utils.rs`) and the Mutter
+  ScreenCast D-Bus session (`mutter_screen_cast.rs`) ran on the main event loop
+  and `unwrap()`-ed external input; a bad SPA pod or bus error took down the
+  whole desktop. They now degrade gracefully (`stop_cast()` / skip-frame / warn).
+
+### Fixed
+
+- **matugen no longer panics on a non-UTF8 wallpaper path.** A wallpaper whose
+  path isn't valid UTF-8 now returns a themed error instead of aborting the
+  matugen worker.
+
+### Changed
+
+- **Panic ratchet hardened.** `scripts/panic-ratchet.sh` now also counts
+  `unreachable!`/`todo!`/`unimplemented!` and excludes test code by brace depth
+  (so a mid-file `#[cfg(test)]` no longer hides the production code after it);
+  baseline is 370. `just check` now runs the example-config parse
+  (`mctl check-config`) that CI does, so a parser regression is caught locally.
+- **Internal decomposition.** `control_center/tiles.rs` (2039 → 1754) split its
+  live-state probes into `tile_probes.rs`; `mdots/src/lua/mod.rs` (2510 → 2420)
+  split its Lua error diagnostics into `error_hints.rs`. Pure lift-and-shift, no
+  behavior change. Docs: retracted stale "gap" claims for overview and window
+  grouping (both shipped) and closed the taglayout/tagrule unify item.
+
 ## [1.1.1] – 2026-06-30
 
 **mdots grows a real TUI.** 1.1.0 shipped mdots as a CLI; this release makes
