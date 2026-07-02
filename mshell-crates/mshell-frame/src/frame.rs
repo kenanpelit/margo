@@ -2689,6 +2689,9 @@ impl Frame {
                 BarOutput::TwilightClicked => FrameInput::ToggleMenu(MenuId::Twilight),
                 BarOutput::KeybindsClicked => FrameInput::ToggleMenu(MenuId::Keybinds),
                 BarOutput::AlarmClockClicked => FrameInput::ToggleMenu(MenuId::AlarmClock),
+                // The pill already set the pending-tab hint (crate::countdown);
+                // opening the Alarm Clock menu lands on its Countdown tab.
+                BarOutput::CountdownClicked => FrameInput::ToggleMenu(MenuId::AlarmClock),
                 BarOutput::ControlCenterClicked => FrameInput::ToggleMenu(MenuId::ControlCenter),
                 BarOutput::SshSessionsClicked => FrameInput::ToggleMenu(MenuId::SshSessions),
                 BarOutput::VpnClicked => FrameInput::ToggleMenu(MenuId::Vpn),

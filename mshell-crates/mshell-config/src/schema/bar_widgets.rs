@@ -13,6 +13,13 @@ pub enum BarWidget {
     /// stopwatch time inline when one is going, and a ringing badge
     /// while an alarm tone is sounding.
     AlarmClock,
+    /// Countdown pill — a schedule/hourglass glyph + the soonest target's
+    /// remaining time ("42 days remaining" / "3 days overdue"). Reads the
+    /// (ring-less) `alarm.countdowns` list; click opens the Alarm Clock
+    /// menu on its Countdown tab. Hidden when no enabled, parseable target
+    /// exists. Port of the DMS `TimeUntil` plugin, folded into the alarm
+    /// hub.
+    Countdown,
     /// Control Center pill — system-preferences glyph that opens the
     /// Control Center menu.
     ControlCenter,
@@ -44,6 +51,14 @@ pub enum BarWidget {
     /// toggles, and device pickers for both sides. Replaces the
     /// standalone AudioInput / AudioOutput pills.
     AudioDashboard,
+    /// Audio Route pill — one click flips the whole default audio path
+    /// (both the default input/mic **and** the default output/speaker)
+    /// between the built-in device port and a headset/external port, via
+    /// `wayle_audio`'s `set_port`. The glyph reflects the current route.
+    /// Hidden when neither device exposes ≥2 ports (nothing to switch).
+    /// Port of the DMS `Audio Port Switcher` plugin, generalized to route
+    /// input + output together.
+    AudioRoute,
     /// Audio spectrum visualizer — a strip of live cava-driven bars.
     /// Render-only (no menu); degrades to flat bars if `cava` isn't
     /// installed or there's no audio.
@@ -154,11 +169,13 @@ impl BarWidget {
         match self {
             BarWidget::ActiveWindow => "Active Window",
             BarWidget::AlarmClock => "Alarm Clock",
+            BarWidget::Countdown => "Countdown",
             BarWidget::ControlCenter => "Control Center",
             BarWidget::HiddenBar => "Hidden Bar",
             BarWidget::HiddenBarNamed(_) => "Hidden Bar",
             BarWidget::Catwalk => "Catwalk (animated cat)",
             BarWidget::AudioDashboard => "Audio Dashboard",
+            BarWidget::AudioRoute => "Audio Route",
             BarWidget::AudioVisualizer => "Audio Visualizer",
             BarWidget::Bluetooth => "Bluetooth",
             BarWidget::Clipboard => "Clipboard",
@@ -217,10 +234,12 @@ impl BarWidget {
         &[
             BarWidget::ActiveWindow,
             BarWidget::AlarmClock,
+            BarWidget::Countdown,
             BarWidget::ControlCenter,
             BarWidget::HiddenBar,
             BarWidget::Catwalk,
             BarWidget::AudioDashboard,
+            BarWidget::AudioRoute,
             BarWidget::AudioVisualizer,
             BarWidget::Bluetooth,
             BarWidget::Clipboard,

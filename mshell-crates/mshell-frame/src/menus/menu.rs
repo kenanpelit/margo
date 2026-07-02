@@ -1,5 +1,8 @@
 use crate::menus::builder::build_widget;
 use crate::menus::menu_widgets::ai::ai_menu_widget::{AiMenuWidgetInput, AiMenuWidgetModel};
+use crate::menus::menu_widgets::alarm_clock::alarm_clock_menu_widget::{
+    AlarmClockMenuWidgetInput, AlarmClockMenuWidgetModel,
+};
 use crate::menus::menu_widgets::app_launcher::app_launcher::{AppLauncherInput, AppLauncherModel};
 use crate::menus::menu_widgets::audio_in::audio_in_menu_widget::{
     AudioInMenuWidgetInput, AudioInMenuWidgetModel,
@@ -752,6 +755,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(AppLauncherInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<AlarmClockMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(AlarmClockMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =

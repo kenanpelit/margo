@@ -1,0 +1,9 @@
+// Countdown bar pill — inline "42 days remaining" readout. The pill
+// surface itself comes from the shared `.ok-bar-widget` tokens; this
+// only styles the label. Matugen vars only (see DESIGN.md).
+.countdown-bar-time {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}

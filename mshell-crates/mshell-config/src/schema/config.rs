@@ -275,11 +275,44 @@ impl Default for Alarm {
     }
 }
 
-/// Alarm-clock widget config: the alarm list plus ring behaviour.
+/// One countdown target — a passive "time until / since a date" entry
+/// surfaced by the Countdown tab of the Alarm Clock menu and the
+/// `countdown` bar pill. Unlike an [`Alarm`] it never rings; it is a
+/// display only. `unit` is a validated string (`hours` | `days` |
+/// `weeks` | `months`) parsed by the shell's `countdown` calc layer,
+/// mirroring how [`AlarmConfig::urgency`] is stored.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct Countdown {
+    /// Target date, `YYYY-MM-DD [HH:MM]` (time optional → midnight).
+    pub target: String,
+    /// `hours` | `days` | `weeks` | `months`.
+    pub unit: String,
+    /// Suffix shown after the unit; empty → "remaining" (or "overdue").
+    pub label: String,
+    pub enabled: bool,
+}
+
+impl Default for Countdown {
+    fn default() -> Self {
+        Self {
+            target: String::new(),
+            unit: "days".to_string(),
+            label: String::new(),
+            enabled: true,
+        }
+    }
+}
+
+/// Alarm-clock widget config: the alarm list plus ring behaviour, and
+/// the (ring-less) countdown list shared with the Countdown tab + pill.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct AlarmConfig {
     pub alarms: Vec<Alarm>,
+    /// Countdown targets (Countdown tab + `countdown` bar pill). Passive
+    /// displays; no scheduler or tone.
+    pub countdowns: Vec<Countdown>,
     /// Minutes to snooze when the alarm notification's Snooze action is hit.
     pub snooze_minutes: u32,
     /// Pop a desktop notification (with Stop / Snooze actions) when ringing.
@@ -292,6 +325,7 @@ impl Default for AlarmConfig {
     fn default() -> Self {
         Self {
             alarms: Vec::new(),
+            countdowns: Vec::new(),
             snooze_minutes: 5,
             notifications: true,
             urgency: "normal".to_string(),

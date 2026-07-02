@@ -17,10 +17,12 @@
 //! below repaints the list — including the one-shot alarms the
 //! scheduler disables after they fire.
 
+use crate::countdown::{self, CountdownUnit};
 use crate::stopwatch::{self, StopwatchState};
+use chrono::Local;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{Alarm, AlarmConfigStoreFields, ConfigStoreFields};
+use mshell_config::schema::config::{Alarm, AlarmConfigStoreFields, ConfigStoreFields, Countdown};
 use mshell_sounds::{alarm_is_ringing, stop_alarm};
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::glib;
@@ -55,7 +57,15 @@ pub(crate) struct AlarmClockMenuWidgetModel {
     sw_start_btn: gtk::Button,
     sw_pause_btn: gtk::Button,
     sw_reset_btn: gtk::Button,
-    /// Keeps the reactive subscription on `config.alarm.alarms` alive.
+    // ── countdown ──
+    countdown_list: gtk::Box,
+    countdown_empty: gtk::Label,
+    cd_target: gtk::Entry,
+    cd_unit: gtk::DropDown,
+    cd_label: gtk::Entry,
+    /// The tab stack, held so a countdown-pill click can jump to its tab.
+    tabs: gtk::Stack,
+    /// Keeps the reactive subscriptions on `alarm.alarms`/`countdowns` alive.
     _effects: EffectScope,
 }
 
@@ -70,6 +80,13 @@ pub(crate) enum AlarmClockMenuWidgetInput {
     SwStart,
     SwPause,
     SwReset,
+    /// Reactive: the countdowns vector changed — rebuild the list.
+    CountdownsChanged,
+    AddCountdown,
+    ToggleCountdown(usize, bool),
+    DeleteCountdown(usize),
+    /// Menu revealed/hidden — used to honour a pending Countdown-tab jump.
+    ParentRevealChanged(bool),
 }
 
 pub(crate) struct AlarmClockMenuWidgetInit {}
@@ -257,6 +274,58 @@ impl Component for AlarmClockMenuWidgetModel {
                         },
                     },
                 },
+
+                // ───────────── Countdown tab ─────────────
+                add_titled[Some("countdown"), "Countdown"] = &gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 10,
+
+                    #[local_ref]
+                    countdown_list_widget -> gtk::Box {
+                        add_css_class: "alarm-list",
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 6,
+                    },
+                    #[local_ref]
+                    countdown_empty_widget -> gtk::Label {
+                        add_css_class: "label-small",
+                        set_halign: gtk::Align::Center,
+                        set_label: "No countdowns yet — add a date below.",
+                    },
+
+                    gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
+
+                    // ── add row ──
+                    gtk::Box {
+                        add_css_class: "alarm-add-row",
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 8,
+
+                        #[local_ref]
+                        cd_target_widget -> gtk::Entry {
+                            set_placeholder_text: Some("2027-01-01 21:37"),
+                        },
+                        gtk::Box {
+                            set_spacing: 8,
+                            set_halign: gtk::Align::Center,
+                            #[local_ref]
+                            cd_unit_widget -> gtk::DropDown {},
+                            #[local_ref]
+                            cd_label_widget -> gtk::Entry {
+                                set_hexpand: true,
+                                set_placeholder_text: Some("Label (optional)"),
+                            },
+                        },
+                        gtk::Button {
+                            add_css_class: "ok-button-surface",
+                            add_css_class: "ok-button-cell",
+                            set_label: "Add countdown",
+                            connect_clicked[sender] => move |_| {
+                                sender.input(AlarmClockMenuWidgetInput::AddCountdown);
+                            },
+                        },
+                    },
+                },
             },
         }
     }
@@ -277,19 +346,30 @@ impl Component for AlarmClockMenuWidgetModel {
         let sw_start_widget = gtk::Button::new();
         let sw_pause_widget = gtk::Button::new();
         let sw_reset_widget = gtk::Button::new();
+        let countdown_list_widget = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        let countdown_empty_widget = gtk::Label::new(None);
+        let cd_target_widget = gtk::Entry::new();
+        let cd_unit_widget = gtk::DropDown::from_strings(&["Hours", "Days", "Weeks", "Months"]);
+        cd_unit_widget.set_selected(1); // Days — the config default.
+        let cd_label_widget = gtk::Entry::new();
 
         // Default the add row to 07:00 — the plugin's default alarm.
         add_hour_widget.set_value(7.0);
         add_minute_widget.set_value(0.0);
 
-        // Reactive subscription: repaint the list whenever the alarms
-        // vector changes (user edits here, or the scheduler disabling a
-        // one-shot after it fires).
+        // Reactive subscriptions: repaint each list whenever its vector
+        // changes (user edits here, or the scheduler disabling a one-shot
+        // alarm after it fires).
         let mut effects = EffectScope::new();
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let _ = config_manager().config().alarm().alarms().get();
             sender_clone.input(AlarmClockMenuWidgetInput::AlarmsChanged);
+        });
+        let cd_sender = sender.clone();
+        effects.push(move |_| {
+            let _ = config_manager().config().alarm().countdowns().get();
+            cd_sender.input(AlarmClockMenuWidgetInput::CountdownsChanged);
         });
 
         let model = AlarmClockMenuWidgetModel {
@@ -305,6 +385,12 @@ impl Component for AlarmClockMenuWidgetModel {
             sw_start_btn: sw_start_widget.clone(),
             sw_pause_btn: sw_pause_widget.clone(),
             sw_reset_btn: sw_reset_widget.clone(),
+            countdown_list: countdown_list_widget.clone(),
+            countdown_empty: countdown_empty_widget.clone(),
+            cd_target: cd_target_widget.clone(),
+            cd_unit: cd_unit_widget.clone(),
+            cd_label: cd_label_widget.clone(),
+            tabs: gtk::Stack::new(),
             _effects: effects,
         };
         let widgets = view_output!();
@@ -321,8 +407,10 @@ impl Component for AlarmClockMenuWidgetModel {
 
         let mut model = model;
         model.day_toggles = day_toggles;
+        model.tabs = widgets.tabs.clone();
 
         rebuild_list(&model, &sender);
+        rebuild_countdown_list(&model, &sender);
         sync_stopwatch(&model);
         sync_ringing(&model);
 
@@ -415,6 +503,55 @@ impl Component for AlarmClockMenuWidgetModel {
                 stopwatch::reset();
                 sync_stopwatch(self);
             }
+            AlarmClockMenuWidgetInput::CountdownsChanged => {
+                rebuild_countdown_list(self, &sender);
+            }
+            AlarmClockMenuWidgetInput::AddCountdown => {
+                let target = self.cd_target.text().trim().to_string();
+                if target.is_empty() {
+                    return;
+                }
+                let unit = match self.cd_unit.selected() {
+                    0 => "hours",
+                    2 => "weeks",
+                    3 => "months",
+                    _ => "days",
+                }
+                .to_string();
+                let label = self.cd_label.text().trim().to_string();
+                config_manager().update_config(move |c| {
+                    c.alarm.countdowns.push(Countdown {
+                        target,
+                        unit,
+                        label,
+                        enabled: true,
+                    });
+                });
+                // Reset the form for the next entry.
+                self.cd_target.set_text("");
+                self.cd_label.set_text("");
+            }
+            AlarmClockMenuWidgetInput::ToggleCountdown(idx, on) => {
+                config_manager().update_config(move |c| {
+                    if let Some(cd) = c.alarm.countdowns.get_mut(idx) {
+                        cd.enabled = on;
+                    }
+                });
+            }
+            AlarmClockMenuWidgetInput::DeleteCountdown(idx) => {
+                config_manager().update_config(move |c| {
+                    if idx < c.alarm.countdowns.len() {
+                        c.alarm.countdowns.remove(idx);
+                    }
+                });
+            }
+            AlarmClockMenuWidgetInput::ParentRevealChanged(visible) => {
+                // A countdown-pill click flags the pending tab; consume it
+                // on reveal so the menu lands on the Countdown tab.
+                if countdown::take_countdown_tab_request() && visible {
+                    self.tabs.set_visible_child_name("countdown");
+                }
+            }
         }
     }
 
@@ -456,6 +593,94 @@ fn rebuild_list(
     }
 
     sync_ringing(model);
+}
+
+/// Rebuild the countdown rows from the persisted config + empty-state hint.
+fn rebuild_countdown_list(
+    model: &AlarmClockMenuWidgetModel,
+    sender: &ComponentSender<AlarmClockMenuWidgetModel>,
+) {
+    while let Some(child) = model.countdown_list.first_child() {
+        model.countdown_list.remove(&child);
+    }
+
+    let items = config_manager()
+        .config()
+        .alarm()
+        .countdowns()
+        .get_untracked();
+    model.countdown_empty.set_visible(items.is_empty());
+
+    let now = Local::now().naive_local();
+    for (idx, c) in items.iter().enumerate() {
+        model
+            .countdown_list
+            .append(&countdown_row(idx, c, now, sender));
+    }
+}
+
+/// One countdown row: enable switch · headline remaining · target · delete.
+fn countdown_row(
+    idx: usize,
+    c: &Countdown,
+    now: chrono::NaiveDateTime,
+    sender: &ComponentSender<AlarmClockMenuWidgetModel>,
+) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    row.add_css_class("alarm-row");
+    if !c.enabled {
+        row.add_css_class("alarm-row-off");
+    }
+
+    let toggle = gtk::Switch::new();
+    toggle.set_active(c.enabled);
+    toggle.set_valign(gtk::Align::Center);
+    {
+        let sender = sender.clone();
+        toggle.connect_state_set(move |_, state| {
+            sender.input(AlarmClockMenuWidgetInput::ToggleCountdown(idx, state));
+            glib::Propagation::Proceed
+        });
+    }
+    row.append(&toggle);
+
+    let text = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    text.set_hexpand(true);
+
+    let unit = CountdownUnit::parse(&c.unit);
+    let headline = match countdown::remaining(&c.target, unit, now) {
+        Some(v) => countdown::format_long(v, unit, &c.label),
+        None => "Invalid date".to_string(),
+    };
+    let head = gtk::Label::new(Some(&headline));
+    head.add_css_class("alarm-row-time");
+    head.set_halign(gtk::Align::Start);
+    text.append(&head);
+
+    let subtitle = match c.label.trim() {
+        "" => c.target.clone(),
+        label => format!("{label} · {}", c.target),
+    };
+    let sub = gtk::Label::new(Some(&subtitle));
+    sub.add_css_class("label-small");
+    sub.set_halign(gtk::Align::Start);
+    sub.set_xalign(0.0);
+    text.append(&sub);
+    row.append(&text);
+
+    let delete = gtk::Button::from_icon_name("user-trash-symbolic");
+    delete.add_css_class("alarm-row-delete");
+    delete.set_valign(gtk::Align::Center);
+    delete.set_tooltip_text(Some("Delete countdown"));
+    {
+        let sender = sender.clone();
+        delete.connect_clicked(move |_| {
+            sender.input(AlarmClockMenuWidgetInput::DeleteCountdown(idx));
+        });
+    }
+    row.append(&delete);
+
+    row
 }
 
 /// One alarm row: enable switch · time · label/repeat · delete.

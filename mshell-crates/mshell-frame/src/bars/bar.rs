@@ -212,6 +212,7 @@ pub(crate) enum BarOutput {
     TwilightClicked,
     KeybindsClicked,
     AlarmClockClicked,
+    CountdownClicked,
     ControlCenterClicked,
     SshSessionsClicked,
     AudioDashboardClicked,
@@ -1088,6 +1089,20 @@ impl BarModel {
                             BarOutput::AlarmClockClicked
                         }
                     }),
+            ),
+            BarWidget::Countdown => Box::new(
+                crate::bars::bar_widgets::countdown::CountdownModel::builder()
+                    .launch(crate::bars::bar_widgets::countdown::CountdownInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::countdown::CountdownOutput::Clicked => {
+                            BarOutput::CountdownClicked
+                        }
+                    }),
+            ),
+            BarWidget::AudioRoute => Box::new(
+                crate::bars::bar_widgets::audio_route::AudioRouteModel::builder()
+                    .launch(crate::bars::bar_widgets::audio_route::AudioRouteInit { orientation })
+                    .detach(),
             ),
             BarWidget::ControlCenter => Box::new(
                 ControlCenterModel::builder()
