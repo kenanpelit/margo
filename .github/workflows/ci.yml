@@ -74,10 +74,10 @@ jobs:
       # differs from what the package ships. This split mirrors the
       # PKGBUILD so CI validates the real production build configuration.
       - name: cargo build (compositor group)
-        run: cargo build -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay
+        run: cargo build -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay -p mdots
 
       - name: cargo build (shell group)
-        run: cargo build -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard -p margo-portal
+        run: cargo build -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard -p mkeys -p mvpn -p margo-portal
 
       - name: cargo test
         # Tests cover every crate; feature unification in the test build
@@ -128,3 +128,22 @@ jobs:
           EOF
           fi
           ./target/debug/mctl check-config --config "$CFG"
+
+  # Supply-chain scan — RUSTSEC advisories over the vendored + git-pinned +
+  # large dependency tree (the audit's "no dependency-CVE scanning" gap).
+  # Runs on the plain Ubuntu runner (no GTK needed — it reads Cargo.lock).
+  # Report-only for now (`continue-on-error`): it surfaces advisories on every
+  # PR without blocking merges while the ignore-list is settled. Once the
+  # first triage is done, drop `continue-on-error` and add `licenses` to make
+  # it a hard gate. Config: deny.toml.
+  deny:
+    name: cargo-deny (advisories / bans / sources)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - name: cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories bans sources

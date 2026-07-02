@@ -255,10 +255,11 @@ debian_build() {
   # faster, smaller installed binary. `just` / CI stay on `release`.
   log "building compositor group (dist)"
   cargo build --profile dist -p margo -p start-margo \
-    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mplay -p mdots
+    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mplay -p mdots \
+    -p mlogind -p mpower
   log "building shell group (dist)"
   cargo build --profile dist -p mshell -p mshellctl -p mshellshare \
-    -p mpicker -p mwizard -p margo-portal
+    -p mpicker -p mwizard -p mkeys -p mvpn -p margo-portal
 }
 
 # install_file <mode> <src> <dst> — install one file and record <dst>
@@ -293,7 +294,7 @@ debian_install_files() {
   # ── binaries ──
   local bin
   for bin in margo start-margo mctl mlock mlayout mscreenshot mvisual mplay mdots \
-             mshell mshellctl mshellshare mpicker mwizard; do
+             mlogind mpower mshell mshellctl mshellshare mpicker mwizard mkeys mvpn; do
     install_file 755 "${tgt}/${bin}" "/usr/bin/${bin}"
   done
   # margo-portal lives under /usr/lib (D-Bus-activated, not a CLI)
