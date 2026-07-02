@@ -129,8 +129,32 @@ pub async fn init_services(
             Ok::<_, anyhow::Error>(MediaService::builder().with_art_cache().build().await?)
         },
         async { Ok::<_, anyhow::Error>(NetworkService::new().await?) },
-        async { Ok::<_, anyhow::Error>(NotificationService::new().await?) },
-        async { Ok::<_, anyhow::Error>(PowerProfilesService::new().await?) },
+        // Notifications are best-effort. `NotificationService::new()` claims the
+        // `org.freedesktop.Notifications` well-known name; if another daemon
+        // (dunst / mako) already owns it, construction fails — that must not
+        // abort login. Degrade to `None`; toasts just don't show.
+        async {
+            Ok::<_, anyhow::Error>(match NotificationService::new().await {
+                Ok(n) => Some(n),
+                Err(e) => {
+                    warn!("Notification service unavailable; continuing without it: {e:#}");
+                    None
+                }
+            })
+        },
+        // Power profiles are best-effort. `PowerProfilesService::new()` talks to
+        // `power-profiles-daemon` over D-Bus; on a host without ppd installed it
+        // fails, which must not block the shell. Degrade to `None`; the profile
+        // pill / control-center tile hide.
+        async {
+            Ok::<_, anyhow::Error>(match PowerProfilesService::new().await {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    warn!("Power-profiles service unavailable; continuing without it: {e:#}");
+                    None
+                }
+            })
+        },
         // System tray is best-effort. Building the StatusNotifier host can
         // fail (e.g. the well-known name is already owned by another tray).
         // The tray pill is non-essential, so degrade to "no tray" rather than
@@ -270,18 +294,24 @@ pub fn network_service() -> Arc<NetworkService> {
         .clone()
 }
 
-static NOTIFICATION_SERVICE: OnceLock<Arc<NotificationService>> = OnceLock::new();
+static NOTIFICATION_SERVICE: OnceLock<Option<Arc<NotificationService>>> = OnceLock::new();
 
-pub fn notification_service() -> Arc<NotificationService> {
+/// The notification service, or `None` when its D-Bus name couldn't be claimed
+/// at startup (another notification daemon owns it). Callers degrade — toasts
+/// and the notification list are empty.
+pub fn notification_service() -> Option<Arc<NotificationService>> {
     NOTIFICATION_SERVICE
         .get()
         .expect("NotificationService not initialized")
         .clone()
 }
 
-static POWER_PROFILE_SERVICE: OnceLock<Arc<PowerProfilesService>> = OnceLock::new();
+static POWER_PROFILE_SERVICE: OnceLock<Option<Arc<PowerProfilesService>>> = OnceLock::new();
 
-pub fn power_profile_service() -> Arc<PowerProfilesService> {
+/// The power-profiles service, or `None` when `power-profiles-daemon` isn't
+/// available (not installed). Callers degrade — the profile pill and
+/// control-center tile hide.
+pub fn power_profile_service() -> Option<Arc<PowerProfilesService>> {
     POWER_PROFILE_SERVICE
         .get()
         .expect("PowerProfilesService not initialized")

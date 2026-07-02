@@ -42,8 +42,10 @@ pub fn start() {
 fn build() -> String {
     let mut out = String::new();
 
-    // Notifications — history count.
-    let n = notification_service().notifications.get().len();
+    // Notifications — history count (0 when the service is unavailable).
+    let n = notification_service()
+        .map(|s| s.notifications.get().len())
+        .unwrap_or(0);
     out.push_str(&format!("notifications={n}\n"));
 
     // Weather — current temperature (only when the service has loaded a

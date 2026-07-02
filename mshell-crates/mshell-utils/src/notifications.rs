@@ -40,7 +40,10 @@ pub fn spawn_notifications_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let service = notification_service();
+    let Some(service) = notification_service() else {
+        // No notification service — nothing to watch.
+        return;
+    };
     let notifications = service.notifications.clone();
 
     // Spawn on the wayle runtime (see `spawn_notification_popups_watcher`
@@ -63,7 +66,10 @@ pub fn spawn_notification_popups_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let service = notification_service();
+    let Some(service) = notification_service() else {
+        // No notification service — nothing to watch.
+        return;
+    };
     let notifications = service.popups.clone();
 
     // We can't use the project-wide `watch!` macro here. It routes the
@@ -97,7 +103,10 @@ pub fn spawn_dnd_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let service = notification_service();
+    let Some(service) = notification_service() else {
+        // No notification service — nothing to watch.
+        return;
+    };
     let dnd = service.dnd.clone();
 
     watch!(sender, [dnd.watch()], |out| {

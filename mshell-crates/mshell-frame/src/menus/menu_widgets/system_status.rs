@@ -251,7 +251,9 @@ impl Component for SystemStatusModel {
         let battery_state = battery.state.get();
         let battery_charging = is_on_ac(battery_state);
 
-        let profile = power_profile_service().power_profiles.active_profile.get();
+        let profile = power_profile_service()
+            .map(|s| s.power_profiles.active_profile.get())
+            .unwrap_or(PowerProfile::Unknown);
 
         let temp_sensor_path = find_cpu_temp_sensor();
         let temp_celsius = temp_sensor_path
@@ -304,7 +306,9 @@ impl Component for SystemStatusModel {
                 self.battery_charging = is_on_ac(self.battery_state);
             }
             SystemStatusInput::ProfileChanged => {
-                self.profile = power_profile_service().power_profiles.active_profile.get();
+                self.profile = power_profile_service()
+                    .map(|s| s.power_profiles.active_profile.get())
+                    .unwrap_or(PowerProfile::Unknown);
             }
             SystemStatusInput::PollTemp => {
                 if let Some(p) = &self.temp_sensor_path

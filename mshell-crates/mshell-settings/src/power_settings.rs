@@ -1195,7 +1195,10 @@ impl Component for PowerSettingsModel {
             PowerSettingsInput::ProfileSelected(idx) => {
                 let profile = Profile::from_index(idx);
                 tokio::spawn(async move {
-                    if let Err(e) = power_profile_service()
+                    let Some(svc) = power_profile_service() else {
+                        return;
+                    };
+                    if let Err(e) = svc
                         .power_profiles
                         .set_active_profile(profile.to_wayle())
                         .await
@@ -1392,7 +1395,7 @@ fn read_profile() -> Option<Profile> {
     // If power-profiles-daemon is unavailable, `active_profile` returns
     // `PowerProfile::Unknown`. We surface `None` (hidden) in that case so
     // the UI hides the section rather than showing a misleading value.
-    let p = power_profile_service().power_profiles.active_profile.get();
+    let p = power_profile_service()?.power_profiles.active_profile.get();
     match p {
         PowerProfile::Unknown => None,
         other => Some(Profile::from_wayle(&other)),

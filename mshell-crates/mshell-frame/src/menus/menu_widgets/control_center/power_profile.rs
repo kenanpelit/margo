@@ -30,7 +30,9 @@ pub(crate) enum ControlCenterPowerProfileInput {
 pub(crate) struct ControlCenterPowerProfileInit {}
 
 fn read_active() -> PowerProfile {
-    power_profile_service().power_profiles.active_profile.get()
+    power_profile_service()
+        .map(|s| s.power_profiles.active_profile.get())
+        .unwrap_or(PowerProfile::Unknown)
 }
 
 #[relm4::component(pub(crate))]
@@ -133,11 +135,10 @@ impl Component for ControlCenterPowerProfileModel {
                 // Refresh (panel reveal) if it differs.
                 self.active = profile;
                 glib::spawn_future_local(async move {
-                    if let Err(e) = power_profile_service()
-                        .power_profiles
-                        .set_active_profile(profile)
-                        .await
-                    {
+                    let Some(svc) = power_profile_service() else {
+                        return;
+                    };
+                    if let Err(e) = svc.power_profiles.set_active_profile(profile).await {
                         tracing::warn!(error = %e, "control-center: set power profile failed");
                     }
                 });

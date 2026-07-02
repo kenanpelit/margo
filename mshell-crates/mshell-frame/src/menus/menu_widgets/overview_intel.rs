@@ -258,7 +258,9 @@ impl Component for OverviewIntelModel {
         let has_battery = battery.is_present.get();
         let battery_percent = battery.percentage.get().round().clamp(0.0, 100.0) as i32;
         let battery_charging = current_battery_charging();
-        let notification_count = notification_service().notifications.get().len();
+        let notification_count = notification_service()
+            .map(|s| s.notifications.get().len())
+            .unwrap_or(0);
 
         let model = OverviewIntelModel {
             notification_count,
@@ -302,7 +304,9 @@ impl Component for OverviewIntelModel {
                 self.has_battery = battery.is_present.get();
                 self.battery_percent = battery.percentage.get().round().clamp(0.0, 100.0) as i32;
                 self.battery_charging = current_battery_charging();
-                self.notification_count = notification_service().notifications.get().len();
+                self.notification_count = notification_service()
+                    .map(|s| s.notifications.get().len())
+                    .unwrap_or(0);
             }
             OverviewIntelInput::Tick => {
                 refresh_updates(&sender);

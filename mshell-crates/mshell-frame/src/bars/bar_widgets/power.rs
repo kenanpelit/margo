@@ -342,8 +342,10 @@ fn apply_visual(widgets: &PowerModelWidgets, root: &gtk::Box, s: &PowerState) {
 pub(crate) fn read_power_state() -> PowerState {
     let mut state = PowerState::default();
 
-    let profile = power_profile_service().power_profiles.active_profile.get();
-    state.profile = Some(Profile::from_wayle(&profile));
+    if let Some(svc) = power_profile_service() {
+        let profile = svc.power_profiles.active_profile.get();
+        state.profile = Some(Profile::from_wayle(&profile));
+    }
 
     let battery = battery_service().device.clone();
     let dev_state = battery.state.get();

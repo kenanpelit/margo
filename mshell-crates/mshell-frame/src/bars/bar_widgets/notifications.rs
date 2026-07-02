@@ -127,7 +127,9 @@ impl Component for NotificationsModel {
 
         // Treat whatever history already exists at startup as read, so a
         // fresh login doesn't light up "unread" for old notifications.
-        let total = notification_service().notifications.get().len();
+        let total = notification_service()
+            .map(|s| s.notifications.get().len())
+            .unwrap_or(0);
         let model = NotificationsModel {
             orientation: params.orientation,
             total,
@@ -164,7 +166,9 @@ impl Component for NotificationsModel {
     ) {
         match message {
             NotificationsCommandOutput::NotificationsChanged => {
-                self.total = notification_service().notifications.get().len();
+                self.total = notification_service()
+                    .map(|s| s.notifications.get().len())
+                    .unwrap_or(0);
                 // History shrank (cleared / individual dismiss) — never let
                 // `seen` outrun it, or `unread` would underflow to a stale
                 // positive once it grows again.

@@ -354,14 +354,17 @@ impl Component for NotificationsModel {
         match message {
             NotificationsInput::ClearAllClicked => {
                 tokio::spawn(async move {
-                    let _ = notification_service().dismiss_all().await;
+                    if let Some(svc) = notification_service() {
+                        let _ = svc.dismiss_all().await;
+                    }
                 });
                 let _ = sender.output(NotificationsOutput::CloseMenu);
             }
             NotificationsInput::DndClicked => {
-                let service = notification_service();
-                let dnd = service.dnd.get();
-                service.set_dnd(!dnd);
+                if let Some(service) = notification_service() {
+                    let dnd = service.dnd.get();
+                    service.set_dnd(!dnd);
+                }
             }
             NotificationsInput::RebuildRequested => {
                 if self.revealed {
@@ -422,7 +425,7 @@ impl Component for NotificationsModel {
                 }
             }
             NotificationsCommandOutput::DndChanged => {
-                self.dnd = notification_service().dnd.get();
+                self.dnd = notification_service().map(|s| s.dnd.get()).unwrap_or(false);
             }
         }
 
@@ -435,7 +438,9 @@ impl NotificationsModel {
     /// empty-state flag, and re-splice the lightweight row model. The
     /// single rebuild entry point.
     fn refresh(&mut self) {
-        let notifications = notification_service().notifications.get();
+        let notifications = notification_service()
+            .map(|s| s.notifications.get())
+            .unwrap_or_default();
         let notifications: Vec<Arc<Notification>> = if self.query.is_empty() {
             notifications
         } else {

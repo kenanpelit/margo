@@ -194,7 +194,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             .notifications()
             .blocklist()
             .get();
-        notification_service().set_blocklist(blocklist);
+        if let Some(svc) = notification_service() {
+            svc.set_blocklist(blocklist);
+        }
     });
 
     // Sync popup display duration from config → service (also the
@@ -205,7 +207,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             .notifications()
             .popup_duration_ms()
             .get();
-        notification_service().set_popup_duration(ms);
+        if let Some(svc) = notification_service() {
+            svc.set_popup_duration(ms);
+        }
     });
 
     // Game Mode: a single reactive reconcile. Whoever flips

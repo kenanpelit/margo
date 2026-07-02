@@ -757,7 +757,7 @@ impl Component for ControlCenterTilesModel {
 
         // Snapshot initial state
         let keep_awake = IdleInhibitor::global().get();
-        let dnd = notification_service().dnd.get();
+        let dnd = notification_service().map(|s| s.dnd.get()).unwrap_or(false);
         let dark = config_manager()
             .config()
             .theme()
@@ -766,7 +766,9 @@ impl Component for ControlCenterTilesModel {
             .get_untracked();
         let disk = read_disk_usage();
         let battery = read_battery();
-        let power_profile = power_profile_service().power_profiles.active_profile.get();
+        let power_profile = power_profile_service()
+            .map(|s| s.power_profiles.active_profile.get())
+            .unwrap_or(PowerProfile::Unknown);
         let (wifi_subtitle, wifi_connected) = read_wifi_state();
         let (bt_subtitle, bt_connected) = read_bt_state();
         let (vpn_subtitle, vpn_connected) = read_vpn_state();
@@ -1038,7 +1040,7 @@ impl Component for ControlCenterTilesModel {
 
                 // Re-snapshot fast values on each reveal
                 self.keep_awake = IdleInhibitor::global().get();
-                self.dnd = notification_service().dnd.get();
+                self.dnd = notification_service().map(|s| s.dnd.get()).unwrap_or(false);
                 self.dark = config_manager()
                     .config()
                     .theme()
@@ -1046,7 +1048,9 @@ impl Component for ControlCenterTilesModel {
                     .mode()
                     .get_untracked();
                 self.battery = read_battery();
-                self.power_profile = power_profile_service().power_profiles.active_profile.get();
+                self.power_profile = power_profile_service()
+                    .map(|s| s.power_profiles.active_profile.get())
+                    .unwrap_or(PowerProfile::Unknown);
                 self.disk = read_disk_usage();
                 (self.wifi_subtitle, self.wifi_connected) = read_wifi_state();
                 (self.bt_subtitle, self.bt_connected) = read_bt_state();
@@ -1067,7 +1071,9 @@ impl Component for ControlCenterTilesModel {
                 self.mic_subtitle = read_mic_subtitle();
                 (self.vpn_subtitle, self.vpn_connected) = read_vpn_state();
                 (self.airplane_mode, self.airplane_available) = read_airplane_state();
-                self.power_profile = power_profile_service().power_profiles.active_profile.get();
+                self.power_profile = power_profile_service()
+                    .map(|s| s.power_profiles.active_profile.get())
+                    .unwrap_or(PowerProfile::Unknown);
             }
 
             ControlCenterTilesInput::ClickKeepAwake => {
@@ -1078,9 +1084,10 @@ impl Component for ControlCenterTilesModel {
             }
 
             ControlCenterTilesInput::ClickDnd => {
-                let service = notification_service();
-                let current = service.dnd.get();
-                service.set_dnd(!current);
+                if let Some(service) = notification_service() {
+                    let current = service.dnd.get();
+                    service.set_dnd(!current);
+                }
             }
 
             ControlCenterTilesInput::ClickDarkMode => {
@@ -1219,7 +1226,7 @@ impl Component for ControlCenterTilesModel {
                 self.keep_awake = IdleInhibitor::global().get();
             }
             ControlCenterTilesCommandOutput::DndChanged => {
-                self.dnd = notification_service().dnd.get();
+                self.dnd = notification_service().map(|s| s.dnd.get()).unwrap_or(false);
             }
             ControlCenterTilesCommandOutput::TwilightChanged(enabled, subtitle) => {
                 self.twilight_enabled = enabled;
@@ -1227,7 +1234,9 @@ impl Component for ControlCenterTilesModel {
             }
             ControlCenterTilesCommandOutput::BatteryChanged => {
                 self.battery = read_battery();
-                self.power_profile = power_profile_service().power_profiles.active_profile.get();
+                self.power_profile = power_profile_service()
+                    .map(|s| s.power_profiles.active_profile.get())
+                    .unwrap_or(PowerProfile::Unknown);
             }
             ControlCenterTilesCommandOutput::DiskRefreshed(usage) => {
                 self.disk = usage;

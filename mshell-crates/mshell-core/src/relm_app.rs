@@ -699,15 +699,18 @@ impl Component for Shell {
                 // Same effect as the menu's "Clear All" — drops the
                 // whole history (and with it any live popups).
                 tokio::spawn(async move {
-                    let _ = notification_service().dismiss_all().await;
+                    if let Some(svc) = notification_service() {
+                        let _ = svc.dismiss_all().await;
+                    }
                 });
             }
             ShellInput::NotificationsReadPopups => {
                 // Dismiss only the on-screen popups; they stay in the
                 // notification history.
-                let service = notification_service();
-                for popup in service.popups.get() {
-                    service.dismiss_popup(popup.id);
+                if let Some(service) = notification_service() {
+                    for popup in service.popups.get() {
+                        service.dismiss_popup(popup.id);
+                    }
                 }
             }
             ShellInput::ToggleClipboard(monitor_name) => {

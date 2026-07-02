@@ -136,27 +136,30 @@ impl Component for PopupNotificationsModel {
                     .show_timeout_bar()
                     .get_untracked();
                 let timeout_ms = if show_bar {
-                    let base = svc.popup_duration.get();
-                    let effective = match notification.expire_timeout.get() {
-                        Some(ttl) if ttl > 0 => base.min(ttl),
-                        _ => base,
-                    };
-                    Some(effective)
+                    svc.as_ref().map(|s| {
+                        let base = s.popup_duration.get();
+                        match notification.expire_timeout.get() {
+                            Some(ttl) if ttl > 0 => base.min(ttl),
+                            _ => base,
+                        }
+                    })
                 } else {
                     None
                 };
 
                 // Hover pauses the real auto-dismiss timer (and the bar).
+                // Only wired when the notification service is present.
                 let (on_hover_enter, on_hover_leave): (Option<Rc<dyn Fn()>>, Option<Rc<dyn Fn()>>) =
-                    if show_bar {
-                        let svc_enter = svc.clone();
-                        let svc_leave = svc.clone();
-                        (
-                            Some(Rc::new(move || svc_enter.inhibit_popup(id))),
-                            Some(Rc::new(move || svc_leave.release_popup(id))),
-                        )
-                    } else {
-                        (None, None)
+                    match (show_bar, &svc) {
+                        (true, Some(svc)) => {
+                            let svc_enter = svc.clone();
+                            let svc_leave = svc.clone();
+                            (
+                                Some(Rc::new(move || svc_enter.inhibit_popup(id))),
+                                Some(Rc::new(move || svc_leave.release_popup(id))),
+                            )
+                        }
+                        _ => (None, None),
                     };
 
                 let notification_controller = NotificationModel::builder()
@@ -252,7 +255,9 @@ impl Component for PopupNotificationsModel {
     ) {
         match message {
             PopupNotificationsCommandOutput::NotificationsChanged => {
-                let notifications = notification_service().popups.get();
+                let notifications = notification_service()
+                    .map(|s| s.popups.get())
+                    .unwrap_or_default();
                 debug!(
                     count = notifications.len(),
                     "popup_notifications: NotificationsChanged → SetItems"

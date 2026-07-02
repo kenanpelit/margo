@@ -1583,18 +1583,25 @@ impl IPCService {
     /// Do Not Disturb — set/clear/toggle directly on the global
     /// notification service (the bar pill + popups subscribe to it).
     async fn notification_dnd_on(&self) {
-        notification_service().set_dnd(true);
+        if let Some(svc) = notification_service() {
+            svc.set_dnd(true);
+        }
     }
     async fn notification_dnd_off(&self) {
-        notification_service().set_dnd(false);
+        if let Some(svc) = notification_service() {
+            svc.set_dnd(false);
+        }
     }
     async fn notification_dnd_toggle(&self) {
-        let service = notification_service();
-        service.set_dnd(!service.dnd.get());
+        if let Some(service) = notification_service() {
+            service.set_dnd(!service.dnd.get());
+        }
     }
     /// Number of notifications currently in history (for bars / scripts).
     async fn notification_count(&self) -> u32 {
-        notification_service().notifications.get().len() as u32
+        notification_service()
+            .map(|s| s.notifications.get().len() as u32)
+            .unwrap_or(0)
     }
     async fn screenshot(&self) {
         let _ = self.tx.send(IPCCommand::Screenshot);

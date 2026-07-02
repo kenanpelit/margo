@@ -684,7 +684,10 @@ impl ToastProducerModel {
     }
 
     fn on_power_profile(&mut self) {
-        let profile = power_profile_service().power_profiles.active_profile.get();
+        let Some(svc) = power_profile_service() else {
+            return;
+        };
+        let profile = svc.power_profiles.active_profile.get();
         let label = get_power_profile_label(&profile).to_string();
         match &self.prev_profile {
             None => {
@@ -709,7 +712,10 @@ impl ToastProducerModel {
     }
 
     fn on_dnd(&mut self) {
-        let on = notification_service().dnd.get();
+        let Some(svc) = notification_service() else {
+            return;
+        };
+        let on = svc.dnd.get();
         match self.prev_dnd {
             None => {
                 self.prev_dnd = Some(on);

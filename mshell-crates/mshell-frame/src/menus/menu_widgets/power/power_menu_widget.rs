@@ -707,7 +707,10 @@ async fn run_mpower(arg: &str) {
 
 /// Apply a profile through power-profiles-daemon over D-Bus.
 async fn set_profile(profile: Profile) {
-    if let Err(e) = power_profile_service()
+    let Some(svc) = power_profile_service() else {
+        return;
+    };
+    if let Err(e) = svc
         .power_profiles
         .set_active_profile(profile.to_wayle())
         .await

@@ -121,8 +121,10 @@ pub fn apply(cfg: &GameMode, on: bool) {
         Err(e) => tracing::warn!(error = %e, "game mode: writing effects fragment failed"),
     }
 
-    if cfg.enable_dnd {
-        notification_service().set_dnd(on);
+    if cfg.enable_dnd
+        && let Some(svc) = notification_service()
+    {
+        svc.set_dnd(on);
     }
 
     if cfg.inhibit_idle {

@@ -5,7 +5,10 @@ use tokio_util::sync::CancellationToken;
 use wayle_power_profiles::types::profile::PowerProfile;
 
 pub fn get_active_power_profile_icon() -> &'static str {
-    let profile = power_profile_service().power_profiles.active_profile.get();
+    let Some(svc) = power_profile_service() else {
+        return get_power_profile_icon(&PowerProfile::Unknown);
+    };
+    let profile = svc.power_profiles.active_profile.get();
     get_power_profile_icon(&profile)
 }
 
@@ -35,10 +38,11 @@ pub fn spawn_active_profile_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let active = power_profile_service()
-        .power_profiles
-        .active_profile
-        .clone();
+    let Some(svc) = power_profile_service() else {
+        // No power-profiles-daemon — nothing to watch.
+        return;
+    };
+    let active = svc.power_profiles.active_profile.clone();
 
     if let Some(cancellation_token) = cancellation_token {
         watch_cancellable!(sender, cancellation_token, [active.watch()], |out| {
@@ -59,7 +63,11 @@ pub fn spawn_profiles_watcher<C>(
     C: Component,
     C::CommandOutput: Send + 'static,
 {
-    let profiles = power_profile_service().power_profiles.profiles.clone();
+    let Some(svc) = power_profile_service() else {
+        // No power-profiles-daemon — nothing to watch.
+        return;
+    };
+    let profiles = svc.power_profiles.profiles.clone();
 
     if let Some(cancellation_token) = cancellation_token {
         watch_cancellable!(sender, cancellation_token, [profiles.watch()], |out| {

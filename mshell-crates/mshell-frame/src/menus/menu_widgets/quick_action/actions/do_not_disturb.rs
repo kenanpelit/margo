@@ -87,10 +87,10 @@ impl Component for DoNotDisturbModel {
     ) {
         match message {
             DoNotDisturbInput::Clicked => {
-                let service = notification_service();
-                let dnd = service.dnd.get();
-
-                service.set_dnd(!dnd);
+                if let Some(service) = notification_service() {
+                    let dnd = service.dnd.get();
+                    service.set_dnd(!dnd);
+                }
             }
         }
 
@@ -106,8 +106,7 @@ impl Component for DoNotDisturbModel {
     ) {
         match message {
             DoNotDisturbCommandOutput::DndChanged => {
-                let service = notification_service();
-                self.enabled = service.dnd.get();
+                self.enabled = notification_service().map(|s| s.dnd.get()).unwrap_or(false);
             }
         }
 
