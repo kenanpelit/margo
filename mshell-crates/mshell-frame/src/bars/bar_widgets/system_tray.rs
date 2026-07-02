@@ -205,7 +205,11 @@ impl Component for SystemTrayModel {
 
 impl SystemTrayModel {
     fn spawn_system_tray_watcher(sender: &ComponentSender<Self>) {
-        let service = sys_tray_service();
+        let Some(service) = sys_tray_service() else {
+            // No StatusNotifier host (build failed at startup) — the tray
+            // pill just stays empty rather than the shell refusing to start.
+            return;
+        };
         let items = service.items.clone();
 
         watch!(sender, [items.watch()], |out| {

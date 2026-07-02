@@ -103,7 +103,22 @@ pub async fn init_services(
                 }
             })
         },
-        async { Ok::<_, anyhow::Error>(BrightnessService::new().await?) },
+        // Brightness is best-effort. `BrightnessService::new()` returns
+        // `Ok(None)` when there's simply no backlight device, but a desktop
+        // with no `/sys/class/backlight` at all — or a transient sysfs/D-Bus
+        // error — surfaces as `Err`, which without this guard would abort the
+        // whole `try_join!` and the shell never starts. Degrade to "no
+        // brightness control"; `brightness_service()` is then `None` (its
+        // callers already handle that).
+        async {
+            Ok::<_, anyhow::Error>(match BrightnessService::new().await {
+                Ok(b) => b,
+                Err(e) => {
+                    warn!("Brightness backlight unavailable; continuing without it: {e:#}");
+                    None
+                }
+            })
+        },
         async { MargoService::new().await },
         line_power_fut,
         async {
@@ -116,7 +131,19 @@ pub async fn init_services(
         async { Ok::<_, anyhow::Error>(NetworkService::new().await?) },
         async { Ok::<_, anyhow::Error>(NotificationService::new().await?) },
         async { Ok::<_, anyhow::Error>(PowerProfilesService::new().await?) },
-        async { Ok::<_, anyhow::Error>(SystemTrayService::builder().build().await?) },
+        // System tray is best-effort. Building the StatusNotifier host can
+        // fail (e.g. the well-known name is already owned by another tray).
+        // The tray pill is non-essential, so degrade to "no tray" rather than
+        // blocking login; `sys_tray_service()` is then `None`.
+        async {
+            Ok::<_, anyhow::Error>(match SystemTrayService::builder().build().await {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    warn!("System tray host unavailable; continuing without it: {e:#}");
+                    None
+                }
+            })
+        },
     )?;
     let sysinfo = SysinfoService::builder().build();
     let weather = WeatherServiceBuilder::new()
@@ -270,9 +297,12 @@ pub fn sys_info_service() -> Arc<SysinfoService> {
         .clone()
 }
 
-static SYS_TRAY_SERVICE: OnceLock<Arc<SystemTrayService>> = OnceLock::new();
+static SYS_TRAY_SERVICE: OnceLock<Option<Arc<SystemTrayService>>> = OnceLock::new();
 
-pub fn sys_tray_service() -> Arc<SystemTrayService> {
+/// The system-tray (StatusNotifier host) service, or `None` when the host
+/// couldn't be stood up at startup (e.g. another tray already owns the name).
+/// Callers degrade — the tray pill shows nothing.
+pub fn sys_tray_service() -> Option<Arc<SystemTrayService>> {
     SYS_TRAY_SERVICE
         .get()
         .expect("SystemTrayService not initialized")
