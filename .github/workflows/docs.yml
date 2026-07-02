@@ -65,6 +65,11 @@ jobs:
         with:
           path: site
 
+  # Publishing the site is best-effort. The `build` job above is the real gate
+  # (it fails hard if the docs don't build); a GitHub Pages *backend* incident
+  # must not red-X every push. So the deploy is tolerated (continue-on-error)
+  # and its true outcome is surfaced as a warning annotation — a genuine deploy
+  # break is still visible, without failing the run during a Pages outage.
   deploy:
     needs: build
     runs-on: ubuntu-latest
@@ -74,3 +79,16 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+        continue-on-error: true
+        with:
+          # Fail fast (5 min) instead of hanging the default 10 when the Pages
+          # deployment queue is stuck during an incident.
+          timeout: 300000
+      - name: Report deploy outcome
+        if: always()
+        run: |
+          if [ "${{ steps.deployment.outcome }}" = "success" ]; then
+            echo "Pages deploy OK → ${{ steps.deployment.outputs.page_url }}"
+          else
+            echo "::warning title=Pages deploy did not succeed::The docs site was not updated (usually a transient GitHub Pages incident). The last good build stays live; re-run this workflow once Pages is healthy — see https://www.githubstatus.com/"
+          fi
