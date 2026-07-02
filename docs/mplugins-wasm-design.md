@@ -109,6 +109,29 @@ plugin.wasm (guest, sandboxed)            mshell (host, GTK)
 - **Trust:** capabilities ARE the sandbox. Only expose vetted host functions;
   `http` egress is the main thing to surface to users at install/enable.
 
+## Capability enforcement (deny-by-default)
+
+The sensitive host calls that reach **outside** the per-plugin filesystem
+sandbox are gated on a manifest-declared allowlist. A plugin opts in with a
+`[capabilities]` table in its `manifest.toml`:
+
+```toml
+[capabilities]
+process   = true   # spawn subprocesses: the `run` / `process-start` calls
+network   = true   # outbound HTTP: `http` / `http-start`
+clipboard = true   # read/write the clipboard: `copy` / `clipboard-read`
+```
+
+Every field defaults to `false`, so a manifest with no `[capabilities]` table
+grants **nothing**. The shell threads the granted set to the WASM host
+(`mshell-plugins` → config `panel_capabilities` → `PluginPanel::new` →
+`PluginRuntime::instantiate`), and the host (`HostState`) refuses any ungated
+call — returning a capability error to the guest and logging a `denied …` warn,
+never performing the action. The `read-file`/`write-file` calls stay always-on
+because they are already path-sandboxed (`sandbox.rs`) and cannot escape the
+plugin's data dir. Enforcement is covered by
+`denies_network_without_capability` in `tests/loads_guest.rs`.
+
 ## Relationship to the declarative tier
 
 WASM plugins **reuse** the declarative pieces: the same `[[setting]]` form (so

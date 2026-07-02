@@ -43,6 +43,10 @@ pub struct Manifest {
     /// Kind of [`entry`](Self::entry); currently only `"wasm"`.
     #[serde(default)]
     pub entry_kind: String,
+    /// Sensitive host capabilities this plugin's WASM panel opts into. Absent =
+    /// none granted (deny-by-default); the shell enforces this in the WASM host.
+    #[serde(default)]
+    pub capabilities: Capabilities,
 }
 
 impl Manifest {
@@ -50,6 +54,42 @@ impl Manifest {
     /// `entry_kind = "wasm"`).
     pub fn has_wasm_entry(&self) -> bool {
         !self.entry.trim().is_empty() && self.entry_kind == "wasm"
+    }
+}
+
+/// The sensitive host capabilities a plugin's WASM panel opts into. Everything
+/// is **denied by default** — a plugin must request each one in its
+/// `[capabilities]` table and the shell enforces it in the WASM host. The
+/// path-sandboxed `read-file`/`write-file` calls are always available and are
+/// deliberately not listed here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+pub struct Capabilities {
+    /// Spawn subprocesses (`run`, `process-start` host calls).
+    #[serde(default)]
+    pub process: bool,
+    /// Make outbound network requests (`http`, `http-start`).
+    #[serde(default)]
+    pub network: bool,
+    /// Read/write the system clipboard (`copy`, `clipboard-read`).
+    #[serde(default)]
+    pub clipboard: bool,
+}
+
+impl Capabilities {
+    /// Compact comma-separated token list of the granted capabilities — the
+    /// wire form the shell threads to the plugin host (`""` = none).
+    pub fn to_tokens(&self) -> String {
+        let mut out = Vec::new();
+        if self.process {
+            out.push("process");
+        }
+        if self.network {
+            out.push("network");
+        }
+        if self.clipboard {
+            out.push("clipboard");
+        }
+        out.join(",")
     }
 }
 
@@ -435,5 +475,32 @@ opens_panel = true
         assert!(meets_min_mshell("0.8.8", "1.0.0"));
         assert!(!meets_min_mshell("0.9.0", "0.8.8"));
         assert!(!meets_min_mshell("1.0.0", "0.8.20"));
+    }
+
+    #[test]
+    fn capabilities_default_to_none_and_parse() {
+        // No [capabilities] table → deny-by-default.
+        let d: Manifest = toml::from_str("id = \"x\"\nversion = \"1.0.0\"\n").unwrap();
+        assert_eq!(d.capabilities, Capabilities::default());
+        assert!(!d.capabilities.process && !d.capabilities.network && !d.capabilities.clipboard);
+        assert_eq!(d.capabilities.to_tokens(), "");
+
+        let m: Manifest = toml::from_str(
+            r#"
+id = "assistant"
+version = "1.0.0"
+entry = "plugin.wasm"
+entry_kind = "wasm"
+
+[capabilities]
+network = true
+clipboard = true
+"#,
+        )
+        .unwrap();
+        assert!(m.capabilities.network && m.capabilities.clipboard);
+        assert!(!m.capabilities.process);
+        // Stable token order: process, network, clipboard.
+        assert_eq!(m.capabilities.to_tokens(), "network,clipboard");
     }
 }

@@ -8,7 +8,7 @@
 //! then: cargo test -p mshell-plugin-host --features wasm
 #![cfg(feature = "wasm")]
 
-use mshell_plugin_host::{PluginRuntime, UiEvent, UiEventKind, UiKind};
+use mshell_plugin_host::{PluginCapabilities, PluginRuntime, UiEvent, UiEventKind, UiKind};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -60,7 +60,7 @@ fn loads_and_drives_guest() {
 
     let rt = PluginRuntime::new().expect("runtime");
     let mut inst = rt
-        .instantiate("hello", &path, HashMap::new())
+        .instantiate("hello", &path, HashMap::new(), PluginCapabilities::all())
         .expect("instantiate");
 
     // Initial render.
@@ -126,7 +126,7 @@ fn capabilities_get_setting_and_http() {
     let mut settings = HashMap::new();
     settings.insert("url".to_string(), format!("http://{addr}/"));
     let mut inst = rt
-        .instantiate("hello", &path, settings)
+        .instantiate("hello", &path, settings, PluginCapabilities::all())
         .expect("instantiate");
 
     inst.view().expect("view");
@@ -157,6 +157,76 @@ fn capabilities_get_setting_and_http() {
     server.join().ok();
 }
 
+/// Deny-by-default: a plugin instantiated with **no** granted capabilities must
+/// not reach the network. The host returns a capability error instead of
+/// performing the `http` call, so the server is never contacted and the fetched
+/// body never appears in the rendered tree.
+#[test]
+fn denies_network_without_capability() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let path = fixture();
+    if !path.exists() {
+        eprintln!("skip: guest fixture not built ({})", path.display());
+        return;
+    }
+
+    // A server that *would* answer if the (denied) request ever arrived. The
+    // accept is non-blocking and polled briefly so the test can never hang when
+    // — as expected — no connection is made.
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    listener.set_nonblocking(true).expect("nonblocking");
+    let addr = listener.local_addr().expect("addr");
+    let hit = Arc::new(AtomicBool::new(false));
+    let hit_srv = hit.clone();
+    let server = std::thread::spawn(move || {
+        for _ in 0..20 {
+            match listener.accept() {
+                Ok((mut sock, _)) => {
+                    hit_srv.store(true, Ordering::SeqCst);
+                    let mut buf = [0u8; 1024];
+                    let _ = sock.read(&mut buf);
+                    let _ = sock.write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\nConnection: close\r\n\r\nhello world",
+                    );
+                    return;
+                }
+                Err(_) => std::thread::sleep(Duration::from_millis(25)),
+            }
+        }
+    });
+
+    let rt = PluginRuntime::new().expect("runtime");
+    let mut settings = HashMap::new();
+    settings.insert("url".to_string(), format!("http://{addr}/"));
+    let mut inst = rt
+        // No capabilities granted → the http host call is refused.
+        .instantiate("hello", &path, settings, PluginCapabilities::default())
+        .expect("instantiate");
+
+    inst.view().expect("view");
+    let after = inst
+        .update(&UiEvent {
+            id: "caps".into(),
+            kind: UiEventKind::Click,
+            value: String::new(),
+        })
+        .expect("update");
+
+    server.join().ok();
+    assert!(
+        !hit.load(Ordering::SeqCst),
+        "network was reached despite no 'network' capability"
+    );
+    assert!(
+        !after
+            .iter()
+            .any(|n| n.kind == UiKind::Markdown && n.text.contains("hello world")),
+        "the fetched body must not appear when 'network' is denied"
+    );
+}
+
 /// W4: `http-start` delivers the body off-thread as `stream-chunk` events that
 /// `pump` feeds back to the guest. We drive `pump` manually here — the role the
 /// GTK timeout plays in the live shell.
@@ -184,7 +254,7 @@ fn streaming_http_delivers_chunks() {
     let mut settings = HashMap::new();
     settings.insert("url".to_string(), format!("http://{addr}/"));
     let mut inst = rt
-        .instantiate("hello", &path, settings)
+        .instantiate("hello", &path, settings, PluginCapabilities::all())
         .expect("instantiate");
     inst.view().expect("view");
 
@@ -248,7 +318,7 @@ fn sdk_chat_guest_runs_a_turn() {
     let mut settings = HashMap::new();
     settings.insert("url".to_string(), format!("http://{addr}/"));
     let mut inst = rt
-        .instantiate("chat", &path, settings)
+        .instantiate("chat", &path, settings, PluginCapabilities::all())
         .expect("instantiate");
 
     // Initial UI: an entry to type into, inside the SDK-built tree.
@@ -329,7 +399,12 @@ fn assistant_guest_streams_gemini_sse() {
     settings.insert("model".to_string(), "gemini-2.5-flash".to_string());
     settings.insert("api_key".to_string(), "test-key".to_string());
     let mut inst = rt
-        .instantiate("assistant-panel", &path, settings)
+        .instantiate(
+            "assistant-panel",
+            &path,
+            settings,
+            PluginCapabilities::all(),
+        )
         .expect("instantiate");
     inst.view().expect("view");
 

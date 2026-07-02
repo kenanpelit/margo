@@ -42,6 +42,7 @@ pub(crate) enum CustomWidgetOutput {
         name: String,
         entry: String,
         settings: String,
+        capabilities: String,
         min_width: i32,
         max_height: i32,
     },
@@ -303,6 +304,7 @@ fn wire_panel(
     let name = config.name.clone();
     let entry = config.panel_entry.clone();
     let settings = config.panel_settings.clone();
+    let capabilities = config.panel_capabilities.clone();
     let min_width = config.panel_min_width;
     let max_height = config.panel_max_height;
     let sender = sender.clone();
@@ -311,6 +313,7 @@ fn wire_panel(
             name: name.clone(),
             entry: entry.clone(),
             settings: settings.clone(),
+            capabilities: capabilities.clone(),
             min_width,
             max_height,
         });

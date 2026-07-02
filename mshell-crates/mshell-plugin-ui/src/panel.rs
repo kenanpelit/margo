@@ -36,8 +36,10 @@ impl PluginPanel {
         plugin_id: &str,
         wasm_path: &Path,
         settings: PluginSettings,
+        capabilities: &str,
     ) -> anyhow::Result<Self> {
-        let instance = runtime.instantiate(plugin_id, wasm_path, settings)?;
+        let caps = mshell_plugin_host::PluginCapabilities::parse(capabilities);
+        let instance = runtime.instantiate(plugin_id, wasm_path, settings, caps)?;
         let container = gtk::Box::new(gtk::Orientation::Vertical, 6);
         container.add_css_class("plugin-panel");
 

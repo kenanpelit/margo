@@ -300,11 +300,13 @@ pub enum FrameInput {
     /// existing category-cycle path.
     ToggleAppLauncherMenuWithTab(String),
     /// Open the first-class plugin-panel menu hosting a plugin's WASM panel,
-    /// carrying its compiled component path + resolved settings (JSON).
+    /// carrying its compiled component path + resolved settings (JSON) + the
+    /// granted host capabilities (comma-separated tokens; deny-by-default).
     ToggleWasmPluginPanel {
         name: String,
         entry: String,
         settings: String,
+        capabilities: String,
         min_width: i32,
         max_height: i32,
     },
@@ -1252,6 +1254,7 @@ impl Component for Frame {
                 name,
                 entry,
                 settings,
+                capabilities,
                 min_width: _,
                 max_height: _,
             } => {
@@ -1269,6 +1272,7 @@ impl Component for Frame {
                             &name,
                             std::path::Path::new(entry.trim()),
                             parsed,
+                            &capabilities,
                         ) {
                             Ok(panel) => {
                                 slot.insert(panel);
@@ -1288,7 +1292,7 @@ impl Component for Frame {
                 }
                 #[cfg(not(feature = "wasm-plugins"))]
                 {
-                    let _ = (name, entry, settings);
+                    let _ = (name, entry, settings, capabilities);
                 }
             }
             FrameInput::TogglePluginMenu {
@@ -1334,6 +1338,7 @@ impl Component for Frame {
                             name: c.name,
                             entry: c.panel_entry,
                             settings: c.panel_settings,
+                            capabilities: c.panel_capabilities,
                             min_width: c.panel_min_width,
                             max_height: c.panel_max_height,
                         });
@@ -1410,6 +1415,7 @@ impl Component for Frame {
                                 &c.name,
                                 std::path::Path::new(c.panel_entry.trim()),
                                 parsed,
+                                &c.panel_capabilities,
                             ) {
                                 Ok(panel) => {
                                     slot.insert(panel);
@@ -2694,12 +2700,14 @@ impl Frame {
                     name,
                     entry,
                     settings,
+                    capabilities,
                     min_width,
                     max_height,
                 } => FrameInput::ToggleWasmPluginPanel {
                     name,
                     entry,
                     settings,
+                    capabilities,
                     min_width,
                     max_height,
                 },

@@ -82,6 +82,48 @@ pub struct UiNode {
     pub properties: HashMap<String, String>,
 }
 
+/// The sensitive host capabilities a plugin is allowed to use. **Deny by
+/// default**: a plugin gets a capability only when its manifest opts in. The
+/// filesystem `read-file`/`write-file` calls are always path-sandboxed (see
+/// [`crate::sandbox`]) and so are not gated here; these are the calls that
+/// reach outside that sandbox.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PluginCapabilities {
+    /// Spawn subprocesses: the `run` and `process-start` host calls.
+    pub process: bool,
+    /// Make outbound network requests: `http` and `http-start`.
+    pub network: bool,
+    /// Read/write the system clipboard: `copy` and `clipboard-read`.
+    pub clipboard: bool,
+}
+
+impl PluginCapabilities {
+    /// Every capability granted — for trusted callers and tests only.
+    pub fn all() -> Self {
+        Self {
+            process: true,
+            network: true,
+            clipboard: true,
+        }
+    }
+
+    /// Parse the shell's compact wire form: a comma-separated token list
+    /// (`"process,network"`). Unknown or blank tokens are ignored; an empty
+    /// string grants nothing (deny-by-default).
+    pub fn parse(tokens: &str) -> Self {
+        let mut caps = Self::default();
+        for tok in tokens.split(',') {
+            match tok.trim() {
+                "process" => caps.process = true,
+                "network" => caps.network = true,
+                "clipboard" => caps.clipboard = true,
+                _ => {}
+            }
+        }
+        caps
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiEventKind {
     Click,
@@ -179,6 +221,10 @@ struct StreamMsg {
 
 struct HostState {
     plugin_id: String,
+    /// Sensitive host capabilities this plugin was granted (deny-by-default).
+    /// Gates `run`/`process-start` (process), `http`/`http-start` (network),
+    /// and `copy`/`clipboard-read` (clipboard).
+    capabilities: PluginCapabilities,
     /// Values the user set for this plugin (declarative `[[setting]]` tier),
     /// exposed to the guest via `get-setting`.
     settings: HashMap<String, String>,
@@ -239,6 +285,13 @@ impl Host for HostState {
     }
 
     fn copy(&mut self, text: String) {
+        if !self.capabilities.clipboard {
+            tracing::warn!(
+                plugin = self.plugin_id,
+                "denied clipboard write: capability 'clipboard' not granted"
+            );
+            return;
+        }
         use std::io::Write as _;
         use std::process::{Command, Stdio};
         match Command::new("wl-copy").stdin(Stdio::piped()).spawn() {
@@ -255,6 +308,17 @@ impl Host for HostState {
     }
 
     fn run(&mut self, program: String, args: Vec<String>) -> ProcessOutput {
+        if !self.capabilities.process {
+            tracing::warn!(
+                plugin = self.plugin_id,
+                "denied run `{program}`: capability 'process' not granted"
+            );
+            return ProcessOutput {
+                stdout: String::new(),
+                stderr: "capability 'process' not granted".to_string(),
+                code: -1,
+            };
+        }
         match std::process::Command::new(&program).args(&args).output() {
             Ok(out) => ProcessOutput {
                 stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -273,10 +337,25 @@ impl Host for HostState {
     }
 
     fn http(&mut self, req: HttpRequest) -> Result<HttpResponse, String> {
+        if !self.capabilities.network {
+            tracing::warn!(
+                plugin = self.plugin_id,
+                "denied http `{}`: capability 'network' not granted",
+                req.url
+            );
+            return Err("capability 'network' not granted".to_string());
+        }
         host_http(req)
     }
 
     fn clipboard_read(&mut self) -> String {
+        if !self.capabilities.clipboard {
+            tracing::warn!(
+                plugin = self.plugin_id,
+                "denied clipboard read: capability 'clipboard' not granted"
+            );
+            return String::new();
+        }
         match std::process::Command::new("wl-paste").arg("-n").output() {
             Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).into_owned(),
             Ok(_) => String::new(),
@@ -325,10 +404,23 @@ impl Host for HostState {
         let tx = self.stream_tx.clone();
         let inflight = self.inflight.clone();
         let plugin = self.plugin_id.clone();
+        let allowed = self.capabilities.process;
         inflight.fetch_add(1, Ordering::SeqCst);
         let id = req_id.clone();
         std::thread::spawn(move || {
-            host_process_stream(&id, &plugin, &program, &args, &tx);
+            if allowed {
+                host_process_stream(&id, &plugin, &program, &args, &tx);
+            } else {
+                tracing::warn!(
+                    plugin,
+                    "denied process-start `{program}`: capability 'process' not granted"
+                );
+                let _ = tx.send(StreamMsg {
+                    req_id: id,
+                    chunk: "error: capability 'process' not granted".to_string(),
+                    done: true,
+                });
+            }
             inflight.fetch_sub(1, Ordering::SeqCst);
         });
         req_id
@@ -338,12 +430,27 @@ impl Host for HostState {
         let req_id = format!("r{}", self.next_req.fetch_add(1, Ordering::Relaxed));
         let tx = self.stream_tx.clone();
         let inflight = self.inflight.clone();
+        let plugin = self.plugin_id.clone();
+        let allowed = self.capabilities.network;
         inflight.fetch_add(1, Ordering::SeqCst);
         let id = req_id.clone();
         // The blocking read runs off the UI thread; chunks flow back through the
         // channel to `pump`. The id lets the guest correlate chunks to requests.
         std::thread::spawn(move || {
-            host_http_stream(&id, req, &tx);
+            if allowed {
+                host_http_stream(&id, req, &tx);
+            } else {
+                tracing::warn!(
+                    plugin,
+                    "denied http-start `{}`: capability 'network' not granted",
+                    req.url
+                );
+                let _ = tx.send(StreamMsg {
+                    req_id: id,
+                    chunk: "error: capability 'network' not granted".to_string(),
+                    done: true,
+                });
+            }
             inflight.fetch_sub(1, Ordering::SeqCst);
         });
         req_id
@@ -551,6 +658,7 @@ impl PluginRuntime {
         plugin_id: &str,
         wasm_path: &Path,
         settings: HashMap<String, String>,
+        capabilities: PluginCapabilities,
     ) -> Result<PluginInstance> {
         let component = Component::from_file(&self.engine, wasm_path)?;
         let mut linker = Linker::new(&self.engine);
@@ -568,6 +676,7 @@ impl PluginRuntime {
             &self.engine,
             HostState {
                 plugin_id: plugin_id.to_string(),
+                capabilities,
                 settings,
                 data_dir,
                 stream_tx,

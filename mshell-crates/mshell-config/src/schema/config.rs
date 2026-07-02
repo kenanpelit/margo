@@ -1145,6 +1145,10 @@ pub struct CustomWidgetConfig {
     /// JSON object of the plugin's resolved settings, passed to the WASM
     /// panel's `get-setting` capability. Only meaningful with `panel_entry`.
     pub panel_settings: String,
+    /// Comma-separated sensitive host capabilities this plugin's WASM panel is
+    /// granted (`process`, `network`, `clipboard`). Empty = none (deny by
+    /// default). Set from the manifest; only meaningful with `panel_entry`.
+    pub panel_capabilities: String,
     /// The plugin's panel/menu surface min width + max height (a per-plugin
     /// preference edited in the plugin's own settings, applied to the shared
     /// plugin-menu surface on open). 0 = use the surface default.
