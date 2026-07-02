@@ -202,14 +202,10 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         // animations
         "animations" => cfg.animations = parse_bool(val),
         "layer_animations" => cfg.layer_animations = parse_bool(val),
-        "animation_type_open" => cfg.animation_type_open = val[..val.len().min(9)].to_string(),
-        "animation_type_close" => cfg.animation_type_close = val[..val.len().min(9)].to_string(),
-        "layer_animation_type_open" => {
-            cfg.layer_animation_type_open = val[..val.len().min(9)].to_string()
-        }
-        "layer_animation_type_close" => {
-            cfg.layer_animation_type_close = val[..val.len().min(9)].to_string()
-        }
+        "animation_type_open" => cfg.animation_type_open = clamp_keyword(val, 9),
+        "animation_type_close" => cfg.animation_type_close = clamp_keyword(val, 9),
+        "layer_animation_type_open" => cfg.layer_animation_type_open = clamp_keyword(val, 9),
+        "layer_animation_type_close" => cfg.layer_animation_type_close = clamp_keyword(val, 9),
         "animation_fade_in" => cfg.animation_fade_in = parse_bool(val),
         "animation_fade_out" => cfg.animation_fade_out = parse_bool(val),
         "tag_animation_direction" => {
@@ -630,7 +626,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         }
         "allow_lock_transparent" => cfg.allow_lock_transparent = parse_bool(val),
         "per_output_frame_clock" => cfg.per_output_frame_clock = parse_bool(val),
-        "keymode" => cfg.key_mode = val[..val.len().min(27)].to_string(),
+        "keymode" => cfg.key_mode = clamp_keyword(val, 27),
 
         // xkb
         "xkb_rules_rules" => cfg.xkb_rules.rules = val.to_string(),
@@ -1346,6 +1342,21 @@ fn parse_f32(s: &str) -> f32 {
 fn parse_f64(s: &str) -> f64 {
     s.trim().parse().unwrap_or(0.0)
 }
+/// Char-safe clamp for the fixed-width compositor keyword fields
+/// (`animation_type_*` cap at 9 chars, `keymode` at 27). A raw byte slice
+/// `val[..9]` panics whenever byte 9 lands in the middle of a multibyte
+/// UTF-8 char (e.g. `animation_type_open = kayan日`) — and that panic
+/// unwinds past the per-line reload guard and takes the whole compositor
+/// down on `mctl reload`. Truncate on a char boundary instead, and warn
+/// when a longer value is cut so a silent truncation isn't mistaken for a
+/// working config. Identical to the old byte slice for ASCII values.
+fn clamp_keyword(val: &str, max: usize) -> String {
+    let out: String = val.chars().take(max).collect();
+    if val.chars().count() > max {
+        warn!("config value {val:?} exceeds the {max}-char limit — using {out:?}");
+    }
+    out
+}
 fn parse_bool_s(s: &str) -> bool {
     parse_bool(s)
 }
@@ -1652,7 +1663,21 @@ pub const OPTION_KEYS: &[&str] = &[
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_config, parse_key, strip_inline_comment};
+    use super::{clamp_keyword, parse_config, parse_key, strip_inline_comment};
+
+    #[test]
+    fn clamp_keyword_is_char_safe() {
+        // Regression: a byte slice `val[..9]` panicked when byte 9 split a
+        // multibyte char, crashing the compositor on `mctl reload`.
+        // Truncation must happen on a char boundary, never mid-UTF-8.
+        assert_eq!(clamp_keyword("kayan日günü", 9).chars().count(), 9);
+        assert_eq!(clamp_keyword("日本語のアニメーション名", 4), "日本語の");
+        // ASCII behaviour is identical to the old byte slice.
+        assert_eq!(clamp_keyword("slidefromtop", 9), "slidefrom");
+        // Values within the limit pass through untouched.
+        assert_eq!(clamp_keyword("slide_in", 9), "slide_in");
+        assert_eq!(clamp_keyword("", 9), "");
+    }
 
     #[test]
     fn xf86_media_keysyms_resolve() {
