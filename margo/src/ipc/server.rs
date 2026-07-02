@@ -14,6 +14,14 @@ use std::os::unix::net::{UnixListener, UnixStream};
 /// fresh snapshot. 4 MiB is hundreds of state frames.
 const IPC_OUT_CAP: usize = 4 * 1024 * 1024;
 
+/// Cap on a single connection's pending *inbound* bytes. Requests are a
+/// `\n`-terminated line protocol; a well-formed request is a few hundred
+/// bytes at most. A client that streams bytes without ever sending a
+/// newline would grow the inbound buffer without bound — the mirror image
+/// of the outbound `IPC_OUT_CAP` gap. 1 MiB is far above any legitimate
+/// request; a connection whose un-framed buffer passes it is dropped.
+const IPC_IN_CAP: usize = 1024 * 1024;
+
 /// Result of trying to drain a connection's outbound buffer.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DrainState {
@@ -88,6 +96,16 @@ pub fn insert_ipc_source(handle: &LoopHandle<'static, MargoState>) {
             return;
         }
     };
+    // Restrict the socket to the owner (0600). `dispatch spawn` runs arbitrary
+    // shell commands, so the socket must not be reachable by other local users.
+    // The runtime dir is normally 0700 already; this is defence-in-depth in
+    // case it isn't (e.g. a misconfigured `XDG_RUNTIME_DIR`). Best-effort.
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)) {
+            tracing::warn!(error = %e, "ipc: set socket permissions");
+        }
+    }
     if let Err(e) = listener.set_nonblocking(true) {
         tracing::warn!(error = %e, "ipc: set_nonblocking");
     }
@@ -205,6 +223,20 @@ impl MargoState {
                 Ok(n) => {
                     if let Some(c) = self.ipc_conns.get_mut(&token) {
                         c.buf.extend_from_slice(&chunk[..n]);
+                        // Guard against an un-framed flood: `ipc_process_lines`
+                        // below drains every complete line, so `buf` only
+                        // retains a partial trailing line. If that partial line
+                        // grows past the cap, the client is streaming without a
+                        // newline — drop it instead of growing without bound.
+                        if c.buf.len() > IPC_IN_CAP {
+                            tracing::warn!(
+                                token,
+                                len = c.buf.len(),
+                                "ipc: inbound buffer over cap; dropping connection"
+                            );
+                            self.ipc_drop_conn(token);
+                            return PostAction::Remove;
+                        }
                     }
                     self.ipc_process_lines(token);
                 }
