@@ -18,7 +18,9 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BarPillKind {
     ActiveWindow,
+    AudioRoute,
     AudioVisualizer,
+    Countdown,
     DarkMode,
     KeyboardLayout,
     ColorPicker,
@@ -36,7 +38,9 @@ impl BarPillKind {
     pub(crate) fn display_name(self) -> &'static str {
         match self {
             Self::ActiveWindow => "Active Window",
+            Self::AudioRoute => "Audio Route",
             Self::AudioVisualizer => "Audio Visualizer",
+            Self::Countdown => "Countdown",
             Self::DarkMode => "Dark Mode Toggle",
             Self::KeyboardLayout => "Keyboard Layout",
             Self::ColorPicker => "ColorPicker",
@@ -56,8 +60,14 @@ impl BarPillKind {
             Self::ActiveWindow => {
                 "Shows the title of the currently focused window. Click to cycle through windows on the active tag."
             }
+            Self::AudioRoute => {
+                "One-click switch of the whole default audio path (mic + speaker together) between the built-in device and a headset / external port. Shows the live route (Built-in / Headset); click flips it. Appears only on machines with a routable combo jack or dual port, and stays visible while the headset is unplugged — the click just waits until a headset port is available."
+            }
             Self::AudioVisualizer => {
                 "Live audio spectrum — a strip of bars driven by the `cava` CLI (raw mode). Pulses with whatever is playing; sits as a flat resting strip on silence. Needs `cava` installed."
+            }
+            Self::Countdown => {
+                "Shows the soonest enabled countdown from the Alarm Clock (a schedule/hourglass glyph + remaining time). Click opens the Alarm Clock menu on its Countdown tab. Hidden when no enabled, parseable target remains."
             }
             Self::DarkMode => {
                 "One-click flip between Light and Dark matugen modes. Icon reflects the mode you'd switch *to*."

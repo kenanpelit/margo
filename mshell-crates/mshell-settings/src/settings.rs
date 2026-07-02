@@ -1321,10 +1321,22 @@ impl Component for SettingsWindowModel {
                 icon: "window-symbolic",
             },
             WidgetEntry::Pill {
+                kind: BarPillKind::AudioRoute,
+                stack_name: "pill_audio_route",
+                label: "Audio Route",
+                icon: "audio-headset-symbolic",
+            },
+            WidgetEntry::Pill {
                 kind: BarPillKind::AudioVisualizer,
                 stack_name: "pill_audio_visualizer",
                 label: "Audio Visualizer",
                 icon: "audio-volume-high-symbolic",
+            },
+            WidgetEntry::Pill {
+                kind: BarPillKind::Countdown,
+                stack_name: "pill_countdown",
+                label: "Countdown",
+                icon: "alarm-symbolic",
             },
             WidgetEntry::Pill {
                 kind: BarPillKind::KeyboardLayout,

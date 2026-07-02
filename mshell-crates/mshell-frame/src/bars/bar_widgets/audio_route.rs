@@ -6,9 +6,12 @@
 //!
 //! One click: if anything is currently on the headset → send everything
 //! back to built-in; otherwise route everything to the headset. The
-//! glyph + label reflect the current route. The pill hides itself unless
-//! at least one side is routable (a headset port is present + available),
-//! so a machine with no combo jack never sees it.
+//! glyph + label reflect the current route. The pill shows whenever a
+//! two-way route *exists* (the machine has a combo jack / dual port) —
+//! staying put and showing the live route even while the headset is
+//! unplugged — and only hides on a machine with no routable pair (a
+//! single port), so it never appears where routing is meaningless. Click
+//! is a no-op until a headset port is actually available.
 
 use mshell_common::WatcherToken;
 use mshell_services::audio_service;
@@ -251,9 +254,14 @@ impl AudioRouteModel {
             .as_ref()
             .and_then(|d| resolve_route(&d.ports.get(), d.active_port.get().as_deref()));
 
-        let in_ok = self.in_route.as_ref().is_some_and(|r| r.switchable);
-        let out_ok = self.out_route.as_ref().is_some_and(|r| r.switchable);
-        let visible = in_ok || out_ok;
+        // Visible whenever a two-way route EXISTS on either side — i.e. the
+        // machine has a combo jack / dual port — even when the headset is
+        // currently unplugged (port present but unavailable). A pill the user
+        // deliberately placed in the bar should stay put and show the live
+        // route ("Built-in") rather than vanish on unplug; the click is then a
+        // no-op until a headset port becomes available (`switchable`). A
+        // machine with no routable pair resolves no route and stays hidden.
+        let visible = self.in_route.is_some() || self.out_route.is_some();
         let on_headset = self.on_headset();
 
         self.root_box.set_visible(visible);
