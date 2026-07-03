@@ -193,7 +193,10 @@ mod tests {
 
         let cals = provider.calendars().unwrap();
         assert_eq!(cals.len(), 2, "one file cal + one dir cal");
-        assert!(cals.iter().any(|c| c.remote_id == "file:work.ics" && c.name == "work"));
+        assert!(
+            cals.iter()
+                .any(|c| c.remote_id == "file:work.ics" && c.name == "work")
+        );
         assert!(cals.iter().any(|c| c.remote_id == "dir:personal"));
 
         let events = provider.events(wide_window()).unwrap();

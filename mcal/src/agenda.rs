@@ -39,7 +39,11 @@ fn occurs_on(event: &Event, date: NaiveDate) -> bool {
 /// Events that occur on `date`, sorted for display (all-day first, then by
 /// start time).
 pub fn events_on_day(events: &[Event], date: NaiveDate) -> Vec<Event> {
-    let mut out: Vec<Event> = events.iter().filter(|e| occurs_on(e, date)).cloned().collect();
+    let mut out: Vec<Event> = events
+        .iter()
+        .filter(|e| occurs_on(e, date))
+        .cloned()
+        .collect();
     sort_agenda(&mut out);
     out
 }

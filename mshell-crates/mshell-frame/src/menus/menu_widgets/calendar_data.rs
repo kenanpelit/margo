@@ -150,7 +150,11 @@ fn time_label(event: &mcal::Event) -> String {
     if event.all_day {
         "All day".to_string()
     } else {
-        event.start.with_timezone(&Local).format("%H:%M").to_string()
+        event
+            .start
+            .with_timezone(&Local)
+            .format("%H:%M")
+            .to_string()
     }
 }
 

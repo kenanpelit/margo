@@ -337,7 +337,9 @@ impl Default for AlarmConfig {
 /// One remote `.ics` calendar subscription (read-only). No OAuth — paste a
 /// public or "secret address in iCal format" URL (Google / Outlook / any
 /// CalDAV server that exposes one). Fetched + disk-cached by the `mcal` core.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
 #[serde(default)]
 pub struct CalendarSubscription {
     /// Display name for the calendar.
