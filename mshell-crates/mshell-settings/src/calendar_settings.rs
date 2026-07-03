@@ -29,6 +29,10 @@ pub(crate) enum CalendarSettingsInput {
     SetSubName(usize, String),
     SetSubUrl(usize, String),
     SetSubColor(usize, String),
+    // Connected accounts (mcal-owned, e.g. Google via OAuth).
+    ReloadAccounts,
+    AddGoogleAccount,
+    RemoveAccount(String),
 }
 
 #[derive(Debug)]
@@ -40,6 +44,78 @@ pub(crate) struct CalendarSettingsInit {}
 pub(crate) struct CalendarSettingsModel {
     subs: Vec<CalendarSubscription>,
     subs_box: gtk::Box,
+    accounts: Vec<mcal::StoredAccount>,
+    accounts_box: gtk::Box,
+}
+
+/// Snapshot mcal's connected accounts (empty on any read error).
+fn read_accounts() -> Vec<mcal::StoredAccount> {
+    mcal::AccountStore::load()
+        .map(|store| store.accounts)
+        .unwrap_or_default()
+}
+
+/// Repaint the connected-accounts list — one row per account, with a
+/// disconnect button. These are OAuth accounts mcal owns (Google), separate
+/// from the ICS subscriptions above.
+fn rebuild_accounts(
+    accounts_box: &gtk::Box,
+    accounts: &[mcal::StoredAccount],
+    sender: &ComponentSender<CalendarSettingsModel>,
+) {
+    while let Some(child) = accounts_box.first_child() {
+        accounts_box.remove(&child);
+    }
+    if accounts.is_empty() {
+        let empty = gtk::Label::builder()
+            .label("No connected accounts yet.")
+            .halign(gtk::Align::Start)
+            .xalign(0.0)
+            .wrap(true)
+            .build();
+        empty.add_css_class("label-small");
+        accounts_box.append(&empty);
+        return;
+    }
+    for account in accounts {
+        let row = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(8)
+            .css_classes(["launcher-script-row"])
+            .build();
+
+        let kind = gtk::Label::builder()
+            .label(&account.kind)
+            .css_classes(["label-small"])
+            .valign(gtk::Align::Center)
+            .build();
+        row.append(&kind);
+
+        let email = gtk::Label::builder()
+            .label(&account.email)
+            .css_classes(["label-medium"])
+            .halign(gtk::Align::Start)
+            .hexpand(true)
+            .xalign(0.0)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .build();
+        row.append(&email);
+
+        let remove = gtk::Button::from_icon_name("user-trash-symbolic");
+        remove.add_css_class("flat");
+        remove.set_valign(gtk::Align::Center);
+        remove.set_tooltip_text(Some("Disconnect this account"));
+        {
+            let s = sender.clone();
+            let id = account.id.clone();
+            remove.connect_clicked(move |_| {
+                s.input(CalendarSettingsInput::RemoveAccount(id.clone()))
+            });
+        }
+        row.append(&remove);
+
+        accounts_box.append(&row);
+    }
 }
 
 /// Snapshot `config.calendars.subscriptions`.
@@ -190,6 +266,39 @@ impl Component for CalendarSettingsModel {
                     },
                 },
 
+                // ════════ Accounts ════════
+                gtk::Label { add_css_class: "label-large-bold", set_label: "Accounts", set_halign: gtk::Align::Start },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    set_label: "Online calendars connected via OAuth (Google). Adding one opens your browser to sign in; it needs ~/.config/margo/mcal/credentials.toml first. Events merge into the agenda and grid.",
+                },
+
+                #[local_ref]
+                accounts_box -> gtk::Box {
+                    add_css_class: "settings-boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 6,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    gtk::Button {
+                        add_css_class: "ok-button-primary",
+                        set_label: "Add Google account",
+                        connect_clicked[sender] => move |_| sender.input(CalendarSettingsInput::AddGoogleAccount),
+                    },
+                    gtk::Button {
+                        set_label: "Reload",
+                        set_tooltip_text: Some("Re-read connected accounts from disk"),
+                        connect_clicked[sender] => move |_| sender.input(CalendarSettingsInput::ReloadAccounts),
+                    },
+                },
+
                 // ════════ Local calendars ════════
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Local calendars", set_halign: gtk::Align::Start },
                 gtk::Label {
@@ -273,11 +382,15 @@ impl Component for CalendarSettingsModel {
         let model = CalendarSettingsModel {
             subs: read_subscriptions(),
             subs_box: gtk::Box::new(gtk::Orientation::Vertical, 6),
+            accounts: read_accounts(),
+            accounts_box: gtk::Box::new(gtk::Orientation::Vertical, 6),
         };
         let subs_box = model.subs_box.clone();
+        let accounts_box = model.accounts_box.clone();
         let widgets = view_output!();
 
         rebuild_subs(&model.subs_box, &model.subs, &sender);
+        rebuild_accounts(&model.accounts_box, &model.accounts, &sender);
         let _ = root;
         ComponentParts { model, widgets }
     }
@@ -322,6 +435,44 @@ impl Component for CalendarSettingsModel {
             }
             CalendarSettingsInput::SetSubColor(idx, color) => {
                 update_sub(idx, |s| s.color = color.trim().to_string());
+            }
+            CalendarSettingsInput::ReloadAccounts => {
+                self.accounts = read_accounts();
+                rebuild_accounts(&self.accounts_box, &self.accounts, &sender);
+            }
+            CalendarSettingsInput::AddGoogleAccount => match mcal::load_google() {
+                Ok(Some(_)) => {
+                    match std::process::Command::new("mcal")
+                        .args(["account", "setup", "google"])
+                        .spawn()
+                    {
+                        Ok(_) => mshell_launcher::notify::toast(
+                            "Calendar",
+                            "Opening your browser to sign in — hit Reload when done.",
+                        ),
+                        Err(e) => mshell_launcher::notify::toast(
+                            "Calendar",
+                            format!("Couldn't launch mcal: {e}"),
+                        ),
+                    }
+                }
+                Ok(None) => mshell_launcher::notify::toast(
+                    "Calendar",
+                    "Add your Google OAuth client to ~/.config/margo/mcal/credentials.toml first.",
+                ),
+                Err(e) => {
+                    mshell_launcher::notify::toast("Calendar", format!("Credentials error: {e}"))
+                }
+            },
+            CalendarSettingsInput::RemoveAccount(id) => {
+                if let Ok(mut store) = mcal::AccountStore::load()
+                    && store.remove(&id)
+                {
+                    let _ = store.save();
+                    let _ = mcal::delete_refresh_token(&id);
+                }
+                self.accounts = read_accounts();
+                rebuild_accounts(&self.accounts_box, &self.accounts, &sender);
             }
         }
     }

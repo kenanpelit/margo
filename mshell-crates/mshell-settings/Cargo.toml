@@ -13,6 +13,7 @@ fontconfig.workspace = true
 futures.workspace = true
 margo-config = { path = "../../margo-config" }
 margo-logging = { path = "../../margo-logging" }
+mcal.workspace = true
 mpower = { path = "../../mpower" }
 mshell-ai.workspace = true
 mshell-cache.workspace = true
