@@ -13,6 +13,7 @@ futures.workspace = true
 libc.workspace = true
 gtk4-layer-shell.workspace = true
 notify-rust.workspace = true
+mcal.workspace = true
 mshell-ai.workspace = true
 mshell-cache.workspace = true
 mshell-clipboard.workspace = true
