@@ -7,6 +7,7 @@ pub(crate) mod audio_out;
 pub(crate) mod audio_route;
 pub(crate) mod bluetooth;
 pub(crate) mod calendar;
+pub(crate) mod calendar_data;
 pub(crate) mod calendar_grid;
 pub(crate) mod clipboard;
 pub(crate) mod clock;

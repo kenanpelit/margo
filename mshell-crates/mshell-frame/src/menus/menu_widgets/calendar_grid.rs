@@ -1,11 +1,13 @@
-//! Month-grid-only calendar widget — same `gtk::Calendar` card
-//! the full `Calendar` widget renders at the bottom, without the
-//! primary-tinted hero band on top.
+//! Month-grid-only calendar widget — same `gtk::Calendar` card the full
+//! `Calendar` widget renders at the bottom, without the primary-tinted hero
+//! band on top.
 //!
-//! Used by the dashboard menu where the hero role is filled by
-//! a separate `Clock` widget. Pairing the full `Calendar` there
-//! would duplicate the time + date display.
+//! Used by the dashboard (mdash) menu where the hero role is filled by a
+//! separate `Clock` widget. Like the full widget it marks days that carry
+//! events (loaded from `mcal` via `calendar_data`); it just omits the agenda
+//! list, which the dashboard has no room for.
 
+use super::calendar_data;
 use relm4::{
     Component, ComponentParts, ComponentSender,
     gtk::{
@@ -20,6 +22,8 @@ use time::{Date, OffsetDateTime};
 pub(crate) struct CalendarGridModel {
     timer_id: Option<SourceId>,
     current_date: Date,
+    /// Loaded events (recurrence expanded) across the load window.
+    events: Vec<mcal::Event>,
 }
 
 #[derive(Debug)]
@@ -32,12 +36,22 @@ pub(crate) enum CalendarGridInput {
     CheckDayRollover,
     /// Menu reveal state changed — the rollover tick is stopped while
     /// the menu is closed and restarted (with an immediate check) on
-    /// show.
+    /// show, and events are (re)loaded on show.
     ParentRevealChanged(bool),
+    /// A fresh event set arrived from the loader.
+    EventsLoaded(Vec<mcal::Event>),
+    /// The grid navigated to another month/year (or a day in another
+    /// month was picked) — re-apply day marks.
+    VisibleMonthChanged,
 }
 
 #[derive(Debug)]
 pub(crate) enum CalendarGridOutput {}
+
+#[derive(Debug)]
+pub(crate) enum CalendarGridCommandOutput {
+    Loaded(Vec<mcal::Event>),
+}
 
 pub(crate) struct CalendarGridInit {}
 
@@ -46,7 +60,7 @@ impl Component for CalendarGridModel {
     type Input = CalendarGridInput;
     type Output = CalendarGridOutput;
     type Init = CalendarGridInit;
-    type CommandOutput = ();
+    type CommandOutput = CalendarGridCommandOutput;
 
     view! {
         #[root]
@@ -67,6 +81,21 @@ impl Component for CalendarGridModel {
                 set_show_heading: true,
                 set_show_day_names: true,
                 set_hexpand: true,
+                connect_day_selected[sender] => move |_| {
+                    sender.input(CalendarGridInput::VisibleMonthChanged);
+                },
+                connect_prev_month[sender] => move |_| {
+                    sender.input(CalendarGridInput::VisibleMonthChanged);
+                },
+                connect_next_month[sender] => move |_| {
+                    sender.input(CalendarGridInput::VisibleMonthChanged);
+                },
+                connect_prev_year[sender] => move |_| {
+                    sender.input(CalendarGridInput::VisibleMonthChanged);
+                },
+                connect_next_year[sender] => move |_| {
+                    sender.input(CalendarGridInput::VisibleMonthChanged);
+                },
             },
         }
     }
@@ -87,6 +116,7 @@ impl Component for CalendarGridModel {
         let model = CalendarGridModel {
             timer_id: Some(id),
             current_date: now.date(),
+            events: Vec::new(),
         };
 
         let widgets = view_output!();
@@ -95,7 +125,22 @@ impl Component for CalendarGridModel {
         widgets.calendar.set_month(now.month() as i32 - 1);
         widgets.calendar.set_day(now.day() as i32);
 
+        spawn_load(&sender);
+
         ComponentParts { model, widgets }
+    }
+
+    fn update_cmd(
+        &mut self,
+        message: Self::CommandOutput,
+        sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        match message {
+            CalendarGridCommandOutput::Loaded(events) => {
+                sender.input(CalendarGridInput::EventsLoaded(events));
+            }
+        }
     }
 
     fn update_with_view(
@@ -113,6 +158,7 @@ impl Component for CalendarGridModel {
                     widgets.calendar.set_year(now.year());
                     widgets.calendar.set_month(now.month() as i32 - 1);
                     widgets.calendar.set_day(now.day() as i32);
+                    calendar_data::refresh_marks(&widgets.calendar, &self.events);
                 }
             }
             CalendarGridInput::ParentRevealChanged(visible) => {
@@ -121,14 +167,31 @@ impl Component for CalendarGridModel {
                         self.timer_id = Some(start_tick(&sender));
                     }
                     sender.input(CalendarGridInput::CheckDayRollover);
+                    spawn_load(&sender);
                 } else if let Some(id) = self.timer_id.take() {
                     id.remove();
                 }
+            }
+            CalendarGridInput::EventsLoaded(events) => {
+                self.events = events;
+                calendar_data::refresh_marks(&widgets.calendar, &self.events);
+            }
+            CalendarGridInput::VisibleMonthChanged => {
+                calendar_data::refresh_marks(&widgets.calendar, &self.events);
             }
         }
 
         self.update_view(widgets, sender);
     }
+}
+
+/// Kick an off-thread load, delivering the result back as `Loaded`.
+fn spawn_load(sender: &ComponentSender<CalendarGridModel>) {
+    let config = calendar_data::shell_calendar_config();
+    let window = calendar_data::load_window();
+    sender.oneshot_command(async move {
+        CalendarGridCommandOutput::Loaded(calendar_data::fetch(config, window).await)
+    });
 }
 
 /// Start the 60 s day-rollover tick.
