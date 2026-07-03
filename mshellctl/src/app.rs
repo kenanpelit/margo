@@ -6,14 +6,23 @@ use crate::subcommands::audio::AudioCommands;
 use crate::subcommands::bar::BarCommands;
 use crate::subcommands::bluetooth::BluetoothCommands;
 use crate::subcommands::brightness::BrightnessCommands;
+use crate::subcommands::calendar::CalendarCommands;
+use crate::subcommands::color::ColorArgs;
+use crate::subcommands::layout::LayoutCommands;
 use crate::subcommands::lock::LockCommands;
 use crate::subcommands::media::MediaCommands;
 use crate::subcommands::menu::MenuCommands;
+use crate::subcommands::notification::NotificationCommands;
+use crate::subcommands::osk::OskCommands;
+use crate::subcommands::play::PlayCommands;
 use crate::subcommands::plugin::PluginCommands;
+use crate::subcommands::power::PowerCommands;
 use crate::subcommands::screen_record::ScreenRecordCommands;
 use crate::subcommands::screenshot::ScreenshotCommands;
+use crate::subcommands::session::SessionCommands;
 use crate::subcommands::settings::SettingsCommands;
 use crate::subcommands::theme::ThemeCommands;
+use crate::subcommands::vpn::VpnCommands;
 use crate::subcommands::wallpaper::WallpaperCommands;
 use mshell_cli_style;
 
@@ -26,22 +35,32 @@ use mshell_cli_style;
 Control the running margo desktop shell (mshell) over the session
 D-Bus (service `com.mshell.Shell`).
 
-mshellctl drives the SHELL — menus, bars, audio, brightness, wallpaper,
-the lock screen — and is distinct from `mctl`, which controls the
-COMPOSITOR (windows, tags, layouts). The two talk to different daemons.
+mshellctl is the single control surface for the SHELL — menus, bars,
+audio, brightness, wallpaper, notifications, the session, and the
+companion tools (calendar, VPN, power, on-screen keyboard, colour
+picker, mpv, saved layouts). It is distinct from `mctl`, which controls
+the COMPOSITOR (windows, tags, tiling). The two talk to different daemons.
 
-EXAMPLES:
-  mshellctl menu control-center     # toggle the quick-settings panel
-  mshellctl menu mdash              # toggle the dashboard
-  mshellctl audio volume 60         # set output volume to 60%
-  mshellctl audio mute              # toggle output mute
-  mshellctl brightness up           # raise backlight 5%
-  mshellctl media toggle            # MPRIS play/pause the active player
-  mshellctl wallpaper next          # cycle to the next wallpaper
-  mshellctl theme set kenp          # switch colour scheme live
-  mshellctl lock                    # lock the session
+EXAMPLES
+  Surfaces      mshellctl menu control-center   # toggle quick-settings
+                mshellctl menu mdash            # toggle the dashboard
+                mshellctl bar toggle all        # show/hide the bars
+  Audio/media   mshellctl audio volume 60       # set output volume 60%
+                mshellctl audio mute            # toggle output mute
+                mshellctl media toggle          # MPRIS play/pause
+  Display       mshellctl brightness up         # raise backlight 5%
+                mshellctl wallpaper next        # cycle wallpaper
+                mshellctl theme set kenp        # switch scheme live
+  Session       mshellctl lock                  # lock the session
+                mshellctl session logout        # log out
+                mshellctl notification dnd on   # Do Not Disturb on
+  Tools         mshellctl calendar today        # today's events (mcal)
+                mshellctl vpn toggle            # Mullvad on/off (mvpn)
+                mshellctl power set balanced    # power profile (mpower)
+                mshellctl osk toggle            # on-screen keyboard
+                mshellctl color --copy          # pick a colour (mpicker)
 
-SEE ALSO:
+SEE ALSO
   man mshellctl, man mctl, man margo"
 )]
 #[command(styles = mshell_cli_style::get_styles())]
@@ -122,6 +141,19 @@ pub enum Commands {
         #[command(subcommand)]
         command: Option<LockCommands>,
     },
+    /// Session / power actions — lock, logout, suspend, reboot, shutdown, or
+    /// open the session menu. Bind `session logout` to a key to replace a
+    /// wlogout/rofi script.
+    Session {
+        #[command(subcommand)]
+        command: SessionCommands,
+    },
+    /// Notification centre — open the panel, clear, dismiss popups, toggle
+    /// Do Not Disturb, or print the history count.
+    Notification {
+        #[command(subcommand)]
+        command: NotificationCommands,
+    },
     /// Open or close the Settings window.
     Settings {
         #[command(subcommand)]
@@ -145,10 +177,9 @@ pub enum Commands {
         #[command(subcommand)]
         command: PluginCommands,
     },
-    /// Bridge commands for the mscreenshot CLI — currently the
-    /// `select-region` helper that lets external tools reuse the
-    /// in-shell area selector (preview state, snap-to-window,
-    /// aspect info) instead of spawning `slurp`.
+    /// Capture a screenshot — region / window / output / full, delivered to
+    /// file + clipboard (or `--copy` / `--save` / `--edit`). Drives the
+    /// shell's own screenshot engine (same path as the screenshot menu).
     Screenshot {
         #[command(subcommand)]
         command: ScreenshotCommands,
@@ -188,6 +219,45 @@ pub enum Commands {
         /// on | off | toggle | status (default: toggle).
         #[arg(value_enum, default_value = "toggle")]
         action: GameModeAction,
+    },
+    /// Calendar — today's / upcoming events and connected accounts
+    /// (proxied to the `mcal` calendar tool). `calendar account setup
+    /// google` connects a Google account.
+    Calendar {
+        #[command(subcommand)]
+        command: CalendarCommands,
+    },
+    /// Mullvad VPN control — connect / disconnect / pick a relay (proxied to
+    /// `mvpn`). Use `vpn menu` for the shell's DNS/VPN panel.
+    Vpn {
+        #[command(subcommand)]
+        command: VpnCommands,
+    },
+    /// Power-profile control — status / cycle / set / pause / resume (proxied
+    /// to the `mpower` daemon). Use `menu power` for the panel.
+    Power {
+        #[command(subcommand)]
+        command: PowerCommands,
+    },
+    /// Saved tiling-layout snapshots — list / set / next / prev / preview
+    /// (proxied to `mlayout`).
+    Layout {
+        #[command(subcommand)]
+        command: LayoutCommands,
+    },
+    /// On-screen keyboard — show / hide / toggle (proxied to `mkeys`).
+    Osk {
+        #[command(subcommand)]
+        command: OskCommands,
+    },
+    /// Pick a screen colour (proxied to `mpicker`) — prints the colour;
+    /// use `--copy` / `--notify` / `--format`.
+    Color(ColorArgs),
+    /// mpv companion — play / toggle / stop / snapshot / video wallpaper
+    /// (proxied to `mplay`).
+    Play {
+        #[command(subcommand)]
+        command: PlayCommands,
     },
     /// Health check — is the shell on the session bus, is it the same
     /// version as this `mshellctl`, are its key services up. Run

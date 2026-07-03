@@ -60,6 +60,19 @@ async fn main() -> anyhow::Result<()> {
             }
         },
         Commands::Lock { command } => mshellctl::subcommands::lock::execute(command).await?,
+        Commands::Session { command } => mshellctl::subcommands::session::execute(command).await?,
+        Commands::Notification { command } => {
+            mshellctl::subcommands::notification::execute(command).await?
+        }
+        Commands::Calendar { command } => {
+            mshellctl::subcommands::calendar::execute(command).await?
+        }
+        Commands::Vpn { command } => mshellctl::subcommands::vpn::execute(command).await?,
+        Commands::Power { command } => mshellctl::subcommands::power::execute(command).await?,
+        Commands::Layout { command } => mshellctl::subcommands::layout::execute(command).await?,
+        Commands::Osk { command } => mshellctl::subcommands::osk::execute(command).await?,
+        Commands::Color(args) => mshellctl::subcommands::color::execute(args).await?,
+        Commands::Play { command } => mshellctl::subcommands::play::execute(command).await?,
         Commands::Settings { command } => {
             mshellctl::subcommands::settings::execute(command).await?
         }
