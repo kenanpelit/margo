@@ -31,37 +31,82 @@ use mshell_cli_style;
     author,
     version,
     about = "Control the margo desktop shell (mshell) over D-Bus.",
-    long_about = "\
-Control the running margo desktop shell (mshell) over the session
-D-Bus (service `com.mshell.Shell`).
+    // clap has no native subcommand grouping, so the overview is a curated
+    // grouped list in the help template. KEEP IT IN SYNC with the `Commands`
+    // enum below — full per-command help stays on each variant's `///` doc,
+    // shown by `mshellctl <command> --help`.
+    help_template = "\
+{about}
 
-mshellctl is the single control surface for the SHELL — menus, bars,
-audio, brightness, wallpaper, notifications, the session, and the
-companion tools (calendar, VPN, power, on-screen keyboard, colour
-picker, mpv, saved layouts). It is distinct from `mctl`, which controls
-the COMPOSITOR (windows, tags, tiling). The two talk to different daemons.
+The single control surface for the SHELL — menus, bars, audio, the session,
+notifications, and the companion tools. `mctl` controls the COMPOSITOR
+(windows, tags, tiling); the two talk to different daemons.
 
-EXAMPLES
-  Surfaces      mshellctl menu control-center   # toggle quick-settings
-                mshellctl menu mdash            # toggle the dashboard
-                mshellctl bar toggle all        # show/hide the bars
-  Audio/media   mshellctl audio volume 60       # set output volume 60%
-                mshellctl audio mute            # toggle output mute
-                mshellctl media toggle          # MPRIS play/pause
-  Display       mshellctl brightness up         # raise backlight 5%
-                mshellctl wallpaper next        # cycle wallpaper
-                mshellctl theme set kenp        # switch scheme live
-  Session       mshellctl lock                  # lock the session
-                mshellctl session logout        # log out
-                mshellctl notification dnd on   # Do Not Disturb on
-  Tools         mshellctl calendar today        # today's events (mcal)
-                mshellctl vpn toggle            # Mullvad on/off (mvpn)
-                mshellctl power set balanced    # power profile (mpower)
-                mshellctl osk toggle            # on-screen keyboard
-                mshellctl color --copy          # pick a colour (mpicker)
+Usage: {usage}
 
-SEE ALSO
-  man mshellctl, man mctl, man margo"
+SURFACES
+  menu            Open / close / toggle a shell menu (control-center, mdash, …)
+  bar             Show / hide / toggle the top & bottom bars
+  hidden-bar      Control a Hidden Bar drawer (toggle / pin / collapse)
+  dock            Standalone mdock surface — toggle / show / hide
+  settings        Open or close the Settings window
+  wizard          Open the in-shell setup wizard
+  inspect         Open the GTK4 inspector
+
+AUDIO & MEDIA
+  audio           Output / input volume, mute, device switching
+  media           MPRIS play-pause, next, previous
+  brightness      Backlight — up / down / set
+
+APPEARANCE
+  wallpaper       Cycle wallpaper — next / prev / random
+  set-wallpaper   Set a specific wallpaper image (one-shot)
+  theme           List / show / switch the colour scheme live
+
+SESSION & NOTIFICATIONS
+  session         Lock / logout / suspend / reboot / shutdown
+  lock            Lock the session (`lock check` reports state)
+  notification    Panel / clear / Do-Not-Disturb / count
+  toast           Show a transient toast (the notify-send equivalent)
+  gamemode        Game Mode — on / off / toggle / status
+
+CAPTURE
+  screenshot      Region / window / output / full → file + clipboard
+  screenrecord    Screen recording — start / stop / toggle
+  clipboard       History — list / copy / pin / delete / clear
+
+COMPANION TOOLS
+  calendar        Events & connected accounts           (mcal)
+  vpn             Mullvad VPN control                   (mvpn)
+  power           Power profile — status / set / cycle   (mpower)
+  layout          Saved tiling-layout snapshots          (mlayout)
+  osk             On-screen keyboard — show/hide/toggle  (mkeys)
+  color           Pick a screen colour                   (mpicker)
+  play            mpv companion + video wallpaper        (mplay)
+
+SYSTEM & DIAGNOSTICS
+  bluetooth       Auto-connect engine — toggle/connect/disconnect
+  log             Shell file-logging controls
+  plugin          Manage installed WASM plugins
+  doctor          Health check — bus, version, services
+  completions     Generate a bash/zsh/fish completion script
+  quit            Quit the shell (the compositor keeps running)
+
+Run `mshellctl <command> --help` for a command's options.
+
+Options:
+{options}{after-help}",
+    after_help = "\nEXAMPLES
+  mshellctl menu control-center       toggle the quick-settings panel
+  mshellctl audio volume 60           set output volume to 60%
+  mshellctl brightness up             raise backlight by 5%
+  mshellctl session logout            log out of the session
+  mshellctl notification dnd on       enable Do Not Disturb
+  mshellctl calendar today            today's calendar events
+  mshellctl vpn toggle                Mullvad VPN on / off
+  mshellctl power set balanced        switch the power profile
+
+See also: man mshellctl · man mctl · man margo"
 )]
 #[command(styles = mshell_cli_style::get_styles())]
 pub struct Cli {
