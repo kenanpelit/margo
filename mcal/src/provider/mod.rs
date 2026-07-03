@@ -97,27 +97,23 @@ mod tests {
     use super::*;
     use chrono::TimeZone;
 
-    // Regression guard: the account-store path must not panic when
-    // `~/.config/mcal/accounts.toml` is absent (it returns an empty vec),
-    // and local events still load. Full Google needs network → manual verify.
+    // Hermetic guard for the local source. `load_all`'s account-store branch
+    // reads real config + hits the network, so it is verified manually (the
+    // connected Google account showing up), not here — a `load_all` test would
+    // otherwise fetch live events on any dev machine that has an account.
     #[test]
-    fn load_all_still_returns_local_events() {
+    fn local_provider_loads_an_ics_event() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
             tmp.path().join("a.ics"),
             "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:u@x\r\nSUMMARY:S\r\nDTSTART:20260703T090000Z\r\nDTEND:20260703T093000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
         )
         .unwrap();
-        let config = crate::config::CalendarConfig {
-            local_dir: tmp.path().to_path_buf(),
-            subscriptions: Vec::new(),
-            refresh_secs: 0,
-        };
+        let provider = LocalProvider::new("local", tmp.path()).unwrap();
         let window = (
             Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
             Utc.with_ymd_and_hms(2026, 12, 31, 0, 0, 0).unwrap(),
         );
-        let events = load_all(&config, window);
-        assert_eq!(events.len(), 1);
+        assert_eq!(provider.events(window).unwrap().len(), 1);
     }
 }

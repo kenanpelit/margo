@@ -45,3 +45,24 @@ pub fn default_local_dir() -> PathBuf {
         .map(|c| c.join("margo").join("calendars"))
         .unwrap_or_else(|| PathBuf::from("~/.config/margo/calendars"))
 }
+
+/// mcal's own config/state directory: `$XDG_CONFIG_HOME/margo/mcal` (holds
+/// `credentials.toml` + `accounts.toml`). Kept under the shared `margo/` tree
+/// like the rest of the config (see `docs/config-conventions.md`), not a
+/// top-level `~/.config/mcal`.
+///
+/// Side effect: a one-time migration renames a legacy `~/.config/mcal` here on
+/// first access, so setups created before this move keep working. Keyring
+/// tokens are keyed by account id and are unaffected.
+pub fn config_dir() -> PathBuf {
+    let base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+    let dir = base.join("margo").join("mcal");
+    let legacy = base.join("mcal");
+    if !dir.exists() && legacy.is_dir() {
+        if let Some(parent) = dir.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::rename(&legacy, &dir);
+    }
+    dir
+}

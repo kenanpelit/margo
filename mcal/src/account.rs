@@ -32,12 +32,9 @@ pub struct AccountStore {
     pub accounts: Vec<StoredAccount>,
 }
 
-/// `~/.config/mcal/accounts.toml`.
+/// `~/.config/margo/mcal/accounts.toml`.
 pub fn accounts_path() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("mcal")
-        .join("accounts.toml")
+    crate::config::config_dir().join("accounts.toml")
 }
 
 impl AccountStore {

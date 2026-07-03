@@ -26,12 +26,9 @@ struct CredentialsFile {
     google: Option<GoogleCredentials>,
 }
 
-/// `~/.config/mcal/credentials.toml` (honours `$XDG_CONFIG_HOME`).
+/// `~/.config/margo/mcal/credentials.toml` (honours `$XDG_CONFIG_HOME`).
 pub fn credentials_path() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("mcal")
-        .join("credentials.toml")
+    crate::config::config_dir().join("credentials.toml")
 }
 
 /// Parse the `[google]` table out of a credentials-file string.
