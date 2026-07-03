@@ -23,6 +23,7 @@ mod bar_pill_settings;
 mod bar_settings;
 mod behaviour_settings;
 mod bluetooth_settings;
+mod calendar_settings;
 mod catwalk_settings;
 mod cc_tiles_settings;
 mod clipboard_settings;

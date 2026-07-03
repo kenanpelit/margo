@@ -11,6 +11,7 @@ use crate::bar_settings::bar_widget_section::{
 };
 use crate::behaviour_settings::{BehaviourInit, BehaviourModel};
 use crate::bluetooth_settings::{BluetoothSettingsInit, BluetoothSettingsModel};
+use crate::calendar_settings::{CalendarSettingsInit, CalendarSettingsModel};
 use crate::catwalk_settings::{CatwalkSettingsInit, CatwalkSettingsModel};
 use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
 use crate::default_apps_settings::{DefaultAppsSettingsInit, DefaultAppsSettingsModel};
@@ -71,6 +72,7 @@ use std::rc::Rc;
 pub struct SettingsWindowModel {
     general_settings_controller: Controller<GeneralSettingsModel>,
     setup_settings_controller: Controller<SetupSettingsModel>,
+    calendar_settings_controller: Controller<CalendarSettingsModel>,
     weather_settings_controller: Controller<WeatherSettingsModel>,
     media_player_settings_controller: Controller<MediaPlayerSettingsModel>,
     hidden_bar_settings_controller: Controller<HiddenBarSettingsModel>,
@@ -411,6 +413,7 @@ impl Component for SettingsWindowModel {
         build_pages! {
             general_settings_controller = GeneralSettingsModel => GeneralSettingsInit {},
             setup_settings_controller = SetupSettingsModel => SetupSettingsInit {},
+            calendar_settings_controller = CalendarSettingsModel => CalendarSettingsInit {},
             weather_settings_controller = WeatherSettingsModel => WeatherSettingsInit {},
             media_player_settings_controller = MediaPlayerSettingsModel => MediaPlayerSettingsInit {},
             hidden_bar_settings_controller = HiddenBarSettingsModel => HiddenBarSettingsInit {},
@@ -494,6 +497,7 @@ impl Component for SettingsWindowModel {
         let model = SettingsWindowModel {
             general_settings_controller,
             setup_settings_controller,
+            calendar_settings_controller,
             weather_settings_controller,
             media_player_settings_controller,
             hidden_bar_settings_controller,
@@ -790,6 +794,11 @@ impl Component for SettingsWindowModel {
                 "setup",
                 "Setup",
                 model.setup_settings_controller.widget().clone().into(),
+            ),
+            (
+                "calendar",
+                "Calendar",
+                model.calendar_settings_controller.widget().clone().into(),
             ),
             ("theme", "Theme", theme_page.into()),
             (
@@ -2405,6 +2414,11 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "date_time",
         icon: "preferences-system-time-symbolic",
         label: "Date & Time",
+    },
+    Page {
+        route: "calendar",
+        icon: "x-office-calendar-symbolic",
+        label: "Calendar",
     },
     Page {
         route: "default_apps",
