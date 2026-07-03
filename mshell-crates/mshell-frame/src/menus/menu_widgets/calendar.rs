@@ -20,8 +20,9 @@
 //! re-renders so the calendar's navigation state isn't disturbed.
 
 use chrono::{Local, NaiveDate};
-use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
+use mshell_config::schema::config::{CalendarsStoreFields, ConfigStoreFields, GeneralStoreFields};
 use reactive_graph::traits::GetUntracked;
+use std::path::PathBuf;
 use relm4::{
     Component, ComponentParts, ComponentSender,
     gtk::{
@@ -351,19 +352,55 @@ impl Component for CalendarModel {
 /// Kick an off-thread load of every configured calendar, delivering the result
 /// back as `Loaded`. Blocking IO (files + `ureq`) runs on a blocking task.
 fn spawn_load(sender: &ComponentSender<CalendarModel>) {
+    let config = shell_calendar_config();
     let now = chrono::Utc::now();
     let window = (
         now - chrono::Duration::days(LOAD_WINDOW_DAYS),
         now + chrono::Duration::days(LOAD_WINDOW_DAYS),
     );
     sender.oneshot_command(async move {
-        let events = tokio::task::spawn_blocking(move || {
-            mcal::load_all(&mcal::CalendarConfig::default(), window)
-        })
-        .await
-        .unwrap_or_default();
+        let events = tokio::task::spawn_blocking(move || mcal::load_all(&config, window))
+            .await
+            .unwrap_or_default();
         CalendarCommandOutput::Loaded(events)
     });
+}
+
+/// Snapshot the shell's `calendars` config into mcal's own config struct
+/// (non-reactive read — the load is re-kicked on each reveal anyway).
+fn shell_calendar_config() -> mcal::CalendarConfig {
+    let cm = mshell_config::config_manager::config_manager();
+    let local_dir = cm.config().calendars().local_dir().get_untracked();
+    let subscriptions = cm.config().calendars().subscriptions().get_untracked();
+    let refresh_secs = cm.config().calendars().refresh_secs().get_untracked();
+
+    mcal::CalendarConfig {
+        local_dir: if local_dir.trim().is_empty() {
+            mcal::default_local_dir()
+        } else {
+            expand_tilde(local_dir.trim())
+        },
+        subscriptions: subscriptions
+            .into_iter()
+            .filter(|sub| !sub.url.trim().is_empty())
+            .map(|sub| mcal::Subscription {
+                name: sub.name,
+                url: sub.url,
+                color: (!sub.color.trim().is_empty()).then_some(sub.color),
+            })
+            .collect(),
+        refresh_secs,
+    }
+}
+
+/// Expand a leading `~/` to `$HOME`.
+fn expand_tilde(path: &str) -> PathBuf {
+    if let Some(rest) = path.strip_prefix("~/")
+        && let Ok(home) = std::env::var("HOME")
+    {
+        return PathBuf::from(home).join(rest);
+    }
+    PathBuf::from(path)
 }
 
 /// Re-mark the grid: a dot on every day of the *visible* month that has ≥1 event.

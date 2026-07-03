@@ -36,6 +36,7 @@ pub struct Config {
     pub system_tray: SystemTray,
     pub pass: Pass,
     pub alarm: AlarmConfig,
+    pub calendars: Calendars,
     pub network: NetworkConfig,
     pub login_network: LoginNetworkConfig,
     pub bluetooth: BluetoothConfig,
@@ -329,6 +330,45 @@ impl Default for AlarmConfig {
             snooze_minutes: 5,
             notifications: true,
             urgency: "normal".to_string(),
+        }
+    }
+}
+
+/// One remote `.ics` calendar subscription (read-only). No OAuth — paste a
+/// public or "secret address in iCal format" URL (Google / Outlook / any
+/// CalDAV server that exposes one). Fetched + disk-cached by the `mcal` core.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct CalendarSubscription {
+    /// Display name for the calendar.
+    pub name: String,
+    /// The `.ics` URL to fetch.
+    pub url: String,
+    /// Event colour as `#RRGGBB`; blank uses the theme default.
+    pub color: String,
+}
+
+/// Calendar sources feeding the clock-menu agenda + grid marks. `local_dir`
+/// holds `.ics` files / sub-directories; `subscriptions` are remote iCal URLs.
+/// A blank `local_dir` resolves to `~/.config/margo/calendars`. Consumed by the
+/// `mcal` core (see [`crate::schema::config::Calendars`]).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct Calendars {
+    /// Local calendar directory (blank = `~/.config/margo/calendars`).
+    pub local_dir: String,
+    /// Remote iCal subscriptions.
+    pub subscriptions: Vec<CalendarSubscription>,
+    /// Seconds between background refreshes.
+    pub refresh_secs: u64,
+}
+
+impl Default for Calendars {
+    fn default() -> Self {
+        Self {
+            local_dir: String::new(),
+            subscriptions: Vec::new(),
+            refresh_secs: 900,
         }
     }
 }
