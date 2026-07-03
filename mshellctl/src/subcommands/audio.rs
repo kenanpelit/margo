@@ -38,6 +38,10 @@ pub enum AudioCommands {
     Switch,
     /// Cycle the default input to the next device (alias for `input next`)
     SwitchMic,
+    /// Cycle the default output like the Audio Route pill's left-click: always
+    /// skips HDMI/DP and, when `audio.route_switch_microphone` is on, moves the
+    /// mic across the headset boundary too (unlike the plain `switch`)
+    RouteNext,
     /// Increase the microphone volume by 5 percent
     MicUp,
     /// Decrease the microphone volume by 5 percent
@@ -100,6 +104,9 @@ pub async fn execute(command: AudioCommands) -> anyhow::Result<()> {
         }
         AudioCommands::SwitchMic => {
             bus_command_with_arg("AudioInputSwitch", &"next".to_string()).await?;
+        }
+        AudioCommands::RouteNext => {
+            bus_command("AudioRouteCycle").await?;
         }
         AudioCommands::MicUp => {
             bus_command("AudioMicUp").await?;

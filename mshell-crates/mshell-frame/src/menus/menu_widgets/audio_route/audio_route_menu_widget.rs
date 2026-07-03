@@ -16,7 +16,7 @@
 use mshell_common::WatcherToken;
 use mshell_services::audio_service;
 use mshell_utils::audio::{
-    is_hdmi_output, spawn_default_output_watcher, spawn_output_devices_watcher,
+    routable_outputs, spawn_default_output_watcher, spawn_output_devices_watcher,
 };
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -155,14 +155,7 @@ impl AudioRouteMenuWidgetModel {
             self.list.remove(&child);
         }
 
-        let mut outputs: Vec<Arc<OutputDevice>> = audio_service()
-            .output_devices
-            .get()
-            .into_iter()
-            .filter(|d| !is_hdmi_output(d))
-            .collect();
-        outputs.sort_by_key(|d| d.name.get());
-
+        let outputs = routable_outputs();
         let default_name = audio_service().default_output.get().map(|d| d.name.get());
 
         for device in outputs {

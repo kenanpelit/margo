@@ -160,6 +160,7 @@ pub(crate) enum ShellInput {
     ToggleBluetoothMenu(Option<String>),
     ToggleCpuDashboardMenu(Option<String>),
     ToggleAudioDashboardMenu(Option<String>),
+    ToggleAudioRouteMenu(Option<String>),
     ToggleSystemUpdateMenu(Option<String>),
     ToggleValentMenu(Option<String>),
     ToggleKeepAwakeMenu(Option<String>),
@@ -764,6 +765,11 @@ impl Component for Shell {
             ShellInput::ToggleAudioDashboardMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleMenu(MenuId::AudioDashboard));
+                }
+            }
+            ShellInput::ToggleAudioRouteMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleMenu(MenuId::AudioRoute));
                 }
             }
             ShellInput::ToggleSystemUpdateMenu(monitor_name) => {

@@ -14,8 +14,8 @@ use crate::mdash_buttons_settings::{MdashButtonsSettingsInit, MdashButtonsSettin
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, MenuStoreFields, MenusStoreFields,
-    SystemUpdateBarWidgetStoreFields,
+    AudioConfigStoreFields, BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields,
+    MenuStoreFields, MenusStoreFields, SystemUpdateBarWidgetStoreFields,
 };
 use mshell_config::schema::position::Position;
 use reactive_graph::prelude::{Get, GetUntracked};
@@ -29,6 +29,9 @@ use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Con
 pub(crate) enum MenuKind {
     AppLauncher,
     AudioDashboard,
+    /// The Audio Route picker menu (`audio_route_menu`), opened by the Audio
+    /// Route pill's right-click / `mshellctl menu audio-route`.
+    AudioRoute,
     Bluetooth,
     Clipboard,
     Clock,
@@ -97,6 +100,7 @@ macro_rules! menu_read {
             MenuKind::Bluetooth => m.bluetooth_menu().$field().$g(),
             MenuKind::CpuDashboard => m.cpu_dashboard_menu().$field().$g(),
             MenuKind::AudioDashboard => m.audio_dashboard_menu().$field().$g(),
+            MenuKind::AudioRoute => m.audio_route_menu().$field().$g(),
             MenuKind::SystemUpdate => m.system_update_menu().$field().$g(),
             MenuKind::Valent => m.valent_menu().$field().$g(),
             MenuKind::Weather => m.weather_menu().$field().$g(),
@@ -135,6 +139,7 @@ macro_rules! menu_write {
             MenuKind::Bluetooth => c.menus.bluetooth_menu.$field = $val,
             MenuKind::CpuDashboard => c.menus.cpu_dashboard_menu.$field = $val,
             MenuKind::AudioDashboard => c.menus.audio_dashboard_menu.$field = $val,
+            MenuKind::AudioRoute => c.menus.audio_route_menu.$field = $val,
             MenuKind::SystemUpdate => c.menus.system_update_menu.$field = $val,
             MenuKind::Valent => c.menus.valent_menu.$field = $val,
             MenuKind::Weather => c.menus.weather_menu.$field = $val,
@@ -154,6 +159,7 @@ impl MenuKind {
         match self {
             Self::AppLauncher => "App Launcher",
             Self::AudioDashboard => "Audio Dashboard",
+            Self::AudioRoute => "Audio Route",
             Self::Bluetooth => "Bluetooth",
             Self::Clipboard => "Clipboard",
             Self::Clock => "Clock",
@@ -204,6 +210,7 @@ impl MenuKind {
             MenuKind::Bluetooth,
             MenuKind::CpuDashboard,
             MenuKind::AudioDashboard,
+            MenuKind::AudioRoute,
             MenuKind::SystemUpdate,
             MenuKind::Valent,
             MenuKind::Weather,
@@ -298,6 +305,10 @@ pub(crate) struct WidgetMenuSettingsModel {
     /// Unused (kept at 0) for every other kind — the view hides
     /// the cadence section unless `kind == SystemUpdate`.
     check_interval_minutes: u32,
+    /// AudioRoute-only: mirror of `audio.route_switch_microphone` backing the
+    /// panel's "switch the mic too" toggle. Unused (false) for every other kind
+    /// — the view hides the toggle unless `kind == AudioRoute`.
+    route_switch_microphone: bool,
     position_model: gtk::StringList,
     /// ControlCenter-only: the tiles order/visibility sub-section.
     /// `None` for every other menu kind.
@@ -318,6 +329,8 @@ pub(crate) enum WidgetMenuSettingsInput {
     MaxHeightEffect(i32),
     CheckIntervalChanged(u32),
     CheckIntervalEffect(u32),
+    RouteSwitchMicToggled(bool),
+    RouteSwitchMicEffect(bool),
 }
 
 #[derive(Debug)]
@@ -573,6 +586,62 @@ impl Component for WidgetMenuSettingsModel {
                         },
                     },
                 },
+
+                // ── Audio-route-only mic-follow toggle ───────
+                //
+                // The pill's left-click cycles the default output; this decides
+                // whether the default microphone follows it across the headset
+                // boundary. Behaviour, not menu geometry — but it's the pill's
+                // one real preference, so it lives here. Hidden for every other
+                // menu kind.
+                gtk::Separator {
+                    #[watch]
+                    set_visible: model.kind == MenuKind::AudioRoute,
+                },
+
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+                    #[watch]
+                    set_visible: model.kind == MenuKind::AudioRoute,
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Switch the microphone too",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Move the default mic to the headset as well, not just the speaker. Turn off to keep your current capture device (e.g. a good USB mic).",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(mic_handler)]
+                            set_active: model.route_switch_microphone,
+                            connect_state_set[sender] => move |_, on| {
+                                sender.input(WidgetMenuSettingsInput::RouteSwitchMicToggled(on));
+                                gtk::glib::Propagation::Proceed
+                            } @mic_handler,
+                        },
+                    },
+                },
             }
         }
     }
@@ -618,6 +687,18 @@ impl Component for WidgetMenuSettingsModel {
                 .get();
             sender_clone.input(WidgetMenuSettingsInput::CheckIntervalEffect(v));
         });
+        // AudioRoute-only: track the mic-follow toggle so an external
+        // `mshellctl config reload` repaints the switch. Harmless for other
+        // kinds — the read just doesn't drive a visible field.
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .audio()
+                .route_switch_microphone()
+                .get();
+            sender_clone.input(WidgetMenuSettingsInput::RouteSwitchMicEffect(v));
+        });
 
         // ControlCenter-only: build the Tiles sub-section and append it to
         // the page box after the generic position/size controls.
@@ -654,6 +735,11 @@ impl Component for WidgetMenuSettingsModel {
                 .widgets()
                 .system_update()
                 .check_interval_minutes()
+                .get_untracked(),
+            route_switch_microphone: config_manager()
+                .config()
+                .audio()
+                .route_switch_microphone()
                 .get_untracked(),
             position_model,
             _cc_tiles_controller: cc_tiles_controller,
@@ -704,10 +790,19 @@ impl Component for WidgetMenuSettingsModel {
                     });
                 }
             }
+            WidgetMenuSettingsInput::RouteSwitchMicToggled(on) => {
+                if self.route_switch_microphone != on {
+                    self.route_switch_microphone = on;
+                    config_manager().update_config(move |c| {
+                        c.audio.route_switch_microphone = on;
+                    });
+                }
+            }
             WidgetMenuSettingsInput::PositionEffect(p) => self.position = p,
             WidgetMenuSettingsInput::MinWidthEffect(w) => self.minimum_width = w,
             WidgetMenuSettingsInput::MaxHeightEffect(h) => self.maximum_height = h,
             WidgetMenuSettingsInput::CheckIntervalEffect(v) => self.check_interval_minutes = v,
+            WidgetMenuSettingsInput::RouteSwitchMicEffect(on) => self.route_switch_microphone = on,
         }
     }
 }

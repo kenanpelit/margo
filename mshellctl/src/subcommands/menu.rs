@@ -75,6 +75,9 @@ pub enum MenuCommands {
     CpuDashboard,
     /// Toggle the Audio Dashboard menu (output + input mixer)
     AudioDashboard,
+    /// Toggle the Audio Route picker menu (pick any output directly — the
+    /// Audio Route pill's right-click surface)
+    AudioRoute,
     /// Toggle the System Updates menu (repo / AUR / Flatpak)
     SystemUpdate,
     /// Toggle the Valent Connect menu (phone status + actions)
@@ -198,6 +201,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::AudioDashboard => {
             bus_command("AudioDashboard").await?;
+        }
+        MenuCommands::AudioRoute => {
+            bus_command("AudioRoute").await?;
         }
         MenuCommands::SystemUpdate => {
             bus_command("SystemUpdate").await?;

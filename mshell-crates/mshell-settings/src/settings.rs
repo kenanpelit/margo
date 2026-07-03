@@ -1258,6 +1258,12 @@ impl Component for SettingsWindowModel {
                 label: "Audio Dashboard",
                 icon: "audio-volume-high-symbolic",
             },
+            WidgetEntry::Menu {
+                kind: MenuKind::AudioRoute,
+                stack_name: "audio_route",
+                label: "Audio Route",
+                icon: "audio-headset-symbolic",
+            },
             // System Updates owns a richer page (menu size + check
             // interval + per-source toggles), so it's a dedicated entry.
             WidgetEntry::SystemUpdate,
@@ -1319,12 +1325,6 @@ impl Component for SettingsWindowModel {
                 stack_name: "pill_active_window",
                 label: "Active Window",
                 icon: "window-symbolic",
-            },
-            WidgetEntry::Pill {
-                kind: BarPillKind::AudioRoute,
-                stack_name: "pill_audio_route",
-                label: "Audio Route",
-                icon: "audio-headset-symbolic",
             },
             WidgetEntry::Pill {
                 kind: BarPillKind::AudioVisualizer,
