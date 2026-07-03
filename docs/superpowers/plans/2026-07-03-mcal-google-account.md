@@ -4,7 +4,7 @@
 
 **Goal:** Connect a Google account to `mcal` via OAuth so its events appear in the existing `mcal today/agenda/on` CLI and the slice-1 shell surfaces (clock-menu agenda, dashboard calendar), read-only.
 
-**Architecture:** A new `GoogleProvider` implements the existing `Provider` trait against the Google Calendar API v3. `mcal account setup google` runs a loopback+PKCE OAuth flow, stores the refresh token in the OS keyring, and records the account in an mcal-owned `~/.config/mcal/accounts.toml`. `load_all` gains a third source that builds providers from that store, so both the CLI and the shell pick Google up with no extra wiring.
+**Architecture:** A new `GoogleProvider` implements the existing `Provider` trait against the Google Calendar API v3. `mcal account setup google` runs a loopback+PKCE OAuth flow, stores the refresh token in the OS keyring, and records the account in an mcal-owned `~/.config/margo/mcal/accounts.toml`. `load_all` gains a third source that builds providers from that store, so both the CLI and the shell pick Google up with no extra wiring.
 
 **Tech Stack:** Rust, `ureq` 2.x (blocking HTTP), `serde`/`serde_json` (Calendar API JSON), `toml` (config/account files), `keyring` 3.x (refresh tokens), `sha2` + `base64` (PKCE), `chrono` (dates). Google Calendar API v3 + Google OAuth 2.0.
 
@@ -12,8 +12,8 @@
 
 - **Spec:** `docs/superpowers/specs/2026-07-03-mcal-google-account-design.md`. Every task's requirements implicitly include it.
 - **Read-only** this slice: scope `https://www.googleapis.com/auth/calendar.readonly`. No event writes.
-- **BYO client_id:** credentials from `~/.config/mcal/credentials.toml`; never a shipped/embedded secret.
-- **mcal owns accounts** in `~/.config/mcal/accounts.toml`; refresh tokens in the keyring (service `"mcal"`, key = account id). Never write a refresh token to disk in plaintext.
+- **BYO client_id:** credentials from `~/.config/margo/mcal/credentials.toml`; never a shipped/embedded secret.
+- **mcal owns accounts** in `~/.config/margo/mcal/accounts.toml`; refresh tokens in the keyring (service `"mcal"`, key = account id). Never write a refresh token to disk in plaintext.
 - **Recurrence:** request `singleEvents=true` from Google (server-side expansion); Google events carry empty `recurrence` and skip `recur::expand`.
 - **Panic-ratchet:** baseline 370. No new `unwrap()`/`expect()`/`panic!`/`unreachable!` outside `#[cfg(test)]`. Every fallible path returns `Result<_, McalError>`.
 - **CLI strings:** English, matching slice 1 and the rest of margo's binaries.
@@ -147,7 +147,7 @@ Expected: FAIL — `parse_google` / `GoogleCredentials` not found.
 - [ ] **Step 3: Write the implementation** (`mcal/src/credentials.rs`, top):
 
 ```rust
-//! BYO Google OAuth credentials, read from `~/.config/mcal/credentials.toml`:
+//! BYO Google OAuth credentials, read from `~/.config/margo/mcal/credentials.toml`:
 //!
 //! ```toml
 //! [google]
@@ -175,7 +175,7 @@ struct CredentialsFile {
     google: Option<GoogleCredentials>,
 }
 
-/// `~/.config/mcal/credentials.toml` (honours `$XDG_CONFIG_HOME`).
+/// `~/.config/margo/mcal/credentials.toml` (honours `$XDG_CONFIG_HOME`).
 pub fn credentials_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -297,7 +297,7 @@ Expected: FAIL — `AccountStore` not found.
 - [ ] **Step 3: Write the implementation** (`mcal/src/account.rs`, top):
 
 ```rust
-//! The mcal-owned account registry at `~/.config/mcal/accounts.toml`.
+//! The mcal-owned account registry at `~/.config/margo/mcal/accounts.toml`.
 //!
 //! mcal is the source of truth for connected accounts (this slice: Google).
 //! Refresh tokens live in the keyring ([`crate::secret`]); only non-secret
@@ -331,7 +331,7 @@ pub struct AccountStore {
     pub accounts: Vec<StoredAccount>,
 }
 
-/// `~/.config/mcal/accounts.toml`.
+/// `~/.config/margo/mcal/accounts.toml`.
 pub fn accounts_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -1292,7 +1292,7 @@ mod tests {
     use chrono::TimeZone;
 
     // Regression guard: the account-store path must not panic when
-    // `~/.config/mcal/accounts.toml` is absent (it returns an empty vec),
+    // `~/.config/margo/mcal/accounts.toml` is absent (it returns an empty vec),
     // and local events still load. Full Google needs network → manual verify.
     #[test]
     fn load_all_still_returns_local_events() {
@@ -1571,7 +1571,7 @@ git commit -m "chore(mcal): fmt + export audit for the Google slice"
 
 - [ ] **Step 4: Manual end-to-end verification** (with the user's real Google account — this is the only path the unit tests can't cover):
 
-  1. Create the Google Cloud OAuth client (Desktop app) per `mcal account setup google`'s printed instructions; put id/secret in `~/.config/mcal/credentials.toml`.
+  1. Create the Google Cloud OAuth client (Desktop app) per `mcal account setup google`'s printed instructions; put id/secret in `~/.config/margo/mcal/credentials.toml`.
   2. `mcal account setup google` → browser opens → approve → "Connected …".
   3. `mcal account list` → shows the Google account.
   4. `mcal today` / `mcal agenda 14` → shows Google events (compecta calendar).

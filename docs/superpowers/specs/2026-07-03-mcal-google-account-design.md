@@ -49,7 +49,7 @@ call the same loader. **Read-only.** No window/tray/daemon yet (later phases).
 4. **Google Calendar API v3** (REST/JSON), not CalDAV. Google expands recurrence
    server-side (`singleEvents=true`), so mcal's RRULE engine is bypassed for
    Google.
-5. **mcal owns its accounts** in `~/.config/mcal/`, not the shell YAML. This is
+5. **mcal owns its accounts** in `~/.config/margo/mcal/`, not the shell YAML. This is
    the standalone-app model; the shell reads from mcal, not vice-versa. (Slice
    1's shell-YAML `config.calendars` for local/ICS stays as-is this slice;
    unifying it into the mcal store is a later phase.)
@@ -86,7 +86,7 @@ a refresh when still valid (optimization, not required for MVP).
 
 ### 2. BYO credentials
 
-`client_id` + `client_secret` live in **`~/.config/mcal/credentials.toml`**:
+`client_id` + `client_secret` live in **`~/.config/margo/mcal/credentials.toml`**:
 
 ```toml
 [google]
@@ -104,7 +104,7 @@ token is not.
 
 ### 3. Account store
 
-mcal owns **`~/.config/mcal/accounts.toml`** — the registry every mcal frontend
+mcal owns **`~/.config/margo/mcal/accounts.toml`** — the registry every mcal frontend
 reads:
 
 ```toml
