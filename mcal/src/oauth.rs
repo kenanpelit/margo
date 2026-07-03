@@ -83,7 +83,9 @@ pub fn auth_url(req: &AuthRequest) -> String {
         ("response_type", "code"),
         ("scope", req.scope),
         ("access_type", "offline"),
-        ("prompt", "consent"),
+        // `select_account` forces the account chooser so a second run can pick
+        // a different Google account; `consent` guarantees a refresh token.
+        ("prompt", "select_account consent"),
         ("code_challenge", req.challenge),
         ("code_challenge_method", "S256"),
         ("state", req.state),
@@ -305,7 +307,7 @@ mod tests {
         assert!(url.contains("code_challenge=chal"));
         assert!(url.contains("code_challenge_method=S256"));
         assert!(url.contains("access_type=offline"));
-        assert!(url.contains("prompt=consent"));
+        assert!(url.contains("prompt=select_account%20consent"));
         assert!(url.contains("state=st8"));
     }
 
