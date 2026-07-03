@@ -1,4 +1,4 @@
-//! The mcal-owned account registry at `~/.config/mcal/accounts.toml`.
+//! The mcal-owned account registry at `~/.config/margo/mcal/accounts.toml`.
 //!
 //! mcal is the source of truth for connected accounts (this slice: Google).
 //! Refresh tokens live in the keyring ([`crate::secret`]); only non-secret

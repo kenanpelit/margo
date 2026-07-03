@@ -241,7 +241,16 @@ fn run_loopback_once(listener: &TcpListener, expected_state: &str) -> Result<Str
 }
 
 /// Run the full browser login and return tokens.
-pub fn interactive_google_login(creds: &GoogleCredentials) -> Result<GoogleTokens, McalError> {
+///
+/// When `open_browser` is true, `xdg-open` launches the default browser. Pass
+/// `false` (the CLI's `--no-browser`) to only print the URL — useful when
+/// `xdg-open` is redirected to a managed browser/profile you don't control, or
+/// to complete the flow in a private window / a different profile so you can
+/// connect a *second* Google account instead of re-authorizing the first.
+pub fn interactive_google_login(
+    creds: &GoogleCredentials,
+    open_browser: bool,
+) -> Result<GoogleTokens, McalError> {
     let listener = TcpListener::bind("127.0.0.1:0")
         .map_err(|e| McalError::Oauth(format!("bind loopback: {e}")))?;
     let port = listener
@@ -260,9 +269,20 @@ pub fn interactive_google_login(creds: &GoogleCredentials) -> Result<GoogleToken
         state: &state,
     });
 
-    println!("Opening your browser to authorize mcal…");
-    println!("If it doesn't open, visit:\n{url}");
-    let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+    println!("To authorize mcal, open this URL:\n\n{url}\n");
+    if open_browser {
+        println!(
+            "Opening your browser… To connect a DIFFERENT Google account, pick \
+             \"Use another account\" in the chooser (don't reuse the one already listed)."
+        );
+        let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+    } else {
+        println!(
+            "Open it yourself in the browser/profile for the account you want to \
+             connect — a private/incognito window avoids reusing an existing session."
+        );
+    }
+    println!("\nWaiting for the redirect on {redirect_uri} …");
 
     let code = run_loopback_once(&listener, &state)?;
     let tokens = exchange_code(creds, &code, &pkce.verifier, &redirect_uri)?;

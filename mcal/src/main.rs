@@ -33,15 +33,19 @@ COMMANDS:
 OPTIONS:
     --dir <PATH>        Local calendar folder (default ~/.config/margo/calendars)
     --ics <URL>         Add a remote .ics subscription (may repeat)
+    --no-browser        (account setup) print the URL instead of launching a
+                        browser — open it yourself in the profile / private
+                        window for the account you want to connect
     -h, --help          Show this help
 ";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
-    // Split flags (--dir/--ics) from the positional command + operand.
+    // Split flags (--dir/--ics/--no-browser) from the positional command.
     let mut dir: Option<String> = None;
     let mut ics: Vec<String> = Vec::new();
+    let mut no_browser = false;
     let mut positional: Vec<String> = Vec::new();
     let mut it = args.into_iter();
     while let Some(arg) = it.next() {
@@ -58,6 +62,7 @@ fn main() -> ExitCode {
                 Some(v) => ics.push(v),
                 None => return fail("--ics needs a URL"),
             },
+            "--no-browser" | "--manual" => no_browser = true,
             other if other.starts_with('-') => {
                 return fail(&format!("unknown option: {other}"));
             }
@@ -87,7 +92,7 @@ fn main() -> ExitCode {
             },
             None => return fail("on needs a date, e.g. mcal on 2026-07-04"),
         },
-        Some("account") => return run_account(&positional[1..]),
+        Some("account") => return run_account(&positional[1..], no_browser),
         Some(other) => return fail(&format!("unknown command: {other} (try --help)")),
     }
 
@@ -95,11 +100,11 @@ fn main() -> ExitCode {
 }
 
 /// `mcal account <list|setup|remove> …`
-fn run_account(args: &[String]) -> ExitCode {
+fn run_account(args: &[String], no_browser: bool) -> ExitCode {
     match args.first().map(String::as_str) {
         None | Some("list") => account_list(),
         Some("setup") => match args.get(1).map(String::as_str) {
-            Some("google") => account_setup_google(),
+            Some("google") => account_setup_google(!no_browser),
             Some(other) => fail(&format!("unknown provider: {other} (try: google)")),
             None => fail("account setup needs a provider, e.g. mcal account setup google"),
         },
@@ -126,7 +131,7 @@ fn account_list() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn account_setup_google() -> ExitCode {
+fn account_setup_google(open_browser: bool) -> ExitCode {
     let creds = match mcal::load_google() {
         Ok(Some(creds)) => creds,
         Ok(None) => {
@@ -136,7 +141,7 @@ fn account_setup_google() -> ExitCode {
         Err(e) => return fail(&e.to_string()),
     };
 
-    let tokens = match mcal::interactive_google_login(&creds) {
+    let tokens = match mcal::interactive_google_login(&creds, open_browser) {
         Ok(tokens) => tokens,
         Err(e) => return fail(&e.to_string()),
     };
