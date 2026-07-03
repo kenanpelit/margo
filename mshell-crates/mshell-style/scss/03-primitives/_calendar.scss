@@ -15,7 +15,9 @@
 //       └── label           (day cells)
 //           ├── .today          — today's date  (GTK auto-applied)
 //           ├── .other-month    — days outside current month (GTK auto-applied)
-//           └── :selected       — currently selected day (GTK pseudo-state)
+//           └── :selected       — MARKED days (mark_day) — GTK4 assigns
+//                                 marked days the :selected state; there is
+//                                 no .marked class (docs.gtk.org Gtk.Calendar)
 
 calendar {
   background-color: var(--surface);
@@ -52,12 +54,12 @@ calendar > grid > label:hover {
   background: color-mix(in srgb, var(--primary) 14%, transparent);
 }
 
-// Selected day (GTK pseudo-state; today is always selected here
-// because we call set_day(today) — styles it as an outline ring
-// beneath the today fill so the two states compose cleanly).
+// Days carrying ≥1 event. GTK4 maps marked days (mark_day) to the
+// `:selected` state, so this is the event indicator — a primary
+// underline. Declared before `.today` so today's fill still wins.
 calendar > grid > label:selected {
   background: transparent;
-  box-shadow: inset 0 0 0 1px var(--primary);
+  box-shadow: inset 0 -3px 0 0 var(--primary);
 }
 
 // Today — filled primary.  Declared AFTER :selected and :hover so
