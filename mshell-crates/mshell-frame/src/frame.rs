@@ -57,6 +57,7 @@ const SESSION_MENU: &str = "session";
 const SETTINGS_MENU: &str = "settings";
 const MDASH_MENU: &str = "mdash";
 const MARGO_LAYOUT_MENU: &str = "margo_layout";
+const AUDIO_ROUTE_MENU: &str = "audio_route";
 
 pub struct Frame {
     // Margo's mshell ships only horizontal bars — vertical Left /
@@ -154,6 +155,7 @@ pub struct Frame {
     settings_menu: Option<Controller<mshell_settings::SettingsWindowModel>>,
     mdash_menu: Controller<MenuModel>,
     margo_layout_menu: Controller<MenuModel>,
+    audio_route_menu: Controller<MenuModel>,
     /// Pending keyboard-mode switch held inside the 90 ms debounce
     /// window. Replaced on every `sync_keyboard_mode` call; the
     /// timer reads whatever value was last written.
@@ -208,6 +210,7 @@ pub enum MenuId {
     Session,
     Mdash,
     MargoLayout,
+    AudioRoute,
 }
 
 impl MenuId {
@@ -250,6 +253,7 @@ impl MenuId {
             MenuId::Session => SESSION_MENU,
             MenuId::Mdash => MDASH_MENU,
             MenuId::MargoLayout => MARGO_LAYOUT_MENU,
+            MenuId::AudioRoute => AUDIO_ROUTE_MENU,
         }
     }
 }
@@ -913,6 +917,7 @@ impl Component for Frame {
         let session_menu = Self::build_menu(&sender, MenuType::Session);
         let mdash_menu = Self::build_menu(&sender, MenuType::Mdash);
         let margo_layout_menu = Self::build_menu(&sender, MenuType::MargoLayout);
+        let audio_route_menu = Self::build_menu(&sender, MenuType::AudioRoute);
 
         // Settings doesn't go through `build_menu` because its content
         // isn't a list of `MenuWidget`s — it's a custom sidebar + stack
@@ -1008,6 +1013,7 @@ impl Component for Frame {
             pos!(vpn_menu);
             pos!(ai_menu);
             pos!(margo_layout_menu);
+            pos!(audio_route_menu);
             sender_clone.input(FrameInput::RepositionMenus(positions));
         });
 
@@ -1108,6 +1114,7 @@ impl Component for Frame {
             settings_menu: None,
             mdash_menu,
             margo_layout_menu,
+            audio_route_menu,
             pending_kbd_mode: std::rc::Rc::new(std::cell::RefCell::new(None)),
             pending_kbd_mode_timeout: std::rc::Rc::new(std::cell::RefCell::new(None)),
             _effects: effects,
@@ -2609,6 +2616,24 @@ impl Frame {
             MARGO_LAYOUT_MENU,
             &margo_layout_menu_position,
         );
+        // Audio Route menu — the right-click picker for the Audio Route
+        // bar pill. Left-click on the pill cycles outputs directly;
+        // right-click cascades through `BarOutput::AudioRouteClicked` to
+        // `FrameInput::ToggleMenu(MenuId::AudioRoute)` → `toggle_menu(
+        // AUDIO_ROUTE_MENU, …)` against this same stack.
+        let audio_route_menu_widget: Widget = self.audio_route_menu.widget().clone().upcast();
+        let audio_route_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .audio_route_menu()
+            .position()
+            .get();
+        Self::add_to_stack(
+            widgets,
+            &audio_route_menu_widget,
+            AUDIO_ROUTE_MENU,
+            &audio_route_menu_position,
+        );
 
         // Restore the pre-restack visible child for each region (see the
         // `prev_visible` snapshot above) so a re-add doesn't flash the
@@ -2731,6 +2756,7 @@ impl Frame {
                 BarOutput::MediaPlayerClicked => FrameInput::ToggleMenu(MenuId::MediaPlayer),
                 BarOutput::LyricsClicked => FrameInput::ToggleMenu(MenuId::Lyrics),
                 BarOutput::MargoLayoutClicked => FrameInput::ToggleMenu(MenuId::MargoLayout),
+                BarOutput::AudioRouteClicked => FrameInput::ToggleMenu(MenuId::AudioRoute),
                 BarOutput::CloseMenu => FrameInput::CloseMenus,
             },
         )

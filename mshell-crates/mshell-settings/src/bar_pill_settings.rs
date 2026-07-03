@@ -64,7 +64,7 @@ impl BarPillKind {
                 "Shows the title of the currently focused window. Click to cycle through windows on the active tag."
             }
             Self::AudioRoute => {
-                "One-click switch of the whole default audio path between your built-in output and a headset. The headset is detected from PipeWire's device metadata (Bluetooth / USB / a combo-jack port), so it works across machines without hardcoding device names. Shows the live route (Built-in / Headset) and flips it on click; hidden when there's no headset to switch to. \"Built-in\" is whatever non-headset device you were last on, so a click always returns you there."
+                "Switches the default audio output. Left-click cycles to the next output (Bluetooth / USB / speakers …), skipping HDMI; right-click opens a picker menu to jump straight to one. Shown only when there are at least two outputs to switch between. With the toggle below, the microphone follows across the headset boundary — detected from PipeWire's portable device metadata, not hardcoded names."
             }
             Self::AudioVisualizer => {
                 "Live audio spectrum — a strip of bars driven by the `cava` CLI (raw mode). Pulses with whatever is playing; sits as a flat resting strip on silence. Needs `cava` installed."

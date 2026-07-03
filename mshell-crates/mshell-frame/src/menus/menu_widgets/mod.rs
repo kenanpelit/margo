@@ -4,6 +4,7 @@ pub(crate) mod app_launcher;
 pub(crate) mod audio_dashboard;
 pub(crate) mod audio_in;
 pub(crate) mod audio_out;
+pub(crate) mod audio_route;
 pub(crate) mod bluetooth;
 pub(crate) mod calendar;
 pub(crate) mod calendar_grid;

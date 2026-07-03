@@ -17,6 +17,9 @@ use crate::menus::menu_widgets::audio_in::audio_in_menu_widget::{
 use crate::menus::menu_widgets::audio_out::audio_out_menu_widget::{
     AudioOutMenuWidgetInit, AudioOutMenuWidgetModel,
 };
+use crate::menus::menu_widgets::audio_route::audio_route_menu_widget::{
+    AudioRouteMenuWidgetInit, AudioRouteMenuWidgetModel, AudioRouteMenuWidgetOutput,
+};
 use crate::menus::menu_widgets::bluetooth::bluetooth_menu_widget::{
     BluetoothMenuWidgetInit, BluetoothMenuWidgetModel,
 };
@@ -160,6 +163,13 @@ pub fn build_widget(
             AudioOutMenuWidgetModel::builder()
                 .launch(AudioOutMenuWidgetInit {})
                 .detach(),
+        ),
+        MenuWidget::AudioRoute => Box::new(
+            AudioRouteMenuWidgetModel::builder()
+                .launch(AudioRouteMenuWidgetInit {})
+                .forward(sender.output_sender(), |msg| match msg {
+                    AudioRouteMenuWidgetOutput::CloseMenu => MenuOutput::CloseMenu,
+                }),
         ),
         MenuWidget::Bluetooth => Box::new(
             BluetoothMenuWidgetModel::builder()
