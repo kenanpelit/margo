@@ -8,12 +8,18 @@
 //!
 //! See `docs/superpowers/specs/2026-07-03-mcal-calendar-design.md`.
 
+mod agenda;
+mod config;
 mod error;
 mod ics;
 mod model;
+mod provider;
 mod recur;
 
+pub use agenda::{days_with_events, events_on_day, sort_agenda};
+pub use config::{CalendarConfig, Subscription, default_local_dir};
 pub use error::McalError;
 pub use ics::parse_ics;
 pub use model::{Account, AccountKind, Attendee, Calendar, Event};
+pub use provider::{LocalProvider, Provider, RemoteIcsProvider, Window, load_all};
 pub use recur::expand;

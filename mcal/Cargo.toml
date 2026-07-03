@@ -12,7 +12,6 @@ chrono = { workspace = true, features = ["clock", "std", "serde"] }
 chrono-tz.workspace = true
 dirs.workspace = true
 icalendar.workspace = true
-reactive_graph.workspace = true
 rrule.workspace = true
 serde = { workspace = true }
 thiserror.workspace = true
