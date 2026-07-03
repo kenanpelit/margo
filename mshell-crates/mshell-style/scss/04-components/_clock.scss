@@ -274,6 +274,13 @@
       transition: background var(--motion-fast) var(--ease-standard),
                   box-shadow   var(--motion-fast) var(--ease-standard);
 
+      // Days carrying ≥1 event (mark_day) — a primary underline. Declared
+      // before the state rules so today / selected / hover win when a marked
+      // day is also today, selected, or hovered.
+      &.marked {
+        box-shadow: inset 0 -2px 0 0 var(--primary);
+      }
+
       // Hover — 14 % primary tint; lifts the cell without
       // competing with the today fill.
       &:hover {
@@ -329,4 +336,48 @@
       @include state-layer();
     }
   }
+}
+
+// ── Agenda card ──────────────────────────────────────────────
+//
+// The selected day's events, below the month grid. Same raised inner
+// surface as the grid card so the two read as one stack.
+.calendar-agenda-card {
+  background-color: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.calendar-agenda-heading {
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--on-surface);
+  margin-bottom: var(--space-1);
+}
+
+.calendar-agenda-row {
+  padding: var(--space-1) 0;
+}
+
+// Time column — primary accent, tabular so start times line up.
+.calendar-agenda-time {
+  color: var(--primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-agenda-title {
+  color: var(--on-surface);
+  font-weight: 500;
+}
+
+.calendar-agenda-location {
+  color: color-mix(in srgb, var(--on-surface-variant) 70%, transparent);
+}
+
+// Empty state ("No events") — dimmed, sits where the list would be.
+.calendar-agenda-empty {
+  color: color-mix(in srgb, var(--on-surface-variant) 60%, transparent);
+  padding: var(--space-2) 0;
 }
