@@ -40,6 +40,7 @@ OPTIONS:
 ";
 
 fn main() -> ExitCode {
+    init_logging();
     let args: Vec<String> = std::env::args().skip(1).collect();
 
     // Split flags (--dir/--ics/--no-browser) from the positional command.
@@ -296,6 +297,33 @@ fn expand_tilde(path: String) -> std::path::PathBuf {
         return std::path::PathBuf::from(home).join(rest);
     }
     std::path::PathBuf::from(path)
+}
+
+/// Send library warnings to stderr. A CLI that silently swallows a Google
+/// 403 (API disabled, missing scope) or a dead token — leaving `today` blank
+/// with no clue why — is a footgun. Default level WARN; raise with e.g.
+/// `RUST_LOG=mcal=debug mcal today`.
+fn init_logging() {
+    use tracing_subscriber::EnvFilter;
+    // mcal's own warnings must always reach stderr — even when RUST_LOG is
+    // aimed at another crate (users often export RUST_LOG=margo=debug for the
+    // compositor, which would otherwise silence us). Seed `mcal=warn`, then
+    // layer any RUST_LOG directives on top so `RUST_LOG=mcal=debug` still
+    // raises verbosity.
+    let mut filter = EnvFilter::new("mcal=warn");
+    if let Ok(raw) = std::env::var("RUST_LOG") {
+        for directive in raw.split(',').filter(|s| !s.is_empty()) {
+            if let Ok(parsed) = directive.parse() {
+                filter = filter.add_directive(parsed);
+            }
+        }
+    }
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .without_time()
+        .with_target(false)
+        .try_init();
 }
 
 /// Print an error to stderr and return a failure exit code.

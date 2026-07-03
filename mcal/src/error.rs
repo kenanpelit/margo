@@ -32,6 +32,11 @@ pub enum McalError {
         source: Box<ureq::Error>,
     },
 
+    /// A Google Calendar API request failed — carries the status + response
+    /// body (e.g. "insufficientPermissions", "Calendar API has not been used").
+    #[error("google api {0}")]
+    Api(String),
+
     /// An OAuth step (browser flow, token exchange/refresh) failed.
     #[error("oauth: {0}")]
     Oauth(String),

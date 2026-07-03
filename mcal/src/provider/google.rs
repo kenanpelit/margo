@@ -115,6 +115,29 @@ fn map_event(raw: &GoogleEvent, calendar_id: &str) -> Option<Event> {
     })
 }
 
+/// Send a prepared request and decode its JSON, folding the HTTP status **and
+/// response body** into the error on failure. Google returns the real reason
+/// (API disabled, insufficient scope, quota) in the body, which `ureq::Error`'s
+/// own `Display` drops — so read it, or the CLI's warning is useless.
+fn call_json<T: serde::de::DeserializeOwned>(
+    req: ureq::Request,
+    what: &str,
+) -> Result<T, McalError> {
+    match req.call() {
+        Ok(resp) => resp.into_json().map_err(|e| McalError::Json(e.to_string())),
+        Err(ureq::Error::Status(code, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            let body = body.trim();
+            Err(McalError::Api(if body.is_empty() {
+                format!("{what}: HTTP {code}")
+            } else {
+                format!("{what}: HTTP {code}: {body}")
+            }))
+        }
+        Err(ureq::Error::Transport(t)) => Err(McalError::Api(format!("{what}: {t}"))),
+    }
+}
+
 /// Percent-encode a calendar id for use in a path segment.
 fn urlencode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -146,15 +169,8 @@ impl GoogleProvider {
 
     fn calendar_ids(&self, token: &str) -> Result<Vec<GoogleCalendar>, McalError> {
         let url = format!("{API}/users/me/calendarList");
-        let resp: CalendarListResponse = ureq::get(&url)
-            .set("Authorization", &format!("Bearer {token}"))
-            .call()
-            .map_err(|e| McalError::Fetch {
-                url: url.clone(),
-                source: Box::new(e),
-            })?
-            .into_json()
-            .map_err(|e| McalError::Json(e.to_string()))?;
+        let req = ureq::get(&url).set("Authorization", &format!("Bearer {token}"));
+        let resp: CalendarListResponse = call_json(req, "calendarList")?;
         Ok(resp.items)
     }
 
@@ -181,14 +197,7 @@ impl GoogleProvider {
             if let Some(tok) = &page {
                 req = req.query("pageToken", tok);
             }
-            let resp: EventsResponse = req
-                .call()
-                .map_err(|e| McalError::Fetch {
-                    url: format!("{API}/calendars/{calendar_id}/events"),
-                    source: Box::new(e),
-                })?
-                .into_json()
-                .map_err(|e| McalError::Json(e.to_string()))?;
+            let resp: EventsResponse = call_json(req, &format!("{calendar_id}/events"))?;
             for raw in &resp.items {
                 if let Some(ev) = map_event(raw, &mapped_id) {
                     out.push(ev);
