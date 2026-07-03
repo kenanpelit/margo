@@ -1,126 +1,201 @@
-# fish completion for mctl
-#
-# Install:
-#   mkdir -p ~/.config/fish/completions
-#   cp contrib/completions/mctl.fish ~/.config/fish/completions/mctl.fish
-#
-# Pulls dispatch action names from `mctl actions --names` so the list
-# stays in sync with the compositor binary you have installed.
-
-# Helper: are we on the top-level (no subcommand chosen yet)?
-function __mctl_no_subcommand
-    set -l tokens (commandline -opc)
-    set -l subs dispatch d tags client-tags layout quit reload watch status actions completions help
-    for tok in $tokens[2..-1]
-        if contains -- $tok $subs
-            return 1
-        end
-    end
-    return 0
+# Print an optspec for argparse to handle cmd's options that are independent of any subcommand.
+function __fish_mctl_global_optspecs
+	string join \n o/output= h/help V/version
 end
 
-# Helper: which subcommand is currently active?
-function __mctl_current_sub
-    set -l tokens (commandline -opc)
-    set -l subs dispatch d tags client-tags layout quit reload watch status actions completions help
-    for tok in $tokens[2..-1]
-        if contains -- $tok $subs
-            echo $tok
-            return 0
-        end
-    end
+function __fish_mctl_needs_command
+	# Figure out if the current invocation already has a command.
+	set -l cmd (commandline -opc)
+	set -e cmd[1]
+	argparse -s (__fish_mctl_global_optspecs) -- $cmd 2>/dev/null
+	or return
+	if set -q argv[1]
+		# Also print the command, so this can be used to figure out what it is.
+		echo $argv[1]
+		return 1
+	end
+	return 0
 end
 
-# Cached action-name list. Refreshed on each shell session.
-function __mctl_actions
-    if not set -q __mctl_actions_cache
-        set -g __mctl_actions_cache (mctl actions --names 2>/dev/null)
-    end
-    for a in $__mctl_actions_cache
-        echo $a
-    end
+function __fish_mctl_using_subcommand
+	set -l cmd (__fish_mctl_needs_command)
+	test -z "$cmd"
+	and return 1
+	contains -- $cmd[1] $argv
 end
 
-# Live output names from `mctl status`.
-function __mctl_outputs
-    mctl status 2>/dev/null | awk -F'[ =]' '/^output=/{print $2}'
-end
-
-# How many positional args has the current subcommand seen so far?
-function __mctl_positional_count
-    set -l tokens (commandline -opc)
-    set -l sub $argv[1]
-    set -l seen_sub 0
-    set -l count 0
-    set -l i 2
-    while test $i -le (count $tokens)
-        set -l tok $tokens[$i]
-        if test $seen_sub -eq 0
-            if test $tok = $sub
-                set seen_sub 1
-            end
-        else
-            switch $tok
-                case '-*'
-                case '*'
-                    set count (math $count + 1)
-            end
-        end
-        set i (math $i + 1)
-    end
-    echo $count
-end
-
-# ── Top level ────────────────────────────────────────────────────────────────
-complete -c mctl -n __mctl_no_subcommand -s h -l help -d 'print help'
-complete -c mctl -n __mctl_no_subcommand -s V -l version -d 'print version'
-complete -c mctl -n __mctl_no_subcommand -s o -l output -x -a "(__mctl_outputs)" \
-    -d 'output to target (default: focused)'
-
-complete -c mctl -n __mctl_no_subcommand -a dispatch     -d 'dispatch a compositor action by name'
-complete -c mctl -n __mctl_no_subcommand -a d            -d 'alias for dispatch'
-complete -c mctl -n __mctl_no_subcommand -a tags         -d 'set active tagset (bitmask)'
-complete -c mctl -n __mctl_no_subcommand -a client-tags  -d 'mutate the focused client tags'
-complete -c mctl -n __mctl_no_subcommand -a layout       -d 'set layout by 0-based index'
-complete -c mctl -n __mctl_no_subcommand -a quit         -d 'quit the compositor'
-complete -c mctl -n __mctl_no_subcommand -a reload       -d 'reload config.conf'
-complete -c mctl -n __mctl_no_subcommand -a watch        -d 'stream state updates'
-complete -c mctl -n __mctl_no_subcommand -a status       -d 'print current status'
-complete -c mctl -n __mctl_no_subcommand -a actions      -d 'list every dispatch action'
-complete -c mctl -n __mctl_no_subcommand -a completions  -d 'emit a shell-completion script'
-complete -c mctl -n __mctl_no_subcommand -a help         -d 'show subcommand help'
-
-# ── dispatch ─────────────────────────────────────────────────────────────────
-# First positional after `dispatch` is the action name.
-complete -c mctl -n "__mctl_current_sub | string match -rq 'dispatch|d'; \
-                     and test (__mctl_positional_count (__mctl_current_sub)) -eq 0" \
-    -x -a "(__mctl_actions)" -d 'dispatch action'
-
-# After `dispatch setlayout`, complete layout names.
-complete -c mctl -n "__mctl_current_sub | string match -rq 'dispatch|d'; \
-                     and test (__mctl_positional_count (__mctl_current_sub)) -eq 1; \
-                     and contains -- 'setlayout' (commandline -opc)" \
-    -x -a "tile scroller grid monocle deck center_tile right_tile vertical_tile \
-           vertical_scroller vertical_grid vertical_deck tgmix canvas dwindle"
-
-# ── actions ──────────────────────────────────────────────────────────────────
-complete -c mctl -n "test (__mctl_current_sub) = actions" -s v -l verbose \
-    -d 'print detail / examples'
-complete -c mctl -n "test (__mctl_current_sub) = actions" -s g -l group -x \
-    -a 'Tag Focus Layout Scroller Window Scratchpad Overview System' \
-    -d 'filter to a single group'
-complete -c mctl -n "test (__mctl_current_sub) = actions" -l names \
-    -d 'flat newline list of every accepted spelling'
-
-# ── completions ──────────────────────────────────────────────────────────────
-complete -c mctl -n "test (__mctl_current_sub) = completions" \
-    -x -a 'bash zsh fish elvish powershell' -d 'shell to generate for'
-
-# ── tags / client-tags / layout: positional args, no good completion ─────────
-complete -c mctl -n "test (__mctl_current_sub) = tags; \
-                     and test (__mctl_positional_count tags) -eq 1" \
-    -x -a '0 1' -d 'toggle (0=set, 1=toggle)'
-
-# ── help ─────────────────────────────────────────────────────────────────────
-complete -c mctl -n "test (__mctl_current_sub) = help" \
-    -x -a 'dispatch tags client-tags layout quit reload watch status actions completions'
+complete -c mctl -n "__fish_mctl_needs_command" -s o -l output -d 'Output to target (default: focused, falls back to first)' -r
+complete -c mctl -n "__fish_mctl_needs_command" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_needs_command" -s V -l version -d 'Print version'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "dispatch" -d 'Dispatch a compositor command by name (margo\'s internal dispatch table)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "log" -d 'File-logging controls (~/.local/state/margo/logs/margo-*.log)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "plugin" -d 'List / enable / disable plugins (~/.config/margo/plugins/<name>/)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "run" -d 'One-shot Rhai script execution against the live compositor (W3.2)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "migrate" -d 'Translate a Hyprland or Sway/i3 config to margo (W4.4)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "tags" -d 'Set the active tagset on an output (raw tag bitmask)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "client-tags" -d 'Mutate the focused client\'s tag bitmask (advanced)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "layout" -d 'Set layout by index (0-based, matches the compositor\'s layout list)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "quit" -d 'Quit the compositor cleanly'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "reload" -d 'Reload `~/.config/margo/config.conf`'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "theme" -d 'Live-swap the visual theme preset'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "session-save" -d 'Save per-monitor tag/layout state to session.json'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "session-load" -d 'Restore per-monitor tag/layout state from session.json'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "get" -d 'Raw IPC query — print one JSON reply and exit'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "watch" -d 'Stream state updates from margo (runs until Ctrl-C)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "status" -d 'Print current status (one shot)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "actions" -d 'List every dispatch action margo accepts (for binds and `mctl dispatch`)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "twilight" -d 'Twilight (built-in blue-light filter) control'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "config-errors" -d 'Show config diagnostics from the last reload (niri-style)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "check-config" -d 'Validate the user\'s config (niri-style diagnostics)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "rules" -d 'Dry-run windowrules against an app_id / title pair'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "completions" -d 'Generate a shell-completion script (bash / zsh / fish / elvish / powershell)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "doctor" -d 'Health check — config, socket, version sync, GPU, services in one pass'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "clients" -d 'List every open window with tag, monitor, app_id, title'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "outputs" -d 'List every connected output with mode, position, scale, layout'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "focused" -d 'Print the focused window\'s app_id + title (terse, scriptable)'
+complete -c mctl -n "__fish_mctl_needs_command" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c mctl -n "__fish_mctl_using_subcommand dispatch" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and not __fish_seen_subcommand_from level enable disable path open help" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and not __fish_seen_subcommand_from level enable disable path open help" -f -a "level" -d 'Set the file-log level live: error | warn | info | debug | trace'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and not __fish_seen_subcommand_from level enable disable path open help" -f -a "enable" -d 'Turn file logging on, live'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and not __fish_seen_subcommand_from level enable disable path open help" -f -a "disable" -d 'Turn file logging off, live'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and not __fish_seen_subcommand_from level enable disable path open help" -f -a "path" -d 'Print the log directory and the current-session file path'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and not __fish_seen_subcommand_from level enable disable path open help" -f -a "open" -d 'Open the log directory in the default file manager'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and not __fish_seen_subcommand_from level enable disable path open help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and __fish_seen_subcommand_from level" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and __fish_seen_subcommand_from enable" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and __fish_seen_subcommand_from disable" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and __fish_seen_subcommand_from path" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and __fish_seen_subcommand_from open" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and __fish_seen_subcommand_from help" -f -a "level" -d 'Set the file-log level live: error | warn | info | debug | trace'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and __fish_seen_subcommand_from help" -f -a "enable" -d 'Turn file logging on, live'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and __fish_seen_subcommand_from help" -f -a "disable" -d 'Turn file logging off, live'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and __fish_seen_subcommand_from help" -f -a "path" -d 'Print the log directory and the current-session file path'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and __fish_seen_subcommand_from help" -f -a "open" -d 'Open the log directory in the default file manager'
+complete -c mctl -n "__fish_mctl_using_subcommand log; and __fish_seen_subcommand_from help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c mctl -n "__fish_mctl_using_subcommand plugin; and not __fish_seen_subcommand_from list enable disable help" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand plugin; and not __fish_seen_subcommand_from list enable disable help" -f -a "list" -d 'List discovered plugins + their enabled state (on-disk)'
+complete -c mctl -n "__fish_mctl_using_subcommand plugin; and not __fish_seen_subcommand_from list enable disable help" -f -a "enable" -d 'Enable a plugin by name (takes effect on the next margo start)'
+complete -c mctl -n "__fish_mctl_using_subcommand plugin; and not __fish_seen_subcommand_from list enable disable help" -f -a "disable" -d 'Disable a plugin by name (takes effect on the next margo start)'
+complete -c mctl -n "__fish_mctl_using_subcommand plugin; and not __fish_seen_subcommand_from list enable disable help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c mctl -n "__fish_mctl_using_subcommand plugin; and __fish_seen_subcommand_from list" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand plugin; and __fish_seen_subcommand_from enable" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand plugin; and __fish_seen_subcommand_from disable" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand plugin; and __fish_seen_subcommand_from help" -f -a "list" -d 'List discovered plugins + their enabled state (on-disk)'
+complete -c mctl -n "__fish_mctl_using_subcommand plugin; and __fish_seen_subcommand_from help" -f -a "enable" -d 'Enable a plugin by name (takes effect on the next margo start)'
+complete -c mctl -n "__fish_mctl_using_subcommand plugin; and __fish_seen_subcommand_from help" -f -a "disable" -d 'Disable a plugin by name (takes effect on the next margo start)'
+complete -c mctl -n "__fish_mctl_using_subcommand plugin; and __fish_seen_subcommand_from help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c mctl -n "__fish_mctl_using_subcommand run" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand migrate" -l from -d 'Force a specific source format (otherwise auto-detected)' -r
+complete -c mctl -n "__fish_mctl_using_subcommand migrate" -s o -l output -d 'Write output to a file instead of stdout' -r -F
+complete -c mctl -n "__fish_mctl_using_subcommand migrate" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand tags" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand client-tags" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand layout" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand quit" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand reload" -l force -d 'Skip the pre-reload validation pass and dispatch the IPC reload unconditionally. Useful if the validator is wrong or the user wants to test the parser\'s recovery behaviour directly'
+complete -c mctl -n "__fish_mctl_using_subcommand reload" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand theme" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand session-save" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand session-load" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand get" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand watch" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand status" -l json -d 'Emit JSON instead of the default `output=… tag[N]=…` text format. Schema is stable: `{ outputs: [{ name, active, layout, layout_idx, focused: { appid, title, fullscreen, floating, x, y, width, height }, tags: [{ index, state, clients, focused }] }], layouts: [..] }`'
+complete -c mctl -n "__fish_mctl_using_subcommand status" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand actions" -s g -l group -d 'Filter to a single group (Tag, Focus, Layout, Scroller, Window, Scratchpad, Overview, System)' -r
+complete -c mctl -n "__fish_mctl_using_subcommand actions" -s v -l verbose -d 'Print the optional `detail` block under each action'
+complete -c mctl -n "__fish_mctl_using_subcommand actions" -l names -d 'Flat newline list of every accepted spelling (canonical + aliases)'
+complete -c mctl -n "__fish_mctl_using_subcommand actions" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and not __fish_seen_subcommand_from status preview test set reset toggle preset help" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and not __fish_seen_subcommand_from status preview test set reset toggle preset help" -f -a "status" -d 'Print the current twilight state (temperature, gamma, phase, source). Reads `state snapshot` — works even when the compositor is paused on a heavy frame'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and not __fish_seen_subcommand_from status preview test set reset toggle preset help" -f -a "preview" -d 'Pin a temperature (and optional gamma %) until `reset`. The schedule is bypassed for the duration'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and not __fish_seen_subcommand_from status preview test set reset toggle preset help" -f -a "test" -d 'Sweep day → night over `seconds`. Falls back to the schedule when done'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and not __fish_seen_subcommand_from status preview test set reset toggle preset help" -f -a "set" -d 'Live-tweak one config field. Persists until reload — the on-disk config isn\'t touched'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and not __fish_seen_subcommand_from status preview test set reset toggle preset help" -f -a "reset" -d 'Clear any preview / test override, resume the schedule'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and not __fish_seen_subcommand_from status preview test set reset toggle preset help" -f -a "toggle" -d 'Toggle the schedule on/off. Equivalent to `mctl twilight set enabled=0` / `enabled=1` but stateful — uses the current `state.config.twilight` flag'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and not __fish_seen_subcommand_from status preview test set reset toggle preset help" -f -a "preset" -d 'Manage Schedule-mode presets (the TOML files under `~/.config/margo/twilight/presets/`) and the schedule table that maps `HH:MM` to preset names. Writes the on-disk files directly, then asks the compositor to reload so the change is live'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and not __fish_seen_subcommand_from status preview test set reset toggle preset help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from status" -l json -d 'Emit the raw `state snapshot` `twilight` object as JSON'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from status" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from preview" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from test" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from set" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from reset" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from toggle" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from preset" -s h -l help -d 'Print help'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from preset" -f -a "list" -d 'List all preset files plus the current time → preset schedule'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from preset" -f -a "show" -d 'Print one preset\'s Kelvin temperature and gamma percent'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from preset" -f -a "set" -d 'Create or update a preset file. Existing files are rewritten'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from preset" -f -a "remove" -d 'Delete a preset file. Also strips any `schedule.conf` line that referenced it so the schedule never points at a missing preset'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from preset" -f -a "schedule" -d 'Edit the `HH:MM → preset` schedule'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from preset" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from help" -f -a "status" -d 'Print the current twilight state (temperature, gamma, phase, source). Reads `state snapshot` — works even when the compositor is paused on a heavy frame'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from help" -f -a "preview" -d 'Pin a temperature (and optional gamma %) until `reset`. The schedule is bypassed for the duration'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from help" -f -a "test" -d 'Sweep day → night over `seconds`. Falls back to the schedule when done'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from help" -f -a "set" -d 'Live-tweak one config field. Persists until reload — the on-disk config isn\'t touched'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from help" -f -a "reset" -d 'Clear any preview / test override, resume the schedule'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from help" -f -a "toggle" -d 'Toggle the schedule on/off. Equivalent to `mctl twilight set enabled=0` / `enabled=1` but stateful — uses the current `state.config.twilight` flag'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from help" -f -a "preset" -d 'Manage Schedule-mode presets (the TOML files under `~/.config/margo/twilight/presets/`) and the schedule table that maps `HH:MM` to preset names. Writes the on-disk files directly, then asks the compositor to reload so the change is live'
+complete -c mctl -n "__fish_mctl_using_subcommand twilight; and __fish_seen_subcommand_from help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c mctl -n "__fish_mctl_using_subcommand config-errors" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand check-config" -l config -d 'Path to inspect. Defaults to `~/.config/margo/config.conf`' -r -F
+complete -c mctl -n "__fish_mctl_using_subcommand check-config" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand rules" -l config -d 'Path to the config to inspect. Defaults to `$XDG_CONFIG_HOME/margo/config.conf`, falling back to `~/.config/margo/config.conf`' -r -F
+complete -c mctl -n "__fish_mctl_using_subcommand rules" -l appid -d 'app_id pattern to test rules against' -r
+complete -c mctl -n "__fish_mctl_using_subcommand rules" -l title -d 'Window title to test against. Empty = match-anything' -r
+complete -c mctl -n "__fish_mctl_using_subcommand rules" -s v -l verbose -d 'Show non-matching rules too, with the reason they didn\'t fire'
+complete -c mctl -n "__fish_mctl_using_subcommand rules" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand completions" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand doctor" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand clients" -l tag -d 'Filter by tag number (1-based; e.g. `--tag 2`)' -r
+complete -c mctl -n "__fish_mctl_using_subcommand clients" -l monitor -d 'Filter by monitor connector name (e.g. `--monitor DP-3`)' -r
+complete -c mctl -n "__fish_mctl_using_subcommand clients" -l app-id -d 'Filter by app_id substring (case-insensitive)' -r
+complete -c mctl -n "__fish_mctl_using_subcommand clients" -l json -d 'JSON dump of the full client list'
+complete -c mctl -n "__fish_mctl_using_subcommand clients" -l wide -d 'Include the geometry column (`x,y wxh`)'
+complete -c mctl -n "__fish_mctl_using_subcommand clients" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand outputs" -l json
+complete -c mctl -n "__fish_mctl_using_subcommand outputs" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand focused" -l json
+complete -c mctl -n "__fish_mctl_using_subcommand focused" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "dispatch" -d 'Dispatch a compositor command by name (margo\'s internal dispatch table)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "log" -d 'File-logging controls (~/.local/state/margo/logs/margo-*.log)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "plugin" -d 'List / enable / disable plugins (~/.config/margo/plugins/<name>/)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "run" -d 'One-shot Rhai script execution against the live compositor (W3.2)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "migrate" -d 'Translate a Hyprland or Sway/i3 config to margo (W4.4)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "tags" -d 'Set the active tagset on an output (raw tag bitmask)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "client-tags" -d 'Mutate the focused client\'s tag bitmask (advanced)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "layout" -d 'Set layout by index (0-based, matches the compositor\'s layout list)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "quit" -d 'Quit the compositor cleanly'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "reload" -d 'Reload `~/.config/margo/config.conf`'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "theme" -d 'Live-swap the visual theme preset'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "session-save" -d 'Save per-monitor tag/layout state to session.json'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "session-load" -d 'Restore per-monitor tag/layout state from session.json'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "get" -d 'Raw IPC query — print one JSON reply and exit'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "watch" -d 'Stream state updates from margo (runs until Ctrl-C)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "status" -d 'Print current status (one shot)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "actions" -d 'List every dispatch action margo accepts (for binds and `mctl dispatch`)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "twilight" -d 'Twilight (built-in blue-light filter) control'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "config-errors" -d 'Show config diagnostics from the last reload (niri-style)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "check-config" -d 'Validate the user\'s config (niri-style diagnostics)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "rules" -d 'Dry-run windowrules against an app_id / title pair'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "completions" -d 'Generate a shell-completion script (bash / zsh / fish / elvish / powershell)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "doctor" -d 'Health check — config, socket, version sync, GPU, services in one pass'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "clients" -d 'List every open window with tag, monitor, app_id, title'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "outputs" -d 'List every connected output with mode, position, scale, layout'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "focused" -d 'Print the focused window\'s app_id + title (terse, scriptable)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and not __fish_seen_subcommand_from dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from log" -f -a "level" -d 'Set the file-log level live: error | warn | info | debug | trace'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from log" -f -a "enable" -d 'Turn file logging on, live'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from log" -f -a "disable" -d 'Turn file logging off, live'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from log" -f -a "path" -d 'Print the log directory and the current-session file path'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from log" -f -a "open" -d 'Open the log directory in the default file manager'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from plugin" -f -a "list" -d 'List discovered plugins + their enabled state (on-disk)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from plugin" -f -a "enable" -d 'Enable a plugin by name (takes effect on the next margo start)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from plugin" -f -a "disable" -d 'Disable a plugin by name (takes effect on the next margo start)'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from twilight" -f -a "status" -d 'Print the current twilight state (temperature, gamma, phase, source). Reads `state snapshot` — works even when the compositor is paused on a heavy frame'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from twilight" -f -a "preview" -d 'Pin a temperature (and optional gamma %) until `reset`. The schedule is bypassed for the duration'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from twilight" -f -a "test" -d 'Sweep day → night over `seconds`. Falls back to the schedule when done'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from twilight" -f -a "set" -d 'Live-tweak one config field. Persists until reload — the on-disk config isn\'t touched'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from twilight" -f -a "reset" -d 'Clear any preview / test override, resume the schedule'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from twilight" -f -a "toggle" -d 'Toggle the schedule on/off. Equivalent to `mctl twilight set enabled=0` / `enabled=1` but stateful — uses the current `state.config.twilight` flag'
+complete -c mctl -n "__fish_mctl_using_subcommand help; and __fish_seen_subcommand_from twilight" -f -a "preset" -d 'Manage Schedule-mode presets (the TOML files under `~/.config/margo/twilight/presets/`) and the schedule table that maps `HH:MM` to preset names. Writes the on-disk files directly, then asks the compositor to reload so the change is live'

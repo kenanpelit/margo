@@ -175,17 +175,24 @@ fi
 section "6. Shell completions"
 
 declare -A COMPLETIONS=(
-    [bash]="$PREFIX/share/bash-completion/completions/mctl"
-    [zsh]="$PREFIX/share/zsh/site-functions/_mctl"
-    [fish]="$PREFIX/share/fish/vendor_completions.d/mctl.fish"
+    [bash]="$PREFIX/share/bash-completion/completions"
+    [zsh]="$PREFIX/share/zsh/site-functions"
+    [fish]="$PREFIX/share/fish/vendor_completions.d"
 )
-for shell in bash zsh fish; do
-    path="${COMPLETIONS[$shell]}"
-    if [[ -f "$path" ]]; then
-        ok "$shell completion: $path"
-    else
-        note "$shell completion missing: $path"
-    fi
+for bin in mctl mshellctl; do
+    for shell in bash zsh fish; do
+        dir="${COMPLETIONS[$shell]}"
+        case "$shell" in
+            zsh) path="$dir/_$bin" ;;
+            fish) path="$dir/$bin.fish" ;;
+            *) path="$dir/$bin" ;;
+        esac
+        if [[ -f "$path" ]]; then
+            ok "$bin $shell completion: $path"
+        else
+            note "$bin $shell completion missing: $path"
+        fi
+    done
 done
 
 # ── 7. Licenses + docs ───────────────────────────────────────────────────────

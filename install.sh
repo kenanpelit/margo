@@ -389,6 +389,14 @@ debian_install_files() {
   install_file 644 "${REPO_ROOT}/contrib/completions/mctl.fish" \
     "/usr/share/fish/vendor_completions.d/mctl.fish"
 
+  # ── shell completions for mshellctl ──
+  install_file 644 "${REPO_ROOT}/contrib/completions/mshellctl.bash" \
+    "/usr/share/bash-completion/completions/mshellctl"
+  install_file 644 "${REPO_ROOT}/contrib/completions/_mshellctl" \
+    "/usr/share/zsh/site-functions/_mshellctl"
+  install_file 644 "${REPO_ROOT}/contrib/completions/mshellctl.fish" \
+    "/usr/share/fish/vendor_completions.d/mshellctl.fish"
+
   # ── shell completions for mdots ──
   install_file 644 "${REPO_ROOT}/contrib/completions/mdots.bash" \
     "/usr/share/bash-completion/completions/mdots"

@@ -491,10 +491,10 @@ enum Command {
                         zsh:   mctl completions zsh  > ~/.local/share/zsh/site-functions/_mctl\n  \
                         fish:  mctl completions fish > ~/.config/fish/completions/mctl.fish\n  \
                       \n\
-                      Hand-curated completion scripts shipped under `contrib/completions/` in \
-                      the source tree complete `mctl dispatch <NAME>` with the action list \
-                      from `mctl actions --names` — clap-generated completions only cover the \
-                      subcommand layer, so prefer the contrib scripts where possible."
+                      The same output is checked in under `contrib/completions/` (regenerated \
+                      by `just completions`) and installed system-wide by the package. These are \
+                      static completions — `mctl dispatch <NAME>` is free text; list the actions \
+                      with `mctl actions --names`."
     )]
     #[command(display_order = 43)]
     Completions {
@@ -2177,13 +2177,11 @@ fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
 }
 
 fn cmd_completions(shell: Shell) -> Result<()> {
-    // clap_complete only knows about the subcommand layer of mctl —
-    // it can't enumerate dispatch action names. The hand-written
-    // scripts in `contrib/completions/` extend the generated output
-    // with the action list from `mctl actions --names`. For an
-    // ad-hoc one-off (e.g. installing into a fresh shell), this
-    // generator is "good enough"; for distributions, prefer the
-    // contrib scripts.
+    // This is the single source of truth for mctl's completions: the
+    // checked-in scripts under `contrib/completions/` are just this
+    // output captured by `just completions` (contrib/completions/
+    // generate.sh). Static only — dispatch action names are free text
+    // (enumerate them with `mctl actions --names`).
     let mut cmd = Args::command();
     let bin_name = "mctl";
     clap_complete::generate(shell, &mut cmd, bin_name, &mut std::io::stdout());

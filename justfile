@@ -53,6 +53,12 @@ dots:
     cargo build --release -p mdots
     sudo install -m755 target/release/mdots {{bindir}}/mdots
 
+# Regenerate the checked-in mctl + mshellctl shell completions (bash/zsh/fish)
+# from clap. Run after adding/renaming a subcommand or argument, then commit
+# contrib/completions/.
+completions:
+    ./contrib/completions/generate.sh
+
 # Everything: compositor + shell + CLI tools.
 all: margo shell cli dots
 
