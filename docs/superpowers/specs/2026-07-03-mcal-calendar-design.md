@@ -21,7 +21,7 @@ the daemon/OAuth/tray machinery.
 ## 2. Scope
 
 ### In (slice 1)
-- **`mcal-core`** — new GTK-free crate: domain types, ICS parsing, RRULE
+- **`mcal`** — new GTK-free crate: domain types, ICS parsing, RRULE
   recurrence expansion, local + remote-ICS providers, a reactive event store.
 - **Local provider** — read `~/.config/margo/calendars/*.ics` and directories
   of `.ics` files (mirrors dankcalendar's `internal/providers/local`).
@@ -48,7 +48,7 @@ two (write-back, reminders) are the natural slice-2 candidates.
                               │
                               ▼
    ┌──────────────────────────────────────────────┐
-   │ mcal-core   (top-level crate, GTK-free)       │
+   │ mcal   (top-level crate, GTK-free)       │
    │  model::{Event, Calendar, Account, Attendee}  │  ← ported from models/*.go
    │  ics::parse   (icalendar crate)               │
    │  recur::expand (rrule crate)                  │
@@ -73,22 +73,23 @@ existing non-GTK-core / GTK-UI split. The reactive glue is `reactive_graph`
 subscribes to it the same way other menu widgets subscribe to services.
 
 ### 3.1 Crate placement & naming
-- `mcal-core/` — **top-level** crate (peer to `mctl`, `mvpn`, `mdots`), keeping
-  the `mshell-crates/mshell-*` prefix consistent and giving mcal its own home
-  for a future `mcal` CLI binary next to it.
-- Workspace registration: add `"mcal-core"` to `members`, and
-  `mcal-core = { path = "mcal-core" }` to `[workspace.dependencies]`.
+- `mcal/` — **top-level** crate (peer to `mctl`, `mvpn`, `mdots`), keeping the
+  `mshell-crates/mshell-*` prefix consistent. It is a **library** in slice 1;
+  the GTK-free-ness is an internal property, not part of the name (no `-core`
+  suffix). A future `mcal` CLI is added as a `[[bin]]` in this same crate.
+- Workspace registration: add `"mcal"` to `members`, and
+  `mcal = { path = "mcal" }` to `[workspace.dependencies]`.
 
 ### 3.2 New third-party deps (add to `[workspace.dependencies]`)
 - `icalendar` — RFC 5545 parse/serialize (replaces hand-porting the Go ICS code).
 - `rrule` — RRULE recurrence expansion over a date window (replaces
   `internal/recurrence`). Pulls `chrono` + `chrono-tz`.
 
-Both use `chrono`, so **`mcal-core` uses `chrono`** for its time types.
+Both use `chrono`, so **`mcal` uses `chrono`** for its time types.
 `calendar.rs` currently uses the `time` crate; it converts chrono → `time` /
 raw fields at the UI boundary (small, localized).
 
-## 4. mcal-core internals
+## 4. mcal internals
 
 ### 4.1 Domain model (`model.rs`) — ported from `models/event.go`
 ```rust
@@ -185,11 +186,11 @@ No new menu, no new pill in slice 1 — the clock/calendar menu is the surface.
 - **1b — Settings page**: Settings → Calendar to edit `local_dir` +
   subscription list (follow `mshell-settings` conventions; inline entry rows).
 - **1c — `mcal` CLI**: top-level `mcal` binary (`mcal today`, `mcal agenda
-  [--days N]`) printing the agenda from `mcal-core`. Satisfies the `m*`-CLI
+  [--days N]`) printing the agenda from `mcal`. Satisfies the `m*`-CLI
   convention (`mctl`/`mvpn`) without a daemon.
 
 ## 7. Testing
-`mcal-core` ships unit tests (the point of the GTK-free split):
+`mcal` ships unit tests (the point of the GTK-free split):
 - `ics.rs`: fixture `.ics` (all-day, timed, TZID, multi-VEVENT) → asserted `Event`s.
 - `recur.rs`: a weekly RRULE expanded over a 30-day window → N instances, EXDATE honoured.
 - `provider/local.rs`: temp dir with `.ics` files + a subdir → calendars + events.
@@ -198,7 +199,7 @@ All headless → run in `cargo test --workspace` (CI gate).
 
 ## 8. CI / conventions
 Must pass `just check`: fmt, clippy `--all-targets -D warnings`, panic-ratchet
-(no new `unwrap/expect/panic` in `mcal-core` — use `thiserror` `McalError` +
+(no new `unwrap/expect/panic` in `mcal` — use `thiserror` `McalError` +
 `Result`), design-lint, `mctl check-config`, `cargo test`. New crate gets
 `[lints] workspace = true`. Adheres to `docs/config-conventions.md` for the
 config knob and `DESIGN.md` for any agenda-row styling.
@@ -216,7 +217,7 @@ config knob and `DESIGN.md` for any agenda-row styling.
   no crash); never block the menu.
 
 ## 10. Slice order (for the plan)
-1. `mcal-core` crate skeleton + workspace registration + `model.rs`.
+1. `mcal` crate skeleton + workspace registration + `model.rs`.
 2. `ics.rs` + tests. 3. `recur.rs` + tests. 4. `provider/local.rs` + tests.
 5. `store.rs` + config schema. 6. `provider/remote_ics.rs` (async fetch/cache).
 7. `calendar.rs` UI: marks + agenda + lazy refresh.

@@ -1,0 +1,26 @@
+[package]
+name = "mcal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "margo calendar core — ICS parse, RRULE recurrence, providers, reactive store (GTK-free)."
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono = { workspace = true, features = ["clock", "std", "serde"] }
+chrono-tz.workspace = true
+dirs.workspace = true
+icalendar.workspace = true
+reactive_graph.workspace = true
+rrule.workspace = true
+serde = { workspace = true }
+thiserror.workspace = true
+tracing.workspace = true
+ureq.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

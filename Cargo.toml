@@ -5,6 +5,7 @@ members = [
     "margo-layouts",
     "margo-logging",
     "margo-portal",
+    "mcal",
     "mctl",
     "mdots",
     "mkeys",
@@ -175,6 +176,10 @@ schemars = "1"
 serde_yaml = "0.9"
 time = { version = "0.3", features = ["local-offset", "formatting"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono-tz = "0.10"
+# Calendar core (mcal-core): RFC 5545 ICS parse/serialize + RRULE recurrence.
+icalendar = "0.16"
+rrule = "0.13"
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 tokio-util = "0.7"
@@ -198,7 +203,8 @@ wayle-sysinfo = "0.1"
 wayle-systray = { version = "0.1", features = ["adapter-gtk"] }
 wayle-weather = "0.1"
 
-# Internal mshell crates — paths relative to workspace root.
+# Internal crates — paths relative to workspace root.
+mcal = { path = "mcal" }
 mshell-auth = { path = "mshell-crates/mshell-auth" }
 mshell-cache = { path = "mshell-crates/mshell-cache" }
 mshell-cli-style = { path = "mshell-crates/mshell-cli-style" }
