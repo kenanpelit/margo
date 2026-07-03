@@ -288,14 +288,19 @@
         background: color-mix(in srgb, var(--primary) 14%, transparent);
       }
 
-      // Days carrying ≥1 event. GTK4 assigns marked days (mark_day) the
-      // `:selected` state — there is NO `.marked` class (docs.gtk.org
-      // Gtk.Calendar CSS nodes) — so `:selected` IS the event indicator:
-      // a 3 px primary underline. Declared before `.today` so today's fill
-      // still wins when today itself has events.
-      &:selected {
-        background: transparent;
-        box-shadow: inset 0 -3px 0 0 var(--primary);
+      // Days carrying ≥1 event. GTK4's `mark_day` sets
+      // GTK_STATE_FLAG_CHECKED on the day label → CSS `:checked` (NOT
+      // `:selected`, which is click-selection; the Gtk.Calendar doc
+      // comment misleadingly says "selected" but the C code sets
+      // CHECKED). This is the event indicator: a small primary dot
+      // centred just under the day number, drawn as a no-repeat radial
+      // gradient. Declared before `.today` so today's solid fill wins
+      // when today itself carries events.
+      &:checked {
+        background-image: radial-gradient(circle, var(--primary) 45%, transparent 50%);
+        background-size: 6px 6px;
+        background-repeat: no-repeat;
+        background-position: 50% 86%;
       }
 
       // Today — filled primary accent.  Declared AFTER :hover and
