@@ -41,11 +41,12 @@ shell:
 
 # Build + install the small CLI / helper binaries.
 cli:
-    cargo build --release -p mctl -p mshellctl -p mscreenshot -p mpicker
+    cargo build --release -p mctl -p mshellctl -p mscreenshot -p mpicker -p mcal
     sudo install -m755 target/release/mctl {{bindir}}/mctl
     sudo install -m755 target/release/mshellctl {{bindir}}/mshellctl
     sudo install -m755 target/release/mscreenshot {{bindir}}/mscreenshot
     sudo install -m755 target/release/mpicker {{bindir}}/mpicker
+    sudo install -m755 target/release/mcal {{bindir}}/mcal
 
 # Build + install mdots (declarative package/dotfiles manager).
 dots:
