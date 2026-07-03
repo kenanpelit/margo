@@ -186,6 +186,14 @@
   margin: var(--space-1) 0;
 }
 
+// Tab switcher for the dashboard calendar (Month / Agenda).
+.calendar-tabs {
+  margin-bottom: var(--space-1);
+  > button {
+    min-width: 0;
+  }
+}
+
 // ── Hero card ────────────────────────────────────────────────
 .calendar-hero {
   background-color: var(--primary);

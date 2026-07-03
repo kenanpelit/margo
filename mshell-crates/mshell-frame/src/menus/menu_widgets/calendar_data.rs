@@ -7,10 +7,10 @@
 //! `gtk::Calendar`. The agenda list is unique to the full widget and stays
 //! there.
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, Local, NaiveDate, Utc};
 use mshell_config::schema::config::{CalendarsStoreFields, ConfigStoreFields};
 use reactive_graph::traits::GetUntracked;
-use relm4::gtk;
+use relm4::gtk::{self, pango, prelude::*};
 use std::path::PathBuf;
 
 /// How far either side of "now" events are loaded, so month navigation within
@@ -82,4 +82,79 @@ fn expand_tilde(path: &str) -> PathBuf {
         return PathBuf::from(home).join(rest);
     }
     PathBuf::from(path)
+}
+
+/// Rebuild an agenda list `Box` for `selected`, toggling the empty-state label.
+pub(crate) fn rebuild_agenda(
+    list: &gtk::Box,
+    empty: &gtk::Label,
+    events: &[mcal::Event],
+    selected: NaiveDate,
+) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+    let day_events = mcal::events_on_day(events, selected);
+    empty.set_visible(day_events.is_empty());
+    for event in &day_events {
+        list.append(&agenda_row(event));
+    }
+}
+
+/// One agenda row: a fixed-width time column + title (and location, if any).
+fn agenda_row(event: &mcal::Event) -> gtk::Box {
+    let row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(10)
+        .css_classes(["calendar-agenda-row"])
+        .build();
+
+    let time = gtk::Label::builder()
+        .css_classes(["calendar-agenda-time", "label-small"])
+        .label(time_label(event))
+        .xalign(0.0)
+        .width_request(64)
+        .valign(gtk::Align::Start)
+        .build();
+    row.append(&time);
+
+    let body = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .hexpand(true)
+        .build();
+
+    let title = gtk::Label::builder()
+        .css_classes(["calendar-agenda-title", "label-medium"])
+        .label(event.summary.as_str())
+        .xalign(0.0)
+        .ellipsize(pango::EllipsizeMode::End)
+        .build();
+    body.append(&title);
+
+    if let Some(location) = event.location.as_deref().filter(|l| !l.is_empty()) {
+        let loc = gtk::Label::builder()
+            .css_classes(["calendar-agenda-location", "label-small"])
+            .label(location)
+            .xalign(0.0)
+            .ellipsize(pango::EllipsizeMode::End)
+            .build();
+        body.append(&loc);
+    }
+
+    row.append(&body);
+    row
+}
+
+/// A row's time column: "All day" or local "HH:MM".
+fn time_label(event: &mcal::Event) -> String {
+    if event.all_day {
+        "All day".to_string()
+    } else {
+        event.start.with_timezone(&Local).format("%H:%M").to_string()
+    }
+}
+
+/// The agenda heading for a day, e.g. "Friday, July 4".
+pub(crate) fn heading(date: NaiveDate) -> String {
+    date.format("%A, %B %-d").to_string()
 }

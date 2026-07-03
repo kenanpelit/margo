@@ -1,13 +1,17 @@
-//! Month-grid-only calendar widget — same `gtk::Calendar` card the full
-//! `Calendar` widget renders at the bottom, without the primary-tinted hero
-//! band on top.
+//! Tabbed calendar widget for the dashboard (mdash).
 //!
-//! Used by the dashboard (mdash) menu where the hero role is filled by a
-//! separate `Clock` widget. Like the full widget it marks days that carry
-//! events (loaded from `mcal` via `calendar_data`); it just omits the agenda
-//! list, which the dashboard has no room for.
+//! Two tabs over a `gtk::Stack`:
+//! * **Month** — the same `gtk::Calendar` month grid the full `Calendar` widget
+//!   renders, with days that carry events marked. No hero band — the dashboard
+//!   fills that role with a separate `Clock` widget.
+//! * **Agenda** — the selected day's events (time · title · location).
+//!
+//! Both tabs are fed by the shared `calendar_data` loader (local `.ics` +
+//! remote ICS subscriptions), so the dashboard shows the user's real events
+//! without the full widget's duplicate date/time hero.
 
 use super::calendar_data;
+use chrono::{Local, NaiveDate};
 use relm4::{
     Component, ComponentParts, ComponentSender,
     gtk::{
@@ -24,24 +28,23 @@ pub(crate) struct CalendarGridModel {
     current_date: Date,
     /// Loaded events (recurrence expanded) across the load window.
     events: Vec<mcal::Event>,
+    /// The day the Agenda tab is showing.
+    selected: NaiveDate,
+    /// Agenda heading, e.g. "Friday, July 4".
+    agenda_heading: String,
 }
 
 #[derive(Debug)]
 pub(crate) enum CalendarGridInput {
-    /// Day-rollover tick — re-anchor the grid selection on today.
-    /// The user may have navigated forward / back; we mirror the
-    /// full Calendar widget's behaviour and jump back when a new
-    /// day starts so the grid stays useful as a glanceable
-    /// "today" reference.
+    /// Day-rollover tick — re-anchor the grid + agenda on today.
     CheckDayRollover,
-    /// Menu reveal state changed — the rollover tick is stopped while
-    /// the menu is closed and restarted (with an immediate check) on
-    /// show, and events are (re)loaded on show.
+    /// Menu reveal state changed — stop/restart the tick and (re)load events.
     ParentRevealChanged(bool),
     /// A fresh event set arrived from the loader.
     EventsLoaded(Vec<mcal::Event>),
-    /// The grid navigated to another month/year (or a day in another
-    /// month was picked) — re-apply day marks.
+    /// The user picked a day on the grid — refill the agenda.
+    DaySelected,
+    /// The grid navigated to another month/year — re-apply day marks.
     VisibleMonthChanged,
 }
 
@@ -65,36 +68,83 @@ impl Component for CalendarGridModel {
     view! {
         #[root]
         gtk::Box {
-            add_css_class: "calendar-grid-card",
             add_css_class: "calendar-menu-widget",
             set_orientation: gtk::Orientation::Vertical,
             set_hexpand: true,
-            // GTK4 won't clip the nested GtkCalendar to the card's
-            // border-radius without an explicit overflow — without this the
-            // calendar paints square over the card's rounded bottom corners.
-            set_overflow: gtk::Overflow::Hidden,
 
-            #[name = "calendar"]
-            gtk::Calendar {
-                set_can_focus: false,
-                set_focus_on_click: false,
-                set_show_heading: true,
-                set_show_day_names: true,
-                set_hexpand: true,
-                connect_day_selected[sender] => move |_| {
-                    sender.input(CalendarGridInput::VisibleMonthChanged);
+            // ── Tab switcher ─────────────────────────────────
+            gtk::StackSwitcher {
+                add_css_class: "calendar-tabs",
+                set_halign: gtk::Align::Center,
+                set_stack: Some(&tabs),
+            },
+
+            #[name = "tabs"]
+            gtk::Stack {
+                set_transition_type: gtk::StackTransitionType::SlideLeftRight,
+
+                // ───────────── Month tab ─────────────
+                add_titled[Some("month"), "Month"] = &gtk::Box {
+                    add_css_class: "calendar-grid-card",
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_hexpand: true,
+                    // GTK4 won't clip the nested GtkCalendar to the card's
+                    // border-radius without an explicit overflow.
+                    set_overflow: gtk::Overflow::Hidden,
+
+                    #[name = "calendar"]
+                    gtk::Calendar {
+                        set_can_focus: false,
+                        set_focus_on_click: false,
+                        set_show_heading: true,
+                        set_show_day_names: true,
+                        set_hexpand: true,
+                        connect_day_selected[sender] => move |_| {
+                            sender.input(CalendarGridInput::DaySelected);
+                        },
+                        connect_prev_month[sender] => move |_| {
+                            sender.input(CalendarGridInput::VisibleMonthChanged);
+                        },
+                        connect_next_month[sender] => move |_| {
+                            sender.input(CalendarGridInput::VisibleMonthChanged);
+                        },
+                        connect_prev_year[sender] => move |_| {
+                            sender.input(CalendarGridInput::VisibleMonthChanged);
+                        },
+                        connect_next_year[sender] => move |_| {
+                            sender.input(CalendarGridInput::VisibleMonthChanged);
+                        },
+                    },
                 },
-                connect_prev_month[sender] => move |_| {
-                    sender.input(CalendarGridInput::VisibleMonthChanged);
-                },
-                connect_next_month[sender] => move |_| {
-                    sender.input(CalendarGridInput::VisibleMonthChanged);
-                },
-                connect_prev_year[sender] => move |_| {
-                    sender.input(CalendarGridInput::VisibleMonthChanged);
-                },
-                connect_next_year[sender] => move |_| {
-                    sender.input(CalendarGridInput::VisibleMonthChanged);
+
+                // ───────────── Agenda tab ─────────────
+                add_titled[Some("agenda"), "Agenda"] = &gtk::Box {
+                    add_css_class: "calendar-agenda-card",
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_hexpand: true,
+                    set_spacing: 6,
+
+                    gtk::Label {
+                        add_css_class: "calendar-agenda-heading",
+                        #[watch]
+                        set_label: model.agenda_heading.as_str(),
+                        set_halign: gtk::Align::Start,
+                    },
+
+                    #[name = "agenda_list"]
+                    gtk::Box {
+                        add_css_class: "calendar-agenda-list",
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        set_spacing: 4,
+                    },
+
+                    #[name = "agenda_empty"]
+                    gtk::Label {
+                        add_css_class: "calendar-agenda-empty",
+                        set_label: "No events",
+                        set_halign: gtk::Align::Start,
+                    },
                 },
             },
         }
@@ -105,18 +155,18 @@ impl Component for CalendarGridModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // 60 s tick — finer than necessary, but cheap. We only act
-        // on day rollover; the rest of the time the closure is a
-        // no-op. Sub-minute resolution lets a click "today" land
-        // promptly when crossing midnight.
+        // 60 s tick — we only act on day rollover; cheap the rest of the time.
         let id = start_tick(&sender);
 
         let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
+        let today = Local::now().date_naive();
 
         let model = CalendarGridModel {
             timer_id: Some(id),
             current_date: now.date(),
             events: Vec::new(),
+            selected: today,
+            agenda_heading: calendar_data::heading(today),
         };
 
         let widgets = view_output!();
@@ -158,7 +208,16 @@ impl Component for CalendarGridModel {
                     widgets.calendar.set_year(now.year());
                     widgets.calendar.set_month(now.month() as i32 - 1);
                     widgets.calendar.set_day(now.day() as i32);
+                    // Move the agenda to the new today as well.
+                    self.selected = Local::now().date_naive();
+                    self.agenda_heading = calendar_data::heading(self.selected);
                     calendar_data::refresh_marks(&widgets.calendar, &self.events);
+                    calendar_data::rebuild_agenda(
+                        &widgets.agenda_list,
+                        &widgets.agenda_empty,
+                        &self.events,
+                        self.selected,
+                    );
                 }
             }
             CalendarGridInput::ParentRevealChanged(visible) => {
@@ -174,6 +233,30 @@ impl Component for CalendarGridModel {
             }
             CalendarGridInput::EventsLoaded(events) => {
                 self.events = events;
+                calendar_data::refresh_marks(&widgets.calendar, &self.events);
+                calendar_data::rebuild_agenda(
+                    &widgets.agenda_list,
+                    &widgets.agenda_empty,
+                    &self.events,
+                    self.selected,
+                );
+            }
+            CalendarGridInput::DaySelected => {
+                let date = widgets.calendar.date();
+                if let Some(day) = NaiveDate::from_ymd_opt(
+                    date.year(),
+                    date.month() as u32,
+                    date.day_of_month() as u32,
+                ) {
+                    self.selected = day;
+                    self.agenda_heading = calendar_data::heading(day);
+                    calendar_data::rebuild_agenda(
+                        &widgets.agenda_list,
+                        &widgets.agenda_empty,
+                        &self.events,
+                        self.selected,
+                    );
+                }
                 calendar_data::refresh_marks(&widgets.calendar, &self.events);
             }
             CalendarGridInput::VisibleMonthChanged => {

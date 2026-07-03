@@ -28,7 +28,6 @@ use relm4::{
     gtk::{
         self,
         glib::{self, SourceId},
-        pango,
         prelude::*,
     },
     once_cell,
@@ -243,7 +242,7 @@ impl Component for CalendarModel {
             format_24_h,
             events: Vec::new(),
             selected: today,
-            agenda_heading: heading(today),
+            agenda_heading: calendar_data::heading(today),
         };
 
         let widgets = view_output!();
@@ -310,7 +309,7 @@ impl Component for CalendarModel {
             CalendarInput::EventsLoaded(events) => {
                 self.events = events;
                 calendar_data::refresh_marks(&widgets.calendar, &self.events);
-                rebuild_agenda(
+                calendar_data::rebuild_agenda(
                     &widgets.agenda_list,
                     &widgets.agenda_empty,
                     &self.events,
@@ -325,8 +324,8 @@ impl Component for CalendarModel {
                     date.day_of_month() as u32,
                 ) {
                     self.selected = day;
-                    self.agenda_heading = heading(day);
-                    rebuild_agenda(
+                    self.agenda_heading = calendar_data::heading(day);
+                    calendar_data::rebuild_agenda(
                         &widgets.agenda_list,
                         &widgets.agenda_empty,
                         &self.events,
@@ -353,81 +352,6 @@ fn spawn_load(sender: &ComponentSender<CalendarModel>) {
     sender.oneshot_command(async move {
         CalendarCommandOutput::Loaded(calendar_data::fetch(config, window).await)
     });
-}
-
-/// Rebuild the agenda list for `selected`, toggling the empty-state label.
-fn rebuild_agenda(
-    list: &gtk::Box,
-    empty: &gtk::Label,
-    events: &[mcal::Event],
-    selected: NaiveDate,
-) {
-    while let Some(child) = list.first_child() {
-        list.remove(&child);
-    }
-    let day_events = mcal::events_on_day(events, selected);
-    empty.set_visible(day_events.is_empty());
-    for event in &day_events {
-        list.append(&agenda_row(event));
-    }
-}
-
-/// One agenda row: a fixed-width time column + title (and location, if any).
-fn agenda_row(event: &mcal::Event) -> gtk::Box {
-    let row = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(10)
-        .css_classes(["calendar-agenda-row"])
-        .build();
-
-    let time = gtk::Label::builder()
-        .css_classes(["calendar-agenda-time", "label-small"])
-        .label(time_label(event))
-        .xalign(0.0)
-        .width_request(64)
-        .valign(gtk::Align::Start)
-        .build();
-    row.append(&time);
-
-    let body = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .hexpand(true)
-        .build();
-
-    let title = gtk::Label::builder()
-        .css_classes(["calendar-agenda-title", "label-medium"])
-        .label(event.summary.as_str())
-        .xalign(0.0)
-        .ellipsize(pango::EllipsizeMode::End)
-        .build();
-    body.append(&title);
-
-    if let Some(location) = event.location.as_deref().filter(|l| !l.is_empty()) {
-        let loc = gtk::Label::builder()
-            .css_classes(["calendar-agenda-location", "label-small"])
-            .label(location)
-            .xalign(0.0)
-            .ellipsize(pango::EllipsizeMode::End)
-            .build();
-        body.append(&loc);
-    }
-
-    row.append(&body);
-    row
-}
-
-/// A row's time column: "All day" or local "HH:MM".
-fn time_label(event: &mcal::Event) -> String {
-    if event.all_day {
-        "All day".to_string()
-    } else {
-        event.start.with_timezone(&Local).format("%H:%M").to_string()
-    }
-}
-
-/// The agenda card heading for a day, e.g. "Friday, July 4".
-fn heading(date: NaiveDate) -> String {
-    date.format("%A, %B %-d").to_string()
 }
 
 /// Today's date in the machine's local time.
