@@ -5,6 +5,67 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] – 2026-07-03
+
+**A native calendar and a much bigger control CLI.** The headline is **mcal** —
+a GTK-free calendar that reads local `.ics` folders, remote ICS subscriptions,
+and (read-only) Google Calendar accounts over OAuth, surfaced in the clock menu,
+the dashboard, Settings, and a CLI. `mshellctl` grows into the single control
+surface for the whole shell and its companion tools, both tools ship shell
+completions, and a keyring backend bug that silently dropped stored secrets is
+fixed. Drop-in upgrade — no feature removals.
+
+### Added
+
+- **mcal — native, GTK-free calendar.** ICS parsing + RRULE recurrence, a
+  local-folder provider, remote-ICS subscriptions, and read-only **Google
+  Calendar accounts over OAuth** (loopback + PKCE, BYO client id, refresh token
+  in the keyring; `--no-browser` for adding a second account). One loader feeds
+  every surface: an event-aware clock-menu calendar (month-grid marks + per-day
+  agenda), a tabbed Month/Agenda card in the mdash dashboard, a **Settings →
+  Calendar** page (local dir + subscriptions + connected accounts), and a
+  `mcal today|agenda|on` CLI plus `mcal account setup google|list|remove`.
+  Config lives under `~/.config/margo/mcal/`.
+- **mshellctl companion-tool proxies + top-level verbs.** New commands proxy the
+  sibling tools — `calendar` (mcal), `vpn` (mvpn), `power` (mpower), `layout`
+  (mlayout), `osk` (mkeys), `color` (mpicker), `play` (mplay) — and the
+  session/notification power-verbs are promoted from under `menu` to first-class
+  `session` and `notification` commands. The `--help` overview is now grouped
+  into headed sections.
+- **Shell completions for `mctl` + `mshellctl`** (bash/zsh/fish), clap-generated
+  so they cover every subcommand/flag, installed system-wide and regenerated
+  with `just completions`.
+- **Bar pills: Countdown and Audio Route** (native DMS-plugin ports). Audio
+  Route is device-level — left-click cycles routable outputs, right-click opens
+  an in-frame picker — with an icon-only pill and `mshellctl audio` verbs.
+
+### Changed
+
+- mcal config moved from `~/.config/mcal` to `~/.config/margo/mcal` (auto-migrated).
+- mcal provider failures (dead token, offline, API error) are now surfaced on
+  stderr instead of being silently swallowed, so an empty `today` is diagnosable.
+
+### Fixed
+
+- **Keyring secrets now persist.** The workspace keyring backend is pinned to
+  `async-secret-service`; the default `sync-secret-service` backend silently
+  failed to persist against gnome-keyring (`set_password` returned Ok but the
+  item was never retrievable), which dropped mcal OAuth tokens, AI keys, and
+  plugin secrets.
+- Calendar event marks now render — GTK4 assigns marked days the `:selected`
+  state, not a `.marked` class, so the previous styling was dead.
+- Shell services (notification, power-profiles, brightness, system-tray) now
+  initialise best-effort, so a missing/absent service can't crash-loop the shell.
+- AI: the Gemini key is sent via the `x-goog-api-key` header, not the URL query.
+- Compositor IPC caps the inbound buffer and restricts the control socket to `0600`.
+- `mdots`: the release binary no longer bakes in `CARGO_MANIFEST_DIR`, and prune
+  restores the original file instead of orphaning it.
+- Config: char-safe truncation for `animation_type` / `keymode`.
+
+### Packaging / CI
+
+- Ship `mvpn`; fix install.sh binary drift; add a `cargo-deny` advisories gate.
+
 ## [1.1.2] – 2026-07-02
 
 **A security & robustness hardening pass.** This release closes three real
