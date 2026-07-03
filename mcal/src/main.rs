@@ -23,9 +23,12 @@ USAGE:
     mcal [OPTIONS] <COMMAND>
 
 COMMANDS:
-    today               Events happening today
-    agenda [DAYS]       Events over the next DAYS days (default 7)
-    on <YYYY-MM-DD>     Events on a specific date
+    today                    Events happening today
+    agenda [DAYS]            Events over the next DAYS days (default 7)
+    on <YYYY-MM-DD>          Events on a specific date
+    account list             List connected accounts
+    account setup google     Connect a Google account (OAuth)
+    account remove <id>      Disconnect an account
 
 OPTIONS:
     --dir <PATH>        Local calendar folder (default ~/.config/margo/calendars)
@@ -84,9 +87,118 @@ fn main() -> ExitCode {
             },
             None => return fail("on needs a date, e.g. mcal on 2026-07-04"),
         },
+        Some("account") => return run_account(&positional[1..]),
         Some(other) => return fail(&format!("unknown command: {other} (try --help)")),
     }
 
+    ExitCode::SUCCESS
+}
+
+/// `mcal account <list|setup|remove> …`
+fn run_account(args: &[String]) -> ExitCode {
+    match args.first().map(String::as_str) {
+        None | Some("list") => account_list(),
+        Some("setup") => match args.get(1).map(String::as_str) {
+            Some("google") => account_setup_google(),
+            Some(other) => fail(&format!("unknown provider: {other} (try: google)")),
+            None => fail("account setup needs a provider, e.g. mcal account setup google"),
+        },
+        Some("remove") => match args.get(1) {
+            Some(id) => account_remove(id),
+            None => fail("account remove needs an id (see mcal account list)"),
+        },
+        Some(other) => fail(&format!("unknown account command: {other}")),
+    }
+}
+
+fn account_list() -> ExitCode {
+    let store = match mcal::AccountStore::load() {
+        Ok(store) => store,
+        Err(e) => return fail(&e.to_string()),
+    };
+    if store.accounts.is_empty() {
+        println!("No accounts. Add one with: mcal account setup google");
+        return ExitCode::SUCCESS;
+    }
+    for a in &store.accounts {
+        println!("{:<8} {:<28} {}", a.kind, a.email, a.id);
+    }
+    ExitCode::SUCCESS
+}
+
+fn account_setup_google() -> ExitCode {
+    let creds = match mcal::load_google() {
+        Ok(Some(creds)) => creds,
+        Ok(None) => {
+            eprintln!("{}", mcal::setup_instructions());
+            return ExitCode::FAILURE;
+        }
+        Err(e) => return fail(&e.to_string()),
+    };
+
+    let tokens = match mcal::interactive_google_login(&creds) {
+        Ok(tokens) => tokens,
+        Err(e) => return fail(&e.to_string()),
+    };
+
+    // The account id is the user's email = the id of its `primary` calendar.
+    let email = match primary_email(&tokens.access_token) {
+        Ok(email) => email,
+        Err(e) => return fail(&e.to_string()),
+    };
+    let id = mcal::AccountStore::google_id(&email);
+
+    if let Err(e) = mcal::store_refresh_token(&id, &tokens.refresh_token) {
+        return fail(&e.to_string());
+    }
+    let mut store = match mcal::AccountStore::load() {
+        Ok(store) => store,
+        Err(e) => return fail(&e.to_string()),
+    };
+    store.add(mcal::StoredAccount {
+        id: id.clone(),
+        kind: "google".into(),
+        email: email.clone(),
+        display_name: email.split('@').next().unwrap_or(&email).to_string(),
+    });
+    if let Err(e) = store.save() {
+        return fail(&e.to_string());
+    }
+    println!("Connected {email}. Try: mcal today");
+    ExitCode::SUCCESS
+}
+
+/// The account's email = the id of its `primary` calendar.
+fn primary_email(access_token: &str) -> Result<String, mcal::McalError> {
+    #[derive(serde::Deserialize)]
+    struct Cal {
+        id: String,
+    }
+    let cal: Cal = ureq::get("https://www.googleapis.com/calendar/v3/calendars/primary")
+        .set("Authorization", &format!("Bearer {access_token}"))
+        .call()
+        .map_err(|e| mcal::McalError::Fetch {
+            url: "calendars/primary".into(),
+            source: Box::new(e),
+        })?
+        .into_json()
+        .map_err(|e| mcal::McalError::Json(e.to_string()))?;
+    Ok(cal.id)
+}
+
+fn account_remove(id: &str) -> ExitCode {
+    let mut store = match mcal::AccountStore::load() {
+        Ok(store) => store,
+        Err(e) => return fail(&e.to_string()),
+    };
+    if !store.remove(id) {
+        return fail(&format!("no such account: {id}"));
+    }
+    if let Err(e) = store.save() {
+        return fail(&e.to_string());
+    }
+    let _ = mcal::delete_refresh_token(id);
+    println!("Removed {id}.");
     ExitCode::SUCCESS
 }
 

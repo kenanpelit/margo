@@ -31,4 +31,20 @@ pub enum McalError {
         #[source]
         source: Box<ureq::Error>,
     },
+
+    /// An OAuth step (browser flow, token exchange/refresh) failed.
+    #[error("oauth: {0}")]
+    Oauth(String),
+
+    /// A keyring read/write failed (no Secret Service, locked, etc.).
+    #[error("keyring: {0}")]
+    Keyring(String),
+
+    /// A JSON payload (Google API / token endpoint) did not parse.
+    #[error("json: {0}")]
+    Json(String),
+
+    /// A `credentials.toml` / `accounts.toml` read/parse failed.
+    #[error("config: {0}")]
+    Config(String),
 }
