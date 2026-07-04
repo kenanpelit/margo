@@ -377,7 +377,6 @@ pub(crate) struct ControlCenterTilesWidgets {
     tile_keep_awake: TileWidget,
     // Held alive so the click handler isn't dropped; not updated by apply_visuals
     // (color picker has no state).
-    #[allow(dead_code)]
     tile_color_picker: TileWidget,
     tile_dnd: TileWidget,
     tile_dark_mode: TileWidget,

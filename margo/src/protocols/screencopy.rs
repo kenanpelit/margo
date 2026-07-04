@@ -88,9 +88,6 @@ impl ScreencopyQueue {
 
     /// Drop any pending screencopies for the given output. Called by
     /// `ScreencopyManagerState::remove_output` when an output is unplugged.
-    /// `#[allow(dead_code)]` until DRM hotplug wires it up — keeping the
-    /// implementation ready avoids a half-baked API.
-    #[allow(dead_code)]
     fn remove_output(&mut self, output: &Output) {
         self.screencopies
             .retain(|screencopy| screencopy.output() != output);
@@ -149,10 +146,7 @@ impl ScreencopyManagerState {
         self.cleanup_queues();
     }
 
-    /// Forget every queued screencopy targeting the given output. Wire to
-    /// DRM hotplug once that lands. Until then it stays dormant — kept so
-    /// the backend doesn't need to grow the API later.
-    #[allow(dead_code)]
+    /// Forget every queued screencopy targeting the given output.
     pub fn remove_output(&mut self, output: &Output) {
         for queue in self.queues.values_mut() {
             queue.remove_output(output);
@@ -506,7 +500,6 @@ pub enum ScreencopyBuffer {
     /// Dmabuf target. Stored for the future zero-copy path; the udev
     /// backend currently falls through (`failed`) for this variant —
     /// see the dmabuf TODO in `serve_screencopies`.
-    #[allow(dead_code)]
     Dmabuf(Dmabuf),
     Shm(WlBuffer),
 }

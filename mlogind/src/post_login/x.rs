@@ -62,7 +62,6 @@ fn mcookie() -> String {
 
 static X_HAS_STARTED: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
-#[allow(dead_code)]
 fn handle_sigusr1(_: i32) {
     X_HAS_STARTED.store(true, std::sync::atomic::Ordering::SeqCst);
 

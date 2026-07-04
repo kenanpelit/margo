@@ -36,7 +36,6 @@ pub struct TabChip {
     /// Consumed by the (deferred) pointer hit-test that maps a click on
     /// a chip to `activate_group_member`; carried now so the geometry
     /// is computed in exactly one place.
-    #[allow(dead_code)]
     pub client_idx: usize,
     /// Chip rect in logical, output-local coords.
     pub rect: Rect,

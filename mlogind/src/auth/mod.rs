@@ -15,7 +15,6 @@ pub use crate::auth::pam::AuthenticationError;
 pub struct ValidatedCredentials<'a> {
     pub(crate) authenticator: Authenticator<'a, PasswordConv>,
 
-    pub username: String,
     pub uid: libc::uid_t,
     pub primary_gid: libc::gid_t,
     pub all_gids: Vec<libc::gid_t>,
@@ -28,9 +27,6 @@ pub struct AuthUserInfo<'a> {
     // also automatically dropped.
     #[allow(dead_code)]
     authenticator: Authenticator<'a, PasswordConv>,
-
-    #[allow(dead_code)]
-    pub username: String,
 
     pub uid: libc::uid_t,
     pub primary_gid: libc::gid_t,

@@ -136,7 +136,6 @@ fn focus_target_label(t: &FocusTarget) -> String {
 
 // ── Top-level compositor state ────────────────────────────────────────────────
 
-#[allow(dead_code)]
 pub type DmabufImportHook = Rc<RefCell<dyn FnMut(&Dmabuf) -> bool>>;
 
 /// Per-surface frame-callback throttling state, kept in the surface's

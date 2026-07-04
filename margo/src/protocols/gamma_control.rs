@@ -67,8 +67,6 @@ impl GammaControlManagerState {
     }
 
     /// Tell every active client that its control is gone (output unplugged etc).
-    /// Wired up once udev hotplug landing handles output removal.
-    #[allow(dead_code)]
     pub fn output_removed(&mut self, output: &Output) {
         if let Some(gamma_control) = self.gamma_controls.remove(output) {
             gamma_control.failed();

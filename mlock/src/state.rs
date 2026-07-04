@@ -335,7 +335,6 @@ impl MlockState {
         }
     }
 
-    #[allow(dead_code)]
     pub fn render_pending(&mut self, qh: &QueueHandle<MlockState>) -> Result<()> {
         let shm = self.shm.as_ref().context("shm missing")?;
         for surface in self.surfaces.iter_mut() {

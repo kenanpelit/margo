@@ -75,7 +75,6 @@ impl OutputPowerManagerState {
     }
 
     /// An output went away — fail its controls so clients drop them.
-    #[allow(dead_code)]
     pub fn output_removed(&mut self, output: &Output) {
         self.controls.retain(|(o, ctrl)| {
             if o == output {

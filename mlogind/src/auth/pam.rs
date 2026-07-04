@@ -78,7 +78,6 @@ pub fn validate_credentials<'a>(
 
     Ok(ValidatedCredentials {
         authenticator,
-        username: username.to_string(),
         uid,
         primary_gid,
         all_gids,
@@ -93,7 +92,6 @@ pub fn open_session<'a>(
 ) -> Result<AuthUserInfo<'a>, AuthenticationError> {
     let ValidatedCredentials {
         mut authenticator,
-        username,
         uid,
         primary_gid,
         all_gids,
@@ -109,7 +107,6 @@ pub fn open_session<'a>(
 
     Ok(AuthUserInfo {
         authenticator,
-        username,
         uid,
         primary_gid,
         all_gids,

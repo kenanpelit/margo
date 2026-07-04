@@ -45,12 +45,6 @@ impl TileWidget {
     pub(crate) fn set_icon(&self, icon_name: &str) {
         self.icon.set_icon_name(Some(icon_name));
     }
-
-    /// Show or hide the whole tile.
-    #[allow(dead_code)]
-    pub(crate) fn set_visible(&self, visible: bool) {
-        self.button.set_visible(visible);
-    }
 }
 
 /// Build a normal tile (icon + title + subtitle, no chevron).
@@ -119,36 +113,5 @@ fn build_tile_inner(icon_name: &str, title: &str, subtitle: &str, expandable: bo
         button,
         icon,
         subtitle: subtitle_label,
-    }
-}
-
-/// Build a small tile (icon box only, no labels). Gets the `.small` CSS class.
-#[allow(dead_code)]
-pub(crate) fn build_small_tile(icon_name: &str) -> TileWidget {
-    let button = gtk::Button::new();
-    button.add_css_class("control-center-tile");
-    button.add_css_class("small");
-
-    // Icon box — flat.
-    let chip = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    chip.add_css_class("control-center-tile-icon");
-    chip.set_halign(gtk::Align::Center);
-    chip.set_valign(gtk::Align::Center);
-
-    let icon = gtk::Image::from_icon_name(icon_name);
-    icon.set_halign(gtk::Align::Center);
-    icon.set_valign(gtk::Align::Center);
-    chip.append(&icon);
-
-    button.set_child(Some(&chip));
-
-    // Small tiles have no subtitle; use a dummy hidden label as placeholder.
-    let dummy_subtitle = gtk::Label::new(None);
-    dummy_subtitle.set_visible(false);
-
-    TileWidget {
-        button,
-        icon,
-        subtitle: dummy_subtitle,
     }
 }

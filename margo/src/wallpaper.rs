@@ -41,7 +41,6 @@ pub struct WallpaperState {
     /// The decoded source — kept around so we can rebuild the buffer
     /// if the renderer ever needs different byte orderings or scales.
     /// Drop it once stable to save ~24 MB on a 4K image.
-    #[allow(dead_code)]
     natural_size: (u32, u32),
     /// Whatever buffer we hand to `MemoryRenderBufferRenderElement`.
     /// One global buffer is reused across every output — Smithay's
