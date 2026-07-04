@@ -231,10 +231,6 @@ pub(crate) enum BarOutput {
     /// toggles the in-stack MargoLayout menu (replaces the
     /// legacy in-popover layout chooser).
     MargoLayoutClicked,
-    /// Audio Route pill right-clicked. Frame catches and toggles the
-    /// in-stack Audio Route picker menu (left-click cycles outputs in
-    /// place instead — that stays inside the pill).
-    AudioRouteClicked,
     /// A plugin's panel pill was clicked (mplugins WASM tier). Carries the
     /// compiled panel path + resolved settings so the frame can host it in the
     /// first-class plugin-panel menu.
@@ -1100,15 +1096,6 @@ impl BarModel {
                     .forward(sender.output_sender(), |msg| match msg {
                         crate::bars::bar_widgets::countdown::CountdownOutput::Clicked => {
                             BarOutput::CountdownClicked
-                        }
-                    }),
-            ),
-            BarWidget::AudioRoute => Box::new(
-                crate::bars::bar_widgets::audio_route::AudioRouteModel::builder()
-                    .launch(crate::bars::bar_widgets::audio_route::AudioRouteInit { orientation })
-                    .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::audio_route::AudioRouteOutput::OpenMenu => {
-                            BarOutput::AudioRouteClicked
                         }
                     }),
             ),

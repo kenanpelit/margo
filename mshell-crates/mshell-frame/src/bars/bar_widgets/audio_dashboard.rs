@@ -18,7 +18,7 @@
 use mshell_common::WatcherToken;
 use mshell_services::audio_service;
 use mshell_utils::audio::{
-    get_audio_in_icon, get_audio_out_icon, spawn_default_input_watcher,
+    get_audio_in_icon, get_audio_out_icon_device_aware, spawn_default_input_watcher,
     spawn_default_output_watcher, spawn_input_device_volume_mute_watcher,
     spawn_input_devices_watcher, spawn_output_device_volume_mute_watcher,
     spawn_output_devices_watcher,
@@ -412,7 +412,11 @@ fn read_output_state(d: &Option<Arc<OutputDevice>>) -> (f64, bool, String) {
     if let Some(device) = d {
         let muted = device.muted.get();
         let percent = device.volume.get().average();
-        (percent, muted, get_audio_out_icon(device).to_string())
+        (
+            percent,
+            muted,
+            get_audio_out_icon_device_aware(device).to_string(),
+        )
     } else {
         (0.0, false, "audio-volume-muted-symbolic".to_string())
     }

@@ -38,6 +38,25 @@ pub fn get_audio_out_icon(device: &Arc<OutputDevice>) -> &'static str {
     }
 }
 
+/// Output icon that reflects the *device type* on top of the volume level,
+/// used by the Audio Dashboard bar pill so its glyph doubles as a route
+/// indicator (the standalone Audio Route pill is gone). Mute still wins so a
+/// muted output stays visibly muted; otherwise a headset shows the headset
+/// glyph, an HDMI/DisplayPort sink the display glyph, and everything else
+/// falls back to the volume-level speaker icon from [`get_audio_out_icon`].
+pub fn get_audio_out_icon_device_aware(device: &Arc<OutputDevice>) -> &'static str {
+    if device.muted.get() {
+        return "audio-volume-muted-symbolic";
+    }
+    if out_is_headset(device) {
+        return "audio-headset-symbolic";
+    }
+    if is_hdmi_output(device) {
+        return "video-display-symbolic";
+    }
+    get_audio_out_icon(device)
+}
+
 pub fn get_audio_in_icon(device: &Arc<InputDevice>) -> &'static str {
     if device.muted.get() {
         return "microphone-sensitivity-muted-symbolic";
@@ -321,10 +340,10 @@ pub fn get_stream_volume_icon(stream: &AudioStream) -> &'static str {
 
 // ── Audio Route (output cycling + headset classification) ──────────────────
 //
-// Shared by the Audio Route bar pill (left-click cycle + right-click picker
-// menu, `mshell-frame/.../bar_widgets/audio_route.rs`) and the `mshellctl audio
-// route-next` IPC action (`mshell-core`), so the CLI and the pill route audio
-// identically. Detection prefers PipeWire's structured, machine-portable
+// Shared by the `mshellctl audio route-next` IPC action (`mshell-core`), the
+// Settings → Sound device switcher, and the Audio Dashboard pill's device-aware
+// glyph ([`get_audio_out_icon_device_aware`]), so they all classify + route
+// audio identically. Detection prefers PipeWire's structured, machine-portable
 // metadata over any name guessing.
 
 /// Name-only headset keywords — the LAST-resort fallback in [`is_headset`],

@@ -51,14 +51,6 @@ pub enum BarWidget {
     /// toggles, and device pickers for both sides. Replaces the
     /// standalone AudioInput / AudioOutput pills.
     AudioDashboard,
-    /// Audio Route pill — one click flips the whole default audio path
-    /// (both the default input/mic **and** the default output/speaker)
-    /// between the built-in device port and a headset/external port, via
-    /// `wayle_audio`'s `set_port`. The glyph reflects the current route.
-    /// Hidden when neither device exposes ≥2 ports (nothing to switch).
-    /// Port of the DMS `Audio Port Switcher` plugin, generalized to route
-    /// input + output together.
-    AudioRoute,
     /// Audio spectrum visualizer — a strip of live cava-driven bars.
     /// Render-only (no menu); degrades to flat bars if `cava` isn't
     /// installed or there's no audio.
@@ -175,7 +167,6 @@ impl BarWidget {
             BarWidget::HiddenBarNamed(_) => "Hidden Bar",
             BarWidget::Catwalk => "Catwalk (animated cat)",
             BarWidget::AudioDashboard => "Audio Dashboard",
-            BarWidget::AudioRoute => "Audio Route",
             BarWidget::AudioVisualizer => "Audio Visualizer",
             BarWidget::Bluetooth => "Bluetooth",
             BarWidget::Clipboard => "Clipboard",
@@ -239,7 +230,6 @@ impl BarWidget {
             BarWidget::HiddenBar,
             BarWidget::Catwalk,
             BarWidget::AudioDashboard,
-            BarWidget::AudioRoute,
             BarWidget::AudioVisualizer,
             BarWidget::Bluetooth,
             BarWidget::Clipboard,

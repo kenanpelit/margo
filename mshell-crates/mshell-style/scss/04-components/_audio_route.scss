@@ -1,8 +1,0 @@
-// Audio Route bar pill — "Headset" / "Built-in" route label next to the
-// route glyph. Surface comes from the shared `.ok-bar-widget` tokens;
-// this only styles the label. Matugen vars only (see DESIGN.md).
-.audio-route-label {
-  font-size: var(--font-bar);
-  font-weight: 500;
-  color: var(--on-surface);
-}

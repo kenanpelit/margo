@@ -1376,12 +1376,6 @@ pub struct Menus {
     /// content is a single `MargoLayout` widget rendering a
     /// vertical list of compositor layouts.
     pub margo_layout_menu: Menu,
-    /// Audio Route menu — the `audio_route` bar pill's right-click surface:
-    /// a flat list of routable output sinks (HDMI excluded) with the current
-    /// default checked, click one to switch. Default-on-missing so older YAML
-    /// parses.
-    #[serde(default = "default_audio_route_menu")]
-    pub audio_route_menu: Menu,
     /// First-class surface for plugin-provided WASM panels (mplugins WASM
     /// tier). One menu hosts whichever plugin panel is opened (by key), so an
     /// installed plugin's panel is as position/size-configurable as any
@@ -1399,15 +1393,6 @@ fn default_plugin_panel_menu() -> Menu {
         widgets: vec![],
         minimum_width: 420,
         maximum_height: 560,
-    }
-}
-
-fn default_audio_route_menu() -> Menu {
-    Menu {
-        position: Position::Top,
-        widgets: vec![MenuWidget::AudioRoute],
-        minimum_width: 280,
-        maximum_height: 0,
     }
 }
 
@@ -1822,7 +1807,6 @@ impl Default for Menus {
                 minimum_width: 280,
                 maximum_height: 0,
             },
-            audio_route_menu: default_audio_route_menu(),
             left_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
             right_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
         }

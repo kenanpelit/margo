@@ -183,9 +183,6 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::AudioDashboard => {
                     app_sender.emit(ShellInput::ToggleAudioDashboardMenu(active_monitor().await));
                 }
-                IPCCommand::AudioRoute => {
-                    app_sender.emit(ShellInput::ToggleAudioRouteMenu(active_monitor().await));
-                }
                 IPCCommand::SystemUpdate => {
                     app_sender.emit(ShellInput::ToggleSystemUpdateMenu(active_monitor().await));
                 }
@@ -377,11 +374,11 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                 }
                 IPCCommand::AudioRouteCycle => {
-                    // Mirror the Audio Route pill's left-click exactly: cycle to
-                    // the next routable output (HDMI/DP skipped, name-sorted,
-                    // wrapping) and — when configured — follow the mic across the
-                    // headset boundary. Shares the pill's helpers so CLI and pill
-                    // route audio identically.
+                    // Cycle to the next routable output (HDMI/DP skipped,
+                    // name-sorted, wrapping) and — when configured — follow the
+                    // mic across the headset boundary. Drives `mshellctl audio
+                    // route-next` (bind it to a key); shares the same helpers as
+                    // the Settings → Sound device switcher.
                     let outs = mshell_utils::audio::routable_outputs();
                     if outs.len() >= 2 {
                         let names: Vec<String> = outs.iter().map(|d| d.name.get()).collect();
@@ -638,10 +635,8 @@ enum IPCCommand {
     BluetoothCtl(String),
     CpuDashboard,
     AudioDashboard,
-    /// Toggle the Audio Route picker menu (`mshellctl menu audio-route`).
-    AudioRoute,
-    /// Cycle the default output like the Audio Route pill's left-click
-    /// (`mshellctl audio route-next`).
+    /// Cycle the default output to the next routable sink, HDMI/DP skipped
+    /// (`mshellctl audio route-next` — bind to a key).
     AudioRouteCycle,
     SystemUpdate,
     Valent,
@@ -1677,10 +1672,6 @@ impl IPCService {
     async fn audio_dashboard(&self) {
         let _ = self.tx.send(IPCCommand::AudioDashboard);
     }
-    /// Toggle the Audio Route picker menu (right-click equivalent of the pill).
-    async fn audio_route(&self) {
-        let _ = self.tx.send(IPCCommand::AudioRoute);
-    }
     // ── Audio query / control (mshellctl audio …) ──────────────────────────
     // Queries read the live service directly (sync, like notification_count);
     // actions go through the command loop so the async PipeWire setters run on
@@ -1738,9 +1729,9 @@ impl IPCService {
     async fn audio_output_switch(&self, target: String) {
         let _ = self.tx.send(IPCCommand::SwitchOutput(target));
     }
-    /// Cycle the default output like the Audio Route pill's left-click: skips
-    /// HDMI/DP, name-sorted + wrapping, and follows the mic across the headset
-    /// boundary when `audio.route_switch_microphone` is on.
+    /// Cycle the default output to the next routable sink: skips HDMI/DP,
+    /// name-sorted + wrapping, and follows the mic across the headset boundary
+    /// when `audio.route_switch_microphone` is on.
     async fn audio_route_cycle(&self) {
         let _ = self.tx.send(IPCCommand::AudioRouteCycle);
     }

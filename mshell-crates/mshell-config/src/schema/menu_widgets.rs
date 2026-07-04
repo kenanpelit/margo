@@ -21,11 +21,6 @@ pub enum MenuWidget {
     AudioDashboard,
     AudioInput,
     AudioOutput,
-    /// Audio Route menu — a flat list of the routable output sinks
-    /// (Bluetooth / USB / speakers; HDMI excluded) with the current
-    /// default checked; click one to make it the default. The menu
-    /// content for the `audio_route` bar pill's right-click.
-    AudioRoute,
     Bluetooth,
     Calendar,
     /// Month grid only — the same `gtk::Calendar` half of the
@@ -155,7 +150,6 @@ impl MenuWidget {
             MenuWidget::AudioDashboard => "Audio Dashboard",
             MenuWidget::AudioInput => "Audio Input",
             MenuWidget::AudioOutput => "Audio Output",
-            MenuWidget::AudioRoute => "Audio Route",
             MenuWidget::Bluetooth => "Bluetooth",
             MenuWidget::Calendar => "Calendar",
             MenuWidget::CalendarGrid => "Calendar Grid",
@@ -222,7 +216,6 @@ impl MenuWidget {
             MenuWidget::AudioDashboard,
             MenuWidget::AudioInput,
             MenuWidget::AudioOutput,
-            MenuWidget::AudioRoute,
             MenuWidget::Bluetooth,
             MenuWidget::Calendar,
             MenuWidget::CalendarGrid,

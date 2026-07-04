@@ -157,7 +157,6 @@ pub(crate) enum MenuType {
     /// Audio Route picker — the Audio Route bar pill's right-click
     /// surface. Lists every routable output so the user can jump
     /// straight to one (left-click on the pill cycles instead).
-    AudioRoute,
     /// First-class surface for a plugin-provided WASM panel (mplugins WASM
     /// tier). Content is injected from the frame via
     /// [`MenuInput::SetExternalContent`] (this crate stays GTK-only — the
@@ -618,12 +617,6 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, margo_layout_menu);
                 effect_min_width!(effects, base_config, sender, margo_layout_menu);
                 effect_max_height!(effects, base_config, sender, margo_layout_menu);
-            }
-            MenuType::AudioRoute => {
-                css_class = "quick-settings-menu audio-route-menu".to_string();
-                effect_widgets!(effects, base_config, sender, audio_route_menu);
-                effect_min_width!(effects, base_config, sender, audio_route_menu);
-                effect_max_height!(effects, base_config, sender, audio_route_menu);
             }
             MenuType::PluginPanel => {
                 css_class = "plugin-panel-menu".to_string();

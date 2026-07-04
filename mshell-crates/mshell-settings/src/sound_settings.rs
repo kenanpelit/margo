@@ -14,9 +14,10 @@ use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{AudioConfigStoreFields, ConfigStoreFields};
 use mshell_services::audio_service;
 use mshell_utils::audio::{
-    spawn_default_input_watcher, spawn_default_output_watcher,
+    spawn_default_input_watcher, spawn_default_output_watcher, spawn_input_device_ports_watcher,
     spawn_input_device_volume_mute_watcher, spawn_input_devices_watcher,
-    spawn_output_device_volume_mute_watcher, spawn_output_devices_watcher,
+    spawn_output_device_ports_watcher, spawn_output_device_volume_mute_watcher,
+    spawn_output_devices_watcher,
 };
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::glib;
@@ -26,6 +27,7 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
 use wayle_audio::core::device::input::InputDevice;
 use wayle_audio::core::device::output::OutputDevice;
+use wayle_audio::types::device::DevicePort;
 use wayle_audio::volume::types::Volume;
 
 pub(crate) struct SoundSettingsModel {
@@ -47,6 +49,25 @@ pub(crate) struct SoundSettingsModel {
     in_mute_handler: SignalHandlerId,
     /// Whether HDMI/DisplayPort outputs are hidden from the list + switcher.
     hide_hdmi_outputs: bool,
+    /// Whether the default mic follows the output across the headset boundary
+    /// when it's switched (was the standalone Audio Route pill's one setting).
+    route_switch_microphone: bool,
+    // ── Within-device port route (speaker ↔ headphone jack / mic ↔ headset) ──
+    // The device dropdowns above switch *between* devices; these switch the
+    // route *within* the active device. Each row hides itself unless the
+    // current default exposes ≥2 ports, so single-port hosts see nothing.
+    out_ports: Vec<DevicePort>,
+    out_port_dd: gtk::DropDown,
+    out_port_dd_handler: SignalHandlerId,
+    out_port_model: gtk::StringList,
+    out_ports_visible: bool,
+    out_ports_token: WatcherToken,
+    in_ports: Vec<DevicePort>,
+    in_port_dd: gtk::DropDown,
+    in_port_dd_handler: SignalHandlerId,
+    in_port_model: gtk::StringList,
+    in_ports_visible: bool,
+    in_ports_token: WatcherToken,
     /// Cancels the per-device volume/mute watcher when the default switches.
     out_vol_token: WatcherToken,
     in_vol_token: WatcherToken,
@@ -78,6 +99,13 @@ pub(crate) enum SoundSettingsInput {
     SetHideHdmiOutputs(bool),
     /// Config reactive effect — mirrors `audio.hide_hdmi_outputs` into model.
     HideHdmiOutputsEffect(bool),
+    /// User toggled "Also switch the microphone".
+    SetRouteSwitchMic(bool),
+    /// Config reactive effect — mirrors `audio.route_switch_microphone`.
+    RouteSwitchMicEffect(bool),
+    /// A within-device port (route) was picked from the port dropdowns.
+    SetOutputPort(u32),
+    SetInputPort(u32),
 }
 
 #[derive(Debug)]
@@ -93,6 +121,8 @@ pub(crate) enum SoundSettingsCommandOutput {
     InDefaultChanged,
     InVolMuteChanged,
     InDevicesChanged,
+    OutPortsChanged,
+    InPortsChanged,
 }
 
 #[relm4::component(pub)]
@@ -212,6 +242,60 @@ impl Component for SoundSettingsModel {
                         } @hide_hdmi_handler,
                     },
                 },
+
+                // ── Follow the mic when the output moves to a headset ──
+                gtk::Box {
+                    add_css_class: "action-row",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Also switch the microphone",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "When the output moves to a headset, move the default mic to it too. Turn off to keep your current capture device (e.g. a good USB mic).",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(mic_follow_handler)]
+                        set_active: model.route_switch_microphone,
+                        connect_state_set[sender] => move |_, on| {
+                            sender.input(SoundSettingsInput::SetRouteSwitchMic(on));
+                            glib::Propagation::Proceed
+                        } @mic_follow_handler,
+                    },
+                },
+                },
+
+                // ── Output port (route within the current device) ──
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+                    #[watch]
+                    set_visible: model.out_ports_visible,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Port" },
+                        #[template_child] desc { set_label: "Route within this device — e.g. speakers vs the headphone jack." },
+                        #[local_ref] out_port_dd_w -> gtk::DropDown {},
+                    },
                 },
 
                 gtk::Label {
@@ -242,6 +326,21 @@ impl Component for SoundSettingsModel {
                     #[template_child] desc { set_label: "Silence the input." },
                     #[local_ref] in_mute_w -> gtk::Switch {},
                 },
+                },
+
+                // ── Input port (route within the current device) ──
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+                    #[watch]
+                    set_visible: model.in_ports_visible,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Port" },
+                        #[template_child] desc { set_label: "Route within this device — e.g. the internal mic vs a headset mic." },
+                        #[local_ref] in_port_dd_w -> gtk::DropDown {},
+                    },
                 },
 
                 // ── Startup defaults ──
@@ -367,6 +466,47 @@ impl Component for SoundSettingsModel {
             move |sw| s.input(SoundSettingsInput::SetInputMute(sw.is_active()))
         });
 
+        // ── Port controls (route within the active device) ──
+        let out_ports = default_out
+            .as_ref()
+            .map(|d| d.ports.get())
+            .unwrap_or_default();
+        let out_port_model = string_list(out_ports.iter().map(port_label));
+        let out_port_dd = gtk::DropDown::builder().model(&out_port_model).build();
+        out_port_dd.set_width_request(240);
+        out_port_dd.set_valign(gtk::Align::Center);
+        if let Some(i) = active_port_index(
+            &out_ports,
+            default_out.as_ref().and_then(|d| d.active_port.get()),
+        ) {
+            out_port_dd.set_selected(i);
+        }
+        let out_port_dd_handler = out_port_dd.connect_selected_notify({
+            let s = sender.clone();
+            move |dd| s.input(SoundSettingsInput::SetOutputPort(dd.selected()))
+        });
+        let out_ports_visible = out_ports.len() >= 2;
+
+        let in_ports = default_in
+            .as_ref()
+            .map(|d| d.ports.get())
+            .unwrap_or_default();
+        let in_port_model = string_list(in_ports.iter().map(port_label));
+        let in_port_dd = gtk::DropDown::builder().model(&in_port_model).build();
+        in_port_dd.set_width_request(240);
+        in_port_dd.set_valign(gtk::Align::Center);
+        if let Some(i) = active_port_index(
+            &in_ports,
+            default_in.as_ref().and_then(|d| d.active_port.get()),
+        ) {
+            in_port_dd.set_selected(i);
+        }
+        let in_port_dd_handler = in_port_dd.connect_selected_notify({
+            let s = sender.clone();
+            move |dd| s.input(SoundSettingsInput::SetInputPort(dd.selected()))
+        });
+        let in_ports_visible = in_ports.len() >= 2;
+
         // ── Watchers: default device, device list, and the active device's
         //    volume/mute (re-pointed when the default changes). ──
         let mut out_vol_token = WatcherToken::new();
@@ -395,8 +535,20 @@ impl Component for SoundSettingsModel {
                 SoundSettingsCommandOutput::InVolMuteChanged
             });
         }
+        let mut out_ports_token = WatcherToken::new();
+        let mut in_ports_token = WatcherToken::new();
+        if let Some(d) = &default_out {
+            spawn_output_device_ports_watcher(d, out_ports_token.reset(), &sender, || {
+                SoundSettingsCommandOutput::OutPortsChanged
+            });
+        }
+        if let Some(d) = &default_in {
+            spawn_input_device_ports_watcher(d, in_ports_token.reset(), &sender, || {
+                SoundSettingsCommandOutput::InPortsChanged
+            });
+        }
 
-        // ── Config reactive effect: keep hide_hdmi_outputs in sync ──
+        // ── Config reactive effects: keep hide_hdmi_outputs + mic-follow ──
         let mut effects = EffectScope::new();
         {
             let s = sender.clone();
@@ -405,11 +557,27 @@ impl Component for SoundSettingsModel {
                 s.input(SoundSettingsInput::HideHdmiOutputsEffect(v));
             });
         }
+        {
+            let s = sender.clone();
+            effects.push(move |_| {
+                let v = config_manager()
+                    .config()
+                    .audio()
+                    .route_switch_microphone()
+                    .get();
+                s.input(SoundSettingsInput::RouteSwitchMicEffect(v));
+            });
+        }
 
         let hide_hdmi_outputs = config_manager()
             .config()
             .audio()
             .hide_hdmi_outputs()
+            .get_untracked();
+        let route_switch_microphone = config_manager()
+            .config()
+            .audio()
+            .route_switch_microphone()
             .get_untracked();
 
         // ── Startup-default controls (config-only; applied at login) ──
@@ -453,6 +621,19 @@ impl Component for SoundSettingsModel {
             in_mute: in_mute.clone(),
             in_mute_handler,
             hide_hdmi_outputs,
+            route_switch_microphone,
+            out_ports,
+            out_port_dd: out_port_dd.clone(),
+            out_port_dd_handler,
+            out_port_model,
+            out_ports_visible,
+            out_ports_token,
+            in_ports,
+            in_port_dd: in_port_dd.clone(),
+            in_port_dd_handler,
+            in_port_model,
+            in_ports_visible,
+            in_ports_token,
             out_vol_token,
             in_vol_token,
             _out_devices_token: out_devices_token,
@@ -469,6 +650,8 @@ impl Component for SoundSettingsModel {
         let restore_switch_w = &restore_switch;
         let def_out_scale_w = &def_out_scale;
         let def_in_scale_w = &def_in_scale;
+        let out_port_dd_w = &out_port_dd;
+        let in_port_dd_w = &in_port_dd;
         let widgets = view_output!();
         let _ = root;
         ComponentParts { model, widgets }
@@ -533,6 +716,30 @@ impl Component for SoundSettingsModel {
             SoundSettingsInput::HideHdmiOutputsEffect(v) => {
                 self.hide_hdmi_outputs = v;
             }
+            SoundSettingsInput::SetRouteSwitchMic(v) => {
+                config_manager().update_config(|c| c.audio.route_switch_microphone = v);
+            }
+            SoundSettingsInput::RouteSwitchMicEffect(v) => {
+                self.route_switch_microphone = v;
+            }
+            SoundSettingsInput::SetOutputPort(idx) => {
+                if let Some(p) = self.out_ports.get(idx as usize).cloned()
+                    && let Some(d) = audio_service().default_output.get()
+                {
+                    tokio::spawn(async move {
+                        let _ = d.set_port(p.name).await;
+                    });
+                }
+            }
+            SoundSettingsInput::SetInputPort(idx) => {
+                if let Some(p) = self.in_ports.get(idx as usize).cloned()
+                    && let Some(d) = audio_service().default_input.get()
+                {
+                    tokio::spawn(async move {
+                        let _ = d.set_port(p.name).await;
+                    });
+                }
+            }
         }
     }
 
@@ -549,10 +756,16 @@ impl Component for SoundSettingsModel {
                     spawn_output_device_volume_mute_watcher(&d, token, &sender, || {
                         SoundSettingsCommandOutput::OutVolMuteChanged
                     });
+                    let ports_token = self.out_ports_token.reset();
+                    spawn_output_device_ports_watcher(&d, ports_token, &sender, || {
+                        SoundSettingsCommandOutput::OutPortsChanged
+                    });
                 }
                 self.sync_output();
+                self.sync_out_ports();
             }
             SoundSettingsCommandOutput::OutVolMuteChanged => self.sync_output(),
+            SoundSettingsCommandOutput::OutPortsChanged => self.sync_out_ports(),
             SoundSettingsCommandOutput::OutDevicesChanged => {
                 self.out_devices = audio_service().output_devices.get();
                 splice(
@@ -569,10 +782,16 @@ impl Component for SoundSettingsModel {
                     spawn_input_device_volume_mute_watcher(&d, token, &sender, || {
                         SoundSettingsCommandOutput::InVolMuteChanged
                     });
+                    let ports_token = self.in_ports_token.reset();
+                    spawn_input_device_ports_watcher(&d, ports_token, &sender, || {
+                        SoundSettingsCommandOutput::InPortsChanged
+                    });
                 }
                 self.sync_input();
+                self.sync_in_ports();
             }
             SoundSettingsCommandOutput::InVolMuteChanged => self.sync_input(),
+            SoundSettingsCommandOutput::InPortsChanged => self.sync_in_ports(),
             SoundSettingsCommandOutput::InDevicesChanged => {
                 self.in_devices = audio_service().input_devices.get();
                 splice(
@@ -635,6 +854,57 @@ impl SoundSettingsModel {
             self.in_mute.set_active(muted)
         });
     }
+
+    /// Re-sync the output port dropdown from the active device's ports,
+    /// hiding the row unless there's more than one route to pick.
+    fn sync_out_ports(&mut self) {
+        let dev = audio_service().default_output.get();
+        self.out_ports = dev.as_ref().map(|d| d.ports.get()).unwrap_or_default();
+        self.out_ports_visible = self.out_ports.len() >= 2;
+        splice(&self.out_port_model, self.out_ports.iter().map(port_label));
+        let idx = active_port_index(
+            &self.out_ports,
+            dev.as_ref().and_then(|d| d.active_port.get()),
+        );
+        block(&self.out_port_dd, &self.out_port_dd_handler, || {
+            if let Some(i) = idx {
+                self.out_port_dd.set_selected(i);
+            }
+        });
+    }
+
+    fn sync_in_ports(&mut self) {
+        let dev = audio_service().default_input.get();
+        self.in_ports = dev.as_ref().map(|d| d.ports.get()).unwrap_or_default();
+        self.in_ports_visible = self.in_ports.len() >= 2;
+        splice(&self.in_port_model, self.in_ports.iter().map(port_label));
+        let idx = active_port_index(
+            &self.in_ports,
+            dev.as_ref().and_then(|d| d.active_port.get()),
+        );
+        block(&self.in_port_dd, &self.in_port_dd_handler, || {
+            if let Some(i) = idx {
+                self.in_port_dd.set_selected(i);
+            }
+        });
+    }
+}
+
+/// Human label for a device port — its description ("Headphones", "Speaker")
+/// when set, falling back to the technical port name.
+fn port_label(p: &DevicePort) -> String {
+    if p.description.trim().is_empty() {
+        p.name.clone()
+    } else {
+        p.description.clone()
+    }
+}
+
+/// Index of the port matching the device's `active_port` name, for seeding /
+/// re-syncing the port dropdown selection.
+fn active_port_index(ports: &[DevicePort], active: Option<String>) -> Option<u32> {
+    let a = active?;
+    ports.iter().position(|p| p.name == a).map(|i| i as u32)
 }
 
 /// Run `f` with `widget`'s `handler` blocked, so a programmatic property set
