@@ -234,6 +234,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Ip => {
                     app_sender.emit(ShellInput::ToggleIpMenu(active_monitor().await));
                 }
+                IPCCommand::VpnIndicator => {
+                    app_sender.emit(ShellInput::ToggleVpnIndicatorMenu(active_monitor().await));
+                }
                 IPCCommand::Network => {
                     app_sender.emit(ShellInput::ToggleNetworkMenu(active_monitor().await));
                 }
@@ -660,6 +663,7 @@ enum IPCCommand {
     Podman,
     Notes,
     Ip,
+    VpnIndicator,
     Network,
     Power,
     MediaPlayer,
@@ -1820,6 +1824,9 @@ impl IPCService {
     }
     async fn ip(&self) {
         let _ = self.tx.send(IPCCommand::Ip);
+    }
+    async fn vpn_indicator(&self) {
+        let _ = self.tx.send(IPCCommand::VpnIndicator);
     }
     async fn network(&self) {
         let _ = self.tx.send(IPCCommand::Network);

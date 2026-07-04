@@ -71,6 +71,10 @@ pub enum MenuWidget {
     Ai,
     NetworkToggle,
     Ip,
+    /// Generic-VPN detail menu — one card per active OpenVPN / WireGuard
+    /// tunnel (Mullvad excluded) with type, local tunnel IP(s), and live
+    /// RX/TX throughput. Opened by the `vpn_indicator` bar pill.
+    VpnIndicator,
     Network,
     Notes,
     Notifications,
@@ -169,6 +173,7 @@ impl MenuWidget {
             MenuWidget::Ai => "AI Assistant",
             MenuWidget::NetworkToggle => "Network",
             MenuWidget::Ip => "Public IP",
+            MenuWidget::VpnIndicator => "VPN Indicator",
             MenuWidget::Network => "Network Console",
             MenuWidget::Notes => "Notes Hub",
             MenuWidget::Notifications => "Notifications",
@@ -234,6 +239,7 @@ impl MenuWidget {
             MenuWidget::Ai,
             MenuWidget::NetworkToggle,
             MenuWidget::Ip,
+            MenuWidget::VpnIndicator,
             MenuWidget::Network,
             MenuWidget::Notes,
             MenuWidget::Notifications,

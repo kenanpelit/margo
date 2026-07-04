@@ -49,6 +49,7 @@ const NPODMAN_MENU: &str = "podman";
 const NNOTES_MENU: &str = "notes";
 const NPLUGIN_PANEL_MENU: &str = "plugin-panel";
 const NIP_MENU: &str = "ip";
+const NVPN_INDICATOR_MENU: &str = "vpn_indicator";
 const NNETWORK_MENU: &str = "network";
 const NPOWER_MENU: &str = "power";
 const MEDIA_PLAYER_MENU: &str = "media_player";
@@ -137,6 +138,7 @@ pub struct Frame {
     #[cfg(feature = "wasm-plugins")]
     plugin_panels: std::collections::HashMap<String, mshell_plugin_ui::PluginPanel>,
     ip_menu: Controller<MenuModel>,
+    vpn_indicator_menu: Controller<MenuModel>,
     network_menu: Controller<MenuModel>,
     power_menu: Controller<MenuModel>,
     media_player_menu: Controller<MenuModel>,
@@ -201,6 +203,7 @@ pub enum MenuId {
     Podman,
     Notes,
     Ip,
+    VpnIndicator,
     Network,
     Power,
     MediaPlayer,
@@ -243,6 +246,7 @@ impl MenuId {
             MenuId::Podman => NPODMAN_MENU,
             MenuId::Notes => NNOTES_MENU,
             MenuId::Ip => NIP_MENU,
+            MenuId::VpnIndicator => NVPN_INDICATOR_MENU,
             MenuId::Network => NNETWORK_MENU,
             MenuId::Power => NPOWER_MENU,
             MenuId::MediaPlayer => MEDIA_PLAYER_MENU,
@@ -906,6 +910,7 @@ impl Component for Frame {
         let notes_menu = Self::build_menu(&sender, MenuType::Notes);
         let plugin_panel_menu = Self::build_menu(&sender, MenuType::PluginPanel);
         let ip_menu = Self::build_menu(&sender, MenuType::Ip);
+        let vpn_indicator_menu = Self::build_menu(&sender, MenuType::VpnIndicator);
         let network_menu = Self::build_menu(&sender, MenuType::Network);
         let power_menu = Self::build_menu(&sender, MenuType::Power);
         let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer);
@@ -985,6 +990,7 @@ impl Component for Frame {
             pos!(podman_menu);
             pos!(notes_menu);
             pos!(ip_menu);
+            pos!(vpn_indicator_menu);
             pos!(network_menu);
             pos!(power_menu);
             pos!(media_player_menu);
@@ -1100,6 +1106,7 @@ impl Component for Frame {
             #[cfg(feature = "wasm-plugins")]
             plugin_panels: std::collections::HashMap::new(),
             ip_menu,
+            vpn_indicator_menu,
             network_menu,
             power_menu,
             media_player_menu,
@@ -1545,6 +1552,11 @@ impl Component for Frame {
                     .send(MenuInput::RevealChanged(false))
                     .unwrap_or_default();
 
+                self.vpn_indicator_menu
+                    .sender()
+                    .send(MenuInput::RevealChanged(false))
+                    .unwrap_or_default();
+
                 self.dns_menu
                     .sender()
                     .send(MenuInput::RevealChanged(false))
@@ -1969,6 +1981,13 @@ impl Frame {
             .send(MenuInput::RevealChanged(name == NIP_MENU && now_visible))
             .unwrap_or_default();
 
+        self.vpn_indicator_menu
+            .sender()
+            .send(MenuInput::RevealChanged(
+                name == NVPN_INDICATOR_MENU && now_visible,
+            ))
+            .unwrap_or_default();
+
         self.dns_menu
             .sender()
             .send(MenuInput::RevealChanged(name == NDNS_MENU && now_visible))
@@ -2216,6 +2235,7 @@ impl Frame {
         let podman_menu_position = menu_pos!(podman_menu);
         let notes_menu_position = menu_pos!(notes_menu);
         let ip_menu_position = menu_pos!(ip_menu);
+        let vpn_indicator_menu_position = menu_pos!(vpn_indicator_menu);
         let network_menu_position = menu_pos!(network_menu);
         let power_menu_position = menu_pos!(power_menu);
         let media_player_menu_position = menu_pos!(media_player_menu);
@@ -2356,6 +2376,7 @@ impl Frame {
             .position()
             .get();
         let ip_menu_widget: Widget = self.ip_menu.widget().clone().upcast();
+        let vpn_indicator_menu_widget: Widget = self.vpn_indicator_menu.widget().clone().upcast();
         let network_menu_widget: Widget = self.network_menu.widget().clone().upcast();
         let power_menu_widget: Widget = self.power_menu.widget().clone().upcast();
         let media_player_menu_widget: Widget = self.media_player_menu.widget().clone().upcast();
@@ -2528,6 +2549,12 @@ impl Frame {
             &plugin_panel_menu_position,
         );
         Self::add_to_stack(widgets, &ip_menu_widget, NIP_MENU, &ip_menu_position);
+        Self::add_to_stack(
+            widgets,
+            &vpn_indicator_menu_widget,
+            NVPN_INDICATOR_MENU,
+            &vpn_indicator_menu_position,
+        );
         Self::add_to_stack(
             widgets,
             &network_menu_widget,
@@ -2726,6 +2753,7 @@ impl Frame {
                     max_height,
                 },
                 BarOutput::IpClicked => FrameInput::ToggleMenu(MenuId::Ip),
+                BarOutput::VpnIndicatorClicked => FrameInput::ToggleMenu(MenuId::VpnIndicator),
                 BarOutput::NetworkClicked => FrameInput::ToggleMenu(MenuId::Network),
                 BarOutput::PowerClicked => FrameInput::ToggleMenu(MenuId::Power),
                 BarOutput::MediaPlayerClicked => FrameInput::ToggleMenu(MenuId::MediaPlayer),

@@ -107,6 +107,9 @@ use crate::menus::menu_widgets::valent::valent_menu_widget::{
     ValentMenuWidgetInit, ValentMenuWidgetModel, ValentMenuWidgetOutput,
 };
 use crate::menus::menu_widgets::vpn::vpn_menu_widget::{VpnMenuWidgetInit, VpnMenuWidgetModel};
+use crate::menus::menu_widgets::vpn_indicator::vpn_indicator_menu_widget::{
+    VpnIndicatorMenuWidgetInit, VpnIndicatorMenuWidgetModel,
+};
 use crate::menus::menu_widgets::wallpaper::wallpaper_menu_widget::{
     WallpaperMenuWidgetInit, WallpaperMenuWidgetModel,
 };
@@ -289,6 +292,11 @@ pub fn build_widget(
         MenuWidget::Ip => Box::new(
             IpMenuWidgetModel::builder()
                 .launch(IpMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::VpnIndicator => Box::new(
+            VpnIndicatorMenuWidgetModel::builder()
+                .launch(VpnIndicatorMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Network => Box::new(

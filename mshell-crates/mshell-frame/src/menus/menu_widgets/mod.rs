@@ -46,6 +46,7 @@ pub(crate) mod twilight;
 pub(crate) mod ufw;
 pub(crate) mod valent;
 pub(crate) mod vpn;
+pub(crate) mod vpn_indicator;
 pub(crate) mod wallpaper;
 pub(crate) mod weather;
 pub(crate) mod wizard;

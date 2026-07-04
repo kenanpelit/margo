@@ -185,6 +185,7 @@ pub(crate) enum ShellInput {
     /// plugin's panel and deliver a `Keybind` event with the bind id.
     FirePluginKeybind(Option<String>, String, String),
     ToggleIpMenu(Option<String>),
+    ToggleVpnIndicatorMenu(Option<String>),
     ToggleNetworkMenu(Option<String>),
     TogglePowerMenu(Option<String>),
     ToggleMediaPlayerMenu(Option<String>),
@@ -863,6 +864,11 @@ impl Component for Shell {
             ShellInput::ToggleIpMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleMenu(MenuId::Ip));
+                }
+            }
+            ShellInput::ToggleVpnIndicatorMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleMenu(MenuId::VpnIndicator));
                 }
             }
             ShellInput::ToggleNetworkMenu(monitor_name) => {

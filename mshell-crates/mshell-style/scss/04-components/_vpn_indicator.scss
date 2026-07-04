@@ -1,0 +1,65 @@
+// Generic VPN indicator — bar pill accent tint + detail menu.
+//
+// The pill (`vpn_indicator.rs`) adds `.connected` to its root while a
+// generic tunnel is up; tint the glyph with the matugen `--primary`
+// (DESIGN.md §3 active-state tinting) so a live tunnel reads as "on"
+// from across the bar. Copies the Bluetooth pill's connected treatment
+// exactly (`.bluetooth-bar-widget.connected image`). Disconnected =
+// the whole pill hides, so no idle-state rule is needed.
+
+// Tint fades both ways (DESIGN.md §3 + Motion) so connect / disconnect
+// eases instead of snapping.
+.vpn-indicator-bar-widget image {
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.vpn-indicator-bar-widget.connected image {
+  color: var(--primary);
+}
+
+// ── Detail menu (`MenuType::VpnIndicator`) ───────────────────────────
+.vpn-indicator-menu-widget {
+  padding: 0;
+}
+
+// Empty state — no active tunnel.
+.vpn-indicator-empty {
+  color: var(--on-surface-variant);
+  font-size: var(--font-sm);
+  padding: var(--space-2) 0;
+}
+
+// One card per active tunnel interface (§1 card tier).
+.vpn-indicator-iface-card {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-high);
+}
+
+// Interface glyph in the card header.
+.vpn-indicator-iface-icon {
+  -gtk-icon-size: 16px;
+  color: var(--primary);
+}
+
+// Interface name — SemiBold, the card's dominant line.
+.vpn-indicator-iface-name {
+  font-weight: 600;
+  color: var(--on-surface);
+  font-family: monospace;
+}
+
+// Type badge (WireGuard / OpenVPN) — a soft accent pill (§3: a
+// selection/label, so `--secondary-container`, not a primary flood).
+.vpn-indicator-badge {
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-pill);
+  font-weight: 600;
+  font-size: 0.85em;
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+
+// Detail rows (IPv4 / IPv6 / Throughput) — dense caption + value.
+.vpn-indicator-detail-row {
+  padding: var(--space-1) 0;
+}

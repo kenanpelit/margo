@@ -1394,9 +1394,9 @@ impl Component for SettingsWindowModel {
             // System Tray owns a dedicated page (default-expanded toggle),
             // so it's a dedicated entry rather than the generic pill info page.
             WidgetEntry::SystemTray,
-            WidgetEntry::Pill {
-                kind: BarPillKind::VpnIndicator,
-                stack_name: "pill_vpn",
+            WidgetEntry::Menu {
+                kind: MenuKind::VpnIndicator,
+                stack_name: "vpn_indicator",
                 label: "VPN Indicator",
                 icon: "network-vpn-symbolic",
             },

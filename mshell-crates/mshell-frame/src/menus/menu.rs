@@ -69,6 +69,9 @@ use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
 };
 use crate::menus::menu_widgets::ufw::ufw_menu_widget::{UfwMenuWidgetInput, UfwMenuWidgetModel};
 use crate::menus::menu_widgets::vpn::vpn_menu_widget::{VpnMenuWidgetInput, VpnMenuWidgetModel};
+use crate::menus::menu_widgets::vpn_indicator::vpn_indicator_menu_widget::{
+    VpnIndicatorMenuWidgetInput, VpnIndicatorMenuWidgetModel,
+};
 use crate::menus::menu_widgets::wallpaper::wallpaper_menu_widget::{
     WallpaperMenuWidgetInput, WallpaperMenuWidgetModel,
 };
@@ -105,6 +108,7 @@ pub(crate) enum MenuType {
     Podman,
     Notes,
     Ip,
+    VpnIndicator,
     Network,
     Power,
     Bluetooth,
@@ -482,6 +486,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, ip_menu);
                 effect_min_width!(effects, base_config, sender, ip_menu);
                 effect_max_height!(effects, base_config, sender, ip_menu);
+            }
+            MenuType::VpnIndicator => {
+                css_class = "vpn-indicator-menu".to_string();
+                effect_widgets!(effects, base_config, sender, vpn_indicator_menu);
+                effect_min_width!(effects, base_config, sender, vpn_indicator_menu);
+                effect_max_height!(effects, base_config, sender, vpn_indicator_menu);
             }
             MenuType::Network => {
                 css_class = "network-menu".to_string();
@@ -878,6 +888,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(IpMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<VpnIndicatorMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(VpnIndicatorMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =

@@ -48,6 +48,9 @@ pub(crate) enum MenuKind {
     /// The AI assistant chat menu (`ai_menu`), opened by the AI bar pill.
     Ai,
     Ip,
+    /// The generic-VPN detail menu (`vpn_indicator_menu`), opened by the
+    /// VPN Indicator bar pill / `mshellctl menu vpn-indicator`.
+    VpnIndicator,
     Network,
     Notes,
     Notifications,
@@ -86,6 +89,7 @@ macro_rules! menu_read {
             MenuKind::Dns => m.dns_menu().$field().$g(),
             MenuKind::Ai => m.ai_menu().$field().$g(),
             MenuKind::Ip => m.ip_menu().$field().$g(),
+            MenuKind::VpnIndicator => m.vpn_indicator_menu().$field().$g(),
             MenuKind::Network => m.network_menu().$field().$g(),
             MenuKind::Notes => m.notes_menu().$field().$g(),
             MenuKind::Notifications => m.notification_menu().$field().$g(),
@@ -124,6 +128,7 @@ macro_rules! menu_write {
             MenuKind::Dns => c.menus.dns_menu.$field = $val,
             MenuKind::Ai => c.menus.ai_menu.$field = $val,
             MenuKind::Ip => c.menus.ip_menu.$field = $val,
+            MenuKind::VpnIndicator => c.menus.vpn_indicator_menu.$field = $val,
             MenuKind::Network => c.menus.network_menu.$field = $val,
             MenuKind::Notes => c.menus.notes_menu.$field = $val,
             MenuKind::Notifications => c.menus.notification_menu.$field = $val,
@@ -166,6 +171,7 @@ impl MenuKind {
             Self::Dns => "DNS",
             Self::Ai => "AI",
             Self::Ip => "Public IP",
+            Self::VpnIndicator => "VPN Indicator",
             Self::Network => "Network Console",
             Self::Notes => "Notes Hub",
             Self::Notifications => "Notifications",
@@ -220,6 +226,7 @@ impl MenuKind {
             MenuKind::Podman,
             MenuKind::Notes,
             MenuKind::Ip,
+            MenuKind::VpnIndicator,
             MenuKind::Network,
             MenuKind::MargoLayout,
         ]

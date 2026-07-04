@@ -1351,6 +1351,10 @@ pub struct Menus {
     pub ssh_menu: Menu,
     #[serde(default = "default_privacy_menu")]
     pub privacy_menu: Menu,
+    /// Generic-VPN detail menu opened by the `vpn_indicator` bar pill.
+    /// Default-on-missing so older YAML predating this menu still parses.
+    #[serde(default = "default_vpn_indicator_menu")]
+    pub vpn_indicator_menu: Menu,
     pub media_player_menu: Menu,
     pub lyrics_menu: Menu,
     pub session_menu: Menu,
@@ -1508,6 +1512,15 @@ fn default_bluetooth_menu() -> Menu {
         position: Position::Top,
         widgets: vec![MenuWidget::Bluetooth],
         minimum_width: 400,
+        maximum_height: 0,
+    }
+}
+
+fn default_vpn_indicator_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::VpnIndicator],
+        minimum_width: 380,
         maximum_height: 0,
     }
 }
@@ -1763,6 +1776,7 @@ impl Default for Menus {
             control_center_menu: default_control_center_menu(),
             ssh_menu: default_ssh_menu(),
             privacy_menu: default_privacy_menu(),
+            vpn_indicator_menu: default_vpn_indicator_menu(),
             plugin_panel_menu: default_plugin_panel_menu(),
             media_player_menu: Menu {
                 position: Position::TopRight,

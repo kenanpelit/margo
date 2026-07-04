@@ -222,6 +222,7 @@ pub(crate) enum BarOutput {
     PodmanClicked,
     NotesClicked,
     IpClicked,
+    VpnIndicatorClicked,
     NetworkClicked,
     PowerClicked,
     PrivacyClicked,
@@ -1316,7 +1317,11 @@ impl BarModel {
             BarWidget::VpnIndicator => Box::new(
                 VpnIndicatorModel::builder()
                     .launch(VpnIndicatorInit { orientation })
-                    .detach(),
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::vpn_indicator::VpnIndicatorOutput::Clicked => {
+                            BarOutput::VpnIndicatorClicked
+                        }
+                    }),
             ),
             BarWidget::Spacer(width) => {
                 // Render-only blank gap of the configured pixel width.

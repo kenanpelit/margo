@@ -110,6 +110,8 @@ pub enum MenuCommands {
     Notes,
     /// Toggle the Public IP menu
     Ip,
+    /// Toggle the generic-VPN detail menu (active OpenVPN / WireGuard tunnels)
+    VpnIndicator,
     /// Toggle the Network Console menu
     Network,
     /// Toggle the Power Profile (power) menu
@@ -246,6 +248,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Ip => {
             bus_command("Ip").await?;
+        }
+        MenuCommands::VpnIndicator => {
+            bus_command("VpnIndicator").await?;
         }
         MenuCommands::Network => {
             bus_command("Network").await?;

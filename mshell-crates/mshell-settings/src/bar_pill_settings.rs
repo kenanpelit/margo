@@ -30,7 +30,6 @@ pub(crate) enum BarPillKind {
     Reboot,
     RecordingIndicator,
     Shutdown,
-    VpnIndicator,
 }
 
 impl BarPillKind {
@@ -47,7 +46,6 @@ impl BarPillKind {
             Self::Reboot => "Reboot",
             Self::RecordingIndicator => "Recording Indicator",
             Self::Shutdown => "Shutdown",
-            Self::VpnIndicator => "VPN Indicator",
         }
     }
 
@@ -82,9 +80,6 @@ impl BarPillKind {
                 "Lights up while a screen-recording is in progress. Click stops the recording."
             }
             Self::Shutdown => "Powers off the system. Confirms with a dialog.",
-            Self::VpnIndicator => {
-                "Lights up while a generic VPN tunnel is up (OpenVPN / wg-quick / NetworkManager); the whole pill hides when disconnected. Mullvad is covered by the dedicated VPN pill."
-            }
         }
     }
 }
