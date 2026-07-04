@@ -83,7 +83,7 @@ impl BarPillKind {
             }
             Self::Shutdown => "Powers off the system. Confirms with a dialog.",
             Self::VpnIndicator => {
-                "Visual cue when a VPN tunnel is up (NetworkManager / wg-quick / openvpn)."
+                "Lights up while a generic VPN tunnel is up (OpenVPN / wg-quick / NetworkManager); the whole pill hides when disconnected. Mullvad is covered by the dedicated VPN pill."
             }
         }
     }

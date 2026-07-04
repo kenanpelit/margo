@@ -59,7 +59,7 @@ parameter and use YAML tag syntax:
 | --- | --- | --- |
 | `Network` | Network Console | Wi-Fi / wired link state + live throughput, from NetworkManager (no `nmcli` polling). Click opens the network menu (Wi-Fi list, connect/disconnect, rescan, radio toggle); right-click flips between speed and icon display. |
 | `Vpn` | VPN (Mullvad) | Native Mullvad pill driving the `mvpn` binary. Shield tints when the tunnel is up (relay + location in the tooltip). Click opens the VPN menu — connect / random / fastest, lockdown, auto-connect, quantum, plus a collapsible DNS section. |
-| `VpnIndicator` | VPN Indicator | Minimal "a VPN is up" cue for generic tunnels (NetworkManager / wg-quick / openvpn). No menu. |
+| `VpnIndicator` | VPN Indicator | Lights up while a *generic* VPN tunnel is up — OpenVPN (`tun*`) or WireGuard (`wg*`: wg-quick, NetworkManager). Reads `/sys/class/net` (polled); the whole pill hides while disconnected, and the active interface name shows in the tooltip. Mullvad (`wg0-mullvad`) is excluded — the dedicated `Vpn` pill covers it. No menu. |
 | `Dns` | DNS | Standalone DNS / Blocky panel (separate from the combined VPN pill). Polls DNS/VPN/Blocky state; click opens the DNS menu. |
 | `Ip` | Public IP | Public IP from ipinfo.io (polled). Click opens a detail panel (city, ASN, …). |
 | `Bluetooth` | Bluetooth | Adapter state icon; tints when a paired device is connected (a "hooked up to my headphones" cue). Opens the Bluetooth panel. |

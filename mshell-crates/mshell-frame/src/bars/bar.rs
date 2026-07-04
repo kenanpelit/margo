@@ -1315,7 +1315,7 @@ impl BarModel {
             ),
             BarWidget::VpnIndicator => Box::new(
                 VpnIndicatorModel::builder()
-                    .launch(VpnIndicatorInit {})
+                    .launch(VpnIndicatorInit { orientation })
                     .detach(),
             ),
             BarWidget::Spacer(width) => {
