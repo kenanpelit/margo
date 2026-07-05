@@ -1,11 +1,11 @@
 @use "../02-functions/index" as *;
 // Control Center panel — header + sliders + tile grid.
 //
-// Visual language follows the audio-dashboard: dark rounded cards, slim
-// sliders, and a 2-column tile grid where the ICON-CHIP is the sole active
-// cue (fills with --primary-container / --on-primary-container when
-// `.active`; flat --surface-container-high otherwise). Card bodies stay calm
-// so the chips carry all the accent weight.
+// Visual language follows the audio-dashboard: rounded cards, slim sliders, and
+// a 2-column tile grid. Each tile carries a tonal ICON-CHIP; when `.active` the
+// chip fills with `--primary` and the tile takes a soft `--primary-container`
+// wash, so the accent stays contained to the chip (many active tiles never
+// flood the panel). Card bodies stay calm so the chips carry the accent weight.
 
 // ── Panel root ─────────────────────────────────────────────────────────────────
 // Outer vertical box: `set_spacing: 16` in Rust + padding from this class.
@@ -24,11 +24,21 @@
   // them to a 32×32 / --icon-sm footprint so they sit as quiet trailing
   // controls — more specific than _panel_header.scss so this wins.
   .panel-action-btn {
-    min-width: 32px;
-    min-height: 32px;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0;
+    border-radius: var(--radius-pill);
+    color: var(--on-surface-variant);
+    transition: background-color var(--motion-fast) var(--ease-standard),
+                color var(--motion-fast) var(--ease-standard);
 
     image {
       -gtk-icon-size: var(--icon-sm);
+    }
+
+    &:hover {
+      background-color: var(--surface-container-high);
+      color: var(--on-surface);
     }
   }
 }
@@ -208,14 +218,16 @@
 }
 
 // ── Icon chip ─────────────────────────────────────────────────────────────────
-// A sized alignment box — no background fill.  The icon sits flat on the tile.
-// Background was removed so the WHOLE button carries the active colour (GNOME
-// quick-settings style) rather than a separate chip square.
+// A rounded tonal square behind each tile's icon — the resting depth cue that
+// turns a grid of flat cards into scannable tiles. `--surface-container-highest`
+// keeps it distinct from both the card body and the hover wash; when the tile
+// is `.active` the chip fills with `--primary` (see the active block).
 .control-center-tile-icon {
   min-width: 40px;
   min-height: 40px;
-  // Centre the gtk::Image inside the chip box.
-  // (halign/valign are set in Rust; no background here.)
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container-highest);
+  transition: background-color var(--motion-fast) var(--ease-standard);
 
   image {
     color: var(--on-surface-variant);
@@ -240,33 +252,43 @@
   transition: color var(--motion-fast) var(--ease-standard);
 }
 
-// ── Active state (whole-button fill, GNOME style) ─────────────────────────────
-// When `.active` is set on the tile button the ENTIRE tile fills with
-// --primary.  Icon, title, and subtitle all switch to --on-primary so they
-// remain legible on the coloured background.
+// ── Focus ring + active state (contained accent) ──────────────────────────────
+// A keyboard-focused tile shows an accent ring (DESIGN.md §16). When `.active`,
+// the tile takes a soft `--primary-container` wash and the ICON CHIP carries the
+// strong `--primary` — keeping the accent contained to the chip so several
+// active tiles don't flood the panel (DESIGN.md §13.2). Text lifts to
+// `--on-primary-container` to stay legible on the wash; hover keeps the shared
+// state-layer primary tint.
 .control-center-tile {
   transition: background var(--motion-fast) var(--ease-standard);
 
-  &.active {
-    background: var(--primary);
-    // State-layer composites over the filled tile on hover/press.
-    @include state-layer(var(--primary));
+  &:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--primary);
+  }
 
+  &.active {
+    background: var(--primary-container);
+    @include state-layer(var(--primary-container));
+
+    // The chip is the single strong accent region.
+    .control-center-tile-icon {
+      background-color: var(--primary);
+    }
     .control-center-tile-icon image {
       color: var(--on-primary);
     }
 
     .control-center-tile-title {
-      color: var(--on-primary);
+      color: var(--on-primary-container);
     }
 
     .control-center-tile-subtitle {
-      color: var(--on-primary);
+      color: var(--on-primary-container);
       opacity: 0.8;
     }
 
     .control-center-tile-chevron {
-      color: var(--on-primary);
+      color: var(--on-primary-container);
     }
   }
 }
