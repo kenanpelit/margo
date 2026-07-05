@@ -221,12 +221,13 @@ pub(crate) struct ClipboardModel {
     /// `store`. Recycled via the factory's setup/bind/unbind (the
     /// copyq QListView pattern).
     list_view: gtk::ListView,
-    /// Full set of rows (all categories), newest first. Tab + `/`
-    /// filtering happens in `filter`, never by rebuilding this.
+    /// Every history row (all categories), rebuilt in one `splice` on
+    /// open / tab switch / live update. `filter_model` narrows it to the
+    /// active tab + `/` search.
     store: gio::ListStore,
-    /// Tab + search predicate. Re-evaluated lazily by GTK when
-    /// `filter.changed(..)` is called on a tab/search change.
-    filter: gtk::CustomFilter,
+    /// Tab + search predicate feeding `filter_model`; it re-runs
+    /// automatically whenever `store` changes, so a tab/search switch
+    /// just repopulates rather than poking the filter directly.
     filter_model: gtk::FilterListModel,
     selection: gtk::SingleSelection,
     /// Shared with the `filter` closure: the active tab + lower-cased
@@ -961,7 +962,6 @@ impl Component for ClipboardModel {
         let model = ClipboardModel {
             list_view: list_view.clone(),
             store,
-            filter,
             filter_model,
             selection,
             tab_state,
@@ -1025,13 +1025,13 @@ impl Component for ClipboardModel {
             ClipboardInput::SetTab(tab) => {
                 self.active_tab = tab;
                 self.tab_state.set(tab);
-                self.refilter();
+                self.populate();
             }
             ClipboardInput::CycleTab => {
                 let tab = self.active_tab.next();
                 self.active_tab = tab;
                 self.tab_state.set(tab);
-                self.refilter();
+                self.populate();
             }
             ClipboardInput::SelectNext => self.move_selection(1),
             ClipboardInput::SelectPrev => self.move_selection(-1),
@@ -1090,7 +1090,7 @@ impl Component for ClipboardModel {
                 *self.query_state.borrow_mut() = String::new();
                 widgets.search_entry.set_text("");
                 widgets.search_revealer.set_reveal_child(false);
-                self.refilter();
+                self.populate();
                 self.focus_list();
             }
             ClipboardInput::SearchChanged(text) => {
@@ -1158,34 +1158,34 @@ impl ClipboardModel {
     /// view, the counts always reflect the whole history).
     fn populate(&mut self) {
         // Refresh the sectioning anchor so Today / Yesterday buckets stay
-        // correct if the panel has been open across midnight; the append
-        // below re-sorts against it.
+        // correct if the panel has been open across midnight.
         self.time_anchor.set(TimeAnchor::now());
 
         // Lightweight views (no raw `data` clone, category computed
         // once) — see [`ClipboardHistory::views`].
         let views = self.history.views();
         let mut counts = [0usize; ClipTab::ALL.len()];
-
-        self.store.remove_all();
+        let mut objects: Vec<glib::Object> = Vec::with_capacity(views.len());
         for view in views {
             for (i, tab) in ClipTab::ALL.iter().enumerate() {
                 if tab.matches_cat(view.category, view.pinned) {
                     counts[i] += 1;
                 }
             }
-            self.store.append(&glib::BoxedAnyObject::new(view));
+            objects.push(glib::BoxedAnyObject::new(view).upcast());
         }
-
         self.tab_counts = counts;
-        self.refilter();
-    }
 
-    /// Re-evaluate the tab + search filter against the current store
-    /// (lazy — GTK only re-tests materialized rows), refresh the
-    /// empty-state flag, and anchor the selection at the top match.
-    fn refilter(&mut self) {
-        self.filter.changed(gtk::FilterChange::Different);
+        // Replace the whole store in ONE splice, not remove_all + N appends.
+        // Each append emitted its own items-changed, and with the downstream
+        // date-section SortListModel that meant N full re-sorts + section
+        // recomputes (O(n²)) on every open / search keystroke / tab switch —
+        // the jank the section grouping introduced. One splice = one
+        // re-filter + one re-sort. The FilterListModel re-runs the current
+        // tab/search predicate over the new items, so no explicit
+        // `filter.changed()` is needed.
+        self.store.splice(0, self.store.n_items(), &objects);
+
         let n = self.filter_model.n_items();
         self.delete_button_visible = n > 0;
         if n > 0 {
@@ -1407,7 +1407,10 @@ fn row_sort_key(obj: &gtk::glib::Object, anchor: TimeAnchor) -> (i64, i128) {
         return (i64::MAX, 0);
     };
     let view = bo.borrow::<EntryView>();
-    (section_rank(&view, anchor), view.timestamp.unix_timestamp_nanos())
+    (
+        section_rank(&view, anchor),
+        view.timestamp.unix_timestamp_nanos(),
+    )
 }
 
 /// Section bucket rank for a row. Pinned entries float to a leading
@@ -1419,7 +1422,11 @@ fn section_rank(view: &EntryView, anchor: TimeAnchor) -> i64 {
     if view.pinned {
         return 0;
     }
-    let entry_julian = view.timestamp.to_offset(anchor.offset).date().to_julian_day();
+    let entry_julian = view
+        .timestamp
+        .to_offset(anchor.offset)
+        .date()
+        .to_julian_day();
     let diff = (anchor.today_julian - entry_julian).max(0) as i64;
     match diff {
         0 => 1,
