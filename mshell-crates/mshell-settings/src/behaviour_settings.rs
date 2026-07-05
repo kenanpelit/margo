@@ -68,28 +68,38 @@ fn adj(value: f64, lo: f64, hi: f64, step: f64) -> gtk::Adjustment {
     gtk::Adjustment::new(value, lo, hi, step, step * 4.0, 0.0)
 }
 
+/// Curated hot-corner actions: (dropdown label, dispatch action string).
+/// "None" (empty action) disables the corner. All are argument-free
+/// single-shot dispatches — the hot corner fires them with a default `Arg`.
+const CORNER_ACTIONS: &[(&str, &str)] = &[
+    ("None", ""),
+    ("Toggle overview", "toggle_overview"),
+    ("Toggle fullscreen", "togglefullscreen"),
+    ("Toggle floating", "togglefloating"),
+    ("Zoom to master", "zoom"),
+    ("Cycle layout", "switch_layout"),
+    ("Toggle gaps", "togglegaps"),
+    ("Previous tag", "viewtoleft"),
+    ("Next tag", "viewtoright"),
+];
+
 /// Build a hot-corner action dropdown from the current config value:
-/// `(item list, selected index, preserved custom string)`. "None" = disabled
-/// (empty action); an unrecognised non-empty action is kept as a "Custom: …"
-/// entry (index 2) so a hand-edited dispatch isn't silently dropped.
+/// `(item list, selected index, preserved custom string)`. A value that isn't
+/// one of [`CORNER_ACTIONS`] is kept as a trailing "Custom: …" entry (index
+/// `CORNER_ACTIONS.len()`) so a hand-edited dispatch isn't silently dropped.
 fn corner_dd(key: &str) -> (gtk::StringList, u32, String) {
-    match read_raw(key).unwrap_or_default().trim() {
-        "" => (
-            gtk::StringList::new(&["None", "Toggle overview"]),
-            0,
-            String::new(),
-        ),
-        "toggle_overview" => (
-            gtk::StringList::new(&["None", "Toggle overview"]),
-            1,
-            String::new(),
-        ),
-        other => {
-            let label = format!("Custom: {other}");
+    let raw = read_raw(key).unwrap_or_default();
+    let cur = raw.trim();
+    let mut labels: Vec<&str> = CORNER_ACTIONS.iter().map(|(l, _)| *l).collect();
+    match CORNER_ACTIONS.iter().position(|(_, a)| *a == cur) {
+        Some(i) => (gtk::StringList::new(&labels), i as u32, String::new()),
+        None => {
+            let custom = format!("Custom: {cur}");
+            labels.push(custom.as_str());
             (
-                gtk::StringList::new(&["None", "Toggle overview", label.as_str()]),
-                2,
-                other.to_string(),
+                gtk::StringList::new(&labels),
+                CORNER_ACTIONS.len() as u32,
+                cur.to_string(),
             )
         }
     }
@@ -399,16 +409,15 @@ impl Component for BehaviourModel {
             BehaviourInput::SetInt(k, v) => set_and_reload(k, v.to_string()),
             BehaviourInput::SetF(k, v, d) => set_and_reload(k, format!("{:.*}", d, v)),
             BehaviourInput::SetCorner(key, idx) => {
-                let action = match idx {
-                    1 => "toggle_overview".to_string(),
-                    2 => match key {
+                let action = CORNER_ACTIONS
+                    .get(idx as usize)
+                    .map(|(_, a)| (*a).to_string())
+                    .unwrap_or_else(|| match key {
                         "hot_corner_top_right" => self.tr_custom.clone(),
                         "hot_corner_bottom_left" => self.bl_custom.clone(),
                         "hot_corner_bottom_right" => self.br_custom.clone(),
                         _ => self.tl_custom.clone(),
-                    },
-                    _ => String::new(),
-                };
+                    });
                 set_and_reload(key, action);
             }
         }
