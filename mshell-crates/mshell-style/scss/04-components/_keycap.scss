@@ -1,0 +1,40 @@
+@use "../02-functions/index" as *;
+// Shared keyboard-key chip — the "real keycap" idiom used by the app-launcher
+// footer and the clipboard hint bar so both surfaces read as one product.
+//
+// DOM contract (built imperatively in each surface):
+//   .kbd-chip     horizontal gtk::Box grouping one shortcut
+//     .kbd-key    gtk::Label — a single cap ("↵", "Ctrl", "1-9", "/"). One or
+//                 more per chip (a combo = several caps side by side).
+//     .kbd-caption gtk::Label — the trailing description ("Activate", "Copy").
+//
+// Tokens only — re-themes with the wallpaper.
+
+.kbd-chip {
+  // Spacing between caps + caption is set in Rust; keep the chip itself calm.
+  &:not(:last-child) {
+    margin-right: var(--space-1);
+  }
+}
+
+// The keycap — a raised surface with a hairline border and a slightly heavier
+// bottom edge for a subtle physical-key feel. Monospace so combos stay crisp.
+.kbd-key {
+  min-width: 15px;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-xs);
+  background-color: var(--surface-container-highest);
+  border: 1px solid var(--outline-variant);
+  border-bottom: 2px solid var(--outline);
+  color: var(--on-surface);
+  font-family: var(--font-family-monospace);
+  font-size: var(--font-2xs);
+  font-weight: 700;
+}
+
+// The words that follow the cap(s). Dim, so the keys lead and the caption
+// recedes — the whole footer reads as one quiet band.
+.kbd-caption {
+  color: var(--on-surface-variant);
+  font-size: var(--font-2xs);
+}
