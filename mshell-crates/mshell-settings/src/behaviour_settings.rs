@@ -1,7 +1,7 @@
 //! Settings → Behaviour. Focus, drag, snap, hot corner, scroll, scratchpad +
 //! an Advanced expander (sync / tearing / inhibitors) in margo's `config.conf`.
 
-use crate::compositor_conf::{read_bool, read_f64, read_int, set_and_reload};
+use crate::compositor_conf::{read_bool, read_f64, read_int, read_raw, set_and_reload};
 use crate::row::Row;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -11,6 +11,9 @@ pub(crate) enum BehaviourInput {
     SetBool(&'static str, bool),
     SetInt(&'static str, i64),
     SetF(&'static str, f64, usize),
+    /// A hot-corner action dropdown: (config key, selected index). Index 0 =
+    /// None (empty action), 1 = toggle_overview, 2 = the preserved custom value.
+    SetCorner(&'static str, u32),
 }
 
 #[derive(Debug)]
@@ -35,8 +38,19 @@ pub(crate) struct BehaviourModel {
     drag_floating_refresh_interval: f64,
     enable_floating_snap: bool,
     snap_distance: f64,
-    enable_hotarea: bool,
-    hotarea_size: f64,
+    hot_corner_dwell: f64,
+    tl_list: gtk::StringList,
+    tr_list: gtk::StringList,
+    bl_list: gtk::StringList,
+    br_list: gtk::StringList,
+    tl_idx: u32,
+    tr_idx: u32,
+    bl_idx: u32,
+    br_idx: u32,
+    tl_custom: String,
+    tr_custom: String,
+    bl_custom: String,
+    br_custom: String,
     axis_bind_apply_timeout: f64,
     axis_scroll_factor: f64,
     scratchpad_cross_monitor: bool,
@@ -44,16 +58,41 @@ pub(crate) struct BehaviourModel {
     syncobj_enable: bool,
     allow_shortcuts_inhibit: bool,
     idleinhibit_ignore_visible: bool,
-    corners4: gtk::StringList,
     corners5: gtk::StringList,
     tearing: gtk::StringList,
     drag_corner_idx: u32,
-    hotarea_corner_idx: u32,
     allow_tearing_idx: u32,
 }
 
 fn adj(value: f64, lo: f64, hi: f64, step: f64) -> gtk::Adjustment {
     gtk::Adjustment::new(value, lo, hi, step, step * 4.0, 0.0)
+}
+
+/// Build a hot-corner action dropdown from the current config value:
+/// `(item list, selected index, preserved custom string)`. "None" = disabled
+/// (empty action); an unrecognised non-empty action is kept as a "Custom: …"
+/// entry (index 2) so a hand-edited dispatch isn't silently dropped.
+fn corner_dd(key: &str) -> (gtk::StringList, u32, String) {
+    match read_raw(key).unwrap_or_default().trim() {
+        "" => (
+            gtk::StringList::new(&["None", "Toggle overview"]),
+            0,
+            String::new(),
+        ),
+        "toggle_overview" => (
+            gtk::StringList::new(&["None", "Toggle overview"]),
+            1,
+            String::new(),
+        ),
+        other => {
+            let label = format!("Custom: {other}");
+            (
+                gtk::StringList::new(&["None", "Toggle overview", label.as_str()]),
+                2,
+                other.to_string(),
+            )
+        }
+    }
 }
 
 #[relm4::component(pub)]
@@ -174,7 +213,7 @@ impl Component for BehaviourModel {
                             connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetF("drag_floating_refresh_interval", s.value(), 1)) } },
                 },
 
-                gtk::Label { add_css_class: "label-large-bold", set_label: "Snapping & hot corner", set_halign: gtk::Align::Start },
+                gtk::Label { add_css_class: "label-large-bold", set_label: "Snapping", set_halign: gtk::Align::Start },
 
                 gtk::Box {
                     add_css_class: "boxed-list",
@@ -188,21 +227,47 @@ impl Component for BehaviourModel {
                         #[template_child] title { set_label: "Snap distance (px)" },
                         gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.snap_distance, 0.0, 128.0, 1.0),
                             connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("snap_distance", s.value() as i64)) } },
+                },
+
+                gtk::Label { add_css_class: "label-large-bold", set_label: "Hot corners", set_halign: gtk::Align::Start },
+
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
                     #[template] Row {
-                        #[template_child] title { set_label: "Hot corner (overview trigger)" },
-                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.enable_hotarea,
-                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("enable_hotarea", s.is_active())) } },
+                        #[template_child] title { set_label: "Top-left corner" },
+                        gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 180,
+                            set_model: Some(&model.tl_list),
+                            #[block_signal(tl_h)]
+                            set_selected: model.tl_idx,
+                            connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetCorner("hot_corner_top_left", d.selected())) @tl_h } },
                     #[template] Row {
-                        #[template_child] title { set_label: "Hot corner size (px)" },
-                        gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.hotarea_size, 1.0, 64.0, 1.0),
-                            connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("hotarea_size", s.value() as i64)) } },
+                        #[template_child] title { set_label: "Top-right corner" },
+                        gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 180,
+                            set_model: Some(&model.tr_list),
+                            #[block_signal(tr_h)]
+                            set_selected: model.tr_idx,
+                            connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetCorner("hot_corner_top_right", d.selected())) @tr_h } },
                     #[template] Row {
-                        #[template_child] title { set_label: "Hot corner location" },
-                        gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,
-                            set_model: Some(&model.corners4),
-                            #[block_signal(hotarea_corner_h)]
-                            set_selected: model.hotarea_corner_idx,
-                            connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetInt("hotarea_corner", d.selected() as i64)) @hotarea_corner_h } },
+                        #[template_child] title { set_label: "Bottom-left corner" },
+                        gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 180,
+                            set_model: Some(&model.bl_list),
+                            #[block_signal(bl_h)]
+                            set_selected: model.bl_idx,
+                            connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetCorner("hot_corner_bottom_left", d.selected())) @bl_h } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Bottom-right corner" },
+                        gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 180,
+                            set_model: Some(&model.br_list),
+                            #[block_signal(br_h)]
+                            set_selected: model.br_idx,
+                            connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetCorner("hot_corner_bottom_right", d.selected())) @br_h } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Dwell before firing (ms)" },
+                        #[template_child] desc { set_label: "How long the cursor must rest in a corner before its action fires." },
+                        gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.hot_corner_dwell, 0.0, 1000.0, 10.0),
+                            connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("hot_corner_dwell_ms", s.value() as i64)) } },
                 },
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Scroll & scratchpad", set_halign: gtk::Align::Start },
@@ -270,6 +335,10 @@ impl Component for BehaviourModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let _ = &sender;
+        let (tl_list, tl_idx, tl_custom) = corner_dd("hot_corner_top_left");
+        let (tr_list, tr_idx, tr_custom) = corner_dd("hot_corner_top_right");
+        let (bl_list, bl_idx, bl_custom) = corner_dd("hot_corner_bottom_left");
+        let (br_list, br_idx, br_custom) = corner_dd("hot_corner_bottom_right");
         let model = BehaviourModel {
             focus_on_activate: read_bool("focus_on_activate", true),
             focus_cross_monitor: read_bool("focus_cross_monitor", false),
@@ -286,8 +355,19 @@ impl Component for BehaviourModel {
             drag_floating_refresh_interval: read_f64("drag_floating_refresh_interval", 8.0),
             enable_floating_snap: read_bool("enable_floating_snap", true),
             snap_distance: read_int("snap_distance", 30) as f64,
-            enable_hotarea: read_bool("enable_hotarea", true),
-            hotarea_size: read_int("hotarea_size", 10) as f64,
+            hot_corner_dwell: read_int("hot_corner_dwell_ms", 100) as f64,
+            tl_list,
+            tr_list,
+            bl_list,
+            br_list,
+            tl_idx,
+            tr_idx,
+            bl_idx,
+            br_idx,
+            tl_custom,
+            tr_custom,
+            bl_custom,
+            br_custom,
             axis_bind_apply_timeout: read_int("axis_bind_apply_timeout", 100) as f64,
             axis_scroll_factor: read_f64("axis_scroll_factor", 1.0),
             scratchpad_cross_monitor: read_bool("scratchpad_cross_monitor", true),
@@ -295,12 +375,6 @@ impl Component for BehaviourModel {
             syncobj_enable: read_bool("syncobj_enable", false),
             allow_shortcuts_inhibit: read_bool("allow_shortcuts_inhibit", true),
             idleinhibit_ignore_visible: read_bool("idleinhibit_ignore_visible", false),
-            corners4: gtk::StringList::new(&[
-                "Top-left",
-                "Top-right",
-                "Bottom-left",
-                "Bottom-right",
-            ]),
             corners5: gtk::StringList::new(&[
                 "Top-left",
                 "Top-right",
@@ -310,7 +384,6 @@ impl Component for BehaviourModel {
             ]),
             tearing: gtk::StringList::new(&["Off", "On", "Rule-only"]),
             drag_corner_idx: read_int("drag_corner", 4).clamp(0, 4) as u32,
-            hotarea_corner_idx: read_int("hotarea_corner", 3).clamp(0, 3) as u32,
             allow_tearing_idx: read_int("allow_tearing", 2).clamp(0, 2) as u32,
         };
         let widgets = view_output!();
@@ -325,6 +398,19 @@ impl Component for BehaviourModel {
             }
             BehaviourInput::SetInt(k, v) => set_and_reload(k, v.to_string()),
             BehaviourInput::SetF(k, v, d) => set_and_reload(k, format!("{:.*}", d, v)),
+            BehaviourInput::SetCorner(key, idx) => {
+                let action = match idx {
+                    1 => "toggle_overview".to_string(),
+                    2 => match key {
+                        "hot_corner_top_right" => self.tr_custom.clone(),
+                        "hot_corner_bottom_left" => self.bl_custom.clone(),
+                        "hot_corner_bottom_right" => self.br_custom.clone(),
+                        _ => self.tl_custom.clone(),
+                    },
+                    _ => String::new(),
+                };
+                set_and_reload(key, action);
+            }
         }
     }
 }
