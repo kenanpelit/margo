@@ -195,32 +195,40 @@ fn main() {
             print_status(pill, verbose, json);
             true
         }
-        Cmd::Connect => notify_after(actions::connect()),
-        Cmd::Disconnect => notify_after(actions::disconnect()),
+        Cmd::Connect => notify_after(actions::connect(), true),
+        Cmd::Disconnect => notify_after(actions::disconnect(), false),
         Cmd::Toggle { with_blocky } => {
+            // Capture the pre-toggle state so we know which direction to wait
+            // for: toggle ends up in the OPPOSITE state.
+            let was_up = status::query().connected;
             let r = actions::toggle();
             if with_blocky {
                 // Drive blocky to match the new VPN state (best-effort).
                 let _ = blocky::ensure();
             }
-            notify_after(r)
+            notify_after(r, !was_up)
         }
-        Cmd::Reconnect => notify_after(actions::reconnect()),
-        Cmd::Random { country } => notify_after(actions::random(
-            country.as_deref().unwrap_or(""),
-            "",
-            relays::Ownership::Any,
-        )),
-        Cmd::Owned { country } => notify_after(actions::random(
-            country.as_deref().unwrap_or(""),
-            "",
-            relays::Ownership::Owned,
-        )),
-        Cmd::Rented { country } => notify_after(actions::random(
-            country.as_deref().unwrap_or(""),
-            "",
-            relays::Ownership::Rented,
-        )),
+        Cmd::Reconnect => notify_after(actions::reconnect(), true),
+        Cmd::Random { country } => notify_after(
+            actions::random(country.as_deref().unwrap_or(""), "", relays::Ownership::Any),
+            true,
+        ),
+        Cmd::Owned { country } => notify_after(
+            actions::random(
+                country.as_deref().unwrap_or(""),
+                "",
+                relays::Ownership::Owned,
+            ),
+            true,
+        ),
+        Cmd::Rented { country } => notify_after(
+            actions::random(
+                country.as_deref().unwrap_or(""),
+                "",
+                relays::Ownership::Rented,
+            ),
+            true,
+        ),
         Cmd::Quantum => actions::toggle_quantum(),
         // `fastest` leaves favorites untouched; `fastest-fav` records the
         // winner — same sweep otherwise (osc-mullvad's `add_to_favorites`).
@@ -567,8 +575,36 @@ fn settle() -> status::Status {
     status::query()
 }
 
-fn notify_after(ok: bool) -> bool {
-    let st = settle();
+/// Poll status until it reaches the intended state (`want_connected`) and is no
+/// longer transitioning, bounded to ~5s. Like [`settle`] but intent-aware: a
+/// bare `settle` only waits out "Connecting", yet `mullvad connect` returns
+/// while the daemon still reads the OLD "Disconnected" for a beat — so a connect
+/// used to notify the wrong direction ("Tunnel is down") right after succeeding.
+/// Chasing the intended state polls through the whole
+/// Disconnected→Connecting→Connected lag.
+fn settle_for(want_connected: bool) -> status::Status {
+    for _ in 0..25 {
+        let st = status::query();
+        if st.connected == want_connected && !st.connecting {
+            return st;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    status::query()
+}
+
+/// Notify after a connection action. `want_connected` is the action's intended
+/// end state (connect/random/reconnect → up, disconnect → down, toggle →
+/// opposite of the prior state) so we wait for the RIGHT direction before
+/// reading the relay/location for the message.
+fn notify_after(ok: bool, want_connected: bool) -> bool {
+    // Only chase the intended state when the action actually issued; a failed
+    // action won't transition, so fall back to the plain settle.
+    let st = if ok {
+        settle_for(want_connected)
+    } else {
+        settle()
+    };
     if st.connected {
         let loc = if st.location.is_empty() {
             String::new()
@@ -619,7 +655,8 @@ fn run_fastest(country: &str, add_to_fav: bool) -> bool {
                 println!("  {mark} {relay}  {ms:.0} ms");
             }
             println!("\nConnected: {} · {:.0} ms", res.relay, res.avg);
-            let st = status::query();
+            // Wait for the tunnel to actually come up so the location resolves.
+            let st = settle_for(true);
             let loc = if st.location.is_empty() {
                 String::new()
             } else {
