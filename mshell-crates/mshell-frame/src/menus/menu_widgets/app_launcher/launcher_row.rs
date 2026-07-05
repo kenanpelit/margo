@@ -54,7 +54,22 @@ pub(crate) struct LauncherRowModel {
     /// Per-provider CSS modifier class (`row-apps`, `row-calc`, …) so
     /// SCSS can specialise the row layout/typography by source.
     variant: String,
+    /// Short human label for the trailing source chip ("App", "Calc",
+    /// "SSH", …) derived from `item.provider_name`. Empty → no chip.
+    source_label: String,
+    /// True when this is a synthetic in-list section header (the "All"
+    /// view groups rows under Apps / Actions / Insert / … captions).
+    /// Header rows render a dim non-interactive caption instead of the
+    /// normal icon/title/badge row and are never selectable — the
+    /// launcher keeps them out of its `results` vec so keyboard nav and
+    /// the quick-key (1–9) numbering skip them automatically.
+    is_header: bool,
 }
+
+/// Provider name the launcher stamps on a synthetic section-header
+/// [`DisplayItem`]. Rows with this provider render as a section
+/// caption rather than an interactive result.
+pub(crate) const SECTION_HEADER_PROVIDER: &str = "__section_header__";
 
 #[derive(Debug)]
 pub(crate) enum LauncherRowInput {
@@ -104,15 +119,26 @@ impl Component for LauncherRowModel {
         gtk::Button {
             #[watch]
             set_css_classes: &{
-                let mut v = vec!["ok-button-surface", "app-launcher-item", model.variant.as_str()];
-                if model.is_selected {
-                    v.push("selected");
+                if model.is_header {
+                    // Non-interactive section caption — none of the
+                    // button-surface / result-row chrome.
+                    vec!["app-launcher-section-header"]
+                } else {
+                    let mut v =
+                        vec!["ok-button-surface", "app-launcher-item", model.variant.as_str()];
+                    if model.is_selected {
+                        v.push("selected");
+                    }
+                    v
                 }
-                v
             },
             set_vexpand: false,
             set_hexpand: true,
             set_can_focus: false,
+            // Headers must not steal pointer events (no hover wash, no
+            // click) — they're pure labels sitting in the list flow.
+            #[watch]
+            set_can_target: !model.is_header,
             connect_clicked[sender] => move |_| {
                 sender.input(LauncherRowInput::Activate);
             },
@@ -136,6 +162,9 @@ impl Component for LauncherRowModel {
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
                     set_margin_end: 12,
+                    // Section headers carry no icon.
+                    #[watch]
+                    set_visible: !model.is_header,
                 },
 
                 gtk::Box {
@@ -161,6 +190,22 @@ impl Component for LauncherRowModel {
                         set_halign: gtk::Align::Start,
                         set_ellipsize: pango::EllipsizeMode::End,
                     },
+                },
+
+                // Trailing source chip — a dim metadata pill naming the
+                // provider this row came from ("App", "Calc", "SSH", …).
+                // Ranks below the title: it aids scanning a mixed result
+                // list without competing with the row's name.
+                #[name = "source_badge"]
+                gtk::Label {
+                    add_css_class: "app-launcher-source-badge",
+                    #[watch]
+                    set_label: &model.source_label,
+                    #[watch]
+                    set_visible: !model.is_header && !model.source_label.is_empty(),
+                    set_halign: gtk::Align::End,
+                    set_valign: gtk::Align::Center,
+                    set_margin_start: 8,
                 },
 
                 // ★ pin marker — always present in the layout (the
@@ -208,6 +253,12 @@ impl Component for LauncherRowModel {
         // Per-provider styling hook: `.row-apps`, `.row-calc`, … —
         // lowercased + sanitised so the class is a valid CSS ident.
         let variant = row_variant(&item.provider_name);
+        let is_header = item.provider_name == SECTION_HEADER_PROVIDER;
+        let source_label = if is_header {
+            String::new()
+        } else {
+            source_badge_label(&item.provider_name)
+        };
         let model = LauncherRowModel {
             item,
             match_indices,
@@ -220,6 +271,8 @@ impl Component for LauncherRowModel {
             quick_key,
             is_selected: false,
             variant,
+            source_label,
+            is_header,
         };
 
         let widgets = view_output!();
@@ -290,6 +343,12 @@ impl Component for LauncherRowModel {
                     match_indices,
                 } = display;
                 self.variant = row_variant(&item.provider_name);
+                self.is_header = item.provider_name == SECTION_HEADER_PROVIDER;
+                self.source_label = if self.is_header {
+                    String::new()
+                } else {
+                    source_badge_label(&item.provider_name)
+                };
                 self.item = item;
                 self.match_indices = match_indices;
                 self.pinned = pinned;
@@ -337,6 +396,37 @@ impl LauncherRowModel {
         self.hide_button
             .set_label(if self.hidden { "Unhide" } else { "Hide" });
     }
+}
+
+/// Short, human-readable source label for the trailing row chip. Maps
+/// each provider's full name to a compact tag so the badge stays
+/// metadata-rank (a hint, not a second title). Unknown providers fall
+/// back to their own name so a future source still gets a badge.
+fn source_badge_label(provider_name: &str) -> String {
+    match provider_name {
+        "Apps" => "App",
+        "Windows" => "Window",
+        "Tags" => "Tag",
+        "Calculator" => "Calc",
+        "Session" => "Session",
+        "Margo" => "Margo",
+        "Settings" => "Settings",
+        "Clipboard" => "Clip",
+        "Scripts" => "Script",
+        "Symbols" => "Symbol",
+        "Emoji" => "Emoji",
+        "Web search" => "Web",
+        "Providers" => "Help",
+        "Player" => "Media",
+        "Arch packages" => "Pkg",
+        "Audio" => "Audio",
+        "Bluetooth" => "BT",
+        "SSH" => "SSH",
+        "Pass" => "Pass",
+        "Command" => "Run",
+        other => other,
+    }
+    .to_string()
 }
 
 fn row_variant(provider_name: &str) -> String {

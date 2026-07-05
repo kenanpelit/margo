@@ -214,7 +214,10 @@
   // rows, not the old one-line cramping, still tight enough to show
   // many results at once.
   padding: var(--space-2) var(--space-3);
-  margin: 2px 0;
+  // No per-row margin: the DynamicBox now supplies a tight 2px
+  // inter-row gap, so the rows read as one cohesive grouped list
+  // (DESIGN §5) instead of a loose stack of floating buttons.
+  margin: 0;
   transition: background-color var(--motion-fast) var(--ease-standard),
               color var(--motion-fast) var(--ease-standard),
               box-shadow var(--motion-medium) var(--ease-standard);
@@ -286,6 +289,16 @@
       color: var(--on-primary-container);
       opacity: 1;
     }
+
+    // Source chip on a selected row: recolour to the on-primary tone
+    // with a translucent fill so it stays legible against the accent
+    // without shouting over the (now high-contrast) title.
+    .app-launcher-source-badge {
+      color: var(--on-primary-container);
+      background-color: unquote("color-mix(in srgb, var(--on-primary-container) 12%, transparent)");
+      border-color: unquote("color-mix(in srgb, var(--on-primary-container) 24%, transparent)");
+      opacity: 0.9;
+    }
   }
 }
 
@@ -316,15 +329,63 @@
   padding: 0 var(--space-1);
 }
 
+// ── Per-row source badge ────────────────────────────────────────
+//
+// A dim trailing pill naming the provider a row came from ("App",
+// "Calc", "SSH", "Web", …). Metadata rank: small, low-contrast,
+// tonal surface — it aids scanning a mixed result list without
+// competing with the row title. Sits just left of the ★ pin marker.
+.app-launcher-source-badge {
+  color: var(--on-surface-variant);
+  background-color: var(--surface-container-highest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-2);
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.72;
+  min-height: 0;
+}
+
+// ── In-list section headers ─────────────────────────────────────
+//
+// The unfiltered "All" view groups its recency-mixed rows into
+// category blocks (APPS / ACTIONS / INSERT / …). Each block leads
+// with a non-interactive caption row (button with .can-target=false
+// in Rust). Uppercased + wide-tracked + dim so it reads as a quiet
+// structural divider, never as a result. Extra top space separates
+// one group from the previous.
+.app-launcher-section-header {
+  background-color: transparent;
+  box-shadow: none;
+  // Modest top space separates a group from the one above without a
+  // hard rule. (Every header is the sole child of its own revealer,
+  // so a `:first-child` special-case can't isolate the first group —
+  // a uniform, small top inset reads cleanly for every group.)
+  padding: var(--space-2) var(--space-2) var(--space-1);
+
+  .app-launcher-item-title,
+  .label-medium-bold {
+    color: var(--on-surface-variant);
+    font-size: var(--font-2xs);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    opacity: 0.75;
+  }
+}
+
 // ── Keybind hint footer ─────────────────────────────────────────
 //
-// Walker-style row of small "key + label" chips at the bottom of
-// the launcher. Always-on bindings (↵ Activate / Tab Categories /
-// Esc Close / Ctrl+E Exact / Ctrl+R Last) anchor the strip;
-// contextual ones (Pin / Unpin / Delete / Alt action) only render
-// when the selected row supports them. Each chip is a horizontal
-// box with a keycap-styled label on the left and a regular caption
-// on the right.
+// Walker-style row of shortcut chips at the bottom of the launcher.
+// Always-on bindings (↵ Activate / Tab Categories / Esc Close /
+// Ctrl+E Exact / Ctrl+R Last) anchor the strip; contextual ones
+// (Pin / Remove / Alt action) only render when the selected row
+// supports them. Each chip is the SHARED real-keycap idiom
+// (`.kbd-chip` → one `.kbd-key` cap per combo key + `.kbd-caption`)
+// defined in `_keycap.scss`, so the footer reads as the same
+// component as the other keycap surfaces — no launcher-local keycap
+// styling here.
 .app-launcher-binds-strip {
   // Subtle top divider line so the footer reads as a distinct
   // band, but no card chrome — keeps the menu's visual weight
@@ -332,67 +393,16 @@
   border-top: 1px solid var(--outline-variant);
   padding-top: var(--space-2);
 
-  // It's a GtkFlowBox now: chips wrap onto a second line so every
+  // It's a GtkFlowBox: chips wrap onto a second line so every
   // shortcut shows its FULL label (no ellipsis). Strip GTK's default
-  // flowboxchild padding/min-size so the chips stay tight.
+  // flowboxchild padding/min-size so the chips stay tight, and the
+  // FlowBox's minimum width stays ~one chip (never forces the panel
+  // wider — it just reflows within whatever width the panel has).
   > flowboxchild {
     padding: 0;
     min-width: 0;
     min-height: 0;
   }
-}
-
-// Reference info, not a focal point — same treatment as the
-// clipboard hint strip: no filled chip, no bright keycap. The chip
-// is now just a layout container so the key + caption stay grouped
-// and the strip's fixed-width slotting still works.
-.app-launcher-bind-chip {
-  background-color: transparent;
-  // Compromise padding: tight enough so the launcher can narrow
-  // past ~720 px (pre-tighten floor), loose enough so chips
-  // breathe at the user's preferred panel widths around 620 px.
-  // Pre-tighten was 1px 4px 1px 1px (~720 floor); fully tight
-  // 1px 2px 1px 1px landed at ~590; 1px 3px hits the ~620 sweet
-  // spot the user picked in Settings. Deliberate off-scale tuning
-  // (DESIGN.md: "request wins for that one widget"), not the scale.
-  padding: 1px 3px 1px 1px;
-  // Keep chip vertical centre aligned with sibling chips even
-  // when the key glyph and label have different baselines.
-  min-height: 0;
-}
-
-// The keycap. Flat + dim like the rest of the footer — the mono
-// font + bold weight are enough to read it as a key without a
-// filled background that would make the strip shout.
-.app-launcher-bind-key {
-  background-color: transparent;
-  color: var(--outline);
-  // Compromise padding: middle ground between the original 6 px
-  // (~720 floor) and the aggressive 4 px (~590 floor). 5 px lands
-  // near ~620 — visually balanced and still leaves headroom for
-  // the Settings spinner. Expressed as scale + 1px micro-adjust so
-  // the deliberate off-scale tuning stays anchored to the token.
-  padding: 1px calc(var(--space-1) + 1px) 1px 1px;
-  font-family: monospace;
-  // Keycap = dimmest/smallest tier on the scale (§1.6); FlowBox wraps,
-  // so the token value is safe for the tuned footer width.
-  font-size: var(--font-2xs);
-  font-weight: 700;
-}
-
-// Caption that follows the keycap. Same dim --outline token as the
-// keycap and the clipboard hint, so the whole footer recedes as one
-// quiet band rather than competing with the result list.
-.app-launcher-bind-label {
-  color: var(--outline);
-  font-size: var(--font-2xs);
-  // Compromise padding between original (8 px → ~720 floor) and
-  // aggressive (4 px → ~590). 5 px keeps the label visually
-  // separated from the next chip while preserving most of the
-  // narrowing headroom. Expressed as scale + 1px micro-adjust so the
-  // deliberate off-scale tuning stays anchored to the spacing token.
-  padding-right: calc(var(--space-1) + 1px);
-  letter-spacing: 0.01em;
 }
 
 // ── Legacy / shared classes still in use elsewhere ──────────────

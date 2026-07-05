@@ -41,8 +41,8 @@
 use crate::menus::menu_widgets::app_launcher::apps_provider::AppsProvider;
 use crate::menus::menu_widgets::app_launcher::clipboard_provider::ClipboardProvider;
 use crate::menus::menu_widgets::app_launcher::launcher_row::{
-    LauncherRowInit, LauncherRowInput, LauncherRowModel, LauncherRowOutput, resolve_primary_var,
-    set_match_accent,
+    LauncherRowInit, LauncherRowInput, LauncherRowModel, LauncherRowOutput, SECTION_HEADER_PROVIDER,
+    resolve_primary_var, set_match_accent,
 };
 use crate::menus::menu_widgets::app_launcher::tags_provider::TagsProvider;
 use crate::menus::menu_widgets::app_launcher::windows_provider::WindowsProvider;
@@ -566,7 +566,12 @@ impl Component for AppLauncherModel {
             .launch(DynamicBoxInit {
                 factory,
                 orientation: gtk::Orientation::Vertical,
-                spacing: 10,
+                // Tight inter-row gap so the results read as one cohesive
+                // grouped list (DESIGN §5 boxed-list feel) rather than a
+                // loose stack of floating buttons; per-row hover/selected
+                // fills remain the row affordance. Row rhythm (padding) is
+                // tuned in `_app_launcher.scss`.
+                spacing: 2,
                 transition_type: RevealerTransitionType::SlideDown,
                 transition_duration_ms: 0,
                 reverse: false,
@@ -1109,17 +1114,84 @@ impl Component for AppLauncherModel {
 
 impl AppLauncherModel {
     fn recompute_results(&mut self) {
-        self.results = self.runtime.borrow().query(&self.filter);
+        let mut results = self.runtime.borrow().query(&self.filter);
+        // In the unfiltered "All" view the browse list is a recency/
+        // frecency-mixed blend of every category. Regroup it into
+        // category blocks (Apps → Actions → Insert → …) so the
+        // in-list section headers have contiguous groups to caption.
+        // `self.results` itself carries NO header rows — only real
+        // items — so keyboard nav, quick-key numbering, activation and
+        // pin/hide all keep operating on the pure result set. Headers
+        // are synthesised for display only (see
+        // `push_results_to_dynamic_box`).
+        if self.headered_view() {
+            let order = self.section_order();
+            regroup_by_section(&mut results, &order);
+        }
+        self.results = results;
         self.selected_id = self.results.first().map(|d| d.item.id.clone());
         self.refresh_preview();
     }
 
     fn push_results_to_dynamic_box(&self) {
-        let cloned: Vec<DisplayItem> = self.results.iter().map(clone_display_item).collect();
+        let cloned: Vec<DisplayItem> = if self.headered_view() && self.distinct_section_count() > 1 {
+            // Walk the (already category-grouped) results and drop a
+            // non-interactive header row in front of each new group.
+            // Only when the list actually spans 2+ categories — a lone
+            // group needs no caption.
+            let mut out: Vec<DisplayItem> = Vec::with_capacity(self.results.len() + 8);
+            let mut current: Option<&str> = None;
+            for d in &self.results {
+                let section = section_for_provider(&d.item.provider_name);
+                if current != Some(section) {
+                    out.push(make_section_header(section));
+                    current = Some(section);
+                }
+                out.push(clone_display_item(d));
+            }
+            out
+        } else {
+            self.results.iter().map(clone_display_item).collect()
+        };
         let _ = self
             .dynamic_box
             .sender()
             .send(DynamicBoxInput::SetItems(cloned));
+    }
+
+    /// Number of distinct display sections present in the current
+    /// (regrouped) result set. Drives whether section headers are
+    /// worth rendering.
+    fn distinct_section_count(&self) -> usize {
+        let mut seen: Vec<&str> = Vec::new();
+        for d in &self.results {
+            let section = section_for_provider(&d.item.provider_name);
+            if !seen.contains(&section) {
+                seen.push(section);
+            }
+        }
+        seen.len()
+    }
+
+    /// True when the list should show grouped section headers — the
+    /// unfiltered "All" tab (any specific category is already a single
+    /// group, so it needs no headers; a typed query is fuzzy-ranked, so
+    /// grouping would fight the match order).
+    fn headered_view(&self) -> bool {
+        self.active_category == "All" && self.filter.trim().is_empty()
+    }
+
+    /// Section labels in pill-strip order (minus the implicit "All").
+    /// Drives both the regroup order and the header captions so the
+    /// in-list groups match the tab strip the user already sees.
+    fn section_order(&self) -> Vec<String> {
+        self.runtime
+            .borrow()
+            .categories()
+            .into_iter()
+            .map(|c| c.label)
+            .filter(|label| label != "All")
+            .collect()
     }
 
     fn broadcast_selection(&self) {
@@ -1279,7 +1351,9 @@ impl AppLauncherModel {
 /// launcher menu doesn't slide sideways when navigation toggles
 /// the contextual chips.
 struct BindHint {
-    key: &'static str,
+    /// One or more keycaps in the combo — each becomes a `.kbd-key`
+    /// cap in the shared keycap idiom (e.g. `&["Ctrl", "⇧", "P"]`).
+    keys: &'static [&'static str],
     label: &'static str,
     applicable: bool,
 }
@@ -1325,47 +1399,47 @@ fn rebuild_binds_strip(strip: &gtk::FlowBox, model: &AppLauncherModel) {
     // every selection.
     let hints: [BindHint; 9] = [
         BindHint {
-            key: "↵",
+            keys: &["↵"],
             label: "Activate",
             applicable: true,
         },
         BindHint {
-            key: "Ctrl ↵",
+            keys: &["Ctrl", "↵"],
             label: "Alt action",
             applicable: has_alt,
         },
         BindHint {
-            key: "Ctrl 1-9",
+            keys: &["Ctrl", "1-9"],
             label: "Quick",
             applicable: true,
         },
         BindHint {
-            key: "Tab",
+            keys: &["Tab"],
             label: "Categories",
             applicable: true,
         },
         BindHint {
-            key: "Ctrl ⇧ P",
+            keys: &["Ctrl", "⇧", "P"],
             label: pin_label,
             applicable: has_pin,
         },
         BindHint {
-            key: "Ctrl Del",
+            keys: &["Ctrl", "Del"],
             label: "Remove",
             applicable: has_delete,
         },
         BindHint {
-            key: "Ctrl E",
+            keys: &["Ctrl", "E"],
             label: "Exact",
             applicable: true,
         },
         BindHint {
-            key: "Ctrl R",
+            keys: &["Ctrl", "R"],
             label: "Last",
             applicable: true,
         },
         BindHint {
-            key: "Esc",
+            keys: &["Esc"],
             label: "Close",
             applicable: true,
         },
@@ -1384,19 +1458,24 @@ fn rebuild_binds_strip(strip: &gtk::FlowBox, model: &AppLauncherModel) {
             continue;
         }
 
+        // Shared real-keycap idiom (`_keycap.scss`): a `.kbd-chip`
+        // grouping one `.kbd-key` cap per combo key, then a trailing
+        // `.kbd-caption` describing the action.
         let chip = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        chip.add_css_class("app-launcher-bind-chip");
+        chip.add_css_class("kbd-chip");
 
-        let key_lbl = gtk::Label::new(Some(hint.key));
-        key_lbl.add_css_class("app-launcher-bind-key");
-        chip.append(&key_lbl);
+        for cap in hint.keys {
+            let key_lbl = gtk::Label::new(Some(cap));
+            key_lbl.add_css_class("kbd-key");
+            chip.append(&key_lbl);
+        }
 
         // Full label, no ellipsize — the FlowBox wraps chips that
         // don't fit onto the next line instead of truncating them,
         // and a single chip's natural width never forces the panel
         // wider than its own ~one-chip minimum.
         let cap_lbl = gtk::Label::new(Some(hint.label));
-        cap_lbl.add_css_class("app-launcher-bind-label");
+        cap_lbl.add_css_class("kbd-caption");
         chip.append(&cap_lbl);
 
         strip.append(&chip);
@@ -1521,6 +1600,89 @@ fn clone_display_item(src: &DisplayItem) -> DisplayItem {
         quick_key: src.quick_key.clone(),
         hidden: src.hidden,
         match_indices: src.match_indices.clone(),
+    }
+}
+
+/// Display section a result belongs to, keyed by its provider name.
+/// Mirrors the launcher runtime's private `display_category_for`
+/// collapse (Compositor / Run / System / Connect all fold into
+/// "Actions"), so the in-list group captions line up 1:1 with the
+/// category pill strip. Unknown providers fall into "Actions" (the
+/// catch-all action bucket) so no row is ever dropped from the view.
+fn section_for_provider(provider_name: &str) -> &'static str {
+    match provider_name {
+        "Apps" => "Apps",
+        "Clipboard" | "Symbols" | "Emoji" => "Insert",
+        "Web search" | "Arch packages" => "Search",
+        "Providers" => "Help",
+        _ => "Actions",
+    }
+}
+
+/// Stable-regroup the browse list into contiguous section blocks in
+/// `section_order`, preserving each item's relative order within its
+/// section (so score / frecency / pin ordering survives inside a
+/// group). Any section not present in `section_order` (a future
+/// provider) is appended after the known ones so nothing is lost.
+/// Quick-keys are renumbered 1–9 top-to-bottom over the regrouped
+/// order so the visible digits stay sequential down the list.
+fn regroup_by_section(results: &mut Vec<DisplayItem>, section_order: &[String]) {
+    if results.is_empty() {
+        return;
+    }
+    let mut order: Vec<&str> = section_order.iter().map(String::as_str).collect();
+    for d in results.iter() {
+        let section = section_for_provider(&d.item.provider_name);
+        if !order.contains(&section) {
+            order.push(section);
+        }
+    }
+
+    let mut grouped: Vec<DisplayItem> = Vec::with_capacity(results.len());
+    for section in &order {
+        for d in results.iter() {
+            if section_for_provider(&d.item.provider_name) == *section {
+                grouped.push(clone_display_item(d));
+            }
+        }
+    }
+
+    // Safety: only swap in the regrouped list if it accounts for every
+    // row (it always should — `order` is built to cover all sections).
+    if grouped.len() != results.len() {
+        return;
+    }
+    for (idx, d) in grouped.iter_mut().enumerate() {
+        d.quick_key = if idx < 9 {
+            (idx + 1).to_string()
+        } else {
+            String::new()
+        };
+    }
+    *results = grouped;
+}
+
+/// Build a synthetic, non-interactive section-header display item. The
+/// row component recognises [`SECTION_HEADER_PROVIDER`] and renders it
+/// as a dim caption. The caption is uppercased for the header look; the
+/// id keeps the raw section so it stays stable across reconciles.
+fn make_section_header(section: &str) -> DisplayItem {
+    DisplayItem {
+        item: LauncherItem {
+            id: format!("__section__:{section}"),
+            name: section.to_uppercase(),
+            description: String::new(),
+            icon: String::new(),
+            icon_is_path: false,
+            score: 0.0,
+            provider_name: SECTION_HEADER_PROVIDER.to_string(),
+            usage_key: None,
+            on_activate: Rc::new(|| {}),
+        },
+        pinned: false,
+        quick_key: String::new(),
+        hidden: false,
+        match_indices: Vec::new(),
     }
 }
 
