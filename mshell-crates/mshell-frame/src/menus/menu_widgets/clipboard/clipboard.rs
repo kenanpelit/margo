@@ -39,24 +39,22 @@ fn set_search_active(active: bool) {
     SEARCH_ACTIVE.with(|c| c.set(active));
 }
 
-/// Clipboard menu type tabs. `All` shows the full history; the three
+/// Clipboard menu type tabs. `All` shows the full history; the two
 /// type tabs filter by content category; `Favorites` shows pinned
-/// entries of any type. Number keys 1–5 jump; Tab cycles.
+/// entries of any type. Number keys 1–4 jump; Tab cycles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ClipTab {
     All,
     Text,
     Images,
-    Files,
     Favorites,
 }
 
 impl ClipTab {
-    const ALL: [ClipTab; 5] = [
+    const ALL: [ClipTab; 4] = [
         ClipTab::All,
         ClipTab::Text,
         ClipTab::Images,
-        ClipTab::Files,
         ClipTab::Favorites,
     ];
 
@@ -76,7 +74,6 @@ impl ClipTab {
             ClipTab::All => "All",
             ClipTab::Text => "Text",
             ClipTab::Images => "Images",
-            ClipTab::Files => "Files",
             ClipTab::Favorites => "★",
         }
     }
@@ -96,7 +93,6 @@ impl ClipTab {
                     | ClipCategory::Email
             ),
             ClipTab::Images => cat == ClipCategory::Image,
-            ClipTab::Files => cat == ClipCategory::File,
             ClipTab::Favorites => pinned,
         }
     }
@@ -127,7 +123,7 @@ fn tab_classes(active: bool) -> &'static [&'static str] {
 
 /// Tab button label: base name + live count, e.g. `Text 12`. The ★
 /// favorites tab keeps just its glyph + count.
-fn tab_label(tab: ClipTab, counts: &[usize; 5]) -> String {
+fn tab_label(tab: ClipTab, counts: &[usize; 4]) -> String {
     format!("{} {}", tab.base_label(), counts[tab.index()])
 }
 
@@ -219,7 +215,7 @@ pub(crate) struct ClipboardModel {
     active_tab: ClipTab,
     /// Per-tab entry counts (index-aligned with `ClipTab::ALL`),
     /// recomputed from the full history on every populate.
-    tab_counts: [usize; 5],
+    tab_counts: [usize; 4],
     /// Current `/` filter query (raw text). The lower-cased copy the
     /// filter reads lives in `query_state`; the open/closed state lives
     /// in the [`SEARCH_ACTIVE`] thread-local for the frame's Esc handler.
@@ -247,7 +243,7 @@ pub(crate) enum ClipboardInput {
     /// The header gear — open Settings on the Widgets page (where the
     /// clipboard's own settings live) and close this panel.
     OpenSettings,
-    /// Jump to a specific type tab (number keys 1–5 / clicks).
+    /// Jump to a specific type tab (number keys 1–4 / clicks).
     SetTab(ClipTab),
     /// Tab key — cycle to the next type tab.
     CycleTab,
@@ -341,8 +337,8 @@ impl Component for ClipboardModel {
                 },
             },
 
-            // Type tabs — All · Text · Images · Files · ★ (favorites),
-            // each with a live count. Number keys 1–5 jump; Tab cycles.
+            // Type tabs — All · Text · Images · ★ (favorites),
+            // each with a live count. Number keys 1–4 jump; Tab cycles.
             gtk::Box {
                 add_css_class: "clipboard-tabs",
                 set_orientation: gtk::Orientation::Horizontal,
@@ -376,15 +372,6 @@ impl Component for ClipboardModel {
                     set_label: &tab_label(ClipTab::Images, &model.tab_counts),
                     connect_clicked[sender] => move |_| {
                         sender.input(ClipboardInput::SetTab(ClipTab::Images));
-                    },
-                },
-                gtk::Button {
-                    #[watch]
-                    set_css_classes: tab_classes(model.active_tab == ClipTab::Files),
-                    #[watch]
-                    set_label: &tab_label(ClipTab::Files, &model.tab_counts),
-                    connect_clicked[sender] => move |_| {
-                        sender.input(ClipboardInput::SetTab(ClipTab::Files));
                     },
                 },
                 gtk::Button {
@@ -821,11 +808,7 @@ impl Component for ClipboardModel {
                     key_sender.input(ClipboardInput::CycleTab);
                     gtk::glib::Propagation::Stop
                 }
-                gtk::gdk::Key::_1
-                | gtk::gdk::Key::_2
-                | gtk::gdk::Key::_3
-                | gtk::gdk::Key::_4
-                | gtk::gdk::Key::_5
+                gtk::gdk::Key::_1 | gtk::gdk::Key::_2 | gtk::gdk::Key::_3 | gtk::gdk::Key::_4
                     if !searching && !ctrl =>
                 {
                     let idx = (keyval
@@ -885,7 +868,7 @@ impl Component for ClipboardModel {
             history,
             delete_button_visible: false,
             active_tab: ClipTab::All,
-            tab_counts: [0; 5],
+            tab_counts: [0; 4],
             search_query: String::new(),
             revealed: false,
             dirty: false,
@@ -899,7 +882,7 @@ impl Component for ClipboardModel {
         // same shortcuts as before, now as real `.kbd-chip` caps.
         for (caps, caption) in [
             (&["/"][..], "Search"),
-            (&["1-5", "Tab"][..], "Tabs"),
+            (&["1-4", "Tab"][..], "Tabs"),
             (&["Ctrl", "n/k"][..], "Move"),
             (&["\u{21B5}"][..], "Copy"),
             (&["Ctrl", "p"][..], "Pin"),
