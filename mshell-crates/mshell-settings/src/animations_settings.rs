@@ -704,7 +704,11 @@ impl AnimationsSettingsModel {
     fn sync_cards(&self) {
         for (i, btn) in self.cards.iter().enumerate() {
             if Some(i as u32) == self.selected {
-                btn.set_css_classes(&["ok-button-surface", "anim-preset-card", "anim-preset-active"]);
+                btn.set_css_classes(&[
+                    "ok-button-surface",
+                    "anim-preset-card",
+                    "anim-preset-active",
+                ]);
             } else {
                 btn.set_css_classes(&["ok-button-surface", "anim-preset-card"]);
             }

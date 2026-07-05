@@ -717,8 +717,11 @@ impl Component for VpnMenuWidgetModel {
         self.mode = mode;
 
         // ── Hero status card ────────────────────────────────────────
-        self.state_label
-            .set_label(if connected { "CONNECTED" } else { "DISCONNECTED" });
+        self.state_label.set_label(if connected {
+            "CONNECTED"
+        } else {
+            "DISCONNECTED"
+        });
         if connected {
             self.hero.add_css_class("connected");
         } else {
@@ -793,11 +796,13 @@ impl Component for VpnMenuWidgetModel {
         self.expiry_label.set_label(&expiry_text);
 
         // Favourites count in the section label (only when there are any).
-        widgets.fav_expander.set_label(Some(&if self.favs.is_empty() {
-            "Favourites".to_string()
-        } else {
-            format!("Favourites  ·  {}", self.favs.len())
-        }));
+        widgets
+            .fav_expander
+            .set_label(Some(&if self.favs.is_empty() {
+                "Favourites".to_string()
+            } else {
+                format!("Favourites  ·  {}", self.favs.len())
+            }));
 
         rebuild_favs(
             &self.fav_box,
@@ -853,7 +858,12 @@ fn bool_arg(on: bool) -> String {
 /// (`"Connected · <relay> · <location>"`) for the hero location line —
 /// everything after the second `·`, empty when the daemon reported none.
 fn status_location(status: &str) -> String {
-    status.splitn(3, " · ").nth(2).unwrap_or("").trim().to_string()
+    status
+        .splitn(3, " · ")
+        .nth(2)
+        .unwrap_or("")
+        .trim()
+        .to_string()
 }
 
 /// Populate the country picker: one row per Mullvad country (name + relay
