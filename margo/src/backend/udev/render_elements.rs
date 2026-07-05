@@ -941,15 +941,31 @@ fn build_mru_switcher_elements(
     // Layout (logical px, output-local).
     let th = (state.config.mru_thumb_height as i32).clamp(60, 600);
     let show_labels = state.config.mru_show_labels;
-    const GAP: i32 = 16;
-    const PAD: i32 = 22;
-    const MAX: usize = 8;
+    let gap = (state.config.mru_thumb_gap as i32).clamp(0, 64);
+    let pad = (state.config.mru_panel_padding as i32).clamp(0, 80);
+    let max = (state.config.mru_max as usize).clamp(2, 20);
     const TITLE_H: i32 = 22;
     let label_h: i32 = if show_labels { 20 } else { 0 };
 
+    // Accent theming: tie the selection ring, scope title and selected label to
+    // the matugen focus colour when enabled, else keep the neutral greys.
+    let accent = state.config.mru_accent_selection;
+    let fc = state.config.focuscolor.0;
+    let accent_rgb: [u8; 3] = [
+        (fc[0] * 255.0).round().clamp(0.0, 255.0) as u8,
+        (fc[1] * 255.0).round().clamp(0.0, 255.0) as u8,
+        (fc[2] * 255.0).round().clamp(0.0, 255.0) as u8,
+    ];
+    let ring_color = if accent {
+        fc
+    } else {
+        state.config.group_active_color.0
+    };
+    let title_rgb = if accent { accent_rgb } else { [200, 200, 210] };
+
     // (window, thumb_width, app_id). Thumb width keeps the window's aspect.
     let mut cells: Vec<(smithay::desktop::Window, i32, String)> = Vec::new();
-    for win in sw.candidates.iter().take(MAX) {
+    for win in sw.candidates.iter().take(max) {
         let g = win.geometry().size;
         let (gw, gh) = (g.w.max(1), g.h.max(1));
         let tw = ((f64::from(gw) * f64::from(th) / f64::from(gh)).round() as i32).clamp(60, th * 2);
@@ -970,10 +986,10 @@ fn build_mru_switcher_elements(
     let mut acc = 0;
     for (_, tw, _) in &cells {
         left_edges.push(acc);
-        acc += tw + GAP;
+        acc += tw + gap;
     }
-    let inner_w = acc - GAP; // total row width (drop the trailing gap)
-    let panel_h = TITLE_H + th + label_h + 2 * PAD;
+    let inner_w = acc - gap; // total row width (drop the trailing gap)
+    let panel_h = TITLE_H + th + label_h + 2 * pad;
     let oy = (output_geo.size.h - panel_h) / 2;
     // Carousel: scroll the row so the SELECTED thumbnail is centred on the
     // output. Thumbnails left/right of it slide off the edges.
@@ -997,14 +1013,14 @@ fn build_mru_switcher_elements(
         scope_txt,
         (f64::from(TITLE_H) * output_scale * 0.78) as i32,
         (320.0 * output_scale) as i32,
-        [200, 200, 210],
+        title_rgb,
         title_pos.to_f64(),
     ) {
         out.push(MargoRenderElement::Cursor(el));
     }
 
     // ── Thumbnails (topmost) + labels + per-thumb selection ring ─────
-    let row_y = oy + PAD + TITLE_H;
+    let row_y = oy + pad + TITLE_H;
     for (i, (win, tw, app_id)) in cells.iter().enumerate() {
         let cell_x = shift + left_edges[i];
         let cell_y = row_y;
@@ -1039,7 +1055,7 @@ fn build_mru_switcher_elements(
             let lpos: Point<i32, Physical> = Point::<i32, Logical>::from((cell_x, cell_y + th + 2))
                 .to_physical_precise_round(scale);
             let rgb = if i == sw.selected {
-                [240, 240, 255]
+                if accent { accent_rgb } else { [240, 240, 255] }
             } else {
                 [165, 165, 175]
             };
@@ -1070,7 +1086,7 @@ fn build_mru_switcher_elements(
                     Id::new(),
                     ring,
                     radius,
-                    state.config.group_active_color.0,
+                    ring_color,
                     p,
                 ),
             ));
@@ -1081,8 +1097,8 @@ fn build_mru_switcher_elements(
     //    with it via the same `shift`. Not a full-width band.
     if let Some(p) = prog {
         let panel = Rectangle::<i32, Logical>::new(
-            Point::from((shift - PAD, oy)),
-            smithay::utils::Size::from((inner_w + 2 * PAD, panel_h)),
+            Point::from((shift - pad, oy)),
+            smithay::utils::Size::from((inner_w + 2 * pad, panel_h)),
         )
         .to_physical_precise_round(scale);
         out.push(MargoRenderElement::RoundedSolid(
@@ -1092,6 +1108,27 @@ fn build_mru_switcher_elements(
                 radius,
                 [0.0, 0.0, 0.0, 0.62],
                 p,
+            ),
+        ));
+    }
+
+    // Backdrop dim over the whole output (still in front of the windows) —
+    // pushed last so it sits behind the panel + thumbnails, darkening only the
+    // desktop beneath the switcher.
+    let dim = state.config.mru_dim_alpha.clamp(0.0, 0.9);
+    if dim > 0.0 {
+        let full = Rectangle::<i32, Physical>::new(
+            Point::from((0, 0)),
+            smithay::utils::Size::from((output_geo.size.w, output_geo.size.h))
+                .to_physical_precise_round(scale),
+        );
+        out.push(MargoRenderElement::Solid(
+            smithay::backend::renderer::element::solid::SolidColorRenderElement::new(
+                Id::new(),
+                full,
+                CommitCounter::default(),
+                [0.0, 0.0, 0.0, dim],
+                smithay::backend::renderer::element::Kind::Unspecified,
             ),
         ));
     }

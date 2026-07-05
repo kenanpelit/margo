@@ -759,6 +759,19 @@ pub struct Config {
     pub mru_filter: String,
     /// Draw the app-id label under each thumbnail. Default `true`.
     pub mru_show_labels: bool,
+    /// Max thumbnails shown in the switcher overlay. The cycle still walks
+    /// every window; this only bounds the visible strip. Default `8`.
+    pub mru_max: u32,
+    /// Gap between switcher thumbnails, logical px. Default `16`.
+    pub mru_thumb_gap: u32,
+    /// Inner padding of the switcher panel, logical px. Default `22`.
+    pub mru_panel_padding: u32,
+    /// Backdrop dim behind the switcher overlay, `0.0`–`0.9` (`0` = off).
+    /// Default `0.35`.
+    pub mru_dim_alpha: f32,
+    /// Tint the selection ring, scope title and selected label with the theme
+    /// accent (`focuscolor`) instead of neutral grey. Default `true`.
+    pub mru_accent_selection: bool,
     /// Wrap the scroller overview around: scrolling past the last tag
     /// continues seamlessly to the first (and vice versa) instead of
     /// rubber-banding at the ends. Default `false`.
@@ -1126,6 +1139,11 @@ impl Default for Config {
             mru_scope: "all".to_string(),
             mru_filter: "all".to_string(),
             mru_show_labels: true,
+            mru_max: 8,
+            mru_thumb_gap: 16,
+            mru_panel_padding: 22,
+            mru_dim_alpha: 0.35,
+            mru_accent_selection: true,
             scroller_overview_loop: false,
             overview_backdrop_color: Rgba([0.15, 0.15, 0.15, 1.0]),
             overview_backdrop_image: None,
