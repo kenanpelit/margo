@@ -41,8 +41,8 @@
 use crate::menus::menu_widgets::app_launcher::apps_provider::AppsProvider;
 use crate::menus::menu_widgets::app_launcher::clipboard_provider::ClipboardProvider;
 use crate::menus::menu_widgets::app_launcher::launcher_row::{
-    LauncherRowInit, LauncherRowInput, LauncherRowModel, LauncherRowOutput, SECTION_HEADER_PROVIDER,
-    resolve_primary_var, set_match_accent,
+    LauncherRowInit, LauncherRowInput, LauncherRowModel, LauncherRowOutput,
+    SECTION_HEADER_PROVIDER, resolve_primary_var, set_match_accent,
 };
 use crate::menus::menu_widgets::app_launcher::tags_provider::TagsProvider;
 use crate::menus::menu_widgets::app_launcher::windows_provider::WindowsProvider;
@@ -883,6 +883,14 @@ impl Component for AppLauncherModel {
                 self.push_results_to_dynamic_box();
                 self.broadcast_selection();
                 reset_scroll_to_top(&widgets.scrolled_window);
+                // Remember the query as soon as it's applied, not only on
+                // close: the close-time snapshot was unreliable (the filter
+                // can be cleared, or the reveal signal may not fire), which
+                // left Ctrl+R with an empty `last_query` to resume. Non-empty
+                // only, so clearing the search never wipes the last real query.
+                if !self.filter.trim().is_empty() {
+                    self.runtime.borrow_mut().remember_query(&self.filter);
+                }
             }
             AppLauncherInput::FilterChanged(filter) => {
                 // Programmatic / immediate path — cancel any pending
@@ -983,7 +991,10 @@ impl Component for AppLauncherModel {
             AppLauncherInput::ResumeLastQuery => {
                 let last = self.runtime.borrow().last_query().to_string();
                 if !last.is_empty() {
+                    // set_text fires the entry's `changed` → SearchTyped →
+                    // debounced recompute, so the resumed query re-runs.
                     widgets.search_entry.set_text(&last);
+                    widgets.search_entry.grab_focus();
                     widgets.search_entry.set_position(-1);
                 }
             }
@@ -1134,7 +1145,8 @@ impl AppLauncherModel {
     }
 
     fn push_results_to_dynamic_box(&self) {
-        let cloned: Vec<DisplayItem> = if self.headered_view() && self.distinct_section_count() > 1 {
+        let cloned: Vec<DisplayItem> = if self.headered_view() && self.distinct_section_count() > 1
+        {
             // Walk the (already category-grouped) results and drop a
             // non-interactive header row in front of each new group.
             // Only when the list actually spans 2+ categories — a lone
