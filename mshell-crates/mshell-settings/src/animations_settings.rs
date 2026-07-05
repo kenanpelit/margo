@@ -256,6 +256,150 @@ const PRESETS: &[Preset] = &[
             ("animation_curve_focus", "0.33, 1.00, 0.68, 1.00"),
         ],
     },
+    Preset {
+        name: "macOS",
+        desc: "Fluid Apple-style motion — a soft spring glide with a gentle ease-out landing. The calm, smooth default.",
+        keys: &[
+            ("animations", "1"),
+            ("layer_animations", "1"),
+            ("animation_type_open", "zoom"),
+            ("animation_type_close", "fade"),
+            ("layer_animation_type_open", "slide_in"),
+            ("layer_animation_type_close", "slide_out"),
+            ("animation_fade_in", "1"),
+            ("animation_fade_out", "1"),
+            ("zoom_initial_ratio", "0.92"),
+            ("zoom_end_ratio", "0.92"),
+            ("fadein_begin_opacity", "0.60"),
+            ("animation_duration_move", "190"),
+            ("animation_duration_open", "200"),
+            ("animation_duration_close", "160"),
+            ("animation_duration_tag", "220"),
+            ("animation_duration_focus", "110"),
+            ("animation_clock_move", "spring"),
+            ("animation_clock_open", "bezier"),
+            ("animation_clock_close", "bezier"),
+            ("animation_clock_tag", "bezier"),
+            ("animation_clock_focus", "bezier"),
+            ("animation_clock_layer", "bezier"),
+            ("animation_curve_move", "0.16, 1.00, 0.30, 1.00"),
+            ("animation_curve_open", "0.16, 1.00, 0.30, 1.00"),
+            ("animation_curve_close", "0.25, 0.46, 0.45, 0.94"),
+            ("animation_curve_tag", "0.16, 1.00, 0.30, 1.00"),
+            ("animation_curve_focus", "0.25, 1.00, 0.50, 1.00"),
+            ("animation_spring_stiffness", "520.0"),
+            ("animation_spring_damping_ratio", "1.0"),
+            ("animation_spring_mass", "1.0"),
+        ],
+    },
+    Preset {
+        name: "macOS Snappy",
+        desc: "The macOS feel, tightened — a stiffer spring and shorter durations. Pick this if the smooth preset feels a touch laggy.",
+        keys: &[
+            ("animations", "1"),
+            ("layer_animations", "1"),
+            ("animation_type_open", "zoom"),
+            ("animation_type_close", "fade"),
+            ("layer_animation_type_open", "slide_in"),
+            ("layer_animation_type_close", "slide_out"),
+            ("animation_fade_in", "1"),
+            ("animation_fade_out", "1"),
+            ("zoom_initial_ratio", "0.92"),
+            ("zoom_end_ratio", "0.92"),
+            ("fadein_begin_opacity", "0.60"),
+            ("animation_duration_move", "165"),
+            ("animation_duration_open", "175"),
+            ("animation_duration_close", "135"),
+            ("animation_duration_tag", "195"),
+            ("animation_duration_focus", "90"),
+            ("animation_clock_move", "spring"),
+            ("animation_clock_open", "bezier"),
+            ("animation_clock_close", "bezier"),
+            ("animation_clock_tag", "bezier"),
+            ("animation_clock_focus", "bezier"),
+            ("animation_clock_layer", "bezier"),
+            ("animation_curve_move", "0.16, 1.00, 0.30, 1.00"),
+            ("animation_curve_open", "0.16, 1.00, 0.30, 1.00"),
+            ("animation_curve_close", "0.25, 0.46, 0.45, 0.94"),
+            ("animation_curve_tag", "0.16, 1.00, 0.30, 1.00"),
+            ("animation_curve_focus", "0.25, 1.00, 0.50, 1.00"),
+            ("animation_spring_stiffness", "650.0"),
+            ("animation_spring_damping_ratio", "1.0"),
+            ("animation_spring_mass", "1.0"),
+        ],
+    },
+    Preset {
+        name: "macOS Fluid",
+        desc: "An even softer spring — the most flowing, liquid glide. Pick this if the smooth preset doesn't feel fluid enough.",
+        keys: &[
+            ("animations", "1"),
+            ("layer_animations", "1"),
+            ("animation_type_open", "zoom"),
+            ("animation_type_close", "fade"),
+            ("layer_animation_type_open", "slide_in"),
+            ("layer_animation_type_close", "slide_out"),
+            ("animation_fade_in", "1"),
+            ("animation_fade_out", "1"),
+            ("zoom_initial_ratio", "0.92"),
+            ("zoom_end_ratio", "0.92"),
+            ("fadein_begin_opacity", "0.60"),
+            ("animation_duration_move", "190"),
+            ("animation_duration_open", "200"),
+            ("animation_duration_close", "160"),
+            ("animation_duration_tag", "220"),
+            ("animation_duration_focus", "110"),
+            ("animation_clock_move", "spring"),
+            ("animation_clock_open", "bezier"),
+            ("animation_clock_close", "bezier"),
+            ("animation_clock_tag", "bezier"),
+            ("animation_clock_focus", "bezier"),
+            ("animation_clock_layer", "bezier"),
+            ("animation_curve_move", "0.16, 1.00, 0.30, 1.00"),
+            ("animation_curve_open", "0.16, 1.00, 0.30, 1.00"),
+            ("animation_curve_close", "0.25, 0.46, 0.45, 0.94"),
+            ("animation_curve_tag", "0.16, 1.00, 0.30, 1.00"),
+            ("animation_curve_focus", "0.25, 1.00, 0.50, 1.00"),
+            ("animation_spring_stiffness", "440.0"),
+            ("animation_spring_damping_ratio", "1.0"),
+            ("animation_spring_mass", "1.0"),
+        ],
+    },
+    Preset {
+        name: "macOS Lively",
+        desc: "A whisper of overshoot — the spring settles with a subtle organic kick. macOS 'aliveness' without the wobble.",
+        keys: &[
+            ("animations", "1"),
+            ("layer_animations", "1"),
+            ("animation_type_open", "zoom"),
+            ("animation_type_close", "fade"),
+            ("layer_animation_type_open", "slide_in"),
+            ("layer_animation_type_close", "slide_out"),
+            ("animation_fade_in", "1"),
+            ("animation_fade_out", "1"),
+            ("zoom_initial_ratio", "0.92"),
+            ("zoom_end_ratio", "0.92"),
+            ("fadein_begin_opacity", "0.60"),
+            ("animation_duration_move", "190"),
+            ("animation_duration_open", "200"),
+            ("animation_duration_close", "160"),
+            ("animation_duration_tag", "220"),
+            ("animation_duration_focus", "110"),
+            ("animation_clock_move", "spring"),
+            ("animation_clock_open", "bezier"),
+            ("animation_clock_close", "bezier"),
+            ("animation_clock_tag", "bezier"),
+            ("animation_clock_focus", "bezier"),
+            ("animation_clock_layer", "bezier"),
+            ("animation_curve_move", "0.16, 1.00, 0.30, 1.00"),
+            ("animation_curve_open", "0.16, 1.00, 0.30, 1.00"),
+            ("animation_curve_close", "0.25, 0.46, 0.45, 0.94"),
+            ("animation_curve_tag", "0.16, 1.00, 0.30, 1.00"),
+            ("animation_curve_focus", "0.25, 1.00, 0.50, 1.00"),
+            ("animation_spring_stiffness", "520.0"),
+            ("animation_spring_damping_ratio", "0.9"),
+            ("animation_spring_mass", "1.0"),
+        ],
+    },
 ];
 
 pub(crate) struct AnimationsSettingsModel {
@@ -465,11 +609,24 @@ impl Component for AnimationsSettingsModel {
             }
             AnimationsSettingsInput::ApplyPreset => {
                 if let Some(preset) = PRESETS.get(self.selected as usize) {
-                    let updates: Vec<(&str, String)> = preset
+                    let mut updates: Vec<(&str, String)> = preset
                         .keys
                         .iter()
                         .map(|(k, v)| (*k, v.to_string()))
                         .collect();
+                    // Presets that don't tune the spring still reset it to the
+                    // compositor default, so switching away from a spring-tuned
+                    // preset (e.g. the macOS family) never leaves a stale global
+                    // stiffness / damping behind.
+                    if !preset
+                        .keys
+                        .iter()
+                        .any(|(k, _)| k.starts_with("animation_spring_"))
+                    {
+                        updates.push(("animation_spring_stiffness", "800.0".to_string()));
+                        updates.push(("animation_spring_damping_ratio", "1.0".to_string()));
+                        updates.push(("animation_spring_mass", "1.0".to_string()));
+                    }
                     if patch_conf(&updates).is_ok() {
                         // Applying a preset implies animations on.
                         self.animations = true;
