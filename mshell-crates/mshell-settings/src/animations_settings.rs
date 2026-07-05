@@ -10,6 +10,7 @@
 use crate::row::Row;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// `~/.config/margo/config.conf` — the compositor config (same file the Input
@@ -25,6 +26,63 @@ fn conf_path() -> PathBuf {
 
 fn read_config() -> margo_config::Config {
     margo_config::parse_config_with_defaults(Some(&conf_path())).unwrap_or_default()
+}
+
+/// Raw `key = value` pairs from `config.conf` (comments skipped, last write
+/// wins). Used to detect which preset is currently applied.
+fn read_conf_pairs() -> HashMap<String, String> {
+    let text = std::fs::read_to_string(conf_path()).unwrap_or_default();
+    let mut map = HashMap::new();
+    for line in text.lines() {
+        let t = line.trim_start();
+        if t.starts_with('#') {
+            continue;
+        }
+        if let Some((k, v)) = t.split_once('=') {
+            map.insert(k.trim().to_string(), v.trim().to_string());
+        }
+    }
+    map
+}
+
+/// Normalise a config value so formatting differences don't defeat equality:
+/// scalars and each bezier component parse to a canonical `f64` string
+/// (`520.0` == `520`, `1.0` == `1`), commas lose their surrounding spaces
+/// (`0.16, 1.00, …` == `0.16,1.00,…`), everything else is lower-cased.
+fn norm_val(v: &str) -> String {
+    let v = v.trim();
+    if let Ok(f) = v.parse::<f64>() {
+        return format!("{f}");
+    }
+    if v.contains(',') {
+        return v
+            .split(',')
+            .map(|p| {
+                let p = p.trim();
+                p.parse::<f64>()
+                    .map(|f| format!("{f}"))
+                    .unwrap_or_else(|_| p.to_lowercase())
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+    }
+    v.to_lowercase()
+}
+
+/// Index of the preset whose full key set matches the live `config.conf`, if
+/// any — so the accent-highlighted card reflects the *actually applied*
+/// profile, not just a default cursor. `None` for a hand-tuned config that
+/// matches no preset.
+fn active_preset() -> Option<u32> {
+    let pairs = read_conf_pairs();
+    PRESETS
+        .iter()
+        .position(|p| {
+            p.keys
+                .iter()
+                .all(|(k, v)| pairs.get(*k).is_some_and(|cv| norm_val(cv) == norm_val(v)))
+        })
+        .map(|i| i as u32)
 }
 
 /// Patch `key = value` lines in place (append if missing), preserving comments
@@ -257,8 +315,8 @@ const PRESETS: &[Preset] = &[
         ],
     },
     Preset {
-        name: "macOS",
-        desc: "Fluid Apple-style motion — a soft spring glide with a gentle ease-out landing. The calm, smooth default.",
+        name: "Silk",
+        desc: "Fluid, silky motion — a soft spring glide with a gentle ease-out landing. The calm, smooth default.",
         keys: &[
             ("animations", "1"),
             ("layer_animations", "1"),
@@ -293,8 +351,8 @@ const PRESETS: &[Preset] = &[
         ],
     },
     Preset {
-        name: "macOS Snappy",
-        desc: "The macOS feel, tightened — a stiffer spring and shorter durations. Pick this if the smooth preset feels a touch laggy.",
+        name: "Swift",
+        desc: "The silky feel, tightened — a stiffer spring and shorter durations. Pick this if the smooth glide feels a touch laggy.",
         keys: &[
             ("animations", "1"),
             ("layer_animations", "1"),
@@ -329,8 +387,8 @@ const PRESETS: &[Preset] = &[
         ],
     },
     Preset {
-        name: "macOS Fluid",
-        desc: "An even softer spring — the most flowing, liquid glide. Pick this if the smooth preset doesn't feel fluid enough.",
+        name: "Satin",
+        desc: "An even softer spring — the most flowing, liquid glide. Pick this if the smooth glide doesn't feel fluid enough.",
         keys: &[
             ("animations", "1"),
             ("layer_animations", "1"),
@@ -365,8 +423,8 @@ const PRESETS: &[Preset] = &[
         ],
     },
     Preset {
-        name: "macOS Lively",
-        desc: "A whisper of overshoot — the spring settles with a subtle organic kick. macOS 'aliveness' without the wobble.",
+        name: "Breeze",
+        desc: "A whisper of overshoot — the spring settles with a subtle organic kick. Aliveness without the wobble.",
         keys: &[
             ("animations", "1"),
             ("layer_animations", "1"),
@@ -405,7 +463,7 @@ const PRESETS: &[Preset] = &[
 pub(crate) struct AnimationsSettingsModel {
     animations: bool,
     layer_animations: bool,
-    selected: u32,
+    selected: Option<u32>,
     /// Preset cards, kept so `.selected` can be flipped without a rebuild.
     cards: Vec<gtk::Button>,
 }
@@ -582,7 +640,7 @@ impl Component for AnimationsSettingsModel {
         let model = AnimationsSettingsModel {
             animations: cfg.animations,
             layer_animations: cfg.layer_animations,
-            selected: 0,
+            selected: active_preset(),
             cards,
         };
         let widgets = view_output!();
@@ -604,11 +662,13 @@ impl Component for AnimationsSettingsModel {
                 reload();
             }
             AnimationsSettingsInput::SelectPreset(idx) => {
-                self.selected = idx;
+                self.selected = Some(idx);
                 self.sync_cards();
             }
             AnimationsSettingsInput::ApplyPreset => {
-                if let Some(preset) = PRESETS.get(self.selected as usize) {
+                if let Some(sel) = self.selected
+                    && let Some(preset) = PRESETS.get(sel as usize)
+                {
                     let mut updates: Vec<(&str, String)> = preset
                         .keys
                         .iter()
@@ -616,7 +676,7 @@ impl Component for AnimationsSettingsModel {
                         .collect();
                     // Presets that don't tune the spring still reset it to the
                     // compositor default, so switching away from a spring-tuned
-                    // preset (e.g. the macOS family) never leaves a stale global
+                    // preset (e.g. the Silk family) never leaves a stale global
                     // stiffness / damping behind.
                     if !preset
                         .keys
@@ -643,7 +703,7 @@ impl AnimationsSettingsModel {
     /// Flip `.selected` onto the chosen preset card.
     fn sync_cards(&self) {
         for (i, btn) in self.cards.iter().enumerate() {
-            if i as u32 == self.selected {
+            if Some(i as u32) == self.selected {
                 btn.set_css_classes(&["ok-button-surface", "selected"]);
             } else {
                 btn.set_css_classes(&["ok-button-surface"]);
