@@ -311,8 +311,23 @@ impl Component for VpnMenuWidgetModel {
                 #[name = "fav_expander"]
                 gtk::Expander {
                     add_css_class: "vpn-dns-expander",
-                    set_label: Some("Favourites"),
                     set_expanded: false,
+
+                    #[wrap(Some)]
+                    set_label_widget = &gtk::Box {
+                        add_css_class: "vpn-section-head",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 10,
+                        gtk::Image {
+                            add_css_class: "vpn-section-icon",
+                            set_icon_name: Some("starred-symbolic"),
+                        },
+                        #[name = "fav_head_label"]
+                        gtk::Label {
+                            add_css_class: "vpn-section-name",
+                            set_label: "Favourites",
+                        },
+                    },
 
                     #[wrap(Some)]
                     set_child = &gtk::Box {
@@ -339,10 +354,23 @@ impl Component for VpnMenuWidgetModel {
                 #[name = "countries_expander"]
                 gtk::Expander {
                     add_css_class: "vpn-dns-expander",
-                    set_label: Some("Countries"),
                     set_expanded: false,
                     connect_expanded_notify[sender] => move |e| {
                         sender.input(VpnMenuWidgetInput::CountriesExpanded(e.is_expanded()));
+                    },
+                    #[wrap(Some)]
+                    set_label_widget = &gtk::Box {
+                        add_css_class: "vpn-section-head",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 10,
+                        gtk::Image {
+                            add_css_class: "vpn-section-icon",
+                            set_icon_name: Some("mark-location-symbolic"),
+                        },
+                        gtk::Label {
+                            add_css_class: "vpn-section-name",
+                            set_label: "Countries",
+                        },
                     },
                 },
 
@@ -352,10 +380,23 @@ impl Component for VpnMenuWidgetModel {
                 #[name = "dns_expander"]
                 gtk::Expander {
                     add_css_class: "vpn-dns-expander",
-                    set_label: Some("DNS  ·  Blocky · presets"),
                     set_expanded: false,
                     connect_expanded_notify[sender] => move |e| {
                         sender.input(VpnMenuWidgetInput::DnsExpanded(e.is_expanded()));
+                    },
+                    #[wrap(Some)]
+                    set_label_widget = &gtk::Box {
+                        add_css_class: "vpn-section-head",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 10,
+                        gtk::Image {
+                            add_css_class: "vpn-section-icon",
+                            set_icon_name: Some("security-high-symbolic"),
+                        },
+                        gtk::Label {
+                            add_css_class: "vpn-section-name",
+                            set_label: "DNS",
+                        },
                     },
                 },
 
@@ -364,8 +405,22 @@ impl Component for VpnMenuWidgetModel {
                 // by default. Rows built imperatively in `init`.
                 gtk::Expander {
                     add_css_class: "vpn-dns-expander",
-                    set_label: Some("Settings"),
                     set_expanded: false,
+
+                    #[wrap(Some)]
+                    set_label_widget = &gtk::Box {
+                        add_css_class: "vpn-section-head",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 10,
+                        gtk::Image {
+                            add_css_class: "vpn-section-icon",
+                            set_icon_name: Some("emblem-system-symbolic"),
+                        },
+                        gtk::Label {
+                            add_css_class: "vpn-section-name",
+                            set_label: "Settings",
+                        },
+                    },
 
                     #[wrap(Some)]
                     set_child = &gtk::Box {
@@ -795,14 +850,12 @@ impl Component for VpnMenuWidgetModel {
         };
         self.expiry_label.set_label(&expiry_text);
 
-        // Favourites count in the section label (only when there are any).
-        widgets
-            .fav_expander
-            .set_label(Some(&if self.favs.is_empty() {
-                "Favourites".to_string()
-            } else {
-                format!("Favourites  ·  {}", self.favs.len())
-            }));
+        // Favourites count in the section header (only when there are any).
+        widgets.fav_head_label.set_label(&if self.favs.is_empty() {
+            "Favourites".to_string()
+        } else {
+            format!("Favourites  ·  {}", self.favs.len())
+        });
 
         rebuild_favs(
             &self.fav_box,

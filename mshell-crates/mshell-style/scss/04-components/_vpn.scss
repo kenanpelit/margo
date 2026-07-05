@@ -159,18 +159,40 @@ row.active.ok-button-surface,
   opacity: 1;
 }
 
-// ── Collapsible section disclosure (embedded DnsMenuWidget etc.) ──
+// ── Collapsible section headers (Favourites / Countries / DNS / Settings) ──
+// Each GtkExpander's label is a `.vpn-section-head` box: a leading symbolic
+// icon + the section name. The title row gets a comfortable tappable height
+// with a soft hover wash, and the icon lifts to the accent on hover so the
+// row reads as interactive.
 .vpn-dns-expander {
-  font-weight: 600;
   > title {
     border-radius: var(--radius-md);
     padding: var(--space-2) var(--space-1);
+    transition: background-color var(--motion-fast) var(--ease-standard);
   }
   > title:hover {
     background-color: unquote("color-mix(in srgb, var(--primary) 12%, transparent)");
+  }
+  > title:hover .vpn-section-icon {
+    color: var(--primary);
   }
   // Inset the revealed DNS widget a touch from the disclosure title.
   .dns-menu-widget {
     margin-top: var(--space-2);
   }
+}
+
+// The header content (icon + name) set as each expander's label widget.
+.vpn-section-head {
+  padding: var(--space-1) 0;
+}
+.vpn-section-icon {
+  -gtk-icon-size: var(--icon-sm);
+  color: var(--on-surface-variant);
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.vpn-section-name {
+  font-weight: 600;
+  color: var(--on-surface);
+  letter-spacing: 0.01em;
 }
