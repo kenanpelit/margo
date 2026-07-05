@@ -85,6 +85,7 @@ mod wallpaper_settings;
 mod weather_settings;
 mod widget_menu_settings;
 mod window_rules_settings;
+mod window_switcher_settings;
 
 pub use settings::{
     SettingsWindowCommandOutput, SettingsWindowInit, SettingsWindowInput, SettingsWindowModel,

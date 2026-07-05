@@ -54,6 +54,7 @@ use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
 use crate::weather_settings::{WeatherSettingsInit, WeatherSettingsModel};
 use crate::widget_menu_settings::{MenuKind, WidgetMenuSettingsInit, WidgetMenuSettingsModel};
 use crate::window_rules_settings::{WindowRulesInit, WindowRulesModel};
+use crate::window_switcher_settings::{WindowSwitcherInit, WindowSwitcherModel};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
@@ -83,6 +84,7 @@ pub struct SettingsWindowModel {
     helium_theme_settings_controller: Controller<HeliumThemeSettingsModel>,
     about_settings_controller: Controller<AboutSettingsModel>,
     animations_settings_controller: Controller<AnimationsSettingsModel>,
+    window_switcher_settings_controller: Controller<WindowSwitcherModel>,
     appearance_settings_controller: Controller<AppearanceModel>,
     effects_settings_controller: Controller<EffectsModel>,
     behaviour_settings_controller: Controller<BehaviourModel>,
@@ -433,6 +435,7 @@ impl Component for SettingsWindowModel {
             backup_settings_controller = BackupSettingsModel => BackupSettingsInit {},
             logging_settings_controller = LoggingModel => LoggingInit {},
             animations_settings_controller = AnimationsSettingsModel => AnimationsSettingsInit {},
+            window_switcher_settings_controller = WindowSwitcherModel => WindowSwitcherInit {},
             osd_settings_controller = OsdSettingsModel => OsdSettingsInit {},
             overview_settings_controller = OverviewSettingsModel => OverviewSettingsInit {},
             vpn_settings_controller = VpnSettingsModel => VpnSettingsInit {},
@@ -508,6 +511,7 @@ impl Component for SettingsWindowModel {
             helium_theme_settings_controller,
             about_settings_controller,
             animations_settings_controller,
+            window_switcher_settings_controller,
             appearance_settings_controller,
             effects_settings_controller,
             osd_settings_controller,
@@ -810,6 +814,15 @@ impl Component for SettingsWindowModel {
                 "animations",
                 "Animations",
                 model.animations_settings_controller.widget().clone().into(),
+            ),
+            (
+                "window_switcher",
+                "Window Switcher",
+                model
+                    .window_switcher_settings_controller
+                    .widget()
+                    .clone()
+                    .into(),
             ),
             (
                 "appearance",
@@ -1988,6 +2001,10 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
     ),
     ("animations", "animation motion transition speed easing"),
     (
+        "window switcher",
+        "mru alt-tab super-tab switcher thumbnail preview cycle recently used window scope filter dim backdrop accent app label",
+    ),
+    (
         "appearance",
         "border thickness radius corner gap gaps opacity cursor size window look",
     ),
@@ -2136,6 +2153,7 @@ const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("tiling_layout", "tiling_layout"),
     ("about", "about"),
     ("animations", "animations"),
+    ("window switcher", "window_switcher"),
     ("appearance", "appearance"),
     ("effects", "effects"),
     ("osd", "osd"),
@@ -2272,6 +2290,11 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "animations",
         icon: "preferences-desktop-screensaver-symbolic",
         label: "Animations",
+    },
+    Page {
+        route: "window_switcher",
+        icon: "view-grid-symbolic",
+        label: "Window Switcher",
     },
     Page {
         route: "theme",
