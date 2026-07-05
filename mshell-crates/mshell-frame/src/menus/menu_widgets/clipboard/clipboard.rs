@@ -14,7 +14,7 @@ use crate::menus::menu_widgets::app_launcher::launcher_row::{
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use time::{OffsetDateTime, UtcOffset};
+use time::OffsetDateTime;
 use tokio::sync::broadcast;
 use tracing::{error, warn};
 
@@ -192,27 +192,6 @@ struct RowWidgets {
     pin_image: gtk::Image,
 }
 
-/// Immutable snapshot of "now" the section sorter + header factory read
-/// to bucket a row's `timestamp` into Today / Yesterday / This Week / a
-/// per-day date. Refreshed on every populate so an open panel re-buckets
-/// correctly across midnight. Local offset via the same
-/// `now_local().unwrap_or(now_utc())` idiom the clock + calendar use.
-#[derive(Clone, Copy)]
-struct TimeAnchor {
-    today_julian: i32,
-    offset: UtcOffset,
-}
-
-impl TimeAnchor {
-    fn now() -> Self {
-        let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
-        Self {
-            today_julian: now.date().to_julian_day(),
-            offset: now.offset(),
-        }
-    }
-}
-
 const ROW_DATA_KEY: &str = "clip-row-widgets";
 
 pub(crate) struct ClipboardModel {
@@ -259,9 +238,6 @@ pub(crate) struct ClipboardModel {
     /// Configured max height (px) for the history scroller, re-read from
     /// Settings → Clipboard on each reveal. 0 = grow to fit (no cap).
     list_max_height: i32,
-    /// "Now" snapshot shared with the section sorter + header factory;
-    /// refreshed on each populate so date sections stay correct.
-    time_anchor: Rc<Cell<TimeAnchor>>,
 }
 
 #[derive(Debug)]
@@ -600,35 +576,7 @@ impl Component for ClipboardModel {
         });
         let filter_model = gtk::FilterListModel::new(Some(store.clone()), Some(filter.clone()));
 
-        // Date/pin sectioning (item 4): a SortListModel over the filtered
-        // set orders rows by section bucket first (pinned float to a
-        // leading "Pinned" section, then Today / Yesterday / This Week /
-        // one section per older day) and, within each bucket, newest
-        // first. The section sorter keys on the bucket alone, so GTK draws
-        // exactly one header per contiguous run. Both sorters read the
-        // shared `time_anchor` so an open panel re-buckets across midnight.
-        let time_anchor = Rc::new(Cell::new(TimeAnchor::now()));
-        let sort_anchor = time_anchor.clone();
-        let sorter = gtk::CustomSorter::new(move |a, b| {
-            let anchor = sort_anchor.get();
-            let ka = row_sort_key(a, anchor);
-            let kb = row_sort_key(b, anchor);
-            // Section bucket ascending; within a bucket, timestamp
-            // descending (newest first, preserving the old ordering).
-            ka.0.cmp(&kb.0).then_with(|| kb.1.cmp(&ka.1)).into()
-        });
-        let section_anchor = time_anchor.clone();
-        let section_sorter = gtk::CustomSorter::new(move |a, b| {
-            let anchor = section_anchor.get();
-            row_sort_key(a, anchor)
-                .0
-                .cmp(&row_sort_key(b, anchor).0)
-                .into()
-        });
-        let sort_model = gtk::SortListModel::new(Some(filter_model.clone()), Some(sorter));
-        sort_model.set_section_sorter(Some(&section_sorter));
-
-        let selection = gtk::SingleSelection::new(Some(sort_model.clone()));
+        let selection = gtk::SingleSelection::new(Some(filter_model.clone()));
         selection.set_autoselect(false);
         selection.set_can_unselect(true);
 
@@ -829,38 +777,6 @@ impl Component for ClipboardModel {
         list_view.set_model(Some(&selection));
         list_view.set_factory(Some(&factory));
 
-        // Section-header factory (item 4): a dim date/pin band above each
-        // contiguous section the SortListModel produced. Headers are not
-        // model items, so they're non-selectable and keyboard nav skips
-        // them for free.
-        let header_factory = gtk::SignalListItemFactory::new();
-        header_factory.connect_setup(|_, obj| {
-            let Some(header) = obj.downcast_ref::<gtk::ListHeader>() else {
-                return;
-            };
-            let label = gtk::Label::new(None);
-            label.add_css_class("clipboard-section-header");
-            label.set_halign(gtk::Align::Start);
-            label.set_xalign(0.0);
-            header.set_child(Some(&label));
-        });
-        let header_anchor = time_anchor.clone();
-        header_factory.connect_bind(move |_, obj| {
-            let Some(header) = obj.downcast_ref::<gtk::ListHeader>() else {
-                return;
-            };
-            let Some(label) = header.child().and_then(|w| w.downcast::<gtk::Label>().ok()) else {
-                return;
-            };
-            let Some(item) = header.item() else { return };
-            let Ok(bo) = item.downcast::<glib::BoxedAnyObject>() else {
-                return;
-            };
-            let view = bo.borrow::<EntryView>();
-            label.set_label(&section_label(&view, header_anchor.get()));
-        });
-        list_view.set_header_factory(Some(&header_factory));
-
         // Single click on a row copies it (matches the old copy-button).
         list_view.set_single_click_activate(true);
         let activate_selection = selection.clone();
@@ -975,7 +891,6 @@ impl Component for ClipboardModel {
             dirty: false,
             search_gen: 0,
             list_max_height: configured_list_max_height(),
-            time_anchor,
         };
 
         let widgets = view_output!();
@@ -1157,10 +1072,6 @@ impl ClipboardModel {
     /// this on its own. Search-independent (the `/` filter narrows the
     /// view, the counts always reflect the whole history).
     fn populate(&mut self) {
-        // Refresh the sectioning anchor so Today / Yesterday buckets stay
-        // correct if the panel has been open across midnight.
-        self.time_anchor.set(TimeAnchor::now());
-
         // Lightweight views (no raw `data` clone, category computed
         // once) — see [`ClipboardHistory::views`].
         let views = self.history.views();
@@ -1176,14 +1087,10 @@ impl ClipboardModel {
         }
         self.tab_counts = counts;
 
-        // Replace the whole store in ONE splice, not remove_all + N appends.
-        // Each append emitted its own items-changed, and with the downstream
-        // date-section SortListModel that meant N full re-sorts + section
-        // recomputes (O(n²)) on every open / search keystroke / tab switch —
-        // the jank the section grouping introduced. One splice = one
-        // re-filter + one re-sort. The FilterListModel re-runs the current
-        // tab/search predicate over the new items, so no explicit
-        // `filter.changed()` is needed.
+        // Replace the whole store in ONE splice, not remove_all + N appends:
+        // one items-changed → one re-filter instead of N. The FilterListModel
+        // re-runs the current tab/search predicate over the new items, so a
+        // tab/search switch just repopulates — no explicit `filter.changed()`.
         self.store.splice(0, self.store.n_items(), &objects);
 
         let n = self.filter_model.n_items();
@@ -1397,65 +1304,6 @@ fn kbd_chip(caps: &[&str], caption: &str) -> gtk::Box {
     caption_label.add_css_class("kbd-caption");
     chip.append(&caption_label);
     chip
-}
-
-/// `(section_rank, timestamp_nanos)` sort key for a row object. The rank
-/// is the primary key (so sections stay contiguous), the nanos are the
-/// secondary key (compared descending → newest first within a section).
-fn row_sort_key(obj: &gtk::glib::Object, anchor: TimeAnchor) -> (i64, i128) {
-    let Some(bo) = obj.downcast_ref::<glib::BoxedAnyObject>() else {
-        return (i64::MAX, 0);
-    };
-    let view = bo.borrow::<EntryView>();
-    (
-        section_rank(&view, anchor),
-        view.timestamp.unix_timestamp_nanos(),
-    )
-}
-
-/// Section bucket rank for a row. Pinned entries float to a leading
-/// "Pinned" section (rank 0) regardless of date; the rest bucket by local
-/// calendar-day distance — Today / Yesterday / This Week share fixed
-/// ranks (one header each), and each older day gets its own rank so it
-/// forms its own dated section, newest day first.
-fn section_rank(view: &EntryView, anchor: TimeAnchor) -> i64 {
-    if view.pinned {
-        return 0;
-    }
-    let entry_julian = view
-        .timestamp
-        .to_offset(anchor.offset)
-        .date()
-        .to_julian_day();
-    let diff = (anchor.today_julian - entry_julian).max(0) as i64;
-    match diff {
-        0 => 1,
-        1 => 2,
-        2..=6 => 3,
-        _ => 4 + diff,
-    }
-}
-
-/// Header text for the section a representative row belongs to — mirrors
-/// [`section_rank`]'s bucketing.
-fn section_label(view: &EntryView, anchor: TimeAnchor) -> String {
-    if view.pinned {
-        return "Pinned".to_string();
-    }
-    let date = view.timestamp.to_offset(anchor.offset).date();
-    let diff = (anchor.today_julian - date.to_julian_day()).max(0);
-    match diff {
-        0 => "Today".to_string(),
-        1 => "Yesterday".to_string(),
-        2..=6 => "This Week".to_string(),
-        _ => {
-            const MONTHS: [&str; 12] = [
-                "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-            ];
-            let idx = (u8::from(date.month()) as usize).saturating_sub(1).min(11);
-            format!("{} {}", date.day(), MONTHS[idx])
-        }
-    }
 }
 
 /// Relative "captured at" label for a row's title line — "just now",
