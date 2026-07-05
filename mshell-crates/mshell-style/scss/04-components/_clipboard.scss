@@ -108,14 +108,50 @@
   }
 }
 
-// ── Keyboard-shortcut hint strip ──────────────────────────────────
-// Reference info, not a focal point — metadata tier (--on-surface-variant,
-// --font-2xs). Matches audio-dashboard section-label dimness.
-.clipboard-hint {
+// ── Keyboard-shortcut hint band (real keycaps) ────────────────────
+// The footer now hosts `.kbd-chip` keycap chips (shared _keycap.scss)
+// instead of a wrapped hint string. This just gives the band a calm
+// resting frame; the caps + captions carry their own tier from the
+// shared component.
+.clipboard-hint-bar {
+  background: transparent;
+  padding: var(--space-1) 0;
+}
+
+// ── Empty state (DESIGN.md §17) ───────────────────────────────────
+// Centred vertical group: a large dim glyph + a title + a one-line
+// hint. "Nothing to show" tone — dim, never error styling.
+.clipboard-empty {
+  padding: var(--space-6) var(--space-4);
+}
+
+.clipboard-empty-icon {
+  -gtk-icon-size: 48px;
+  color: var(--on-surface-variant);
+  opacity: 0.45;
+}
+
+.clipboard-empty-title {
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.clipboard-empty-hint {
+  font-size: var(--font-xs);
+  color: var(--on-surface-variant);
+}
+
+// ── Date / pin section headers ────────────────────────────────────
+// Dim metadata band the ListView draws above each contiguous section
+// (Pinned · Today · Yesterday · This Week · "12 Jun"). Not a row, so it
+// carries no hover/selection chrome.
+.clipboard-section-header {
   font-size: var(--font-2xs);
-  // Keyboard hints are reference, not content — dim them well into the
-  // background. --outline sits darker/quieter than --on-surface-variant.
-  color: var(--outline);
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  padding: var(--space-3) var(--space-1) var(--space-1);
+  background: transparent;
 }
 
 // ── History entry rows (virtualized factory rows) ─────────────────
@@ -250,4 +286,37 @@
   color: var(--on-surface-variant);
   opacity: 0.7;
   -gtk-icon-size: var(--icon-sm);
+}
+
+// ── Refined-category badge + colour swatch ────────────────────────
+// A small tinted pill after the type glyph carrying a short code
+// (URL / CODE / MAIL / COLOR) so the refined text categories are
+// distinguishable at a glance. Translucent neutral fill so it reads on
+// both the resting row and the selected `--primary-container` fill.
+.clipboard-type-badge {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-xs);
+  background-color: unquote("color-mix(in srgb, var(--on-surface-variant) 16%, transparent)");
+}
+
+.clipboard-type-badge-label {
+  font-size: var(--font-2xs);
+  font-weight: 700;
+  color: var(--on-surface-variant);
+}
+
+// The real colour swatch (Color entries only). Fixed square with a
+// hairline ring; its background-color is painted per-row by a
+// widget-scoped CssProvider (see clipboard.rs), so no fill is set here.
+.clipboard-type-swatch {
+  min-width: 12px;
+  min-height: 12px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--outline-variant);
+}
+
+// On the selected row the badge sits on `--primary-container`; lift its
+// text to the matching on-colour so it stays legible.
+.clipboard-list row:selected .clipboard-type-badge-label {
+  color: var(--on-primary-container);
 }

@@ -14,7 +14,7 @@ use crate::menus::menu_widgets::app_launcher::launcher_row::{
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use time::OffsetDateTime;
+use time::{OffsetDateTime, UtcOffset};
 use tokio::sync::broadcast;
 use tracing::{error, warn};
 
@@ -175,9 +175,42 @@ fn configured_list_max_height() -> i32 {
 struct RowWidgets {
     title: gtk::Label,
     type_icon: gtk::Image,
+    /// Refined-category badge (URL / CODE / MAIL / COLOR). Hidden for the
+    /// plain Text / Image / File categories, which the type glyph already
+    /// distinguishes.
+    badge_box: gtk::Box,
+    badge_label: gtk::Label,
+    /// Real colour swatch for `Color` entries — a leaf box whose fill is
+    /// painted per-row by `swatch_provider`. Hidden for every other type.
+    swatch: gtk::Box,
+    /// Widget-scoped provider that paints `swatch`'s background from the
+    /// entry's `color_hex()`. Reloaded on bind; the app-launcher preview
+    /// swatch uses the same CssProvider technique.
+    swatch_provider: gtk::CssProvider,
     preview_box: gtk::Box,
     pin_button: gtk::Button,
     pin_image: gtk::Image,
+}
+
+/// Immutable snapshot of "now" the section sorter + header factory read
+/// to bucket a row's `timestamp` into Today / Yesterday / This Week / a
+/// per-day date. Refreshed on every populate so an open panel re-buckets
+/// correctly across midnight. Local offset via the same
+/// `now_local().unwrap_or(now_utc())` idiom the clock + calendar use.
+#[derive(Clone, Copy)]
+struct TimeAnchor {
+    today_julian: i32,
+    offset: UtcOffset,
+}
+
+impl TimeAnchor {
+    fn now() -> Self {
+        let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
+        Self {
+            today_julian: now.date().to_julian_day(),
+            offset: now.offset(),
+        }
+    }
 }
 
 const ROW_DATA_KEY: &str = "clip-row-widgets";
@@ -225,6 +258,9 @@ pub(crate) struct ClipboardModel {
     /// Configured max height (px) for the history scroller, re-read from
     /// Settings → Clipboard on each reveal. 0 = grow to fit (no cap).
     list_max_height: i32,
+    /// "Now" snapshot shared with the section sorter + header factory;
+    /// refreshed on each populate so date sections stay correct.
+    time_anchor: Rc<Cell<TimeAnchor>>,
 }
 
 #[derive(Debug)]
@@ -407,27 +443,59 @@ impl Component for ClipboardModel {
                 },
             },
 
-            gtk::Label {
-                add_css_class: "label-small",
-                add_css_class: "clipboard-hint",
+            // Keyboard-shortcut hint band — real keycap chips (shared
+            // `.kbd-chip` idiom) built imperatively in `init`. A FlowBox
+            // so a narrow panel wraps the chips instead of forcing its
+            // width (the old wrapped one-line Label was the width floor).
+            #[name = "hint_bar"]
+            gtk::FlowBox {
+                add_css_class: "clipboard-hint-bar",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_selection_mode: gtk::SelectionMode::None,
                 set_halign: gtk::Align::Start,
-                set_label: "/: search · 1-5/Tab: tabs · Ctrl+n/k: move · Enter: copy · Ctrl+p: pin · Delete: remove",
-                set_xalign: 0.0,
-                // Wrap (don't impose the full one-line width as a minimum):
-                // this long hint was the panel's real width floor, so the
-                // configured `minimum_width` couldn't shrink it below ~550px.
-                set_wrap: true,
-                set_wrap_mode: gtk::pango::WrapMode::WordChar,
+                set_max_children_per_line: 6,
+                set_column_spacing: 8,
+                set_row_spacing: 4,
+                set_homogeneous: false,
+                set_can_focus: false,
             },
 
-            gtk::Label {
-                add_css_class: "label-medium",
+            // Empty state (DESIGN.md §17): a calm centred group — dim
+            // glyph + title + one-line hint — not a bare label. Gated on
+            // the same "nothing to show" flag; wording flips for the ★ tab.
+            gtk::Box {
+                add_css_class: "clipboard-empty",
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 8,
+                set_halign: gtk::Align::Center,
+                set_valign: gtk::Align::Center,
                 #[watch]
                 set_visible: !model.delete_button_visible,
-                #[watch]
-                set_label: match model.active_tab {
-                    ClipTab::Favorites => "No favorites yet",
-                    _ => "Empty",
+
+                gtk::Image {
+                    add_css_class: "clipboard-empty-icon",
+                    set_halign: gtk::Align::Center,
+                    set_icon_name: Some("edit-paste-symbolic"),
+                },
+
+                gtk::Label {
+                    add_css_class: "clipboard-empty-title",
+                    set_halign: gtk::Align::Center,
+                    #[watch]
+                    set_label: match model.active_tab {
+                        ClipTab::Favorites => "No favorites yet",
+                        _ => "Clipboard is empty",
+                    },
+                },
+
+                gtk::Label {
+                    add_css_class: "clipboard-empty-hint",
+                    set_halign: gtk::Align::Center,
+                    #[watch]
+                    set_label: match model.active_tab {
+                        ClipTab::Favorites => "Star an entry to pin it here",
+                        _ => "Copy something and it lands here",
+                    },
                 },
             },
 
@@ -530,7 +598,36 @@ impl Component for ClipboardModel {
             query.is_empty() || row.haystack.contains(query.as_str())
         });
         let filter_model = gtk::FilterListModel::new(Some(store.clone()), Some(filter.clone()));
-        let selection = gtk::SingleSelection::new(Some(filter_model.clone()));
+
+        // Date/pin sectioning (item 4): a SortListModel over the filtered
+        // set orders rows by section bucket first (pinned float to a
+        // leading "Pinned" section, then Today / Yesterday / This Week /
+        // one section per older day) and, within each bucket, newest
+        // first. The section sorter keys on the bucket alone, so GTK draws
+        // exactly one header per contiguous run. Both sorters read the
+        // shared `time_anchor` so an open panel re-buckets across midnight.
+        let time_anchor = Rc::new(Cell::new(TimeAnchor::now()));
+        let sort_anchor = time_anchor.clone();
+        let sorter = gtk::CustomSorter::new(move |a, b| {
+            let anchor = sort_anchor.get();
+            let ka = row_sort_key(a, anchor);
+            let kb = row_sort_key(b, anchor);
+            // Section bucket ascending; within a bucket, timestamp
+            // descending (newest first, preserving the old ordering).
+            ka.0.cmp(&kb.0).then_with(|| kb.1.cmp(&ka.1)).into()
+        });
+        let section_anchor = time_anchor.clone();
+        let section_sorter = gtk::CustomSorter::new(move |a, b| {
+            let anchor = section_anchor.get();
+            row_sort_key(a, anchor)
+                .0
+                .cmp(&row_sort_key(b, anchor).0)
+                .into()
+        });
+        let sort_model = gtk::SortListModel::new(Some(filter_model.clone()), Some(sorter));
+        sort_model.set_section_sorter(Some(&section_sorter));
+
+        let selection = gtk::SingleSelection::new(Some(sort_model.clone()));
         selection.set_autoselect(false);
         selection.set_can_unselect(true);
 
@@ -544,10 +641,41 @@ impl Component for ClipboardModel {
             let content = gtk::Box::new(gtk::Orientation::Vertical, 4);
             content.add_css_class("clipboard-item");
 
-            // Header: per-content-type icon + relative-time title.
+            // Header: per-content-type icon + optional type badge/swatch
+            // + relative-time title.
             let type_icon = gtk::Image::new();
             type_icon.add_css_class("clipboard-item-type");
             type_icon.set_valign(gtk::Align::Center);
+
+            // Refined-category badge: a small tinted pill carrying a short
+            // code (URL / CODE / MAIL / COLOR) — and, for colour copies, a
+            // real swatch painted per-row by `swatch_provider`. Hidden for
+            // plain Text / Image / File on bind.
+            let swatch = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            swatch.add_css_class("clipboard-type-swatch");
+            swatch.set_valign(gtk::Align::Center);
+            let swatch_provider = gtk::CssProvider::new();
+            // Widget-scoped provider (USER priority so it beats the baked
+            // SCSS default) — the same CssProvider technique the launcher's
+            // preview swatch uses, adapted per-row. `style_context()` is
+            // deprecated in GTK4 but is the per-widget attach point (see
+            // launcher_row.rs).
+            #[allow(deprecated)]
+            {
+                swatch
+                    .style_context()
+                    .add_provider(&swatch_provider, gtk::STYLE_PROVIDER_PRIORITY_USER);
+            }
+
+            let badge_label = gtk::Label::new(None);
+            badge_label.add_css_class("clipboard-type-badge-label");
+            badge_label.set_valign(gtk::Align::Center);
+
+            let badge_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+            badge_box.add_css_class("clipboard-type-badge");
+            badge_box.set_valign(gtk::Align::Center);
+            badge_box.append(&swatch);
+            badge_box.append(&badge_label);
 
             let title = gtk::Label::new(None);
             title.add_css_class("clipboard-item-title");
@@ -556,6 +684,7 @@ impl Component for ClipboardModel {
 
             let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
             header.append(&type_icon);
+            header.append(&badge_box);
             header.append(&title);
             content.append(&header);
 
@@ -614,6 +743,10 @@ impl Component for ClipboardModel {
             let rw = RowWidgets {
                 title,
                 type_icon,
+                badge_box,
+                badge_label,
+                swatch,
+                swatch_provider,
                 preview_box,
                 pin_button,
                 pin_image,
@@ -622,6 +755,10 @@ impl Component for ClipboardModel {
         });
 
         let bind_query = query_state.clone();
+        // Colour swatches read the entry's `color_hex()` off the history —
+        // a lightweight `EntryView` doesn't carry the raw bytes. Colour
+        // copies are tiny (a hex string) so this per-bind lookup is cheap.
+        let bind_history = history.clone();
         factory.connect_bind(move |_, list_item| {
             let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
             let Some(rw) = (unsafe { list_item.data::<RowWidgets>(ROW_DATA_KEY) }) else {
@@ -637,6 +774,32 @@ impl Component for ClipboardModel {
             rw.title.set_label(&relative_time(row.timestamp));
             rw.type_icon
                 .set_icon_name(Some(ClipTab::category_icon(row.category)));
+
+            // Type badge + colour swatch. The refined text categories
+            // (URL / colour / code / email) get a short-code pill so
+            // they're distinguishable at a glance; plain Text / Image /
+            // File keep just the type glyph.
+            match category_badge(row.category) {
+                Some(code) => {
+                    rw.badge_label.set_label(code);
+                    rw.badge_box.set_visible(true);
+                }
+                None => rw.badge_box.set_visible(false),
+            }
+            // Real swatch only for colour copies whose value parses to a
+            // hex — painted into the widget-scoped provider. `rgb(...)`
+            // colours (no hex) fall back to the "COLOR" pill alone.
+            let mut swatch_shown = false;
+            if row.category == ClipCategory::Color
+                && let Some(hex) = bind_history.get(row.id).and_then(|e| e.color_hex())
+            {
+                rw.swatch_provider.load_from_string(&format!(
+                    ".clipboard-type-swatch {{ background-color: {hex}; }}"
+                ));
+                swatch_shown = true;
+            }
+            rw.swatch.set_visible(swatch_shown);
+
             if row.pinned {
                 rw.pin_button.add_css_class("pinned");
                 rw.pin_image.set_icon_name(Some("starred-symbolic"));
@@ -664,6 +827,39 @@ impl Component for ClipboardModel {
         );
         list_view.set_model(Some(&selection));
         list_view.set_factory(Some(&factory));
+
+        // Section-header factory (item 4): a dim date/pin band above each
+        // contiguous section the SortListModel produced. Headers are not
+        // model items, so they're non-selectable and keyboard nav skips
+        // them for free.
+        let header_factory = gtk::SignalListItemFactory::new();
+        header_factory.connect_setup(|_, obj| {
+            let Some(header) = obj.downcast_ref::<gtk::ListHeader>() else {
+                return;
+            };
+            let label = gtk::Label::new(None);
+            label.add_css_class("clipboard-section-header");
+            label.set_halign(gtk::Align::Start);
+            label.set_xalign(0.0);
+            header.set_child(Some(&label));
+        });
+        let header_anchor = time_anchor.clone();
+        header_factory.connect_bind(move |_, obj| {
+            let Some(header) = obj.downcast_ref::<gtk::ListHeader>() else {
+                return;
+            };
+            let Some(label) = header.child().and_then(|w| w.downcast::<gtk::Label>().ok()) else {
+                return;
+            };
+            let Some(item) = header.item() else { return };
+            let Ok(bo) = item.downcast::<glib::BoxedAnyObject>() else {
+                return;
+            };
+            let view = bo.borrow::<EntryView>();
+            label.set_label(&section_label(&view, header_anchor.get()));
+        });
+        list_view.set_header_factory(Some(&header_factory));
+
         // Single click on a row copies it (matches the old copy-button).
         list_view.set_single_click_activate(true);
         let activate_selection = selection.clone();
@@ -779,9 +975,23 @@ impl Component for ClipboardModel {
             dirty: false,
             search_gen: 0,
             list_max_height: configured_list_max_height(),
+            time_anchor,
         };
 
         let widgets = view_output!();
+
+        // Build the keycap hint chips (item 2) into the footer FlowBox —
+        // same shortcuts as before, now as real `.kbd-chip` caps.
+        for (caps, caption) in [
+            (&["/"][..], "Search"),
+            (&["1-5", "Tab"][..], "Tabs"),
+            (&["Ctrl", "n/k"][..], "Move"),
+            (&["\u{21B5}"][..], "Copy"),
+            (&["Ctrl", "p"][..], "Pin"),
+            (&["Del"][..], "Remove"),
+        ] {
+            widgets.hint_bar.insert(&kbd_chip(caps, caption), -1);
+        }
 
         // Apply the configured row density to the root.
         apply_density(&root);
@@ -947,6 +1157,11 @@ impl ClipboardModel {
     /// this on its own. Search-independent (the `/` filter narrows the
     /// view, the counts always reflect the whole history).
     fn populate(&mut self) {
+        // Refresh the sectioning anchor so Today / Yesterday buckets stay
+        // correct if the panel has been open across midnight; the append
+        // below re-sorts against it.
+        self.time_anchor.set(TimeAnchor::now());
+
         // Lightweight views (no raw `data` clone, category computed
         // once) — see [`ClipboardHistory::views`].
         let views = self.history.views();
@@ -1150,6 +1365,88 @@ fn build_preview(preview_box: &gtk::Box, preview: &EntryPreview, query_lower: &s
                 .build();
             label.add_css_class("label-small-bold");
             preview_box.append(&label);
+        }
+    }
+}
+
+/// Short type-badge code for the refined text categories (URL / colour /
+/// code / email). `None` for plain Text / Image / File — those keep just
+/// the per-row type glyph, so most rows carry no badge.
+fn category_badge(cat: ClipCategory) -> Option<&'static str> {
+    match cat {
+        ClipCategory::Url => Some("URL"),
+        ClipCategory::Code => Some("CODE"),
+        ClipCategory::Email => Some("MAIL"),
+        ClipCategory::Color => Some("COLOR"),
+        ClipCategory::Text | ClipCategory::Image | ClipCategory::File => None,
+    }
+}
+
+/// Build one keycap chip for the footer hint bar (shared `.kbd-chip`
+/// contract): a row of `.kbd-key` caps followed by a `.kbd-caption`.
+fn kbd_chip(caps: &[&str], caption: &str) -> gtk::Box {
+    let chip = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    chip.add_css_class("kbd-chip");
+    chip.set_valign(gtk::Align::Center);
+    for cap in caps {
+        let key = gtk::Label::new(Some(cap));
+        key.add_css_class("kbd-key");
+        chip.append(&key);
+    }
+    let caption_label = gtk::Label::new(Some(caption));
+    caption_label.add_css_class("kbd-caption");
+    chip.append(&caption_label);
+    chip
+}
+
+/// `(section_rank, timestamp_nanos)` sort key for a row object. The rank
+/// is the primary key (so sections stay contiguous), the nanos are the
+/// secondary key (compared descending → newest first within a section).
+fn row_sort_key(obj: &gtk::glib::Object, anchor: TimeAnchor) -> (i64, i128) {
+    let Some(bo) = obj.downcast_ref::<glib::BoxedAnyObject>() else {
+        return (i64::MAX, 0);
+    };
+    let view = bo.borrow::<EntryView>();
+    (section_rank(&view, anchor), view.timestamp.unix_timestamp_nanos())
+}
+
+/// Section bucket rank for a row. Pinned entries float to a leading
+/// "Pinned" section (rank 0) regardless of date; the rest bucket by local
+/// calendar-day distance — Today / Yesterday / This Week share fixed
+/// ranks (one header each), and each older day gets its own rank so it
+/// forms its own dated section, newest day first.
+fn section_rank(view: &EntryView, anchor: TimeAnchor) -> i64 {
+    if view.pinned {
+        return 0;
+    }
+    let entry_julian = view.timestamp.to_offset(anchor.offset).date().to_julian_day();
+    let diff = (anchor.today_julian - entry_julian).max(0) as i64;
+    match diff {
+        0 => 1,
+        1 => 2,
+        2..=6 => 3,
+        _ => 4 + diff,
+    }
+}
+
+/// Header text for the section a representative row belongs to — mirrors
+/// [`section_rank`]'s bucketing.
+fn section_label(view: &EntryView, anchor: TimeAnchor) -> String {
+    if view.pinned {
+        return "Pinned".to_string();
+    }
+    let date = view.timestamp.to_offset(anchor.offset).date();
+    let diff = (anchor.today_julian - date.to_julian_day()).max(0);
+    match diff {
+        0 => "Today".to_string(),
+        1 => "Yesterday".to_string(),
+        2..=6 => "This Week".to_string(),
+        _ => {
+            const MONTHS: [&str; 12] = [
+                "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+            ];
+            let idx = (u8::from(date.month()) as usize).saturating_sub(1).min(11);
+            format!("{} {}", date.day(), MONTHS[idx])
         }
     }
 }
