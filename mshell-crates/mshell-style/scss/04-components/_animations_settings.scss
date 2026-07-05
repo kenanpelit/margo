@@ -1,0 +1,18 @@
+// Settings → Animations — preset cards.
+//
+// The *active* preset (the card matching the live config, or the one you just
+// picked) is marked with the house tonal-"selected" treatment: a soft
+// --primary-container fill with --on-primary-container text — the same
+// active-row language used on the network / ssh / dns pages.
+//
+// This deliberately avoids the generic `.ok-button-surface.selected` primitive,
+// whose heavy --primary fill forces the preset name to the near-black
+// --on-primary. The point here is to keep the preset name in a theme-toned
+// colour so the active preset reads clearly without going black.
+.anim-preset-card.anim-preset-active {
+  background-color: var(--primary-container);
+
+  label {
+    color: var(--on-primary-container);
+  }
+}

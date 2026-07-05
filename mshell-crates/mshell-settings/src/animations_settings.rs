@@ -704,9 +704,9 @@ impl AnimationsSettingsModel {
     fn sync_cards(&self) {
         for (i, btn) in self.cards.iter().enumerate() {
             if Some(i as u32) == self.selected {
-                btn.set_css_classes(&["ok-button-surface", "selected"]);
+                btn.set_css_classes(&["ok-button-surface", "anim-preset-card", "anim-preset-active"]);
             } else {
-                btn.set_css_classes(&["ok-button-surface"]);
+                btn.set_css_classes(&["ok-button-surface", "anim-preset-card"]);
             }
         }
     }
@@ -730,7 +730,7 @@ fn preset_card(p: &Preset) -> gtk::Button {
     inner.append(&desc);
     gtk::Button::builder()
         .child(&inner)
-        .css_classes(vec!["ok-button-surface"])
+        .css_classes(vec!["ok-button-surface", "anim-preset-card"])
         .hexpand(true)
         .build()
 }
