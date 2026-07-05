@@ -42,8 +42,15 @@ pub(crate) struct VpnMenuWidgetModel {
     favs: Vec<Fav>,
     /// Widget refs synced imperatively (avoids `#[watch] set_model` churn on
     /// the dropdown, and lets the favourites list rebuild in place).
-    status_label: gtk::Label,
-    badge: gtk::Label,
+    /// Hero status card — the whole card gains `.connected` (accent tint) when
+    /// the tunnel is up. `state_label` = CONNECTED / DISCONNECTED,
+    /// `loc_label` = the human location, `relay_label` = relay · protocol
+    /// (hidden when down), `toggle_btn` swaps Connect ⇄ Disconnect.
+    hero: gtk::Box,
+    state_label: gtk::Label,
+    loc_label: gtk::Label,
+    relay_label: gtk::Label,
+    toggle_btn: gtk::Button,
     /// Mode selector buttons (Mullvad / Blocky / Default) — the active one
     /// carries `.selected`. Driven from `mode`.
     mode_mullvad: gtk::Button,
@@ -88,6 +95,8 @@ pub(crate) enum VpnMenuWidgetInput {
     /// Pick a network mode — forwards `mullvad`/`blocky`/`default` to the
     /// embedded DNS widget's privileged `RunAction`.
     SelectMode(String),
+    /// Bring the tunnel up/down (`mvpn toggle`) — wired to the hero button.
+    Toggle,
     Random,
     Fastest,
     AddCurrent,
@@ -156,45 +165,78 @@ impl Component for VpnMenuWidgetModel {
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 10,
 
-            // ── Hero ────────────────────────────────────────────
-            gtk::Box {
-                add_css_class: "panel-header",
-                set_orientation: gtk::Orientation::Horizontal,
+            // ── Hero status card ────────────────────────────────
+            // The whole card gains `.connected` (accent tint) when the tunnel
+            // is up. State label + dot + location + relay·protocol, then a
+            // full-width Connect/Disconnect button.
+            #[local_ref]
+            hero_widget -> gtk::Box {
+                add_css_class: "vpn-hero",
+                set_orientation: gtk::Orientation::Vertical,
                 set_spacing: 12,
 
-                gtk::Image {
-                    add_css_class: "panel-header-icon",
-                    set_icon_name: Some("network-vpn-symbolic"),
-                    set_valign: gtk::Align::Center,
-                },
-
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_hexpand: true,
-                    set_valign: gtk::Align::Center,
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
 
-                    gtk::Label {
-                        add_css_class: "panel-title",
-                        set_label: "VPN",
-                        set_xalign: 0.0,
+                    gtk::Image {
+                        add_css_class: "vpn-hero-icon",
+                        set_icon_name: Some("network-vpn-symbolic"),
+                        set_valign: gtk::Align::Center,
                     },
-                    #[local_ref]
-                    status_label_widget -> gtk::Label {
-                        add_css_class: "label-small",
-                        set_xalign: 0.0,
-                        set_wrap: true,
-                        set_wrap_mode: gtk::pango::WrapMode::WordChar,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        set_valign: gtk::Align::Center,
+                        set_spacing: 2,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 8,
+                            set_valign: gtk::Align::Center,
+
+                            gtk::Box {
+                                add_css_class: "vpn-status-dot",
+                                set_valign: gtk::Align::Center,
+                            },
+                            #[local_ref]
+                            state_label_widget -> gtk::Label {
+                                add_css_class: "vpn-state-label",
+                                set_xalign: 0.0,
+                            },
+                        },
+                        #[local_ref]
+                        loc_label_widget -> gtk::Label {
+                            add_css_class: "vpn-hero-location",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_wrap_mode: gtk::pango::WrapMode::WordChar,
+                        },
+                        #[local_ref]
+                        relay_label_widget -> gtk::Label {
+                            add_css_class: "vpn-hero-relay",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_wrap_mode: gtk::pango::WrapMode::WordChar,
+                        },
                     },
                 },
 
                 #[local_ref]
-                badge_widget -> gtk::Label {
-                    add_css_class: "vpn-badge",
-                    set_valign: gtk::Align::Center,
+                toggle_btn_widget -> gtk::Button {
+                    set_css_classes: &["ok-button-primary", "vpn-toggle-btn"],
+                    set_hexpand: true,
+                    connect_clicked[sender] => move |_| sender.input(VpnMenuWidgetInput::Toggle),
                 },
             },
 
-            // ── Mode selector (Mullvad / Blocky / Default) ──────
+            // ── Network mode (Mullvad / Blocky / Default) ───────
+            gtk::Label {
+                add_css_class: "vpn-section-label",
+                set_label: "Network",
+                set_xalign: 0.0,
+            },
             // Segmented: the active mode is filled with the accent. Clicks
             // forward to the embedded DnsMenuWidget's privileged `RunAction`.
             gtk::Box {
@@ -229,7 +271,12 @@ impl Component for VpnMenuWidgetModel {
                 },
             },
 
-            // ── Relay actions ───────────────────────────────────
+            // ── Quick connect ───────────────────────────────────
+            gtk::Label {
+                add_css_class: "vpn-section-label",
+                set_label: "Quick connect",
+                set_xalign: 0.0,
+            },
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 6,
@@ -237,13 +284,13 @@ impl Component for VpnMenuWidgetModel {
 
                 gtk::Button {
                     set_css_classes: &["ok-button-surface", "dns-action"],
-                    set_label: "Random",
-                    connect_clicked[sender] => move |_| sender.input(VpnMenuWidgetInput::Random),
+                    set_label: "Fastest",
+                    connect_clicked[sender] => move |_| sender.input(VpnMenuWidgetInput::Fastest),
                 },
                 gtk::Button {
                     set_css_classes: &["ok-button-surface", "dns-action"],
-                    set_label: "Fastest",
-                    connect_clicked[sender] => move |_| sender.input(VpnMenuWidgetInput::Fastest),
+                    set_label: "Random",
+                    connect_clicked[sender] => move |_| sender.input(VpnMenuWidgetInput::Random),
                 },
                 gtk::Button {
                     set_css_classes: &["ok-button-surface", "dns-action"],
@@ -253,94 +300,103 @@ impl Component for VpnMenuWidgetModel {
                 },
             },
 
-            gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
-
-            gtk::Label {
-                add_css_class: "label-medium-bold",
-                set_label: "Settings",
-                set_xalign: 0.0,
-            },
-
-            // Toggle rows + anti-censorship dropdown, built imperatively.
-            #[local_ref]
-            settings_box -> gtk::Box {
+            // ── Collapsible sections (all collapsed by default) ──
+            // Grouped in one card with hairline separators — no bare
+            // gtk::Separator stack (DESIGN.md §5 boxed-list preference).
+            gtk::Box {
+                add_css_class: "vpn-sections",
                 set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 6,
-            },
 
-            gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
+                // Favourites — search + list, lazy filtered in place.
+                #[name = "fav_expander"]
+                gtk::Expander {
+                    add_css_class: "vpn-dns-expander",
+                    set_label: Some("Favourites"),
+                    set_expanded: false,
 
-            // ── Favourites (collapsible) ────────────────────────
-            gtk::Expander {
-                add_css_class: "vpn-dns-expander",
-                set_label: Some("Favourites"),
-                set_expanded: false,
+                    #[wrap(Some)]
+                    set_child = &gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_margin_top: 6,
+                        set_spacing: 6,
 
-                #[wrap(Some)]
-                set_child = &gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_margin_top: 6,
-                    set_spacing: 6,
+                        gtk::SearchEntry {
+                            set_placeholder_text: Some("Search favourites…"),
+                            connect_search_changed[sender] => move |e| {
+                                sender.input(VpnMenuWidgetInput::FavFilter(e.text().to_string()));
+                            },
+                        },
 
-                    gtk::SearchEntry {
-                        set_placeholder_text: Some("Search favourites…"),
-                        connect_search_changed[sender] => move |e| {
-                            sender.input(VpnMenuWidgetInput::FavFilter(e.text().to_string()));
+                        #[local_ref]
+                        fav_box_widget -> gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 4,
                         },
                     },
+                },
 
-                    #[local_ref]
-                    fav_box_widget -> gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_spacing: 4,
+                // Countries — lazy: fetched from `mvpn countries` on first expand.
+                #[name = "countries_expander"]
+                gtk::Expander {
+                    add_css_class: "vpn-dns-expander",
+                    set_label: Some("Countries"),
+                    set_expanded: false,
+                    connect_expanded_notify[sender] => move |e| {
+                        sender.input(VpnMenuWidgetInput::CountriesExpanded(e.is_expanded()));
                     },
                 },
-            },
 
-            gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
-
-            // ── Countries (pick a country → connect) ────────────
-            // Lazy: the list is fetched from `mvpn countries` on first expand.
-            #[name = "countries_expander"]
-            gtk::Expander {
-                add_css_class: "vpn-dns-expander",
-                set_label: Some("Countries"),
-                set_expanded: false,
-                connect_expanded_notify[sender] => move |e| {
-                    sender.input(VpnMenuWidgetInput::CountriesExpanded(e.is_expanded()));
+                // DNS section (Blocky / Default / presets) — the embedded
+                // DnsMenuWidget's child is attached + its expand signal wired
+                // in `init`.
+                #[name = "dns_expander"]
+                gtk::Expander {
+                    add_css_class: "vpn-dns-expander",
+                    set_label: Some("DNS  ·  Blocky · presets"),
+                    set_expanded: false,
+                    connect_expanded_notify[sender] => move |e| {
+                        sender.input(VpnMenuWidgetInput::DnsExpanded(e.is_expanded()));
+                    },
                 },
-            },
 
-            gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
+                // Settings — lockdown / auto-connect / quantum switches +
+                // anti-censorship dropdown, tucked away so the menu is calm
+                // by default. Rows built imperatively in `init`.
+                gtk::Expander {
+                    add_css_class: "vpn-dns-expander",
+                    set_label: Some("Settings"),
+                    set_expanded: false,
 
-            // ── DNS section (Blocky / Default / presets) ────────
-            // Collapsed by default; the embedded DnsMenuWidget's child is
-            // attached + its expand signal wired in `init`.
-            #[name = "dns_expander"]
-            gtk::Expander {
-                add_css_class: "vpn-dns-expander",
-                set_label: Some("DNS  ·  Blocky · presets"),
-                set_expanded: false,
-                connect_expanded_notify[sender] => move |e| {
-                    sender.input(VpnMenuWidgetInput::DnsExpanded(e.is_expanded()));
+                    #[wrap(Some)]
+                    set_child = &gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_margin_top: 6,
+
+                        #[local_ref]
+                        settings_box -> gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 6,
+                        },
+                    },
                 },
-            },
-
-            // Account expiry — small dim line, hidden until known.
-            #[local_ref]
-            expiry_label_widget -> gtk::Label {
-                add_css_class: "label-small",
-                add_css_class: "dim-label",
-                set_xalign: 0.0,
-                set_margin_top: 2,
             },
 
             // ── Footer ──────────────────────────────────────────
+            // Account expiry (dim) + Refresh, on the panel surface below the
+            // sections (DESIGN.md §5 "footer is its own region").
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 6,
                 set_margin_top: 4,
 
+                #[local_ref]
+                expiry_label_widget -> gtk::Label {
+                    add_css_class: "label-small",
+                    add_css_class: "dim-label",
+                    set_xalign: 0.0,
+                    set_hexpand: true,
+                    set_valign: gtk::Align::Center,
+                },
                 gtk::Button {
                     set_css_classes: &["ok-button-surface", "dns-action"],
                     set_label: "Refresh",
@@ -355,8 +411,13 @@ impl Component for VpnMenuWidgetModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let status_label_widget = gtk::Label::new(Some("Loading…"));
-        let badge_widget = gtk::Label::new(Some("Idle"));
+        // Hero status card refs — driven imperatively from `sync_view`.
+        let hero_widget = gtk::Box::default();
+        let state_label_widget = gtk::Label::new(Some("DISCONNECTED"));
+        let loc_label_widget = gtk::Label::new(Some("Loading…"));
+        let relay_label_widget = gtk::Label::new(None);
+        relay_label_widget.set_visible(false);
+        let toggle_btn_widget = gtk::Button::with_label("Connect");
         // Mode selector buttons — built here so they're local-ref'd into the
         // segmented row; clicks are wired in the view! macro.
         let mode_mullvad_widget = gtk::Button::new();
@@ -430,7 +491,6 @@ impl Component for VpnMenuWidgetModel {
 
         let fav_box_widget = gtk::Box::new(gtk::Orientation::Vertical, 4);
         let expiry_label_widget = gtk::Label::new(None);
-        expiry_label_widget.set_visible(false);
         let countries_box_widget = gtk::Box::new(gtk::Orientation::Vertical, 4);
         countries_box_widget.set_margin_top(6);
 
@@ -447,8 +507,11 @@ impl Component for VpnMenuWidgetModel {
             quantum: false,
             obf: "auto".to_string(),
             favs: Vec::new(),
-            status_label: status_label_widget.clone(),
-            badge: badge_widget.clone(),
+            hero: hero_widget.clone(),
+            state_label: state_label_widget.clone(),
+            loc_label: loc_label_widget.clone(),
+            relay_label: relay_label_widget.clone(),
+            toggle_btn: toggle_btn_widget.clone(),
             mode_mullvad: mode_mullvad_widget.clone(),
             mode_blocky: mode_blocky_widget.clone(),
             mode_default: mode_default_widget.clone(),
@@ -504,6 +567,7 @@ impl Component for VpnMenuWidgetModel {
                     let _ = out.send(load().await);
                 });
             }
+            VpnMenuWidgetInput::Toggle => act(&sender, vec!["toggle".into()]),
             VpnMenuWidgetInput::Random => act(&sender, vec!["random".into()]),
             VpnMenuWidgetInput::Fastest => act(&sender, vec!["fastest".into()]),
             VpnMenuWidgetInput::AddCurrent => act(&sender, vec!["fav".into(), "add".into()]),
@@ -602,7 +666,7 @@ impl Component for VpnMenuWidgetModel {
 
     fn update_cmd_with_view(
         &mut self,
-        _widgets: &mut Self::Widgets,
+        widgets: &mut Self::Widgets,
         message: Self::CommandOutput,
         sender: ComponentSender<Self>,
         _root: &Self::Root,
@@ -652,14 +716,43 @@ impl Component for VpnMenuWidgetModel {
         self.favs = favs;
         self.mode = mode;
 
-        self.status_label.set_label(&status);
-        self.badge
-            .set_label(if connected { "Connected" } else { "Idle" });
+        // ── Hero status card ────────────────────────────────────────
+        self.state_label
+            .set_label(if connected { "CONNECTED" } else { "DISCONNECTED" });
         if connected {
-            self.badge.add_css_class("ok");
+            self.hero.add_css_class("connected");
         } else {
-            self.badge.remove_css_class("ok");
+            self.hero.remove_css_class("connected");
         }
+        // Location line — reuse the human location the status string already
+        // carries ("Connected · <relay> · <location>"); fall back to a plain
+        // state word when the daemon didn't report a location.
+        let loc_text = if connected {
+            let loc = status_location(&status);
+            if loc.is_empty() {
+                "Connected".to_string()
+            } else {
+                loc
+            }
+        } else {
+            "Not connected".to_string()
+        };
+        self.loc_label.set_label(&loc_text);
+        // Relay · protocol — hidden when down. Mullvad WireGuard relays carry
+        // "-wg-" in their id, so we can label the protocol when it's clear.
+        if connected && !self.connected_relay.is_empty() {
+            let proto = if self.connected_relay.contains("-wg-") {
+                format!("{}  ·  WireGuard", self.connected_relay)
+            } else {
+                self.connected_relay.clone()
+            };
+            self.relay_label.set_label(&proto);
+            self.relay_label.set_visible(true);
+        } else {
+            self.relay_label.set_visible(false);
+        }
+        self.toggle_btn
+            .set_label(if connected { "Disconnect" } else { "Connect" });
 
         // Highlight the active mode button. Mullvad/Mixed → Mullvad; Blocky →
         // Blocky; everything else → Default.
@@ -689,13 +782,22 @@ impl Component for VpnMenuWidgetModel {
             self.obf_drop.set_selected(sel);
         }
 
-        // Account expiry line — hidden until known / unparseable.
+        // Account expiry line — empty until known / unparseable. Kept in the
+        // layout (hexpand) so the footer Refresh button stays right-aligned.
         let show_expiry = !expiry.is_empty() && expiry != "—";
-        if show_expiry {
-            self.expiry_label
-                .set_label(&format!("Account expires {expiry}"));
-        }
-        self.expiry_label.set_visible(show_expiry);
+        let expiry_text = if show_expiry {
+            format!("Account expires {expiry}")
+        } else {
+            String::new()
+        };
+        self.expiry_label.set_label(&expiry_text);
+
+        // Favourites count in the section label (only when there are any).
+        widgets.fav_expander.set_label(Some(&if self.favs.is_empty() {
+            "Favourites".to_string()
+        } else {
+            format!("Favourites  ·  {}", self.favs.len())
+        }));
 
         rebuild_favs(
             &self.fav_box,
@@ -745,6 +847,13 @@ fn toggle_row(title: &str, desc: &str, control: &impl gtk::prelude::IsA<gtk::Wid
 
 fn bool_arg(on: bool) -> String {
     if on { "on" } else { "off" }.to_string()
+}
+
+/// Pull the human location out of the connected status string
+/// (`"Connected · <relay> · <location>"`) for the hero location line —
+/// everything after the second `·`, empty when the daemon reported none.
+fn status_location(status: &str) -> String {
+    status.splitn(3, " · ").nth(2).unwrap_or("").trim().to_string()
 }
 
 /// Populate the country picker: one row per Mullvad country (name + relay

@@ -1,8 +1,10 @@
 @use "../02-functions/index" as *;
 // VPN menu widget (`MenuType::Vpn`) — the native Mullvad control surface the
-// `mvpn` bar pill opens. Reuses the shared panel-header / card / `ok-button-*`
-// language (DESIGN.md) so it matches the DNS/VPN and other layer-shell menus;
-// only the connection badge is VPN-specific.
+// `mvpn` bar pill opens. Professional VPN-client shape: a hero status card
+// (accent-tinted when the tunnel is up), a network-mode segmented control,
+// quick-connect actions, and calm collapsible sections. Reuses the shared
+// card / `ok-button-*` language (DESIGN.md §1/§5) — tokens only, never a
+// hardcoded colour, so it re-themes with the wallpaper.
 
 .vpn-menu-widget {
   padding: 0;
@@ -14,7 +16,15 @@
   color: var(--primary);
 }
 
+// ── Bar pill country label ──────────────────────────────────
+.vpn-bar-label {
+  font-size: var(--font-xs);
+  font-weight: 600;
+}
+
 // ── Connection badge (Connected / Idle) ─────────────────────
+// The old always-shown menu badge; the hero state label + dot now carries
+// the connection state, but the pill treatment is kept for reuse.
 .vpn-badge {
   padding: 2px var(--space-3);
   border-radius: var(--radius-pill);
@@ -30,10 +40,112 @@
   opacity: 1;
 }
 
-// ── Bar pill country label ──────────────────────────────────
-.vpn-bar-label {
+// ── Hero status card ─────────────────────────────────────────
+// Neutral --surface-container card by default; gains `.connected` when the
+// tunnel is up → soft-accent --primary-container tint so the state is obvious
+// at a glance (DESIGN.md §1 primary-container hero).
+.vpn-hero {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+  transition: background-color var(--motion-medium) var(--ease-standard);
+}
+.vpn-hero.connected {
+  background-color: var(--primary-container);
+}
+
+.vpn-hero-icon {
+  -gtk-icon-size: var(--icon-lg);
+  color: var(--on-surface-variant);
+}
+.vpn-hero.connected .vpn-hero-icon {
+  color: var(--on-primary-container);
+}
+
+// Small connection dot next to the state label: dim when down, stable
+// --success green when up (severity ladder positive tier, DESIGN.md §2).
+.vpn-status-dot {
+  min-width: 9px;
+  min-height: 9px;
+  border-radius: var(--radius-pill);
+  background-color: var(--on-surface-variant);
+  opacity: 0.55;
+  transition: background-color var(--motion-medium) var(--ease-standard),
+              opacity var(--motion-medium) var(--ease-standard);
+}
+.vpn-hero.connected .vpn-status-dot {
+  background-color: var(--success);
+  opacity: 1;
+}
+
+// CONNECTED / DISCONNECTED — the dominant readout of the card.
+.vpn-state-label {
+  font-size: var(--font-md);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--on-surface);
+}
+.vpn-hero.connected .vpn-state-label {
+  color: var(--on-primary-container);
+}
+
+// Location line (the human location) — body rank.
+.vpn-hero-location {
+  font-size: var(--font-sm);
+  color: var(--on-surface);
+}
+.vpn-hero.connected .vpn-hero-location {
+  color: var(--on-primary-container);
+}
+
+// Relay · protocol — metadata rank, dim; hidden when down (Rust-side).
+.vpn-hero-relay {
   font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface-variant);
+}
+.vpn-hero.connected .vpn-hero-relay {
+  color: var(--on-primary-container);
+  opacity: 0.75;
+}
+
+// The big Connect / Disconnect CTA spans the card. Pin a min-width so the
+// label swap (Connect ⇄ Disconnect) never reflows the card (DESIGN.md §5
+// "buttons that toggle their own label"). Fill comes from .ok-button-primary.
+.vpn-toggle-btn {
+  min-width: 160px;
+  min-height: var(--button-min-height);
   font-weight: 600;
+  margin-top: var(--space-1);
+}
+
+// ── Section labels (Network / Quick connect) ────────────────
+.vpn-section-label {
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  margin-top: var(--space-1);
+}
+
+// ── Network-mode segmented control ──────────────────────────
+// The three mode buttons read as one row; the active mode is accent-filled
+// via `.ok-button-surface.selected` (primitive). Keep them size-equal.
+.vpn-mode-row > button {
+  min-width: 0;
+}
+
+// ── Collapsible sections card ───────────────────────────────
+// Favourites / Countries / DNS / Settings grouped in ONE card with hairline
+// separators (DESIGN.md §5 boxed-list preference) — no bare separator stack.
+.vpn-sections {
+  background-color: var(--surface-container);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+}
+.vpn-sections > .vpn-dns-expander:not(:last-child) {
+  border-bottom: 1px solid var(--list-separator);
 }
 
 // ── Favourites: the currently-connected relay's row ─────────
@@ -47,7 +159,7 @@ row.active.ok-button-surface,
   opacity: 1;
 }
 
-// ── Collapsible DNS section (embedded DnsMenuWidget) ─────────
+// ── Collapsible section disclosure (embedded DnsMenuWidget etc.) ──
 .vpn-dns-expander {
   font-weight: 600;
   > title {
