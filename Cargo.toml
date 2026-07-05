@@ -251,7 +251,13 @@ mshell-wallpaper = { path = "mshell-crates/mshell-wallpaper" }
 
 [workspace.dependencies.smithay]
 git = "https://github.com/Smithay/smithay.git"
-rev = "e1fb2496c9d7ec4d994cc50fe61b7439686ba8b9"
+# Master HEAD 2026-07-02 — already 337 commits AHEAD of the v0.7.0 tag
+# (a166cf4c), so the 0.7.0 "breaking changes" (Option<DrmSyncobjState>,
+# GbmFramebufferExporter import_node, DrmTimeline OwnedFd, eventfd Arc) are all
+# baked in here and handled in our code. Pinning the tag would be a 337-commit
+# downgrade; we track HEAD instead. This bump adds only non-breaking fixes
+# (FB_DAMAGE_CLIPS plane-damage transform, multigpu dmabuf re-import, gles).
+rev = "cb1eb2a3f48d95a7ea4b030159a2512ba667a2fb"
 default-features = false
 
 [profile.release]
