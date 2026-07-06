@@ -710,14 +710,11 @@ fn make_network_row(
         .orientation(gtk::Orientation::Vertical)
         .hexpand(true)
         .build();
+    // Scopes the connected-row text recolor to the name/detail only, so it
+    // never bleeds onto the trailing Connect/Connected button.
+    texts.add_css_class("network-ap-text");
     let name = gtk::Label::new(Some(&net.ssid));
-    // The in-use network tints its name with --primary (§3 active-tint),
-    // so the connected AP reads apart at a glance, not just via its button.
-    name.add_css_class(if net.in_use {
-        "label-medium-bold-primary"
-    } else {
-        "label-medium-bold"
-    });
+    name.add_css_class("label-medium-bold");
     name.set_xalign(0.0);
     name.set_ellipsize(gtk::pango::EllipsizeMode::End);
     texts.append(&name);
@@ -744,14 +741,14 @@ fn make_network_row(
     let connect = if net.in_use {
         let b = gtk::Button::with_label("Connected");
         b.add_css_class("ok-button-surface");
-        b.add_css_class("ok-button-cell");
+        b.add_css_class("network-connect-btn");
         b.add_css_class("selected");
         b.set_sensitive(false);
         b
     } else {
         let b = gtk::Button::with_label("Connect");
         b.add_css_class("ok-button-surface");
-        b.add_css_class("ok-button-cell");
+        b.add_css_class("network-connect-btn");
         let ssid = net.ssid.clone();
         let s = sender.clone();
         b.connect_clicked(move |_| {
@@ -761,6 +758,11 @@ fn make_network_row(
     };
     connect.set_valign(gtk::Align::Center);
     outer.append(&connect);
+
+    // Soft --primary-container highlight for the network you're on.
+    if net.in_use {
+        row.add_css_class("connected");
+    }
 
     row.set_child(Some(&outer));
     row
