@@ -151,6 +151,19 @@ impl Component for NetworkMenuWidgetModel {
                     set_hexpand: true,
                     set_valign: gtk::Align::Center,
                 },
+                // Trailing circular action (§12) — Rescan lives here as an
+                // icon button instead of crammed into the controls strip.
+                gtk::Button {
+                    add_css_class: "panel-action-btn",
+                    set_valign: gtk::Align::Center,
+                    set_tooltip_text: Some("Rescan Wi-Fi networks"),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(NetworkMenuWidgetInput::Rescan);
+                    },
+                    gtk::Image {
+                        set_icon_name: Some("view-refresh-symbolic"),
+                    },
+                },
             },
 
             // ── Hero ────────────────────────────────────────────
@@ -188,6 +201,11 @@ impl Component for NetworkMenuWidgetModel {
             },
 
             // ── Traffic (live RX / TX + history graphs) ─────────
+            gtk::Label {
+                add_css_class: "network-section-label",
+                set_label: "Activity",
+                set_xalign: 0.0,
+            },
             gtk::Box {
                 add_css_class: "network-traffic",
                 set_orientation: gtk::Orientation::Vertical,
@@ -262,41 +280,43 @@ impl Component for NetworkMenuWidgetModel {
                 },
             },
 
-            gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
-
-            // ── Controls ────────────────────────────────────────
+            // ── Wi-Fi toggle (Adwaita switch row) ───────────────
             gtk::Box {
+                add_css_class: "network-wifi-row",
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 8,
+                set_spacing: 12,
 
                 gtk::Label {
-                    add_css_class: "label-medium-bold",
+                    add_css_class: "network-row-title",
                     set_label: "Wi-Fi",
                     set_hexpand: true,
                     set_xalign: 0.0,
+                    set_valign: gtk::Align::Center,
                 },
 
                 #[local_ref]
                 wifi_switch_widget -> gtk::Switch {
                     set_valign: gtk::Align::Center,
                 },
+            },
+
+            // ── Secondary actions (equal width, §1) ─────────────
+            gtk::Box {
+                add_css_class: "network-action-row",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 8,
 
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
-                    set_label: "Rescan",
-                    connect_clicked[sender] => move |_| {
-                        sender.input(NetworkMenuWidgetInput::Rescan);
-                    },
-                },
-                gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
+                    set_css_classes: &["ok-button-surface", "network-action-btn"],
+                    set_hexpand: true,
                     set_label: "Disconnect",
                     connect_clicked[sender] => move |_| {
                         sender.input(NetworkMenuWidgetInput::Disconnect);
                     },
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
+                    set_css_classes: &["ok-button-surface", "network-action-btn"],
+                    set_hexpand: true,
                     set_label: "Home VPN",
                     set_tooltip_text: Some("Bring up the saved Wi-Fi + connect Mullvad (Settings → Network)"),
                     connect_clicked[sender] => move |_| {
@@ -305,17 +325,15 @@ impl Component for NetworkMenuWidgetModel {
                 },
             },
 
-            gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
-
+            // ── Available networks ──────────────────────────────
             gtk::Label {
-                add_css_class: "label-medium-bold",
+                add_css_class: "network-section-label",
                 set_label: "Available networks",
                 set_xalign: 0.0,
             },
 
-            // ── Network list ────────────────────────────────────
             gtk::ScrolledWindow {
-                set_min_content_height: 240,
+                set_min_content_height: 0,
                 set_max_content_height: 420,
                 set_hscrollbar_policy: gtk::PolicyType::Never,
                 set_propagate_natural_height: true,
@@ -693,7 +711,13 @@ fn make_network_row(
         .hexpand(true)
         .build();
     let name = gtk::Label::new(Some(&net.ssid));
-    name.add_css_class("label-medium-bold");
+    // The in-use network tints its name with --primary (§3 active-tint),
+    // so the connected AP reads apart at a glance, not just via its button.
+    name.add_css_class(if net.in_use {
+        "label-medium-bold-primary"
+    } else {
+        "label-medium-bold"
+    });
     name.set_xalign(0.0);
     name.set_ellipsize(gtk::pango::EllipsizeMode::End);
     texts.append(&name);

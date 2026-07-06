@@ -3,6 +3,18 @@
 
 .network-menu-widget { padding: 0; }
 
+// ── Section labels (Activity / Available networks) ────────
+// §1 caption: uppercase, xs, dim. Groups sections tonally so the old
+// hard `GtkSeparator` lines are gone (§0.1 surfaces over borders).
+.network-section-label {
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  margin-top: var(--space-1);
+}
+
 // ── Traffic graphs (network-indicator port) ───────────────
 // RX rides the primary accent, TX the secondary, so the two
 // directions read apart at a glance. The DrawingArea's cairo
@@ -15,6 +27,14 @@
 .network-arrow {
   transition: opacity var(--motion-fast) var(--ease-standard);
   &.idle { opacity: 0.28; }
+}
+
+// Activity card — groups the RX/TX sparklines on one calm tonal surface
+// instead of letting them float on the panel (§0.1 / §12 content group).
+.network-traffic {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
 }
 
 .network-traffic-label {
@@ -79,6 +99,27 @@
   background-color: var(--surface-container-high);
 }
 
+// ── Wi-Fi switch row (Adwaita ActionRow) ─────────────────
+// The radio toggle as one clean carded row — title left, switch right —
+// replacing the old crammed "label + switch + 3 buttons" strip.
+.network-wifi-row {
+  padding: var(--space-2) var(--space-3);
+  min-height: var(--row-min-height);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+}
+.network-row-title {
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+// ── Secondary actions ────────────────────────────────────
+// Disconnect + Home VPN as an equal-width pair (§1 size-equality): each
+// hexpands to share the row, with a min-width floor so neither collapses.
+.network-action-row > button {
+  min-width: var(--button-min-width);
+}
+
 // ── Connectivity badge ───────────────────────────────────
 .network-badge {
   padding: 2px var(--space-3);
@@ -104,7 +145,14 @@
   opacity: 0.7;
 }
 
-// ── Network list rows ────────────────────────────────────
+// ── Network list ─────────────────────────────────────────
+// Keep the list + its scroller transparent so any unfilled scroll slack
+// reads as the panel surface, never an opaque dark band (DESIGN.md §5).
+.network-list,
+.network-menu-widget scrolledwindow {
+  background-color: transparent;
+}
+
 // Clickable Wi-Fi rows: list-item shape (--radius-sm) on a
 // raised surface, with a calm tonal hover state-layer that
 // eases in (DESIGN.md §5 device rows / §7 state-on-interactive).
