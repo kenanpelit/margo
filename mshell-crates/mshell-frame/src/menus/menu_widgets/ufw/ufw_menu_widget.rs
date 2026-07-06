@@ -124,6 +124,12 @@ impl Component for UfwMenuWidgetModel {
             },
 
             // ── Default policy chips ────────────────────────────
+            gtk::Label {
+                add_css_class: "ufw-section-label",
+                set_label: "DEFAULT POLICY",
+                set_halign: gtk::Align::Start,
+            },
+
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 6,
@@ -190,12 +196,10 @@ impl Component for UfwMenuWidgetModel {
                 },
             },
 
-            gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
-
             gtk::Label {
-                add_css_class: "label-medium-bold",
-                set_label: "Rules",
-                set_xalign: 0.0,
+                add_css_class: "ufw-section-label",
+                set_label: "RULES",
+                set_halign: gtk::Align::Start,
             },
 
             // ── Scrollable rule list ────────────────────────────
@@ -217,10 +221,12 @@ impl Component for UfwMenuWidgetModel {
             },
 
             // ── Footer actions ──────────────────────────────────
-            // Power-widget button language: equal-width surface
-            // buttons (.ok-button-cell), --radius-sm + primary hover
-            // from .ok-button-surface.
+            // Equal-width action buttons raised to --surface-container-high
+            // (.ufw-footer-row) so they read as buttons on the panel
+            // --surface instead of bare text (recipe #1); --radius-sm +
+            // primary hover from .ok-button-surface / .ok-button-cell.
             gtk::Box {
+                add_css_class: "ufw-footer-row",
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 6,
                 // Breathing room so the footer reads as its own region

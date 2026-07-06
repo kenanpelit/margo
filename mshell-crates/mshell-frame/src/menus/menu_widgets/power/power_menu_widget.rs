@@ -185,12 +185,10 @@ impl Component for PowerMenuWidgetModel {
                 set_spacing: 4,
             },
 
-            gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
-
             gtk::Label {
-                add_css_class: "label-medium-bold",
-                set_label: "Power profile",
-                set_xalign: 0.0,
+                add_css_class: "power-section-label",
+                set_label: "POWER PROFILE",
+                set_halign: gtk::Align::Start,
             },
 
             // ── Profile switcher ────────────────────────────────
@@ -201,12 +199,10 @@ impl Component for PowerMenuWidgetModel {
                 set_homogeneous: true,
             },
 
-            gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
-
             gtk::Label {
-                add_css_class: "label-medium-bold",
-                set_label: "Power controls",
-                set_xalign: 0.0,
+                add_css_class: "power-section-label",
+                set_label: "POWER CONTROLS",
+                set_halign: gtk::Align::Start,
             },
 
             // ── Power controls ──────────────────────────────────
@@ -280,11 +276,9 @@ impl Component for PowerMenuWidgetModel {
 
         // ── Charge-limit section (kernel sysfs) ─────────────────
         let charge_section = gtk::Box::new(gtk::Orientation::Vertical, 6);
-        let charge_sep = gtk::Separator::new(gtk::Orientation::Horizontal);
-        charge_section.append(&charge_sep);
-        let charge_title = gtk::Label::new(Some("Charge limit"));
-        charge_title.set_css_classes(&["label-medium-bold"]);
-        charge_title.set_xalign(0.0);
+        let charge_title = gtk::Label::new(Some("CHARGE LIMIT"));
+        charge_title.set_css_classes(&["power-section-label"]);
+        charge_title.set_halign(gtk::Align::Start);
         charge_section.append(&charge_title);
 
         let preset_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
@@ -305,8 +299,10 @@ impl Component for PowerMenuWidgetModel {
         charge_spin.set_hexpand(true);
         let apply_button = gtk::Button::with_label("Apply");
         // ok-button-cell → same size family as the profile / control / preset
-        // rows (DESIGN.md §21), not the stubbier button-base default.
-        apply_button.set_css_classes(&["ok-button-surface", "ok-button-cell"]);
+        // rows (DESIGN.md §21). .power-apply-btn raises it to
+        // --surface-container-high so it reads as a button on the panel
+        // --surface instead of bare text (recipe #1).
+        apply_button.set_css_classes(&["ok-button-surface", "ok-button-cell", "power-apply-btn"]);
         {
             let s = sender.clone();
             let spin = charge_spin.clone();

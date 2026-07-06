@@ -9,7 +9,21 @@
 //                           has no dedicated "success" token; never a
 //                           hardcoded literal, so it tracks the wallpaper)
 
+@use "../02-functions/index" as *;
+
 .power-menu-widget { padding: 0; }
+
+// ── Section labels (Power profile / Power controls / Charge limit) ──
+// §1 caption: uppercase, xs, dim. Groups the button rows tonally so the
+// old hard `GtkSeparator` lines are gone (§0.1 surfaces over borders).
+.power-section-label {
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  margin-top: var(--space-1);
+}
 
 // ── Bar pill icon tint ───────────────────────────────────
 .power-bar-widget.profile-performance image {
@@ -66,6 +80,15 @@
 // power-profile segmented buttons (`.control-center-pp-btn`): compact
 // --radius-lg buttons on --surface-container, small bold labels, filling
 // --primary when selected (via .ok-button-surface.selected).
+// Charge-limit Apply button — sits on the panel --surface next to the
+// custom spin, where the default --surface fill is invisible (reads as
+// bare text). Raise it to a contrasting tier so it reads as a button,
+// with the canonical primary hover/press wash (recipe #1, §5/§16).
+.power-apply-btn {
+  background-color: var(--surface-container-high);
+  @include state-layer(var(--surface-container-high));
+}
+
 .power-charge-preset {
   background-color: var(--surface-container);
   border-radius: var(--button-radius);

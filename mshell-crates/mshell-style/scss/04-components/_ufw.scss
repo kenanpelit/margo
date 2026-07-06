@@ -26,6 +26,18 @@
   padding: 0;
 }
 
+// ── Section labels (Default policy / Rules) ──────────────────
+// §1 caption: uppercase, xs, dim. Groups sections tonally so the old
+// hard `GtkSeparator` lines are gone (§0.1 surfaces over borders).
+.ufw-section-label {
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  margin-top: var(--space-1);
+}
+
 // ── Status badge in the header (active / inactive / unknown) ─
 .ufw-status-badge {
   padding: 2px var(--space-3);
@@ -82,4 +94,15 @@
 .ufw-rule-text {
   font-family: monospace;
   font-size: 0.9em;
+}
+
+// ── Footer actions (Refresh / ufw(8)) ────────────────────────
+// Equal-width pair sitting on the panel --surface, where the default
+// --surface button fill is invisible (reads as bare text). Raise them
+// to a contrasting tier so they read unmistakably as buttons, and
+// re-apply the canonical primary hover/press wash (recipe #1, §5/§16).
+.ufw-footer-row > button {
+  min-width: var(--button-min-width);
+  background-color: var(--surface-container-high);
+  @include state-layer(var(--surface-container-high));
 }
