@@ -73,15 +73,11 @@ fn build_tile_inner(icon_name: &str, title: &str, subtitle: &str, expandable: bo
     chip.set_valign(gtk::Align::Center);
 
     let icon = gtk::Image::from_icon_name(icon_name);
-    icon.set_halign(gtk::Align::Center);
+    // Flat icon, no chip box (the tonal square was removed — it read as
+    // misaligned). Vertically centre the glyph against the 2-line label;
+    // horizontally every tile's icon sits at the same leading edge and the
+    // column is uniform because each symbolic icon is an --icon-md square.
     icon.set_valign(gtk::Align::Center);
-    // Expand to claim the full 40×40 chip so the glyph sits dead-centre. A bare
-    // halign/valign leaves the icon pinned to the box's start edge: a
-    // non-expanding child only gets its natural width, and the chip's min-width
-    // just pads the trailing side. expand hands it the whole cell, then the
-    // aligns actually centre the glyph within it.
-    icon.set_hexpand(true);
-    icon.set_vexpand(true);
     chip.append(&icon);
 
     // Label stack — hexpand so the chevron is pushed to the trailing edge.

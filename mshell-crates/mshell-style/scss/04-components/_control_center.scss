@@ -2,10 +2,10 @@
 // Control Center panel — header + sliders + tile grid.
 //
 // Visual language follows the audio-dashboard: rounded cards, slim sliders, and
-// a 2-column tile grid. Each tile carries a tonal ICON-CHIP; when `.active` the
-// chip fills with `--primary` and the tile takes a soft `--primary-container`
-// wash, so the accent stays contained to the chip (many active tiles never
-// flood the panel). Card bodies stay calm so the chips carry the accent weight.
+// a 2-column tile grid. Tiles carry a flat icon (no tonal chip — it read as
+// misaligned); when `.active` the whole card takes a soft `--primary-container`
+// wash and the icon + text lift to `--on-primary-container`. Resting cards stay
+// calm; the accent lives on the card wash, not a chip.
 
 // ── Panel root ─────────────────────────────────────────────────────────────────
 // Outer vertical box: `set_spacing: 16` in Rust + padding from this class.
@@ -208,27 +208,22 @@
     // hexpand set in Rust; tile children already hexpand the label.
   }
 
-  // Small variant: icon-chip only — no labels, centred layout, slightly
-  // smaller footprint. Minimum size so the grid column doesn't collapse.
+  // Small variant: icon-only — no labels, centred layout, slightly smaller
+  // footprint. Minimum size so the grid column doesn't collapse.
   &.small {
     padding: var(--space-3);
     min-height: 56px;
-    // The chip inside is already centred (halign/valign in Rust).
+    // The icon inside is centred (halign/valign in Rust).
   }
 }
 
-// ── Icon chip ─────────────────────────────────────────────────────────────────
-// A rounded tonal square behind each tile's icon — the resting depth cue that
-// turns a grid of flat cards into scannable tiles. `--surface-container-highest`
-// keeps it distinct from both the card body and the hover wash; when the tile
-// is `.active` the chip fills with `--primary` (see the active block).
+// ── Tile icon ─────────────────────────────────────────────────────────────────
+// Flat icon, no background chip (the tonal square was removed 2026-07-06 — it
+// read as misaligned). No min-width/height: every GtkImage requests an
+// --icon-md square, so the icon column is uniform across tiles and the titles
+// line up on their own. The whole tile carries state — `.active` washes the
+// card and lifts the icon/text (see the active block).
 .control-center-tile-icon {
-  min-width: 40px;
-  min-height: 40px;
-  border-radius: var(--radius-sm);
-  background-color: var(--surface-container-highest);
-  transition: background-color var(--motion-fast) var(--ease-standard);
-
   image {
     color: var(--on-surface-variant);
     -gtk-icon-size: var(--icon-md);
@@ -270,12 +265,10 @@
     background: var(--primary-container);
     @include state-layer(var(--primary-container));
 
-    // The chip is the single strong accent region.
-    .control-center-tile-icon {
-      background-color: var(--primary);
-    }
+    // No chip to fill — the icon sits directly on the container wash and
+    // lifts to the on-container tone with the rest of the tile text.
     .control-center-tile-icon image {
-      color: var(--on-primary);
+      color: var(--on-primary-container);
     }
 
     .control-center-tile-title {
