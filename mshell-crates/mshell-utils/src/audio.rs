@@ -1,6 +1,8 @@
+use crate::app_info::find_app_info;
 use mshell_common::{watch, watch_cancellable};
 use mshell_services::audio_service;
-use relm4::{Component, ComponentSender};
+use relm4::gtk::prelude::AppInfoExt;
+use relm4::{Component, ComponentSender, gtk};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -308,17 +310,54 @@ pub fn stream_display_name(stream: &AudioStream) -> String {
         .unwrap_or_else(|| "Application".to_string())
 }
 
-/// Themed icon name for an application stream. Prefers the stream's
-/// `application.icon_name` PulseAudio property; falls back to a generic
-/// app glyph (recording rows pass their own mic fallback).
-pub fn stream_icon_name(stream: &AudioStream, fallback: &'static str) -> String {
-    stream
-        .properties
-        .get()
+/// Resolve and apply the best icon for an application stream to `image`,
+/// preferring, in order:
+///
+///   1. the stream's own `application.icon_name` PulseAudio property (the app
+///      told us exactly which icon to use),
+///   2. the icon from the app's `.desktop` entry, matched by any identifying
+///      property (`application.id`, then the process binary, then the display
+///      name) via [`find_app_info`] — this is what fills in browsers, Electron
+///      apps, and everything else that never advertises an `application.icon_name`
+///      and would otherwise show only the generic `fallback` glyph,
+///   3. the caller's generic `fallback` glyph (a mic for capture rows, a
+///      generic app glyph for playback) when nothing identifies the app.
+///
+/// Stream identity (name/icon) is fixed for a stream's lifetime, so callers
+/// resolve this once at construction rather than on every volume tick — step 2
+/// can scan every installed `.desktop` entry.
+pub fn set_app_stream_icon(stream: &AudioStream, image: &gtk::Image, fallback: &str) {
+    let props = stream.properties.get();
+
+    // 1. Explicit icon-name property wins when the app sets one.
+    if let Some(name) = props
         .get("application.icon_name")
-        .map(|s| s.trim().to_string())
+        .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| fallback.to_string())
+    {
+        image.set_icon_name(Some(name));
+        return;
+    }
+
+    // 2. Otherwise resolve the application's own .desktop icon. Try each
+    //    identifying property in turn — one of them almost always maps to an
+    //    installed app even when icon_name is absent.
+    for key in [
+        "application.id",
+        "application.process.binary",
+        "application.name",
+    ] {
+        if let Some(id) = props.get(key).map(|s| s.trim()).filter(|s| !s.is_empty())
+            && let Some(app) = find_app_info(id)
+            && let Some(icon) = app.icon()
+        {
+            image.set_from_gicon(&icon);
+            return;
+        }
+    }
+
+    // 3. Nothing identified the app — fall back to the generic glyph.
+    image.set_icon_name(Some(fallback));
 }
 
 /// Volume icon tier for a stream (mirrors the device helpers).
