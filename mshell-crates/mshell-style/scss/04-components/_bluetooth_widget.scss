@@ -70,20 +70,27 @@ label.bt-connected {
 .bluetooth-dashboard-device-row {
   all: unset;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
+  // Content rows take the card corner + a resting surface so each device
+  // reads as a distinct row, not bare text on the panel (DESIGN.md §12).
+  border-radius: var(--radius-md);
   font-size: var(--font-sm);
   color: var(--on-surface);
-  @include state-layer();
+  background-color: var(--surface-container);
+  @include state-layer(var(--surface-container));
 }
 
-// Connected = the §16 "selected/active" row treatment: a raised
-// container base + a primary-tinted device icon so the live device
-// stands out from the rest of the list at a glance.
+// Connected = the scheme-harmonious "this is your device" highlight: a soft
+// --primary-container wash with --on-primary-container text/icons — the same
+// active language as the connected network row + control-center tiles.
 .bluetooth-dashboard-device-row.connected {
-  background-color: var(--surface-container-high);
+  background-color: var(--primary-container);
+  @include state-layer(var(--primary-container));
 
-  .bluetooth-dashboard-icon {
-    color: var(--primary);
+  .bluetooth-dashboard-icon,
+  .bluetooth-dashboard-device-name,
+  .bluetooth-dashboard-value,
+  .bluetooth-dashboard-device-check {
+    color: var(--on-primary-container);
   }
 }
 
@@ -117,14 +124,18 @@ label.bt-connected {
   letter-spacing: -0.01em;
 }
 
-// Compact inline Forget / Trust buttons inside a device row.
+// Compact inline Forget / Trust buttons inside a device row. They carry a
+// real --surface-container-high fill (+ a shared min-width) so they read
+// unmistakably as buttons, not bare text (matching the network actions).
 .bluetooth-dashboard-action-button {
   all: unset;
   font-size: var(--font-xs);
+  min-width: 60px;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
+  background-color: var(--surface-container-high);
   color: var(--on-surface-variant);
-  @include state-layer();
+  @include state-layer(var(--surface-container-high));
 }
 
 // PAIRED / AVAILABLE sub-section labels inside the device list — a

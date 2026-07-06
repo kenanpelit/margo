@@ -79,11 +79,21 @@ impl Component for AudioDashboardMenuWidgetModel {
                 },
             },
 
+            gtk::Label {
+                add_css_class: "audio-dashboard-section-label",
+                set_label: "OUTPUT",
+                set_halign: gtk::Align::Start,
+            },
             model.audio_out.widget().clone() {},
             // Output route chips (Speakers ↔ Headphones …) — hidden
             // unless the default sink exposes ≥2 ports.
             model.out_ports.widget().clone() {},
 
+            gtk::Label {
+                add_css_class: "audio-dashboard-section-label",
+                set_label: "INPUT",
+                set_halign: gtk::Align::Start,
+            },
             model.audio_in.widget().clone() {},
             model.in_ports.widget().clone() {},
 

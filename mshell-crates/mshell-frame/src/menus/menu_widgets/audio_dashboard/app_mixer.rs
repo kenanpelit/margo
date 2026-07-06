@@ -60,7 +60,7 @@ impl Component for AppMixerModel {
             set_visible: model.has_streams,
 
             gtk::Label {
-                add_css_class: "label-small-bold-variant",
+                add_css_class: "audio-dashboard-section-label",
                 set_halign: gtk::Align::Start,
                 set_label: if model.recording { "RECORDING" } else { "APPLICATIONS" },
             },
