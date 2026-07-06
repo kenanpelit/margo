@@ -7,8 +7,7 @@
 
 use mshell_common::WatcherToken;
 use mshell_utils::audio::{
-    get_stream_volume_icon, set_app_stream_icon, spawn_stream_volume_mute_watcher,
-    stream_display_name,
+    get_stream_volume_icon, spawn_stream_volume_mute_watcher, stream_display_name,
 };
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -64,9 +63,18 @@ impl Component for AppVolumeRowModel {
             set_spacing: 8,
             set_valign: gtk::Align::Center,
 
-            #[name = "app_icon"]
             gtk::Image {
                 add_css_class: "app-mixer-icon",
+                // One static glyph for every app. Resolving real per-app icons
+                // from PulseAudio metadata proved unreliable — apps report icon
+                // names the active theme can't render (e.g. Brave reports
+                // "brave-browser", present only in some themes). Mic for capture
+                // rows, a generic multimedia glyph for playback.
+                set_icon_name: Some(if model.recording {
+                    "audio-input-microphone-symbolic"
+                } else {
+                    "applications-multimedia-symbolic"
+                }),
             },
 
             gtk::Label {
@@ -126,21 +134,6 @@ impl Component for AppVolumeRowModel {
         };
 
         let widgets = view_output!();
-
-        // App identity (name/icon) is fixed for a stream's lifetime, so resolve
-        // the icon once here rather than on every volume tick — the `.desktop`
-        // lookup can scan every installed app. This shows the real application
-        // icon (browsers, Electron, …) instead of a generic executable glyph
-        // whenever the stream itself carries no `application.icon_name`.
-        set_app_stream_icon(
-            &model.stream,
-            &widgets.app_icon,
-            if model.recording {
-                "audio-input-microphone-symbolic"
-            } else {
-                "application-x-executable-symbolic"
-            },
-        );
 
         // Connect the drag handler now that the scale exists; the
         // `suppress` flag gates programmatic updates.
