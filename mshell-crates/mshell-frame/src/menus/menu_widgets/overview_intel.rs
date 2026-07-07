@@ -113,10 +113,16 @@ impl Component for OverviewIntelModel {
             set_hexpand: true,
             set_spacing: 4,
 
-            // Date header dropped — the Clock hero sitting above
-            // already shows weekday + month-day, so repeating it
-            // here was duplicating compositor chrome. Bullets now
-            // start at the top of the card.
+            // Card title — a quiet tonal caption gives the tile an
+            // identity at the top of the column. (The *date* header
+            // was dropped earlier to avoid duplicating the Clock
+            // hero above; a label header is a different thing and
+            // anchors the card.)
+            gtk::Label {
+                add_css_class: "overview-intel-header",
+                set_label: "At a glance",
+                set_halign: gtk::Align::Start,
+            },
 
             // ── Notifications line ──────────────────────────────
             gtk::Box {
@@ -127,7 +133,11 @@ impl Component for OverviewIntelModel {
                 set_visible: model.notification_count > 0,
 
                 gtk::Label {
-                    add_css_class: "overview-intel-dot",
+                    #[watch]
+                    set_css_classes: &[
+                        "overview-intel-dot",
+                        if model.notification_count > 0 { "warn" } else { "calm" },
+                    ],
                     set_label: "●",
                 },
                 gtk::Label {
@@ -153,7 +163,11 @@ impl Component for OverviewIntelModel {
                     && model.battery_percent <= BATTERY_LOW_PERCENT,
 
                 gtk::Label {
-                    add_css_class: "overview-intel-dot",
+                    #[watch]
+                    set_css_classes: &[
+                        "overview-intel-dot",
+                        battery_severity(model.battery_percent, model.battery_charging),
+                    ],
                     set_label: "●",
                 },
                 gtk::Label {
@@ -193,7 +207,11 @@ impl Component for OverviewIntelModel {
                 set_visible: model.updates_known,
 
                 gtk::Label {
-                    add_css_class: "overview-intel-dot",
+                    #[watch]
+                    set_css_classes: &[
+                        "overview-intel-dot",
+                        if model.update_count > 0 { "warn" } else { "calm" },
+                    ],
                     set_label: "●",
                 },
                 gtk::Label {

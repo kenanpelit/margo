@@ -25,20 +25,35 @@
 
 .overview-intel-header {
   font-size: var(--font-xs);
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   color: var(--on-surface-variant);
-  opacity: 0.85;
+  opacity: 0.9;
   // Title/content split — DESIGN.md §card header margin.
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
+// Leading signal dot. Calm state is a quiet neutral; warn/danger
+// pull the same accent as the line beside it so the whole row
+// reads as one signal (severity class is set in Rust alongside the
+// line — the old sibling-selector tint never matched because the
+// dot precedes the line in the DOM).
 .overview-intel-dot {
   font-size: var(--font-xs);
-  color: var(--on-surface-variant);
-  opacity: 0.4;
+  color: var(--outline);
+  opacity: 0.6;
   margin-right: 2px; // hairline — intentionally not a space token
-  transition: color var(--motion-fast) var(--ease-standard);
+  transition: color var(--motion-fast) var(--ease-standard),
+              opacity var(--motion-fast) var(--ease-standard);
+
+  &.warn {
+    color: var(--primary);
+    opacity: 1;
+  }
+  &.danger {
+    color: var(--error);
+    opacity: 1;
+  }
 }
 
 .overview-intel-line {
@@ -59,15 +74,6 @@
     color: var(--error);
     font-weight: 600;
   }
-}
-
-// Tint the bullet alongside the line so the row reads as one
-// signal rather than a generic-coloured dot next to a coloured
-// label.
-.overview-intel-line.warn ~ .overview-intel-dot,
-.overview-intel-line.warn + .overview-intel-dot {
-  color: var(--primary);
-  opacity: 0.9;
 }
 
 // The "Quiet — nothing urgent" fallback when no alerts fire.
