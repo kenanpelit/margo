@@ -2410,6 +2410,16 @@ impl MargoState {
         client.surface_type = crate::SurfaceType::X11;
         client.title = window.x11_surface().map(|s| s.title()).unwrap_or_default();
         client.app_id = window.x11_surface().map(|s| s.class()).unwrap_or_default();
+        // XWayland toplevels opt out of the tiling slide/move animation by
+        // default. Animating an X11 window's slot — the tag-switch slide in
+        // particular — drives some X11 clients (notably TigerVNC's vncviewer)
+        // into a state where they keep rendering the remote framebuffer live
+        // but silently stop forwarding pointer/keyboard input to the remote,
+        // and only a real resize kicks them back out of it. `animations = 0`
+        // avoids it globally; scoping the opt-out to X11 keeps native Wayland
+        // animations intact. Set before `apply_window_rules` so an explicit
+        // `no_animation` window-rule can still override it per app.
+        client.no_animation = true;
         self.apply_window_rules(&mut client);
 
         // Tag-home redirect: if a windowrule set `tags:N` but DIDN'T pin
