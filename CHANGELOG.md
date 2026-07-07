@@ -20,9 +20,9 @@ Drop-in upgrade — no feature removals.
   Actions" heading above the bottom action grid, so the lower half reads with the
   same titled rhythm as the cards above.
 - **Card titles on the dashboard's right column.** Overview ("At a glance"),
-  Connectivity ("Connected"), and Compact Audio ("Sound") now share one caption
-  idiom (small, bold, tonal, letter-spaced) so the column reads as a single
-  titled set.
+  Connectivity ("Connected"), Compact Audio ("Sound"), and System ("System") now
+  share one caption idiom (small, bold, tonal, letter-spaced) so every card in
+  the column reads as a single titled set.
 
 ### Changed
 

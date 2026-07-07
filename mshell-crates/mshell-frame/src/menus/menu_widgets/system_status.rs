@@ -101,6 +101,14 @@ impl Component for SystemStatusModel {
             set_hexpand: true,
             set_spacing: 4,
 
+            // Card title — matches the Overview / Connectivity / Sound
+            // tiles so the right column shares one titled rhythm.
+            gtk::Label {
+                add_css_class: "system-status-header",
+                set_label: "System",
+                set_halign: gtk::Align::Start,
+            },
+
             // ── Power profile row ───────────────────────────────
             gtk::Box {
                 add_css_class: "system-status-row",
