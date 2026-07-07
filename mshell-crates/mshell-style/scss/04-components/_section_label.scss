@@ -1,0 +1,17 @@
+// Dashboard "Section Label" tile — a standalone group heading.
+//
+// Titles a run of tiles or actions inside a panel (the dashboard
+// uses one above the Quick Actions grid) so the bottom half reads
+// with the same titled rhythm as the cards above. Matches the
+// overview card's caption idiom: small, bold, tonal, letter-spaced.
+
+.section-label-menu-widget {
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--on-surface-variant);
+  opacity: 0.9;
+  // Sit tight to the group it titles: a little breathing room above,
+  // hugging the tiles below. Left inset aligns with the card padding.
+  margin: var(--space-1) var(--space-2) 0;
+}

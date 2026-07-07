@@ -9,6 +9,16 @@
   padding-bottom: var(--space-2);
 }
 
+// Card title — shares the Overview card's caption idiom (small,
+// bold, tonal, letter-spaced) so the right column reads as one set.
+.connectivity-header {
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--on-surface-variant);
+  opacity: 0.9;
+}
+
 .connectivity-cell {
   padding: var(--space-1) 2px;
 }

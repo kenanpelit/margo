@@ -61,48 +61,62 @@ impl Component for ConnectivityModel {
         #[root]
         gtk::Box {
             add_css_class: "connectivity-menu-widget",
-            set_orientation: gtk::Orientation::Horizontal,
+            set_orientation: gtk::Orientation::Vertical,
             set_hexpand: true,
-            set_spacing: 12,
-            set_homogeneous: true,
+            set_spacing: 6,
 
-            // ── WiFi cell ───────────────────────────────────────
-            gtk::Box {
-                add_css_class: "connectivity-cell",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 8,
+            // Card title — keeps the right column's cards reading with
+            // the same titled rhythm as the Overview / System tiles.
+            gtk::Label {
+                add_css_class: "connectivity-header",
+                set_label: "Connected",
                 set_halign: gtk::Align::Start,
-
-                #[name = "wifi_image"]
-                gtk::Image {
-                    add_css_class: "connectivity-icon",
-                },
-                #[name = "wifi_label"]
-                gtk::Label {
-                    add_css_class: "connectivity-label",
-                    set_ellipsize: relm4::gtk::pango::EllipsizeMode::End,
-                    set_max_width_chars: 16,
-                    set_xalign: 0.0,
-                },
             },
 
-            // ── Bluetooth cell ──────────────────────────────────
             gtk::Box {
-                add_css_class: "connectivity-cell",
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 8,
-                set_halign: gtk::Align::Start,
+                set_hexpand: true,
+                set_spacing: 12,
+                set_homogeneous: true,
 
-                #[name = "bt_image"]
-                gtk::Image {
-                    add_css_class: "connectivity-icon",
+                // ── WiFi cell ───────────────────────────────────────
+                gtk::Box {
+                    add_css_class: "connectivity-cell",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    set_halign: gtk::Align::Start,
+
+                    #[name = "wifi_image"]
+                    gtk::Image {
+                        add_css_class: "connectivity-icon",
+                    },
+                    #[name = "wifi_label"]
+                    gtk::Label {
+                        add_css_class: "connectivity-label",
+                        set_ellipsize: relm4::gtk::pango::EllipsizeMode::End,
+                        set_max_width_chars: 16,
+                        set_xalign: 0.0,
+                    },
                 },
-                #[name = "bt_label"]
-                gtk::Label {
-                    add_css_class: "connectivity-label",
-                    set_ellipsize: relm4::gtk::pango::EllipsizeMode::End,
-                    set_max_width_chars: 16,
-                    set_xalign: 0.0,
+
+                // ── Bluetooth cell ──────────────────────────────────
+                gtk::Box {
+                    add_css_class: "connectivity-cell",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    set_halign: gtk::Align::Start,
+
+                    #[name = "bt_image"]
+                    gtk::Image {
+                        add_css_class: "connectivity-icon",
+                    },
+                    #[name = "bt_label"]
+                    gtk::Label {
+                        add_css_class: "connectivity-label",
+                        set_ellipsize: relm4::gtk::pango::EllipsizeMode::End,
+                        set_max_width_chars: 16,
+                        set_xalign: 0.0,
+                    },
                 },
             },
         }

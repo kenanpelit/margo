@@ -95,6 +95,11 @@ pub enum MenuWidget {
     Screenshots,
     ScreenRecording,
     Spacer(SpacerConfig),
+    /// Standalone section heading — a small uppercase-feel tonal
+    /// caption that titles a run of tiles or actions in a panel (the
+    /// dashboard uses one above the Quick Actions grid). Purely
+    /// decorative; carries only its text.
+    SectionLabel(SectionLabelConfig),
     /// Reusable §12 panel header — leading icon + a SemiBold display
     /// title + a live date + a circular settings gear. Sits at the
     /// head of a panel (the dashboard uses it in place of the Clock
@@ -187,6 +192,7 @@ impl MenuWidget {
             MenuWidget::Screenshots => "Screenshots",
             MenuWidget::ScreenRecording => "Screen Recording",
             MenuWidget::Spacer(_) => "Spacer",
+            MenuWidget::SectionLabel(_) => "Section Label",
             MenuWidget::PanelHeader(_) => "Panel Header",
             MenuWidget::SystemStatus => "System Status",
             MenuWidget::SystemUpdate => "System Updates",
@@ -253,6 +259,7 @@ impl MenuWidget {
             MenuWidget::Screenshots,
             MenuWidget::ScreenRecording,
             MenuWidget::Spacer(SpacerConfig { size: 16 }),
+            MenuWidget::SectionLabel(SectionLabelConfig::default()),
             MenuWidget::PanelHeader(PanelHeaderConfig::default()),
             MenuWidget::SystemStatus,
             MenuWidget::SystemUpdate,
@@ -377,6 +384,26 @@ impl QuickActionWidget {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
 pub struct SpacerConfig {
     pub size: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
+pub struct SectionLabelConfig {
+    /// The heading text (e.g. "Quick Actions"). Rendered as a small
+    /// tonal caption; a field so the same widget can title any group.
+    #[serde(default = "default_section_label_text")]
+    pub text: String,
+}
+
+fn default_section_label_text() -> String {
+    "Section".to_string()
+}
+
+impl Default for SectionLabelConfig {
+    fn default() -> Self {
+        Self {
+            text: default_section_label_text(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]

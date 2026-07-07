@@ -70,6 +70,14 @@ impl Component for CompactAudioModel {
             set_hexpand: true,
             set_spacing: 8,
 
+            // Card title — matches the Overview / Connectivity tiles
+            // so the right column's cards share one titled rhythm.
+            gtk::Label {
+                add_css_class: "compact-audio-header",
+                set_label: "Sound",
+                set_halign: gtk::Align::Start,
+            },
+
             // ── Volume row ──────────────────────────────────────
             gtk::Box {
                 add_css_class: "compact-audio-row",

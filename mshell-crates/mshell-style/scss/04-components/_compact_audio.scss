@@ -7,6 +7,16 @@
   padding-bottom: var(--space-2);
 }
 
+// Card title — shares the Overview card's caption idiom so the
+// right column's cards read with one titled rhythm.
+.compact-audio-header {
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--on-surface-variant);
+  opacity: 0.9;
+}
+
 .compact-audio-row {
   padding: var(--space-1) 2px;
 }

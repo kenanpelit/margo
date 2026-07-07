@@ -4,7 +4,7 @@ use crate::schema::content_fit::ContentFit;
 use crate::schema::location_query::{LocationQueryConfig, OrdF64};
 use crate::schema::menu_widgets::{
     ContainerConfig, MenuWidget, PanelHeaderConfig, QuickActionWidget, QuickActionsConfig,
-    SpacerConfig,
+    SectionLabelConfig, SpacerConfig,
 };
 use crate::schema::position::{NotificationPosition, Orientation, OsdPosition, Position};
 use crate::schema::temperature::TemperatureUnitConfig;
@@ -1467,7 +1467,13 @@ fn default_mdash_menu() -> Menu {
             // ── Bottom action grid: everything in two dense rows (~12
             //    per row) — toggles, menu shortcuts, and the power
             //    actions. Each shortcut opens its menu and closes mdash.
+            //    A "Quick Actions" heading titles the grid so the
+            //    bottom half reads with the same rhythm as the cards.
             MenuWidget::Spacer(SpacerConfig { size: 10 }),
+            MenuWidget::SectionLabel(SectionLabelConfig {
+                text: "Quick Actions".to_string(),
+            }),
+            MenuWidget::Spacer(SpacerConfig { size: 4 }),
             MenuWidget::QuickActions(QuickActionsConfig {
                 widgets: vec![
                     QuickActionWidget::AirplaneMode,

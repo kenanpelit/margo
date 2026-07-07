@@ -85,6 +85,7 @@ use crate::menus::menu_widgets::screen_record::screen_record_menu_widget::{
 use crate::menus::menu_widgets::screenshot::screenshot_menu_widget::{
     ScreenshotMenuWidgetInit, ScreenshotMenuWidgetModel, ScreenshotMenuWidgetOutput,
 };
+use crate::menus::menu_widgets::section_label::{SectionLabelInit, SectionLabelModel};
 use crate::menus::menu_widgets::session::session_menu_widget::{
     SessionMenuWidgetInit, SessionMenuWidgetModel, SessionMenuWidgetOutput,
 };
@@ -379,6 +380,13 @@ pub fn build_widget(
                 .launch(SpacerInit {
                     config: config.clone(),
                     orientation,
+                })
+                .detach(),
+        ),
+        MenuWidget::SectionLabel(config) => Box::new(
+            SectionLabelModel::builder()
+                .launch(SectionLabelInit {
+                    config: config.clone(),
                 })
                 .detach(),
         ),
