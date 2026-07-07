@@ -5,6 +5,39 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.5] – 2026-07-07
+
+**A professionalization pass over the `mdash` dashboard** (`mshellctl menu
+mdash`) — the design language 1.1.4 brought to the bar menus, now applied to the
+dashboard itself: a stronger header hero, titled cards that share one caption
+rhythm, a section-headed action grid, and clearer grouping of the power actions.
+Drop-in upgrade — no feature removals.
+
+### Added
+
+- **Reusable `SectionLabel` menu widget** — a small tonal caption that titles a
+  run of tiles or actions in any panel. Wired into the dashboard as a "Quick
+  Actions" heading above the bottom action grid, so the lower half reads with the
+  same titled rhythm as the cards above.
+- **Card titles on the dashboard's right column.** Overview ("At a glance"),
+  Connectivity ("Connected"), and Compact Audio ("Sound") now share one caption
+  idiom (small, bold, tonal, letter-spaced) so the column reads as a single
+  titled set.
+
+### Changed
+
+- **Dashboard header hero.** The greeting is larger and heavier, the leading
+  glyph picks up the matugen accent, and the live date reads as a quiet pill —
+  a wider hero treatment scoped to the dashboard, while the shared panel header
+  stays deliberately calm in the narrow bar menus.
+- **Overview "At a glance" card.** The leading signal dots now carry each row's
+  calm / warn / danger severity, so a row reads as one signal rather than a
+  neutral dot beside a coloured label.
+- **Action-grid grouping.** The second action row (session / power) is set off
+  as a distinct band — a top hairline, a container tint, and a clearer gap — so
+  Shutdown / Reboot / Lock read as a deliberate zone rather than one more toggle
+  in the strip.
+
 ## [1.1.4] – 2026-07-07
 
 **A professionalization pass across the shell's layer-shell menus, plus two
