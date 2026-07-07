@@ -5,6 +5,67 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] – 2026-07-07
+
+**A professionalization pass across the shell's layer-shell menus, plus two
+XWayland input fixes.** Every bar menu — Network, Bluetooth, Audio, VPN, UFW,
+Power, Control Center, Launcher, Clipboard — was reworked into one consistent,
+deliberate design language: surfaces that read as buttons, matugen-tonal
+accents instead of raw primary, equal-width actions, and tonal section headers
+in place of hard separators. Alongside it: a themeable MRU **Super/Alt+Tab
+window switcher**, real **hot-corner** controls, macOS-style animation presets,
+and fixes for two XWayland input bugs that made tiled X11 apps (vncviewer)
+misbehave. Drop-in upgrade — no feature removals.
+
+### Added
+
+- **MRU window switcher.** A niri-style Super/Alt+Tab overlay (thumbnail strip,
+  most-recently-used order, release-to-commit), themeable and configurable,
+  with its own **Settings → Window Switcher** page.
+- **Real hot-corner controls** in Settings → Behaviour — per-corner action +
+  dwell time — replacing the long-dead `hotarea` knobs, with a richer action
+  list (not just Toggle Overview).
+- **macOS-style animation presets** in Settings → Animations
+  (Silk / Swift / Satin / Breeze), with the active preset highlighted.
+- **VPN indicator pill** — a generic "VPN up" bar indicator with a per-tunnel
+  detail menu, superseding the osc-mullvad-specific widget.
+- A shared keycap-chip component (`.kbd-chip` / `.kbd-key` / `.kbd-caption`) for
+  consistent shortcut hints across menus.
+
+### Changed
+
+- **Layer-shell menu professionalization pass.** Network, Bluetooth, Audio,
+  VPN, UFW, Power, Control Center, Launcher, and Clipboard menus now share one
+  design language: button surfaces raised off the panel so they read as
+  buttons, scheme-fit (matugen-tonal) accents for the connected/active state
+  instead of raw `--primary`, equal-width action buttons, tonal uppercase
+  section labels in place of hard separators, and keycap footers / source
+  badges where they help.
+- **Audio Route** folded into Settings → Sound plus a device-aware dashboard
+  pill; the standalone Audio Route pill + picker were removed
+  (`mshellctl audio route-next` kept).
+- smithay pin advanced to master HEAD (past the v0.7.0 tag).
+
+### Fixed
+
+- **XWayland cursor offset.** A tiled X11 window (e.g. TigerVNC's `vncviewer`)
+  no longer drifts its pointer / right-click-menu position: the compositor
+  re-asserts the tiled geometry when the client tries to self-configure instead
+  of echoing the client's request.
+- **XWayland input-freeze after a tag switch.** A tiled X11 window no longer
+  goes input-dead — rendering the remote framebuffer live while forwarding no
+  pointer/keyboard — after switching tags and back. X11 toplevels now skip the
+  tiling slide animation that drove them into that state; native Wayland windows
+  still animate.
+- **Clipboard** — removed the empty Files tab and the date-section list model
+  that froze the panel and broke tab switching.
+- **Launcher** — Ctrl+R (resume last query) is now reliable.
+- **VPN** — the connect notification no longer reads "Tunnel is down" on a
+  successful connect.
+- **Calendar** — event days render their dot again (GTK4 `mark_day` sets the
+  `:checked` state, not `:selected`).
+- **Control Center** — flat, aligned tile icons.
+
 ## [1.1.3] – 2026-07-03
 
 **A native calendar and a much bigger control CLI.** The headline is **mcal** —
