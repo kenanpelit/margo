@@ -1144,6 +1144,29 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
             // validates, so the button lands on whatever is genuinely
             // under the cursor now. See handlers/xdg_activation.rs.
             let ptr_focus = pointer_focus_under(state, pos);
+            // TEMP DIAG (VNC "input dead after tag switch" — remove once fixed):
+            // On every click, log what hit-testing resolves under the cursor, so
+            // we can tell whether `element_under` misses the window entirely,
+            // `surface_under` drills down to no surface, or a different window is
+            // stacked on top swallowing the click. Click-gated → no log spam.
+            {
+                use smithay::reexports::wayland_server::Resource as _;
+                let el = state.space.element_under(pos).map(|(w, l)| {
+                    let is_x11 = matches!(
+                        w.underlying_surface(),
+                        smithay::desktop::WindowSurface::X11(_)
+                    );
+                    (is_x11, l)
+                });
+                tracing::info!(
+                    "CLICKDIAG pos=({:.0},{:.0}) element_under(is_x11,loc)={:?} ptr_focus_some={} surf={:?}",
+                    pos.x,
+                    pos.y,
+                    el,
+                    ptr_focus.is_some(),
+                    ptr_focus.as_ref().map(|(s, _)| s.id()),
+                );
+            }
             if let Some(ptr) = state.seat.get_pointer() {
                 ptr.motion(
                     state,
