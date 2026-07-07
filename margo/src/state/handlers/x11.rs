@@ -117,6 +117,26 @@ impl XwmHandler for MargoState {
         h: Option<u32>,
         _reorder: Option<Reorder>,
     ) {
+        // A managed, tiled window is not allowed to move or resize itself —
+        // the compositor owns its geometry. If we blindly echo the client's
+        // requested rectangle back (as a naive WM would), an X11 app that
+        // self-configures — e.g. vncviewer snapping to the remote framebuffer
+        // size — drifts its XWayland absolute origin off the tiled slot. From
+        // then on XWayland translates pointer motion and anchors client-drawn
+        // popups against the wrong origin, so the cursor tracks one place while
+        // right-click menus open offset to the side. That was the bug that only
+        // "went away" by toggling the window floating, because togglefloating
+        // forces a fresh `x11.configure` and re-pins the origin. Re-assert the
+        // tiled geometry instead — this mirrors dwl's `configurerequest`.
+        // Floating (and not-yet-managed) windows keep self-sizing.
+        if let Some(idx) = self.find_x11_client(&window) {
+            let g = self.clients[idx].geom;
+            if !self.clients[idx].is_floating && g.width > 0 && g.height > 0 {
+                let rect = Rectangle::new((g.x, g.y).into(), (g.width, g.height).into());
+                window.configure(rect).ok();
+                return;
+            }
+        }
         let geom = window.geometry();
         let new_geom = Rectangle::new(
             (x.unwrap_or(geom.loc.x), y.unwrap_or(geom.loc.y)).into(),
