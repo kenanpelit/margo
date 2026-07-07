@@ -580,28 +580,16 @@ impl MargoState {
                         (geom.x, geom.y).into(),
                         (geom.width, geom.height).into(),
                     );
-                    // Configure UNCONDITIONALLY — not only when the geometry
-                    // changed. This mirrors the Wayland branch above, which
-                    // always send_pending_configure()s on show. On a tag switch
-                    // the window is unmap_elem'd (above) and later re-mapped at
-                    // the SAME tiled slot; with a "geometry changed" guard the
-                    // re-show would send nothing, so an X11 client that was
-                    // parked while off-tag never receives the synthetic
-                    // ConfigureNotify it needs to re-anchor and repaint — it
-                    // sits frozen and input-dead until an unrelated geometry
-                    // change (e.g. a layout switch) finally fires a configure.
-                    // smithay's X11Surface::configure always emits that
-                    // synthetic ConfigureNotify, and a same-geometry configure
-                    // is a no-op for a well-behaved client, so re-sending it
-                    // every arrange is cheap (this is what dwl does too).
-                    tracing::trace!(
-                        "arrange: configuring x11 window to {}x{}+{}+{}",
-                        geom.width,
-                        geom.height,
-                        geom.x,
-                        geom.y
-                    );
-                    let _ = x11.configure(rect);
+                    if x11.geometry() != rect {
+                        tracing::debug!(
+                            "arrange: configuring x11 window to {}x{}+{}+{}",
+                            geom.width,
+                            geom.height,
+                            geom.x,
+                            geom.y
+                        );
+                        let _ = x11.configure(rect);
+                    }
                 }
             }
         }
