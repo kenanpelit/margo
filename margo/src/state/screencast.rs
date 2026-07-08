@@ -121,16 +121,13 @@ impl MargoState {
                 )
             }
             StreamTargetId::Window { id } => {
-                // Match the window-id (we hand out per-client
-                // memory addresses cast to u64 from
-                // `gnome_shell_introspect`). Look up by re-scanning
-                // clients; the address is stable for the duration
-                // of the client's life.
-                let Some(client) = self
-                    .clients
-                    .iter()
-                    .find(|c| std::ptr::addr_of!(**c) as u64 == id)
-                else {
+                // Match the window-id handed out by
+                // `gnome_shell_introspect` — the client's stable `id`
+                // (minted at construction). Re-scan clients; the id
+                // survives `clients` reallocation/removal, unlike the
+                // old pointer-address scheme which could alias a
+                // different window and capture the wrong one.
+                let Some(client) = self.clients.iter().find(|c| c.id == id) else {
                     tracing::warn!(window_id = %id, "StartCast: requested window is missing");
                     self.stop_cast(session_id);
                     return;

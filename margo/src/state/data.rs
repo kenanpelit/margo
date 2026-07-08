@@ -104,7 +104,18 @@ impl std::fmt::Debug for ResizeSnapshot {
 
 // ── Per-window state ─────────────────────────────────────────────────────────
 
+/// Monotonic source of stable per-client ids. Never reused within a
+/// compositor run, so an id can't alias a different window even after
+/// `clients` reallocates or removes elements.
+static NEXT_CLIENT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 pub struct MargoClient {
+    /// Stable identity for this client, minted once at construction.
+    /// Used as the screencast / xdp-introspect window id — keying those
+    /// on the element's memory address (`&*c as u64`) silently broke
+    /// when the `clients` Vec grew or shifted, freezing a window share
+    /// or (worse) capturing the wrong window.
+    pub id: u64,
     pub surface_type: crate::SurfaceType,
     pub geom: Rect,
     pub pending: Rect,
@@ -232,6 +243,7 @@ pub struct MargoClient {
 impl MargoClient {
     pub fn new(window: Window, monitor: usize, tags: u32, config: &Config) -> Self {
         Self {
+            id: NEXT_CLIENT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             surface_type: crate::SurfaceType::XdgShell,
             geom: Rect::default(),
             pending: Rect::default(),

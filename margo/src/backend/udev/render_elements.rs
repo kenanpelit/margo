@@ -349,11 +349,7 @@ pub(super) fn drain_active_cast_frames(
                 }
             }
             CastTarget::Window { id } => {
-                let Some(client_idx) = state
-                    .clients
-                    .iter()
-                    .position(|c| std::ptr::addr_of!(*c) as u64 == id)
-                else {
+                let Some(client_idx) = state.clients.iter().position(|c| c.id == id) else {
                     continue;
                 };
                 let client = &state.clients[client_idx];

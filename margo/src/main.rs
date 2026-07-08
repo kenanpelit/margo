@@ -896,13 +896,13 @@ fn main() -> Result<()> {
                 if let calloop::channel::Event::Msg(IntrospectToCompositor::GetWindows) = event {
                     let mut map: HashMap<u64, WindowProperties> = HashMap::new();
                     for c in &state.clients {
-                        // Stable id per-process: use the wl_surface
-                        // pointer cast to u64 if available, else a
-                        // monotonic counter on the client. xdp-gnome
-                        // only needs uniqueness within the snapshot.
-                        let id = std::ptr::addr_of!(*c) as u64;
+                        // Stable per-client id (minted at construction).
+                        // Must match what StartCast resolves against — a
+                        // pointer-address id aliased a different window
+                        // once `clients` reallocated between this snapshot
+                        // and the cast request.
                         map.insert(
-                            id,
+                            c.id,
                             WindowProperties {
                                 title: c.title.clone(),
                                 app_id: c.app_id.clone(),
