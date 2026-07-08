@@ -67,7 +67,13 @@ pub fn right_tile(ctx: &ArrangeCtx) -> ArrangeResult {
 
     let oh = g.gappoh;
     let ov = g.gappov;
+    // `ih` (gappih) is the *horizontal* inner gap between the stack and
+    // master columns; `iv` (gappiv) is the *vertical* inner gap between
+    // windows stacked within a column. This mirrors the fix made in
+    // `tile()` — the old code used `ih` for the vertical stacking too, so
+    // an asymmetric gappih≠gappiv tiled wrong (and gappiv had no effect).
     let ih = g.gappih;
+    let iv = g.gappiv;
 
     let master_count = nm.min(n);
     let stack_count = n.saturating_sub(master_count);
@@ -85,13 +91,13 @@ pub fn right_tile(ctx: &ArrangeCtx) -> ArrangeResult {
     let mut result = Vec::with_capacity(n);
     for (i, &idx) in ctx.tiled.iter().enumerate() {
         let rect = if i < master_count {
-            let h = (total_h - (master_count - 1) as i32 * ih) / master_count as i32;
-            let y = wa.y + ov + i as i32 * (h + ih);
+            let h = (total_h - (master_count - 1) as i32 * iv) / master_count as i32;
+            let y = wa.y + ov + i as i32 * (h + iv);
             Rect::new(wa.x + oh + stack_w + ih, y, master_w, h)
         } else {
             let si = i - master_count;
-            let h = (total_h - (stack_count - 1) as i32 * ih) / stack_count as i32;
-            let y = wa.y + ov + si as i32 * (h + ih);
+            let h = (total_h - (stack_count - 1) as i32 * iv) / stack_count as i32;
+            let y = wa.y + ov + si as i32 * (h + iv);
             Rect::new(wa.x + oh, y, stack_w, h)
         };
         result.push((idx, rect));
@@ -389,6 +395,13 @@ pub fn vertical_tile(ctx: &ArrangeCtx) -> ArrangeResult {
     let g = ctx.gaps;
     let oh = g.gappoh;
     let ov = g.gappov;
+    // Vertical analogue of `tile()`: masters sit side-by-side in the top
+    // row, stack windows side-by-side in the bottom row. The gap *between*
+    // those side-by-side windows is the horizontal inner gap `ih` (gappih);
+    // `iv` (gappiv) is the vertical gap between the master and stack rows.
+    // The old code used the *outer* `oh` for the inter-window horizontal
+    // gap, so gappih had no effect and gappoh was double-counted.
+    let ih = g.gappih;
     let iv = g.gappiv;
 
     let nm = (ctx.nmaster as usize).min(n);
@@ -407,13 +420,13 @@ pub fn vertical_tile(ctx: &ArrangeCtx) -> ArrangeResult {
     let mut result = Vec::with_capacity(n);
     for (i, &idx) in ctx.tiled.iter().enumerate() {
         let rect = if i < nm {
-            let w = (total_w - (nm - 1) as i32 * oh) / nm as i32;
-            let x = wa.x + oh + i as i32 * (w + oh);
+            let w = (total_w - (nm - 1) as i32 * ih) / nm as i32;
+            let x = wa.x + oh + i as i32 * (w + ih);
             Rect::new(x, wa.y + ov, w, master_h)
         } else {
             let si = i - nm;
-            let w = (total_w - (stack_count - 1) as i32 * oh) / stack_count as i32;
-            let x = wa.x + oh + si as i32 * (w + oh);
+            let w = (total_w - (stack_count - 1) as i32 * ih) / stack_count as i32;
+            let x = wa.x + oh + si as i32 * (w + ih);
             Rect::new(x, wa.y + ov + master_h + iv, w, stack_h)
         };
         result.push((idx, rect));
@@ -873,5 +886,35 @@ mod tests {
         r.sort_by_key(|(_, rect)| rect.y);
         let gap = r[1].1.y - (r[0].1.y + r[0].1.height);
         assert_eq!(gap, ASYM.gappiv);
+    }
+
+    #[test]
+    fn right_tile_uses_horizontal_gap_between_columns_and_vertical_within_a_column() {
+        // Regression: right_tile used gappih for the vertical stacking too
+        // (and never read gappiv), so an asymmetric gappih≠gappiv tiled wrong.
+        let tiled = [0usize, 1, 2]; // 1 master (right) + 2 stack (left).
+        let r = right_tile(&ctx(&tiled, &ASYM, 1));
+        let master = r[0].1;
+        let stack0 = r[1].1;
+        let stack1 = r[2].1;
+        // Stack column ↔ master column separation is horizontal → gappih.
+        assert_eq!(master.x - (stack0.x + stack0.width), ASYM.gappih);
+        // Two stack windows stacked vertically → gappiv.
+        assert_eq!(stack1.y - (stack0.y + stack0.height), ASYM.gappiv);
+    }
+
+    #[test]
+    fn vertical_tile_uses_horizontal_gap_within_a_row_and_vertical_between_rows() {
+        // Regression: vertical_tile used the *outer* gappoh for the gap
+        // between side-by-side windows, so gappih had no effect.
+        let tiled = [0usize, 1, 2]; // 1 master (top row) + 2 stack (bottom row).
+        let r = vertical_tile(&ctx(&tiled, &ASYM, 1));
+        let master = r[0].1;
+        let stack0 = r[1].1;
+        let stack1 = r[2].1;
+        // Master row ↔ stack row separation is vertical → gappiv.
+        assert_eq!(stack0.y - (master.y + master.height), ASYM.gappiv);
+        // Two stack windows side by side → horizontal gap = gappih.
+        assert_eq!(stack1.x - (stack0.x + stack0.width), ASYM.gappih);
     }
 }

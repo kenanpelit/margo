@@ -150,9 +150,10 @@ impl AnimationCurves {
         // these into per-type config knobs); shared is the right
         // starting point because users tuning "I want a snappier
         // compositor feel" usually mean it across the board.
-        let spring_params = spring::SpringParams::new(
+        let spring_params = spring::SpringParams::with_mass(
             config.animation_spring_damping_ratio,
             config.animation_spring_stiffness,
+            config.animation_spring_mass,
             0.0001,
         );
 

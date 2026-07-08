@@ -246,6 +246,15 @@ impl MargoState {
         let mut group_slots: std::collections::HashMap<u32, crate::layout::Rect> =
             std::collections::HashMap::new();
         for (client_idx, mut rect) in geometries {
+            // Floor every layout rect to a positive size. A pathological gap
+            // config (e.g. a large `gappov` on a short work area) can drive a
+            // master-stack layout's computed width/height negative; a negative
+            // size is a protocol error at xdg configure (and corrupts
+            // border/hit-test math), while the window-rule clamp below only
+            // runs for clients that declare min/max. This is the single
+            // choke-point every one of the 14 layouts flows through.
+            rect.width = rect.width.max(1);
+            rect.height = rect.height.max(1);
             // Apply per-client size constraints from window rules. The layout
             // algorithm is constraint-agnostic; we clamp post-hoc so that
             // e.g. picture-in-picture players keep their pinned dimensions

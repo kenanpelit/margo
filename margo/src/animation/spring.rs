@@ -59,10 +59,18 @@ impl SpringParams {
     /// `damping_ratio = 1.0` is critically damped; <1 underdamped (bouncy);
     /// >1 overdamped (sluggish).
     pub fn new(damping_ratio: f64, stiffness: f64, epsilon: f64) -> Self {
+        Self::with_mass(damping_ratio, stiffness, 1., epsilon)
+    }
+
+    /// Like [`new`](Self::new) but honours a user-set spring `mass`
+    /// (`animation_spring_mass`). Heavier mass → slower, more sluggish
+    /// motion. Mass is floored to a small positive value so `beta =
+    /// damping / (2·mass)` can't divide by zero.
+    pub fn with_mass(damping_ratio: f64, stiffness: f64, mass: f64, epsilon: f64) -> Self {
         let damping_ratio = damping_ratio.max(0.);
         let stiffness = stiffness.max(0.);
         let epsilon = epsilon.max(f64::EPSILON);
-        let mass = 1.;
+        let mass = mass.max(0.01);
         let critical_damping = 2. * (mass * stiffness).sqrt();
         let damping = damping_ratio * critical_damping;
         Self {
