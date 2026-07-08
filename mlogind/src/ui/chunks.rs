@@ -26,6 +26,13 @@ const CARD_W_MIN: u16 = 40;
 const CARD_H: u16 = 7;
 const CLOCK_H: u16 = 5;
 
+/// Vertical placement of the whole login block within the leftover space:
+/// the free rows above/below the block are split with this top:bottom weight
+/// instead of centring (which would be 50:50). A lighter top weight lifts the
+/// block above the geometric centre, so it reads higher on a tall monitor.
+const SPACE_ABOVE: u32 = 15;
+const SPACE_BELOW: u32 = 100;
+
 pub struct Chunks {
     pub greeting: Rect,
     pub clock: Rect,
@@ -122,7 +129,9 @@ impl Chunks {
             height: 1,
         };
 
-        let mut y = body_top + avail.saturating_sub(used) / 2;
+        let free = avail.saturating_sub(used) as u32;
+        let top_pad = (free * SPACE_ABOVE / (SPACE_ABOVE + SPACE_BELOW)) as u16;
+        let mut y = body_top + top_pad;
 
         let greeting = if show_greeting {
             let r = line(y);
