@@ -38,6 +38,29 @@ fn cache_image_data(
 ) -> Option<String> {
     let color_type = png_color_type(bits_per_sample, channels)?;
 
+    // width / height / rowstride / data all come straight from an untrusted
+    // `image-data` D-Bus hint — any app on the session bus can send a
+    // crafted one. Reject degenerate geometry before it reaches
+    // strip_rowstride_padding, whose `data.chunks(rowstride)` panics on
+    // rowstride == 0 and whose `channels * width` can overflow i32. Either
+    // would take down the whole notification daemon thread — a remote DoS
+    // from any unprivileged process.
+    if width <= 0 || height <= 0 || rowstride <= 0 {
+        warn!(width, height, rowstride, "invalid image-data geometry, skipping cache");
+        return None;
+    }
+    let Some(row_bytes) = channels.checked_mul(width).filter(|rb| *rb > 0) else {
+        warn!(width, channels, "image-data row size overflow, skipping cache");
+        return None;
+    };
+    if rowstride < row_bytes {
+        warn!(
+            rowstride,
+            row_bytes, "image-data rowstride smaller than one row, skipping cache"
+        );
+        return None;
+    }
+
     let dir = cache_dir();
     let path = dir.join(format!("{}.png", content_hash(data)));
 
