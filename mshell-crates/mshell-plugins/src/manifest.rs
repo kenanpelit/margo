@@ -278,10 +278,7 @@ pub fn validate(m: &Manifest) -> Result<(), String> {
     // legitimate combo has exactly one comma (`mods,key`); an id has none.
     for kb in &m.keybinds {
         if kb.combo.contains(['\n', '\r']) || kb.id.contains(['\n', '\r']) {
-            return Err(format!(
-                "keybind `{}` must not contain a newline",
-                kb.id
-            ));
+            return Err(format!("keybind `{}` must not contain a newline", kb.id));
         }
         if kb.combo.matches(',').count() > 1 {
             return Err(format!(

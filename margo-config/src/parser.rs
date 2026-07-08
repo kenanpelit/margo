@@ -156,8 +156,7 @@ fn hex_color_follows(rest: &str) -> bool {
         .iter()
         .take_while(|b| b.is_ascii_hexdigit())
         .count();
-    matches!(run, 3 | 4 | 6 | 8)
-        && rest[run..].chars().next().is_none_or(char::is_whitespace)
+    matches!(run, 3 | 4 | 6 | 8) && rest[run..].chars().next().is_none_or(char::is_whitespace)
 }
 
 // ── Line-level dispatch ──────────────────────────────────────────────────────
@@ -867,9 +866,7 @@ fn parse_windowrule(cfg: &mut Config, val: &str) -> Result<()> {
             // Tag numbers are 1..=32 → bit 0..=31. Clamp the shift amount:
             // an out-of-range `tags:33` (typo) would otherwise overflow the
             // shift and panic in release (overflow-checks = true).
-            "tags" => {
-                rule.tags = 1u32 << v.parse::<u32>().unwrap_or(1).saturating_sub(1).min(31)
-            }
+            "tags" => rule.tags = 1u32 << v.parse::<u32>().unwrap_or(1).saturating_sub(1).min(31),
             // `monitor:eDP-1` (windowrule context) pins a window to the
             // named output. `monitor_name` is the tagrule key spelling
             // for the same concept — accept it as an alias here so a
@@ -1773,10 +1770,10 @@ mod tests {
         // space after `=`) had its whole value eaten as an inline comment,
         // silently resetting the colour to default on every reload.
         for val in [
-            "focuscolor = #c66b25",       // RRGGBB
-            "bordercolor = #1e1e2eff",    // RRGGBBAA
-            "col = #abc",                 // RGB
-            "col = #abcd",                // RGBA
+            "focuscolor = #c66b25",    // RRGGBB
+            "bordercolor = #1e1e2eff", // RRGGBBAA
+            "col = #abc",              // RGB
+            "col = #abcd",             // RGBA
         ] {
             assert_eq!(strip_inline_comment(val), val, "stripped {val:?}");
         }

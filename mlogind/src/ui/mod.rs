@@ -487,8 +487,7 @@ impl LoginForm {
                                 // the heap when it drops after start_session,
                                 // instead of lingering in freed memory on a
                                 // root process (recoverable via core dump/swap).
-                                let password =
-                                    zeroize::Zeroizing::new(self.widgets.get_password());
+                                let password = zeroize::Zeroizing::new(self.widgets.get_password());
                                 let config = self.config.clone();
 
                                 let Some(post_login_env) = environment else {

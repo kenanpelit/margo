@@ -1790,8 +1790,7 @@ pub fn write_package_list_any<P: AsRef<Path>>(path: P, list: &PackageList) -> Re
     tmp.push(".mdots-tmp");
     let tmp = std::path::PathBuf::from(tmp);
     std::fs::write(&tmp, content).context(format!("Failed to write package list: {:?}", tmp))?;
-    std::fs::rename(&tmp, path)
-        .context(format!("Failed to write package list: {:?}", path))?;
+    std::fs::rename(&tmp, path).context(format!("Failed to write package list: {:?}", path))?;
 
     Ok(())
 }
