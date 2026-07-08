@@ -371,6 +371,11 @@ toml_config_struct! { WaylandConfig, PartialWaylandConfig, RoughWaylandConfig,
 
 // How the greeter reaches the screen.
 //
+//   host = "gui" — the greeter (`mgreet`, native GTK4) runs under a throwaway
+//     root `margo` instance, so a login card lands on EVERY connected monitor
+//     at its own native/preferred mode (cage can't — it has no layer-shell).
+//     Needs `margo`, `mgreet`, `mctl`; falls back to "cage" then "tty" if margo
+//     can't start. This is the shipped default.
 //   host = "cage" — the greeter runs inside a tiny wlroots kiosk compositor
 //     (`cage`) hosting a Wayland terminal (`foot`). cage drives KMS directly,
 //     so every connected monitor lights up at its own native/preferred mode

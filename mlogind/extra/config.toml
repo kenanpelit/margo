@@ -142,7 +142,7 @@ wayland_sessions_path = "/usr/share/wayland-sessions"
 #   "cage" — a cage+foot kiosk running the TUI greeter on a single monitor
 #            (the last-connected). Falls back to "tty" if cage/foot is missing.
 #   "tty"  — the classic in-process TTY greeter (always available).
-host = "cage"
+host = "gui"
 # cage output mode (only used when host = "cage"): "last" = greeter on a single
 # monitor (the last-connected), centred + native res, follows hotplug. "extend"
 # = span all monitors as one surface (login block lands on the monitor seam).
