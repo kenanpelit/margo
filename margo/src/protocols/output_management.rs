@@ -319,6 +319,12 @@ where
         match request {
             zwlr_output_manager_v1::Request::CreateConfiguration { id, serial } => {
                 let cfg = data_init.init(id, serial);
+                // A client dying mid-request leaves no handle — skip rather
+                // than unwrap-panic the compositor (matches the `Stop` arm
+                // below).
+                let Some(client) = manager.client() else {
+                    return;
+                };
                 if serial != state.output_management_state().serial {
                     // Stale token — cancel immediately. Client will
                     // re-fetch state and try again.
@@ -326,7 +332,7 @@ where
                     if let Some(c) = state
                         .output_management_state()
                         .clients
-                        .get_mut(&manager.client().unwrap().id())
+                        .get_mut(&client.id())
                     {
                         c.configs.insert(cfg, ConfigurationState::Finished);
                     }
@@ -335,7 +341,7 @@ where
                 if let Some(c) = state
                     .output_management_state()
                     .clients
-                    .get_mut(&manager.client().unwrap().id())
+                    .get_mut(&client.id())
                 {
                     c.configs
                         .insert(cfg, ConfigurationState::Ongoing(HashMap::new()));

@@ -164,7 +164,15 @@ impl ScreenCast {
                 let iface = server.interface(&path).await.map_err(|err| {
                     fdo::Error::Failed(format!("error getting session interface: {err}"))
                 })?;
-                self.sessions.lock().unwrap().push((session, iface));
+                // Drop sessions the client already stopped before pushing the
+                // new one. Session::stop removes itself from the object server
+                // but can't reach this parent vec (no back-reference), so
+                // without pruning here the vec — and its zbus InterfaceRefs —
+                // grows unbounded across a long-lived compositor with frequent
+                // screen shares.
+                let mut sessions = self.sessions.lock().unwrap();
+                sessions.retain(|(s, _)| !s.stopped.load(Ordering::SeqCst));
+                sessions.push((session, iface));
             }
             Ok(false) => return Err(fdo::Error::Failed("session path already exists".to_owned())),
             Err(err) => {
