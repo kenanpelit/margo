@@ -74,9 +74,17 @@ impl BakedCurve {
         };
         // Settle time: when the spring is within ε of its target.
         // Fall back to 500 ms if the convergence search tops out
-        // (pathological over-damped configs).
+        // (pathological over-damped configs) OR the closed-form path
+        // returns a degenerate duration. `clamped_duration()` yields
+        // `Some(Duration::MAX)` when damping is ~0 (a user setting
+        // `animation_spring_damping_ratio = 0` or `stiffness = 0`);
+        // feeding that into `Duration::from_secs_f64` below panics
+        // ("can not convert float seconds to Duration") at i=255,
+        // crashing the compositor at startup / `mctl reload`. Reject
+        // any absurd settle time, not just `None`.
         let settle = spring
             .clamped_duration()
+            .filter(|d| *d < Duration::from_secs(30))
             .unwrap_or(Duration::from_millis(500))
             .as_secs_f64()
             .max(0.001);

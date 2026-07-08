@@ -753,14 +753,34 @@ impl PipeWire {
                         };
 
                         let plane_count = dmabuf.num_planes();
-                        assert_eq!((*spa_buffer).n_datas as usize, plane_count);
+                        // PipeWire hands back the buffer layout it negotiated;
+                        // a mismatch is a driver/consumer disagreement, not a
+                        // compositor bug — degrade the cast instead of
+                        // asserting (a panic here would kill the whole
+                        // session mid-screencast).
+                        if (*spa_buffer).n_datas as usize != plane_count {
+                            warn!(
+                                "screencast buffer plane-count mismatch: pw offered {} planes, \
+                                 dmabuf has {plane_count} — stopping cast",
+                                (*spa_buffer).n_datas
+                            );
+                            stop_cast();
+                            return;
+                        }
 
                         for (i, (fd, (stride, offset))) in
                             zip(dmabuf.handles(), zip(dmabuf.strides(), dmabuf.offsets()))
                                 .enumerate()
                         {
                             let spa_data = (*spa_buffer).datas.add(i);
-                            assert!((*spa_data).type_ & (1 << DataType::DmaBuf.as_raw()) > 0);
+                            if (*spa_data).type_ & (1 << DataType::DmaBuf.as_raw()) == 0 {
+                                warn!(
+                                    "screencast buffer plane {i} is not DmaBuf-capable — \
+                                     stopping cast"
+                                );
+                                stop_cast();
+                                return;
+                            }
 
                             (*spa_data).type_ = DataType::DmaBuf.as_raw();
 
@@ -783,7 +803,12 @@ impl PipeWire {
                         }
 
                         let fd = (*(*spa_buffer).datas).fd;
-                        assert!(inner.dmabufs.insert(fd, dmabuf).is_none());
+                        if inner.dmabufs.insert(fd, dmabuf).is_some() {
+                            warn!(
+                                "screencast: duplicate dmabuf fd {fd} in buffer pool — \
+                                 replaced a stale entry"
+                            );
+                        }
                     }
 
                     // During size re-negotiation, the stream sometimes just keeps running, in
@@ -805,11 +830,13 @@ impl PipeWire {
 
                     unsafe {
                         let spa_buffer = (*buffer).buffer;
-                        let spa_data = (*spa_buffer).datas;
-                        assert!((*spa_buffer).n_datas > 0);
-
-                        let fd = (*spa_data).fd;
-                        inner.dmabufs.remove(&fd);
+                        // Guard the datas[0] read: a zero-length datas array
+                        // would otherwise read invalid memory. Skip cleanup
+                        // rather than assert (never panic the compositor).
+                        if (*spa_buffer).n_datas > 0 {
+                            let fd = (*(*spa_buffer).datas).fd;
+                            inner.dmabufs.remove(&fd);
+                        }
                     }
                 }
             })
@@ -1318,10 +1345,21 @@ fn make_video_params(
         Fourcc::Xrgb8888
     };
 
-    let formats: Vec<_> = formats
+    let mut formats: Vec<_> = formats
         .iter()
         .filter_map(|f| (f.code == fourcc).then_some(u64::from(f.modifier) as i64))
         .collect();
+
+    if formats.is_empty() {
+        // The render node advertises no modifiers for this fourcc (e.g. a
+        // window cast requests alpha/Argb8888 on a driver whose format set
+        // lacks it). Offering the implicit modifier (DRM_FORMAT_MOD_INVALID)
+        // degrades to a legacy/linear negotiation instead of panicking on
+        // `formats[0]` below and taking down the whole compositor.
+        const DRM_FORMAT_MOD_INVALID: i64 = 0x00ff_ffff_ffff_ffff;
+        warn!("screencast: no modifiers advertised for {fourcc:?}; offering implicit modifier");
+        formats.push(DRM_FORMAT_MOD_INVALID);
+    }
 
     trace!("offering: {formats:?}");
 

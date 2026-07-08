@@ -113,6 +113,13 @@ fn build_engine() -> Engine {
     engine.set_max_array_size(1024);
     engine.set_max_string_size(64 * 1024);
     engine.set_strict_variables(true);
+    // Bound total operations so a runaway script (`loop {}`, an accidental
+    // infinite recursion in a hook, `run_script` on a hostile file) can't
+    // wedge the compositor event loop forever — the eval errors out instead
+    // of freezing input + rendering until the session is killed. Scripts run
+    // synchronously on the main loop, so this is a hard safety limit, not a
+    // perf tunable; 5M is generous for any legitimate init/hook script.
+    engine.set_max_operations(5_000_000);
 
     engine.on_print(|s| info!(target: "init.rhai", "{s}"));
     engine.on_debug(|s, src, pos| {
