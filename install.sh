@@ -263,7 +263,7 @@ debian_build() {
     -p mlogind -p mpower -p mcal
   log "building shell group (dist)"
   cargo build --profile dist -p mshell -p mshellctl -p mshellshare \
-    -p mpicker -p mwizard -p mkeys -p mvpn -p margo-portal
+    -p mpicker -p mwizard -p mkeys -p mvpn -p margo-portal -p mgreet
 }
 
 # install_file <mode> <src> <dst> — install one file and record <dst>
@@ -298,7 +298,7 @@ debian_install_files() {
   # ── binaries ──
   local bin
   for bin in margo start-margo mctl mlock mlayout mscreenshot mvisual mplay mdots \
-             mlogind mpower mshell mshellctl mshellshare mpicker mwizard mkeys mvpn mcal; do
+             mlogind mgreet mpower mshell mshellctl mshellshare mpicker mwizard mkeys mvpn mcal; do
     install_file 755 "${tgt}/${bin}" "/usr/bin/${bin}"
   done
   # margo-portal lives under /usr/lib (D-Bus-activated, not a CLI)
@@ -442,7 +442,7 @@ debian_uninstall() {
   if [[ ! -f "$MANIFEST" ]]; then
     warn "no manifest at ${MANIFEST} — removing known fixed paths only"
     local p
-    for p in /usr/bin/{margo,start-margo,mctl,mlock,mlayout,mscreenshot,mvisual,mplay,mdots,mshell,mshellctl,mshellshare,mpicker,mwizard,mcal} \
+    for p in /usr/bin/{margo,start-margo,mctl,mlock,mlayout,mscreenshot,mvisual,mplay,mdots,mlogind,mgreet,mshell,mshellctl,mshellshare,mpicker,mwizard,mcal} \
              /usr/bin/margo-uwsm-session /usr/bin/margo-session \
              /usr/lib/margo/margo-portal \
              /usr/share/wayland-sessions/margo-uwsm.desktop \

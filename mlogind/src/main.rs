@@ -309,18 +309,33 @@ fn main() -> Result<(), Box<dyn Error>> {
     // → reprogram the console palette so it matches preview (see console_palette).
     console_palette::init(cli.preview);
 
-    // ORCHESTRATOR MODE: host the greeter in cage+foot so every monitor renders
-    // at its own native KMS mode (dynamic, EDID-derived), then launch the chosen
-    // session on the bare VT. Falls through to the in-process TTY greeter below
-    // if `[display] host` is not "cage", or if the cage/foot host can't run.
-    if !cli.preview && config.display.host.eq_ignore_ascii_case("cage") {
-        match run_cage_host(&config) {
-            Ok(()) => {
-                info!("mlogind is booting down");
-                return Ok(());
+    // ORCHESTRATOR MODE: host the greeter under a compositor so every monitor
+    // renders at its own native KMS mode (dynamic, EDID-derived), then launch
+    // the chosen session on the bare VT. Layered fallback driven by
+    // `[display] host`:
+    //   gui  → margo + mgreet (GTK, a login card on EVERY output) → cage → TTY
+    //   cage → cage + foot + the TUI greeter (single output)      → TTY
+    //   *    → the in-process TTY greeter below
+    // Each host returns Err only when it cannot run at all, so a broken host
+    // degrades to the next one and never locks the user out.
+    if !cli.preview {
+        let host = config.display.host.to_ascii_lowercase();
+        if host == "gui" {
+            match run_gui_host(&config) {
+                Ok(()) => {
+                    info!("mlogind is booting down");
+                    return Ok(());
+                }
+                Err(e) => warn!("gui host unavailable ({e}); falling back to the cage host"),
             }
-            Err(e) => {
-                warn!("cage host unavailable ({e}); falling back to the TTY greeter");
+        }
+        if host == "gui" || host == "cage" {
+            match run_cage_host(&config) {
+                Ok(()) => {
+                    info!("mlogind is booting down");
+                    return Ok(());
+                }
+                Err(e) => warn!("cage host unavailable ({e}); falling back to the TTY greeter"),
             }
         }
     }
@@ -724,39 +739,193 @@ fn run_cage_host(config: &Config) -> Result<(), Box<dyn Error>> {
         }
 
         match captured {
-            Some(result) => {
-                // Re-resolve the environment by name (the greeter and the
-                // orchestrator both derive it from get_envs, same order).
-                let post_login_env = post_login::get_envs(config)
-                    .into_iter()
-                    .find(|(name, _)| *name == result.env_name)
-                    .map(|(_, content)| content);
-                let Some(post_login_env) = post_login_env else {
-                    error!(
-                        "orchestrator: greeter chose unknown session '{}'",
-                        result.env_name
-                    );
-                    continue;
-                };
+            Some(result) => launch_greet_result(config, &hooks, result),
+            None => {
+                info!("orchestrator: greeter produced no login; exiting host");
+                return Ok(());
+            }
+        }
+    }
+}
 
-                info!("orchestrator: launching session for '{}'", result.username);
-                match start_session(
-                    &result.username,
-                    &result.password,
-                    &post_login_env,
-                    &hooks,
-                    config,
-                ) {
-                    Ok(()) => info!("orchestrator: session ended; re-greeting"),
-                    Err(StartSessionError::AuthenticationError(err)) => {
-                        error!("orchestrator: authentication failed: {err}");
-                    }
-                    Err(StartSessionError::ForkFailed) => {
-                        error!("orchestrator: failed to fork the session");
+/// Resolve the session the greeter chose (by name, via `get_envs`) and launch
+/// it. Shared by the cage and GUI hosts. On an unknown session name it logs and
+/// returns, so the host loop simply re-greets on the next iteration.
+fn launch_greet_result(config: &Config, hooks: &Hooks<'_>, result: GreetResult) {
+    // The greeter and the orchestrator both derive the session list from
+    // get_envs (same order), so a name that round-trips resolves here.
+    let post_login_env = post_login::get_envs(config)
+        .into_iter()
+        .find(|(name, _)| *name == result.env_name)
+        .map(|(_, content)| content);
+    let Some(post_login_env) = post_login_env else {
+        error!(
+            "orchestrator: greeter chose unknown session '{}'",
+            result.env_name
+        );
+        return;
+    };
+
+    info!("orchestrator: launching session for '{}'", result.username);
+    match start_session(
+        &result.username,
+        &result.password,
+        &post_login_env,
+        hooks,
+        config,
+    ) {
+        Ok(()) => info!("orchestrator: session ended; re-greeting"),
+        Err(StartSessionError::AuthenticationError(err)) => {
+            error!("orchestrator: authentication failed: {err}");
+        }
+        Err(StartSessionError::ForkFailed) => {
+            error!("orchestrator: failed to fork the session");
+        }
+    }
+    // `result` (and its zeroizing password) drops here → scrubbed.
+}
+
+/// Write the throwaway margo config the GUI greeter runs under: the machine
+/// keyboard layout (translated from `/etc/vconsole.conf` via `vconsole_xkb_env`
+/// so Turkish-F etc. carries into the login prompt) and nothing else —
+/// crucially NO shell autostart, so the greeter compositor never launches the
+/// user's desktop. Rewritten on every host start. Because the file already
+/// exists when margo loads it, margo's first-run bootstrap leaves it untouched
+/// (it only writes a full default config for a *missing* path).
+fn write_greeter_conf(path: &Path) -> io::Result<()> {
+    let mut conf = String::from(
+        "# Auto-generated by mlogind for the GUI greeter — DO NOT EDIT.\n\
+         # Rewritten on every login. Minimal margo config: keyboard layout only,\n\
+         # no autostart (the greeter must never launch the user's desktop).\n",
+    );
+    for (env_key, val) in vconsole_xkb_env() {
+        let conf_key = match env_key {
+            "XKB_DEFAULT_LAYOUT" => "xkb_rules_layout",
+            "XKB_DEFAULT_VARIANT" => "xkb_rules_variant",
+            "XKB_DEFAULT_OPTIONS" => "xkb_rules_options",
+            "XKB_DEFAULT_MODEL" => "xkb_rules_model",
+            _ => continue,
+        };
+        conf.push_str(conf_key);
+        conf.push_str(" = ");
+        conf.push_str(&val);
+        conf.push('\n');
+    }
+    std::fs::write(path, conf)
+}
+
+/// Orchestrator: host the greeter under a dedicated root `margo` instance so
+/// every connected monitor renders at its native mode AND the GTK login card
+/// (`mgreet`) gets a layer-shell surface on each output — the thing cage could
+/// never do (no layer-shell, so it only ever greeted on one monitor). margo is
+/// launched with a throwaway greeter config (keyboard layout, no autostart) and
+/// `--startup-command "mgreet …; mctl dispatch quit"`: mgreet owns the login
+/// card, and however it exits the shell then quits margo, so this host returns
+/// and we read the login mgreet handed back — the same crash-tolerant flow as
+/// the cage host. Loops (re-greeting after logout) until no login is produced.
+/// Returns `Err` — so `main` falls back to the cage / TTY greeter — when margo
+/// can't run at all, so a broken host never locks the user out.
+fn run_gui_host(config: &Config) -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let margo = which("margo").ok_or("`margo` not found in PATH")?;
+    let mgreet = which("mgreet").ok_or("`mgreet` not found in PATH")?;
+    // mgreet tears margo down via `mctl dispatch quit`; require it up front so
+    // we fall back rather than launch a greeter we could never shut down.
+    let mctl = which("mctl").ok_or("`mctl` not found in PATH")?;
+
+    // Root has no XDG_RUNTIME_DIR; give margo a private tmpfs dir (0700) that
+    // also holds the greeter config, logs, and the one-shot credential file.
+    let runtime_dir = PathBuf::from("/run/mlogind");
+    std::fs::create_dir_all(&runtime_dir)?;
+    std::fs::set_permissions(&runtime_dir, std::fs::Permissions::from_mode(0o700))?;
+    let result_path = runtime_dir.join("result");
+    let greeter_conf = runtime_dir.join("greeter.conf");
+    let margo_log = runtime_dir.join("margo-greeter.log");
+    let mgreet_log = runtime_dir.join("mgreet.log");
+
+    write_greeter_conf(&greeter_conf)?;
+
+    // margo needs a seat; make sure seatd is up (root, no logind session → the
+    // libseat builtin backend is absent, so seatd is the only option). Same as
+    // the cage host; kept alive for the whole host loop.
+    let _seatd = ensure_seatd();
+
+    // The orchestrator runs the full PAM conversation itself, so no UI hooks.
+    let hooks = Hooks {
+        pre_validate: None,
+        pre_auth: None,
+        pre_environment: None,
+        pre_wait: None,
+        pre_return: None,
+    };
+
+    // Startup command: run mgreet (capturing its stderr for debugging), then
+    // quit margo whatever way mgreet exited so the host returns. `mctl` reaches
+    // margo via MARGO_SOCKET, which margo exports into the environment before it
+    // spawns this command. The `;` runs the quit even if mgreet crashed.
+    let startup = format!(
+        "{mgreet} 2>{log}; {mctl} dispatch quit",
+        mgreet = mgreet.display(),
+        log = mgreet_log.display(),
+        mctl = mctl.display(),
+    );
+
+    loop {
+        // Never let a stale hand-off file leak a previous password.
+        let _ = std::fs::remove_file(&result_path);
+
+        info!("orchestrator: launching margo+mgreet greeter");
+        let mut cmd = Command::new(&margo);
+        cmd.arg("--config")
+            .arg(&greeter_conf)
+            // Pure-Wayland greeter — never bring up an X server as root.
+            .arg("--no-xwayland")
+            .arg("--startup-command")
+            .arg(&startup)
+            .env("XDG_RUNTIME_DIR", &runtime_dir)
+            .env("MLOGIND_RESULT_PATH", &result_path)
+            .env("MLOGIND_PAM_SERVICE", &config.pam_service)
+            // libseat: logind (no session) → fails; force seatd, the only
+            // backend available to a session-less root process here.
+            .env("LIBSEAT_BACKEND", "seatd");
+        // Belt and braces: margo reads xkb from greeter.conf, but also export
+        // XKB_DEFAULT_* for any toolkit that consults the environment directly.
+        for (key, val) in vconsole_xkb_env() {
+            cmd.env(key, val);
+        }
+        if let Ok(out) = std::fs::File::create(&margo_log) {
+            if let Ok(err) = out.try_clone() {
+                cmd.stdout(out).stderr(err);
+            }
+        }
+        let status = cmd
+            .status()
+            .map_err(|e| format!("failed to spawn margo: {e}"))?;
+
+        // Read the hand-off FIRST — margo, like cage, can exit non-zero while
+        // tearing down its DRM outputs, but by then the login is already in the
+        // result file. Honour it regardless of the exit code.
+        let captured = read_and_shred_greet_result(&result_path);
+        if !status.success() {
+            if captured.is_some() {
+                warn!(
+                    "margo greeter exited abnormally ({status}) after the login was captured; continuing to the session"
+                );
+            } else {
+                if let Ok(text) = std::fs::read_to_string(&margo_log) {
+                    let tail: Vec<&str> = text.lines().rev().take(12).collect();
+                    for line in tail.into_iter().rev() {
+                        error!("margo-greeter: {line}");
                     }
                 }
-                // `result` (and its zeroizing password) drops here → scrubbed.
+                return Err(format!("margo greeter exited abnormally ({status})").into());
             }
+        }
+
+        match captured {
+            Some(result) => launch_greet_result(config, &hooks, result),
             None => {
                 info!("orchestrator: greeter produced no login; exiting host");
                 return Ok(());

@@ -255,10 +255,14 @@ build() {
   # mvpn (Mullvad VPN CLI + GTK4 layer-shell panel) builds here too — it
   # links gtk4/gtk4-layer-shell like the rest of the shell stack, so it
   # shares that feature resolution rather than leaking GTK into margo's graph.
+  # mgreet (native GTK4 + gtk4-layer-shell login greeter, launched by
+  # mlogind's `[display] host = "gui"`) builds here too — it links the same
+  # gtk4/gtk4-layer-shell stack as the shell, so it shares that resolution
+  # rather than leaking GTK into margo's graph.
   cargo build --frozen --release \
     --features mshell/wasm-plugins \
     -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard \
-    -p mkeys -p mvpn \
+    -p mkeys -p mvpn -p mgreet \
     -p margo-portal
 }
 
@@ -293,7 +297,7 @@ package() {
   local bin
   for bin in \
       margo start-margo \
-      mctl mlock mlayout mscreenshot mvisual mlogind mpower mplay mdots mcal \
+      mctl mlock mlayout mscreenshot mvisual mlogind mgreet mpower mplay mdots mcal \
       mshell mshellctl mshellshare mpicker mwizard mkeys mvpn; do
     install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
   done

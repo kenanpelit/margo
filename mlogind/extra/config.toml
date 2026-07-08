@@ -131,13 +131,19 @@ scripts_path = "/etc/mlogind/wayland"
 wayland_sessions_path = "/usr/share/wayland-sessions"
 
 [display]
-# "cage": host the greeter in a cage+foot kiosk so every monitor renders at its
-# own native KMS resolution (dynamic, auto-detected — no hardcoded mode / port).
-# Automatically falls back to the classic in-process TTY greeter if cage or foot
-# is missing or cage cannot initialise. Set to "tty" to force the classic path.
+# How the greeter is hosted. Every host renders each monitor at its own native
+# KMS resolution (dynamic, auto-detected — no hardcoded mode / port) and reads
+# the keyboard layout from /etc/vconsole.conf (XKBLAYOUT/XKBVARIANT/XKBOPTIONS).
+#
+#   "gui"  — a native GTK login card (mgreet) on EVERY connected monitor, hosted
+#            under a throwaway root margo instance. The richest greeter; needs
+#            `margo`, `mgreet` and `mctl` installed. Falls back to "cage", then
+#            "tty", if margo can't start.
+#   "cage" — a cage+foot kiosk running the TUI greeter on a single monitor
+#            (the last-connected). Falls back to "tty" if cage/foot is missing.
+#   "tty"  — the classic in-process TTY greeter (always available).
 host = "cage"
-# cage output mode: "last" = greeter on a single monitor (the last-connected),
-# centred + native res, and follows hotplug. "extend" = span all monitors as one
-# surface (login block lands on the monitor seam). The greeter's keyboard layout
-# is read from /etc/vconsole.conf (XKBLAYOUT/XKBVARIANT/XKBOPTIONS).
+# cage output mode (only used when host = "cage"): "last" = greeter on a single
+# monitor (the last-connected), centred + native res, follows hotplug. "extend"
+# = span all monitors as one surface (login block lands on the monitor seam).
 output_mode = "last"
