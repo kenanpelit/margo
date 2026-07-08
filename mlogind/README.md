@@ -63,11 +63,21 @@ screen:
   fallback whenever `cage`/`foot` is missing or cage fails to initialise,
   so a broken host is never a lockout.
 
-Requires `cage` and `foot` (declared package deps). To sanity-check the
-host without touching your real login manager, run it from a spare VT:
+Requires `cage` and `foot` (declared package deps). **Seat:** the root
+orchestrator has no logind session and libseat's `builtin` backend is
+compiled out on most distros, so cage needs **seatd** — the orchestrator
+starts it automatically (`/run/seatd.sock`) if it isn't already running,
+and runs cage with `LIBSEAT_BACKEND=seatd`. cage's own stdout/stderr is
+captured to `/run/mlogind/cage.log` (and its tail logged) so a failed host
+is diagnosable.
+
+To sanity-check the host without touching your real login manager, run it
+from a spare VT (start seatd first, since the manual command has no
+orchestrator to do it):
 
 ```bash
-sudo XDG_RUNTIME_DIR=/run/mlogind cage -s -- foot -e mlogind --greet
+sudo systemctl start seatd     # or: sudo seatd &
+sudo XDG_RUNTIME_DIR=/run/mlogind LIBSEAT_BACKEND=seatd cage -s -- foot mlogind --greet
 ```
 
 ## Paths

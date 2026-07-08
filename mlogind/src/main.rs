@@ -577,6 +577,31 @@ fn which(cmd: &str) -> Option<PathBuf> {
     fallback.is_file().then_some(fallback)
 }
 
+/// Ensure a seat provider exists for cage. libseat's `builtin` backend is
+/// compiled out on most distros (incl. Arch), and the root orchestrator has no
+/// logind session — so cage's only viable backend is seatd. If its socket isn't
+/// already present (an enabled `seatd.service`), start seatd ourselves and wait
+/// briefly for the socket. The returned child is kept alive for the host loop;
+/// `None` means seatd was already running or its binary is missing (in which
+/// case cage will fail and we fall back to the TTY greeter).
+fn ensure_seatd() -> Option<std::process::Child> {
+    let sock = Path::new("/run/seatd.sock");
+    if sock.exists() {
+        return None;
+    }
+    let seatd = which("seatd")?;
+    info!("orchestrator: starting seatd (no logind session; libseat builtin absent)");
+    let child = std::process::Command::new(seatd).spawn().ok()?;
+    for _ in 0..40 {
+        if sock.exists() {
+            info!("orchestrator: seatd socket is up");
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    Some(child)
+}
+
 /// Orchestrator: host the greeter inside `cage -s -- foot <self> --greet` so
 /// every connected monitor renders at its native KMS mode, read the validated
 /// login it hands back, and launch the session on the bare VT. Loops
@@ -598,6 +623,11 @@ fn run_cage_host(config: &Config) -> Result<(), Box<dyn Error>> {
     std::fs::create_dir_all(&runtime_dir)?;
     std::fs::set_permissions(&runtime_dir, std::fs::Permissions::from_mode(0o700))?;
     let result_path = runtime_dir.join("result");
+    let cage_log = runtime_dir.join("cage.log");
+
+    // cage needs a seat; make sure seatd is up (see ensure_seatd). Kept alive
+    // for the whole host loop.
+    let _seatd = ensure_seatd();
 
     // The orchestrator runs the full PAM conversation itself, so no UI hooks.
     let hooks = Hooks {
@@ -613,19 +643,36 @@ fn run_cage_host(config: &Config) -> Result<(), Box<dyn Error>> {
         let _ = std::fs::remove_file(&result_path);
 
         info!("orchestrator: launching cage+foot greeter");
-        let status = Command::new(&cage)
-            .arg("-s") // allow VT switching → escape hatch stays open
+        let mut cmd = Command::new(&cage);
+        cmd.arg("-s") // allow VT switching → escape hatch stays open
             .arg("--")
             .arg(&foot)
             .arg(&self_exe)
             .arg("--greet")
             .env("XDG_RUNTIME_DIR", &runtime_dir)
             .env("MLOGIND_RESULT_PATH", &result_path)
-            .env("LIBSEAT_BACKEND", "builtin") // root, no logind session of our own
+            // libseat: logind (no session) → fails; force seatd, the only
+            // backend available to a session-less root process here.
+            .env("LIBSEAT_BACKEND", "seatd");
+        // Capture cage's own stdout/stderr — it inherits the greeter's VT
+        // otherwise, where a later TUI redraw wipes any error it printed.
+        if let Ok(out) = std::fs::File::create(&cage_log) {
+            if let Ok(err) = out.try_clone() {
+                cmd.stdout(out).stderr(err);
+            }
+        }
+        let status = cmd
             .status()
             .map_err(|e| format!("failed to spawn cage: {e}"))?;
 
         if !status.success() {
+            // Surface cage's own diagnostics into our log before falling back.
+            if let Ok(text) = std::fs::read_to_string(&cage_log) {
+                let tail: Vec<&str> = text.lines().rev().take(12).collect();
+                for line in tail.into_iter().rev() {
+                    error!("cage: {line}");
+                }
+            }
             return Err(format!("cage exited abnormally ({status})").into());
         }
 
