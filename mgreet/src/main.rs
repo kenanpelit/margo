@@ -10,6 +10,8 @@
 //! live margo session to see the login card appear on all outputs. Real PAM
 //! auth + the mlogind orchestrator hand-off + margo greeter-mode land next.
 
+mod auth;
+mod handoff;
 mod sessions;
 mod style;
 mod ui;
@@ -26,6 +28,15 @@ use std::rc::Rc;
 
 use sessions::Session;
 
+/// Real-greeter parameters: where to write the credential hand-off and which
+/// PAM service to authenticate against. `None` → preview / dry-run: no PAM, no
+/// hand-off, submit never quits and never touches the session.
+#[derive(Clone)]
+pub struct Greeter {
+    pub result_path: PathBuf,
+    pub pam_service: String,
+}
+
 /// Shared greeter state. The username/password [`gtk::EntryBuffer`]s are shared
 /// by every per-monitor window, so typing on any screen updates them all — and
 /// they survive a hotplug window rebuild.
@@ -34,10 +45,25 @@ pub struct State {
     pub username: gtk::EntryBuffer,
     pub password: gtk::EntryBuffer,
     pub sessions: Vec<Session>,
+    pub greeter: Option<Greeter>,
 }
 
 fn main() -> glib::ExitCode {
     let preview = std::env::args().any(|a| a == "--preview");
+
+    // Real greeter mode: the mlogind orchestrator exports MLOGIND_RESULT_PATH
+    // (the one-shot credential hand-off) and MLOGIND_PAM_SERVICE. Without the
+    // hand-off path — or under `--preview` — this is a non-destructive UI
+    // dry-run: OnDemand keyboard, no PAM, submit just echoes.
+    let greeter = if preview {
+        None
+    } else {
+        std::env::var_os("MLOGIND_RESULT_PATH").map(|path| Greeter {
+            result_path: PathBuf::from(path),
+            pam_service: std::env::var("MLOGIND_PAM_SERVICE")
+                .unwrap_or_else(|_| "login".to_string()),
+        })
+    };
 
     let app = gtk::Application::builder()
         .application_id("com.margo.mgreet")
@@ -55,6 +81,7 @@ fn main() -> glib::ExitCode {
             username: gtk::EntryBuffer::new(None::<&str>),
             password: gtk::EntryBuffer::new(None::<&str>),
             sessions: sessions::list(),
+            greeter: greeter.clone(),
         });
 
         let windows: Rc<RefCell<HashMap<String, gtk::Window>>> =

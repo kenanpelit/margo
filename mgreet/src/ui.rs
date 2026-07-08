@@ -31,12 +31,12 @@ pub fn build_window(
     for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
         window.set_anchor(edge, true);
     }
-    // Real greeter owns the keyboard exclusively; the preview (run under a live
-    // session) uses OnDemand so a test run can never trap the user's input.
-    window.set_keyboard_mode(if state.preview {
-        KeyboardMode::OnDemand
-    } else {
+    // Real greeter owns the keyboard exclusively; the preview / dry-run (run
+    // under a live session) uses OnDemand so a test run can never trap input.
+    window.set_keyboard_mode(if state.greeter.is_some() {
         KeyboardMode::Exclusive
+    } else {
+        KeyboardMode::OnDemand
     });
     window.set_decorated(false);
 
@@ -46,7 +46,7 @@ pub fn build_window(
     scrim.set_hexpand(true);
     scrim.set_vexpand(true);
 
-    let card = build_card(state);
+    let card = build_card(app, state);
     card.set_halign(gtk::Align::Center);
     card.set_valign(gtk::Align::Center);
 
@@ -55,12 +55,14 @@ pub fn build_window(
     overlay.add_overlay(&card);
     window.set_child(Some(&overlay));
 
-    // Escape quits the greeter (preview convenience; real mode gets a power menu).
+    // Escape quits only in preview / dry-run. The real greeter must not be
+    // dismissable (no lock-out); a power menu will own shutdown/reboot later.
     let key = gtk::EventControllerKey::new();
     let app_weak = app.downgrade();
+    let allow_escape_quit = state.greeter.is_none();
     key.connect_key_pressed(move |_, keyval, _, _| {
         if keyval == gdk::Key::Escape {
-            if let Some(app) = app_weak.upgrade() {
+            if allow_escape_quit && let Some(app) = app_weak.upgrade() {
                 app.quit();
             }
             return glib::Propagation::Stop;
@@ -73,7 +75,7 @@ pub fn build_window(
     window
 }
 
-fn build_card(state: &Rc<State>) -> gtk::Box {
+fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
     let card = gtk::Box::new(gtk::Orientation::Vertical, 14);
     card.add_css_class("mgreet-card");
 
@@ -138,10 +140,11 @@ fn build_card(state: &Rc<State>) -> gtk::Box {
 
     // Submit: the button, or Enter in the password field.
     let submit: Rc<dyn Fn()> = {
+        let app = app.clone();
         let state = state.clone();
         let status = status.clone();
         let sessions = sessions.clone();
-        Rc::new(move || submit_login(&state, &status, &sessions))
+        Rc::new(move || submit_login(&app, &state, &status, &sessions))
     };
     {
         let submit = submit.clone();
@@ -176,9 +179,15 @@ fn build_card(state: &Rc<State>) -> gtk::Box {
     card
 }
 
-/// Phase 1 stub: validate the form is filled and echo intent. Real PAM auth +
-/// the mlogind credential hand-off replace the body next phase.
-fn submit_login(state: &Rc<State>, status: &gtk::Label, sessions: &gtk::DropDown) {
+/// Validate the login, then either hand it off to the orchestrator (real mode)
+/// or echo intent (preview). On a wrong password in real mode the greeter stays
+/// up and clears the field — it never tears the compositor down for a typo.
+fn submit_login(
+    app: &gtk::Application,
+    state: &Rc<State>,
+    status: &gtk::Label,
+    sessions: &gtk::DropDown,
+) {
     let user = state.username.text().to_string();
     let pass = zeroize::Zeroizing::new(state.password.text().to_string());
     let session = state
@@ -191,11 +200,35 @@ fn submit_login(state: &Rc<State>, status: &gtk::Label, sessions: &gtk::DropDown
         set_status(status, "Enter a username", true);
         return;
     }
+
+    let Some(greeter) = state.greeter.as_ref() else {
+        // Preview / dry-run: no PAM, no hand-off, never quit.
+        set_status(status, &format!("(preview) {user} · {session}"), false);
+        eprintln!(
+            "[mgreet] (preview) would authenticate user={user:?} session={session:?} pass_len={}",
+            pass.len()
+        );
+        return;
+    };
+
+    if session.is_empty() {
+        set_status(status, "No login session available", true);
+        return;
+    }
+
     set_status(status, &format!("Authenticating {user}…"), false);
-    eprintln!(
-        "[mgreet] (preview) would authenticate user={user:?} session={session:?} pass_len={}",
-        pass.len()
-    );
+    match crate::auth::validate(&user, &pass, &greeter.pam_service) {
+        // Validated: hand the credentials to the orchestrator, then quit so the
+        // greeter compositor exits and it launches the session.
+        Ok(()) => match crate::handoff::write(&greeter.result_path, &user, &session, &pass) {
+            Ok(()) => app.quit(),
+            Err(e) => set_status(status, &format!("Login hand-off failed: {e}"), true),
+        },
+        Err(msg) => {
+            state.password.set_text("");
+            set_status(status, &msg, true);
+        }
+    }
 }
 
 fn set_status(label: &gtk::Label, text: &str, error: bool) {

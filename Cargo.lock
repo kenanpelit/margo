@@ -4490,6 +4490,7 @@ dependencies = [
  "gtk4",
  "gtk4-layer-shell",
  "libc",
+ "pam",
  "zeroize",
 ]
 
