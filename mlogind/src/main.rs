@@ -702,18 +702,28 @@ fn run_cage_host(config: &Config) -> Result<(), Box<dyn Error>> {
             .status()
             .map_err(|e| format!("failed to spawn cage: {e}"))?;
 
+        // Read the hand-off FIRST — cage 0.3.1 tends to SIGSEGV while tearing
+        // down its DRM outputs after the greeter exits, but by then the login is
+        // already in the result file. Honour that login regardless of cage's exit
+        // code (the kernel drops DRM master on process exit; the session launches
+        // on the bare VT just as it does after the TTY greeter).
+        let captured = read_and_shred_greet_result(&result_path);
         if !status.success() {
-            // Surface cage's own diagnostics into our log before falling back.
-            if let Ok(text) = std::fs::read_to_string(&cage_log) {
-                let tail: Vec<&str> = text.lines().rev().take(12).collect();
-                for line in tail.into_iter().rev() {
-                    error!("cage: {line}");
+            if captured.is_some() {
+                warn!("cage exited abnormally ({status}) after the login was captured; continuing to the session");
+            } else {
+                // No login and cage failed → surface its log + fall back to TTY.
+                if let Ok(text) = std::fs::read_to_string(&cage_log) {
+                    let tail: Vec<&str> = text.lines().rev().take(12).collect();
+                    for line in tail.into_iter().rev() {
+                        error!("cage: {line}");
+                    }
                 }
+                return Err(format!("cage exited abnormally ({status})").into());
             }
-            return Err(format!("cage exited abnormally ({status})").into());
         }
 
-        match read_and_shred_greet_result(&result_path) {
+        match captured {
             Some(result) => {
                 // Re-resolve the environment by name (the greeter and the
                 // orchestrator both derive it from get_envs, same order).
