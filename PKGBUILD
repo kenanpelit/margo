@@ -227,7 +227,7 @@ build() {
   # out to powerprofilesctl) with no zbus/tokio, so it's safe here too.
   cargo build --frozen --release \
     -p margo -p start-margo \
-    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay -p mdots
+    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay -p mdots -p mcal
 
   # mshell trio + mpicker + mwizard. mpicker pulls
   # mshell-screenshot (→ wayle-* → zbus/tokio), so it has to
@@ -284,7 +284,7 @@ package() {
   local bin
   for bin in \
       margo start-margo \
-      mctl mlock mlayout mscreenshot mvisual mlogind mpower mplay mdots \
+      mctl mlock mlayout mscreenshot mvisual mlogind mpower mplay mdots mcal \
       mshell mshellctl mshellshare mpicker mwizard mkeys mvpn; do
     install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
   done

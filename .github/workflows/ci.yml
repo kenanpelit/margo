@@ -74,7 +74,7 @@ jobs:
       # differs from what the package ships. This split mirrors the
       # PKGBUILD so CI validates the real production build configuration.
       - name: cargo build (compositor group)
-        run: cargo build -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay -p mdots
+        run: cargo build -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay -p mdots -p mcal
 
       - name: cargo build (shell group)
         run: cargo build -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard -p mkeys -p mvpn -p margo-portal
