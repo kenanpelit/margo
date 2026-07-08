@@ -318,6 +318,35 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
     Ok(())
 }
 
+/// Replace `dst` with a copy of `src` without ever leaving `dst`
+/// half-populated. The live dir is moved aside first (atomic rename in the
+/// same parent), then the copy runs; on success the backup is dropped, on
+/// failure the live dir is moved back. Without this, a bad/partial archive,
+/// disk-full, or permission error mid-copy would have already deleted the
+/// user's tracked config with only a partial restore in its place.
+fn restore_dir_safely(src: &Path, dst: &Path) -> Result<()> {
+    if !dst.exists() {
+        return copy_dir_recursive(src, dst);
+    }
+    let backup = dst.with_extension("mdots-restore-bak");
+    if backup.exists() {
+        fs::remove_dir_all(&backup)?; // leftover from a prior interrupted run
+    }
+    fs::rename(dst, &backup)?;
+    match copy_dir_recursive(src, dst) {
+        Ok(()) => {
+            let _ = fs::remove_dir_all(&backup);
+            Ok(())
+        }
+        Err(e) => {
+            // Roll back: drop the partial copy, move the live dir back.
+            let _ = fs::remove_dir_all(dst);
+            let _ = fs::rename(&backup, dst);
+            Err(e)
+        }
+    }
+}
+
 /// Restore from a config backup
 pub fn restore_config(paths: &ConfigPaths, backup_name: Option<String>, json: bool) -> Result<()> {
     let config = load_config(paths)?;
@@ -430,10 +459,7 @@ pub fn restore_config(paths: &ConfigPaths, backup_name: Option<String>, json: bo
     let modules_src = extract_dir.join("modules");
     if modules_src.exists() {
         let modules_dst = paths.modules_dir();
-        if modules_dst.exists() {
-            fs::remove_dir_all(&modules_dst)?;
-        }
-        copy_dir_recursive(&modules_src, &modules_dst)?;
+        restore_dir_safely(&modules_src, &modules_dst)?;
         if !json {
             println!("  {} modules/", "✓".green());
         }
@@ -443,10 +469,7 @@ pub fn restore_config(paths: &ConfigPaths, backup_name: Option<String>, json: bo
     let scripts_src = extract_dir.join("scripts");
     if scripts_src.exists() {
         let scripts_dst = paths.config_dir.join("scripts");
-        if scripts_dst.exists() {
-            fs::remove_dir_all(&scripts_dst)?;
-        }
-        copy_dir_recursive(&scripts_src, &scripts_dst)?;
+        restore_dir_safely(&scripts_src, &scripts_dst)?;
         if !json {
             println!("  {} scripts/", "✓".green());
         }
@@ -456,10 +479,7 @@ pub fn restore_config(paths: &ConfigPaths, backup_name: Option<String>, json: bo
     let dotfiles_src = extract_dir.join("dotfiles");
     if dotfiles_src.exists() {
         let dotfiles_dst = paths.config_dir.join("dotfiles");
-        if dotfiles_dst.exists() {
-            fs::remove_dir_all(&dotfiles_dst)?;
-        }
-        copy_dir_recursive(&dotfiles_src, &dotfiles_dst)?;
+        restore_dir_safely(&dotfiles_src, &dotfiles_dst)?;
         if !json {
             println!("  {} dotfiles/", "✓".green());
         }

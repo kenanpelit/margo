@@ -755,7 +755,13 @@ fn wire_config_file(path: &Path) -> Result<()> {
     existing.push('\n');
     existing.push_str("source = conf.d/mlayout.conf\n");
 
-    std::fs::write(path, existing).with_context(|| format!("write {}", path.display()))?;
+    // Write atomically (temp sibling + rename) so a crash or ^C mid-write
+    // can't truncate the user's primary config.conf. Mirrors the atomic
+    // rename the active-layout symlink already uses.
+    let tmp = path.with_extension("mlayout-tmp");
+    std::fs::write(&tmp, existing).with_context(|| format!("write {}", tmp.display()))?;
+    std::fs::rename(&tmp, path)
+        .with_context(|| format!("rename {} → {}", tmp.display(), path.display()))?;
     Ok(())
 }
 

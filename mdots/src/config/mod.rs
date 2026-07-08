@@ -1775,24 +1775,23 @@ pub fn write_package_list_any<P: AsRef<Path>>(path: P, list: &PackageList) -> Re
     let path = path.as_ref();
     let extension = path.extension().and_then(|e| e.to_str());
 
-    match extension {
-        Some("nix") => {
-            let content = package_list_to_nix(list);
-            std::fs::write(path, content)
-                .context(format!("Failed to write package list: {:?}", path))?;
-        }
-        Some("lua") => {
-            let content = package_list_to_lua(list);
-            std::fs::write(path, content)
-                .context(format!("Failed to write package list: {:?}", path))?;
-        }
+    let content = match extension {
+        Some("nix") => package_list_to_nix(list),
+        Some("lua") => package_list_to_lua(list),
         Some("yaml") | Some("yml") | None => {
-            let yaml = serde_yaml::to_string(list).context("Failed to serialize package list")?;
-            std::fs::write(path, yaml)
-                .context(format!("Failed to write package list: {:?}", path))?;
+            serde_yaml::to_string(list).context("Failed to serialize package list")?
         }
         _ => anyhow::bail!("Unsupported package list type: {:?}", path),
-    }
+    };
+
+    // Atomic write (temp sibling + rename) so an interrupt mid-write can't
+    // corrupt the package manifest inside the user's tracked dotfiles repo.
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".mdots-tmp");
+    let tmp = std::path::PathBuf::from(tmp);
+    std::fs::write(&tmp, content).context(format!("Failed to write package list: {:?}", tmp))?;
+    std::fs::rename(&tmp, path)
+        .context(format!("Failed to write package list: {:?}", path))?;
 
     Ok(())
 }

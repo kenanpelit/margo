@@ -181,7 +181,10 @@ fn sync_single_dotfile(
                     "↑".yellow(),
                     if target.is_dir() { "directory" } else { "file" },
                     display_name,
-                    backup_path.file_name().unwrap().to_str().unwrap()
+                    backup_path
+                        .file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_default()
                 );
             }
 

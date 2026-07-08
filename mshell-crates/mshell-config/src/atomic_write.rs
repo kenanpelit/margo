@@ -34,13 +34,35 @@ use std::path::{Path, PathBuf};
 /// inspection (we don't best-effort delete on failure because that
 /// can mask the original error).
 pub fn atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
     let target = resolve_symlink_target(path);
     let tmp = tmp_sibling(&target);
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&tmp, contents)?;
-    std::fs::rename(&tmp, &target)
+    // fsync the data before the rename: rename is only atomic w.r.t.
+    // *metadata*. Without this, a crash/power-loss right after the rename
+    // can leave the target existing but empty/truncated — the user's whole
+    // config resets to defaults on next boot.
+    {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(contents)?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&tmp, &target)?;
+    fsync_parent_dir(&target);
+    Ok(())
+}
+
+/// Best-effort fsync of a path's parent directory so the rename entry
+/// itself is durable. Errors are ignored — some filesystems don't support
+/// directory fsync, and the data is already durable at this point.
+fn fsync_parent_dir(target: &Path) {
+    if let Some(parent) = target.parent() {
+        if let Ok(dir) = std::fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
 }
 
 /// Async wrapper for use from tokio-based code. Same semantics as
@@ -50,13 +72,26 @@ pub async fn atomic_write_async(
     path: &Path,
     contents: impl AsRef<[u8]> + Send + 'static,
 ) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt as _;
     let target = resolve_symlink_target(path);
     let tmp = tmp_sibling(&target);
     if let Some(parent) = target.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-    tokio::fs::write(&tmp, contents).await?;
-    tokio::fs::rename(&tmp, &target).await
+    // Same durability rationale as the sync path: fsync data before rename,
+    // then fsync the parent dir after.
+    {
+        let mut f = tokio::fs::File::create(&tmp).await?;
+        f.write_all(contents.as_ref()).await?;
+        f.sync_all().await?;
+    }
+    tokio::fs::rename(&tmp, &target).await?;
+    if let Some(parent) = target.parent() {
+        if let Ok(dir) = tokio::fs::File::open(parent).await {
+            let _ = dir.sync_all().await;
+        }
+    }
+    Ok(())
 }
 
 /// Resolve `path` through one level of symlink dereference. Returns
