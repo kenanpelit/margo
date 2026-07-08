@@ -318,21 +318,25 @@ static SCREEN_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
 });
 
 async fn screen_apps() -> Vec<String> {
-    let output = relm4::spawn(async move {
-        tokio::process::Command::new("pw-dump")
+    // Run BOTH the pw-dump subprocess and the (potentially hundreds-of-KB)
+    // JSON parse off the GTK main thread — this poller lives on
+    // spawn_future_local, so parsing after the await would land the parse
+    // back on the main loop and jank a frame every 2 s on PipeWire-heavy
+    // sessions.
+    relm4::spawn(async move {
+        let bytes = tokio::process::Command::new("pw-dump")
             .output()
             .await
             .ok()
             .filter(|o| o.status.success())
-            .map(|o| o.stdout)
+            .map(|o| o.stdout);
+        match bytes {
+            Some(bytes) => parse_screen_nodes(&bytes),
+            None => Vec::new(),
+        }
     })
     .await
-    .ok()
-    .flatten();
-    let Some(bytes) = output else {
-        return Vec::new();
-    };
-    parse_screen_nodes(&bytes)
+    .unwrap_or_default()
 }
 
 fn parse_screen_nodes(bytes: &[u8]) -> Vec<String> {
