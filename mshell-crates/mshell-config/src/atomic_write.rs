@@ -58,10 +58,10 @@ pub fn atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<()> {
 /// itself is durable. Errors are ignored — some filesystems don't support
 /// directory fsync, and the data is already durable at this point.
 fn fsync_parent_dir(target: &Path) {
-    if let Some(parent) = target.parent() {
-        if let Ok(dir) = std::fs::File::open(parent) {
-            let _ = dir.sync_all();
-        }
+    if let Some(parent) = target.parent()
+        && let Ok(dir) = std::fs::File::open(parent)
+    {
+        let _ = dir.sync_all();
     }
 }
 
@@ -86,10 +86,10 @@ pub async fn atomic_write_async(
         f.sync_all().await?;
     }
     tokio::fs::rename(&tmp, &target).await?;
-    if let Some(parent) = target.parent() {
-        if let Ok(dir) = tokio::fs::File::open(parent).await {
-            let _ = dir.sync_all().await;
-        }
+    if let Some(parent) = target.parent()
+        && let Ok(dir) = tokio::fs::File::open(parent).await
+    {
+        let _ = dir.sync_all().await;
     }
     Ok(())
 }
