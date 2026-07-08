@@ -129,3 +129,10 @@ xsessions_path = "/usr/share/xsessions"
 [wayland]
 scripts_path = "/etc/mlogind/wayland"
 wayland_sessions_path = "/usr/share/wayland-sessions"
+
+[display]
+# "cage": host the greeter in a cage+foot kiosk so every monitor renders at its
+# own native KMS resolution (dynamic, auto-detected — no hardcoded mode / port).
+# Automatically falls back to the classic in-process TTY greeter if cage or foot
+# is missing or cage cannot initialise. Set to "tty" to force the classic path.
+host = "cage"

@@ -143,6 +143,10 @@ DEBIAN_DEPS=(
   # runtime tools
   grim slurp wl-clipboard libnotify-bin pipewire
   xdg-desktop-portal xdg-desktop-portal-gtk
+  # mlogind greeter host — cage+foot render the login greeter at each
+  # monitor's native KMS resolution (`[display] host = "cage"`, the
+  # default). mlogind falls back to the classic TTY greeter without them.
+  cage foot
   # session manager — the installed wayland-session entry launches margo
   # via uwsm, which activates graphical-session.target (that target is
   # what starts mshell + the rest of the user session). Available on the

@@ -257,6 +257,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         config.do_log = false;
     }
 
+    // GREETER MODE (`--greet`): we run inside the cage+foot host spawned by the
+    // root orchestrator. Skip the bare-VT dance (chvt / XDG-session refusal /
+    // palette reprogram) — we're in a Wayland terminal — but still do real PAM
+    // auth and hand the validated login back to the orchestrator.
+    if cli.greet {
+        return run_greeter(config);
+    }
+
     if !cli.preview {
         if std::env::var("XDG_SESSION_TYPE").is_ok() {
             eprintln!(
@@ -294,7 +302,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     // → reprogram the console palette so it matches preview (see console_palette).
     console_palette::init(cli.preview);
 
-    // Start application
+    // ORCHESTRATOR MODE: host the greeter in cage+foot so every monitor renders
+    // at its own native KMS mode (dynamic, EDID-derived), then launch the chosen
+    // session on the bare VT. Falls through to the in-process TTY greeter below
+    // if `[display] host` is not "cage", or if the cage/foot host can't run.
+    if !cli.preview && config.display.host.eq_ignore_ascii_case("cage") {
+        match run_cage_host(&config) {
+            Ok(()) => {
+                info!("mlogind is booting down");
+                return Ok(());
+            }
+            Err(e) => {
+                warn!("cage host unavailable ({e}); falling back to the TTY greeter");
+            }
+        }
+    }
+
+    // Start application (classic in-process greeter + fallback).
     let mut terminal = tui_enable()?;
     let login_form = ui::LoginForm::new(config, cli.preview);
     login_form.run(&mut terminal)?;
@@ -467,4 +491,168 @@ fn session_child(
     drop(utmpx_session);
     drop(auth_session);
     std::process::exit(0);
+}
+
+/// Greeter entry point (`mlogind --greet`), run inside the cage/foot host.
+/// Renders the normal login UI in foot (truecolor, native resolution) and — on
+/// a validated login — writes the credentials to `$MLOGIND_RESULT_PATH` for the
+/// orchestrator, then exits. With no result path it is a preview-style UI
+/// dry-run (so `mlogind --greet` can be eyeballed in an ordinary terminal).
+fn run_greeter(config: Config) -> Result<(), Box<dyn Error>> {
+    let result_path = std::env::var_os("MLOGIND_RESULT_PATH").map(PathBuf::from);
+
+    initialize_panic_handler();
+    // We're in foot (truecolor emulator), not the bare VT — take the
+    // pass-through palette path, exactly like `--preview`.
+    console_palette::init(true);
+
+    let mut terminal = tui_enable()?;
+    let login_form = ui::LoginForm::new(config, false).into_greeter(result_path);
+    login_form.run(&mut terminal)?;
+    tui_disable(terminal)?;
+
+    info!("greeter exiting");
+    Ok(())
+}
+
+/// The validated login handed back by the greeter.
+struct GreetResult {
+    username: String,
+    env_name: String,
+    password: zeroize::Zeroizing<String>,
+}
+
+/// Read the credential hand-off file, then overwrite + remove it so the
+/// password never lingers in the tmpfs. Returns `None` if the greeter produced
+/// no login (quit, crash, or reboot/poweroff handled inside the greeter).
+fn read_and_shred_greet_result(path: &Path) -> Option<GreetResult> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(s) => zeroize::Zeroizing::new(s),
+        Err(_) => return None,
+    };
+
+    // Best-effort shred: overwrite with zeros of the same length, then unlink.
+    if let Ok(meta) = std::fs::metadata(path) {
+        let _ = std::fs::write(path, vec![0u8; meta.len() as usize]);
+    }
+    let _ = std::fs::remove_file(path);
+
+    // `LOGIN\n<user>\n<session>\n<password>` — password is the final field.
+    let mut lines = raw.splitn(4, '\n');
+    match (lines.next(), lines.next(), lines.next(), lines.next()) {
+        (Some("LOGIN"), Some(user), Some(env), Some(pass)) => Some(GreetResult {
+            username: user.to_string(),
+            env_name: env.to_string(),
+            password: zeroize::Zeroizing::new(pass.to_string()),
+        }),
+        _ => None,
+    }
+}
+
+/// Resolve an executable by scanning `PATH`, falling back to `/usr/bin`.
+fn which(cmd: &str) -> Option<PathBuf> {
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            let candidate = dir.join(cmd);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    let fallback = PathBuf::from("/usr/bin").join(cmd);
+    fallback.is_file().then_some(fallback)
+}
+
+/// Orchestrator: host the greeter inside `cage -s -- foot <self> --greet` so
+/// every connected monitor renders at its native KMS mode, read the validated
+/// login it hands back, and launch the session on the bare VT. Loops
+/// (re-greeting after logout) until the greeter produces no login. Returns
+/// `Err` — so `main` falls back to the in-process TTY greeter — when the
+/// cage/foot host cannot run at all (missing binaries or a failed cage init),
+/// so a broken host never locks the user out.
+fn run_cage_host(config: &Config) -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let cage = which("cage").ok_or("`cage` not found in PATH")?;
+    let foot = which("foot").ok_or("`foot` not found in PATH")?;
+    let self_exe = std::env::current_exe()?;
+
+    // Root has no XDG_RUNTIME_DIR; give cage a private tmpfs dir (0700) that
+    // also holds the one-shot credential hand-off file.
+    let runtime_dir = PathBuf::from("/run/mlogind");
+    std::fs::create_dir_all(&runtime_dir)?;
+    std::fs::set_permissions(&runtime_dir, std::fs::Permissions::from_mode(0o700))?;
+    let result_path = runtime_dir.join("result");
+
+    // The orchestrator runs the full PAM conversation itself, so no UI hooks.
+    let hooks = Hooks {
+        pre_validate: None,
+        pre_auth: None,
+        pre_environment: None,
+        pre_wait: None,
+        pre_return: None,
+    };
+
+    loop {
+        // Never let a stale hand-off file leak a previous password.
+        let _ = std::fs::remove_file(&result_path);
+
+        info!("orchestrator: launching cage+foot greeter");
+        let status = Command::new(&cage)
+            .arg("-s") // allow VT switching → escape hatch stays open
+            .arg("--")
+            .arg(&foot)
+            .arg(&self_exe)
+            .arg("--greet")
+            .env("XDG_RUNTIME_DIR", &runtime_dir)
+            .env("MLOGIND_RESULT_PATH", &result_path)
+            .env("LIBSEAT_BACKEND", "builtin") // root, no logind session of our own
+            .status()
+            .map_err(|e| format!("failed to spawn cage: {e}"))?;
+
+        if !status.success() {
+            return Err(format!("cage exited abnormally ({status})").into());
+        }
+
+        match read_and_shred_greet_result(&result_path) {
+            Some(result) => {
+                // Re-resolve the environment by name (the greeter and the
+                // orchestrator both derive it from get_envs, same order).
+                let post_login_env = post_login::get_envs(config)
+                    .into_iter()
+                    .find(|(name, _)| *name == result.env_name)
+                    .map(|(_, content)| content);
+                let Some(post_login_env) = post_login_env else {
+                    error!(
+                        "orchestrator: greeter chose unknown session '{}'",
+                        result.env_name
+                    );
+                    continue;
+                };
+
+                info!("orchestrator: launching session for '{}'", result.username);
+                match start_session(
+                    &result.username,
+                    &result.password,
+                    &post_login_env,
+                    &hooks,
+                    config,
+                ) {
+                    Ok(()) => info!("orchestrator: session ended; re-greeting"),
+                    Err(StartSessionError::AuthenticationError(err)) => {
+                        error!("orchestrator: authentication failed: {err}");
+                    }
+                    Err(StartSessionError::ForkFailed) => {
+                        error!("orchestrator: failed to fork the session");
+                    }
+                }
+                // `result` (and its zeroizing password) drops here → scrubbed.
+            }
+            None => {
+                info!("orchestrator: greeter produced no login; exiting host");
+                return Ok(());
+            }
+        }
+    }
 }

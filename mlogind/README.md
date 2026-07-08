@@ -34,6 +34,42 @@ are tracked as follow-ups.
    selected session (`/usr/share/{wayland-sessions,xsessions}` entries,
    or the script dirs below), returning to the greeter when it exits.
 
+## Display host — native per-monitor resolution
+
+A bare-TTY greeter shares one framebuffer (fbcon), so on a multi-monitor
+setup every screen is forced to a single common mode — the external
+monitor ends up at the laptop's resolution. Fixing that dynamically (each
+monitor at its own EDID-preferred mode, whatever the port) is a KMS
+capability a text greeter doesn't have.
+
+`[display] host` in `config.toml` selects how the greeter reaches the
+screen:
+
+- **`host = "cage"` (default)** — the greeter runs inside
+  [`cage`](https://github.com/cage-kiosk/cage) (a tiny wlroots kiosk
+  compositor) hosting [`foot`](https://codeberg.org/dnkl/foot) (a Wayland
+  terminal). cage drives KMS directly, so **every connected monitor
+  lights up at its own native mode** — dynamic, auto-detected, no
+  hardcoded resolution or port. `Ctrl+Alt+F<n>` VT switching keeps
+  working. Architecturally this is a greetd-style split: a root
+  *orchestrator* spawns `cage -s -- foot <mlogind> --greet`; the *greeter*
+  does the real PAM auth and hands the validated `(user, session,
+  password)` back over a private root-only tmpfs file
+  (`/run/mlogind/result`, `0600`, shredded on read); the orchestrator
+  re-runs PAM and launches the session on the bare VT, then re-greets on
+  logout.
+- **`host = "tty"`** — the classic in-process greeter rendered straight to
+  the Linux VT (single shared framebuffer). This is also the automatic
+  fallback whenever `cage`/`foot` is missing or cage fails to initialise,
+  so a broken host is never a lockout.
+
+Requires `cage` and `foot` (declared package deps). To sanity-check the
+host without touching your real login manager, run it from a spare VT:
+
+```bash
+sudo XDG_RUNTIME_DIR=/run/mlogind cage -s -- foot -e mlogind --greet
+```
+
 ## Paths
 
 | Purpose | Default |

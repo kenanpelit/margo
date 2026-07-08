@@ -218,6 +218,8 @@ toml_config_struct! { Config, PartialConfig, RoughConfig,
 
     x11 => X11Config [PartialX11Config, RoughX11Config],
     wayland => WaylandConfig [PartialWaylandConfig, RoughWaylandConfig],
+
+    display => DisplayConfig [PartialDisplayConfig, RoughDisplayConfig],
 }
 
 toml_config_struct! { BackgroundStyleConfig, PartialBackgroundStyleConfig, RoughBackgroundStyleConfig,
@@ -365,6 +367,22 @@ toml_config_struct! { X11Config, PartialX11Config, RoughX11Config,
 toml_config_struct! { WaylandConfig, PartialWaylandConfig, RoughWaylandConfig,
     scripts_path => String,
     wayland_sessions_path => String,
+}
+
+// How the greeter reaches the screen.
+//
+//   host = "cage" — the greeter runs inside a tiny wlroots kiosk compositor
+//     (`cage`) hosting a Wayland terminal (`foot`). cage drives KMS directly,
+//     so every connected monitor lights up at its own native/preferred mode
+//     (dynamic, EDID-derived — no hardcoded resolution), and VT switching
+//     (Ctrl+Alt+F<n>) keeps working. The greeter emits the validated login to
+//     the root orchestrator, which launches the session on the bare VT.
+//   host = "tty" — the classic in-process greeter rendered straight to the
+//     Linux VT. Shares one fbcon framebuffer, so multi-monitor falls back to a
+//     single common mode. This is also the automatic fallback whenever cage or
+//     foot is missing, or cage fails to initialise (never a lockout).
+toml_config_struct! { DisplayConfig, PartialDisplayConfig, RoughDisplayConfig,
+    host => String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

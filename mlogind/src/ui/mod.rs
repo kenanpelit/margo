@@ -5,11 +5,13 @@ use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
+use crate::auth::try_validate;
 use crate::config::{Config, FocusBehaviour, SwitcherVisibility};
 use crate::info_caching::{get_cached_information, set_cache};
 use crate::post_login::PostLoginEnvironment;
 use crate::{start_session, Hooks, StartSessionError};
 use status_message::StatusMessage;
+use std::path::{Path, PathBuf};
 
 use crossterm::cursor::MoveTo;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
@@ -231,11 +233,56 @@ impl Widgets {
     }
 }
 
+/// Hand the validated login to the root orchestrator via a private tmpfs file.
+/// Format is newline-delimited `LOGIN\n<user>\n<session>\n<password>` — the
+/// password is the final line (single-line inputs can't contain a newline, so
+/// no escaping is needed). Written `0600` in the root-only runtime dir; the
+/// orchestrator overwrites and removes it the instant it's read.
+fn write_greet_result(
+    path: &Path,
+    username: &str,
+    session: &str,
+    password: &str,
+) -> io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut body = zeroize::Zeroizing::new(String::with_capacity(
+        username.len() + session.len() + password.len() + 8,
+    ));
+    body.push_str("LOGIN\n");
+    body.push_str(username);
+    body.push('\n');
+    body.push_str(session);
+    body.push('\n');
+    body.push_str(password);
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    file.write_all(body.as_bytes())?;
+    file.flush()?;
+    Ok(())
+}
+
 /// App holds the state of the application
 #[derive(Clone)]
 pub struct LoginForm {
     /// Whether the application is running in preview mode
     preview: bool,
+
+    /// Whether this instance is the cage/foot-hosted greeter (`--greet`).
+    /// In greet mode a successful login is handed to the orchestrator via
+    /// [`Self::greet_result_path`] instead of forking the session here.
+    greet: bool,
+
+    /// Where the greeter writes the validated `(user, session, password)` for
+    /// the orchestrator to pick up. `None` in greet mode means "UI dry-run":
+    /// behave like preview so `mlogind --greet` can be eyeballed in a terminal.
+    greet_result_path: Option<PathBuf>,
 
     widgets: Widgets,
 
@@ -288,9 +335,20 @@ impl LoginForm {
         }
     }
 
+    /// Turn this form into the cage/foot-hosted greeter. `result_path` is where
+    /// the validated login is handed off to the orchestrator; `None` runs a
+    /// preview-style UI dry-run (for eyeballing `mlogind --greet` in a terminal).
+    pub fn into_greeter(mut self, result_path: Option<PathBuf>) -> LoginForm {
+        self.greet = true;
+        self.greet_result_path = result_path;
+        self
+    }
+
     pub fn new(config: Config, preview: bool) -> LoginForm {
         LoginForm {
             preview,
+            greet: false,
+            greet_result_path: None,
             widgets: Widgets {
                 background: BackgroundWidget::new(config.background.clone()),
                 key_menu: KeyMenuWidget::new(
@@ -467,7 +525,11 @@ impl LoginForm {
                 if let Ok(Event::Key(key)) = event::read() {
                     match (key.code, input_mode.get(), key.modifiers) {
                         (KeyCode::Enter, InputMode::Password, _) => {
-                            if self.preview {
+                            // `--greet` with no hand-off path is a UI dry-run:
+                            // fall through the preview animation like `--preview`.
+                            let dry_run =
+                                self.preview || (self.greet && self.greet_result_path.is_none());
+                            if dry_run {
                                 // This is only for demonstration purposes
                                 status_message.set(InfoStatusMessage::Authenticating);
                                 send_ui_request(UIThreadRequest::Redraw);
@@ -479,6 +541,58 @@ impl LoginForm {
 
                                 status_message.clear();
                                 send_ui_request(UIThreadRequest::Redraw);
+                            } else if self.greet {
+                                // Greeter (inside cage/foot): validate for instant
+                                // UX, then hand the login to the orchestrator and
+                                // stop. The orchestrator re-runs the full PAM
+                                // conversation and launches the session on the bare
+                                // VT (cage cannot host the compositor itself).
+                                let environment_name =
+                                    self.widgets.get_environment().map(|(title, _)| title);
+                                let username = self.widgets.get_username();
+                                let password = zeroize::Zeroizing::new(self.widgets.get_password());
+
+                                let Some(env_name) = environment_name else {
+                                    status_message.set(ErrorStatusMessage::NoGraphicalEnvironment);
+                                    send_ui_request(UIThreadRequest::Redraw);
+                                    continue;
+                                };
+
+                                status_message.set(InfoStatusMessage::Authenticating);
+                                send_ui_request(UIThreadRequest::Redraw);
+
+                                // Pre-flight the password so "wrong password" shows
+                                // in the native greeter, not after cage tears down.
+                                // NOTE: PAM auth therefore runs twice (here + the
+                                // orchestrator) — fine for a password stack, but a
+                                // single-use OTP module would need the greeter to
+                                // skip this pre-flight.
+                                match try_validate(&username, &password, &self.config.pam_service) {
+                                    Ok(creds) => drop(creds),
+                                    Err(err) => {
+                                        status_message
+                                            .set(ErrorStatusMessage::AuthenticationError(err));
+                                        send_ui_request(UIThreadRequest::Redraw);
+                                        continue;
+                                    }
+                                }
+
+                                if let Some(path) = &self.greet_result_path {
+                                    if let Err(e) =
+                                        write_greet_result(path, &username, &env_name, &password)
+                                    {
+                                        error!("greeter: failed to hand off login: {e}");
+                                        status_message
+                                            .set(ErrorStatusMessage::FailedGraphicalEnvironment);
+                                        send_ui_request(UIThreadRequest::Redraw);
+                                        continue;
+                                    }
+                                }
+
+                                // Stop the greeter; run() returns and the process
+                                // exits, handing the VT back to the orchestrator.
+                                req_send_channel.send(UIThreadRequest::StopDrawing).ok();
+                                return;
                             } else {
                                 let environment =
                                     self.widgets.get_environment().map(|(_, content)| content);

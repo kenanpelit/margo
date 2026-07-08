@@ -17,6 +17,8 @@ OPTIONS:
     -h, --help                Print help information
         --no-log
         --preview
+        --greet               Run as the greeter inside a cage/foot host
+                              (internal; spawned by the orchestrator)
         --show-config         Print the parsed configuration to be used
         --tty <N>             Override the configured TTY number
         --xsessions <DIR>     Override the path to /usr/share/xsessions
@@ -40,6 +42,11 @@ SUBCOMMANDS:
 
 pub struct Cli {
     pub preview: bool,
+    /// Run as the greeter hosted inside cage+foot (spawned by the orchestrator).
+    /// Real PAM auth, but the validated credentials are handed back to the
+    /// orchestrator (which launches the session on the bare VT) instead of
+    /// forking the session here.
+    pub greet: bool,
     pub no_log: bool,
     pub tty: Option<u8>,
     pub config: Option<PathBuf>,
@@ -88,6 +95,7 @@ impl Cli {
     pub fn parse() -> Result<Self, CliError> {
         let mut cli = Cli {
             preview: false,
+            greet: false,
             no_log: false,
             tty: None,
             config: None,
@@ -109,6 +117,7 @@ impl Cli {
                 (_, "--show-config") => cli.command = Some(Commands::ShowConfig),
 
                 (_, "--preview") => cli.preview = true,
+                (_, "--greet") => cli.greet = true,
                 (_, "--no-log") => cli.no_log = true,
                 (_, "--tty") => {
                     let (_, arg) = args.next().ok_or(CliError::MissingArgument("tty"))?;
