@@ -4607,6 +4607,7 @@ dependencies = [
  "toml 0.9.12+spec-1.1.0",
  "unicode-width 0.1.14",
  "uzers",
+ "zeroize",
 ]
 
 [[package]]
@@ -4727,6 +4728,7 @@ dependencies = [
  "tokio",
  "tracing",
  "zbus 5.15.0",
+ "zeroize",
 ]
 
 [[package]]
@@ -5099,6 +5101,7 @@ dependencies = [
  "tokio",
  "tracing",
  "zbus 5.15.0",
+ "zeroize",
 ]
 
 [[package]]
