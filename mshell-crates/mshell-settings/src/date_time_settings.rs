@@ -10,6 +10,7 @@ use crate::row::Row;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
 use reactive_graph::prelude::GetUntracked;
+use relm4::gtk::glib::SignalHandlerId;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
@@ -27,6 +28,13 @@ pub(crate) enum DateTimeSettingsInput {
     SetNtp(bool),
     SetTimezone(u32),
     SetClock24h(bool),
+    /// The `timedatectl` reads finished off-thread (see `init`): NTP state,
+    /// current timezone, and the full timezone list for the dropdown.
+    Loaded {
+        ntp: bool,
+        timezone: String,
+        timezones: Vec<String>,
+    },
 }
 
 #[derive(Debug)]
@@ -105,6 +113,7 @@ impl Component for DateTimeSettingsModel {
                         #[name = "ntp_switch"]
                         gtk::Switch {
                             set_valign: gtk::Align::Center,
+                            #[watch]
                             #[block_signal(ntp_handler)]
                             set_active: model.ntp,
                             connect_active_notify[sender] => move |s| {
@@ -123,6 +132,7 @@ impl Component for DateTimeSettingsModel {
                             set_width_request: 260,
                             set_enable_search: true,
                             set_model: Some(&model.timezones),
+                            #[watch]
                             #[block_signal(tz_handler)]
                             set_selected: model.tz_index,
                             connect_selected_notify[sender] => move |d| {
@@ -155,29 +165,65 @@ impl Component for DateTimeSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let _ = &sender;
-        let (ntp, timezone) = read_timedatectl();
-        let zones = list_timezones();
-        let tz_index = zones.iter().position(|z| *z == timezone).unwrap_or(0) as u32;
-        let zone_refs: Vec<&str> = zones.iter().map(|s| s.as_str()).collect();
+        // `timedatectl show` + `list-timezones` are subprocesses; Settings
+        // pages are built eagerly at login, so running them here would block
+        // the GTK main thread at startup. Seed neutral defaults and load the
+        // real values off-thread, splicing them in via `Loaded`. The 24-hour
+        // toggle is the shell's own in-memory config, so it stays synchronous.
         let model = DateTimeSettingsModel {
-            ntp,
+            ntp: true,
             clock_24h: config_manager()
                 .config()
                 .general()
                 .clock_format_24_h()
                 .get_untracked(),
-            timezone,
-            timezones: gtk::StringList::new(&zone_refs),
-            tz_index,
+            timezone: "UTC".to_string(),
+            timezones: gtk::StringList::new(&[]),
+            tz_index: 0,
         };
+        {
+            let sender = sender.clone();
+            std::thread::spawn(move || {
+                let (ntp, timezone) = read_timedatectl();
+                let timezones = list_timezones();
+                sender.input(DateTimeSettingsInput::Loaded {
+                    ntp,
+                    timezone,
+                    timezones,
+                });
+            });
+        }
         let widgets = view_output!();
         let _ = root;
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::Input,
+        sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
         match message {
+            DateTimeSettingsInput::Loaded {
+                ntp,
+                timezone,
+                timezones,
+            } => {
+                self.ntp = ntp;
+                self.tz_index = timezones.iter().position(|z| *z == timezone).unwrap_or(0) as u32;
+                self.timezone = timezone;
+                // Splice with the write handler blocked so the auto-select
+                // notify on model growth doesn't bounce back as a spurious
+                // set-timezone (a polkit prompt on page open). The correct
+                // selection is re-applied by the #[watch] set_selected, also
+                // with the handler blocked.
+                block(&widgets.tz_dd, &widgets.tz_handler, || {
+                    let refs: Vec<&str> = timezones.iter().map(|s| s.as_str()).collect();
+                    self.timezones.splice(0, self.timezones.n_items(), &refs);
+                });
+            }
             DateTimeSettingsInput::SetNtp(v) => {
                 self.ntp = v;
                 run_timedatectl(&["set-ntp", if v { "true" } else { "false" }]);
@@ -195,7 +241,16 @@ impl Component for DateTimeSettingsModel {
                 config_manager().update_config(move |c| c.general.clock_format_24_h = v);
             }
         }
+        self.update_view(widgets, sender);
     }
+}
+
+/// Run `f` with `widget`'s `handler` blocked, so a programmatic property set
+/// doesn't bounce back through its `connect_*` closure.
+fn block<W: IsA<gtk::glib::Object>>(widget: &W, handler: &SignalHandlerId, f: impl FnOnce()) {
+    widget.block_signal(handler);
+    f();
+    widget.unblock_signal(handler);
 }
 
 /// `(ntp_enabled, timezone)` from `timedatectl show`. Falls back to

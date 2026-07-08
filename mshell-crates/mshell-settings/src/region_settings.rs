@@ -7,6 +7,7 @@
 //! so this page links there rather than duplicating it.
 
 use crate::row::Row;
+use relm4::gtk::glib::SignalHandlerId;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
@@ -20,6 +21,12 @@ pub(crate) struct RegionSettingsModel {
 #[derive(Debug)]
 pub(crate) enum RegionSettingsInput {
     SetLocale(u32),
+    /// The `localectl` reads finished off-thread (see `init`): the current
+    /// system locale and the full locale list, ready to populate the dropdown.
+    Loaded {
+        locale: String,
+        locales: Vec<String>,
+    },
 }
 
 #[derive(Debug)]
@@ -101,6 +108,7 @@ impl Component for RegionSettingsModel {
                             set_width_request: 260,
                             set_enable_search: true,
                             set_model: Some(&model.locales),
+                            #[watch]
                             #[block_signal(locale_handler)]
                             set_selected: model.locale_index,
                             connect_selected_notify[sender] => move |d| {
@@ -127,23 +135,51 @@ impl Component for RegionSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let _ = &sender;
-        let locale = read_locale();
-        let locales = list_locales();
-        let locale_index = locales.iter().position(|l| *l == locale).unwrap_or(0) as u32;
-        let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
+        // `localectl status` + `list-locales` are subprocesses that can take
+        // hundreds of ms. Settings pages are built eagerly at login, so doing
+        // them here would block the GTK main thread at startup. Seed the model
+        // with the cheap $LANG fallback and an empty list, then load the real
+        // values off-thread and splice them in via `Loaded`.
         let model = RegionSettingsModel {
-            locale,
-            locales: gtk::StringList::new(&refs),
-            locale_index,
+            locale: env_lang(),
+            locales: gtk::StringList::new(&[]),
+            locale_index: 0,
         };
+        {
+            let sender = sender.clone();
+            std::thread::spawn(move || {
+                let locale = read_locale();
+                let locales = list_locales();
+                sender.input(RegionSettingsInput::Loaded { locale, locales });
+            });
+        }
         let widgets = view_output!();
         let _ = root;
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::Input,
+        sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
         match message {
+            RegionSettingsInput::Loaded { locale, locales } => {
+                self.locale_index = locales.iter().position(|l| *l == locale).unwrap_or(0) as u32;
+                self.locale = locale;
+                // Splice with the write handler blocked: growing the model
+                // auto-selects an item, and that notify would otherwise bounce
+                // back through `connect_selected_notify` as a spurious
+                // set-locale (a polkit prompt on page open). The correct
+                // selection is applied by the #[watch] set_selected below,
+                // also with the handler blocked.
+                block(&widgets.locale_dd, &widgets.locale_handler, || {
+                    let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
+                    self.locales.splice(0, self.locales.n_items(), &refs);
+                });
+            }
             RegionSettingsInput::SetLocale(idx) => {
                 if let Some(locale) = self.locales.string(idx) {
                     let locale = locale.to_string();
@@ -153,7 +189,24 @@ impl Component for RegionSettingsModel {
                 }
             }
         }
+        self.update_view(widgets, sender);
     }
+}
+
+/// Run `f` with `widget`'s `handler` blocked, so a programmatic property set
+/// doesn't bounce back through its `connect_*` closure.
+fn block<W: IsA<gtk::glib::Object>>(widget: &W, handler: &SignalHandlerId, f: impl FnOnce()) {
+    widget.block_signal(handler);
+    f();
+    widget.unblock_signal(handler);
+}
+
+/// The cheap `$LANG` fallback used to seed the page before `localectl` returns.
+fn env_lang() -> String {
+    std::env::var("LANG")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "C.UTF-8".to_string())
 }
 
 /// The system `LANG` from `localectl status`, falling back to $LANG then a
@@ -174,10 +227,7 @@ fn read_locale() -> String {
             }
         }
     }
-    std::env::var("LANG")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "C.UTF-8".to_string())
+    env_lang()
 }
 
 /// Available locales from `localectl list-locales`; falls back to a small

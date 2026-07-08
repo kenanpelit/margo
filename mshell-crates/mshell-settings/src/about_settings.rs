@@ -24,6 +24,8 @@ pub(crate) struct AboutSettingsModel {
 #[derive(Debug)]
 pub(crate) enum AboutSettingsInput {
     Refresh,
+    /// The `lspci` GPU probe finished off-thread (see `spawn_gpu`).
+    GpuLoaded(String),
 }
 
 #[derive(Debug)]
@@ -168,21 +170,40 @@ impl Component for AboutSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let _ = &sender;
-        let model = read_info();
+        // Everything here is a cheap /proc + /etc read EXCEPT the GPU, which
+        // shells out to `lspci` (tens of ms). Settings pages are built eagerly
+        // at login, so seed the GPU with a placeholder and probe it off-thread.
+        let model = read_info("…".to_string());
+        spawn_gpu(&sender);
         let widgets = view_output!();
         let _ = root;
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
-            AboutSettingsInput::Refresh => *self = read_info(),
+            AboutSettingsInput::Refresh => {
+                // Re-read the cheap fields immediately; keep the last known GPU
+                // string (avoids a flicker back to the placeholder) and re-probe
+                // it off-thread.
+                *self = read_info(self.gpu.clone());
+                spawn_gpu(&sender);
+            }
+            AboutSettingsInput::GpuLoaded(gpu) => self.gpu = gpu,
         }
     }
 }
 
-fn read_info() -> AboutSettingsModel {
+/// Probe the GPU via `lspci` off the GTK main thread, delivering the result
+/// back as `GpuLoaded` (processed on the main thread by `update`).
+fn spawn_gpu(sender: &ComponentSender<AboutSettingsModel>) {
+    let sender = sender.clone();
+    std::thread::spawn(move || {
+        sender.input(AboutSettingsInput::GpuLoaded(gpu_name()));
+    });
+}
+
+fn read_info(gpu: String) -> AboutSettingsModel {
     AboutSettingsModel {
         os: os_pretty_name(),
         kernel: trim_or_dash(std::fs::read_to_string("/proc/sys/kernel/osrelease").ok()),
@@ -190,7 +211,7 @@ fn read_info() -> AboutSettingsModel {
         desktop: desktop_line(),
         version: format!("v{}", env!("CARGO_PKG_VERSION")),
         cpu: cpu_model(),
-        gpu: gpu_name(),
+        gpu,
         memory: mem_total(),
         uptime: uptime(),
     }
