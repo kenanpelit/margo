@@ -1,0 +1,148 @@
+// mgreet greeter stylesheet.
+//
+// Baked default palette (margo's Dracula baseline) lives in `:root` so the
+// greeter always looks right even before any matugen colours are overlaid.
+// At runtime mgreet loads this CSS first, then — if present — a matugen
+// colours file as a second, higher-priority provider, so the login screen
+// tracks the wallpaper theme exactly like the shell. Token names match the
+// M3 set the shell uses (--surface, --on-surface, --primary, …).
+
+:root {
+  --bg: #1e1f29;
+  --surface: #282a36;
+  --surface-container: #313442;
+  --surface-container-high: #3a3d4d;
+  --on-surface: #f8f8f2;
+  --on-surface-variant: #bcc0cc;
+  --primary: #bd93f9;
+  --on-primary: #1e1f29;
+  --primary-container: #44415a;
+  --on-primary-container: #e9defa;
+  --outline: #6272a4;
+  --danger: #ff5555;
+  --radius-lg: 22px;
+  --radius-md: 14px;
+  --radius-pill: 999px;
+}
+
+// The layer-shell window itself is transparent; only the card paints. This
+// lets the compositor wallpaper show through around the card on every output.
+window.mgreet-root {
+  background: transparent;
+}
+
+// Dim scrim behind the card so the login is legible over any wallpaper.
+.mgreet-scrim {
+  background: rgba(#000, 0.35);
+}
+
+// ── The login card ────────────────────────────────────────────────
+.mgreet-card {
+  background-color: var(--surface);
+  color: var(--on-surface);
+  border-radius: var(--radius-lg);
+  padding: 32px 36px;
+  border: 1px solid rgba(#ffffff, 0.06);
+  box-shadow: 0 24px 60px rgba(#000, 0.45);
+  min-width: 380px;
+}
+
+.mgreet-greeting {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--on-surface);
+}
+
+.mgreet-clock {
+  font-size: 52px;
+  font-weight: 300;
+  font-feature-settings: "tnum";
+  color: var(--on-surface);
+}
+
+.mgreet-date {
+  font-size: 14px;
+  color: var(--on-surface-variant);
+}
+
+.mgreet-caption {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+
+// Text entries (username, password).
+.mgreet-field {
+  background-color: var(--surface-container);
+  color: var(--on-surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--outline);
+  padding: 10px 14px;
+  min-height: 22px;
+  caret-color: var(--primary);
+}
+.mgreet-field:focus-within {
+  border-color: var(--primary);
+  background-color: var(--surface-container-high);
+}
+.mgreet-field > text > placeholder {
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+}
+
+// Primary login button.
+.mgreet-login {
+  background-color: var(--primary);
+  color: var(--on-primary);
+  border-radius: var(--radius-pill);
+  padding: 12px 18px;
+  font-weight: 700;
+  border: none;
+}
+.mgreet-login:hover {
+  background-image: linear-gradient(rgba(#fff, 0.08), rgba(#fff, 0.08));
+}
+.mgreet-login:disabled {
+  opacity: 0.5;
+}
+
+// Session picker (dropdown of wayland/x sessions).
+.mgreet-session {
+  background-color: var(--surface-container);
+  color: var(--on-surface);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--outline);
+  padding: 6px 12px;
+}
+
+// Inline error / status line under the fields.
+.mgreet-status {
+  font-size: 13px;
+  color: var(--on-surface-variant);
+}
+.mgreet-status.error {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+// The power controls (reboot / shutdown) in a corner.
+.mgreet-power {
+  background-color: rgba(#000, 0.25);
+  border-radius: var(--radius-pill);
+  padding: 6px;
+}
+.mgreet-power button {
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 8px;
+  color: var(--on-surface-variant);
+  min-width: 20px;
+  min-height: 20px;
+}
+.mgreet-power button:hover {
+  background-color: rgba(#fff, 0.10);
+  color: var(--on-surface);
+}

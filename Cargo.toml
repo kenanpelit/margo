@@ -12,6 +12,7 @@ members = [
     "mlayout",
     "mlock",
     "mlogind",
+    "mgreet",
     "mpicker",
     "mplay",
     "mpower",

@@ -1,0 +1,23 @@
+# mgreet — margo's native Rust GUI login greeter.
+#
+# A GTK4 + gtk4-layer-shell client that renders a centred login card on
+# EVERY connected monitor, hosted under a margo "greeter" compositor
+# instance. Replaces the cage+foot+TUI host (cage has no layer-shell, so it
+# could never put the prompt on more than one output). Same PAM auth + the
+# mlogind orchestrator's credential hand-off + session launch.
+[package]
+name = "mgreet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+gtk4.workspace = true
+gtk4-layer-shell.workspace = true
+zeroize.workspace = true
+libc.workspace = true
+
+[build-dependencies]
+grass.workspace = true

@@ -4483,6 +4483,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mgreet"
+version = "1.1.5"
+dependencies = [
+ "grass",
+ "gtk4",
+ "gtk4-layer-shell",
+ "libc",
+ "zeroize",
+]
+
+[[package]]
 name = "mimalloc"
 version = "0.1.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
