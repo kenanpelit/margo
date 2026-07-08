@@ -117,6 +117,17 @@ pub fn authenticate(user: &str, password: &str) -> Result<(), AuthError> {
     let auth_rc = unsafe { pam_authenticate(pamh, 0) };
     unsafe { pam_end(pamh, auth_rc) };
 
+    // Scrub our plaintext copy from the heap before it's freed. PAM has
+    // finished with `appdata` by now (pam_end ran); consume the CString into
+    // its backing bytes and zeroize them. (The strdup'd copy PAM makes in the
+    // conversation callback is owned + freed by PAM and can't be scrubbed
+    // here without risking a use-after-free.)
+    {
+        use zeroize::Zeroize;
+        let mut bytes = password_c.into_bytes_with_nul();
+        bytes.zeroize();
+    }
+
     if auth_rc == PAM_SUCCESS {
         Ok(())
     } else {

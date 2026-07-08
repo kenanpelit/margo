@@ -37,6 +37,8 @@ libc = "0.2"
 # Authentication and Fetching User Data
 pam = "0.7.0"
 uzers = "0.11"
+# Scrubs the plaintext login password from the heap on drop.
+zeroize = "1.8"
 
 # Once Cell
 once_cell = "1.17.1"

@@ -9,10 +9,21 @@ use crate::prompt::PolkitPromptInput;
 
 const AGENT_OBJECT_PATH: &str = "/com/mshell/PolkitAgent";
 
-#[derive(Debug)]
 pub enum PasswordAction {
-    Submit(String),
+    /// The plaintext password, wrapped so it's scrubbed from the heap when
+    /// the message is dropped after `respond`.
+    Submit(zeroize::Zeroizing<String>),
     Cancel,
+}
+
+// Manual Debug (not derived) so the password never lands in a log line.
+impl std::fmt::Debug for PasswordAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PasswordAction::Submit(_) => f.write_str("Submit(<redacted>)"),
+            PasswordAction::Cancel => f.write_str("Cancel"),
+        }
+    }
 }
 
 pub struct PolkitAgentObject {

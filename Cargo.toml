@@ -181,6 +181,8 @@ notify = "9.0.0-rc.1"
 notify-rust = "4"
 pam = "0.8"
 regex = "1"
+# Scrubs plaintext secrets (PAM/polkit passwords) from the heap on drop.
+zeroize = "1.8"
 rodio = { version = "0.22", default-features = false, features = ["vorbis", "playback"] }
 rustix = { version = "1", features = ["shm", "fs"] }
 schemars = "1"

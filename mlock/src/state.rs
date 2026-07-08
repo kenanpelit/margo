@@ -237,7 +237,11 @@ impl MlockState {
         if self.seat_state.password.is_empty() {
             return;
         }
-        let password = std::mem::take(&mut self.seat_state.password);
+        // Zeroize the plaintext once auth returns — mem::take moves the real
+        // bytes into this local, and the SeatState Drop only scrubs the (now
+        // empty) source buffer. Without this the password survives in freed
+        // heap on the lock screen, the one surface that must not leak it.
+        let password = zeroize::Zeroizing::new(std::mem::take(&mut self.seat_state.password));
         self.seat_state.fail_message = None;
 
         match crate::auth::authenticate(&self.user, &password) {

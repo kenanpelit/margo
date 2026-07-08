@@ -253,7 +253,10 @@ impl Component for PolkitPromptModel {
                 self.entry_buffer.set_text("");
             }
             PolkitPromptInput::Submit => {
-                let password = self.entry_buffer.text().to_string();
+                let password = zeroize::Zeroizing::new(self.entry_buffer.text().to_string());
+                // Clear the GTK buffer immediately so the plaintext doesn't
+                // linger in the widget after submit.
+                self.entry_buffer.set_text("");
                 if let Some(tx) = &self.password_tx {
                     let tx = tx.clone();
                     relm4::spawn_local(async move {

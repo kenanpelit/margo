@@ -483,7 +483,12 @@ impl LoginForm {
                                 let environment =
                                     self.widgets.get_environment().map(|(_, content)| content);
                                 let username = self.widgets.get_username();
-                                let password = self.widgets.get_password();
+                                // Wrap the plaintext copy so it's scrubbed from
+                                // the heap when it drops after start_session,
+                                // instead of lingering in freed memory on a
+                                // root process (recoverable via core dump/swap).
+                                let password =
+                                    zeroize::Zeroizing::new(self.widgets.get_password());
                                 let config = self.config.clone();
 
                                 let Some(post_login_env) = environment else {
