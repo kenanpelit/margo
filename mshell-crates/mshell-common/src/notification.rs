@@ -163,9 +163,9 @@ impl Component for NotificationModel {
                     connect_clicked[sender] => move |_| {
                         // Non-panicking send: a toast can be torn down (auto-expire
                         // / dismiss) while its close button is still clickable, so the
-                        // component runtime may already be gone. `input()` would
-                        // `.expect()` and, from this GTK trampoline (a non-unwinding
-                        // FFI boundary), abort the whole shell. Drop it silently.
+                        // component runtime may already be gone. `input()` would then
+                        // panic and, from this GTK trampoline (a non-unwinding FFI
+                        // boundary), abort the whole shell — so drop it silently.
                         let _ = sender.input_sender().send(NotificationInput::CloseClicked);
                     },
 
