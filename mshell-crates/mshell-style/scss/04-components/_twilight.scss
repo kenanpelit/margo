@@ -1,3 +1,4 @@
+@use "../02-functions/index" as *;
 // Twilight — bar pill + quick-control panel for margo's blue-light
 // filter. DESIGN.md: §3 active = primary icon tint (no filled
 // capsule); §4 bar pill on the shared surface; §5 menu cards.
@@ -18,6 +19,29 @@
 // ── Panel ─────────────────────────────────────────────────
 .twilight-menu-widget {
   padding: var(--space-1);
+
+  // Header On/Off, the source-mode tiles and "Resume schedule" all sit on the
+  // --surface panel, where a plain .ok-button-surface (also --surface) reads as
+  // bare text. Raise them to --surface-container-high so they read as real
+  // buttons (menu-professionalization §1), same as the DNS/network actions.
+  .ok-button-surface {
+    background-color: var(--surface-container-high);
+    @include state-layer(var(--surface-container-high));
+  }
+
+  // Enabled toggle + active source-mode tile: a soft --primary-container wash
+  // with --on-primary-container text/icons — the scheme-harmonious "selected"
+  // language shared with the control-center active tile and the connected
+  // Wi-Fi / Bluetooth rows (§2), never a harsh --primary flood.
+  .ok-button-surface.selected {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+    image,
+    label {
+      color: var(--on-primary-container);
+    }
+    @include state-layer(var(--primary-container));
+  }
 }
 
 .twilight-header-icon {
@@ -34,8 +58,9 @@
   color: var(--on-surface-variant);
 }
 
-// Mode selector — four equal segmented buttons; the active mode
-// tints primary (the shared `.selected` surface treatment).
+// Mode selector — four equal segmented buttons. The raised surface + active
+// --primary-container wash come from the `.twilight-menu-widget
+// .ok-button-surface` rules above; this only pins the tile geometry.
 .twilight-mode-button {
   font-variant-numeric: tabular-nums;
   padding: var(--space-3) var(--space-1);
@@ -87,16 +112,17 @@
     background-color: color-mix(in srgb, var(--primary) 14%, var(--surface-container));
   }
 
-  // The preset whose schedule slot is live right now (schedule mode):
-  // filled primary, matching the selected mode button (DESIGN.md §3).
+  // The preset whose schedule slot is live right now (schedule mode): the
+  // soft --primary-container wash matching the selected mode tile (§2), not a
+  // harsh --primary flood.
   &.active {
-    background-color: var(--primary);
+    background-color: var(--primary-container);
     &:hover {
-      background-color: var(--primary);
+      background-color: var(--primary-container);
     }
     .twilight-preset-name,
     .twilight-preset-value {
-      color: var(--on-primary);
+      color: var(--on-primary-container);
     }
   }
 }
