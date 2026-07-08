@@ -111,13 +111,58 @@ window.mgreet-root {
   opacity: 0.5;
 }
 
-// Session picker (dropdown of wayland/x sessions).
+// Session picker (GtkDropDown of wayland/x sessions).
+//
+// The OUTER dropdown node is the pill; the INNER toggle button must be made
+// transparent, or GTK paints its own square-cornered, bordered button inside
+// the rounded pill — the "rectangle inside a rectangle". Padding lives on the
+// button so the whole pill is the hit target.
 .mgreet-session {
   background-color: var(--surface-container);
   color: var(--on-surface);
   border-radius: var(--radius-pill);
   border: 1px solid var(--outline);
-  padding: 6px 12px;
+  padding: 0;
+}
+.mgreet-session:focus-within {
+  border-color: var(--primary);
+  background-color: var(--surface-container-high);
+}
+.mgreet-session > button {
+  background: none;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  border-radius: var(--radius-pill);
+  padding: 7px 14px;
+  min-height: 0;
+  color: var(--on-surface);
+}
+.mgreet-session > button:hover {
+  background-color: rgba(#fff, 0.06);
+}
+.mgreet-session arrow {
+  color: var(--on-surface-variant);
+  min-width: 16px;
+}
+
+// The drop-down list itself (popover), themed to match.
+.mgreet-session > popover > contents {
+  background-color: var(--surface-container-high);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  padding: 4px;
+}
+.mgreet-session > popover row {
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  color: var(--on-surface);
+}
+.mgreet-session > popover row:selected {
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
 }
 
 // Inline error / status line under the fields.
