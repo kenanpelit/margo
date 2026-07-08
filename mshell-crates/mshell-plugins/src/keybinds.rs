@@ -140,6 +140,16 @@ pub fn write_binds_file(resolved: &[Resolution]) -> std::io::Result<bool> {
          # then run: mctl reload\n\n",
     );
     for r in resolved.iter().filter(|r| r.is_active()) {
+        // Defence-in-depth against binds-file injection: manifest::validate
+        // already rejects newlines/extra commas in combo+id at load, but skip
+        // any resolution that still carries a newline in a field so a bypass
+        // can never inject an arbitrary `bind = …, spawn, <cmd>` line.
+        if [&r.keybind.combo, &r.plugin_key, &r.keybind.id]
+            .iter()
+            .any(|f| f.contains(['\n', '\r']))
+        {
+            continue;
+        }
         body.push_str(&format!(
             "bind = {}, spawn, mshellctl plugin keybind {} {}\n",
             r.keybind.combo, r.plugin_key, r.keybind.id

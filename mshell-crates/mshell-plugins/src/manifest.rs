@@ -250,6 +250,12 @@ pub fn validate(m: &Manifest) -> Result<(), String> {
             m.id
         ));
     }
+    // The id is interpolated into the generated margo binds file; a newline
+    // would let it inject an arbitrary bind line (see the keybind check
+    // below).
+    if m.id.contains(['\n', '\r']) {
+        return Err("manifest id must not contain a newline".into());
+    }
     if m.version.trim().is_empty() {
         return Err("manifest version is empty".into());
     }
@@ -260,6 +266,31 @@ pub fn validate(m: &Manifest) -> Result<(), String> {
         }
         if !seen.insert(w.key.as_str()) {
             return Err(format!("duplicate widget key `{}`", w.key));
+        }
+    }
+    // The combo + id of every keybind are interpolated verbatim into the
+    // generated margo binds file:
+    //   bind = {combo}, spawn, mshellctl plugin keybind {plugin_key} {id}
+    // which margo `source=`s and executes on reload. A newline would inject
+    // a whole new `bind = …, spawn, <cmd>` line, and extra commas in the
+    // combo would inject a second action into *this* line — both give a
+    // plugin arbitrary command execution, escaping the WASM sandbox. A
+    // legitimate combo has exactly one comma (`mods,key`); an id has none.
+    for kb in &m.keybinds {
+        if kb.combo.contains(['\n', '\r']) || kb.id.contains(['\n', '\r']) {
+            return Err(format!(
+                "keybind `{}` must not contain a newline",
+                kb.id
+            ));
+        }
+        if kb.combo.matches(',').count() > 1 {
+            return Err(format!(
+                "keybind combo `{}` has too many commas (expected `mods,key`)",
+                kb.combo
+            ));
+        }
+        if kb.id.contains(',') {
+            return Err(format!("keybind id `{}` must not contain a comma", kb.id));
         }
     }
     Ok(())
@@ -402,6 +433,50 @@ min_mshell = "0.8.8"
             },
         ];
         assert!(validate(&m).is_err()); // duplicate keys
+    }
+
+    #[test]
+    fn validate_rejects_binds_file_injection() {
+        let base = Manifest {
+            id: "ok".into(),
+            version: "1.0.0".into(),
+            ..Default::default()
+        };
+        // A newline in a combo would inject a whole new bind line.
+        let mut m = base.clone();
+        m.keybinds = vec![Keybind {
+            combo: "super,a\nbind = super,x, spawn, rm -rf ~".into(),
+            id: "toggle".into(),
+            ..Default::default()
+        }];
+        assert!(validate(&m).is_err(), "newline combo must be rejected");
+
+        // Extra commas in a combo would inject a second action into the line.
+        let mut m = base.clone();
+        m.keybinds = vec![Keybind {
+            combo: "super,a, spawn, rm -rf ~".into(),
+            id: "toggle".into(),
+            ..Default::default()
+        }];
+        assert!(validate(&m).is_err(), "multi-comma combo must be rejected");
+
+        // A newline in an id is equally dangerous.
+        let mut m = base.clone();
+        m.keybinds = vec![Keybind {
+            combo: "super,a".into(),
+            id: "toggle\nbind = super,x, spawn, evil".into(),
+            ..Default::default()
+        }];
+        assert!(validate(&m).is_err(), "newline id must be rejected");
+
+        // The legitimate `mods,key` form with a single comma is accepted.
+        let mut m = base;
+        m.keybinds = vec![Keybind {
+            combo: "super+ctrl,t".into(),
+            id: "toggle".into(),
+            ..Default::default()
+        }];
+        assert!(validate(&m).is_ok(), "valid combo must pass");
     }
 
     #[test]
