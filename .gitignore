@@ -12,6 +12,10 @@ CLAUDE.md
 # mkdocs build output (W4.3)
 /site/
 
+# graphify knowledge-graph output (large generated artifacts: graph.json ~20MB,
+# AST cache, HTML). Kept locally, never tracked.
+/graphify-out/
+
 # Throwaway screenshots that accumulate in repo root during
 # UI work (dashbord*.png from the dashboard work, test.png
 # from screenshot-widget iterations, …). Add specific names
