@@ -131,7 +131,7 @@ mod tests {
     }
 
     #[test]
-    fn request_once_handles_garbage_reply() {
+    fn request_once_errors_on_garbage_reply() {
         let path = temp_sock("garbage");
         let listener = UnixListener::bind(&path).unwrap();
         let srv = thread::spawn(move || {
@@ -139,8 +139,10 @@ mod tests {
             stream.write_all(b"not json at all\n").unwrap();
         });
 
-        let reply = request_once_at(&path, "get state").unwrap();
-        assert_eq!(reply, serde_json::json!({ "error": "bad reply" }));
+        // A malformed reply (dead or garbage-emitting compositor) must surface
+        // as an error so callers exit non-zero — not a silent Ok sentinel.
+        let err = request_once_at(&path, "get state").unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
 
         srv.join().unwrap();
         let _ = std::fs::remove_file(&path);
