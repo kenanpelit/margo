@@ -318,12 +318,32 @@ fn render(inner: &Rc<RefCell<Inner>>, nodes: Vec<UiNode>) {
     }
     let by_id: HashMap<&str, &UiNode> = nodes.iter().map(|n| (n.id.as_str(), n)).collect();
     if let Some(root) = by_id.get("root") {
-        container.append(&build(root, &by_id, inner));
+        container.append(&build(root, &by_id, inner, 0));
     }
 }
 
-/// Build one node, recursing into children referenced by id.
-fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner>>) -> gtk::Widget {
+/// Deepest node-tree nesting the renderer will follow. Plugin panels are a
+/// handful of levels deep; anything past this is a malformed tree (a child
+/// referencing an ancestor forms a cycle) that would otherwise recurse until
+/// the stack overflows and aborts the whole shell.
+const MAX_NODE_DEPTH: usize = 64;
+
+/// Build one node, recursing into children referenced by id. `depth` bounds
+/// the recursion so a cyclic or pathologically deep node tree from an
+/// untrusted plugin can't overflow the stack.
+fn build(
+    node: &UiNode,
+    by_id: &HashMap<&str, &UiNode>,
+    inner: &Rc<RefCell<Inner>>,
+    depth: usize,
+) -> gtk::Widget {
+    if depth >= MAX_NODE_DEPTH {
+        tracing::warn!(
+            node_id = %node.id,
+            "plugin node tree exceeded max depth ({MAX_NODE_DEPTH}) — truncating (possible cycle)"
+        );
+        return gtk::Box::new(gtk::Orientation::Vertical, 0).upcast();
+    }
     let widget: gtk::Widget = match node.kind {
         UiKind::VBox | UiKind::HBox => {
             let orient = if node.kind == UiKind::HBox {
@@ -334,7 +354,7 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             let b = gtk::Box::new(orient, 6);
             for child_id in &node.children {
                 if let Some(child) = by_id.get(child_id.as_str()) {
-                    b.append(&build(child, by_id, inner));
+                    b.append(&build(child, by_id, inner, depth + 1));
                 }
             }
             b.upcast()
@@ -408,7 +428,7 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             let vbox = gtk::Box::new(gtk::Orientation::Vertical, 6);
             for child_id in &node.children {
                 if let Some(child) = by_id.get(child_id.as_str()) {
-                    vbox.append(&build(child, by_id, inner));
+                    vbox.append(&build(child, by_id, inner, depth + 1));
                 }
             }
             let scroller = gtk::ScrolledWindow::new();
@@ -584,7 +604,7 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
                 if let Some(child) = by_id.get(child_id.as_str()) {
                     let row = (i as i32) / cols;
                     let col = (i as i32) % cols;
-                    grid.attach(&build(child, by_id, inner), col, row, 1, 1);
+                    grid.attach(&build(child, by_id, inner, depth + 1), col, row, 1, 1);
                 }
             }
             grid.upcast()
@@ -613,7 +633,7 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             revealer.set_reveal_child(revealed);
             if let Some(child_id) = node.children.first() {
                 if let Some(child) = by_id.get(child_id.as_str()) {
-                    revealer.set_child(Some(&build(child, by_id, inner)));
+                    revealer.set_child(Some(&build(child, by_id, inner, depth + 1)));
                 }
             }
             revealer.upcast()
@@ -623,7 +643,7 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             stack.set_transition_type(gtk::StackTransitionType::Crossfade);
             for child_id in &node.children {
                 if let Some(child) = by_id.get(child_id.as_str()) {
-                    stack.add_named(&build(child, by_id, inner), Some(child_id));
+                    stack.add_named(&build(child, by_id, inner, depth + 1), Some(child_id));
                 }
             }
             if let Some(visible) = node.properties.get("visible-child") {
@@ -752,7 +772,7 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
                     let b = gtk::Box::new(gtk::Orientation::Vertical, 6);
                     for child_id in &node.children {
                         if let Some(child) = by_id.get(child_id.as_str()) {
-                            b.append(&build(child, by_id, inner));
+                            b.append(&build(child, by_id, inner, depth + 1));
                         }
                     }
                     b.upcast()

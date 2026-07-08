@@ -643,6 +643,11 @@ impl PluginRuntime {
     ) -> Result<Self> {
         let mut config = Config::new();
         config.wasm_component_model(true);
+        // Meter execution so a plugin whose view()/update() contains an
+        // infinite loop (or unbounded work) traps instead of running forever
+        // on the GTK main thread and hanging the whole shell. Fuel is refilled
+        // before each guest call in PluginInstance::{view,update}.
+        config.consume_fuel(true);
         Ok(Self {
             engine: Engine::new(&config)?,
             media,
@@ -709,9 +714,15 @@ pub struct PluginInstance {
     inflight: Arc<AtomicUsize>,
 }
 
+/// Per-call fuel budget. wasmtime charges ~1 unit per executed wasm
+/// operation; ~1e9 is generous for any real render pass but bounds an
+/// infinite loop to a sub-second trap instead of a permanent shell hang.
+const CALL_FUEL: u64 = 1_000_000_000;
+
 impl PluginInstance {
     /// Initial render.
     pub fn view(&mut self) -> Result<Vec<UiNode>> {
+        self.store.set_fuel(CALL_FUEL)?;
         let nodes = self
             .bindings
             .margo_plugin_guest()
@@ -721,6 +732,7 @@ impl PluginInstance {
 
     /// Re-render after an interaction.
     pub fn update(&mut self, event: &UiEvent) -> Result<Vec<UiNode>> {
+        self.store.set_fuel(CALL_FUEL)?;
         let nodes = self
             .bindings
             .margo_plugin_guest()
