@@ -245,13 +245,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    // Setup the logger
+    // Setup the logger. A `--greet` UI dry-run (no orchestrator hand-off path)
+    // logs like `--preview`, into the CWD, so a non-root test can actually write
+    // it. The real greeter (spawned by the orchestrator) logs to its own client
+    // log so it doesn't clobber the orchestrator's main log.
     if !cli.no_log {
-        setup_logger(if cli.preview {
+        let greet_has_result = cli.greet && std::env::var_os("MLOGIND_RESULT_PATH").is_some();
+        let log_path: &str = if cli.preview || (cli.greet && !greet_has_result) {
             PREVIEW_LOG_PATH
+        } else if greet_has_result {
+            &config.client_log_path
         } else {
             &config.main_log_path
-        });
+        };
+        setup_logger(log_path);
         info!("Main mlogind logger is running");
     } else {
         config.do_log = false;
@@ -507,7 +514,14 @@ fn run_greeter(config: Config) -> Result<(), Box<dyn Error>> {
     console_palette::init(true);
 
     let mut terminal = tui_enable()?;
-    let login_form = ui::LoginForm::new(config, false).into_greeter(result_path);
+    // With no hand-off path this is a UI dry-run (`mlogind --greet` in a plain
+    // terminal): run it as a preview so Esc quits and Enter merely animates —
+    // there is no orchestrator to receive a login.
+    let login_form = if result_path.is_some() {
+        ui::LoginForm::new(config, false).into_greeter(result_path)
+    } else {
+        ui::LoginForm::new(config, true)
+    };
     login_form.run(&mut terminal)?;
     tui_disable(terminal)?;
 
