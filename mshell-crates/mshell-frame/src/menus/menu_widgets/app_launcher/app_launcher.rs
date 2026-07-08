@@ -71,6 +71,15 @@ use relm4::gtk::{RevealerTransitionType, ScrolledWindow, gdk, gio, pango};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Per-output scope id for the preview-swatch CssProvider. Each launcher (one
+/// per monitor) registers its provider **display-wide**, so without a unique
+/// selector every launcher's `.app-launcher-preview-swatch` rule would target
+/// every monitor's swatch — the last one loaded winning and its colour bleeding
+/// across outputs. Tagging each swatch with a distinct class scopes its
+/// provider to its own widget.
+static SWATCH_SCOPE_SEQ: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) struct AppLauncherModel {
     dynamic_box: Controller<DynamicBoxModel<DisplayItem, String>>,
@@ -111,6 +120,9 @@ pub(crate) struct AppLauncherModel {
     /// hasn't changed — otherwise every Ctrl+N/K keystroke paid for a
     /// global restyle and the list crawled.
     swatch_css: String,
+    /// Unique CSS class scoping this launcher's swatch provider to its own
+    /// output (see [`SWATCH_SCOPE_SEQ`]).
+    swatch_scope: String,
     /// Settings → Launcher knobs, mirrored live from the config store.
     show_preview: bool,
     compact_rows: bool,
@@ -798,6 +810,10 @@ impl Component for AppLauncherModel {
             current_preview: None,
             swatch_provider: gtk::CssProvider::new(),
             swatch_css: String::new(),
+            swatch_scope: format!(
+                "app-launcher-swatch-{}",
+                SWATCH_SCOPE_SEQ.fetch_add(1, Ordering::Relaxed)
+            ),
             show_preview: config_manager()
                 .config()
                 .launcher()
@@ -821,11 +837,17 @@ impl Component for AppLauncherModel {
         widgets.apps_box.append(model.dynamic_box.widget());
         widgets.root.add_controller(key_controller);
 
+        // Tag this launcher's swatch with its per-output scope class so the
+        // display-wide provider below only styles this monitor's swatch, never
+        // another output's (see `SWATCH_SCOPE_SEQ`).
+        widgets.preview_swatch.add_css_class(&model.swatch_scope);
+
         // The colour-swatch background is painted by a dedicated
         // CssProvider (reloaded per selection in `refresh_preview`).
-        // Registered display-wide — the `.app-launcher-preview-swatch`
-        // selector scopes it — because the per-widget
-        // `StyleContext::add_provider` is deprecated in GTK4.
+        // Registered display-wide — the per-widget `StyleContext::add_provider`
+        // is deprecated in GTK4 — but scoped by the unique
+        // `.app-launcher-preview-swatch.<scope>` selector so it can't bleed
+        // across outputs.
         if let Some(display) = gtk::gdk::Display::default() {
             gtk::style_context_add_provider_for_display(
                 &display,
@@ -1286,7 +1308,10 @@ impl AppLauncherModel {
             .and_then(|d| self.runtime.borrow().preview_for(&d.item));
         let swatch = self.current_preview.as_ref().and_then(|p| p.swatch.clone());
         let css = match swatch {
-            Some(hex) => format!(".app-launcher-preview-swatch {{ background-color: {hex}; }}"),
+            Some(hex) => format!(
+                ".app-launcher-preview-swatch.{} {{ background-color: {hex}; }}",
+                self.swatch_scope
+            ),
             None => String::new(),
         };
         // Only reload when the swatch actually changed — `load_from_string`
