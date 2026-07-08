@@ -161,7 +161,12 @@ impl Component for NotificationModel {
                     set_hexpand: false,
                     set_vexpand: false,
                     connect_clicked[sender] => move |_| {
-                        sender.input(NotificationInput::CloseClicked);
+                        // Non-panicking send: a toast can be torn down (auto-expire
+                        // / dismiss) while its close button is still clickable, so the
+                        // component runtime may already be gone. `input()` would
+                        // `.expect()` and, from this GTK trampoline (a non-unwinding
+                        // FFI boundary), abort the whole shell. Drop it silently.
+                        let _ = sender.input_sender().send(NotificationInput::CloseClicked);
                     },
 
                     gtk::Image {
@@ -244,7 +249,9 @@ impl Component for NotificationModel {
                     set_hexpand: true,
                     set_placeholder_text: Some("Reply…"),
                     connect_activate[sender] => move |_| {
-                        sender.input(NotificationInput::ReplySubmitted);
+                        // Non-panicking send (see CloseClicked): the toast may be
+                        // gone by the time reply is submitted → drop, don't abort.
+                        let _ = sender.input_sender().send(NotificationInput::ReplySubmitted);
                     },
                 },
 
@@ -253,7 +260,9 @@ impl Component for NotificationModel {
                     add_css_class: "ok-button-primary",
                     set_tooltip_text: Some("Send reply"),
                     connect_clicked[sender] => move |_| {
-                        sender.input(NotificationInput::ReplySubmitted);
+                        // Non-panicking send (see CloseClicked): the toast may be
+                        // gone by the time reply is submitted → drop, don't abort.
+                        let _ = sender.input_sender().send(NotificationInput::ReplySubmitted);
                     },
 
                     gtk::Image {
@@ -312,7 +321,11 @@ impl Component for NotificationModel {
         effects.push(move |_| {
             let config = base_config.clone();
             let format_24_h = config.general().clock_format_24_h().get();
-            sender_clone.input(NotificationInput::ChangeTimeFormat(format_24_h));
+            // Non-panicking send (see CloseClicked): this effect can fire after the
+            // toast's runtime is shut down → drop rather than abort the shell.
+            let _ = sender_clone
+                .input_sender()
+                .send(NotificationInput::ChangeTimeFormat(format_24_h));
         });
 
         let timeout_ms = params.timeout_ms;
