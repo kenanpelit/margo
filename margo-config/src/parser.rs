@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -12,7 +13,7 @@ use crate::types::*;
 pub fn parse_config(path: Option<&Path>) -> Result<Config> {
     let resolved = resolve_config_path(path)?;
     let mut cfg = Config::default();
-    parse_file(&mut cfg, &resolved, true)?;
+    parse_file(&mut cfg, &resolved, true, &mut HashSet::new())?;
     inject_default_chvt_bindings(&mut cfg);
     Ok(cfg)
 }
@@ -75,7 +76,25 @@ fn resolve_include_path(include: &str, relative_to: &Path) -> PathBuf {
 
 // ── File-level parsing ───────────────────────────────────────────────────────
 
-fn parse_file(cfg: &mut Config, path: &Path, required: bool) -> Result<()> {
+fn parse_file(
+    cfg: &mut Config,
+    path: &Path,
+    required: bool,
+    visited: &mut HashSet<PathBuf>,
+) -> Result<()> {
+    // Guard against include/source cycles (A→B→A, or a file that
+    // includes itself) and accidental double-loads of the same file
+    // (which would duplicate its binds/rules/exec entries). Key on the
+    // canonicalized path so `./foo` and `foo` resolve to one identity.
+    let canon = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if !visited.insert(canon) {
+        warn!(
+            "{}: include/source already parsed (cycle or duplicate) — \
+             skipping to avoid infinite recursion",
+            path.display()
+        );
+        return Ok(());
+    }
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) => {
@@ -91,7 +110,7 @@ fn parse_file(cfg: &mut Config, path: &Path, required: bool) -> Result<()> {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        if let Err(e) = parse_line(cfg, line, path) {
+        if let Err(e) = parse_line(cfg, line, path, visited) {
             error!("{}:{}: {} — {:?}", path.display(), lineno + 1, e, line);
         }
     }
@@ -118,7 +137,7 @@ fn strip_inline_comment(line: &str) -> &str {
     let bytes = line.as_bytes();
     let mut prev_ws = false;
     for (i, &b) in bytes.iter().enumerate() {
-        if b == b'#' && prev_ws {
+        if b == b'#' && prev_ws && !hex_color_follows(&line[i + 1..]) {
             return line[..i].trim_end();
         }
         prev_ws = b == b' ' || b == b'\t';
@@ -126,9 +145,29 @@ fn strip_inline_comment(line: &str) -> &str {
     line
 }
 
+/// True when the text right after a `#` is a bare hex-colour run
+/// (`RGB`/`RGBA`/`RRGGBB`/`RRGGBBAA`) terminated by end-of-line or
+/// whitespace. Guards `focuscolor = #c66b25` (matugen-style `#`-hex,
+/// space after `=`) from being swallowed as an inline comment, while
+/// a real `… # note` (space after `#`, run length 0) still strips.
+fn hex_color_follows(rest: &str) -> bool {
+    let run = rest
+        .as_bytes()
+        .iter()
+        .take_while(|b| b.is_ascii_hexdigit())
+        .count();
+    matches!(run, 3 | 4 | 6 | 8)
+        && rest[run..].chars().next().is_none_or(char::is_whitespace)
+}
+
 // ── Line-level dispatch ──────────────────────────────────────────────────────
 
-fn parse_line(cfg: &mut Config, line: &str, origin: &Path) -> Result<()> {
+fn parse_line(
+    cfg: &mut Config,
+    line: &str,
+    origin: &Path,
+    visited: &mut HashSet<PathBuf>,
+) -> Result<()> {
     // Strip inline comments before parsing so users can write e.g.
     //   xkb_rules_options = ctrl:nocaps   # CapsLock → Ctrl
     // without the comment becoming part of the value.
@@ -150,7 +189,7 @@ fn parse_line(cfg: &mut Config, line: &str, origin: &Path) -> Result<()> {
             );
             return Ok(());
         }
-        return parse_file(cfg, &p, false);
+        return parse_file(cfg, &p, false, visited);
     }
 
     // bind variants
@@ -825,7 +864,12 @@ fn parse_windowrule(cfg: &mut Config, val: &str) -> Result<()> {
             "block_out_from_screencast" | "blockout" => {
                 rule.block_out_from_screencast = Some(parse_bool_s(&v))
             }
-            "tags" => rule.tags = 1 << (v.parse::<u32>().unwrap_or(1).saturating_sub(1)),
+            // Tag numbers are 1..=32 → bit 0..=31. Clamp the shift amount:
+            // an out-of-range `tags:33` (typo) would otherwise overflow the
+            // shift and panic in release (overflow-checks = true).
+            "tags" => {
+                rule.tags = 1u32 << v.parse::<u32>().unwrap_or(1).saturating_sub(1).min(31)
+            }
             // `monitor:eDP-1` (windowrule context) pins a window to the
             // named output. `monitor_name` is the tagrule key spelling
             // for the same concept — accept it as an alias here so a
@@ -1721,6 +1765,60 @@ mod tests {
             strip_inline_comment("repeat_rate = 35\t# faster keys"),
             "repeat_rate = 35"
         );
+    }
+
+    #[test]
+    fn hex_colour_values_are_not_stripped_as_comments() {
+        // Regression: `focuscolor = #c66b25` (matugen-style `#`-hex with a
+        // space after `=`) had its whole value eaten as an inline comment,
+        // silently resetting the colour to default on every reload.
+        for val in [
+            "focuscolor = #c66b25",       // RRGGBB
+            "bordercolor = #1e1e2eff",    // RRGGBBAA
+            "col = #abc",                 // RGB
+            "col = #abcd",                // RGBA
+        ] {
+            assert_eq!(strip_inline_comment(val), val, "stripped {val:?}");
+        }
+        // A hex colour followed by a genuine comment keeps the colour, drops
+        // the note.
+        assert_eq!(
+            strip_inline_comment("focuscolor = #c66b25   # accent"),
+            "focuscolor = #c66b25"
+        );
+        // A non-colour token after a space is still a comment.
+        assert_eq!(strip_inline_comment("x = 1 # note"), "x = 1");
+    }
+
+    #[test]
+    fn include_cycle_does_not_recurse_forever() {
+        // Regression: a self-including (or A→B→A) config caused unbounded
+        // recursion → stack overflow, killing the compositor at startup /
+        // `mctl reload`. The visited-set must break the cycle and return Ok.
+        let dir = std::env::temp_dir().join(format!("margo-inc-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("config.conf");
+        let b = dir.join("b.conf");
+        std::fs::write(&a, "include = b.conf\nfocuscolor = #c66b25\n").unwrap();
+        std::fs::write(&b, "include = config.conf\n").unwrap();
+        // Must not stack-overflow; parse completes and the real option loads.
+        let cfg = parse_config(Some(&a)).unwrap();
+        assert_eq!(cfg.focuscolor.0[0], 0xc6 as f32 / 255.0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn out_of_range_tag_number_does_not_overflow() {
+        // Regression: `tags:33` (bit 33) overflowed `1 << n` and panicked in
+        // release (overflow-checks = true). The shift amount is clamped to 31.
+        let dir = std::env::temp_dir().join(format!("margo-tag-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("config.conf");
+        std::fs::write(&main, "windowrule = tags:33,appid:foo\n").unwrap();
+        // Must not panic while parsing.
+        let cfg = parse_config(Some(&main)).unwrap();
+        assert_eq!(cfg.window_rules.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
