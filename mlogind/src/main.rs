@@ -602,6 +602,37 @@ fn ensure_seatd() -> Option<std::process::Child> {
     Some(child)
 }
 
+/// Read the system console keyboard config (`/etc/vconsole.conf`, written by
+/// localectl) and translate its already-xkb-shaped fields into the
+/// `XKB_DEFAULT_*` env vars cage builds its keymap from — so the greeter uses
+/// the machine's layout (e.g. Turkish-F: `XKBLAYOUT=tr` + `XKBVARIANT=f`)
+/// instead of cage's `us` default. Empty if the file is missing.
+fn vconsole_xkb_env() -> Vec<(&'static str, String)> {
+    let mut env = Vec::new();
+    let Ok(text) = std::fs::read_to_string("/etc/vconsole.conf") else {
+        return env;
+    };
+    for line in text.lines() {
+        let Some((key, val)) = line.trim().split_once('=') else {
+            continue;
+        };
+        let val = val.trim().trim_matches('"').to_string();
+        // XKBOPTIONS is often ",caps:…" (leading empty option) — keep it; only
+        // skip a truly empty value so we don't blank cage's own default.
+        if val.is_empty() {
+            continue;
+        }
+        match key.trim() {
+            "XKBLAYOUT" => env.push(("XKB_DEFAULT_LAYOUT", val)),
+            "XKBVARIANT" => env.push(("XKB_DEFAULT_VARIANT", val)),
+            "XKBOPTIONS" => env.push(("XKB_DEFAULT_OPTIONS", val)),
+            "XKBMODEL" => env.push(("XKB_DEFAULT_MODEL", val)),
+            _ => {}
+        }
+    }
+    env
+}
+
 /// Orchestrator: host the greeter inside `cage -s -- foot <self> --greet` so
 /// every connected monitor renders at its native KMS mode, read the validated
 /// login it hands back, and launch the session on the bare VT. Loops
@@ -644,7 +675,9 @@ fn run_cage_host(config: &Config) -> Result<(), Box<dyn Error>> {
 
         info!("orchestrator: launching cage+foot greeter");
         let mut cmd = Command::new(&cage);
-        cmd.arg("-s") // allow VT switching → escape hatch stays open
+        cmd.arg("-m") // output mode: "last" confines the greeter to one monitor
+            .arg(&config.display.output_mode)
+            .arg("-s") // allow VT switching → escape hatch stays open
             .arg("--")
             .arg(&foot)
             .arg(&self_exe)
@@ -654,6 +687,10 @@ fn run_cage_host(config: &Config) -> Result<(), Box<dyn Error>> {
             // libseat: logind (no session) → fails; force seatd, the only
             // backend available to a session-less root process here.
             .env("LIBSEAT_BACKEND", "seatd");
+        // Match the greeter keyboard to the machine's console layout.
+        for (key, val) in vconsole_xkb_env() {
+            cmd.env(key, val);
+        }
         // Capture cage's own stdout/stderr — it inherits the greeter's VT
         // otherwise, where a later TUI redraw wipes any error it printed.
         if let Ok(out) = std::fs::File::create(&cage_log) {

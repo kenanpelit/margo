@@ -136,3 +136,8 @@ wayland_sessions_path = "/usr/share/wayland-sessions"
 # Automatically falls back to the classic in-process TTY greeter if cage or foot
 # is missing or cage cannot initialise. Set to "tty" to force the classic path.
 host = "cage"
+# cage output mode: "last" = greeter on a single monitor (the last-connected),
+# centred + native res, and follows hotplug. "extend" = span all monitors as one
+# surface (login block lands on the monitor seam). The greeter's keyboard layout
+# is read from /etc/vconsole.conf (XKBLAYOUT/XKBVARIANT/XKBOPTIONS).
+output_mode = "last"

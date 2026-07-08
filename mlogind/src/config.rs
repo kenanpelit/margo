@@ -383,6 +383,13 @@ toml_config_struct! { WaylandConfig, PartialWaylandConfig, RoughWaylandConfig,
 //     foot is missing, or cage fails to initialise (never a lockout).
 toml_config_struct! { DisplayConfig, PartialDisplayConfig, RoughDisplayConfig,
     host => String,
+    // cage output mode (`-m`): "last" confines the greeter to a single output
+    // (the last-connected one) so the terminal fills exactly one monitor and the
+    // login block centres within it; "extend" spans every output as one logical
+    // surface (which pushes the centred block to the monitor seam). "last" also
+    // adapts to hotplug: unplug the external and the greeter follows to the
+    // laptop panel.
+    output_mode => String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
