@@ -40,6 +40,37 @@ pub fn build_window(
     });
     window.set_decorated(false);
 
+    // ── Diagnostic (temporary): per output, log the monitor geometry GDK
+    // reports and the size the layer surface actually settles at, to pin down
+    // the "surface narrower than the external monitor" bug. Goes to stderr →
+    // /run/mlogind/mgreet.log (real) or preview's redirected stderr.
+    let connector = monitor
+        .connector()
+        .map(|c| c.to_string())
+        .unwrap_or_else(|| "<unknown>".to_string());
+    let geo = monitor.geometry();
+    eprintln!(
+        "[mgreet] window for {connector}: gdk geometry {}x{}+{}+{} scale={}",
+        geo.width(),
+        geo.height(),
+        geo.x(),
+        geo.y(),
+        monitor.scale_factor(),
+    );
+    {
+        let connector = connector.clone();
+        window.connect_map(move |w| {
+            eprintln!("[mgreet] {connector} mapped at {}x{}", w.width(), w.height());
+        });
+    }
+    {
+        let connector = connector.clone();
+        let w = window.clone();
+        glib::timeout_add_local_once(std::time::Duration::from_secs(1), move || {
+            eprintln!("[mgreet] {connector} settled at {}x{}", w.width(), w.height());
+        });
+    }
+
     // Dim scrim behind a centred card (Overlay stacks card over scrim).
     let scrim = gtk::Box::new(gtk::Orientation::Vertical, 0);
     scrim.add_css_class("mgreet-scrim");
@@ -71,7 +102,10 @@ pub fn build_window(
     });
     window.add_controller(key);
 
-    window.present();
+    // `set_visible(true)` (not `present()`) matches mshell-frame's proven
+    // multi-monitor 4-anchor layer surface: present() adds toplevel raise/focus
+    // semantics a layer surface shouldn't need.
+    window.set_visible(true);
     window
 }
 
