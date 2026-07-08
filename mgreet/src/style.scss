@@ -130,22 +130,47 @@ window.mgreet-root {
   font-weight: 600;
 }
 
-// The power controls (reboot / shutdown) in a corner.
-.mgreet-power {
-  background-color: rgba(#000, 0.25);
-  border-radius: var(--radius-pill);
-  padding: 6px;
-}
-.mgreet-power button {
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-pill);
-  padding: 8px;
+// Hostname line under the clock.
+.mgreet-host {
+  font-size: 13px;
   color: var(--on-surface-variant);
-  min-width: 20px;
-  min-height: 20px;
 }
-.mgreet-power button:hover {
-  background-color: rgba(#fff, 0.10);
+
+// Caps Lock warning under the password field.
+.mgreet-caps {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+// Battery indicator, top-right corner.
+.mgreet-battery {
+  background-color: rgba(#000, 0.28);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+}
+.mgreet-battery-icon {
+  font-family: "Symbols Nerd Font Mono", "Symbols Nerd Font", monospace;
+  font-size: 16px;
   color: var(--on-surface);
+}
+.mgreet-battery-pct {
+  font-size: 13px;
+  font-feature-settings: "tnum";
+  color: var(--on-surface-variant);
+}
+
+// Power-action footer: a row of "[F1] Shutdown" chips, bottom-centre.
+.mgreet-power {
+  background-color: rgba(#000, 0.28);
+  border-radius: var(--radius-pill);
+  padding: 8px 18px;
+}
+.mgreet-power-key {
+  color: var(--primary);
+  font-weight: 700;
+  font-feature-settings: "tnum";
+}
+.mgreet-power-hint {
+  color: var(--on-surface-variant);
 }

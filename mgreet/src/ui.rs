@@ -40,44 +40,15 @@ pub fn build_window(
     });
     window.set_decorated(false);
 
-    // ── Diagnostic (temporary): per output, log the monitor geometry GDK
-    // reports and the size the layer surface actually settles at, to pin down
-    // the "surface narrower than the external monitor" bug. Goes to stderr →
-    // /run/mlogind/mgreet.log (real) or preview's redirected stderr.
-    let connector = monitor
-        .connector()
-        .map(|c| c.to_string())
-        .unwrap_or_else(|| "<unknown>".to_string());
-    let geo = monitor.geometry();
     // Size the window to the monitor explicitly. Anchoring all four edges should
     // make the compositor fill the output on its own, but a bare 4-anchor layer
-    // surface has been landing at the wrong output's width on a multi-monitor
-    // greeter (the external panel ended up laptop-wide); seeding GTK's allocation
-    // with the real per-output geometry makes coverage deterministic.
+    // surface was landing at the wrong output's width on a multi-monitor greeter
+    // (the external panel ended up laptop-wide); seeding GTK's allocation with the
+    // real per-output geometry makes coverage deterministic.
+    let geo = monitor.geometry();
     window.set_default_size(geo.width().max(1), geo.height().max(1));
-    eprintln!(
-        "[mgreet] window for {connector}: gdk geometry {}x{}+{}+{} scale={}",
-        geo.width(),
-        geo.height(),
-        geo.x(),
-        geo.y(),
-        monitor.scale_factor(),
-    );
-    {
-        let connector = connector.clone();
-        window.connect_map(move |w| {
-            eprintln!("[mgreet] {connector} mapped at {}x{}", w.width(), w.height());
-        });
-    }
-    {
-        let connector = connector.clone();
-        let w = window.clone();
-        glib::timeout_add_local_once(std::time::Duration::from_secs(1), move || {
-            eprintln!("[mgreet] {connector} settled at {}x{}", w.width(), w.height());
-        });
-    }
 
-    // Dim scrim behind a centred card (Overlay stacks card over scrim).
+    // Opaque backdrop; a centred card floats over it (Overlay stacks children).
     let scrim = gtk::Box::new(gtk::Orientation::Vertical, 0);
     scrim.add_css_class("mgreet-scrim");
     scrim.set_hexpand(true);
@@ -90,14 +61,40 @@ pub fn build_window(
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scrim));
     overlay.add_overlay(&card);
+
+    // Battery indicator, top-right (laptops only — None on a desktop).
+    if let Some(battery) = build_battery() {
+        overlay.add_overlay(&battery);
+    }
+
+    // Power-action footer (F-key chips), bottom-centre.
+    if !state.power.is_empty() {
+        let footer = build_power_footer(&state.power);
+        footer.set_halign(gtk::Align::Center);
+        footer.set_valign(gtk::Align::End);
+        footer.set_margin_bottom(22);
+        overlay.add_overlay(&footer);
+    }
+
     window.set_child(Some(&overlay));
 
-    // Escape quits only in preview / dry-run. The real greeter must not be
-    // dismissable (no lock-out); a power menu will own shutdown/reboot later.
+    // Keyboard: the power F-keys anywhere (real greeter ONLY — a preview run
+    // under the live session must never poweroff the machine), plus Escape to
+    // quit in preview. Matching by GTK key name ("F1"…) mirrors the TUI.
     let key = gtk::EventControllerKey::new();
     let app_weak = app.downgrade();
     let allow_escape_quit = state.greeter.is_none();
+    let power = state.power.clone();
+    let power_live = state.greeter.is_some();
     key.connect_key_pressed(move |_, keyval, _, _| {
+        if let Some(name) = keyval.name()
+            && let Some(action) = power.iter().find(|a| a.key == name.as_str())
+        {
+            if power_live {
+                crate::power::run(action);
+            }
+            return glib::Propagation::Stop;
+        }
         if keyval == gdk::Key::Escape {
             if allow_escape_quit && let Some(app) = app_weak.upgrade() {
                 app.quit();
@@ -135,6 +132,13 @@ fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
         });
     }
 
+    // Hostname — a small orienting touch (which machine you're logging into).
+    if let Some(host) = hostname() {
+        let host_label = label(&["mgreet-host"]);
+        host_label.set_text(&host);
+        card.append(&host_label);
+    }
+
     card.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
     // ── Username ──
@@ -154,6 +158,26 @@ fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
     password.set_input_purpose(gtk::InputPurpose::Password);
     password.set_hexpand(true);
     card.append(&password);
+
+    // ── Caps Lock warning ── (critical for password entry). Updated from the
+    // modifier state on each keystroke in the password field.
+    let caps = label(&["mgreet-caps"]);
+    caps.set_text("\u{2191} Caps Lock is on");
+    caps.set_visible(false);
+    card.append(&caps);
+    {
+        let caps_ctrl = gtk::EventControllerKey::new();
+        let caps_p = caps.clone();
+        caps_ctrl.connect_key_pressed(move |_, _, _, mods| {
+            caps_p.set_visible(mods.contains(gdk::ModifierType::LOCK_MASK));
+            glib::Propagation::Proceed
+        });
+        let caps_r = caps.clone();
+        caps_ctrl.connect_key_released(move |_, _, _, mods| {
+            caps_r.set_visible(mods.contains(gdk::ModifierType::LOCK_MASK));
+        });
+        password.add_controller(caps_ctrl);
+    }
 
     // ── Session picker ──
     let session_names: Vec<&str> = state.sessions.iter().map(|s| s.name.as_str()).collect();
@@ -223,6 +247,64 @@ fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
     }
 
     card
+}
+
+/// The machine hostname (from /etc/hostname), if set.
+fn hostname() -> Option<String> {
+    std::fs::read_to_string("/etc/hostname")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Top-right battery indicator (icon + percent), refreshed every 30 s. `None`
+/// on a host with no battery, so desktops show nothing.
+fn build_battery() -> Option<gtk::Widget> {
+    crate::battery::read()?; // gate: no battery → no indicator
+
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    row.add_css_class("mgreet-battery");
+    row.set_halign(gtk::Align::End);
+    row.set_valign(gtk::Align::Start);
+    row.set_margin_top(16);
+    row.set_margin_end(20);
+
+    let icon = label(&["mgreet-battery-icon"]);
+    let pct = label(&["mgreet-battery-pct"]);
+    row.append(&icon);
+    row.append(&pct);
+
+    let refresh = move || {
+        if let Some(b) = crate::battery::read() {
+            icon.set_text(crate::battery::icon(&b));
+            pct.set_text(&format!("{}%", b.percent));
+        }
+    };
+    refresh();
+    glib::timeout_add_seconds_local(30, move || {
+        refresh();
+        glib::ControlFlow::Continue
+    });
+
+    Some(row.upcast())
+}
+
+/// A centred row of `[F1] Shutdown  [F2] Reboot …` chips for the power actions.
+fn build_power_footer(actions: &[crate::power::PowerAction]) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 18);
+    row.add_css_class("mgreet-power");
+    for action in actions {
+        let chip = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        chip.add_css_class("mgreet-power-chip");
+        let key = gtk::Label::new(Some(&format!("[{}]", action.key)));
+        key.add_css_class("mgreet-power-key");
+        let hint = gtk::Label::new(Some(&action.hint));
+        hint.add_css_class("mgreet-power-hint");
+        chip.append(&key);
+        chip.append(&hint);
+        row.append(&chip);
+    }
+    row
 }
 
 /// Validate the login, then either hand it off to the orchestrator (real mode)

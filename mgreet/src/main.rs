@@ -6,13 +6,17 @@
 //! relm4: a login gate must be maximally robust, and fewer layers means
 //! fewer ways to abort.
 //!
-//! Phase 1 (this file): the multi-monitor UI. Run `mgreet --preview` under a
-//! live margo session to see the login card appear on all outputs. Real PAM
-//! auth + the mlogind orchestrator hand-off + margo greeter-mode land next.
+//! Real PAM auth, the mlogind credential hand-off, the shared last-login cache,
+//! the power-action F-key footer, and a battery indicator are all live. Run
+//! `mgreet --preview` under a live margo session for a non-destructive dry-run
+//! (no PAM, no hand-off, power keys inert); the mlogind orchestrator runs it for
+//! real via `[display] host = "gui"`.
 
 mod auth;
+mod battery;
 mod cache;
 mod handoff;
+mod power;
 mod sessions;
 mod style;
 mod ui;
@@ -53,6 +57,8 @@ pub struct State {
     pub greeter: Option<Greeter>,
     /// Last-used session name to pre-select (from the shared cache), if any.
     pub initial_session: Option<String>,
+    /// Power actions for the F-key footer (from MLOGIND_POWER or a default set).
+    pub power: Vec<power::PowerAction>,
 }
 
 fn main() -> glib::ExitCode {
@@ -75,8 +81,7 @@ fn main() -> glib::ExitCode {
 
     // Pre-fill the last user + session from the cache the orchestrator shares
     // with the TUI greeter (only in real mode; preview never touches it).
-    let (cached_session, cached_user) = match greeter.as_ref().and_then(|g| g.cache_path.as_ref())
-    {
+    let (cached_session, cached_user) = match greeter.as_ref().and_then(|g| g.cache_path.as_ref()) {
         Some(path) => cache::read(path),
         None => (None, None),
     };
@@ -99,6 +104,7 @@ fn main() -> glib::ExitCode {
             sessions: sessions::list(),
             greeter: greeter.clone(),
             initial_session: cached_session.clone(),
+            power: power::from_env(),
         });
 
         let windows: Rc<RefCell<HashMap<String, gtk::Window>>> =

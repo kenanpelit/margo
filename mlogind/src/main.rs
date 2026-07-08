@@ -847,6 +847,20 @@ fn run_gui_host(config: &Config) -> Result<(), Box<dyn Error>> {
 
     write_greeter_conf(&greeter_conf)?;
 
+    // Serialise the resolved power controls (base + extra) so mgreet renders the
+    // same F-key footer and runs the same commands as the TUI greeter: one
+    // `key<TAB>hint<TAB>cmd` line per entry.
+    let power_env: String = config
+        .power_controls
+        .base_entries
+        .0
+        .iter()
+        .chain(config.power_controls.entries.0.iter())
+        .filter(|p| !p.key.is_empty() && !p.hint.is_empty())
+        .map(|p| format!("{}\t{}\t{}", p.key, p.hint, p.cmd))
+        .collect::<Vec<_>>()
+        .join("\n");
+
     // margo needs a seat; make sure seatd is up (root, no logind session → the
     // libseat builtin backend is absent, so seatd is the only option). Same as
     // the cage host; kept alive for the whole host loop.
@@ -890,6 +904,8 @@ fn run_gui_host(config: &Config) -> Result<(), Box<dyn Error>> {
             // Shared last-login cache (same file the TUI greeter uses) so mgreet
             // can pre-fill the previous username + session and update it.
             .env("MLOGIND_CACHE_PATH", &config.cache_path)
+            // Power controls (F-key footer) mirrored from the TUI greeter.
+            .env("MLOGIND_POWER", &power_env)
             // libseat: logind (no session) → fails; force seatd, the only
             // backend available to a session-less root process here.
             .env("LIBSEAT_BACKEND", "seatd");
