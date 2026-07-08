@@ -887,6 +887,9 @@ fn run_gui_host(config: &Config) -> Result<(), Box<dyn Error>> {
             .env("XDG_RUNTIME_DIR", &runtime_dir)
             .env("MLOGIND_RESULT_PATH", &result_path)
             .env("MLOGIND_PAM_SERVICE", &config.pam_service)
+            // Shared last-login cache (same file the TUI greeter uses) so mgreet
+            // can pre-fill the previous username + session and update it.
+            .env("MLOGIND_CACHE_PATH", &config.cache_path)
             // libseat: logind (no session) → fails; force seatd, the only
             // backend available to a session-less root process here.
             .env("LIBSEAT_BACKEND", "seatd");

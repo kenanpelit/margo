@@ -25,15 +25,18 @@
   --radius-pill: 999px;
 }
 
-// The layer-shell window itself is transparent; only the card paints. This
-// lets the compositor wallpaper show through around the card on every output.
+// The greeter paints an OPAQUE backdrop: the host compositor renders its own
+// default wallpaper behind the layer surface, and a login screen must never let
+// that bleed through (neither around the card nor on any uncovered edge). Both
+// the window and the scrim are solid so the surface is fully opaque end to end.
 window.mgreet-root {
-  background: transparent;
+  background: var(--bg);
 }
 
-// Dim scrim behind the card so the login is legible over any wallpaper.
+// Solid backdrop behind the card (a subtle vertical wash of the palette for a
+// little depth). Opaque on purpose — see above.
 .mgreet-scrim {
-  background: rgba(#000, 0.35);
+  background: linear-gradient(180deg, var(--bg) 0%, var(--surface) 100%);
 }
 
 // ── The login card ────────────────────────────────────────────────

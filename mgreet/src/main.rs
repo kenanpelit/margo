@@ -11,6 +11,7 @@
 //! auth + the mlogind orchestrator hand-off + margo greeter-mode land next.
 
 mod auth;
+mod cache;
 mod handoff;
 mod sessions;
 mod style;
@@ -35,6 +36,10 @@ use sessions::Session;
 pub struct Greeter {
     pub result_path: PathBuf,
     pub pam_service: String,
+    /// Shared last-login cache (mlogind's `config.cache_path`). Read to pre-fill
+    /// the username + session, rewritten on a successful login. `None` disables
+    /// the feature (e.g. the orchestrator didn't hand a path over).
+    pub cache_path: Option<PathBuf>,
 }
 
 /// Shared greeter state. The username/password [`gtk::EntryBuffer`]s are shared
@@ -46,6 +51,8 @@ pub struct State {
     pub password: gtk::EntryBuffer,
     pub sessions: Vec<Session>,
     pub greeter: Option<Greeter>,
+    /// Last-used session name to pre-select (from the shared cache), if any.
+    pub initial_session: Option<String>,
 }
 
 fn main() -> glib::ExitCode {
@@ -62,7 +69,16 @@ fn main() -> glib::ExitCode {
             result_path: PathBuf::from(path),
             pam_service: std::env::var("MLOGIND_PAM_SERVICE")
                 .unwrap_or_else(|_| "login".to_string()),
+            cache_path: std::env::var_os("MLOGIND_CACHE_PATH").map(PathBuf::from),
         })
+    };
+
+    // Pre-fill the last user + session from the cache the orchestrator shares
+    // with the TUI greeter (only in real mode; preview never touches it).
+    let (cached_session, cached_user) = match greeter.as_ref().and_then(|g| g.cache_path.as_ref())
+    {
+        Some(path) => cache::read(path),
+        None => (None, None),
     };
 
     let app = gtk::Application::builder()
@@ -78,10 +94,11 @@ fn main() -> glib::ExitCode {
 
         let state = Rc::new(State {
             preview,
-            username: gtk::EntryBuffer::new(None::<&str>),
+            username: gtk::EntryBuffer::new(cached_user.as_deref()),
             password: gtk::EntryBuffer::new(None::<&str>),
             sessions: sessions::list(),
             greeter: greeter.clone(),
+            initial_session: cached_session.clone(),
         });
 
         let windows: Rc<RefCell<HashMap<String, gtk::Window>>> =

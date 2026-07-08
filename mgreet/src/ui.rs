@@ -49,6 +49,12 @@ pub fn build_window(
         .map(|c| c.to_string())
         .unwrap_or_else(|| "<unknown>".to_string());
     let geo = monitor.geometry();
+    // Size the window to the monitor explicitly. Anchoring all four edges should
+    // make the compositor fill the output on its own, but a bare 4-anchor layer
+    // surface has been landing at the wrong output's width on a multi-monitor
+    // greeter (the external panel ended up laptop-wide); seeding GTK's allocation
+    // with the real per-output geometry makes coverage deterministic.
+    window.set_default_size(geo.width().max(1), geo.height().max(1));
     eprintln!(
         "[mgreet] window for {connector}: gdk geometry {}x{}+{}+{} scale={}",
         geo.width(),
@@ -158,6 +164,12 @@ fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
     };
     sessions.add_css_class("mgreet-session");
     sessions.set_halign(gtk::Align::Start);
+    // Pre-select the last-used session (from the shared mlogind cache).
+    if let Some(want) = state.initial_session.as_deref()
+        && let Some(idx) = state.sessions.iter().position(|s| s.name == want)
+    {
+        sessions.set_selected(idx as u32);
+    }
     let session_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     session_row.append(&caption("Session"));
     session_row.append(&sessions);
@@ -255,7 +267,13 @@ fn submit_login(
         // Validated: hand the credentials to the orchestrator, then quit so the
         // greeter compositor exits and it launches the session.
         Ok(()) => match crate::handoff::write(&greeter.result_path, &user, &session, &pass) {
-            Ok(()) => app.quit(),
+            Ok(()) => {
+                // Remember this login for next time (shared with the TUI greeter).
+                if let Some(cache_path) = greeter.cache_path.as_deref() {
+                    crate::cache::write(cache_path, &session, &user);
+                }
+                app.quit()
+            }
             Err(e) => set_status(status, &format!("Login hand-off failed: {e}"), true),
         },
         Err(msg) => {
