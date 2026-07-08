@@ -221,8 +221,10 @@ impl Component for CalendarModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let id = start_tick(&sender);
-
+        // Start the 1 Hz tick lazily on first reveal, not eagerly: this menu
+        // is built per monitor and hidden until opened, so an eager timer
+        // wakes every monitor's calendar once a second from login. The
+        // ParentRevealChanged(true) arm starts it (and refreshes) on reveal.
         let format_24_h = mshell_config::config_manager::config_manager()
             .config()
             .general()
@@ -233,7 +235,7 @@ impl Component for CalendarModel {
         let today = today_local();
 
         let model = CalendarModel {
-            timer_id: Some(id),
+            timer_id: None,
             current_date: now.date(),
             hero_day: now.day().to_string(),
             hero_month: now.format(&MONTH_FORMAT).unwrap_or_default(),

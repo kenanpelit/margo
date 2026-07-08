@@ -121,8 +121,11 @@ impl SimpleComponent for ClockModel {
     ) -> ComponentParts<Self> {
         let base_config = mshell_config::config_manager::config_manager().config();
 
-        let id = start_tick(&sender);
-
+        // Don't start the 1 Hz tick eagerly: this is the clock *menu* (built
+        // per monitor, hidden until opened), so an eager timer means every
+        // monitor's clock menu wakes once a second from login even when never
+        // shown. The ParentRevealChanged(true) arm starts it on first reveal
+        // and refreshes immediately.
         let format_24_h = base_config
             .clone()
             .general()
@@ -149,7 +152,7 @@ impl SimpleComponent for ClockModel {
             time_label: time,
             weekday_label: weekday,
             date_label: date,
-            timer_id: Some(id),
+            timer_id: None,
             _effects: effects,
         };
 

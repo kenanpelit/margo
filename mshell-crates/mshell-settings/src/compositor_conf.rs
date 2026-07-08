@@ -105,8 +105,17 @@ pub(crate) fn set_and_reload(key: &str, val: String) {
 }
 
 pub(crate) fn reload() {
-    if let Err(e) = std::process::Command::new("mctl").args(["reload"]).spawn() {
-        tracing::warn!(error = %e, "settings: `mctl reload` failed to spawn");
+    match std::process::Command::new("mctl").args(["reload"]).spawn() {
+        // Reap on a detached thread so we neither block the GTK main loop nor
+        // leak a zombie `mctl` per settings apply (std Child::drop doesn't
+        // wait). This is the single shared reload — other Settings pages
+        // should call it rather than re-spawning `mctl reload` themselves.
+        Ok(mut child) => {
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
+        Err(e) => tracing::warn!(error = %e, "settings: `mctl reload` failed to spawn"),
     }
 }
 

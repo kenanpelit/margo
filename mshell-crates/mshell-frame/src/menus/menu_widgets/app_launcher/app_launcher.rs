@@ -752,10 +752,18 @@ impl Component for AppLauncherModel {
             sender_clone.input(AppLauncherInput::LauncherConfigChanged);
         });
 
+        // `AppInfoMonitor::get()` is a process-global singleton; this handler
+        // outlives the launcher component (it's never disconnected). Use the
+        // fallible sender, not `input()` — a bare `input()` on a dropped
+        // runtime panics inside the glib trampoline, which can't unwind, and
+        // aborts the whole shell (see the same guard in media_player.rs). A
+        // failed send after teardown is a harmless no-op.
         let sender_clone = sender.clone();
         let monitor = gio::AppInfoMonitor::get();
         monitor.connect_changed(move |_| {
-            sender_clone.input(AppLauncherInput::FilterChanged(String::new()));
+            let _ = sender_clone
+                .input_sender()
+                .send(AppLauncherInput::FilterChanged(String::new()));
         });
 
         // Let providers that refresh data off-thread (Bluetooth / audio /
