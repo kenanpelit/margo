@@ -32,13 +32,27 @@ pub fn request_once(req: &str) -> std::io::Result<serde_json::Value> {
 /// [`request_once`] against an explicit socket path (testable seam).
 pub fn request_once_at(path: impl AsRef<Path>, req: &str) -> std::io::Result<serde_json::Value> {
     let mut sock = UnixStream::connect(path)?;
+    // Bound the round-trip so a wedged compositor (accepts the socket but
+    // never replies) can't hang mctl — and every script/pill that shells out
+    // to it — forever. `watch` streams deliberately skip this (they block for
+    // events by design).
+    let timeout = std::time::Duration::from_secs(5);
+    sock.set_read_timeout(Some(timeout))?;
+    sock.set_write_timeout(Some(timeout))?;
     sock.write_all(req.as_bytes())?;
     sock.write_all(b"\n")?;
     let mut reader = BufReader::new(sock);
     let mut line = String::new();
     reader.read_line(&mut line)?;
-    Ok(serde_json::from_str(line.trim())
-        .unwrap_or_else(|_| serde_json::json!({ "error": "bad reply" })))
+    // Surface a malformed/empty reply (dead or garbage-emitting compositor)
+    // as an error so callers exit non-zero, instead of silently returning an
+    // Ok sentinel they can't distinguish from a real reply.
+    serde_json::from_str(line.trim()).map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("malformed reply from margo: {e}"),
+        )
+    })
 }
 
 /// Send a `watch …` request and invoke `on_frame` for every JSON line
