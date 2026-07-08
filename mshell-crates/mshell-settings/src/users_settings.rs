@@ -16,7 +16,6 @@ use relm4::gtk::prelude::*;
 use relm4::gtk::{gio, glib};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
-use std::process::Stdio;
 
 struct UserInfo {
     name: String,
@@ -380,50 +379,18 @@ impl UsersSettingsModel {
 
 // ── Privileged helpers ───────────────────────────────────────────────────────
 
-/// Run `pkexec <args…>`; the margo polkit agent handles the prompt.
+/// Run a privileged `<args…>` action. Prefers silent `sudo -n`, falls back to
+/// the polkit agent — see [`crate::sys::privileged`].
 async fn run_pkexec(args: &[String]) -> Result<(), String> {
-    let out = tokio::process::Command::new("pkexec")
-        .args(args)
-        .output()
-        .await
-        .map_err(|e| format!("pkexec failed to start: {e}"))?;
-    if out.status.success() {
-        Ok(())
-    } else if out.status.code() == Some(126) {
-        Err("Authorization dismissed.".into())
-    } else {
-        let err = String::from_utf8_lossy(&out.stderr);
-        let line = err.lines().last().unwrap_or("command failed").trim();
-        Err(format!("Failed: {line}"))
-    }
+    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+    crate::sys::privileged::run(&argv).await
 }
 
-/// Set a user's password via `pkexec chpasswd` (password fed on stdin so it
-/// never lands in the process arguments).
+/// Set a user's password via `chpasswd` (password fed on stdin so it never
+/// lands in the process arguments).
 async fn set_password(user: &str, password: &str) -> Result<(), String> {
-    use tokio::io::AsyncWriteExt;
-    let mut child = tokio::process::Command::new("pkexec")
-        .arg("chpasswd")
-        .stdin(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("pkexec failed to start: {e}"))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        let line = format!("{user}:{password}\n");
-        stdin
-            .write_all(line.as_bytes())
-            .await
-            .map_err(|e| format!("write: {e}"))?;
-        // Drop closes the pipe so chpasswd sees EOF.
-    }
-    let status = child.wait().await.map_err(|e| format!("wait: {e}"))?;
-    if status.success() {
-        Ok(())
-    } else if status.code() == Some(126) {
-        Err("Authorization dismissed.".into())
-    } else {
-        Err("chpasswd failed.".into())
-    }
+    let line = format!("{user}:{password}\n");
+    crate::sys::privileged::run_with_stdin(&["chpasswd"], line.as_bytes()).await
 }
 
 // ── UI building ──────────────────────────────────────────────────────────────

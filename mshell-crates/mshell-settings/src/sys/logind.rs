@@ -1,6 +1,3 @@
-use std::process::Stdio;
-use tokio::process::Command;
-
 pub const ACTIONS: [&str; 5] = ["ignore", "poweroff", "suspend", "hibernate", "lock"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,29 +81,13 @@ pub async fn read_handlers() -> LogindHandlers {
     parse_handlers(&frags)
 }
 
-/// Write the managed drop-in via pkexec (mshell-polkit prompts). Does NOT restart
-/// logind — changes apply on next login. Err(stderr) on failure/denial.
+/// Write the managed drop-in with elevated privileges (silent `sudo -n` when
+/// available, else the polkit agent — see [`crate::sys::privileged`]). Does NOT
+/// restart logind — changes apply on next login. Err on failure/denial.
 pub async fn write_dropin(h: &LogindHandlers) -> Result<(), String> {
     let body = render_dropin(h);
     let script = format!("mkdir -p /etc/systemd/logind.conf.d && cat > {DROPIN}");
-    let mut child = Command::new("pkexec")
-        .args(["sh", "-c", &script])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("failed to spawn pkexec: {e}"))?;
-    use tokio::io::AsyncWriteExt;
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(body.as_bytes()).await;
-        let _ = stdin.shutdown().await;
-    }
-    let out = child.wait_with_output().await.map_err(|e| e.to_string())?;
-    if out.status.success() {
-        Ok(())
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_owned())
-    }
+    crate::sys::privileged::run_with_stdin(&["sh", "-c", &script], body.as_bytes()).await
 }
 
 #[cfg(test)]
