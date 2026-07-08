@@ -29,6 +29,7 @@ ignore = [
     "RUSTSEC-2024-0436", # paste — unmaintained proc-macro (deep transitive, ubiquitous)
     "RUSTSEC-2026-0173", # proc-macro-error2 — unmaintained (transitive build dep)
     "RUSTSEC-2026-0192", # ttf-parser — unmaintained (via GTK/pango font stack)
+    "RUSTSEC-2026-0196", # cgmath — unmaintained (transitive via wgpu/image stack; no replacement)
     "RUSTSEC-2023-0040", # users — unmaintained (via mlogind's lemurs lineage)
 
     # --- Vulnerabilities with no reachable safe upgrade in our tree ----------
