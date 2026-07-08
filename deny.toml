@@ -6,9 +6,11 @@
 # stack. Non-security checks (duplicate versions, licenses) are configured
 # leniently so the gate stays about vulnerabilities, not churn.
 #
-# CI currently runs `check advisories bans sources` (see ci.yml) as a
-# report-only step. Curate the `licenses` allow-list below and drop the
-# `continue-on-error` in CI to promote this to a hard gate.
+# CI (see ci.yml) runs this as a SPLIT gate: `bans licenses sources` is a hard
+# gate (supply-chain hygiene we control — a bad license, a banned/duplicate
+# crate, or an unknown source fails the build), while `advisories` stays
+# report-only (RUSTSEC db churn flags transitive deps on its own schedule and
+# shouldn't block unrelated pushes — triage those into the ignore list below).
 
 [graph]
 all-features = true
@@ -96,11 +98,24 @@ allow = [
     "Unicode-DFS-2016",
     "Unicode-3.0",
     "CC0-1.0",
+    "CC-PDDC",             # oklab — public-domain dedication
+    "CDLA-Permissive-2.0", # webpki-roots / webpki-root-certs — TLS root cert data
+    "NCSA",                # libfuzzer-sys — permissive, BSD-like (fuzz targets only)
     "0BSD",
     "BSL-1.0",
     "GPL-3.0",
     "GPL-3.0-or-later",
 ]
+
+# evalexpr (the launcher's calculator / expression provider, pulled by
+# mshell-launcher and shipped in mshell) is AGPL-3.0-only. GPLv3 §13 explicitly
+# permits combining GPL-3.0 code with AGPL-3.0 code, so this is license-
+# compatible with margo (GPL-3.0-or-later); the AGPL network-use clause has no
+# effect on a local desktop launcher. Scoped to this single crate on purpose —
+# a future AGPL dependency still trips the gate for a fresh, deliberate call.
+[[licenses.exceptions]]
+name = "evalexpr"
+allow = ["AGPL-3.0-only"]
 
 [sources]
 unknown-registry = "deny"

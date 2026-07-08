@@ -129,21 +129,31 @@ jobs:
           fi
           ./target/debug/mctl check-config --config "$CFG"
 
-  # Supply-chain scan — RUSTSEC advisories over the vendored + git-pinned +
-  # large dependency tree (the audit's "no dependency-CVE scanning" gap).
-  # Runs on the plain Ubuntu runner (no GTK needed — it reads Cargo.lock).
-  # Report-only for now (`continue-on-error`): it surfaces advisories on every
-  # PR without blocking merges while the ignore-list is settled. Once the
-  # first triage is done, drop `continue-on-error` and add `licenses` to make
-  # it a hard gate. Config: deny.toml.
+  # Supply-chain scan over the vendored + git-pinned + large dependency tree
+  # (the audit's "no dependency-CVE scanning" gap). Runs on the plain Ubuntu
+  # runner (no GTK needed — it reads Cargo.lock). Split into a hard gate + a
+  # report-only step. Config: deny.toml.
   deny:
-    name: cargo-deny (advisories / bans / sources)
+    name: cargo-deny
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
-      - name: cargo-deny
+      # Hard gate — supply-chain hygiene WE control. A dependency with a
+      # disallowed license, a banned/duplicate crate, or an unknown
+      # registry/git source fails the build. These only change when we change
+      # deps, so they won't flip red on unrelated rolling churn.
+      - name: cargo-deny (bans / licenses / sources)
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check advisories bans sources
+          command: check bans licenses sources
+      # Report-only — RUSTSEC advisories. Upstream advisory-db updates flag
+      # transitive deps on their own schedule; a newly-published advisory
+      # shouldn't block an unrelated push. Surfaced here, then triaged into
+      # deny.toml's ignore list (bumped if a fix exists, parked with a note if
+      # not).
+      - name: cargo-deny (advisories, report-only)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        continue-on-error: true
+        with:
+          command: check advisories
