@@ -25,6 +25,11 @@
 #     code that follows the module — even mid-file — is still counted. A
 #     `#[cfg(test)]` on a non-braced item (e.g. `use super::*;`) skips just that
 #     statement.
+#   * the body of each `#[test]` / `#[tokio::test]` fn. A test module can also
+#     be gated at its *declaration* site (`#[cfg(test)] mod snapshot_tests;`),
+#     in which case the separate file has no `#[cfg(test)]` of its own and its
+#     test bodies were being counted as production code. Skipping test fns
+#     covers that case wherever the gate lives.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -56,7 +61,7 @@ count=$(find . -name '*.rs' \
         if (/;/) { arming = 0 }
         next
       }
-      /#\[cfg\(test\)\]/ { arming = 1; next }
+      /#\[cfg\(test\)\]|#\[test\]|#\[tokio::test\]/ { arming = 1; next }
       /\.unwrap\(\)|\.expect\(|panic!\(|unreachable!\(|todo!\(|unimplemented!\(/ { n++ }
       END { print n + 0 }
     ')
