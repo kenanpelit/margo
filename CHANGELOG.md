@@ -5,6 +5,90 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.6] – 2026-07-09
+
+**A native login greeter, and a hardening pass over the whole workspace.**
+`mgreet` is a new binary: margo's own GTK4 greeter, drawing a login card on
+*every* connected monitor. The greeter that shipped before could only ever
+appear on one screen — cage has no `zwlr_layer_shell_v1`, so a GUI can't get a
+per-output surface under it. The new one is hosted under a margo greeter-mode
+instance instead, which does. Alongside it, an audit pass closed a set of
+panics, unbounded inputs and non-durable writes across the compositor, the
+shell and the plugin host.
+
+Drop-in upgrade. The greeter host defaults to `gui`, with automatic fallback to
+the previous cage host and then to the TTY greeter, so a login is never gated on
+the new path working.
+
+### Added
+
+- **`mgreet` — a native multi-monitor login greeter.** Plain gtk4-rs (no relm4:
+  a login gate should have as few layers as possible), one layer-shell surface
+  per output, shared entry buffers so typing on any screen is reflected on all
+  of them, and per-connector window reconcile on hotplug. Real PAM
+  authentication, then the credentials are handed to the mlogind orchestrator
+  over the existing one-shot file — the greeter never opens a session itself.
+  A wrong password clears the field and stays up; it never tears the compositor
+  down for a typo.
+- **`mlogind [display] host = "gui"`** selects the new greeter, and is now the
+  default. It launches `margo --config <generated> --startup-command "mgreet;
+  mctl dispatch quit"`, so margo tears itself down when the greeter exits. No
+  compositor changes were needed — `--config`, `--startup-command` and the
+  `quit` dispatch already existed. Falls back to `cage`, then to the TTY
+  greeter, if any of margo / mgreet / mctl is missing.
+- **Greeter conveniences:** an F-key power footer mirroring the TUI greeter's
+  actions (inert under `--preview`, so a dry-run can never power the machine
+  off), a battery indicator on laptops, a Caps Lock warning under the password
+  field, the hostname under the clock, and last-login memory — the username and
+  session are pre-filled from the same cache the TUI greeter writes.
+- **`mgreet --preview`** runs the card non-destructively under a live session:
+  no PAM, no hand-off, power keys inert, Escape quits.
+- **`cargo-deny` is a hard CI gate** (bans / licenses / sources), not advisory.
+
+### Changed
+
+- **Settings subprocesses moved off the main thread.** The region, date-time and
+  about pages shelled out synchronously while building; the privacy poller
+  parsed `pw-dump` on the GTK main loop. Both now run off-thread.
+- **Clock and calendar menu tickers start lazily**, on first reveal, instead of
+  running from login.
+- **Twilight menu buttons and the app-launcher preview swatches** follow the
+  shared menu design language; the swatch `CssProvider` is now scoped per output
+  rather than installed display-wide.
+
+### Fixed
+
+- **Layout gap axes.** `right_tile` and `vertical_tile` applied their gaps on the
+  wrong axis, rectangles weren't floored, and the spring mass was never wired
+  through.
+- **Screencast session identity.** Sessions were keyed by memory address, which a
+  reallocating client could collide; they now carry a stable per-client id. The
+  session vector is bounded.
+- **`mctl` requests time out** and exit non-zero on a malformed reply, instead of
+  hanging on a silent socket.
+- **Config and backup writes are atomic and durable** (write-temp, fsync,
+  rename), so a crash mid-write can no longer lose a profile.
+- **A notification action button outliving its runtime no longer aborts mshell**,
+  and the launcher no longer aborts when its process is reaped.
+- **`mlogind` honours a captured login even when the greeter host SIGSEGVs during
+  DRM teardown** — the hand-off is read before the host's exit code is judged.
+- **`mlogind` starts `seatd`** for the greeter host: Arch's libseat has the
+  builtin backend compiled out, and the root orchestrator has no logind session.
+- **Greeter keyboard layout** comes from `/etc/vconsole.conf` rather than
+  defaulting to US.
+
+### Security
+
+- **PAM and polkit plaintext passwords are zeroized** from the heap after use.
+- **WASM guest execution and plugin node-tree recursion are bounded**, so a
+  plugin can no longer hang or blow the stack of the shell that hosts it.
+- **Plugin manifests can no longer inject into the managed binds file.**
+- **`wayle-notification` rejects crafted `image-data` hints** — a malformed hint
+  from any client on the bus could take the shell down.
+- **The compositor is hardened against panics and hangs** from driver and script
+  input, and `margo-config` guards three parser crash paths reachable from a
+  hand-edited config on reload.
+
 ## [1.1.5] – 2026-07-07
 
 **A professionalization pass over the `mdash` dashboard** (`mshellctl menu
