@@ -56,6 +56,21 @@ const MEDIA_PLAYER_MENU: &str = "media_player";
 const LYRICS_MENU: &str = "lyrics";
 const SESSION_MENU: &str = "session";
 const SETTINGS_MENU: &str = "settings";
+
+/// Read an `i32` out of a `connect_local` signal argument list.
+///
+/// The `resized` signal always delivers `(widget, width: i32, height: i32)`, so
+/// a missing or wrongly-typed slot would be a GTK bug rather than bad input.
+/// Twenty call sites each `expect`ed it, which put twenty abort points inside
+/// the shell's signal handlers for one read that cannot fail. Falling back to
+/// `0` degrades a bar edge to zero thickness — a cosmetic glitch, not a dead
+/// session.
+fn signal_i32(values: &[glib::Value], index: usize) -> i32 {
+    values
+        .get(index)
+        .and_then(|v| v.get::<i32>().ok())
+        .unwrap_or(0)
+}
 const MDASH_MENU: &str = "mdash";
 const MARGO_LAYOUT_MENU: &str = "margo_layout";
 
@@ -2046,7 +2061,7 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let width = values[1].get::<i32>().expect("width i32");
+                let width = signal_i32(values, 1);
                 frame_widget.update_style(|s| s.left_thickness = width as f64);
                 None
             },
@@ -2064,7 +2079,7 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let width = values[1].get::<i32>().expect("width i32");
+                let width = signal_i32(values, 1);
                 frame_widget.update_style(|s| s.right_thickness = width as f64);
                 None
             },
@@ -2075,7 +2090,7 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let height = values[2].get::<i32>().expect("height i32");
+                let height = signal_i32(values, 2);
                 frame_widget.update_style(|s| s.left_top_expander_height = height as f64);
                 None
             },
@@ -2085,7 +2100,7 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let height = values[2].get::<i32>().expect("height i32");
+                let height = signal_i32(values, 2);
                 frame_widget.update_style(|s| s.right_top_expander_height = height as f64);
                 None
             },
@@ -2095,7 +2110,7 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let height = values[2].get::<i32>().expect("height i32");
+                let height = signal_i32(values, 2);
                 frame_widget.update_style(|s| s.left_bottom_expander_height = height as f64);
                 None
             },
@@ -2105,7 +2120,7 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let height = values[2].get::<i32>().expect("height i32");
+                let height = signal_i32(values, 2);
                 frame_widget.update_style(|s| s.right_bottom_expander_height = height as f64);
                 None
             },
@@ -2115,7 +2130,7 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let width = values[1].get::<i32>().expect("width i32");
+                let width = signal_i32(values, 1);
                 frame_widget.update_style(|s| s.left_expander_width = width as f64);
                 None
             },
@@ -2125,7 +2140,7 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let width = values[1].get::<i32>().expect("width i32");
+                let width = signal_i32(values, 1);
                 frame_widget.update_style(|s| s.right_expander_width = width as f64);
                 None
             },
@@ -2136,8 +2151,8 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let width = values[1].get::<i32>().expect("width i32");
-                let height = values[2].get::<i32>().expect("height i32");
+                let width = signal_i32(values, 1);
+                let height = signal_i32(values, 2);
                 frame_widget.update_style(|s| s.top_revealer_size = (width as f64, height as f64));
                 None
             },
@@ -2148,8 +2163,8 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let width = values[1].get::<i32>().expect("width i32");
-                let height = values[2].get::<i32>().expect("height i32");
+                let width = signal_i32(values, 1);
+                let height = signal_i32(values, 2);
                 frame_widget
                     .update_style(|s| s.top_left_revealer_size = (width as f64, height as f64));
                 None
@@ -2161,8 +2176,8 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let width = values[1].get::<i32>().expect("width i32");
-                let height = values[2].get::<i32>().expect("height i32");
+                let width = signal_i32(values, 1);
+                let height = signal_i32(values, 2);
                 frame_widget
                     .update_style(|s| s.top_right_revealer_size = (width as f64, height as f64));
                 None
@@ -2174,8 +2189,8 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let width = values[1].get::<i32>().expect("width i32");
-                let height = values[2].get::<i32>().expect("height i32");
+                let width = signal_i32(values, 1);
+                let height = signal_i32(values, 2);
                 frame_widget
                     .update_style(|s| s.bottom_revealer_size = (width as f64, height as f64));
                 None
@@ -2187,8 +2202,8 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let width = values[1].get::<i32>().expect("width i32");
-                let height = values[2].get::<i32>().expect("height i32");
+                let width = signal_i32(values, 1);
+                let height = signal_i32(values, 2);
                 frame_widget
                     .update_style(|s| s.bottom_left_revealer_size = (width as f64, height as f64));
                 None
@@ -2200,8 +2215,8 @@ impl Frame {
             "resized",
             false,
             move |values: &[glib::Value]| {
-                let width = values[1].get::<i32>().expect("width i32");
-                let height = values[2].get::<i32>().expect("height i32");
+                let width = signal_i32(values, 1);
+                let height = signal_i32(values, 2);
                 frame_widget
                     .update_style(|s| s.bottom_right_revealer_size = (width as f64, height as f64));
                 None
