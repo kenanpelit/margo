@@ -112,34 +112,15 @@ pub struct Frame {
     monitor: gdk::Monitor,
     top_spacer: Controller<FrameSpacerModel>,
     bottom_spacer: Controller<FrameSpacerModel>,
-    clock_menu: Controller<MenuModel>,
-    clipboard_menu: Controller<MenuModel>,
-    notification_menu: Controller<MenuModel>,
-    screenshot_menu: Controller<MenuModel>,
-    app_launcher_menu: Controller<MenuModel>,
-    wallpaper_menu: Controller<MenuModel>,
+    /// Every uniform [`MenuId`] menu, built on first open by
+    /// [`ensure_menu_built`](Self::ensure_menu_built) and keyed by its stable
+    /// menu-name. Each menu shell is a relm4 `Controller` plus ~3 config
+    /// effects, and one `Frame` exists per monitor, so building all 36 eagerly
+    /// in `init` attached ~108 GLib sources per monitor to the main loop for
+    /// surfaces most sessions never open. A name is absent until first toggled.
+    /// Screenshare + the plugin panel below stay eager (bespoke open paths).
+    menus: std::collections::HashMap<&'static str, Controller<MenuModel>>,
     screenshare_menu: Controller<MenuModel>,
-    wizard_menu: Controller<MenuModel>,
-    ufw_menu: Controller<MenuModel>,
-    privacy_menu: Controller<MenuModel>,
-    bluetooth_menu: Controller<MenuModel>,
-    cpu_dashboard_menu: Controller<MenuModel>,
-    audio_dashboard_menu: Controller<MenuModel>,
-    system_update_menu: Controller<MenuModel>,
-    valent_menu: Controller<MenuModel>,
-    weather_menu: Controller<MenuModel>,
-    keep_awake_menu: Controller<MenuModel>,
-    twilight_menu: Controller<MenuModel>,
-    keybinds_menu: Controller<MenuModel>,
-    alarmclock_menu: Controller<MenuModel>,
-    dock_menu: Controller<MenuModel>,
-    control_center_menu: Controller<MenuModel>,
-    ssh_menu: Controller<MenuModel>,
-    dns_menu: Controller<MenuModel>,
-    vpn_menu: Controller<MenuModel>,
-    ai_menu: Controller<MenuModel>,
-    podman_menu: Controller<MenuModel>,
-    notes_menu: Controller<MenuModel>,
     /// First-class menu hosting whichever plugin WASM panel is opened.
     plugin_panel_menu: Controller<MenuModel>,
     /// Which screen edge the plugin-panel menu is currently anchored to, so a
@@ -152,13 +133,6 @@ pub struct Frame {
     plugin_panel_runtime: mshell_plugin_ui::PluginRuntime,
     #[cfg(feature = "wasm-plugins")]
     plugin_panels: std::collections::HashMap<String, mshell_plugin_ui::PluginPanel>,
-    ip_menu: Controller<MenuModel>,
-    vpn_indicator_menu: Controller<MenuModel>,
-    network_menu: Controller<MenuModel>,
-    power_menu: Controller<MenuModel>,
-    media_player_menu: Controller<MenuModel>,
-    lyrics_menu: Controller<MenuModel>,
-    session_menu: Controller<MenuModel>,
     /// Settings panel — uses its own dedicated model (not
     /// `MenuModel`) because its content is a custom sidebar +
     /// stack rather than the generic menu-widget pipeline.
@@ -169,8 +143,6 @@ pub struct Frame {
     /// thread at login for a surface most sessions never open. `None`
     /// until first toggled.
     settings_menu: Option<Controller<mshell_settings::SettingsWindowModel>>,
-    mdash_menu: Controller<MenuModel>,
-    margo_layout_menu: Controller<MenuModel>,
     /// Pending keyboard-mode switch held inside the 90 ms debounce
     /// window. Replaced on every `sync_keyboard_mode` call; the
     /// timer reads whatever value was last written.
@@ -269,6 +241,50 @@ impl MenuId {
             MenuId::Session => SESSION_MENU,
             MenuId::Mdash => MDASH_MENU,
             MenuId::MargoLayout => MARGO_LAYOUT_MENU,
+        }
+    }
+
+    /// The [`MenuType`] this id builds — the argument the per-menu `init`
+    /// lines passed to [`Frame::build_menu`] before the collapse, now consumed
+    /// on demand by [`Frame::ensure_menu_built`].
+    fn menu_type(self) -> MenuType {
+        match self {
+            MenuId::Clock => MenuType::Clock,
+            MenuId::Clipboard => MenuType::Clipboard,
+            MenuId::Notification => MenuType::Notifications,
+            MenuId::Screenshot => MenuType::Screenshot,
+            MenuId::AppLauncher => MenuType::AppLauncher,
+            MenuId::Wallpaper => MenuType::Wallpaper,
+            MenuId::Wizard => MenuType::Wizard,
+            MenuId::Ufw => MenuType::Ufw,
+            MenuId::Privacy => MenuType::Privacy,
+            MenuId::Bluetooth => MenuType::Bluetooth,
+            MenuId::CpuDashboard => MenuType::CpuDashboard,
+            MenuId::AudioDashboard => MenuType::AudioDashboard,
+            MenuId::SystemUpdate => MenuType::SystemUpdate,
+            MenuId::Valent => MenuType::Valent,
+            MenuId::Weather => MenuType::Weather,
+            MenuId::KeepAwake => MenuType::KeepAwake,
+            MenuId::Twilight => MenuType::Twilight,
+            MenuId::Keybinds => MenuType::Keybinds,
+            MenuId::AlarmClock => MenuType::AlarmClock,
+            MenuId::Dock => MenuType::Dock,
+            MenuId::ControlCenter => MenuType::ControlCenter,
+            MenuId::SshSessions => MenuType::SshSessions,
+            MenuId::Dns => MenuType::Dns,
+            MenuId::Vpn => MenuType::Vpn,
+            MenuId::Ai => MenuType::Ai,
+            MenuId::Podman => MenuType::Podman,
+            MenuId::Notes => MenuType::Notes,
+            MenuId::Ip => MenuType::Ip,
+            MenuId::VpnIndicator => MenuType::VpnIndicator,
+            MenuId::Network => MenuType::Network,
+            MenuId::Power => MenuType::Power,
+            MenuId::MediaPlayer => MenuType::MediaPlayer,
+            MenuId::Lyrics => MenuType::Lyrics,
+            MenuId::Session => MenuType::Session,
+            MenuId::Mdash => MenuType::Mdash,
+            MenuId::MargoLayout => MenuType::MargoLayout,
         }
     }
 }
@@ -895,44 +911,13 @@ impl Component for Frame {
         let top_bar: Controller<BarModel> = Self::build_bar(&sender, BarType::Top);
         let bottom_bar: Controller<BarModel> = Self::build_bar(&sender, BarType::Bottom);
 
-        let calendar_menu = Self::build_menu(&sender, MenuType::Clock);
-        let clipboard_menu = Self::build_menu(&sender, MenuType::Clipboard);
-        let notification_menu = Self::build_menu(&sender, MenuType::Notifications);
-        let screenshot_menu = Self::build_menu(&sender, MenuType::Screenshot);
-        let app_launcher_menu = Self::build_menu(&sender, MenuType::AppLauncher);
-        let wallpaper_menu = Self::build_menu(&sender, MenuType::Wallpaper);
+        // The 36 uniform [`MenuId`] menus are no longer built here: each is
+        // deferred to first open via [`ensure_menu_built`], keyed into the
+        // `menus` map. Only the two bespoke surfaces stay eager — screenshare
+        // (answers a portal reply channel) and the plugin panel (owns re-anchor
+        // position state consulted even with the WASM feature off).
         let screenshare_menu = Self::build_menu(&sender, MenuType::HyprlandScreenshare);
-        let wizard_menu = Self::build_menu(&sender, MenuType::Wizard);
-        let ufw_menu = Self::build_menu(&sender, MenuType::Ufw);
-        let privacy_menu = Self::build_menu(&sender, MenuType::Privacy);
-        let bluetooth_menu = Self::build_menu(&sender, MenuType::Bluetooth);
-        let cpu_dashboard_menu = Self::build_menu(&sender, MenuType::CpuDashboard);
-        let audio_dashboard_menu = Self::build_menu(&sender, MenuType::AudioDashboard);
-        let system_update_menu = Self::build_menu(&sender, MenuType::SystemUpdate);
-        let valent_menu = Self::build_menu(&sender, MenuType::Valent);
-        let weather_menu = Self::build_menu(&sender, MenuType::Weather);
-        let keep_awake_menu = Self::build_menu(&sender, MenuType::KeepAwake);
-        let twilight_menu = Self::build_menu(&sender, MenuType::Twilight);
-        let keybinds_menu = Self::build_menu(&sender, MenuType::Keybinds);
-        let alarmclock_menu = Self::build_menu(&sender, MenuType::AlarmClock);
-        let dock_menu = Self::build_menu(&sender, MenuType::Dock);
-        let control_center_menu = Self::build_menu(&sender, MenuType::ControlCenter);
-        let ssh_menu = Self::build_menu(&sender, MenuType::SshSessions);
-        let dns_menu = Self::build_menu(&sender, MenuType::Dns);
-        let vpn_menu = Self::build_menu(&sender, MenuType::Vpn);
-        let ai_menu = Self::build_menu(&sender, MenuType::Ai);
-        let podman_menu = Self::build_menu(&sender, MenuType::Podman);
-        let notes_menu = Self::build_menu(&sender, MenuType::Notes);
         let plugin_panel_menu = Self::build_menu(&sender, MenuType::PluginPanel);
-        let ip_menu = Self::build_menu(&sender, MenuType::Ip);
-        let vpn_indicator_menu = Self::build_menu(&sender, MenuType::VpnIndicator);
-        let network_menu = Self::build_menu(&sender, MenuType::Network);
-        let power_menu = Self::build_menu(&sender, MenuType::Power);
-        let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer);
-        let lyrics_menu = Self::build_menu(&sender, MenuType::Lyrics);
-        let session_menu = Self::build_menu(&sender, MenuType::Session);
-        let mdash_menu = Self::build_menu(&sender, MenuType::Mdash);
-        let margo_layout_menu = Self::build_menu(&sender, MenuType::MargoLayout);
 
         // Settings doesn't go through `build_menu` because its content
         // isn't a list of `MenuWidget`s — it's a custom sidebar + stack
@@ -1077,34 +1062,8 @@ impl Component for Frame {
             monitor: params.monitor.clone(),
             top_spacer,
             bottom_spacer,
-            clock_menu: calendar_menu,
-            clipboard_menu,
-            notification_menu,
-            screenshot_menu,
-            app_launcher_menu,
-            wallpaper_menu,
+            menus: std::collections::HashMap::new(),
             screenshare_menu,
-            wizard_menu,
-            ufw_menu,
-            privacy_menu,
-            bluetooth_menu,
-            cpu_dashboard_menu,
-            audio_dashboard_menu,
-            system_update_menu,
-            valent_menu,
-            weather_menu,
-            keep_awake_menu,
-            twilight_menu,
-            keybinds_menu,
-            alarmclock_menu,
-            dock_menu,
-            control_center_menu,
-            ssh_menu,
-            dns_menu,
-            vpn_menu,
-            ai_menu,
-            podman_menu,
-            notes_menu,
             plugin_panel_menu,
             plugin_panel_position: mshell_config::config_manager::config_manager()
                 .config()
@@ -1120,16 +1079,7 @@ impl Component for Frame {
             .expect("plugin panel wasm runtime"),
             #[cfg(feature = "wasm-plugins")]
             plugin_panels: std::collections::HashMap::new(),
-            ip_menu,
-            vpn_indicator_menu,
-            network_menu,
-            power_menu,
-            media_player_menu,
-            lyrics_menu,
-            session_menu,
             settings_menu: None,
-            mdash_menu,
-            margo_layout_menu,
             pending_kbd_mode: std::rc::Rc::new(std::cell::RefCell::new(None)),
             pending_kbd_mode_timeout: std::rc::Rc::new(std::cell::RefCell::new(None)),
             _effects: effects,
@@ -1208,6 +1158,7 @@ impl Component for Frame {
                 }
             }
             FrameInput::ToggleMenu(id) => {
+                self.ensure_menu_built(&sender, id, widgets);
                 self.toggle_menu(id.menu_name(), widgets);
                 self.sync_keyboard_mode(root);
             }
@@ -1263,13 +1214,15 @@ impl Component for Frame {
                 // inside its widget controller, so we just send
                 // the message and let the runtime handle the
                 // "unknown tab" fall back to "All".
+                self.ensure_menu_built(&sender, MenuId::AppLauncher, widgets);
                 if !self.is_menu_visible_now(APP_LAUNCHER_MENU, widgets) {
                     self.toggle_menu(APP_LAUNCHER_MENU, widgets);
                 }
-                self.app_launcher_menu
-                    .sender()
-                    .send(MenuInput::AppLauncherSelectCategory(tab))
-                    .ok();
+                if let Some(menu) = self.menus.get(APP_LAUNCHER_MENU) {
+                    menu.sender()
+                        .send(MenuInput::AppLauncherSelectCategory(tab))
+                        .ok();
+                }
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleWasmPluginPanel {
@@ -1509,11 +1462,14 @@ impl Component for Frame {
             FrameInput::ClipboardExitSearch => {
                 // Forward to this frame's own clipboard menu. The
                 // keyboard-focused surface is the one that received
-                // Esc, so its clipboard is the one in search mode.
-                self.clipboard_menu
-                    .sender()
-                    .send(MenuInput::ClipboardExitSearch)
-                    .unwrap_or_default();
+                // Esc, so its clipboard is the one in search mode. Search
+                // mode can only be active once the clipboard was opened, so
+                // the menu is always built here.
+                if let Some(menu) = self.menus.get(CLIPBOARD_MENU) {
+                    menu.sender()
+                        .send(MenuInput::ClipboardExitSearch)
+                        .unwrap_or_default();
+                }
             }
             FrameInput::CloseMenus => {
                 self.left_revealed = false;
@@ -1525,79 +1481,38 @@ impl Component for Frame {
                 self.bottom_left_revealed = false;
                 self.bottom_right_revealed = false;
 
-                self.clock_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
+                // Idle every menu that was ever opened (built). The list is
+                // the same one the eager fields drove before — clock/clipboard/
+                // notification/screenshot/app-launcher/wallpaper plus the
+                // lazy-poll menus (ip/vpn-indicator/dns/vpn/ai/ufw/podman/
+                // network) that must stop their refresh I/O on close. An
+                // unbuilt (never-opened) menu was never revealed, so skipping
+                // it is a no-op.
+                for name in [
+                    CLOCK_MENU,
+                    CLIPBOARD_MENU,
+                    NOTIFICATION_MENU,
+                    SCREENSHOT_MENU,
+                    APP_LAUNCHER_MENU,
+                    WALLPAPER_MENU,
+                    NIP_MENU,
+                    NVPN_INDICATOR_MENU,
+                    NDNS_MENU,
+                    NVPN_MENU,
+                    NAI_MENU,
+                    NUFW_MENU,
+                    NPODMAN_MENU,
+                    NNETWORK_MENU,
+                ] {
+                    if let Some(menu) = self.menus.get(name) {
+                        menu.sender()
+                            .send(MenuInput::RevealChanged(false))
+                            .unwrap_or_default();
+                    }
+                }
 
-                self.clipboard_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                self.notification_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                self.screenshot_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                self.app_launcher_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                self.wallpaper_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
+                // Screenshare stays eager (bespoke portal path).
                 self.screenshare_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                // Idle the lazy-poll menus too, so closing the menu
-                // stops their refresh loop's I/O until next reveal.
-                self.ip_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                self.vpn_indicator_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                self.dns_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                self.vpn_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                self.ai_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                self.ufw_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                self.podman_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                self.network_menu
                     .sender()
                     .send(MenuInput::RevealChanged(false))
                     .unwrap_or_default();
@@ -1783,6 +1698,29 @@ impl Frame {
         })
     }
 
+    /// Build a uniform [`MenuId`] menu + attach it to its configured stack on
+    /// first open, mirroring [`ensure_settings_built`]. Deferred from `init`
+    /// because each menu shell is a relm4 `Controller` plus its config effects
+    /// and one Frame exists per monitor (see the `menus` field doc).
+    /// Idempotent: a no-op once the menu is in the map. `toggle_menu` finds the
+    /// menu by looking it up as a stack child, so this must run before any
+    /// toggle so the widget is present in its stack.
+    fn ensure_menu_built(
+        &mut self,
+        sender: &ComponentSender<Self>,
+        id: MenuId,
+        widgets: &FrameWidgets,
+    ) {
+        let name = id.menu_name();
+        if self.menus.contains_key(name) {
+            return;
+        }
+        let controller = Self::build_menu(sender, id.menu_type());
+        let widget: Widget = controller.widget().clone().upcast();
+        Self::add_to_stack(widgets, &widget, name, &menu_position(name));
+        self.menus.insert(name, controller);
+    }
+
     /// Build the Settings panel + attach it to its stack on first open.
     /// Deferred from `init` because the panel launches ~48 page
     /// controllers and one Frame exists per monitor (see the
@@ -1934,106 +1872,40 @@ impl Frame {
             }
         }
 
-        self.clock_menu
-            .sender()
-            .send(MenuInput::RevealChanged(name == CLOCK_MENU && now_visible))
-            .unwrap_or_default();
+        // Tell every built menu whether it is the one now revealed. The
+        // lazy-poll menus (network/IP/DNS/UFW/podman/…) start their refresh
+        // I/O only on `RevealChanged(true)`, so the just-opened one must be in
+        // this set; the rest get `false` to idle. A never-opened menu isn't
+        // built (and wasn't revealed), so skipping it is correct.
+        for menu_name in [
+            CLOCK_MENU,
+            CLIPBOARD_MENU,
+            NOTIFICATION_MENU,
+            SCREENSHOT_MENU,
+            APP_LAUNCHER_MENU,
+            WALLPAPER_MENU,
+            SESSION_MENU,
+            NIP_MENU,
+            NVPN_INDICATOR_MENU,
+            NDNS_MENU,
+            NVPN_MENU,
+            NAI_MENU,
+            NUFW_MENU,
+            NPODMAN_MENU,
+            NNETWORK_MENU,
+        ] {
+            if let Some(menu) = self.menus.get(menu_name) {
+                menu.sender()
+                    .send(MenuInput::RevealChanged(menu_name == name && now_visible))
+                    .unwrap_or_default();
+            }
+        }
 
-        self.clipboard_menu
-            .sender()
-            .send(MenuInput::RevealChanged(
-                name == CLIPBOARD_MENU && now_visible,
-            ))
-            .unwrap_or_default();
-
-        self.notification_menu
-            .sender()
-            .send(MenuInput::RevealChanged(
-                name == NOTIFICATION_MENU && now_visible,
-            ))
-            .unwrap_or_default();
-
-        self.screenshot_menu
-            .sender()
-            .send(MenuInput::RevealChanged(
-                name == SCREENSHOT_MENU && now_visible,
-            ))
-            .unwrap_or_default();
-
-        self.app_launcher_menu
-            .sender()
-            .send(MenuInput::RevealChanged(
-                name == APP_LAUNCHER_MENU && now_visible,
-            ))
-            .unwrap_or_default();
-
-        self.wallpaper_menu
-            .sender()
-            .send(MenuInput::RevealChanged(
-                name == WALLPAPER_MENU && now_visible,
-            ))
-            .unwrap_or_default();
-
+        // Screenshare stays eager (bespoke portal path).
         self.screenshare_menu
             .sender()
             .send(MenuInput::RevealChanged(
                 name == SCREENSHARE_MENU && now_visible,
-            ))
-            .unwrap_or_default();
-
-        self.session_menu
-            .sender()
-            .send(MenuInput::RevealChanged(
-                name == SESSION_MENU && now_visible,
-            ))
-            .unwrap_or_default();
-
-        // These menus poll lazily on reveal (network/IP/DNS/UFW/podman
-        // do no background work until first opened), so they must be
-        // told when they become visible — otherwise they never fetch.
-        self.ip_menu
-            .sender()
-            .send(MenuInput::RevealChanged(name == NIP_MENU && now_visible))
-            .unwrap_or_default();
-
-        self.vpn_indicator_menu
-            .sender()
-            .send(MenuInput::RevealChanged(
-                name == NVPN_INDICATOR_MENU && now_visible,
-            ))
-            .unwrap_or_default();
-
-        self.dns_menu
-            .sender()
-            .send(MenuInput::RevealChanged(name == NDNS_MENU && now_visible))
-            .unwrap_or_default();
-
-        self.vpn_menu
-            .sender()
-            .send(MenuInput::RevealChanged(name == NVPN_MENU && now_visible))
-            .unwrap_or_default();
-
-        self.ai_menu
-            .sender()
-            .send(MenuInput::RevealChanged(name == NAI_MENU && now_visible))
-            .unwrap_or_default();
-
-        self.ufw_menu
-            .sender()
-            .send(MenuInput::RevealChanged(name == NUFW_MENU && now_visible))
-            .unwrap_or_default();
-
-        self.podman_menu
-            .sender()
-            .send(MenuInput::RevealChanged(
-                name == NPODMAN_MENU && now_visible,
-            ))
-            .unwrap_or_default();
-
-        self.network_menu
-            .sender()
-            .send(MenuInput::RevealChanged(
-                name == NNETWORK_MENU && now_visible,
             ))
             .unwrap_or_default();
     }
@@ -2225,185 +2097,6 @@ impl Frame {
     }
 
     fn apply_left_and_right_side_children(&self, widgets: &FrameWidgets) {
-        // Every menu's position is read straight from config (the uniform
-        // pattern — no positional args). `menu_pos!($menu)` is the
-        // read-from-config shorthand used throughout this function.
-        macro_rules! menu_pos {
-            ($menu:ident) => {
-                mshell_config::config_manager::config_manager()
-                    .config()
-                    .menus()
-                    .$menu()
-                    .position()
-                    .get()
-            };
-        }
-        let clock_menu_position = menu_pos!(clock_menu);
-        let clipboard_menu_position = menu_pos!(clipboard_menu);
-        let notification_menu_position = menu_pos!(notification_menu);
-        let screenshot_menu_position = menu_pos!(screenshot_menu);
-        let app_launcher_menu_position = menu_pos!(app_launcher_menu);
-        let wallpaper_menu_position = menu_pos!(wallpaper_menu);
-        let screenshare_menu_position = menu_pos!(screenshare_menu);
-        let ufw_menu_position = menu_pos!(ufw_menu);
-        let dns_menu_position = menu_pos!(dns_menu);
-        let podman_menu_position = menu_pos!(podman_menu);
-        let notes_menu_position = menu_pos!(notes_menu);
-        let ip_menu_position = menu_pos!(ip_menu);
-        let vpn_indicator_menu_position = menu_pos!(vpn_indicator_menu);
-        let network_menu_position = menu_pos!(network_menu);
-        let power_menu_position = menu_pos!(power_menu);
-        let media_player_menu_position = menu_pos!(media_player_menu);
-        let lyrics_menu_position = menu_pos!(lyrics_menu);
-        let session_menu_position = menu_pos!(session_menu);
-        let settings_menu_position = menu_pos!(settings_menu);
-        let clock_widget: Widget = self.clock_menu.widget().clone().upcast();
-        let clipboard_widget: Widget = self.clipboard_menu.widget().clone().upcast();
-        let notification_menu_widget: Widget = self.notification_menu.widget().clone().upcast();
-        let screenshot_menu_widget: Widget = self.screenshot_menu.widget().clone().upcast();
-        let app_launcher_menu_widget: Widget = self.app_launcher_menu.widget().clone().upcast();
-        let wallpaper_menu_widget: Widget = self.wallpaper_menu.widget().clone().upcast();
-        let screenshare_menu_widget: Widget = self.screenshare_menu.widget().clone().upcast();
-        let ufw_menu_widget: Widget = self.ufw_menu.widget().clone().upcast();
-        let privacy_menu_widget: Widget = self.privacy_menu.widget().clone().upcast();
-        let privacy_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .privacy_menu()
-            .position()
-            .get();
-        // Bluetooth menu position read directly from config (skip
-        // the 19-arg RepositionMenus signature — defaults work).
-        let bluetooth_menu_widget: Widget = self.bluetooth_menu.widget().clone().upcast();
-        let bluetooth_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .bluetooth_menu()
-            .position()
-            .get();
-        let cpu_dashboard_menu_widget: Widget = self.cpu_dashboard_menu.widget().clone().upcast();
-        let cpu_dashboard_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .cpu_dashboard_menu()
-            .position()
-            .get();
-        let audio_dashboard_menu_widget: Widget =
-            self.audio_dashboard_menu.widget().clone().upcast();
-        let audio_dashboard_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .audio_dashboard_menu()
-            .position()
-            .get();
-        let system_update_menu_widget: Widget = self.system_update_menu.widget().clone().upcast();
-        let system_update_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .system_update_menu()
-            .position()
-            .get();
-        let valent_menu_widget: Widget = self.valent_menu.widget().clone().upcast();
-        let valent_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .valent_menu()
-            .position()
-            .get();
-        let weather_menu_widget: Widget = self.weather_menu.widget().clone().upcast();
-        let weather_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .weather_menu()
-            .position()
-            .get();
-        let keep_awake_menu_widget: Widget = self.keep_awake_menu.widget().clone().upcast();
-        let keep_awake_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .keep_awake_menu()
-            .position()
-            .get();
-        let twilight_menu_widget: Widget = self.twilight_menu.widget().clone().upcast();
-        let twilight_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .twilight_menu()
-            .position()
-            .get();
-        let keybinds_menu_widget: Widget = self.keybinds_menu.widget().clone().upcast();
-        let keybinds_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .keybinds_menu()
-            .position()
-            .get();
-        let alarmclock_menu_widget: Widget = self.alarmclock_menu.widget().clone().upcast();
-        let alarmclock_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .alarmclock_menu()
-            .position()
-            .get();
-        let dock_menu_widget: Widget = self.dock_menu.widget().clone().upcast();
-        let dock_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .dock_menu()
-            .position()
-            .get();
-        let control_center_menu_widget: Widget = self.control_center_menu.widget().clone().upcast();
-        let control_center_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .control_center_menu()
-            .position()
-            .get();
-        let ssh_menu_widget: Widget = self.ssh_menu.widget().clone().upcast();
-        let ssh_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .ssh_menu()
-            .position()
-            .get();
-        let dns_menu_widget: Widget = self.dns_menu.widget().clone().upcast();
-        let vpn_menu_widget: Widget = self.vpn_menu.widget().clone().upcast();
-        let vpn_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .vpn_menu()
-            .position()
-            .get();
-        let ai_menu_widget: Widget = self.ai_menu.widget().clone().upcast();
-        let ai_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .ai_menu()
-            .position()
-            .get();
-        let podman_menu_widget: Widget = self.podman_menu.widget().clone().upcast();
-        let notes_menu_widget: Widget = self.notes_menu.widget().clone().upcast();
-        let plugin_panel_menu_widget: Widget = self.plugin_panel_menu.widget().clone().upcast();
-        let plugin_panel_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .plugin_panel_menu()
-            .position()
-            .get();
-        let ip_menu_widget: Widget = self.ip_menu.widget().clone().upcast();
-        let vpn_indicator_menu_widget: Widget = self.vpn_indicator_menu.widget().clone().upcast();
-        let network_menu_widget: Widget = self.network_menu.widget().clone().upcast();
-        let power_menu_widget: Widget = self.power_menu.widget().clone().upcast();
-        let media_player_menu_widget: Widget = self.media_player_menu.widget().clone().upcast();
-        let lyrics_menu_widget: Widget = self.lyrics_menu.widget().clone().upcast();
-        let session_menu_widget: Widget = self.session_menu.widget().clone().upcast();
-        // Settings is built lazily (`ensure_settings_built`); only attach
-        // it once it exists. `None` until the user first opens it.
-        let settings_menu_widget: Option<Widget> = self
-            .settings_menu
-            .as_ref()
-            .map(|c| c.widget().clone().upcast());
-
         // Snapshot which child each region's stack currently shows. The
         // `remove_all` + re-add below would otherwise leave every stack
         // defaulting to its first-added child (clock) — which flashes the
@@ -2430,227 +2123,40 @@ impl Frame {
         widgets.bottom_left_stack.remove_all();
         widgets.bottom_right_stack.remove_all();
 
-        Self::add_to_stack(widgets, &clock_widget, CLOCK_MENU, &clock_menu_position);
+        // Re-attach every built lazy menu at its configured position. Unbuilt
+        // (never-opened) menus stay absent until `ensure_menu_built` adds them
+        // on first open; a later reposition then re-places them here. Iteration
+        // order is irrelevant — an open stack's visible child is restored below
+        // and a closed stack's default child is never shown.
+        for (name, controller) in &self.menus {
+            let widget: Widget = controller.widget().clone().upcast();
+            Self::add_to_stack(widgets, &widget, name, &menu_position(name));
+        }
+        // Eager surfaces: screenshare + the plugin panel (bespoke open paths)
+        // and the lazily-built Settings panel (its own model, attached iff built).
+        let screenshare_widget: Widget = self.screenshare_menu.widget().clone().upcast();
         Self::add_to_stack(
             widgets,
-            &clipboard_widget,
-            CLIPBOARD_MENU,
-            &clipboard_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &notification_menu_widget,
-            NOTIFICATION_MENU,
-            &notification_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &screenshot_menu_widget,
-            SCREENSHOT_MENU,
-            &screenshot_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &app_launcher_menu_widget,
-            APP_LAUNCHER_MENU,
-            &app_launcher_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &wallpaper_menu_widget,
-            WALLPAPER_MENU,
-            &wallpaper_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &screenshare_menu_widget,
+            &screenshare_widget,
             SCREENSHARE_MENU,
-            &screenshare_menu_position,
+            &menu_position(SCREENSHARE_MENU),
         );
-        Self::add_to_stack(widgets, &ufw_menu_widget, NUFW_MENU, &ufw_menu_position);
+        let plugin_panel_widget: Widget = self.plugin_panel_menu.widget().clone().upcast();
         Self::add_to_stack(
             widgets,
-            &privacy_menu_widget,
-            PRIVACY_MENU,
-            &privacy_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &bluetooth_menu_widget,
-            BLUETOOTH_MENU,
-            &bluetooth_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &cpu_dashboard_menu_widget,
-            CPU_DASHBOARD_MENU,
-            &cpu_dashboard_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &audio_dashboard_menu_widget,
-            AUDIO_DASHBOARD_MENU,
-            &audio_dashboard_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &system_update_menu_widget,
-            SYSTEM_UPDATE_MENU,
-            &system_update_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &valent_menu_widget,
-            VALENT_MENU,
-            &valent_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &weather_menu_widget,
-            WEATHER_MENU,
-            &weather_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &keep_awake_menu_widget,
-            KEEP_AWAKE_MENU,
-            &keep_awake_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &twilight_menu_widget,
-            TWILIGHT_MENU,
-            &twilight_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &keybinds_menu_widget,
-            KEYBINDS_MENU,
-            &keybinds_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &alarmclock_menu_widget,
-            ALARMCLOCK_MENU,
-            &alarmclock_menu_position,
-        );
-        Self::add_to_stack(widgets, &dock_menu_widget, DOCK_MENU, &dock_menu_position);
-        Self::add_to_stack(
-            widgets,
-            &control_center_menu_widget,
-            CONTROL_CENTER_MENU,
-            &control_center_menu_position,
-        );
-        Self::add_to_stack(widgets, &ssh_menu_widget, SSH_MENU, &ssh_menu_position);
-        Self::add_to_stack(widgets, &dns_menu_widget, NDNS_MENU, &dns_menu_position);
-        Self::add_to_stack(widgets, &vpn_menu_widget, NVPN_MENU, &vpn_menu_position);
-        Self::add_to_stack(widgets, &ai_menu_widget, NAI_MENU, &ai_menu_position);
-        Self::add_to_stack(
-            widgets,
-            &podman_menu_widget,
-            NPODMAN_MENU,
-            &podman_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &notes_menu_widget,
-            NNOTES_MENU,
-            &notes_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &plugin_panel_menu_widget,
+            &plugin_panel_widget,
             NPLUGIN_PANEL_MENU,
-            &plugin_panel_menu_position,
+            &menu_position(NPLUGIN_PANEL_MENU),
         );
-        Self::add_to_stack(widgets, &ip_menu_widget, NIP_MENU, &ip_menu_position);
-        Self::add_to_stack(
-            widgets,
-            &vpn_indicator_menu_widget,
-            NVPN_INDICATOR_MENU,
-            &vpn_indicator_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &network_menu_widget,
-            NNETWORK_MENU,
-            &network_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &power_menu_widget,
-            NPOWER_MENU,
-            &power_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &media_player_menu_widget,
-            MEDIA_PLAYER_MENU,
-            &media_player_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &lyrics_menu_widget,
-            LYRICS_MENU,
-            &lyrics_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &session_menu_widget,
-            SESSION_MENU,
-            &session_menu_position,
-        );
-        if let Some(settings_menu_widget) = &settings_menu_widget {
+        if let Some(controller) = self.settings_menu.as_ref() {
+            let settings_widget: Widget = controller.widget().clone().upcast();
             Self::add_to_stack(
                 widgets,
-                settings_menu_widget,
+                &settings_widget,
                 SETTINGS_MENU,
-                &settings_menu_position,
+                &menu_position(SETTINGS_MENU),
             );
         }
-        // The wizard shares the settings slot/position (both center
-        // panels, mutually exclusive via toggle_menu by name).
-        let wizard_menu_widget: Widget = self.wizard_menu.widget().clone().upcast();
-        Self::add_to_stack(
-            widgets,
-            &wizard_menu_widget,
-            WIZARD_MENU,
-            &settings_menu_position,
-        );
-        // mdash — position read straight from config (newer pattern, like
-        // cpu_dashboard / margo_layout); toggled via FrameInput::ToggleMenu(MenuId::Mdash).
-        let mdash_menu_widget: Widget = self.mdash_menu.widget().clone().upcast();
-        let mdash_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .mdash_menu()
-            .position()
-            .get();
-        Self::add_to_stack(
-            widgets,
-            &mdash_menu_widget,
-            MDASH_MENU,
-            &mdash_menu_position,
-        );
-        // Margo Layout menu — position read from config (the
-        // Settings → Menus page exposes the knob). Bar pill output
-        // cascades through `BarOutput::MargoLayoutClicked` to
-        // `FrameInput::ToggleMenu(MenuId::MargoLayout)` which calls
-        // `toggle_menu(MARGO_LAYOUT_MENU, …)` against the same
-        // stack.
-        let margo_layout_menu_widget: Widget = self.margo_layout_menu.widget().clone().upcast();
-        let margo_layout_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .margo_layout_menu()
-            .position()
-            .get();
-        Self::add_to_stack(
-            widgets,
-            &margo_layout_menu_widget,
-            MARGO_LAYOUT_MENU,
-            &margo_layout_menu_position,
-        );
 
         // Restore the pre-restack visible child for each region (see the
         // `prev_visible` snapshot above) so a re-add doesn't flash the
@@ -2877,6 +2383,68 @@ impl Frame {
             list.append(&btn);
         }
         list.upcast()
+    }
+}
+
+/// A menu's configured screen anchor, read fresh from the config store by its
+/// stable menu-name. The single source of truth for where
+/// [`Frame::ensure_menu_built`] first attaches a menu and where
+/// [`Frame::apply_left_and_right_side_children`] re-attaches it on a reposition
+/// — the two used to duplicate these per-menu `.position().get()` reads.
+/// `wizard` shares the settings slot (both are mutually-exclusive centre
+/// panels). The fallback is unreachable: callers only pass known menu names.
+fn menu_position(name: &str) -> Position {
+    macro_rules! pos {
+        ($menu:ident) => {
+            mshell_config::config_manager::config_manager()
+                .config()
+                .menus()
+                .$menu()
+                .position()
+                .get()
+        };
+    }
+    match name {
+        CLOCK_MENU => pos!(clock_menu),
+        CLIPBOARD_MENU => pos!(clipboard_menu),
+        NOTIFICATION_MENU => pos!(notification_menu),
+        SCREENSHOT_MENU => pos!(screenshot_menu),
+        APP_LAUNCHER_MENU => pos!(app_launcher_menu),
+        WALLPAPER_MENU => pos!(wallpaper_menu),
+        SCREENSHARE_MENU => pos!(screenshare_menu),
+        // The wizard shares the settings slot/position (both centre panels).
+        WIZARD_MENU | SETTINGS_MENU => pos!(settings_menu),
+        NUFW_MENU => pos!(ufw_menu),
+        PRIVACY_MENU => pos!(privacy_menu),
+        BLUETOOTH_MENU => pos!(bluetooth_menu),
+        CPU_DASHBOARD_MENU => pos!(cpu_dashboard_menu),
+        AUDIO_DASHBOARD_MENU => pos!(audio_dashboard_menu),
+        SYSTEM_UPDATE_MENU => pos!(system_update_menu),
+        VALENT_MENU => pos!(valent_menu),
+        WEATHER_MENU => pos!(weather_menu),
+        KEEP_AWAKE_MENU => pos!(keep_awake_menu),
+        TWILIGHT_MENU => pos!(twilight_menu),
+        KEYBINDS_MENU => pos!(keybinds_menu),
+        ALARMCLOCK_MENU => pos!(alarmclock_menu),
+        DOCK_MENU => pos!(dock_menu),
+        CONTROL_CENTER_MENU => pos!(control_center_menu),
+        SSH_MENU => pos!(ssh_menu),
+        NDNS_MENU => pos!(dns_menu),
+        NVPN_MENU => pos!(vpn_menu),
+        NAI_MENU => pos!(ai_menu),
+        NPODMAN_MENU => pos!(podman_menu),
+        NNOTES_MENU => pos!(notes_menu),
+        NIP_MENU => pos!(ip_menu),
+        NVPN_INDICATOR_MENU => pos!(vpn_indicator_menu),
+        NNETWORK_MENU => pos!(network_menu),
+        NPOWER_MENU => pos!(power_menu),
+        MEDIA_PLAYER_MENU => pos!(media_player_menu),
+        LYRICS_MENU => pos!(lyrics_menu),
+        SESSION_MENU => pos!(session_menu),
+        MDASH_MENU => pos!(mdash_menu),
+        MARGO_LAYOUT_MENU => pos!(margo_layout_menu),
+        NPLUGIN_PANEL_MENU => pos!(plugin_panel_menu),
+        _ => Position::TopRight,
     }
 }
 
