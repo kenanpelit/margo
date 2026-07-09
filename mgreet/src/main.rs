@@ -64,6 +64,15 @@ pub struct State {
 fn main() -> glib::ExitCode {
     let preview = std::env::args().any(|a| a == "--preview");
 
+    // Pin the GTK theme + dark variant BEFORE GTK initialises. The real greeter
+    // runs as root with no dconf/gsettings, so GTK falls back to Adwaita *light*
+    // and every node we don't explicitly style (a GtkEntry's inner `text`, the
+    // drop-down popover) renders light against our dark palette — while a
+    // `--preview` under the user's dark session looked fine and hid it. Forcing
+    // it (not just defaulting) also makes the preview a faithful preview.
+    // SAFETY: single-threaded here; GTK has not been initialised yet.
+    unsafe { std::env::set_var("GTK_THEME", "Adwaita:dark") };
+
     // Real greeter mode: the mlogind orchestrator exports MLOGIND_RESULT_PATH
     // (the one-shot credential hand-off) and MLOGIND_PAM_SERVICE. Without the
     // hand-off path — or under `--preview` — this is a non-destructive UI

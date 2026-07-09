@@ -90,6 +90,17 @@ window.mgreet-root {
   border-color: var(--primary);
   background-color: var(--surface-container-high);
 }
+// The inner GtkText node must not paint a background of its own — otherwise the
+// stock GTK theme draws a box around the typed text that differs from the field.
+.mgreet-field > text {
+  background: none;
+  background-color: transparent;
+  color: var(--on-surface);
+}
+.mgreet-field > text > selection {
+  background-color: var(--primary);
+  color: var(--on-primary);
+}
 .mgreet-field > text > placeholder {
   color: var(--on-surface-variant);
   opacity: 0.7;
@@ -148,19 +159,41 @@ window.mgreet-root {
   min-width: 16px;
 }
 
-// The drop-down list itself (popover), themed to match.
-.mgreet-session > popover > contents {
+// The drop-down list itself (popover). Descendant selectors, and every node in
+// the chain (popover / arrow / scroller / listview / row) is painted or made
+// transparent — otherwise the stock theme's white popover shows through.
+.mgreet-session popover {
+  background: none;
+  background-color: transparent;
+}
+.mgreet-session popover > contents {
   background-color: var(--surface-container-high);
+  color: var(--on-surface);
   border: 1px solid var(--outline);
   border-radius: var(--radius-md);
   padding: 4px;
+  box-shadow: 0 12px 32px rgba(#000, 0.45);
 }
-.mgreet-session > popover row {
+.mgreet-session popover > arrow {
+  background-color: var(--surface-container-high);
+  border: 1px solid var(--outline);
+}
+.mgreet-session popover scrolledwindow,
+.mgreet-session popover listview {
+  background: none;
+  background-color: transparent;
+}
+.mgreet-session popover listview > row {
+  background: none;
+  background-color: transparent;
   border-radius: var(--radius-md);
   padding: 6px 10px;
   color: var(--on-surface);
 }
-.mgreet-session > popover row:selected {
+.mgreet-session popover listview > row:hover {
+  background-color: rgba(#fff, 0.06);
+}
+.mgreet-session popover listview > row:selected {
   background-color: var(--primary-container);
   color: var(--on-primary-container);
 }
