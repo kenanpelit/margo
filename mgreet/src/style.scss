@@ -99,16 +99,29 @@ window.mgreet-root {
 }
 
 // Primary login button.
+//
+// The stock theme paints `button { background-image: <grey gradient> }`, and
+// again on :active and :disabled. A background-image sits ON TOP of a
+// background-color, so without an explicit `none` the accent is buried under
+// grey and the label reads as dark-on-grey. Neutralise the paint in the base
+// rule — our provider outranks the theme's per property, so one `none` covers
+// every state we don't override ourselves.
 .mgreet-login {
   background-color: var(--primary);
+  background-image: none;
   color: var(--on-primary);
+  border: none;
+  box-shadow: none;
+  text-shadow: none;
   border-radius: var(--radius-pill);
   padding: 12px 18px;
   font-weight: 700;
-  border: none;
 }
 .mgreet-login:hover {
   background-image: linear-gradient(rgba(#fff, 0.08), rgba(#fff, 0.08));
+}
+.mgreet-login:active {
+  background-image: linear-gradient(rgba(#000, 0.14), rgba(#000, 0.14));
 }
 .mgreet-login:disabled {
   opacity: 0.5;
@@ -199,6 +212,25 @@ window.mgreet-root {
 .mgreet-session popover listview > row:selected {
   background-color: var(--primary-container);
   color: var(--on-primary-container);
+}
+
+// ── Focus rings ───────────────────────────────────────────────────
+//
+// The stock theme rings every focusable node in its own accent blue
+// (`entry:focus-within`, `button:focus-visible:focus`, `row:focus:focus-visible`)
+// — the one colour on the greeter that answers to no palette token, and the
+// username entry wears it from the moment the card appears. The entries and the
+// popover rows already signal focus (a primary border over a lifted surface; a
+// selected row's fill), so they drop the ring; the buttons have no other cue, so
+// theirs is redrawn from the palette.
+.mgreet-field:focus-within,
+.mgreet-session popover listview > row:focus-visible {
+  outline: none;
+}
+.mgreet-login:focus-visible,
+.mgreet-session > button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 // Inline error / status line under the fields.
