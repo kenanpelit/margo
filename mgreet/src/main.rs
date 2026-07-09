@@ -120,7 +120,7 @@ fn main() -> glib::ExitCode {
             eprintln!("mgreet: no GDK display; cannot start the greeter");
             return;
         };
-        style::install(&display, matugen_css(preview).as_deref());
+        style::install(&display, matugen_css(greeter.is_some()).as_deref());
 
         let state = Rc::new(State {
             preview,
@@ -190,16 +190,23 @@ fn sync_windows(
 }
 
 /// The matugen colours to overlay on the baked default palette, if available.
-fn matugen_css(preview: bool) -> Option<String> {
-    if preview {
+///
+/// Keyed on real-greeter mode, NOT on `--preview`: the root greeter has no user
+/// to borrow a theme from and reads a synced system path, while *any* run under
+/// a live session is a dry-run and should look exactly like the desktop it was
+/// launched from. Keying it on `--preview` meant a bare `mgreet` took the root
+/// branch, found nothing, and silently rendered the baked Dracula palette —
+/// which reads as "the greeter ignores my theme".
+fn matugen_css(real_greeter: bool) -> Option<String> {
+    if real_greeter {
+        // Root, pre-session: no user cache is readable, so use a synced path.
+        std::fs::read_to_string("/etc/mgreet/theme.css").ok()
+    } else {
         // Under a live session: reuse the shell's cached theme so the greeter
         // matches the desktop the user just came from.
         let cache = std::env::var_os("XDG_CACHE_HOME")
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
         std::fs::read_to_string(cache.join("mshell").join("last_theme.css")).ok()
-    } else {
-        // Real greeter (root, pre-session): a synced system path (later phase).
-        std::fs::read_to_string("/etc/mgreet/theme.css").ok()
     }
 }

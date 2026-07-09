@@ -142,11 +142,16 @@ fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
     card.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
     // ── Username ──
+    // No visible caption on any of the three rows: each control already names
+    // itself (the entries via their placeholder, the drop-down via the selected
+    // session), so a caption above it just says the same word twice. The name is
+    // still exposed to assistive tech, which can't read a placeholder.
     let username = gtk::Entry::with_buffer(&state.username);
     username.add_css_class("mgreet-field");
     username.set_placeholder_text(Some("Username"));
     username.set_hexpand(true);
-    card.append(&field_group("User", &username));
+    username.update_property(&[gtk::accessible::Property::Label("Username")]);
+    card.append(&username);
 
     // ── Password ──
     let password = gtk::Entry::with_buffer(&state.password);
@@ -155,11 +160,13 @@ fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
     password.set_visibility(false);
     password.set_input_purpose(gtk::InputPurpose::Password);
     password.set_hexpand(true);
-    let password_group = field_group("Password", &password);
+    password.update_property(&[gtk::accessible::Property::Label("Password")]);
 
     // ── Caps Lock warning ── (critical for password entry). Updated from the
-    // modifier state on each keystroke in the password field. It lives inside
-    // the password group so it reads as belonging to the field it warns about.
+    // modifier state on each keystroke in the password field. Grouped tightly
+    // with the field so it reads as belonging to the one it warns about.
+    let password_group = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    password_group.append(&password);
     let caps = label(&["mgreet-caps"]);
     caps.set_text("\u{2191} Caps Lock is on");
     caps.set_visible(false);
@@ -187,18 +194,18 @@ fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
         gtk::DropDown::from_strings(&session_names)
     };
     sessions.add_css_class("mgreet-session");
-    // Full width, like the two fields above it: the caption goes on its own line
-    // and the control fills the card. (GtkDropDown's internal `button_stack` is
-    // hexpand, so the label stays left and the arrow rides the right edge, and
-    // GtkDropDown size-requests its popover to the button width.)
+    // Full width, like the two fields above it. (GtkDropDown's internal
+    // `button_stack` is hexpand, so the label stays left and the arrow rides the
+    // right edge, and GtkDropDown size-requests its popover to the button width.)
     sessions.set_hexpand(true);
+    sessions.update_property(&[gtk::accessible::Property::Label("Session")]);
     // Pre-select the last-used session (from the shared mlogind cache).
     if let Some(want) = state.initial_session.as_deref()
         && let Some(idx) = state.sessions.iter().position(|s| s.name == want)
     {
         sessions.set_selected(idx as u32);
     }
-    card.append(&field_group("Session", &sessions));
+    card.append(&sessions);
 
     // ── Status line ──
     let status = label(&["mgreet-status"]);
@@ -389,24 +396,6 @@ fn label(classes: &[&str]) -> gtk::Label {
         l.add_css_class(c);
     }
     l
-}
-
-fn caption(text: &str) -> gtk::Label {
-    let l = label(&["mgreet-caption"]);
-    l.set_text(text);
-    l
-}
-
-/// A labelled control: caption tight above, control below, filling the card.
-/// Every login row is built this way so the card reads as one column with one
-/// rhythm — a caption sitting beside its control broke the alignment with the
-/// rows above it. The tight in-group gap (vs. the card's larger between-group
-/// spacing) is what binds a caption to the control it names.
-fn field_group(text: &str, control: &impl IsA<gtk::Widget>) -> gtk::Box {
-    let group = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    group.append(&caption(text));
-    group.append(control);
-    group
 }
 
 fn update_clock(greeting: &gtk::Label, clock: &gtk::Label, date: &gtk::Label) {
