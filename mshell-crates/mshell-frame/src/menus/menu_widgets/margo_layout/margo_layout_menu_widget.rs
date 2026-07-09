@@ -175,15 +175,27 @@ impl Component for MargoLayoutMenuWidgetModel {
         *last_active_cell.borrow_mut() = initial;
         apply_active_class(&buttons_cell.borrow(), initial);
 
+        // The send must be fallible and must stop the source on failure.
+        // Holding the `SourceId` only stops the timer when the model is
+        // explicitly dropped, but a relm4 controller teardown doesn't
+        // guarantee Drop-then-next-tick ordering, and an in-flight tick on a
+        // half-dropped controller would abort mshell with "The runtime of the
+        // component was shutdown" — taking the whole shell with it. The bar
+        // twin of this poller (bars/bar_widgets/margo_layout.rs) does the same.
         let sender_tick = sender.clone();
         let last_active_tick = last_active_cell.clone();
         let timeout = glib::timeout_add_local(ACTIVE_POLL_INTERVAL, move || {
             let next = current_active_layout_idx();
             let mut last = last_active_tick.borrow_mut();
-            if *last != next {
-                *last = next;
-                sender_tick.input(MargoLayoutMenuWidgetInput::LayoutChanged(next));
+            if *last != next
+                && sender_tick
+                    .input_sender()
+                    .send(MargoLayoutMenuWidgetInput::LayoutChanged(next))
+                    .is_err()
+            {
+                return glib::ControlFlow::Break;
             }
+            *last = next;
             glib::ControlFlow::Continue
         });
 
