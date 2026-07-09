@@ -73,16 +73,23 @@ jobs:
       # on the compositor's shared deps, producing a margo binary that
       # differs from what the package ships. This split mirrors the
       # PKGBUILD so CI validates the real production build configuration.
+      #
+      # `--locked` on every cargo invocation that resolves dependencies:
+      # AUR `makepkg` builds with a frozen lockfile, so a `Cargo.toml`
+      # version bump whose `Cargo.lock` was never synced must fail *here*
+      # rather than in a user's `makepkg`. Without it cargo silently
+      # regenerates the lock and CI goes green on a tree that cannot be
+      # packaged.
       - name: cargo build (compositor group)
-        run: cargo build -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay -p mdots -p mcal
+        run: cargo build --locked -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay -p mdots -p mcal
 
       - name: cargo build (shell group)
-        run: cargo build -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard -p mkeys -p mvpn -p margo-portal
+        run: cargo build --locked -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard -p mkeys -p mvpn -p mgreet -p margo-portal
 
       - name: cargo test
         # Tests cover every crate; feature unification in the test build
         # doesn't ship, so `--workspace` is fine here.
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
 
       - name: cargo fmt (gate)
         # Formatting is deterministic on the pinned toolchain
@@ -94,7 +101,7 @@ jobs:
         # is stable and `-D warnings` won't flip red on unrelated rolling-Rust
         # drift. Bump the pin deliberately (with a clippy pass) to adopt new
         # lints. `--all-targets` so tests/examples are linted too.
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: design lint (gate)
         # DESIGN.md §15 L1–L7: no hardcoded hex, no raw ≥4px
