@@ -65,64 +65,12 @@ use reactive_graph::traits::ReadUntracked;
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, EditableExt, MonitorExt, OrientableExt, ToggleButtonExt, WidgetExt,
 };
-use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
+use relm4::{Component, ComponentController, ComponentParts, ComponentSender, gtk};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 pub struct SettingsWindowModel {
-    general_settings_controller: Controller<GeneralSettingsModel>,
-    setup_settings_controller: Controller<SetupSettingsModel>,
-    calendar_settings_controller: Controller<CalendarSettingsModel>,
-    weather_settings_controller: Controller<WeatherSettingsModel>,
-    media_player_settings_controller: Controller<MediaPlayerSettingsModel>,
-    hidden_bar_settings_controller: Controller<HiddenBarSettingsModel>,
-    catwalk_settings_controller: Controller<CatwalkSettingsModel>,
-    wallpaper_settings_controller: Controller<WallpaperSettingsModel>,
-    theme_settings_controller: Controller<ThemeSettingsModel>,
-    fonts_settings_controller: Controller<FontsSettingsModel>,
-    helium_theme_settings_controller: Controller<HeliumThemeSettingsModel>,
-    about_settings_controller: Controller<AboutSettingsModel>,
-    animations_settings_controller: Controller<AnimationsSettingsModel>,
-    window_switcher_settings_controller: Controller<WindowSwitcherModel>,
-    appearance_settings_controller: Controller<AppearanceModel>,
-    effects_settings_controller: Controller<EffectsModel>,
-    behaviour_settings_controller: Controller<BehaviourModel>,
-    window_rules_settings_controller: Controller<WindowRulesModel>,
-    layer_rules_settings_controller: Controller<LayerRulesModel>,
-    tag_rules_settings_controller: Controller<TagRulesModel>,
-    startup_env_settings_controller: Controller<StartupEnvModel>,
-    backup_settings_controller: Controller<BackupSettingsModel>,
-    logging_settings_controller: Controller<LoggingModel>,
-    osd_settings_controller: Controller<OsdSettingsModel>,
-    overview_settings_controller: Controller<OverviewSettingsModel>,
-    vpn_settings_controller: Controller<VpnSettingsModel>,
-    ai_settings_controller: Controller<AiSettingsModel>,
-    date_time_settings_controller: Controller<DateTimeSettingsModel>,
-    region_settings_controller: Controller<RegionSettingsModel>,
-    sound_settings_controller: Controller<SoundSettingsModel>,
-    users_settings_controller: Controller<UsersSettingsModel>,
-    input_settings_controller: Controller<InputSettingsModel>,
-    keybinds_settings_controller: Controller<KeybindsSettingsModel>,
-    summon_settings_controller: Controller<crate::summon_settings::SummonSettingsModel>,
-    display_settings_controller: Controller<DisplaySettingsModel>,
-    bar_settings_controller: Controller<BarSettingsModel>,
-    bluetooth_settings_controller: Controller<BluetoothSettingsModel>,
-    default_apps_settings_controller: Controller<DefaultAppsSettingsModel>,
-    network_settings_controller: Controller<NetworkSettingsModel>,
-    power_settings_controller: Controller<PowerSettingsModel>,
-    privacy_settings_controller: Controller<PrivacySettingsModel>,
-    menu_settings_controller: Controller<MenuSettingsModel>,
-    notification_settings_controller: Controller<NotificationSettingsModel>,
-    idle_settings_controller: Controller<IdleSettingsModel>,
-    toast_settings_controller: Controller<ToastSettingsModel>,
-    game_mode_settings_controller: Controller<GameModeSettingsModel>,
-    keyboard_settings_controller: Controller<KeyboardSettingsModel>,
-    lock_settings_controller: Controller<LockSettingsModel>,
-    tag_layout_settings_controller: Controller<TagLayoutSettingsModel>,
-    launcher_settings_controller: Controller<LauncherSettingsModel>,
-    session_settings_controller: Controller<SessionSettingsModel>,
-    plugins_settings_controller: Controller<PluginsSettingsModel>,
     /// Panel width — computed from the monitor's geometry in
     /// `init`. 4:3 aspect with height set to `monitor_h * 3 / 4`
     /// so the panel covers most of the screen vertically without
@@ -149,6 +97,14 @@ pub struct SettingsWindowModel {
     /// "Weather"), for the flat search-results list. Filled from the SIDEBAR
     /// table + each widgets sub-page button as it's built.
     search_titles: Rc<RefCell<HashMap<String, String>>>,
+    /// Keep-alive anchor for every lazily-built page. Pages are built on first
+    /// navigation (see the `ensure_*` closures in `init`); a page's relm4
+    /// `Controller` must outlive the panel or the page stops updating, so it is
+    /// parked here rather than dropped when the builder closure returns. Shared
+    /// `Rc` because those closures push into it from GTK signal handlers. Never
+    /// read — the model owning the tokens is the whole point (`dead_code`).
+    #[allow(dead_code)]
+    alive: Rc<RefCell<Vec<Box<dyn std::any::Any>>>>,
 }
 
 #[derive(Debug)]
@@ -188,19 +144,79 @@ pub struct SettingsWindowInit {
 #[derive(Debug)]
 pub enum SettingsWindowCommandOutput {}
 
-/// Build a batch of detached settings-page controllers from one list.
-///
-/// Each entry is `field = ModelPath => InitExpr`; it expands to the
-/// `let field = <ModelPath>::builder().launch(InitExpr).detach();` binding
-/// every page used to spell out by hand. Adding a (unit-init or otherwise)
-/// page is now one line in the [`Component::init`] list instead of a 3-line
-/// copy that could pick the wrong `Init` type. The page-stack and sidebar are
-/// already table-driven (`stack_pages` + the `SIDEBAR` const); this closes the
-/// last per-page boilerplate block.
-macro_rules! build_pages {
-    ($($ctrl:ident = $model:path => $init:expr),+ $(,)?) => {
-        $( let $ctrl = <$model>::builder().launch($init).detach(); )+
+/// A lazily-built page: `(widget, keep-alive tokens)`. Its relm4 `Controller`s
+/// are launched on first navigation, not at panel-build time; the tokens (the
+/// controllers) must outlive the panel, so the caller parks them in
+/// `SettingsWindowModel::alive`.
+type BuiltPage = (gtk::Widget, Vec<Box<dyn std::any::Any>>);
+
+/// A one-shot factory for a lazily-built sub-page (theme / widgets sub-stack).
+type PageFactory = Box<dyn FnOnce() -> BuiltPage>;
+
+/// Launch one top-level settings page on demand, keyed by its stack-child
+/// route. Every page's relm4 controller lives only for as long as its returned
+/// token is kept alive. Returns `None` for the two container routes (`theme` /
+/// `widgets`, which are built eagerly because their sub-sidebars seed the
+/// search index) and for any unknown route — callers guard on `child_by_name`
+/// first, so `None` is a no-op.
+fn build_top_page(route: &str) -> Option<BuiltPage> {
+    // Launch a page whose `init` takes a single unit-struct: one line per page,
+    // returning the page widget plus the controller as its keep-alive token.
+    macro_rules! page {
+        ($model:path => $init:expr) => {{
+            let ctrl = <$model>::builder().launch($init).detach();
+            let widget: gtk::Widget = ctrl.widget().clone().into();
+            (widget, vec![Box::new(ctrl) as Box<dyn std::any::Any>])
+        }};
+    }
+    let built = match route {
+        "general" => page!(GeneralSettingsModel => GeneralSettingsInit {}),
+        "setup" => page!(SetupSettingsModel => SetupSettingsInit {}),
+        "calendar" => page!(CalendarSettingsModel => CalendarSettingsInit {}),
+        "about" => page!(AboutSettingsModel => AboutSettingsInit {}),
+        "animations" => page!(AnimationsSettingsModel => AnimationsSettingsInit {}),
+        "window_switcher" => page!(WindowSwitcherModel => WindowSwitcherInit {}),
+        "appearance" => page!(AppearanceModel => AppearanceInit {}),
+        "effects" => page!(EffectsModel => EffectsInit {}),
+        "osd" => page!(OsdSettingsModel => OsdSettingsInit {}),
+        "behaviour" => page!(BehaviourModel => BehaviourInit {}),
+        "window_rules" => page!(WindowRulesModel => WindowRulesInit {}),
+        "layer_rules" => page!(LayerRulesModel => LayerRulesInit {}),
+        "tag_rules" => page!(TagRulesModel => TagRulesInit {}),
+        "startup_env" => page!(StartupEnvModel => StartupEnvInit {}),
+        "backup" => page!(BackupSettingsModel => BackupSettingsInit {}),
+        "logging" => page!(LoggingModel => LoggingInit {}),
+        "overview" => page!(OverviewSettingsModel => OverviewSettingsInit {}),
+        "vpn" => page!(VpnSettingsModel => VpnSettingsInit {}),
+        "ai" => page!(AiSettingsModel => AiSettingsInit {}),
+        "date_time" => page!(DateTimeSettingsModel => DateTimeSettingsInit {}),
+        "region" => page!(RegionSettingsModel => RegionSettingsInit {}),
+        "sound" => page!(SoundSettingsModel => SoundSettingsInit {}),
+        "users" => page!(UsersSettingsModel => UsersSettingsInit {}),
+        "input" => page!(InputSettingsModel => InputSettingsInit {}),
+        "keybinds" => page!(KeybindsSettingsModel => KeybindsSettingsInit {}),
+        "summon" => {
+            page!(crate::summon_settings::SummonSettingsModel => crate::summon_settings::SummonSettingsInit {})
+        }
+        "display" => page!(DisplaySettingsModel => DisplaySettingsInit {}),
+        "bluetooth" => page!(BluetoothSettingsModel => BluetoothSettingsInit {}),
+        "default_apps" => page!(DefaultAppsSettingsModel => DefaultAppsSettingsInit {}),
+        "network" => page!(NetworkSettingsModel => NetworkSettingsInit {}),
+        "power" => page!(PowerSettingsModel => PowerSettingsInit {}),
+        "privacy" => page!(PrivacySettingsModel => PrivacySettingsInit {}),
+        "idle" => page!(IdleSettingsModel => IdleSettingsInit {}),
+        "toasts" => page!(ToastSettingsModel => ToastSettingsInit {}),
+        "game_mode" => page!(GameModeSettingsModel => GameModeSettingsInit {}),
+        "keyboard" => page!(KeyboardSettingsModel => KeyboardSettingsInit {}),
+        "lock" => page!(LockSettingsModel => LockSettingsInit {}),
+        "tiling_layout" => page!(TagLayoutSettingsModel => TagLayoutSettingsInit {}),
+        "launcher" => page!(LauncherSettingsModel => LauncherSettingsInit {}),
+        "bar" => page!(BarSettingsModel => BarSettingsInit {}),
+        "plugins" => page!(PluginsSettingsModel => PluginsSettingsInit {}),
+        "menus" => page!(MenuSettingsModel => MenuSettingsInit {}),
+        _ => return None,
     };
+    Some(built)
 }
 
 #[relm4::component(pub)]
@@ -412,60 +428,12 @@ impl Component for SettingsWindowModel {
         });
         Box::leak(Box::new(size_effects));
 
-        build_pages! {
-            general_settings_controller = GeneralSettingsModel => GeneralSettingsInit {},
-            setup_settings_controller = SetupSettingsModel => SetupSettingsInit {},
-            calendar_settings_controller = CalendarSettingsModel => CalendarSettingsInit {},
-            weather_settings_controller = WeatherSettingsModel => WeatherSettingsInit {},
-            media_player_settings_controller = MediaPlayerSettingsModel => MediaPlayerSettingsInit {},
-            hidden_bar_settings_controller = HiddenBarSettingsModel => HiddenBarSettingsInit {},
-            catwalk_settings_controller = CatwalkSettingsModel => CatwalkSettingsInit {},
-            wallpaper_settings_controller = WallpaperSettingsModel => WallpaperSettingsInit {},
-            theme_settings_controller = ThemeSettingsModel => ThemeSettingsInit {},
-            fonts_settings_controller = FontsSettingsModel => FontsSettingsInit {},
-            helium_theme_settings_controller = HeliumThemeSettingsModel => HeliumThemeSettingsInit {},
-            about_settings_controller = AboutSettingsModel => AboutSettingsInit {},
-            appearance_settings_controller = AppearanceModel => AppearanceInit {},
-            effects_settings_controller = EffectsModel => EffectsInit {},
-            behaviour_settings_controller = BehaviourModel => BehaviourInit {},
-            window_rules_settings_controller = WindowRulesModel => WindowRulesInit {},
-            layer_rules_settings_controller = LayerRulesModel => LayerRulesInit {},
-            tag_rules_settings_controller = TagRulesModel => TagRulesInit {},
-            startup_env_settings_controller = StartupEnvModel => StartupEnvInit {},
-            backup_settings_controller = BackupSettingsModel => BackupSettingsInit {},
-            logging_settings_controller = LoggingModel => LoggingInit {},
-            animations_settings_controller = AnimationsSettingsModel => AnimationsSettingsInit {},
-            window_switcher_settings_controller = WindowSwitcherModel => WindowSwitcherInit {},
-            osd_settings_controller = OsdSettingsModel => OsdSettingsInit {},
-            overview_settings_controller = OverviewSettingsModel => OverviewSettingsInit {},
-            vpn_settings_controller = VpnSettingsModel => VpnSettingsInit {},
-            ai_settings_controller = AiSettingsModel => AiSettingsInit {},
-            date_time_settings_controller = DateTimeSettingsModel => DateTimeSettingsInit {},
-            region_settings_controller = RegionSettingsModel => RegionSettingsInit {},
-            sound_settings_controller = SoundSettingsModel => SoundSettingsInit {},
-            users_settings_controller = UsersSettingsModel => UsersSettingsInit {},
-            keybinds_settings_controller = KeybindsSettingsModel => KeybindsSettingsInit {},
-            summon_settings_controller = crate::summon_settings::SummonSettingsModel => crate::summon_settings::SummonSettingsInit {},
-            input_settings_controller = InputSettingsModel => InputSettingsInit {},
-            display_settings_controller = DisplaySettingsModel => DisplaySettingsInit {},
-            bar_settings_controller = BarSettingsModel => BarSettingsInit {},
-            bluetooth_settings_controller = BluetoothSettingsModel => BluetoothSettingsInit {},
-            default_apps_settings_controller = DefaultAppsSettingsModel => DefaultAppsSettingsInit {},
-            lock_settings_controller = LockSettingsModel => LockSettingsInit {},
-            network_settings_controller = NetworkSettingsModel => NetworkSettingsInit {},
-            power_settings_controller = PowerSettingsModel => PowerSettingsInit {},
-            privacy_settings_controller = PrivacySettingsModel => PrivacySettingsInit {},
-            menu_settings_controller = MenuSettingsModel => MenuSettingsInit {},
-            notification_settings_controller = NotificationSettingsModel => NotificationSettingsInit {},
-            idle_settings_controller = IdleSettingsModel => IdleSettingsInit {},
-            toast_settings_controller = ToastSettingsModel => ToastSettingsInit {},
-            game_mode_settings_controller = GameModeSettingsModel => GameModeSettingsInit {},
-            keyboard_settings_controller = KeyboardSettingsModel => KeyboardSettingsInit {},
-            tag_layout_settings_controller = TagLayoutSettingsModel => TagLayoutSettingsInit {},
-            launcher_settings_controller = LauncherSettingsModel => LauncherSettingsInit {},
-            session_settings_controller = SessionSettingsModel => SessionSettingsInit {},
-            plugins_settings_controller = PluginsSettingsModel => PluginsSettingsInit {},
-        }
+        // Every settings page is now built on first navigation, not up front:
+        // opening the panel used to launch ~100 relm4 controllers in one
+        // blocking call (the 3–4 s freeze). Each page's controller lands here
+        // as it is built so it outlives the panel (a detached `Controller`
+        // shuts its component down when dropped). See the `ensure_*` closures.
+        let alive: Rc<RefCell<Vec<Box<dyn std::any::Any>>>> = Rc::new(RefCell::new(Vec::new()));
 
         // Built before the model so the model can hold a clone; the
         // Widgets sub-sidebar build loop (further down) fills the same map.
@@ -498,67 +466,37 @@ impl Component for SettingsWindowModel {
         ));
 
         let model = SettingsWindowModel {
-            general_settings_controller,
-            setup_settings_controller,
-            calendar_settings_controller,
-            weather_settings_controller,
-            media_player_settings_controller,
-            hidden_bar_settings_controller,
-            catwalk_settings_controller,
-            wallpaper_settings_controller,
-            theme_settings_controller,
-            fonts_settings_controller,
-            helium_theme_settings_controller,
-            about_settings_controller,
-            animations_settings_controller,
-            window_switcher_settings_controller,
-            appearance_settings_controller,
-            effects_settings_controller,
-            osd_settings_controller,
-            behaviour_settings_controller,
-            window_rules_settings_controller,
-            layer_rules_settings_controller,
-            tag_rules_settings_controller,
-            startup_env_settings_controller,
-            backup_settings_controller,
-            logging_settings_controller,
-            overview_settings_controller,
-            vpn_settings_controller,
-            ai_settings_controller,
-            date_time_settings_controller,
-            region_settings_controller,
-            sound_settings_controller,
-            users_settings_controller,
-            input_settings_controller,
-            keybinds_settings_controller,
-            summon_settings_controller,
-            display_settings_controller,
-            bar_settings_controller,
-            bluetooth_settings_controller,
-            default_apps_settings_controller,
-            network_settings_controller,
-            power_settings_controller,
-            privacy_settings_controller,
-            menu_settings_controller,
-            notification_settings_controller,
-            idle_settings_controller,
-            toast_settings_controller,
-            game_mode_settings_controller,
-            keyboard_settings_controller,
-            lock_settings_controller,
-            tag_layout_settings_controller,
-            launcher_settings_controller,
-            session_settings_controller,
-            plugins_settings_controller,
             panel_width,
             panel_height,
             subsection_buttons: subsection_buttons.clone(),
             section_buttons: section_buttons.clone(),
             search_index: search_index.clone(),
             search_titles: search_titles.clone(),
+            alive: alive.clone(),
         };
 
         let widgets = view_output!();
+
+        // Build one top-level page into the stack on first navigation. The
+        // `theme` / `widgets` container pages are added eagerly (their
+        // sub-sidebars seed the search index), so `child_by_name` short-circuits
+        // for them; every other route resolves through `build_top_page`.
+        let ensure_top: Rc<dyn Fn(&str)> = {
+            let stack = widgets.stack.clone();
+            let alive = alive.clone();
+            Rc::new(move |route: &str| {
+                if stack.child_by_name(route).is_some() {
+                    return;
+                }
+                if let Some((widget, tokens)) = build_top_page(route) {
+                    // The panel drives visibility through its own sidebar, never
+                    // a GtkStackSwitcher, so the page title is unused — add_named
+                    // avoids threading dead title strings through every builder.
+                    stack.add_named(&widget, Some(route));
+                    alive.borrow_mut().extend(tokens);
+                }
+            })
+        };
 
         // Keyboard navigation on the sidebar — Tab + Up/Down walk
         // through the ToggleButton children, activating each
@@ -708,6 +646,28 @@ impl Component for SettingsWindowModel {
             .hhomogeneous(false)
             .build();
 
+        // Theme sub-pages are built on first navigation into each entry. The
+        // buttons + search index below stay eager (search must reach a theme
+        // page that was never opened); only the page content is deferred.
+        let theme_registry: Rc<RefCell<HashMap<String, PageFactory>>> =
+            Rc::new(RefCell::new(HashMap::new()));
+        let ensure_theme: Rc<dyn Fn(&str)> = {
+            let sub_stack = theme_sub_stack.clone();
+            let registry = theme_registry.clone();
+            let alive = alive.clone();
+            Rc::new(move |name: &str| {
+                if sub_stack.child_by_name(name).is_some() {
+                    return;
+                }
+                let factory = registry.borrow_mut().remove(name);
+                if let Some(factory) = factory {
+                    let (widget, tokens) = factory();
+                    sub_stack.add_named(&widget, Some(name));
+                    alive.borrow_mut().extend(tokens);
+                }
+            })
+        };
+
         let make_theme_sub_btn = |label: &str,
                                   icon: &str,
                                   stack_name: &'static str,
@@ -726,8 +686,10 @@ impl Component for SettingsWindowModel {
             row.append(&settings_sidebar_label(label));
             btn.set_child(Some(&row));
             let sub_stack = theme_sub_stack.clone();
+            let ensure = ensure_theme.clone();
             btn.connect_toggled(move |b| {
                 if b.is_active() {
+                    ensure(stack_name);
                     sub_stack.set_visible_child_name(stack_name);
                 }
             });
@@ -742,293 +704,88 @@ impl Component for SettingsWindowModel {
             btn
         };
 
-        let theme_entries: [(&str, &str, &'static str, gtk::Widget); 4] = [
+        // A one-controller page factory: launches the model on first
+        // navigation and returns its widget + the controller as keep-alive
+        // token. Defined here (first use) and reused by the widgets loop below;
+        // composed pages (Weather / Lyrics / …) spell their factories out.
+        macro_rules! page_factory {
+            ($model:path => $init:expr) => {
+                Box::new(move || {
+                    let ctrl = <$model>::builder().launch($init).detach();
+                    let widget: gtk::Widget = ctrl.widget().clone().into();
+                    (widget, vec![Box::new(ctrl) as Box<dyn std::any::Any>])
+                }) as PageFactory
+            };
+        }
+        theme_registry.borrow_mut().extend([
             (
-                "Scheme",
-                "palette-symbolic",
-                "scheme",
-                model.theme_settings_controller.widget().clone().into(),
+                "scheme".to_string(),
+                page_factory!(ThemeSettingsModel => ThemeSettingsInit {}),
             ),
             (
-                "Fonts",
-                "xsi-font-symbolic",
-                "fonts",
-                model.fonts_settings_controller.widget().clone().into(),
+                "fonts".to_string(),
+                page_factory!(FontsSettingsModel => FontsSettingsInit {}),
             ),
             (
-                "Wallpaper",
-                "wallpaper-symbolic",
-                "wallpaper",
-                model.wallpaper_settings_controller.widget().clone().into(),
+                "wallpaper".to_string(),
+                page_factory!(WallpaperSettingsModel => WallpaperSettingsInit {}),
             ),
             (
-                "Apps",
-                "web-browser-symbolic",
-                "apps",
-                model
-                    .helium_theme_settings_controller
-                    .widget()
-                    .clone()
-                    .into(),
+                "apps".to_string(),
+                page_factory!(HeliumThemeSettingsModel => HeliumThemeSettingsInit {}),
             ),
+        ]);
+
+        let theme_entries: [(&str, &str, &'static str); 4] = [
+            ("Scheme", "palette-symbolic", "scheme"),
+            ("Fonts", "xsi-font-symbolic", "fonts"),
+            ("Wallpaper", "wallpaper-symbolic", "wallpaper"),
+            ("Apps", "web-browser-symbolic", "apps"),
         ];
         let mut theme_anchor: Option<gtk::ToggleButton> = None;
-        for (label, icon, stack_name, widget) in theme_entries {
+        for (label, icon, stack_name) in theme_entries {
             let btn = make_theme_sub_btn(label, icon, stack_name, theme_anchor.as_ref());
             if theme_anchor.is_none() {
                 theme_anchor = Some(btn.clone());
             }
             theme_sub_sidebar_box.append(&btn);
-            theme_sub_stack.add_named(&widget, Some(stack_name));
         }
-        theme_sub_stack.set_visible_child_name("scheme");
         theme_page.append(&theme_sub_sidebar);
         theme_page.append(&theme_sub_stack);
 
-        // Top-level stack pages. Insertion order does not affect display (the
-        // sidebar buttons drive visibility) — kept as one table so the page
-        // list lives in a single place instead of 36 add_titled blocks.
-        let stack_pages: Vec<(&str, &str, gtk::Widget)> = vec![
-            (
-                "general",
-                "General",
-                model.general_settings_controller.widget().clone().into(),
-            ),
-            (
-                "setup",
-                "Setup",
-                model.setup_settings_controller.widget().clone().into(),
-            ),
-            (
-                "calendar",
-                "Calendar",
-                model.calendar_settings_controller.widget().clone().into(),
-            ),
-            ("theme", "Theme", theme_page.into()),
-            (
-                "about",
-                "About",
-                model.about_settings_controller.widget().clone().into(),
-            ),
-            (
-                "animations",
-                "Animations",
-                model.animations_settings_controller.widget().clone().into(),
-            ),
-            (
-                "window_switcher",
-                "Window Switcher",
-                model
-                    .window_switcher_settings_controller
-                    .widget()
-                    .clone()
-                    .into(),
-            ),
-            (
-                "appearance",
-                "Appearance",
-                model.appearance_settings_controller.widget().clone().into(),
-            ),
-            (
-                "effects",
-                "Effects",
-                model.effects_settings_controller.widget().clone().into(),
-            ),
-            (
-                "osd",
-                "OSD",
-                model.osd_settings_controller.widget().clone().into(),
-            ),
-            (
-                "behaviour",
-                "Behaviour",
-                model.behaviour_settings_controller.widget().clone().into(),
-            ),
-            (
-                "window_rules",
-                "Window Rules",
-                model
-                    .window_rules_settings_controller
-                    .widget()
-                    .clone()
-                    .into(),
-            ),
-            (
-                "layer_rules",
-                "Layer Rules",
-                model
-                    .layer_rules_settings_controller
-                    .widget()
-                    .clone()
-                    .into(),
-            ),
-            (
-                "tag_rules",
-                "Tag Rules",
-                model.tag_rules_settings_controller.widget().clone().into(),
-            ),
-            (
-                "startup_env",
-                "Startup",
-                model
-                    .startup_env_settings_controller
-                    .widget()
-                    .clone()
-                    .into(),
-            ),
-            (
-                "backup",
-                "Backup",
-                model.backup_settings_controller.widget().clone().into(),
-            ),
-            (
-                "logging",
-                "Logging",
-                model.logging_settings_controller.widget().clone().into(),
-            ),
-            (
-                "overview",
-                "Overview",
-                model.overview_settings_controller.widget().clone().into(),
-            ),
-            (
-                "vpn",
-                "VPN",
-                model.vpn_settings_controller.widget().clone().into(),
-            ),
-            (
-                "ai",
-                "AI",
-                model.ai_settings_controller.widget().clone().into(),
-            ),
-            (
-                "date_time",
-                "Date & Time",
-                model.date_time_settings_controller.widget().clone().into(),
-            ),
-            (
-                "region",
-                "Region & Language",
-                model.region_settings_controller.widget().clone().into(),
-            ),
-            (
-                "sound",
-                "Sound",
-                model.sound_settings_controller.widget().clone().into(),
-            ),
-            (
-                "users",
-                "Users",
-                model.users_settings_controller.widget().clone().into(),
-            ),
-            (
-                "input",
-                "Input",
-                model.input_settings_controller.widget().clone().into(),
-            ),
-            (
-                "keybinds",
-                "Keybinds",
-                model.keybinds_settings_controller.widget().clone().into(),
-            ),
-            (
-                "summon",
-                "Tags",
-                model.summon_settings_controller.widget().clone().into(),
-            ),
-            (
-                "display",
-                "Display",
-                model.display_settings_controller.widget().clone().into(),
-            ),
-            (
-                "bluetooth",
-                "Bluetooth",
-                model.bluetooth_settings_controller.widget().clone().into(),
-            ),
-            (
-                "default_apps",
-                "Default Apps",
-                model
-                    .default_apps_settings_controller
-                    .widget()
-                    .clone()
-                    .into(),
-            ),
-            (
-                "network",
-                "Network",
-                model.network_settings_controller.widget().clone().into(),
-            ),
-            (
-                "power",
-                "Power",
-                model.power_settings_controller.widget().clone().into(),
-            ),
-            (
-                "privacy",
-                "Privacy",
-                model.privacy_settings_controller.widget().clone().into(),
-            ),
-            (
-                "idle",
-                "Idle",
-                model.idle_settings_controller.widget().clone().into(),
-            ),
-            (
-                "toasts",
-                "Toasts",
-                model.toast_settings_controller.widget().clone().into(),
-            ),
-            (
-                "game_mode",
-                "Game Mode",
-                model.game_mode_settings_controller.widget().clone().into(),
-            ),
-            (
-                "keyboard",
-                "On-Screen Keyboard",
-                model.keyboard_settings_controller.widget().clone().into(),
-            ),
-            (
-                "lock",
-                "Lock Screen",
-                model.lock_settings_controller.widget().clone().into(),
-            ),
-            (
-                "tiling_layout",
-                "Tiling Layout",
-                model.tag_layout_settings_controller.widget().clone().into(),
-            ),
-            (
-                "launcher",
-                "Launcher",
-                model.launcher_settings_controller.widget().clone().into(),
-            ),
-            (
-                "bar",
-                "Bar",
-                model.bar_settings_controller.widget().clone().into(),
-            ),
-            (
-                "plugins",
-                "Plugins",
-                model.plugins_settings_controller.widget().clone().into(),
-            ),
-            (
-                "menus",
-                "Menus",
-                model.menu_settings_controller.widget().clone().into(),
-            ),
-        ];
-        for (route, title, widget) in stack_pages {
-            widgets.stack.add_titled(&widget, Some(route), title);
+        // Build the default sub-page ("scheme") the first time the Theme
+        // container is shown, so its sub-stack isn't blank — but only when
+        // empty, so re-entering Theme keeps whichever sub-page the user last
+        // left it on (the sub-stack retains its visible child otherwise).
+        {
+            let ensure_theme = ensure_theme.clone();
+            let sub_stack = theme_sub_stack.clone();
+            theme_page.connect_map(move |_| {
+                if sub_stack.visible_child().is_none() {
+                    ensure_theme("scheme");
+                    sub_stack.set_visible_child_name("scheme");
+                }
+            });
         }
 
+        // The Theme container is a plain Box of sub-sidebar + (initially empty)
+        // sub-stack, so it stays eager: its sub-sidebar buttons seed the search
+        // index that must resolve before Theme is ever opened.
+        widgets
+            .stack
+            .add_titled(&theme_page, Some("theme"), "Theme");
+
+        // Every other top-level page is built lazily on first navigation (see
+        // `ensure_top` + `build_top_page`); only the `theme` and `widgets`
+        // containers are added to the stack up front.
+
         // Build the sidebar buttons + section headers imperatively from the
-        // SIDEBAR table (relm4's view! can't loop). Done after the stack pages
-        // exist so the first button's `set_active(true)` → "general" resolves.
-        *section_buttons.borrow_mut() = build_sidebar(&widgets.sidebar_box, &widgets.stack);
+        // SIDEBAR table (relm4's view! can't loop). Each page button's toggle
+        // runs `ensure_top` before flipping the stack, so the target page is
+        // built on demand. The default "general" page is built explicitly at
+        // the end of `init` (the anchor button's toggle isn't wired yet here).
+        *section_buttons.borrow_mut() =
+            build_sidebar(&widgets.sidebar_box, &widgets.stack, ensure_top.clone());
 
         // ── Widgets group ──────────────────────────────────────
         // Owns per-widget pages. The launcher has its own top-level
@@ -1075,6 +832,30 @@ impl Component for SettingsWindowModel {
             .vexpand(true)
             .build();
 
+        // Widget sub-pages are built on first navigation. The loop below fills
+        // this registry with one factory per stack-child name; `ensure_widget`
+        // runs the factory the first time that page is shown. The sub-sidebar
+        // buttons + search index stay eager (search must reach a widget page
+        // that was never opened).
+        let widget_registry: Rc<RefCell<HashMap<String, PageFactory>>> =
+            Rc::new(RefCell::new(HashMap::new()));
+        let ensure_widget: Rc<dyn Fn(&str)> = {
+            let sub_stack = widgets_sub_stack.clone();
+            let registry = widget_registry.clone();
+            let alive = alive.clone();
+            Rc::new(move |name: &str| {
+                if sub_stack.child_by_name(name).is_some() {
+                    return;
+                }
+                let factory = registry.borrow_mut().remove(name);
+                if let Some(factory) = factory {
+                    let (widget, tokens) = factory();
+                    sub_stack.add_named(&widget, Some(name));
+                    alive.borrow_mut().extend(tokens);
+                }
+            })
+        };
+
         // Helper closure: build one sub-sidebar ToggleButton +
         // wire it to flip the sub-stack. All buttons except the
         // first share the same `group` so they radio-toggle.
@@ -1099,8 +880,10 @@ impl Component for SettingsWindowModel {
             row.append(&lbl);
             btn.set_child(Some(&row));
             let sub_stack = widgets_sub_stack.clone();
+            let ensure = ensure_widget.clone();
             btn.connect_toggled(move |b| {
                 if b.is_active() {
+                    ensure(stack_name);
                     sub_stack.set_visible_child_name(stack_name);
                 }
             });
@@ -1177,6 +960,29 @@ impl Component for SettingsWindowModel {
                     Self::HiddenBar => "Hidden Bar",
                     Self::Catwalk => "Catwalk",
                     Self::Privacy => "Privacy",
+                }
+            }
+
+            /// The sub-stack child name this entry is registered under — must
+            /// match the `stack_name` passed to `make_sub_btn` / the dedicated
+            /// `add_named` in each loop arm. Used to pick the default sub-page
+            /// (the first entry after the alphabetical sort) to build when the
+            /// Widgets container is first shown.
+            fn stack_name(&self) -> &'static str {
+                match self {
+                    Self::Menu { stack_name, .. } | Self::Pill { stack_name, .. } => stack_name,
+                    Self::Notifications => "notifications",
+                    Self::Session => "session",
+                    Self::Weather => "weather",
+                    Self::MediaPlayer => "media_player",
+                    Self::Lyrics => "lyrics",
+                    Self::HiddenBar => "hidden_bar",
+                    Self::Catwalk => "catwalk",
+                    Self::Privacy => "privacy",
+                    Self::Clipboard => "clipboard",
+                    Self::SystemUpdate => "system_update",
+                    Self::Dock => "dock",
+                    Self::SystemTray => "system_tray",
                 }
             }
         }
@@ -1419,12 +1225,15 @@ impl Component for SettingsWindowModel {
         ];
         entries.sort_by_key(|e| e.label().to_ascii_lowercase());
 
-        // Controllers must outlive `init()` — store them in Vecs
-        // and `Box::leak` at the end. The notification and session
-        // controllers already live on the model.
-        let mut menu_controllers: Vec<relm4::Controller<WidgetMenuSettingsModel>> = Vec::new();
-        let mut bar_pill_controllers: Vec<relm4::Controller<BarPillSettingsModel>> = Vec::new();
+        // The default sub-page shown when the Widgets container is first
+        // opened: the alphabetically-first entry, which is also the radio-group
+        // anchor built `.active(true)` below. Built lazily on first map.
+        let widgets_default: Option<&'static str> = entries.first().map(WidgetEntry::stack_name);
 
+        // Each arm builds its sub-sidebar button eagerly (cheap GTK widgets that
+        // seed the sub-sidebar + the search index, which must resolve before the
+        // page is ever opened) and registers a one-shot factory for its page
+        // content, which `ensure_widget` launches on first navigation.
         for entry in entries {
             match entry {
                 WidgetEntry::Menu {
@@ -1438,11 +1247,10 @@ impl Component for SettingsWindowModel {
                         group_anchor = Some(btn.clone());
                     }
                     widgets_sub_sidebar_box.append(&btn);
-                    let ctrl = WidgetMenuSettingsModel::builder()
-                        .launch(WidgetMenuSettingsInit { kind })
-                        .detach();
-                    widgets_sub_stack.add_named(ctrl.widget(), Some(stack_name));
-                    menu_controllers.push(ctrl);
+                    widget_registry.borrow_mut().insert(
+                        stack_name.to_string(),
+                        page_factory!(WidgetMenuSettingsModel => WidgetMenuSettingsInit { kind }),
+                    );
                 }
                 WidgetEntry::Pill {
                     kind,
@@ -1455,11 +1263,10 @@ impl Component for SettingsWindowModel {
                         group_anchor = Some(btn.clone());
                     }
                     widgets_sub_sidebar_box.append(&btn);
-                    let ctrl = BarPillSettingsModel::builder()
-                        .launch(BarPillSettingsInit { kind })
-                        .detach();
-                    widgets_sub_stack.add_named(ctrl.widget(), Some(stack_name));
-                    bar_pill_controllers.push(ctrl);
+                    widget_registry.borrow_mut().insert(
+                        stack_name.to_string(),
+                        page_factory!(BarPillSettingsModel => BarPillSettingsInit { kind }),
+                    );
                 }
                 WidgetEntry::Notifications => {
                     let btn = make_sub_btn(
@@ -1472,9 +1279,9 @@ impl Component for SettingsWindowModel {
                         group_anchor = Some(btn.clone());
                     }
                     widgets_sub_sidebar_box.append(&btn);
-                    widgets_sub_stack.add_named(
-                        model.notification_settings_controller.widget(),
-                        Some("notifications"),
+                    widget_registry.borrow_mut().insert(
+                        "notifications".to_string(),
+                        page_factory!(NotificationSettingsModel => NotificationSettingsInit {}),
                     );
                 }
                 WidgetEntry::Session => {
@@ -1488,8 +1295,10 @@ impl Component for SettingsWindowModel {
                         group_anchor = Some(btn.clone());
                     }
                     widgets_sub_sidebar_box.append(&btn);
-                    widgets_sub_stack
-                        .add_named(model.session_settings_controller.widget(), Some("session"));
+                    widget_registry.borrow_mut().insert(
+                        "session".to_string(),
+                        page_factory!(SessionSettingsModel => SessionSettingsInit {}),
+                    );
                 }
                 WidgetEntry::Weather => {
                     let btn = make_sub_btn(
@@ -1503,36 +1312,50 @@ impl Component for SettingsWindowModel {
                     }
                     widgets_sub_sidebar_box.append(&btn);
                     // Weather is one widget but two config domains: the data
-                    // source (location / units → WeatherSettings) and the menu
-                    // surface (position / width / height → the generic per-menu
+                    // source (location / units -> WeatherSettings) and the menu
+                    // surface (position / width / height -> the generic per-menu
                     // page). Compose both into one scrolling page so all of
                     // weather's settings live under this single Widgets entry.
-                    let menu_ctrl = WidgetMenuSettingsModel::builder()
-                        .launch(WidgetMenuSettingsInit {
-                            kind: MenuKind::Weather,
-                        })
-                        .detach();
-                    let ws = model.weather_settings_controller.widget().clone();
-                    let ms = menu_ctrl.widget().clone();
-                    // Each sub-page sizes to its content; the outer scroller
-                    // does the scrolling (no nested scrollbars).
-                    for sw in [&ws, &ms] {
-                        sw.set_vscrollbar_policy(gtk::PolicyType::Never);
-                        sw.set_propagate_natural_height(true);
-                        sw.set_vexpand(false);
-                    }
-                    let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
-                    inner.append(&ws);
-                    inner.append(&ms);
-                    let outer = gtk::ScrolledWindow::builder()
-                        .hscrollbar_policy(gtk::PolicyType::Never)
-                        .vscrollbar_policy(gtk::PolicyType::Automatic)
-                        .hexpand(true)
-                        .vexpand(true)
-                        .child(&inner)
-                        .build();
-                    widgets_sub_stack.add_named(&outer, Some("weather"));
-                    Box::leak(Box::new(menu_ctrl));
+                    let factory: PageFactory = Box::new(|| {
+                        let weather_ctrl = WeatherSettingsModel::builder()
+                            .launch(WeatherSettingsInit {})
+                            .detach();
+                        let menu_ctrl = WidgetMenuSettingsModel::builder()
+                            .launch(WidgetMenuSettingsInit {
+                                kind: MenuKind::Weather,
+                            })
+                            .detach();
+                        let ws = weather_ctrl.widget().clone();
+                        let ms = menu_ctrl.widget().clone();
+                        // Each sub-page sizes to its content; the outer scroller
+                        // does the scrolling (no nested scrollbars).
+                        for sw in [&ws, &ms] {
+                            sw.set_vscrollbar_policy(gtk::PolicyType::Never);
+                            sw.set_propagate_natural_height(true);
+                            sw.set_vexpand(false);
+                        }
+                        let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                        inner.append(&ws);
+                        inner.append(&ms);
+                        let outer = gtk::ScrolledWindow::builder()
+                            .hscrollbar_policy(gtk::PolicyType::Never)
+                            .vscrollbar_policy(gtk::PolicyType::Automatic)
+                            .hexpand(true)
+                            .vexpand(true)
+                            .child(&inner)
+                            .build();
+                        let widget: gtk::Widget = outer.into();
+                        (
+                            widget,
+                            vec![
+                                Box::new(weather_ctrl) as Box<dyn std::any::Any>,
+                                Box::new(menu_ctrl) as Box<dyn std::any::Any>,
+                            ],
+                        )
+                    });
+                    widget_registry
+                        .borrow_mut()
+                        .insert("weather".to_string(), factory);
                 }
                 WidgetEntry::MediaPlayer => {
                     let btn = make_sub_btn(
@@ -1546,34 +1369,48 @@ impl Component for SettingsWindowModel {
                     }
                     widgets_sub_sidebar_box.append(&btn);
                     // Media Player is one widget but two config domains: the
-                    // menu surface (position / width / height → the generic
+                    // menu surface (position / width / height -> the generic
                     // per-menu page) and the playback knobs (seek step +
-                    // album-art size → MediaPlayerSettings, ported from the
+                    // album-art size -> MediaPlayerSettings, ported from the
                     // mplayerplus plugin). Compose both into one scrolling page.
-                    let menu_ctrl = WidgetMenuSettingsModel::builder()
-                        .launch(WidgetMenuSettingsInit {
-                            kind: MenuKind::MediaPlayer,
-                        })
-                        .detach();
-                    let ms = menu_ctrl.widget().clone();
-                    let ps = model.media_player_settings_controller.widget().clone();
-                    for sw in [&ms, &ps] {
-                        sw.set_vscrollbar_policy(gtk::PolicyType::Never);
-                        sw.set_propagate_natural_height(true);
-                        sw.set_vexpand(false);
-                    }
-                    let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
-                    inner.append(&ms);
-                    inner.append(&ps);
-                    let outer = gtk::ScrolledWindow::builder()
-                        .hscrollbar_policy(gtk::PolicyType::Never)
-                        .vscrollbar_policy(gtk::PolicyType::Automatic)
-                        .hexpand(true)
-                        .vexpand(true)
-                        .child(&inner)
-                        .build();
-                    widgets_sub_stack.add_named(&outer, Some("media_player"));
-                    Box::leak(Box::new(menu_ctrl));
+                    let factory: PageFactory = Box::new(|| {
+                        let menu_ctrl = WidgetMenuSettingsModel::builder()
+                            .launch(WidgetMenuSettingsInit {
+                                kind: MenuKind::MediaPlayer,
+                            })
+                            .detach();
+                        let media_ctrl = MediaPlayerSettingsModel::builder()
+                            .launch(MediaPlayerSettingsInit {})
+                            .detach();
+                        let ms = menu_ctrl.widget().clone();
+                        let ps = media_ctrl.widget().clone();
+                        for sw in [&ms, &ps] {
+                            sw.set_vscrollbar_policy(gtk::PolicyType::Never);
+                            sw.set_propagate_natural_height(true);
+                            sw.set_vexpand(false);
+                        }
+                        let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                        inner.append(&ms);
+                        inner.append(&ps);
+                        let outer = gtk::ScrolledWindow::builder()
+                            .hscrollbar_policy(gtk::PolicyType::Never)
+                            .vscrollbar_policy(gtk::PolicyType::Automatic)
+                            .hexpand(true)
+                            .vexpand(true)
+                            .child(&inner)
+                            .build();
+                        let widget: gtk::Widget = outer.into();
+                        (
+                            widget,
+                            vec![
+                                Box::new(menu_ctrl) as Box<dyn std::any::Any>,
+                                Box::new(media_ctrl) as Box<dyn std::any::Any>,
+                            ],
+                        )
+                    });
+                    widget_registry
+                        .borrow_mut()
+                        .insert("media_player".to_string(), factory);
                 }
                 WidgetEntry::Lyrics => {
                     let btn =
@@ -1585,34 +1422,44 @@ impl Component for SettingsWindowModel {
                     // Lyrics has two config domains: the bar-pill behaviour (show
                     // the current line in the bar) and the menu surface geometry
                     // (the generic per-menu page). Compose both into one page.
-                    let bar_ctrl = crate::lyrics_settings::LyricsSettingsModel::builder()
-                        .launch(crate::lyrics_settings::LyricsSettingsInit {})
-                        .detach();
-                    let menu_ctrl = WidgetMenuSettingsModel::builder()
-                        .launch(WidgetMenuSettingsInit {
-                            kind: MenuKind::Lyrics,
-                        })
-                        .detach();
-                    let bs = bar_ctrl.widget().clone();
-                    let ms = menu_ctrl.widget().clone();
-                    for sw in [&bs, &ms] {
-                        sw.set_vscrollbar_policy(gtk::PolicyType::Never);
-                        sw.set_propagate_natural_height(true);
-                        sw.set_vexpand(false);
-                    }
-                    let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
-                    inner.append(&bs);
-                    inner.append(&ms);
-                    let outer = gtk::ScrolledWindow::builder()
-                        .hscrollbar_policy(gtk::PolicyType::Never)
-                        .vscrollbar_policy(gtk::PolicyType::Automatic)
-                        .hexpand(true)
-                        .vexpand(true)
-                        .child(&inner)
-                        .build();
-                    widgets_sub_stack.add_named(&outer, Some("lyrics"));
-                    Box::leak(Box::new(bar_ctrl));
-                    Box::leak(Box::new(menu_ctrl));
+                    let factory: PageFactory = Box::new(|| {
+                        let bar_ctrl = crate::lyrics_settings::LyricsSettingsModel::builder()
+                            .launch(crate::lyrics_settings::LyricsSettingsInit {})
+                            .detach();
+                        let menu_ctrl = WidgetMenuSettingsModel::builder()
+                            .launch(WidgetMenuSettingsInit {
+                                kind: MenuKind::Lyrics,
+                            })
+                            .detach();
+                        let bs = bar_ctrl.widget().clone();
+                        let ms = menu_ctrl.widget().clone();
+                        for sw in [&bs, &ms] {
+                            sw.set_vscrollbar_policy(gtk::PolicyType::Never);
+                            sw.set_propagate_natural_height(true);
+                            sw.set_vexpand(false);
+                        }
+                        let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                        inner.append(&bs);
+                        inner.append(&ms);
+                        let outer = gtk::ScrolledWindow::builder()
+                            .hscrollbar_policy(gtk::PolicyType::Never)
+                            .vscrollbar_policy(gtk::PolicyType::Automatic)
+                            .hexpand(true)
+                            .vexpand(true)
+                            .child(&inner)
+                            .build();
+                        let widget: gtk::Widget = outer.into();
+                        (
+                            widget,
+                            vec![
+                                Box::new(bar_ctrl) as Box<dyn std::any::Any>,
+                                Box::new(menu_ctrl) as Box<dyn std::any::Any>,
+                            ],
+                        )
+                    });
+                    widget_registry
+                        .borrow_mut()
+                        .insert("lyrics".to_string(), factory);
                 }
                 WidgetEntry::HiddenBar => {
                     let btn = make_sub_btn(
@@ -1625,80 +1472,93 @@ impl Component for SettingsWindowModel {
                         group_anchor = Some(btn.clone());
                     }
                     widgets_sub_sidebar_box.append(&btn);
-
                     // Behaviour knobs + a widget-list editor per bar. The list
                     // editors reuse the bar-layout section component (TopHidden
                     // / BottomHidden locations), so add / remove / reorder work
-                    // exactly like the normal bar slots — that's how the user
+                    // exactly like the normal bar slots -- that's how the user
                     // picks what the drawer hides.
-                    let cfg = config_manager().config().read_untracked().clone();
-                    let top_section = WidgetSectionModel::builder()
-                        .launch(WidgetSectionInit {
-                            bar_section: BarSection::Hidden,
-                            location: BarListLocation::TopHidden,
-                            widgets: cfg.bars.top_bar.hidden_widgets.clone(),
-                        })
-                        .detach();
-                    let bottom_section = WidgetSectionModel::builder()
-                        .launch(WidgetSectionInit {
-                            bar_section: BarSection::Hidden,
-                            location: BarListLocation::BottomHidden,
-                            widgets: cfg.bars.bottom_bar.hidden_widgets.clone(),
-                        })
-                        .detach();
+                    let factory: PageFactory = Box::new(|| {
+                        let cfg = config_manager().config().read_untracked().clone();
+                        let hidden_bar_ctrl = HiddenBarSettingsModel::builder()
+                            .launch(HiddenBarSettingsInit {})
+                            .detach();
+                        let top_section = WidgetSectionModel::builder()
+                            .launch(WidgetSectionInit {
+                                bar_section: BarSection::Hidden,
+                                location: BarListLocation::TopHidden,
+                                widgets: cfg.bars.top_bar.hidden_widgets.clone(),
+                            })
+                            .detach();
+                        let bottom_section = WidgetSectionModel::builder()
+                            .launch(WidgetSectionInit {
+                                bar_section: BarSection::Hidden,
+                                location: BarListLocation::BottomHidden,
+                                widgets: cfg.bars.bottom_bar.hidden_widgets.clone(),
+                            })
+                            .detach();
 
-                    let inner = gtk::Box::new(gtk::Orientation::Vertical, 12);
-                    inner.append(model.hidden_bar_settings_controller.widget());
+                        let inner = gtk::Box::new(gtk::Orientation::Vertical, 12);
+                        inner.append(hidden_bar_ctrl.widget());
 
-                    let top_label = gtk::Label::new(Some("Top bar — hidden widgets"));
-                    top_label.add_css_class("label-large-bold");
-                    top_label.set_halign(gtk::Align::Start);
-                    inner.append(&top_label);
-                    inner.append(top_section.widget());
+                        let top_label = gtk::Label::new(Some("Top bar — hidden widgets"));
+                        top_label.add_css_class("label-large-bold");
+                        top_label.set_halign(gtk::Align::Start);
+                        inner.append(&top_label);
+                        inner.append(top_section.widget());
 
-                    let bottom_label = gtk::Label::new(Some("Bottom bar — hidden widgets"));
-                    bottom_label.add_css_class("label-large-bold");
-                    bottom_label.set_halign(gtk::Align::Start);
-                    inner.append(&bottom_label);
-                    inner.append(bottom_section.widget());
+                        let bottom_label = gtk::Label::new(Some("Bottom bar — hidden widgets"));
+                        bottom_label.add_css_class("label-large-bold");
+                        bottom_label.set_halign(gtk::Align::Start);
+                        inner.append(&bottom_label);
+                        inner.append(bottom_section.widget());
 
-                    let outer = gtk::ScrolledWindow::builder()
-                        .hscrollbar_policy(gtk::PolicyType::Never)
-                        .vscrollbar_policy(gtk::PolicyType::Automatic)
-                        .hexpand(true)
-                        .vexpand(true)
-                        .child(&inner)
-                        .build();
-                    widgets_sub_stack.add_named(&outer, Some("hidden_bar"));
+                        let outer = gtk::ScrolledWindow::builder()
+                            .hscrollbar_policy(gtk::PolicyType::Never)
+                            .vscrollbar_policy(gtk::PolicyType::Automatic)
+                            .hexpand(true)
+                            .vexpand(true)
+                            .child(&inner)
+                            .build();
 
-                    // Keep the section row lists in sync when hidden_widgets
-                    // changes (e.g. add/remove from this very page, or the
-                    // bar updating it): watch config and re-feed each section.
-                    let top_sender = top_section.sender().clone();
-                    let bottom_sender = bottom_section.sender().clone();
-                    let mut hb_effects = EffectScope::new();
-                    hb_effects.push(move |_| {
-                        let widgets = config_manager()
-                            .config()
-                            .bars()
-                            .top_bar()
-                            .hidden_widgets()
-                            .get();
-                        top_sender.emit(WidgetSectionInput::SetWidgetsEffect(widgets));
+                        // Keep the section row lists in sync when hidden_widgets
+                        // changes (e.g. add/remove from this very page, or the
+                        // bar updating it): watch config and re-feed each section.
+                        let top_sender = top_section.sender().clone();
+                        let bottom_sender = bottom_section.sender().clone();
+                        let mut hb_effects = EffectScope::new();
+                        hb_effects.push(move |_| {
+                            let widgets = config_manager()
+                                .config()
+                                .bars()
+                                .top_bar()
+                                .hidden_widgets()
+                                .get();
+                            top_sender.emit(WidgetSectionInput::SetWidgetsEffect(widgets));
+                        });
+                        hb_effects.push(move |_| {
+                            let widgets = config_manager()
+                                .config()
+                                .bars()
+                                .bottom_bar()
+                                .hidden_widgets()
+                                .get();
+                            bottom_sender.emit(WidgetSectionInput::SetWidgetsEffect(widgets));
+                        });
+
+                        let widget: gtk::Widget = outer.into();
+                        (
+                            widget,
+                            vec![
+                                Box::new(hidden_bar_ctrl) as Box<dyn std::any::Any>,
+                                Box::new(top_section) as Box<dyn std::any::Any>,
+                                Box::new(bottom_section) as Box<dyn std::any::Any>,
+                                Box::new(hb_effects) as Box<dyn std::any::Any>,
+                            ],
+                        )
                     });
-                    hb_effects.push(move |_| {
-                        let widgets = config_manager()
-                            .config()
-                            .bars()
-                            .bottom_bar()
-                            .hidden_widgets()
-                            .get();
-                        bottom_sender.emit(WidgetSectionInput::SetWidgetsEffect(widgets));
-                    });
-
-                    Box::leak(Box::new(hb_effects));
-                    Box::leak(Box::new(top_section));
-                    Box::leak(Box::new(bottom_section));
+                    widget_registry
+                        .borrow_mut()
+                        .insert("hidden_bar".to_string(), factory);
                 }
                 WidgetEntry::Catwalk => {
                     let btn = make_sub_btn(
@@ -1711,8 +1571,10 @@ impl Component for SettingsWindowModel {
                         group_anchor = Some(btn.clone());
                     }
                     widgets_sub_sidebar_box.append(&btn);
-                    widgets_sub_stack
-                        .add_named(model.catwalk_settings_controller.widget(), Some("catwalk"));
+                    widget_registry.borrow_mut().insert(
+                        "catwalk".to_string(),
+                        page_factory!(CatwalkSettingsModel => CatwalkSettingsInit {}),
+                    );
                 }
                 WidgetEntry::Privacy => {
                     let btn = make_sub_btn(
@@ -1725,11 +1587,10 @@ impl Component for SettingsWindowModel {
                         group_anchor = Some(btn.clone());
                     }
                     widgets_sub_sidebar_box.append(&btn);
-                    let ctrl = crate::privacy_pill_settings::PrivacyPillSettingsModel::builder()
-                        .launch(crate::privacy_pill_settings::PrivacyPillSettingsInit {})
-                        .detach();
-                    widgets_sub_stack.add_named(ctrl.widget(), Some("privacy"));
-                    Box::leak(Box::new(ctrl));
+                    widget_registry.borrow_mut().insert(
+                        "privacy".to_string(),
+                        page_factory!(crate::privacy_pill_settings::PrivacyPillSettingsModel => crate::privacy_pill_settings::PrivacyPillSettingsInit {}),
+                    );
                 }
                 WidgetEntry::Clipboard => {
                     let btn = make_sub_btn(
@@ -1742,11 +1603,10 @@ impl Component for SettingsWindowModel {
                         group_anchor = Some(btn.clone());
                     }
                     widgets_sub_sidebar_box.append(&btn);
-                    let ctrl = crate::clipboard_settings::ClipboardSettingsModel::builder()
-                        .launch(crate::clipboard_settings::ClipboardSettingsInit {})
-                        .detach();
-                    widgets_sub_stack.add_named(ctrl.widget(), Some("clipboard"));
-                    Box::leak(Box::new(ctrl));
+                    widget_registry.borrow_mut().insert(
+                        "clipboard".to_string(),
+                        page_factory!(crate::clipboard_settings::ClipboardSettingsModel => crate::clipboard_settings::ClipboardSettingsInit {}),
+                    );
                 }
                 WidgetEntry::SystemUpdate => {
                     let btn = make_sub_btn(
@@ -1759,11 +1619,10 @@ impl Component for SettingsWindowModel {
                         group_anchor = Some(btn.clone());
                     }
                     widgets_sub_sidebar_box.append(&btn);
-                    let ctrl = crate::system_update_settings::SystemUpdateSettingsModel::builder()
-                        .launch(crate::system_update_settings::SystemUpdateSettingsInit {})
-                        .detach();
-                    widgets_sub_stack.add_named(ctrl.widget(), Some("system_update"));
-                    Box::leak(Box::new(ctrl));
+                    widget_registry.borrow_mut().insert(
+                        "system_update".to_string(),
+                        page_factory!(crate::system_update_settings::SystemUpdateSettingsModel => crate::system_update_settings::SystemUpdateSettingsInit {}),
+                    );
                 }
                 WidgetEntry::Dock => {
                     let btn = make_sub_btn(
@@ -1776,11 +1635,10 @@ impl Component for SettingsWindowModel {
                         group_anchor = Some(btn.clone());
                     }
                     widgets_sub_sidebar_box.append(&btn);
-                    let ctrl = crate::dock_settings::DockSettingsModel::builder()
-                        .launch(crate::dock_settings::DockSettingsInit {})
-                        .detach();
-                    widgets_sub_stack.add_named(ctrl.widget(), Some("dock"));
-                    Box::leak(Box::new(ctrl));
+                    widget_registry.borrow_mut().insert(
+                        "dock".to_string(),
+                        page_factory!(crate::dock_settings::DockSettingsModel => crate::dock_settings::DockSettingsInit {}),
+                    );
                 }
                 WidgetEntry::SystemTray => {
                     let btn = make_sub_btn(
@@ -1793,27 +1651,45 @@ impl Component for SettingsWindowModel {
                         group_anchor = Some(btn.clone());
                     }
                     widgets_sub_sidebar_box.append(&btn);
-                    let ctrl = crate::system_tray_settings::SystemTraySettingsModel::builder()
-                        .launch(crate::system_tray_settings::SystemTraySettingsInit {})
-                        .detach();
-                    widgets_sub_stack.add_named(ctrl.widget(), Some("system_tray"));
-                    Box::leak(Box::new(ctrl));
+                    widget_registry.borrow_mut().insert(
+                        "system_tray".to_string(),
+                        page_factory!(crate::system_tray_settings::SystemTraySettingsModel => crate::system_tray_settings::SystemTraySettingsInit {}),
+                    );
                 }
             }
         }
 
         widgets_page.append(&widgets_sub_sidebar);
         widgets_page.append(&widgets_sub_stack);
+
+        // Build the default sub-page the first time the Widgets container is
+        // shown, so its sub-stack isn't blank — only when empty, so re-entering
+        // Widgets keeps whichever sub-page the user last left it on (the
+        // sub-stack retains its visible child otherwise).
+        if let Some(default_name) = widgets_default {
+            let ensure_widget = ensure_widget.clone();
+            let sub_stack = widgets_sub_stack.clone();
+            widgets_page.connect_map(move |_| {
+                if sub_stack.visible_child().is_none() {
+                    ensure_widget(default_name);
+                    sub_stack.set_visible_child_name(default_name);
+                }
+            });
+        }
+
+        // The Widgets container stays eager for the same reason as Theme: its
+        // sub-sidebar buttons seed the search index. Only its page content is
+        // deferred.
         widgets
             .stack
             .add_titled(&widgets_page, Some("widgets"), "Widgets");
 
-        // Park the per-menu + per-bar-pill controllers on the
-        // model so they outlive `init()`. Box::leak isn't ideal
-        // but matches the rest of the file's lifecycle
-        // (controllers held by the model owning the window).
-        Box::leak(Box::new(menu_controllers));
-        Box::leak(Box::new(bar_pill_controllers));
+        // Show the default page ("general") now: the sidebar's anchor button is
+        // active, but its toggle handler was wired only after `set_active` ran,
+        // so nothing has built the page yet. Every later navigation flows
+        // through a button toggle -> `ensure_top`.
+        ensure_top("general");
+        widgets.stack.set_visible_child_name("general");
 
         ComponentParts { model, widgets }
     }
@@ -2675,9 +2551,13 @@ fn collect_sidebar_buttons(
 /// `sidebar_box`, wiring each page button to flip `stack` to its route. The
 /// first button is the radio-group anchor (active by default); every other
 /// joins its group. Returns route→button so `ActivateSection` can deep-link.
+///
+/// `ensure` builds the target page into the stack on demand: the page's
+/// controller is launched the first time its button is toggled, not up front.
 fn build_sidebar(
     sidebar_box: &gtk::Box,
     stack: &gtk::Stack,
+    ensure: Rc<dyn Fn(&str)>,
 ) -> std::collections::HashMap<String, gtk::ToggleButton> {
     use gtk::prelude::*;
     let mut buttons = std::collections::HashMap::new();
@@ -2719,8 +2599,12 @@ fn build_sidebar(
                 let stack = stack.clone();
                 let route_owned = route.to_string();
                 let reveal_for_btn = current_reveal.clone();
+                let ensure = ensure.clone();
                 btn.connect_toggled(move |b| {
                     if b.is_active() {
+                        // Build the page into the stack before switching to it —
+                        // `set_visible_child_name` is a no-op on an absent child.
+                        ensure(&route_owned);
                         stack.set_visible_child_name(&route_owned);
                         // Make sure the activated page's group is open (it may
                         // have been collapsed, or a search jump landed here).
