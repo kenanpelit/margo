@@ -142,29 +142,29 @@ fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
     card.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
     // ── Username ──
-    card.append(&caption("User"));
     let username = gtk::Entry::with_buffer(&state.username);
     username.add_css_class("mgreet-field");
     username.set_placeholder_text(Some("Username"));
     username.set_hexpand(true);
-    card.append(&username);
+    card.append(&field_group("User", &username));
 
     // ── Password ──
-    card.append(&caption("Password"));
     let password = gtk::Entry::with_buffer(&state.password);
     password.add_css_class("mgreet-field");
     password.set_placeholder_text(Some("Password"));
     password.set_visibility(false);
     password.set_input_purpose(gtk::InputPurpose::Password);
     password.set_hexpand(true);
-    card.append(&password);
+    let password_group = field_group("Password", &password);
 
     // ── Caps Lock warning ── (critical for password entry). Updated from the
-    // modifier state on each keystroke in the password field.
+    // modifier state on each keystroke in the password field. It lives inside
+    // the password group so it reads as belonging to the field it warns about.
     let caps = label(&["mgreet-caps"]);
     caps.set_text("\u{2191} Caps Lock is on");
     caps.set_visible(false);
-    card.append(&caps);
+    password_group.append(&caps);
+    card.append(&password_group);
     {
         let caps_ctrl = gtk::EventControllerKey::new();
         let caps_p = caps.clone();
@@ -187,17 +187,18 @@ fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
         gtk::DropDown::from_strings(&session_names)
     };
     sessions.add_css_class("mgreet-session");
-    sessions.set_halign(gtk::Align::Start);
+    // Full width, like the two fields above it: the caption goes on its own line
+    // and the control fills the card. (GtkDropDown's internal `button_stack` is
+    // hexpand, so the label stays left and the arrow rides the right edge, and
+    // GtkDropDown size-requests its popover to the button width.)
+    sessions.set_hexpand(true);
     // Pre-select the last-used session (from the shared mlogind cache).
     if let Some(want) = state.initial_session.as_deref()
         && let Some(idx) = state.sessions.iter().position(|s| s.name == want)
     {
         sessions.set_selected(idx as u32);
     }
-    let session_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    session_row.append(&caption("Session"));
-    session_row.append(&sessions);
-    card.append(&session_row);
+    card.append(&field_group("Session", &sessions));
 
     // ── Status line ──
     let status = label(&["mgreet-status"]);
@@ -387,6 +388,18 @@ fn caption(text: &str) -> gtk::Label {
     let l = label(&["mgreet-caption"]);
     l.set_text(text);
     l
+}
+
+/// A labelled control: caption tight above, control below, filling the card.
+/// Every login row is built this way so the card reads as one column with one
+/// rhythm — a caption sitting beside its control broke the alignment with the
+/// rows above it. The tight in-group gap (vs. the card's larger between-group
+/// spacing) is what binds a caption to the control it names.
+fn field_group(text: &str, control: &impl IsA<gtk::Widget>) -> gtk::Box {
+    let group = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    group.append(&caption(text));
+    group.append(control);
+    group
 }
 
 fn update_clock(greeting: &gtk::Label, clock: &gtk::Label, date: &gtk::Label) {

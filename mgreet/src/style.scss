@@ -124,14 +124,20 @@ window.mgreet-root {
 
 // Session picker (GtkDropDown of wayland/x sessions).
 //
-// The OUTER dropdown node is the pill; the INNER toggle button must be made
+// Geometry deliberately matches `.mgreet-field` exactly — same radius, border,
+// padding and min-height — because it is the third row of the same column and
+// any difference reads as a misalignment.
+//
+// The OUTER dropdown node is the frame; the INNER toggle button must be made
 // transparent, or GTK paints its own square-cornered, bordered button inside
-// the rounded pill — the "rectangle inside a rectangle". Padding lives on the
-// button so the whole pill is the hit target.
+// it — the "rectangle inside a rectangle". Padding lives on the button so the
+// whole control is the hit target. `:checked` is the popover-open state of that
+// toggle button, and needs the same treatment or the square box comes back the
+// moment the list opens.
 .mgreet-session {
   background-color: var(--surface-container);
   color: var(--on-surface);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-md);
   border: 1px solid var(--outline);
   padding: 0;
 }
@@ -146,22 +152,31 @@ window.mgreet-root {
   border: none;
   box-shadow: none;
   outline: none;
-  border-radius: var(--radius-pill);
-  padding: 7px 14px;
-  min-height: 0;
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  min-height: 22px;
   color: var(--on-surface);
 }
 .mgreet-session > button:hover {
   background-color: rgba(#fff, 0.06);
 }
+.mgreet-session > button:checked,
+.mgreet-session > button:active {
+  background-color: rgba(#fff, 0.1);
+}
 .mgreet-session arrow {
   color: var(--on-surface-variant);
   min-width: 16px;
+  min-height: 16px;
+  margin-left: 6px;
 }
 
-// The drop-down list itself (popover). Descendant selectors, and every node in
-// the chain (popover / arrow / scroller / listview / row) is painted or made
-// transparent — otherwise the stock theme's white popover shows through.
+// The drop-down list itself (popover; carries the `.menu` class, and GtkDropDown
+// size-requests it to the button's width, so it lines up under the control).
+// Descendant selectors, and every node in the chain (popover / scroller /
+// listview / row) is painted or made transparent — otherwise the stock theme's
+// white popover shows through. No tail `arrow` node: the drop-down builds its
+// popover with `has-arrow=0`.
 .mgreet-session popover {
   background: none;
   background-color: transparent;
@@ -173,10 +188,6 @@ window.mgreet-root {
   border-radius: var(--radius-md);
   padding: 4px;
   box-shadow: 0 12px 32px rgba(#000, 0.45);
-}
-.mgreet-session popover > arrow {
-  background-color: var(--surface-container-high);
-  border: 1px solid var(--outline);
 }
 .mgreet-session popover scrolledwindow,
 .mgreet-session popover listview {
