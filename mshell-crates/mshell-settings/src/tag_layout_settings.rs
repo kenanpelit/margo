@@ -57,6 +57,7 @@ pub(crate) enum TagLayoutSettingsInput {
     RemoveRow(usize),
     ForceChanged(bool),
     Apply,
+    ApplyDone(Result<(), String>),
 }
 
 #[derive(Debug)]
@@ -152,11 +153,15 @@ fn config_sources_us(text: &str) -> bool {
         })
 }
 
-fn write_and_reload(
-    default_sel: usize,
-    rows: &[(usize, usize)],
-    force: bool,
-) -> Result<(), String> {
+/// Write the managed fragment and make `config.conf` source it.
+///
+/// Split from the `mctl reload` that follows it: these are small local writes
+/// and are safe to do inline, whereas the reload is a socket round-trip to the
+/// compositor that can sit for mctl's full 5 s timeout when margo is busy (say,
+/// just after resume). Running that on the GTK main thread froze the whole
+/// shell for the duration. The sibling `layout_settings` page already shells
+/// out from `relm4::spawn` for the same reason.
+fn write_files(default_sel: usize, rows: &[(usize, usize)], force: bool) -> Result<(), String> {
     let dir = margo_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     if let Some(parent) = taglayouts_path().parent() {
@@ -208,18 +213,30 @@ fn write_and_reload(
         std::fs::write(&config_conf, updated).map_err(|e| e.to_string())?;
     }
 
-    // Ask margo to reload.
-    let out = std::process::Command::new("mctl")
-        .arg("reload")
-        .output()
-        .map_err(|e| format!("mctl reload: {e}"))?;
-    if !out.status.success() {
-        return Err(format!(
-            "mctl reload failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
     Ok(())
+}
+
+/// Ask margo to re-read its config, off the GTK main thread.
+fn spawn_reload(sender: ComponentSender<TagLayoutSettingsModel>) {
+    relm4::spawn(async move {
+        let result = match tokio::process::Command::new("mctl")
+            .arg("reload")
+            .output()
+            .await
+        {
+            Ok(o) if o.status.success() => Ok(()),
+            Ok(o) => Err(format!(
+                "mctl reload failed: {}",
+                String::from_utf8_lossy(&o.stderr).trim()
+            )),
+            Err(e) => Err(format!("mctl reload: {e}")),
+        };
+        // Fallible: the page can be torn down while the reload is in flight,
+        // and an infallible `input()` on a dead runtime aborts the shell.
+        let _ = sender
+            .input_sender()
+            .send(TagLayoutSettingsInput::ApplyDone(result));
+    });
 }
 
 /// Lowest tag (1..=MAX_TAGS) not already overridden, if any.
@@ -535,7 +552,16 @@ impl Component for TagLayoutSettingsModel {
             }
             TagLayoutSettingsInput::ForceChanged(v) => self.force = v,
             TagLayoutSettingsInput::Apply => {
-                self.status = match write_and_reload(self.default_sel, &self.rows, self.force) {
+                self.status = match write_files(self.default_sel, &self.rows, self.force) {
+                    Ok(()) => {
+                        spawn_reload(sender.clone());
+                        "Applying…".to_string()
+                    }
+                    Err(e) => format!("Couldn't apply: {e}"),
+                };
+            }
+            TagLayoutSettingsInput::ApplyDone(result) => {
+                self.status = match result {
                     Ok(()) => "Applied — the default and any overrides are live now. With Force on startup off, a layout you later change live is kept by the session.".to_string(),
                     Err(e) => format!("Couldn't apply: {e}"),
                 };
