@@ -4888,6 +4888,7 @@ dependencies = [
  "mshell-launcher",
  "mshell-margo-client",
  "mshell-matugen",
+ "mshell-osd",
  "mshell-plugin-host",
  "mshell-plugin-ui",
  "mshell-plugins",

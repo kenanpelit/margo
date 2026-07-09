@@ -1009,7 +1009,8 @@ pub struct PrivacyWidgetConfig {
     /// default is the opposite of noctalia's — here we keep the indicator
     /// visible-but-dimmed so it reads as an always-on watchdog).
     pub hide_inactive: bool,
-    /// Toast (notify-send) when a sensor first goes active.
+    /// Raise a toast when a sensor first goes active. Independent of the global
+    /// `toasts.enabled` switch — a privacy alert has its own gate.
     pub enable_toast: bool,
     /// Watch the microphone (apps recording audio).
     pub track_mic: bool,

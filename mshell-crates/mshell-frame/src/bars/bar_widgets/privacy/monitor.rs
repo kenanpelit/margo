@@ -20,8 +20,8 @@
 //!
 //! On every change it updates the reactive [`privacy_live_store`], records
 //! started/stopped edges into the persisted access log
-//! ([`mshell_cache::privacy_history`]), and — gated on config — fires a
-//! `notify-send` toast when a sensor first goes active.
+//! ([`mshell_cache::privacy_history`]), and — gated on config — raises a toast
+//! on the shell's own toast bus when a sensor first goes active.
 
 use std::collections::HashSet;
 use std::sync::LazyLock;
@@ -33,6 +33,7 @@ use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, PrivacyWidgetConfigStoreFields,
 };
+use mshell_osd::toast::{ToastEvent, ToastSeverity, push_toast};
 use mshell_services::audio_service;
 use reactive_graph::prelude::*;
 use reactive_stores::{ArcStore, Store};
@@ -198,29 +199,30 @@ fn log_event(app: &str, kind: &str, action: &str, limit: usize) {
     );
 }
 
+/// Raise the shell's own toast on the activation edge.
+///
+/// This used to shell out to `notify-send`, which routed a privacy alert
+/// through the notification daemon: it queued behind whatever else was on
+/// screen, Do Not Disturb swallowed it, and it settled into the notification
+/// history like a chat message. A sensor going live is a transient,
+/// high-salience signal about the machine itself — the same class as "battery
+/// critical" or "VPN disconnected" — so it belongs on the toast bus with them.
+///
+/// Gated by the widget's own `enable_toast` and deliberately *not* by the global
+/// `toasts.enabled`: privacy already has a dedicated switch, and a sensor alert
+/// should not be silenced by a preference about charging popups. The per-output
+/// toast surfaces are created unconditionally, so the bus always has a renderer.
 fn toast(kind: &str, apps: &[String]) {
-    let (summary, icon) = match kind {
+    let (title, icon) = match kind {
         "Camera" => ("Camera in use", "camera-video-symbolic"),
         "Screen" => ("Screen sharing started", "video-display-symbolic"),
         _ => ("Microphone in use", "microphone-sensitivity-high-symbolic"),
     };
-    let body = apps.join(", ");
-    let summary = summary.to_string();
-    let icon = icon.to_string();
-    relm4::spawn(async move {
-        let _ = tokio::process::Command::new("notify-send")
-            .args([
-                "-a",
-                "mshell",
-                "-i",
-                &icon,
-                "-h",
-                "string:x-canonical-private-synchronous:mshell-privacy",
-                &summary,
-                &body,
-            ])
-            .status()
-            .await;
+    push_toast(ToastEvent {
+        icon: icon.to_string(),
+        title: title.to_string(),
+        body: Some(apps.join(", ")),
+        severity: ToastSeverity::Warn,
     });
 }
 
