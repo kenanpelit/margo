@@ -2,7 +2,7 @@
 name = "mdots"
 version = "1.1.6"
 edition = "2021"
-rust-version = "1.74"
+rust-version.workspace = true
 authors = ["Kenan Pelit <kenanpelit@gmail.com>"]
 description = "Declarative package + dotfiles manager for the margo desktop"
 license = "GPL-3.0-or-later"

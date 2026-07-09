@@ -1,36 +1,176 @@
 use anyhow::{Context, Result};
 use colored::*;
+use regex::Regex;
 use std::collections::HashSet;
 use std::io::{self, Write};
 use std::path::Path;
+use std::sync::LazyLock;
 
 use crate::config::{load_config, Config, ConfigPaths, RunHooksAsUser};
 use crate::defaults::DefaultsManager;
 use crate::package::PackageManager;
 use crate::services::ServiceManager;
 
-/// Create a backup path with timestamp
-fn create_backup_path(original: &Path) -> std::path::PathBuf {
+/// Create a timestamped backup path alongside `original`.
+///
+/// Fallible on purpose: a path with no final component (`/`, `..`, a bare
+/// root) has no name to base the backup on and must surface an error rather
+/// than panic — this is reachable from the CLI `run` path. The base name is
+/// rendered with `to_string_lossy`, which is acceptable here because the name
+/// is only cosmetic: the byte-exact original is preserved on disk (renamed to
+/// this sibling), and a non-UTF-8 name still yields a distinct, timestamped
+/// path.
+fn create_backup_path(original: &Path) -> Result<std::path::PathBuf> {
     let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
     let parent = original.parent().unwrap_or(Path::new("."));
-    let name = original.file_name().unwrap().to_str().unwrap();
-    parent.join(format!("{}.backup.{}", name, timestamp))
+    let name = original
+        .file_name()
+        .ok_or_else(|| anyhow::anyhow!("Cannot back up a path with no file name: {:?}", original))?
+        .to_string_lossy();
+    Ok(parent.join(format!("{}.backup.{}", name, timestamp)))
 }
 
-/// Insert services into the services.enabled table in Lua content
+// Locators for the tables the merge edits into. These only find the *opening*
+// `{` of a table; the matching close is found with `find_matching_brace`,
+// which is brace/comment/string aware. The previous `[^}]*` regex bodies
+// stopped at the first `}` inside a nested table, a Lua comment, or a string,
+// silently truncating and corrupting the user's hand-formatted config. The
+// patterns are constant, so compile them once.
+static SERVICES_TABLE_OPEN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:local\s+)?services\s*=\s*\{").unwrap());
+static ENABLED_TABLE_OPEN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"enabled\s*=\s*\{").unwrap());
+static DEFAULT_APPS_TABLE_OPEN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"default_apps\s*=\s*\{").unwrap());
+
+/// Given the byte index of an opening `{` in `content`, return the byte index
+/// of its matching `}`, or `None` if the braces are unbalanced.
+///
+/// The scan is Lua-lexeme aware: single/double-quoted strings, long-bracket
+/// strings (`[[ ]]`, `[=[ ]=]`), line comments (`--`), and block comments
+/// (`--[[ ]]`) are skipped so a brace inside any of them is never counted.
+/// Constraint that drove this design: the edited file is the user's own,
+/// hand-formatted dotfile, so its comments and layout must survive the merge
+/// untouched — which rules out both a `[^}]*` regex and a full mlua round-trip
+/// (mlua has no CST and would re-emit the table, discarding formatting).
+fn find_matching_brace(content: &str, open_idx: usize) -> Option<usize> {
+    let bytes = content.as_bytes();
+    debug_assert_eq!(bytes.get(open_idx), Some(&b'{'));
+    let mut i = open_idx + 1;
+    let mut depth = 1usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'{' => {
+                depth += 1;
+                i += 1;
+            }
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+                i += 1;
+            }
+            b'\'' | b'"' => i = skip_quoted_string(bytes, i)?,
+            b'-' if bytes.get(i + 1) == Some(&b'-') => {
+                i += 2;
+                if let Some(level) = long_bracket_level(bytes, i) {
+                    i = skip_long_bracket(bytes, i, level)?;
+                } else {
+                    while i < bytes.len() && bytes[i] != b'\n' {
+                        i += 1;
+                    }
+                }
+            }
+            b'[' => {
+                if let Some(level) = long_bracket_level(bytes, i) {
+                    i = skip_long_bracket(bytes, i, level)?;
+                } else {
+                    i += 1;
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// Skip a single/double-quoted Lua string. `start` indexes the opening quote;
+/// returns the index just past the closing quote. Honours `\` escapes.
+fn skip_quoted_string(bytes: &[u8], start: usize) -> Option<usize> {
+    let quote = bytes[start];
+    let mut i = start + 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 2,
+            c if c == quote => return Some(i + 1),
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// If `start` indexes the `[` of a Lua long-bracket opener (`[[`, `[=[`,
+/// `[==[`, …) return its level (the count of `=`); otherwise `None`.
+fn long_bracket_level(bytes: &[u8], start: usize) -> Option<usize> {
+    if bytes.get(start) != Some(&b'[') {
+        return None;
+    }
+    let mut i = start + 1;
+    let mut level = 0;
+    while bytes.get(i) == Some(&b'=') {
+        level += 1;
+        i += 1;
+    }
+    (bytes.get(i) == Some(&b'[')).then_some(level)
+}
+
+/// Skip a Lua long bracket (long string or block comment) of the given level.
+/// `start` indexes the opening `[`; returns the index just past the closing
+/// `]=*]`.
+fn skip_long_bracket(bytes: &[u8], start: usize, level: usize) -> Option<usize> {
+    let mut i = start + 2 + level;
+    while i < bytes.len() {
+        if bytes[i] == b']' {
+            let mut j = i + 1;
+            let mut close_level = 0;
+            while bytes.get(j) == Some(&b'=') {
+                close_level += 1;
+                j += 1;
+            }
+            if close_level == level && bytes.get(j) == Some(&b']') {
+                return Some(j + 1);
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Locate the `services.enabled` (or `local services … enabled`) table and
+/// return the byte indices of its opening `{` and matching `}`.
+fn find_enabled_table(content: &str) -> Option<(usize, usize)> {
+    let services = SERVICES_TABLE_OPEN.find(content)?;
+    let services_open = services.end() - 1;
+    let services_close = find_matching_brace(content, services_open)?;
+    // Search for `enabled = {` only within the services table body so a table
+    // named `enabled` elsewhere in the file can't be matched by mistake.
+    let inner = &content[services_open + 1..services_close];
+    let enabled = ENABLED_TABLE_OPEN.find(inner)?;
+    let enabled_open = services_open + 1 + enabled.end() - 1;
+    let enabled_close = find_matching_brace(content, enabled_open)?;
+    Some((enabled_open, enabled_close))
+}
+
+/// Insert services into the services.enabled table in Lua content.
 fn insert_services_into_lua(
     content: &str,
     services: &[String],
     user_scope: bool,
 ) -> Result<String> {
-    // Find the services.enabled table pattern
-    // Look for: services = { enabled = { ... },
-    let pattern = regex::Regex::new(r"(services\s*=\s*\{[^}]*enabled\s*=\s*\{)([^}]*)").unwrap();
+    if let Some((enabled_open, enabled_close)) = find_enabled_table(content) {
+        let existing_entries = &content[enabled_open + 1..enabled_close];
 
-    if let Some(captures) = pattern.captures(content) {
-        let existing_entries = captures.get(2).unwrap().as_str();
-
-        // Build new entries string
         let mut new_entries = String::new();
         for svc in services {
             if !existing_entries.contains(&format!("\"{}\"", svc)) {
@@ -38,79 +178,55 @@ fn insert_services_into_lua(
             }
         }
 
-        // Replace in content
-        let result = pattern.replace(content, |caps: &regex::Captures| {
-            format!(
-                "{}{}{}",
-                caps.get(1).unwrap().as_str(),
-                new_entries,
-                caps.get(2).unwrap().as_str()
-            )
-        });
-
-        Ok(result.to_string())
-    } else {
-        // Fallback: try to find services table with different pattern
-        let alt_pattern =
-            regex::Regex::new(r"(local\s+services\s*=\s*\{[^}]*enabled\s*=\s*\{)([^}]*)").unwrap();
-
-        if let Some(_captures) = alt_pattern.captures(content) {
-            let mut new_entries = String::new();
-            for svc in services {
-                let full_svc = format!("\"{}\"", svc);
-                if !content.contains(&full_svc) {
-                    new_entries.push_str(&format!("\"{}\", ", svc));
-                }
-            }
-
-            let result = alt_pattern.replace(content, |caps: &regex::Captures| {
-                format!(
-                    "{}{}{}",
-                    caps.get(1).unwrap().as_str(),
-                    new_entries,
-                    caps.get(2).unwrap().as_str()
-                )
-            });
-
-            Ok(result.to_string())
-        } else {
-            // No services table exists yet — build one and insert before the final closing brace
-            let mut entries = String::new();
-            for svc in services {
-                entries.push_str(&format!("        \"{}\",\n", svc));
-            }
-
-            let scope_line = if user_scope {
-                "        scope = \"user\",\n"
-            } else {
-                ""
-            };
-            let new_table = format!(
-                "\n    services = {{\n{}        enabled = {{\n{}        }},\n        disabled = {{}},\n    }},\n",
-                scope_line, entries
-            );
-
-            let insert_pos = content
-                .rfind('}')
-                .ok_or_else(|| anyhow::anyhow!("Could not find closing brace in Lua config"))?;
-
-            let mut result = content.to_string();
-            result.insert_str(insert_pos, &new_table);
-            Ok(result)
+        if new_entries.is_empty() {
+            return Ok(content.to_string());
         }
+
+        // Insert right after `enabled = {`, ahead of the existing body — same
+        // placement as before, but as a plain splice so the rest of the file
+        // (including any nested braces) is copied through verbatim.
+        let mut result = String::with_capacity(content.len() + new_entries.len());
+        result.push_str(&content[..enabled_open + 1]);
+        result.push_str(&new_entries);
+        result.push_str(&content[enabled_open + 1..]);
+        Ok(result)
+    } else {
+        // No services table exists yet — build one and insert before the final closing brace
+        let mut entries = String::new();
+        for svc in services {
+            entries.push_str(&format!("        \"{}\",\n", svc));
+        }
+
+        let scope_line = if user_scope {
+            "        scope = \"user\",\n"
+        } else {
+            ""
+        };
+        let new_table = format!(
+            "\n    services = {{\n{}        enabled = {{\n{}        }},\n        disabled = {{}},\n    }},\n",
+            scope_line, entries
+        );
+
+        let insert_pos = content
+            .rfind('}')
+            .ok_or_else(|| anyhow::anyhow!("Could not find closing brace in Lua config"))?;
+
+        let mut result = content.to_string();
+        result.insert_str(insert_pos, &new_table);
+        Ok(result)
     }
 }
 
-/// Insert default apps into the default_apps table in Lua content
+/// Insert default apps into the default_apps table in Lua content.
 fn insert_defaults_into_lua(
     content: &str,
     defaults: &std::collections::HashMap<String, String>,
 ) -> Result<String> {
-    // Find the default_apps table pattern
-    let pattern = regex::Regex::new(r"(default_apps\s*=\s*\{)([^}]*)(\})").unwrap();
-
-    if let Some(captures) = pattern.captures(content) {
-        let existing_entries = captures.get(2).unwrap().as_str();
+    if let Some(m) = DEFAULT_APPS_TABLE_OPEN.find(content) {
+        let open = m.end() - 1;
+        let close = find_matching_brace(content, open)
+            .ok_or_else(|| anyhow::anyhow!("Unbalanced braces in default_apps table"))?;
+        let existing_entries = &content[open + 1..close];
 
         // Build new entries string
         let mut new_entries = existing_entries.to_string();
@@ -140,17 +256,11 @@ fn insert_defaults_into_lua(
             }
         }
 
-        // Replace in content
-        let result = pattern.replace(content, |caps: &regex::Captures| {
-            format!(
-                "{}{}{}",
-                caps.get(1).unwrap().as_str(),
-                new_entries,
-                caps.get(3).unwrap().as_str()
-            )
-        });
-
-        Ok(result.to_string())
+        let mut result = String::with_capacity(content.len() + new_entries.len());
+        result.push_str(&content[..open + 1]);
+        result.push_str(&new_entries);
+        result.push_str(&content[close..]);
+        Ok(result)
     } else {
         // No default_apps table exists yet — build one and insert it before the final closing brace
         let mut entries = String::new();
@@ -186,7 +296,7 @@ fn insert_defaults_into_lua(
 /// Backup the original Lua file and write modified content
 fn backup_and_write_lua(host_file: &Path, modified_content: &str) -> Result<std::path::PathBuf> {
     // Create backup path
-    let backup_path = create_backup_path(host_file);
+    let backup_path = create_backup_path(host_file)?;
 
     // Rename original to backup
     std::fs::rename(host_file, &backup_path)
@@ -1335,4 +1445,159 @@ fn run_defaults_merge(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
     println!("  • Edit the config to change your default applications");
 
     Ok(())
+}
+
+// The tests below are deliberately written to be robust against the
+// panic-ratchet script (scripts/panic-ratchet.sh), which delimits this
+// `#[cfg(test)]` module by counting literal braces. Two rules keep that
+// counter honest: (1) no panic macros or bare unwrap/expect calls here, so a
+// misjudged boundary can never leak a false production panic site; and (2)
+// every Lua fixture is written with balanced open/close braces (any stray
+// close brace exercised by a test is paired with a matching open elsewhere in
+// the same string or comment) so the scanner still sees the real test while
+// the ratchet's brace depth stays balanced.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn matching_brace_handles_nested_tables() {
+        let s = "{ a = { b = {} }, c = 1 }";
+        assert_eq!(find_matching_brace(s, 0), Some(s.len() - 1));
+    }
+
+    #[test]
+    fn matching_brace_ignores_close_in_double_quoted_string() {
+        let s = "{ name = \"a } b { c\", x = 1 }";
+        assert_eq!(find_matching_brace(s, 0), Some(s.len() - 1));
+    }
+
+    #[test]
+    fn matching_brace_ignores_close_in_single_quoted_string() {
+        let s = "{ name = 'a } b { c', x = 1 }";
+        assert_eq!(find_matching_brace(s, 0), Some(s.len() - 1));
+    }
+
+    #[test]
+    fn matching_brace_ignores_escaped_quote_in_string() {
+        // string content: a \" } b { c — escaped quote must not end it early
+        let s = "{ name = \"a \\\" } b { c\", z = 3 }";
+        assert_eq!(find_matching_brace(s, 0), Some(s.len() - 1));
+    }
+
+    #[test]
+    fn matching_brace_ignores_close_in_line_comment() {
+        let s = "{\n  -- a stray } and { in a line comment\n  x = 1,\n}";
+        assert_eq!(find_matching_brace(s, 0), Some(s.len() - 1));
+    }
+
+    #[test]
+    fn matching_brace_ignores_close_in_block_comment() {
+        let s = "{\n  --[[ } and { still inside ]]\n  x = 1,\n}";
+        assert_eq!(find_matching_brace(s, 0), Some(s.len() - 1));
+    }
+
+    #[test]
+    fn matching_brace_ignores_close_in_leveled_block_comment() {
+        let s = "{\n  --[==[ } { ]] still inside ]==]\n  x = 1,\n}";
+        assert_eq!(find_matching_brace(s, 0), Some(s.len() - 1));
+    }
+
+    #[test]
+    fn matching_brace_ignores_close_in_long_string() {
+        let s = "{ x = [[ } { literal ]], y = 2 }";
+        assert_eq!(find_matching_brace(s, 0), Some(s.len() - 1));
+    }
+
+    #[test]
+    fn matching_brace_none_when_unbalanced() {
+        // Genuinely unbalanced; the trailing `}` is inside a line comment (so it
+        // can't close the table) yet keeps the ratchet's brace count balanced.
+        assert_eq!(find_matching_brace("{ a = { b = 1 } -- }", 0), None);
+    }
+
+    #[test]
+    fn services_merge_survives_nested_and_comments() {
+        let content = "\
+return {
+    services = {
+        scope = \"user\",
+        enabled = {
+            -- a stray } and { must not end the table
+            \"foo\",
+        },
+        disabled = {},
+    },
+}
+";
+        let out = insert_services_into_lua(content, &["bar".to_string(), "foo".to_string()], true)
+            .unwrap_or_default();
+        assert!(out.contains("\"bar\""), "new service added");
+        // `foo` was already present — it must not be duplicated
+        assert_eq!(out.matches("\"foo\"").count(), 1, "existing not duplicated");
+        // the sibling `disabled` table must be left intact
+        assert!(out.contains("disabled = {}"), "sibling table intact");
+        // the comment must be preserved verbatim
+        assert!(
+            out.contains("-- a stray } and { must not end the table"),
+            "comment preserved"
+        );
+    }
+
+    #[test]
+    fn services_merge_builds_table_when_absent() {
+        let content = "return {\n    host = \"pc\",\n}\n";
+        let out =
+            insert_services_into_lua(content, &["sshd".to_string()], false).unwrap_or_default();
+        assert!(out.contains("services = {"));
+        assert!(out.contains("\"sshd\""));
+    }
+
+    #[test]
+    fn defaults_merge_appends_without_clobbering() {
+        let content = "\
+return {
+    default_apps = {
+        browser = \"firefox\",
+    },
+}
+";
+        let mut map = HashMap::new();
+        map.insert("terminal".to_string(), "kitty.desktop".to_string());
+        map.insert("browser".to_string(), "chromium.desktop".to_string());
+        let out = insert_defaults_into_lua(content, &map).unwrap_or_default();
+        assert!(out.contains("terminal = \"kitty\""), "new default added");
+        // existing browser must survive and must not be overwritten or duplicated
+        assert!(out.contains("browser = \"firefox\""), "existing preserved");
+        assert_eq!(out.matches("browser =").count(), 1, "not duplicated");
+    }
+
+    #[test]
+    fn create_backup_path_normal() {
+        let p = create_backup_path(Path::new("/home/u/hosts/pc.lua")).unwrap_or_default();
+        assert_eq!(p.parent(), Some(Path::new("/home/u/hosts")));
+        let name = p
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        assert!(name.starts_with("pc.lua.backup."));
+    }
+
+    #[test]
+    fn create_backup_path_trailing_slash_is_normalised() {
+        // A trailing slash on a named component still yields that name.
+        let p = create_backup_path(Path::new("/home/u/hosts/pc.lua/")).unwrap_or_default();
+        let name = p
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        assert!(name.starts_with("pc.lua.backup."));
+    }
+
+    #[test]
+    fn create_backup_path_errors_without_file_name() {
+        assert!(create_backup_path(Path::new("/")).is_err());
+        assert!(create_backup_path(Path::new("..")).is_err());
+    }
 }
