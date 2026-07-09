@@ -1,11 +1,25 @@
 //! Best-effort proxy applier. margo has no runtime gsettings proxy daemon,
-//! so this writes env vars that apps launched afterward (and the next
-//! session) inherit. Not a live system-wide proxy.
+//! so this writes env vars that the next session inherits. Not a live
+//! system-wide proxy, and deliberately not a live *this-process* one either:
+//! see [`apply`].
 
 use std::io::Write;
 
-/// Write proxy env to ~/.config/environment.d/99-margo-proxy.conf and set it
-/// on the current process so children inherit it.
+/// Write proxy env to `~/.config/environment.d/99-margo-proxy.conf`.
+///
+/// This used to also `std::env::set_var` the same variables so that apps
+/// launched from the running shell inherited them. That was unsound. The
+/// safety requirement on `set_var` is not "the caller is the GTK main thread"
+/// (which is what the old comment claimed) but "no other thread reads the
+/// environment concurrently" — and mshell runs ~65 threads. glibc's `getenv`
+/// is called from under our feet by `getaddrinfo` (every ureq request the AI
+/// and weather widgets make), `tzset`, and locale setup, all of which race the
+/// environ-pointer swap.
+///
+/// Consequence: a proxy set here reaches processes started after the next
+/// login, not the ones already running. Making it live again would mean
+/// threading the variables into each `Command` we spawn, not mutating our own
+/// environment.
 pub fn apply(http: &str, https: &str, socks: &str, ignore: &str) -> std::io::Result<()> {
     let dir = dirs::config_dir().unwrap_or_default().join("environment.d");
     std::fs::create_dir_all(&dir)?;
@@ -30,17 +44,6 @@ pub fn apply(http: &str, https: &str, socks: &str, ignore: &str) -> std::io::Res
         lines.push_str(&format!("no_proxy={ignore}\nNO_PROXY={ignore}\n"));
     }
     std::fs::File::create(&path)?.write_all(lines.as_bytes())?;
-    // SAFETY: single-threaded GTK main thread; setting our own proxy env vars only.
-    unsafe {
-        if !http.is_empty() {
-            std::env::set_var("http_proxy", format!("http://{http}"));
-            std::env::set_var("HTTP_PROXY", format!("http://{http}"));
-        }
-        if !https.is_empty() {
-            std::env::set_var("https_proxy", format!("http://{https}"));
-            std::env::set_var("HTTPS_PROXY", format!("http://{https}"));
-        }
-    }
     Ok(())
 }
 
