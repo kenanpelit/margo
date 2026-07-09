@@ -18,23 +18,19 @@ pub(crate) struct IdleSettingsModel {
     _effects: EffectScope,
 }
 
-#[derive(Debug)]
-pub(crate) enum IdleSettingsInput {
-    DimEnabledChanged(bool),
-    DimTimeoutChanged(u32),
-    LockEnabledChanged(bool),
-    LockTimeoutChanged(u32),
-    SuspendEnabledChanged(bool),
-    SuspendTimeoutChanged(u32),
-    InhibitWhileMediaChanged(bool),
-
-    DimEnabledEffect(bool),
-    DimTimeoutEffect(u32),
-    LockEnabledEffect(bool),
-    LockTimeoutEffect(u32),
-    SuspendEnabledEffect(bool),
-    SuspendTimeoutEffect(u32),
-    InhibitWhileMediaEffect(bool),
+reactive_settings! {
+    model: IdleSettingsModel,
+    input: IdleSettingsInput,
+    group: idle,
+    fields {
+        DimEnabled => dim_enabled: bool => dim_enabled,
+        DimTimeout => dim_timeout: u32 => dim_timeout_minutes,
+        LockEnabled => lock_enabled: bool => lock_enabled,
+        LockTimeout => lock_timeout: u32 => lock_timeout_minutes,
+        SuspendEnabled => suspend_enabled: bool => suspend_enabled,
+        SuspendTimeout => suspend_timeout: u32 => suspend_timeout_minutes,
+        InhibitWhileMedia => inhibit_while_media: bool => inhibit_while_media,
+    }
 }
 
 #[derive(Debug)]
@@ -392,108 +388,13 @@ impl Component for IdleSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let mut effects = EffectScope::new();
-
-        macro_rules! push_effect {
-            ($field:ident, $variant:ident) => {{
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let value = config_manager().config().idle().$field().get();
-                    sender_clone.input(IdleSettingsInput::$variant(value));
-                });
-            }};
-        }
-        push_effect!(dim_enabled, DimEnabledEffect);
-        push_effect!(dim_timeout_minutes, DimTimeoutEffect);
-        push_effect!(lock_enabled, LockEnabledEffect);
-        push_effect!(lock_timeout_minutes, LockTimeoutEffect);
-        push_effect!(suspend_enabled, SuspendEnabledEffect);
-        push_effect!(suspend_timeout_minutes, SuspendTimeoutEffect);
-        push_effect!(inhibit_while_media, InhibitWhileMediaEffect);
-
-        let model = IdleSettingsModel {
-            dim_enabled: config_manager()
-                .config()
-                .idle()
-                .dim_enabled()
-                .get_untracked(),
-            dim_timeout: config_manager()
-                .config()
-                .idle()
-                .dim_timeout_minutes()
-                .get_untracked(),
-            lock_enabled: config_manager()
-                .config()
-                .idle()
-                .lock_enabled()
-                .get_untracked(),
-            lock_timeout: config_manager()
-                .config()
-                .idle()
-                .lock_timeout_minutes()
-                .get_untracked(),
-            suspend_enabled: config_manager()
-                .config()
-                .idle()
-                .suspend_enabled()
-                .get_untracked(),
-            suspend_timeout: config_manager()
-                .config()
-                .idle()
-                .suspend_timeout_minutes()
-                .get_untracked(),
-            inhibit_while_media: config_manager()
-                .config()
-                .idle()
-                .inhibit_while_media()
-                .get_untracked(),
-            _effects: effects,
-        };
-
+        let model = Self::from_config_store(&sender);
         let widgets = view_output!();
 
         ComponentParts { model, widgets }
     }
 
-    fn update_with_view(
-        &mut self,
-        widgets: &mut Self::Widgets,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
-        match message {
-            IdleSettingsInput::DimEnabledChanged(v) => {
-                config_manager().update_config(|c| c.idle.dim_enabled = v);
-            }
-            IdleSettingsInput::DimTimeoutChanged(v) => {
-                config_manager().update_config(|c| c.idle.dim_timeout_minutes = v);
-            }
-            IdleSettingsInput::LockEnabledChanged(v) => {
-                config_manager().update_config(|c| c.idle.lock_enabled = v);
-            }
-            IdleSettingsInput::LockTimeoutChanged(v) => {
-                config_manager().update_config(|c| c.idle.lock_timeout_minutes = v);
-            }
-            IdleSettingsInput::SuspendEnabledChanged(v) => {
-                config_manager().update_config(|c| c.idle.suspend_enabled = v);
-            }
-            IdleSettingsInput::SuspendTimeoutChanged(v) => {
-                config_manager().update_config(|c| c.idle.suspend_timeout_minutes = v);
-            }
-            IdleSettingsInput::InhibitWhileMediaChanged(v) => {
-                config_manager().update_config(|c| c.idle.inhibit_while_media = v);
-            }
-
-            IdleSettingsInput::DimEnabledEffect(v) => self.dim_enabled = v,
-            IdleSettingsInput::DimTimeoutEffect(v) => self.dim_timeout = v,
-            IdleSettingsInput::LockEnabledEffect(v) => self.lock_enabled = v,
-            IdleSettingsInput::LockTimeoutEffect(v) => self.lock_timeout = v,
-            IdleSettingsInput::SuspendEnabledEffect(v) => self.suspend_enabled = v,
-            IdleSettingsInput::SuspendTimeoutEffect(v) => self.suspend_timeout = v,
-            IdleSettingsInput::InhibitWhileMediaEffect(v) => self.inhibit_while_media = v,
-        }
-
-        self.update_view(widgets, sender);
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
+        self.apply_reactive(message);
     }
 }

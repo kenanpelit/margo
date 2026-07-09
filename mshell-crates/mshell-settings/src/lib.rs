@@ -14,6 +14,11 @@
 
 use std::sync::OnceLock;
 
+// Declared first so `reactive_settings!` is in textual scope for every page module
+// below (`#[macro_use]` scoping is order-sensitive).
+#[macro_use]
+mod reactive_settings;
+
 mod about_settings;
 mod ai_settings;
 mod animations_settings;

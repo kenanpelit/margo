@@ -27,6 +27,7 @@ mshell-plugins.workspace = true
 mshell-services.workspace = true
 mshell-style.workspace = true
 mshell-utils.workspace = true
+paste = "1"
 reactive_graph.workspace = true
 relm4.workspace = true
 serde_json.workspace = true

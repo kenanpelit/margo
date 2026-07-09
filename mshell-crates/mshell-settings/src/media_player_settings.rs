@@ -18,12 +18,14 @@ pub(crate) struct MediaPlayerSettingsModel {
     _effects: EffectScope,
 }
 
-#[derive(Debug)]
-pub(crate) enum MediaPlayerSettingsInput {
-    SeekStepChanged(u32),
-    LargeArtChanged(bool),
-    SeekStepEffect(u32),
-    LargeArtEffect(bool),
+reactive_settings! {
+    model: MediaPlayerSettingsModel,
+    input: MediaPlayerSettingsInput,
+    group: general,
+    fields {
+        SeekStep => seek_step: u32 => media_seek_step_seconds,
+        LargeArt => large_art: bool => media_large_album_art,
+    }
 }
 
 #[derive(Debug)]
@@ -178,41 +180,7 @@ impl Component for MediaPlayerSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let mut effects = EffectScope::new();
-
-        let sc = sender.clone();
-        effects.push(move |_| {
-            let v = config_manager()
-                .config()
-                .general()
-                .media_seek_step_seconds()
-                .get();
-            sc.input(MediaPlayerSettingsInput::SeekStepEffect(v));
-        });
-
-        let sc = sender.clone();
-        effects.push(move |_| {
-            let v = config_manager()
-                .config()
-                .general()
-                .media_large_album_art()
-                .get();
-            sc.input(MediaPlayerSettingsInput::LargeArtEffect(v));
-        });
-
-        let model = MediaPlayerSettingsModel {
-            seek_step: config_manager()
-                .config()
-                .general()
-                .media_seek_step_seconds()
-                .get_untracked(),
-            large_art: config_manager()
-                .config()
-                .general()
-                .media_large_album_art()
-                .get_untracked(),
-            _effects: effects,
-        };
+        let model = Self::from_config_store(&sender);
 
         let widgets = view_output!();
 
@@ -220,15 +188,6 @@ impl Component for MediaPlayerSettingsModel {
     }
 
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
-        match message {
-            MediaPlayerSettingsInput::SeekStepChanged(v) => {
-                config_manager().update_config(move |c| c.general.media_seek_step_seconds = v);
-            }
-            MediaPlayerSettingsInput::LargeArtChanged(v) => {
-                config_manager().update_config(move |c| c.general.media_large_album_art = v);
-            }
-            MediaPlayerSettingsInput::SeekStepEffect(v) => self.seek_step = v,
-            MediaPlayerSettingsInput::LargeArtEffect(v) => self.large_art = v,
-        }
+        self.apply_reactive(message);
     }
 }

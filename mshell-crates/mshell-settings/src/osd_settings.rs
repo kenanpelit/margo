@@ -27,18 +27,21 @@ pub(crate) struct OsdSettingsModel {
     _effects: EffectScope,
 }
 
-#[derive(Debug)]
-pub(crate) enum OsdSettingsInput {
-    WidthChanged(i32),
-    WidthEffect(i32),
-    PositionChanged(OsdPosition),
-    PositionEffect(OsdPosition),
-    DistanceChanged(i32),
-    DistanceEffect(i32),
-    RadiusChanged(i32),
-    RadiusEffect(i32),
-    BorderWidthChanged(i32),
-    BorderWidthEffect(i32),
+reactive_settings! {
+    model: OsdSettingsModel,
+    input: OsdSettingsInput,
+    group: osd,
+    fields {
+        Position => position: OsdPosition => position,
+    }
+    // The SpinButton ranges are defensive-clamped again on write, matching the
+    // hand-rolled arms; the store -> model (`Effect`) path is never clamped.
+    clamped {
+        Width => width: i32 => width in 80 ..= 1200,
+        Distance => distance: i32 => distance in 0 ..= 400,
+        Radius => radius: i32 => radius in 0 ..= 200,
+        BorderWidth => border_width: i32 => border_width in 0 ..= 20,
+    }
 }
 
 #[derive(Debug)]
@@ -313,78 +316,13 @@ impl Component for OsdSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let mut effects = EffectScope::new();
-
-        let sc = sender.clone();
-        effects.push(move |_| {
-            let v = config_manager().config().osd().width().get();
-            sc.input(OsdSettingsInput::WidthEffect(v));
-        });
-        let sc = sender.clone();
-        effects.push(move |_| {
-            let v = config_manager().config().osd().position().get();
-            sc.input(OsdSettingsInput::PositionEffect(v));
-        });
-        let sc = sender.clone();
-        effects.push(move |_| {
-            let v = config_manager().config().osd().distance().get();
-            sc.input(OsdSettingsInput::DistanceEffect(v));
-        });
-        let sc = sender.clone();
-        effects.push(move |_| {
-            let v = config_manager().config().osd().radius().get();
-            sc.input(OsdSettingsInput::RadiusEffect(v));
-        });
-        let sc = sender.clone();
-        effects.push(move |_| {
-            let v = config_manager().config().osd().border_width().get();
-            sc.input(OsdSettingsInput::BorderWidthEffect(v));
-        });
-
-        // Each store accessor consumes the handle, so re-fetch per field.
-        let model = OsdSettingsModel {
-            width: config_manager().config().osd().width().get_untracked(),
-            position: config_manager().config().osd().position().get_untracked(),
-            distance: config_manager().config().osd().distance().get_untracked(),
-            radius: config_manager().config().osd().radius().get_untracked(),
-            border_width: config_manager()
-                .config()
-                .osd()
-                .border_width()
-                .get_untracked(),
-            _effects: effects,
-        };
+        let model = Self::from_config_store(&sender);
 
         let widgets = view_output!();
         ComponentParts { model, widgets }
     }
 
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
-        match message {
-            OsdSettingsInput::WidthChanged(v) => {
-                let v = v.clamp(80, 1200);
-                config_manager().update_config(|c| c.osd.width = v);
-            }
-            OsdSettingsInput::WidthEffect(v) => self.width = v,
-            OsdSettingsInput::PositionChanged(p) => {
-                config_manager().update_config(|c| c.osd.position = p.clone());
-            }
-            OsdSettingsInput::PositionEffect(p) => self.position = p,
-            OsdSettingsInput::DistanceChanged(v) => {
-                let v = v.clamp(0, 400);
-                config_manager().update_config(|c| c.osd.distance = v);
-            }
-            OsdSettingsInput::DistanceEffect(v) => self.distance = v,
-            OsdSettingsInput::RadiusChanged(v) => {
-                let v = v.clamp(0, 200);
-                config_manager().update_config(|c| c.osd.radius = v);
-            }
-            OsdSettingsInput::RadiusEffect(v) => self.radius = v,
-            OsdSettingsInput::BorderWidthChanged(v) => {
-                let v = v.clamp(0, 20);
-                config_manager().update_config(|c| c.osd.border_width = v);
-            }
-            OsdSettingsInput::BorderWidthEffect(v) => self.border_width = v,
-        }
+        self.apply_reactive(message);
     }
 }

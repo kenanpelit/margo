@@ -25,23 +25,21 @@ pub(crate) struct GameModeSettingsModel {
     _effects: EffectScope,
 }
 
-#[derive(Debug)]
-pub(crate) enum GameModeSettingsInput {
-    ActiveChanged(bool),
-    AnimationsChanged(bool),
-    BlurChanged(bool),
-    ShadowsChanged(bool),
-    IdleChanged(bool),
-    DndChanged(bool),
-    TearingChanged(bool),
-
-    ActiveEffect(bool),
-    AnimationsEffect(bool),
-    BlurEffect(bool),
-    ShadowsEffect(bool),
-    IdleEffect(bool),
-    DndEffect(bool),
-    TearingEffect(bool),
+reactive_settings! {
+    model: GameModeSettingsModel,
+    input: GameModeSettingsInput,
+    group: game_mode,
+    // Variant bases are the page's short names, not the field names: `Animations`
+    // over `disable_animations`, `Idle` over `inhibit_idle`, `Dnd` over `enable_dnd`.
+    fields {
+        Active => active: bool => active,
+        Animations => disable_animations: bool => disable_animations,
+        Blur => disable_blur: bool => disable_blur,
+        Shadows => disable_shadows: bool => disable_shadows,
+        Idle => inhibit_idle: bool => inhibit_idle,
+        Dnd => enable_dnd: bool => enable_dnd,
+        Tearing => allow_tearing: bool => allow_tearing,
+    }
 }
 
 #[derive(Debug)]
@@ -352,108 +350,14 @@ impl Component for GameModeSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let mut effects = EffectScope::new();
-
-        macro_rules! push_effect {
-            ($field:ident, $variant:ident) => {{
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let value = config_manager().config().game_mode().$field().get();
-                    sender_clone.input(GameModeSettingsInput::$variant(value));
-                });
-            }};
-        }
-        push_effect!(active, ActiveEffect);
-        push_effect!(disable_animations, AnimationsEffect);
-        push_effect!(disable_blur, BlurEffect);
-        push_effect!(disable_shadows, ShadowsEffect);
-        push_effect!(inhibit_idle, IdleEffect);
-        push_effect!(enable_dnd, DndEffect);
-        push_effect!(allow_tearing, TearingEffect);
-
-        let model = GameModeSettingsModel {
-            active: config_manager()
-                .config()
-                .game_mode()
-                .active()
-                .get_untracked(),
-            disable_animations: config_manager()
-                .config()
-                .game_mode()
-                .disable_animations()
-                .get_untracked(),
-            disable_blur: config_manager()
-                .config()
-                .game_mode()
-                .disable_blur()
-                .get_untracked(),
-            disable_shadows: config_manager()
-                .config()
-                .game_mode()
-                .disable_shadows()
-                .get_untracked(),
-            inhibit_idle: config_manager()
-                .config()
-                .game_mode()
-                .inhibit_idle()
-                .get_untracked(),
-            enable_dnd: config_manager()
-                .config()
-                .game_mode()
-                .enable_dnd()
-                .get_untracked(),
-            allow_tearing: config_manager()
-                .config()
-                .game_mode()
-                .allow_tearing()
-                .get_untracked(),
-            _effects: effects,
-        };
+        let model = Self::from_config_store(&sender);
 
         let widgets = view_output!();
 
         ComponentParts { model, widgets }
     }
 
-    fn update_with_view(
-        &mut self,
-        widgets: &mut Self::Widgets,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
-        match message {
-            GameModeSettingsInput::ActiveChanged(v) => {
-                config_manager().update_config(|c| c.game_mode.active = v);
-            }
-            GameModeSettingsInput::AnimationsChanged(v) => {
-                config_manager().update_config(|c| c.game_mode.disable_animations = v);
-            }
-            GameModeSettingsInput::BlurChanged(v) => {
-                config_manager().update_config(|c| c.game_mode.disable_blur = v);
-            }
-            GameModeSettingsInput::ShadowsChanged(v) => {
-                config_manager().update_config(|c| c.game_mode.disable_shadows = v);
-            }
-            GameModeSettingsInput::IdleChanged(v) => {
-                config_manager().update_config(|c| c.game_mode.inhibit_idle = v);
-            }
-            GameModeSettingsInput::DndChanged(v) => {
-                config_manager().update_config(|c| c.game_mode.enable_dnd = v);
-            }
-            GameModeSettingsInput::TearingChanged(v) => {
-                config_manager().update_config(|c| c.game_mode.allow_tearing = v);
-            }
-
-            GameModeSettingsInput::ActiveEffect(v) => self.active = v,
-            GameModeSettingsInput::AnimationsEffect(v) => self.disable_animations = v,
-            GameModeSettingsInput::BlurEffect(v) => self.disable_blur = v,
-            GameModeSettingsInput::ShadowsEffect(v) => self.disable_shadows = v,
-            GameModeSettingsInput::IdleEffect(v) => self.inhibit_idle = v,
-            GameModeSettingsInput::DndEffect(v) => self.enable_dnd = v,
-            GameModeSettingsInput::TearingEffect(v) => self.allow_tearing = v,
-        }
-
-        self.update_view(widgets, sender);
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
+        self.apply_reactive(message);
     }
 }
