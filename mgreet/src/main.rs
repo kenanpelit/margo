@@ -62,7 +62,8 @@ pub struct State {
 }
 
 fn main() -> glib::ExitCode {
-    let preview = std::env::args().any(|a| a == "--preview");
+    let raw_args: Vec<String> = std::env::args().collect();
+    let preview = raw_args.iter().any(|a| a == "--preview");
 
     // Real greeter mode: the mlogind orchestrator exports MLOGIND_RESULT_PATH
     // (the one-shot credential hand-off) and MLOGIND_PAM_SERVICE. Without the
@@ -124,7 +125,11 @@ fn main() -> glib::ExitCode {
         });
     });
 
-    app.run()
+    // GApplication parses argv itself and rejects our custom `--preview` as an
+    // unknown option ("Unknown option --preview"). mgreet takes no GApplication
+    // options, so run it with our own flags stripped out.
+    let gtk_args: Vec<String> = raw_args.into_iter().filter(|a| a != "--preview").collect();
+    app.run_with_args(&gtk_args)
 }
 
 /// Create/destroy per-monitor greeter windows to match the live output list,
