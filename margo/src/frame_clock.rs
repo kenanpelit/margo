@@ -1,8 +1,9 @@
-//! Per-output frame clock — opt-in (`per_output_frame_clock` config knob).
+//! Per-output frame clock — on by default (`per_output_frame_clock` knob;
+//! set it to `false` to fall back to the global tick described below).
 //!
 //! ## Why
 //!
-//! The default render path drives EVERY output from a single global
+//! The global-tick render path drives EVERY output from a single
 //! tick: anything that dirties the scene calls
 //! [`crate::state::MargoState::request_repaint`], which sets one dirty
 //! flag and pings one calloop source; that source renders all outputs

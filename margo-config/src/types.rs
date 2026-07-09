@@ -1004,12 +1004,20 @@ pub struct Config {
     pub allow_tearing: TearingMode,
     pub allow_shortcuts_inhibit: ShortcutsInhibit,
     pub allow_lock_transparent: bool,
-    /// Opt-in: pace each output by its own refresh rate (per-output
-    /// frame clock) instead of the single global render tick. Default
-    /// `false` — the global-tick path is byte-for-byte unchanged for
-    /// existing users. When `true`, each output re-arms its own present
-    /// timer off its last vblank and only the due output(s) render +
+    /// Pace each output by its own refresh rate (per-output frame clock)
+    /// instead of the single global render tick. Each output re-arms its own
+    /// present timer off its last vblank and only the due output(s) render +
     /// animate.
+    ///
+    /// Defaults to `true`. Under the global tick, an animation on one monitor
+    /// forces *every* output to rebuild its full render-element list each
+    /// frame; smithay's damage diff then throws the result away, but the CPU
+    /// was already spent. It also drags a 60 Hz panel along at a 144 Hz
+    /// panel's cadence. Neither costs anything on a single-monitor setup,
+    /// where the two paths are equivalent.
+    ///
+    /// Set `per_output_frame_clock = false` in `config.conf` to go back to the
+    /// global tick.
     pub per_output_frame_clock: bool,
     pub key_mode: String,
 
@@ -1330,7 +1338,7 @@ impl Default for Config {
             allow_tearing: TearingMode::Disabled,
             allow_shortcuts_inhibit: ShortcutsInhibit::Enable,
             allow_lock_transparent: false,
-            per_output_frame_clock: false,
+            per_output_frame_clock: true,
             key_mode: "default".into(),
 
             xkb_rules: XkbRules::default(),

@@ -1,11 +1,11 @@
-//! `MargoState` glue for the opt-in per-output frame clock.
+//! `MargoState` glue for the per-output frame clock (on by default).
 //!
 //! The pure scheduling primitives live in [`crate::frame_clock`]; this
 //! file is the `MargoState`-coupled side: creating/arming the per-output
 //! present timers, marking clocks dirty, and the vblank re-arm. Every
 //! method here is a no-op (or early-returns) when
-//! `config.per_output_frame_clock` is false, so the default global-tick
-//! path is untouched.
+//! `config.per_output_frame_clock` is false, so the global-tick path
+//! remains available as an escape hatch.
 //!
 //! ## Flow (flag on)
 //!
