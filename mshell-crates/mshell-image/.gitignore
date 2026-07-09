@@ -1,0 +1,3 @@
+# CLUTs are generated on demand and cached at runtime; the mshell-clut-gen
+# binary writes them here for inspection/pre-seeding. Never committed.
+/cluts/

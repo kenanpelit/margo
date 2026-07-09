@@ -1,138 +1,275 @@
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use image::{ImageBuffer, Rgb, RgbaImage};
+use lutgen::GenerateLut;
 use lutgen::identity::correct_image;
+use lutgen::interpolation::GaussianRemapper;
 use mshell_config::schema::themes::Themes;
+use mshell_matugen::json_struct::MatugenTheme;
 use mshell_matugen::static_theme_mapping::static_theme;
 use relm4::gtk;
 use relm4::gtk::gdk_pixbuf::Pixbuf;
 use relm4::gtk::prelude::{Cast, GskRendererExt, SnapshotExt, TextureExt, TextureExtManual};
+use tracing::warn;
 
-const CLUT_BAUHAUS: &[u8] = include_bytes!("../cluts/bauhaus.bin");
-const CLUT_BLACK_TURQ: &[u8] = include_bytes!("../cluts/black_turq.bin");
-const CLUT_BLOOD_RUST: &[u8] = include_bytes!("../cluts/blood_rust.bin");
-const CLUT_CATPPUCCIN_FRAPPE: &[u8] = include_bytes!("../cluts/catppuccin_frappe.bin");
-const CLUT_CATPPUCCIN_LATTE: &[u8] = include_bytes!("../cluts/catppuccin_latte.bin");
-const CLUT_CATPPUCCIN_MACCHIATO: &[u8] = include_bytes!("../cluts/catppuccin_macchiato.bin");
-const CLUT_CATPPUCCIN_MOCHA: &[u8] = include_bytes!("../cluts/catppuccin_mocha.bin");
-const CLUT_CYBERPUNK: &[u8] = include_bytes!("../cluts/cyberpunk.bin");
-const CLUT_DESERT_POWER: &[u8] = include_bytes!("../cluts/desert_power.bin");
-const CLUT_DRACULA: &[u8] = include_bytes!("../cluts/dracula.bin");
-const CLUT_ELDRITCH: &[u8] = include_bytes!("../cluts/eldritch.bin");
-const CLUT_ETHEREAL: &[u8] = include_bytes!("../cluts/ethereal.bin");
-const CLUT_EVERFOREST_DARK_HARD: &[u8] = include_bytes!("../cluts/everforest_dark_hard.bin");
-const CLUT_EVERFOREST_DARK_MEDIUM: &[u8] = include_bytes!("../cluts/everforest_dark_medium.bin");
-const CLUT_EVERFOREST_DARK_SOFT: &[u8] = include_bytes!("../cluts/everforest_dark_soft.bin");
-const CLUT_EVERFOREST_LIGHT_HARD: &[u8] = include_bytes!("../cluts/everforest_light_hard.bin");
-const CLUT_EVERFOREST_LIGHT_MEDIUM: &[u8] = include_bytes!("../cluts/everforest_light_medium.bin");
-const CLUT_EVERFOREST_LIGHT_SOFT: &[u8] = include_bytes!("../cluts/everforest_light_soft.bin");
-const CLUT_GRUVBOX_DARK_HARD: &[u8] = include_bytes!("../cluts/gruvbox_dark_hard.bin");
-const CLUT_GRUVBOX_DARK_MEDIUM: &[u8] = include_bytes!("../cluts/gruvbox_dark_medium.bin");
-const CLUT_GRUVBOX_DARK_SOFT: &[u8] = include_bytes!("../cluts/gruvbox_dark_soft.bin");
-const CLUT_GRUVBOX_LIGHT_HARD: &[u8] = include_bytes!("../cluts/gruvbox_light_hard.bin");
-const CLUT_GRUVBOX_LIGHT_MEDIUM: &[u8] = include_bytes!("../cluts/gruvbox_light_medium.bin");
-const CLUT_GRUVBOX_LIGHT_SOFT: &[u8] = include_bytes!("../cluts/gruvbox_light_soft.bin");
-const CLUT_HACKERMAN: &[u8] = include_bytes!("../cluts/hackerman.bin");
-const CLUT_INKY_PINKY: &[u8] = include_bytes!("../cluts/inky_pinky.bin");
-const CLUT_KANAGAWA_DRAGON: &[u8] = include_bytes!("../cluts/kanagawa_dragon.bin");
-const CLUT_KANAGAWA_LOTUS: &[u8] = include_bytes!("../cluts/kanagawa_lotus.bin");
-const CLUT_KANAGAWA_WAVE: &[u8] = include_bytes!("../cluts/kanagawa_wave.bin");
-const CLUT_KENP: &[u8] = include_bytes!("../cluts/kenp.bin");
-const CLUT_MARGO: &[u8] = include_bytes!("../cluts/margo.bin");
-const CLUT_MIASMA: &[u8] = include_bytes!("../cluts/miasma.bin");
-const CLUT_MONOKAI_CLASSIC: &[u8] = include_bytes!("../cluts/monokai_classic.bin");
-const CLUT_NORD_DARK: &[u8] = include_bytes!("../cluts/nord_dark.bin");
-const CLUT_NORD_LIGHT: &[u8] = include_bytes!("../cluts/nord_light.bin");
-const CLUT_OCEANIC_NEXT: &[u8] = include_bytes!("../cluts/oceanic_next.bin");
-const CLUT_ONE_DARK: &[u8] = include_bytes!("../cluts/one_dark.bin");
-const CLUT_OSAKA_JADE: &[u8] = include_bytes!("../cluts/osaka_jade.bin");
-const CLUT_POIMANDRES: &[u8] = include_bytes!("../cluts/poimandres.bin");
-const CLUT_RETRO_82: &[u8] = include_bytes!("../cluts/retro_82.bin");
-const CLUT_ROSE_PINE: &[u8] = include_bytes!("../cluts/rose_pine.bin");
-const CLUT_ROSE_PINE_DAWN: &[u8] = include_bytes!("../cluts/rose_pine_dawn.bin");
-const CLUT_ROSE_PINE_MOON: &[u8] = include_bytes!("../cluts/rose_pine_moon.bin");
-const CLUT_SAGA: &[u8] = include_bytes!("../cluts/saga.bin");
-const CLUT_SEOUL: &[u8] = include_bytes!("../cluts/seoul.bin");
-const CLUT_SOLARIZED_DARK: &[u8] = include_bytes!("../cluts/solarized_dark.bin");
-const CLUT_SOLARIZED_LIGHT: &[u8] = include_bytes!("../cluts/solarized_light.bin");
-const CLUT_SOLITUDE: &[u8] = include_bytes!("../cluts/solitude.bin");
-const CLUT_SYNTHWAVE_84: &[u8] = include_bytes!("../cluts/synthwave_84.bin");
-const CLUT_TOKYO_NIGHT: &[u8] = include_bytes!("../cluts/tokyo_night.bin");
-const CLUT_TOKYO_NIGHT_STORM: &[u8] = include_bytes!("../cluts/tokyo_night_storm.bin");
-const CLUT_TOKYO_NIGHT_LIGHT: &[u8] = include_bytes!("../cluts/tokyo_night_light.bin");
-const CLUT_VARDA: &[u8] = include_bytes!("../cluts/varda.bin");
+/// Every static theme that owns a CLUT, paired with its stable file/cache
+/// basename. `Wallpaper` is absent (it grades from the live wallpaper) and
+/// `Default` is absent as its own entry — it shares Kenp's CLUT.
+pub const CLUT_THEMES: &[(&str, Themes)] = &[
+    ("bauhaus", Themes::Bauhaus),
+    ("black_turq", Themes::BlackTurq),
+    ("blood_rust", Themes::BloodRust),
+    ("catppuccin_frappe", Themes::CatppuccinFrappe),
+    ("catppuccin_latte", Themes::CatppuccinLatte),
+    ("catppuccin_macchiato", Themes::CatppuccinMacchiato),
+    ("catppuccin_mocha", Themes::CatppuccinMocha),
+    ("cyberpunk", Themes::Cyberpunk),
+    ("desert_power", Themes::DesertPower),
+    ("dracula", Themes::Dracula),
+    ("eldritch", Themes::Eldritch),
+    ("ethereal", Themes::Ethereal),
+    ("everforest_dark_hard", Themes::EverforestDarkHard),
+    ("everforest_dark_medium", Themes::EverforestDarkMedium),
+    ("everforest_dark_soft", Themes::EverforestDarkSoft),
+    ("everforest_light_hard", Themes::EverforestLightHard),
+    ("everforest_light_medium", Themes::EverforestLightMedium),
+    ("everforest_light_soft", Themes::EverforestLightSoft),
+    ("gruvbox_dark_hard", Themes::GruvboxDarkHard),
+    ("gruvbox_dark_medium", Themes::GruvboxDarkMedium),
+    ("gruvbox_dark_soft", Themes::GruvboxDarkSoft),
+    ("gruvbox_light_hard", Themes::GruvboxLightHard),
+    ("gruvbox_light_medium", Themes::GruvboxLightMedium),
+    ("gruvbox_light_soft", Themes::GruvboxLightSoft),
+    ("hackerman", Themes::Hackerman),
+    ("inky_pinky", Themes::InkyPinky),
+    ("kanagawa_dragon", Themes::KanagawaDragon),
+    ("kanagawa_lotus", Themes::KanagawaLotus),
+    ("kanagawa_wave", Themes::KanagawaWave),
+    ("kenp", Themes::Kenp),
+    ("margo", Themes::Margo),
+    ("miasma", Themes::Miasma),
+    ("monokai_classic", Themes::MonokaiClassic),
+    ("nord_dark", Themes::NordDark),
+    ("nord_light", Themes::NordLight),
+    ("oceanic_next", Themes::OceanicNext),
+    ("one_dark", Themes::OneDark),
+    ("osaka_jade", Themes::OsakaJade),
+    ("poimandres", Themes::Poimandres),
+    ("retro_82", Themes::Retro82),
+    ("rose_pine", Themes::RosePine),
+    ("rose_pine_dawn", Themes::RosePineDawn),
+    ("rose_pine_moon", Themes::RosePineMoon),
+    ("saga", Themes::Saga),
+    ("seoul", Themes::Seoul),
+    ("solarized_dark", Themes::SolarizedDark),
+    ("solarized_light", Themes::SolarizedLight),
+    ("solitude", Themes::Solitude),
+    ("synthwave_84", Themes::Synthwave84),
+    ("tokyo_night", Themes::TokyoNight),
+    ("tokyo_night_storm", Themes::TokyoNightStorm),
+    ("tokyo_night_light", Themes::TokyoNightLight),
+    ("varda", Themes::Varda),
+];
 
-/// Look up the precomputed Hald CLUT for a static theme.
-/// Returns `None` only for `Wallpaper` (the dynamic-from-wallpaper mode).
-pub fn embedded_clut(theme: &Themes) -> Option<&'static [u8]> {
+/// Stable CLUT basename for a theme, or `None` for `Wallpaper` (which has no
+/// static CLUT). `Default` aliases the house theme Kenp and shares its CLUT.
+/// This is the cheap predicate for "does this theme support recolouring" — it
+/// never triggers CLUT generation.
+pub fn clut_name(theme: &Themes) -> Option<&'static str> {
     match theme {
-        // `Default` aliases margo's default scheme, now the house theme
-        // Kenp; `Margo` keeps the original brand LUT. `Wallpaper` stays
-        // `None` — it grades from the live wallpaper instead.
-        Themes::Default => Some(CLUT_KENP),
-        Themes::Margo => Some(CLUT_MARGO),
         Themes::Wallpaper => None,
-        Themes::Bauhaus => Some(CLUT_BAUHAUS),
-        Themes::BlackTurq => Some(CLUT_BLACK_TURQ),
-        Themes::BloodRust => Some(CLUT_BLOOD_RUST),
-        Themes::CatppuccinFrappe => Some(CLUT_CATPPUCCIN_FRAPPE),
-        Themes::CatppuccinLatte => Some(CLUT_CATPPUCCIN_LATTE),
-        Themes::CatppuccinMacchiato => Some(CLUT_CATPPUCCIN_MACCHIATO),
-        Themes::CatppuccinMocha => Some(CLUT_CATPPUCCIN_MOCHA),
-        Themes::Cyberpunk => Some(CLUT_CYBERPUNK),
-        Themes::DesertPower => Some(CLUT_DESERT_POWER),
-        Themes::Dracula => Some(CLUT_DRACULA),
-        Themes::Eldritch => Some(CLUT_ELDRITCH),
-        Themes::Ethereal => Some(CLUT_ETHEREAL),
-        Themes::EverforestDarkHard => Some(CLUT_EVERFOREST_DARK_HARD),
-        Themes::EverforestDarkMedium => Some(CLUT_EVERFOREST_DARK_MEDIUM),
-        Themes::EverforestDarkSoft => Some(CLUT_EVERFOREST_DARK_SOFT),
-        Themes::EverforestLightHard => Some(CLUT_EVERFOREST_LIGHT_HARD),
-        Themes::EverforestLightMedium => Some(CLUT_EVERFOREST_LIGHT_MEDIUM),
-        Themes::EverforestLightSoft => Some(CLUT_EVERFOREST_LIGHT_SOFT),
-        Themes::GruvboxDarkHard => Some(CLUT_GRUVBOX_DARK_HARD),
-        Themes::GruvboxDarkMedium => Some(CLUT_GRUVBOX_DARK_MEDIUM),
-        Themes::GruvboxDarkSoft => Some(CLUT_GRUVBOX_DARK_SOFT),
-        Themes::GruvboxLightHard => Some(CLUT_GRUVBOX_LIGHT_HARD),
-        Themes::GruvboxLightMedium => Some(CLUT_GRUVBOX_LIGHT_MEDIUM),
-        Themes::GruvboxLightSoft => Some(CLUT_GRUVBOX_LIGHT_SOFT),
-        Themes::Hackerman => Some(CLUT_HACKERMAN),
-        Themes::InkyPinky => Some(CLUT_INKY_PINKY),
-        Themes::KanagawaDragon => Some(CLUT_KANAGAWA_DRAGON),
-        Themes::KanagawaLotus => Some(CLUT_KANAGAWA_LOTUS),
-        Themes::KanagawaWave => Some(CLUT_KANAGAWA_WAVE),
-        Themes::Kenp => Some(CLUT_KENP),
-        Themes::Miasma => Some(CLUT_MIASMA),
-        Themes::MonokaiClassic => Some(CLUT_MONOKAI_CLASSIC),
-        Themes::NordDark => Some(CLUT_NORD_DARK),
-        Themes::NordLight => Some(CLUT_NORD_LIGHT),
-        Themes::OceanicNext => Some(CLUT_OCEANIC_NEXT),
-        Themes::OneDark => Some(CLUT_ONE_DARK),
-        Themes::OsakaJade => Some(CLUT_OSAKA_JADE),
-        Themes::Poimandres => Some(CLUT_POIMANDRES),
-        Themes::Retro82 => Some(CLUT_RETRO_82),
-        Themes::RosePine => Some(CLUT_ROSE_PINE),
-        Themes::RosePineDawn => Some(CLUT_ROSE_PINE_DAWN),
-        Themes::RosePineMoon => Some(CLUT_ROSE_PINE_MOON),
-        Themes::Saga => Some(CLUT_SAGA),
-        Themes::Seoul => Some(CLUT_SEOUL),
-        Themes::SolarizedDark => Some(CLUT_SOLARIZED_DARK),
-        Themes::SolarizedLight => Some(CLUT_SOLARIZED_LIGHT),
-        Themes::Solitude => Some(CLUT_SOLITUDE),
-        Themes::Synthwave84 => Some(CLUT_SYNTHWAVE_84),
-        Themes::TokyoNight => Some(CLUT_TOKYO_NIGHT),
-        Themes::TokyoNightStorm => Some(CLUT_TOKYO_NIGHT_STORM),
-        Themes::TokyoNightLight => Some(CLUT_TOKYO_NIGHT_LIGHT),
-        Themes::Varda => Some(CLUT_VARDA),
+        Themes::Default => Some("kenp"),
+        _ => CLUT_THEMES
+            .iter()
+            .find(|(_, t)| t == theme)
+            .map(|(name, _)| *name),
     }
 }
 
-/// Hald CLUT level used for all precomputed CLUTs.
+// Gaussian remapper parameters. These must stay fixed: a CLUT generated with
+// different values would grade images differently from theme to theme and
+// invalidate any cache written by an older build.
+const GAUSSIAN_SHAPE: f64 = 96.0;
+const GAUSSIAN_NEAREST: usize = 0;
+const LUM_FACTOR: f64 = 1.0;
+const PRESERVE: bool = false;
+
+/// The 68 Material + base16 swatches that seed a theme's Gaussian remap.
+fn extract_palette(theme: &MatugenTheme) -> Vec<[u8; 3]> {
+    let c = &theme.colors;
+    let b = &theme.base16;
+
+    let colors = vec![
+        c.background.default.as_rgb(),
+        c.error.default.as_rgb(),
+        c.error_container.default.as_rgb(),
+        c.inverse_on_surface.default.as_rgb(),
+        c.inverse_primary.default.as_rgb(),
+        c.inverse_surface.default.as_rgb(),
+        c.on_background.default.as_rgb(),
+        c.on_error.default.as_rgb(),
+        c.on_error_container.default.as_rgb(),
+        c.on_primary.default.as_rgb(),
+        c.on_primary_container.default.as_rgb(),
+        c.on_primary_fixed.default.as_rgb(),
+        c.on_primary_fixed_variant.default.as_rgb(),
+        c.on_secondary.default.as_rgb(),
+        c.on_secondary_container.default.as_rgb(),
+        c.on_secondary_fixed.default.as_rgb(),
+        c.on_secondary_fixed_variant.default.as_rgb(),
+        c.on_surface.default.as_rgb(),
+        c.on_surface_variant.default.as_rgb(),
+        c.on_tertiary.default.as_rgb(),
+        c.on_tertiary_container.default.as_rgb(),
+        c.on_tertiary_fixed.default.as_rgb(),
+        c.on_tertiary_fixed_variant.default.as_rgb(),
+        c.outline.default.as_rgb(),
+        c.outline_variant.default.as_rgb(),
+        c.primary.default.as_rgb(),
+        c.primary_container.default.as_rgb(),
+        c.primary_fixed.default.as_rgb(),
+        c.primary_fixed_dim.default.as_rgb(),
+        c.scrim.default.as_rgb(),
+        c.secondary.default.as_rgb(),
+        c.secondary_container.default.as_rgb(),
+        c.secondary_fixed.default.as_rgb(),
+        c.secondary_fixed_dim.default.as_rgb(),
+        c.shadow.default.as_rgb(),
+        c.source_color.default.as_rgb(),
+        c.surface.default.as_rgb(),
+        c.surface_bright.default.as_rgb(),
+        c.surface_container.default.as_rgb(),
+        c.surface_container_high.default.as_rgb(),
+        c.surface_container_highest.default.as_rgb(),
+        c.surface_container_low.default.as_rgb(),
+        c.surface_container_lowest.default.as_rgb(),
+        c.surface_dim.default.as_rgb(),
+        c.surface_tint.default.as_rgb(),
+        c.surface_variant.default.as_rgb(),
+        c.tertiary.default.as_rgb(),
+        c.tertiary_container.default.as_rgb(),
+        c.tertiary_fixed.default.as_rgb(),
+        c.tertiary_fixed_dim.default.as_rgb(),
+        b.base00.default.as_rgb(),
+        b.base01.default.as_rgb(),
+        b.base02.default.as_rgb(),
+        b.base03.default.as_rgb(),
+        b.base04.default.as_rgb(),
+        b.base05.default.as_rgb(),
+        b.base06.default.as_rgb(),
+        b.base07.default.as_rgb(),
+        b.base08.default.as_rgb(),
+        b.base09.default.as_rgb(),
+        b.base0a.default.as_rgb(),
+        b.base0b.default.as_rgb(),
+        b.base0c.default.as_rgb(),
+        b.base0d.default.as_rgb(),
+        b.base0e.default.as_rgb(),
+        b.base0f.default.as_rgb(),
+    ];
+
+    colors.into_iter().map(|(r, g, b)| [r, g, b]).collect()
+}
+
+/// Generate a theme's level-8 Hald CLUT by remapping the identity LUT onto its
+/// static Material palette. `None` for `Wallpaper` (dynamic) or a theme whose
+/// static palette is missing. Deterministic — the same theme always yields the
+/// same bytes, so a cached CLUT stays valid.
+pub fn generate_clut(theme: &Themes) -> Option<Vec<u8>> {
+    clut_name(theme)?;
+    let matugen = static_theme(theme, None)?;
+    let palette = extract_palette(&matugen);
+    let remapper = GaussianRemapper::new(
+        &palette,
+        GAUSSIAN_SHAPE,
+        GAUSSIAN_NEAREST,
+        LUM_FACTOR,
+        PRESERVE,
+    );
+    Some(remapper.par_generate_lut(HALD_LEVEL).into_raw())
+}
+
+/// CLUT cache directory: `$XDG_CACHE_HOME/mshell/cluts`, falling back to
+/// `$HOME/.cache/mshell/cluts`. `None` when neither is set.
+fn clut_cache_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("XDG_CACHE_HOME") {
+        let dir = PathBuf::from(dir);
+        // A relative XDG_CACHE_HOME is invalid per spec; ignore it.
+        if dir.is_absolute() {
+            return Some(dir.join("mshell").join("cluts"));
+        }
+    }
+    let home = std::env::var_os("HOME")?;
+    Some(
+        PathBuf::from(home)
+            .join(".cache")
+            .join("mshell")
+            .join("cluts"),
+    )
+}
+
+// Unique suffix source for cache temp files so concurrent writers never share
+// a temp path.
+static CACHE_TMP_SEQ: AtomicU64 = AtomicU64::new(0);
+
+fn write_clut_cache(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let dir = path.parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "cache path has no parent")
+    })?;
+    fs::create_dir_all(dir)?;
+    let seq = CACHE_TMP_SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp = dir.join(format!(".clut.{}.{seq}.tmp", std::process::id()));
+    // Write to a temp file and rename so a reader never sees a partial CLUT.
+    let mut file = fs::File::create(&tmp)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Load a theme's Hald CLUT, generating and caching it on first use.
+///
+/// Returns `None` for `Wallpaper` or when the CLUT cannot be produced —
+/// callers treat `None` as "skip the theme filter", never a hard error. The
+/// first use of a theme costs one generation (~20 ms); every later use is a
+/// cache read.
+pub fn load_clut(theme: &Themes) -> Option<Vec<u8>> {
+    let name = clut_name(theme)?;
+    let cached = clut_cache_dir().map(|d| d.join(format!("{name}.bin")));
+
+    if let Some(path) = &cached {
+        match fs::read(path) {
+            Ok(bytes) if bytes.len() == CLUT_BYTE_LEN => return Some(bytes),
+            Ok(bytes) => warn!(
+                "regenerating {name} CLUT: cache {} is {} bytes, expected {CLUT_BYTE_LEN}",
+                path.display(),
+                bytes.len()
+            ),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => warn!("reading CLUT cache {}: {e}", path.display()),
+        }
+    }
+
+    let bytes = generate_clut(theme)?;
+    if let Some(path) = &cached
+        && let Err(e) = write_clut_cache(path, &bytes)
+    {
+        warn!("caching CLUT {}: {e}", path.display());
+    }
+    Some(bytes)
+}
+
+/// Hald CLUT level used for all CLUTs.
 pub const HALD_LEVEL: u8 = 8;
 
 /// Image dimensions for a level-8 Hald CLUT (8^3 = 512).
 const HALD8_DIM: u32 = 512;
+
+/// Raw byte length of a level-8 Hald CLUT (512×512 RGB).
+pub const CLUT_BYTE_LEN: usize = (HALD8_DIM * HALD8_DIM * 3) as usize;
 
 /// Result of a successful palette remap operation.
 pub struct RemapResult {
@@ -141,10 +278,11 @@ pub struct RemapResult {
     pub height: u32,
 }
 
-/// Apply a precomputed theme filter to an image file.
+/// Apply a theme's Hald CLUT to an image file.
 ///
-/// Uses the embedded Hald CLUT for the given theme. Returns `None` if:
-/// - The theme has no embedded CLUT (Default/Wallpaper)
+/// The CLUT is generated on first use and cached (see [`load_clut`]).
+/// Returns `None` if:
+/// - The theme has no CLUT (Wallpaper), or it could not be generated
 /// - The image cannot be opened
 /// - The operation was cancelled
 pub fn apply_theme_filter(
@@ -155,13 +293,13 @@ pub fn apply_theme_filter(
     monochrome: f64,
     cancel: &AtomicBool,
 ) -> Option<RemapResult> {
-    let clut_bytes = embedded_clut(theme)?;
+    let clut_bytes = load_clut(theme)?;
 
     if cancel.load(Ordering::Relaxed) {
         return None;
     }
 
-    let hald_clut = load_embedded_clut(clut_bytes);
+    let hald_clut = ImageBuffer::<Rgb<u8>, _>::from_raw(HALD8_DIM, HALD8_DIM, clut_bytes)?;
 
     let mut img = decode_pixbuf_rgba(path)?;
     let (width, height) = img.dimensions();
@@ -228,11 +366,6 @@ pub fn decode_pixbuf_rgba(path: &Path) -> Option<RgbaImage> {
     }
 
     RgbaImage::from_raw(width, height, rgba_buf)
-}
-
-fn load_embedded_clut(bytes: &[u8]) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
-    ImageBuffer::from_raw(HALD8_DIM, HALD8_DIM, bytes.to_vec())
-        .expect("embedded CLUT data is invalid")
 }
 
 /// Average Rec. 709 luma of an image, normalized to `0.0..=1.0`
@@ -308,8 +441,8 @@ pub fn snapshot_and_recolor(
 
     // Build an RgbaImage from the downloaded pixels and apply the CLUT
     let mut img = RgbaImage::from_raw(width, height, pixels)?;
-    let clut_bytes = embedded_clut(color_theme)?;
-    let hald_clut = ImageBuffer::from_raw(512, 512, clut_bytes.to_vec())?;
+    let clut_bytes = load_clut(color_theme)?;
+    let hald_clut = ImageBuffer::<Rgb<u8>, _>::from_raw(HALD8_DIM, HALD8_DIM, clut_bytes)?;
     correct_image(&mut img, &hald_clut);
 
     rgba_to_texture(img.as_raw(), width, height)

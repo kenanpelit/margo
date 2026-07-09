@@ -8,10 +8,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-image.workspace = true
-lutgen.workspace = true
-mshell-config.workspace = true
-mshell-matugen.workspace = true
+mshell-image.workspace = true
 
 [lints]
 workspace = true

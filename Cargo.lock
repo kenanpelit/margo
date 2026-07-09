@@ -4784,10 +4784,7 @@ dependencies = [
 name = "mshell-clut-gen"
 version = "1.1.6"
 dependencies = [
- "image",
- "lutgen",
- "mshell-config",
- "mshell-matugen",
+ "mshell-image",
 ]
 
 [[package]]
@@ -4957,6 +4954,7 @@ dependencies = [
  "mshell-config",
  "mshell-matugen",
  "relm4",
+ "tracing",
 ]
 
 [[package]]

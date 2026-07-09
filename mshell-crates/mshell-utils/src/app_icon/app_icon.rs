@@ -1,6 +1,6 @@
 use crate::app_icon::icon_index::IconIndex;
 use mshell_config::schema::themes::Themes;
-use mshell_image::lut::{apply_theme_filter, embedded_clut, rgba_to_texture};
+use mshell_image::lut::{apply_theme_filter, clut_name, rgba_to_texture};
 use relm4::gtk;
 use relm4::gtk::gio::DesktopAppInfo;
 use relm4::gtk::prelude::{AppInfoExt, Cast, FileExt};
@@ -18,7 +18,7 @@ pub fn set_icon(
     monochrome_strength: f64,
     contrast_strength: f64,
 ) {
-    let should_recolor = apply_filter && embedded_clut(color_theme).is_some();
+    let should_recolor = apply_filter && clut_name(color_theme).is_some();
 
     let app = match app_info {
         Some(app) => app,
