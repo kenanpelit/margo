@@ -375,9 +375,16 @@ fn set_status(label: &gtk::Label, text: &str, error: bool) {
     }
 }
 
+/// A greeter label. Stacked in the card these centre on their own line — the
+/// greeting/clock/date/hostname header, the field captions, the Caps Lock
+/// warning, the status line. Stated explicitly (0.5 is also GTK's default) so it
+/// reads as the layout decision it is rather than an oversight. Two things stay
+/// left: the text *inside* the entries and the drop-down, which are those
+/// widgets' own inner nodes and never come through here. (The battery labels sit
+/// in a horizontal row at natural width, so xalign doesn't reach them either.)
 fn label(classes: &[&str]) -> gtk::Label {
     let l = gtk::Label::new(None);
-    l.set_xalign(0.0);
+    l.set_xalign(0.5);
     for c in classes {
         l.add_css_class(c);
     }
