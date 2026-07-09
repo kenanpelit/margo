@@ -74,6 +74,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // which is why this is at the very top of `run()`.
     relm4::RELM_THREADS.set(4).ok();
 
+    // Bound relm4's blocking pool. Left unset it takes tokio's default cap of
+    // 512, and every thread that pool spawns costs a stack plus a per-thread
+    // allocator cache — on a live session ~27 of them sit warm, which is most
+    // of mshell's thread count. Everything we hand to `spawn_blocking` is a
+    // short, independent, one-shot job (a `pw-dump`, a lyrics fetch, a plugin
+    // update pass), so queueing beyond this cap is harmless: none of them wait
+    // on another blocking task, which is the only way a cap can deadlock.
+    relm4::RELM_BLOCKING_THREADS.set(16).ok();
+
     // Filter out the harmless `GtkStack` "Child name '<name>' not found"
     // warnings. Several panel views (weather, wallpaper) bind
     // `set_visible_child_name` via `#[watch]` on a model field whose

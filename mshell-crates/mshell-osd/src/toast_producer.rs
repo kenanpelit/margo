@@ -42,7 +42,8 @@ use mshell_utils::notifications::spawn_dnd_watcher;
 use mshell_utils::power_profile::{
     get_power_profile_icon, get_power_profile_label, spawn_active_profile_watcher,
 };
-use reactive_graph::traits::GetUntracked;
+use reactive_graph::effect::Effect;
+use reactive_graph::traits::{Get, GetUntracked};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -87,6 +88,12 @@ pub struct ToastProducerModel {
 #[derive(Debug)]
 pub enum ToastProducerInput {
     LockKeysTick,
+    /// Re-baseline the Caps/Num state without toasting. Sent when the poller is
+    /// (re-)armed, so a key toggled while the toast was disabled doesn't fire a
+    /// stale toast the moment it's switched back on.
+    LockKeysReset,
+    /// Game Mode is a config flag, not a service — an effect delivers it.
+    GameModeChanged(bool),
 }
 
 #[derive(Debug)]
@@ -125,6 +132,47 @@ const LOCK_KEYS_TICK: Duration = Duration::from_millis(700);
 
 fn toasts_cfg() -> Toasts {
     config_manager().config().toasts().get_untracked()
+}
+
+fn lock_keys_wanted() -> bool {
+    let cfg = toasts_cfg();
+    cfg.enabled && cfg.lock_keys
+}
+
+thread_local! {
+    static LOCK_KEYS_TIMER_RUNNING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Install the Caps/Num sysfs poller, but only while the toast is switched on.
+///
+/// It used to be installed unconditionally and to `read_lock_state()` *before*
+/// consulting the config, so a user who had never enabled lock-key toasts still
+/// paid a sysfs LED read and a main-loop wakeup every 700 ms for the whole
+/// session. Main-loop wakeups are not free here — each one walks the full
+/// GSource list — so the timer is created on demand and removes itself when the
+/// toggle goes off. Idempotent; main-thread only.
+fn ensure_lock_keys_timer(sender: &ComponentSender<ToastProducerModel>) {
+    if LOCK_KEYS_TIMER_RUNNING.with(|r| r.get()) || !lock_keys_wanted() {
+        return;
+    }
+    LOCK_KEYS_TIMER_RUNNING.with(|r| r.set(true));
+    let _ = sender
+        .input_sender()
+        .send(ToastProducerInput::LockKeysReset);
+    let s = sender.clone();
+    glib::timeout_add_local(LOCK_KEYS_TICK, move || {
+        // `Break` removes the source; never also call `SourceId::remove()` on
+        // it, since removing an already-finished source aborts the process.
+        if !lock_keys_wanted()
+            || s.input_sender()
+                .send(ToastProducerInput::LockKeysTick)
+                .is_err()
+        {
+            LOCK_KEYS_TIMER_RUNNING.with(|r| r.set(false));
+            return glib::ControlFlow::Break;
+        }
+        glib::ControlFlow::Continue
+    });
 }
 
 #[relm4::component(pub)]
@@ -212,17 +260,27 @@ impl Component for ToastProducerModel {
             }
         });
 
-        // Lock keys — sysfs LED poll on the glib main loop.
+        // Lock keys — sysfs LED poll on the glib main loop, armed only while the
+        // toast is enabled. The tracked read of `toasts()` re-runs this effect
+        // when the switch flips, which is what brings the poller back.
         {
             let s = sender.clone();
-            glib::timeout_add_local(LOCK_KEYS_TICK, move || {
-                if s.input_sender()
-                    .send(ToastProducerInput::LockKeysTick)
-                    .is_err()
-                {
-                    return glib::ControlFlow::Break;
-                }
-                glib::ControlFlow::Continue
+            Effect::new(move |_| {
+                let _cfg = config_manager().config().toasts().get();
+                ensure_lock_keys_timer(&s);
+            });
+        }
+
+        // Game Mode has no service watcher — it is a config flag. It used to
+        // ride the 700 ms lock-keys tick; an effect is exact and costs nothing
+        // when nothing changes.
+        {
+            let s = sender.clone();
+            Effect::new(move |_| {
+                let active = config_manager().config().game_mode().active().get();
+                let _ = s
+                    .input_sender()
+                    .send(ToastProducerInput::GameModeChanged(active));
             });
         }
 
@@ -272,11 +330,12 @@ impl Component for ToastProducerModel {
                 lock_key_step(self.prev_num, num, "Num Lock", &cfg);
                 self.prev_caps = Some(caps);
                 self.prev_num = Some(num);
-                // Game Mode is config-driven (no service watcher), so poll it on
-                // the same slow tick — it toggles rarely and the cost is one bool
-                // read.
-                self.on_game_mode();
             }
+            ToastProducerInput::LockKeysReset => {
+                self.prev_caps = None;
+                self.prev_num = None;
+            }
+            ToastProducerInput::GameModeChanged(active) => self.on_game_mode(active),
         }
     }
 
@@ -767,12 +826,7 @@ impl ToastProducerModel {
         });
     }
 
-    fn on_game_mode(&mut self) {
-        let active = config_manager()
-            .config()
-            .game_mode()
-            .active()
-            .get_untracked();
+    fn on_game_mode(&mut self, active: bool) {
         match self.prev_game_mode {
             None => {
                 self.prev_game_mode = Some(active);

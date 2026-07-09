@@ -12,7 +12,8 @@ use mshell_session::session_lock::{lock_session, session_locked};
 use mshell_settings::{close_settings, open_settings, open_wizard};
 use mshell_sounds::{play_alarm_loop, play_audio_volume_change, stop_alarm};
 use mshell_utils::session::SessionAction;
-use reactive_graph::prelude::GetUntracked;
+use reactive_graph::effect::Effect;
+use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::glib;
 use relm4::{ComponentSender, gtk};
 use std::path::PathBuf;
@@ -1362,14 +1363,68 @@ fn run_daily_check(
 // config (reactive reads are main-thread-only), and fires matching alarms once
 // per clock minute. The ring tone + the Stop/Snooze notification run on
 // workers; Snooze re-fire times go on a thread-safe queue the tick drains.
+//
+// The timer only exists while there is something to wait for. It used to be
+// installed unconditionally at startup, so a session with zero alarms still
+// woke the GTK main loop once a second forever — and a main-loop wakeup is not
+// free here: it walks the whole GSource list. `ensure_running` installs it,
+// the tick removes itself once no enabled alarm and no pending snooze remain,
+// and both the config effect and the snooze path re-arm it.
 static ALARM_SNOOZES: std::sync::Mutex<Vec<std::time::SystemTime>> =
     std::sync::Mutex::new(Vec::new());
 
-fn spawn_alarm_scheduler() {
+thread_local! {
+    static ALARM_TIMER_RUNNING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Is there any reason for the per-second tick to exist?
+///
+/// Main-thread only: reads the reactive config.
+fn alarm_work_pending() -> bool {
+    let snoozed = ALARM_SNOOZES.lock().map(|q| !q.is_empty()).unwrap_or(false);
+    snoozed
+        || config_manager()
+            .config()
+            .alarm()
+            .alarms()
+            .get_untracked()
+            .iter()
+            .any(|a| a.enabled)
+}
+
+/// Install the per-second tick if work is pending and it isn't already up.
+///
+/// Main-thread only. Idempotent.
+fn ensure_alarm_timer() {
+    if ALARM_TIMER_RUNNING.with(|r| r.get()) || !alarm_work_pending() {
+        return;
+    }
+    ALARM_TIMER_RUNNING.with(|r| r.set(true));
     let last_minute = std::rc::Rc::new(std::cell::Cell::new(i64::MIN));
     glib::timeout_add_seconds_local(1, move || {
+        if !alarm_work_pending() {
+            ALARM_TIMER_RUNNING.with(|r| r.set(false));
+            // Returning `Break` removes the source. Never pair this with a
+            // `SourceId::remove()` elsewhere — removing an already-finished
+            // source aborts the process.
+            return glib::ControlFlow::Break;
+        }
         run_alarm_tick(&last_minute);
         glib::ControlFlow::Continue
+    });
+}
+
+/// Re-arm the tick from any thread (the Snooze action runs on a worker).
+fn wake_alarm_scheduler() {
+    glib::idle_add_once(ensure_alarm_timer);
+}
+
+/// Watch the alarm list so enabling an alarm brings the tick back.
+fn spawn_alarm_scheduler() {
+    Effect::new(|_| {
+        // Tracked read: re-runs whenever an alarm is added, enabled, or edited.
+        let _alarms = config_manager().config().alarm().alarms().get();
+        ensure_alarm_timer();
     });
 }
 
@@ -1472,6 +1527,10 @@ fn fire_alarm(label: String) {
             && let Ok(mut q) = ALARM_SNOOZES.lock()
         {
             q.push(std::time::SystemTime::now() + std::time::Duration::from_secs(snooze_secs));
+            drop(q);
+            // The tick may have removed itself (a one-shot alarm disables
+            // itself when it fires), and this runs on a worker. Re-arm it.
+            wake_alarm_scheduler();
         }
     });
 }
