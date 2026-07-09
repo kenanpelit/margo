@@ -62,8 +62,7 @@ pub struct State {
 }
 
 fn main() -> glib::ExitCode {
-    let raw_args: Vec<String> = std::env::args().collect();
-    let preview = raw_args.iter().any(|a| a == "--preview");
+    let preview = std::env::args().any(|a| a == "--preview");
 
     // Real greeter mode: the mlogind orchestrator exports MLOGIND_RESULT_PATH
     // (the one-shot credential hand-off) and MLOGIND_PAM_SERVICE. Without the
@@ -90,6 +89,22 @@ fn main() -> glib::ExitCode {
     let app = gtk::Application::builder()
         .application_id("com.margo.mgreet")
         .build();
+
+    // Register our one flag so `--help` documents it and GApplication accepts it
+    // instead of aborting with "Unknown option --preview". The value is still
+    // read from argv above (before the GTK main loop) so it's available when the
+    // windows are built.
+    app.set_option_context_summary(Some(
+        "margo's native login greeter — a login card on every connected monitor.",
+    ));
+    app.add_main_option(
+        "preview",
+        glib::Char(0),
+        glib::OptionFlags::NONE,
+        glib::OptionArg::None,
+        "Non-destructive dry-run under a live session (no PAM, no hand-off, power keys inert)",
+        None,
+    );
 
     app.connect_activate(move |app| {
         let Some(display) = gdk::Display::default() else {
@@ -125,11 +140,7 @@ fn main() -> glib::ExitCode {
         });
     });
 
-    // GApplication parses argv itself and rejects our custom `--preview` as an
-    // unknown option ("Unknown option --preview"). mgreet takes no GApplication
-    // options, so run it with our own flags stripped out.
-    let gtk_args: Vec<String> = raw_args.into_iter().filter(|a| a != "--preview").collect();
-    app.run_with_args(&gtk_args)
+    app.run()
 }
 
 /// Create/destroy per-monitor greeter windows to match the live output list,
