@@ -200,10 +200,10 @@ fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
     sessions.set_hexpand(true);
     sessions.update_property(&[gtk::accessible::Property::Label("Session")]);
     // Pre-select the last-used session (from the shared mlogind cache).
-    if let Some(want) = state.initial_session.as_deref()
-        && let Some(idx) = state.sessions.iter().position(|s| s.name == want)
+    if let Some(idx) =
+        crate::sessions::select_index(&state.sessions, state.initial_session.as_deref())
     {
-        sessions.set_selected(idx as u32);
+        sessions.set_selected(idx);
     }
     card.append(&sessions);
 
@@ -332,41 +332,48 @@ fn submit_login(
         .map(|s| s.name.clone())
         .unwrap_or_default();
 
-    if user.is_empty() {
-        set_status(status, "Enter a username", true);
-        return;
-    }
-
-    let Some(greeter) = state.greeter.as_ref() else {
-        // Preview / dry-run: no PAM, no hand-off, never quit.
-        set_status(status, &format!("(preview) {user} · {session}"), false);
-        eprintln!(
-            "[mgreet] (preview) would authenticate user={user:?} session={session:?} pass_len={}",
-            pass.len()
-        );
-        return;
-    };
-
-    if session.is_empty() {
-        set_status(status, "No login session available", true);
-        return;
-    }
-
-    set_status(status, &format!("Authenticating {user}…"), false);
-    match crate::auth::validate(&user, &pass, &greeter.pam_service) {
+    // `pam_service == None` selects the preview branch inside `decide_submit`.
+    // The whole decision (empty-checks, preview echo, auth) lives there so it is
+    // unit-tested with a fake authenticator; here we only apply its verdict to
+    // the widgets. Note there is no "Authenticating…" transient: the PAM call
+    // blocks the GTK main loop, so such a status is never painted before the
+    // result overwrites it.
+    let pam_service = state.greeter.as_ref().map(|g| g.pam_service.as_str());
+    match crate::auth::decide_submit(
+        &crate::auth::PamAuthenticator,
+        &user,
+        &pass,
+        &session,
+        pam_service,
+    ) {
+        crate::auth::Submit::Reject(msg) => set_status(status, msg, true),
+        crate::auth::Submit::Preview(msg) => {
+            set_status(status, &msg, false);
+            // Length only — never the password itself.
+            eprintln!(
+                "[mgreet] (preview) would authenticate user={user:?} session={session:?} pass_len={}",
+                pass.len()
+            );
+        }
         // Validated: hand the credentials to the orchestrator, then quit so the
-        // greeter compositor exits and it launches the session.
-        Ok(()) => match crate::handoff::write(&greeter.result_path, &user, &session, &pass) {
-            Ok(()) => {
-                // Remember this login for next time (shared with the TUI greeter).
-                if let Some(cache_path) = greeter.cache_path.as_deref() {
-                    crate::cache::write(cache_path, &session, &user);
+        // greeter compositor exits and it launches the session. `greeter` is
+        // always `Some` here (auth only runs in real mode); the guard just
+        // avoids an unwrap on the login path.
+        crate::auth::Submit::Success => {
+            if let Some(greeter) = state.greeter.as_ref() {
+                match crate::handoff::write(&greeter.result_path, &user, &session, &pass) {
+                    Ok(()) => {
+                        // Remember this login for next time (shared with the TUI greeter).
+                        if let Some(cache_path) = greeter.cache_path.as_deref() {
+                            crate::cache::write(cache_path, &session, &user);
+                        }
+                        app.quit();
+                    }
+                    Err(e) => set_status(status, &format!("Login hand-off failed: {e}"), true),
                 }
-                app.quit()
             }
-            Err(e) => set_status(status, &format!("Login hand-off failed: {e}"), true),
-        },
-        Err(msg) => {
+        }
+        crate::auth::Submit::Failure(msg) => {
             state.password.set_text("");
             set_status(status, &msg, true);
         }
