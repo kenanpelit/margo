@@ -56,12 +56,33 @@ use wayle_weather::{LocationQuery, TemperatureUnit, WeatherService, WeatherServi
 use zbus::zvariant::OwnedObjectPath;
 use zbus::{Connection, Error};
 
+/// Time one service's construction.
+///
+/// `init_services` is awaited from the GTK main thread *before* the first bar
+/// is painted, so the blank-screen window at login is exactly the slowest arm
+/// of the `try_join!` below — the arms run concurrently, so the total is the
+/// max, not the sum. Without per-arm timing there is no way to tell which
+/// D-Bus peer is responsible, and the obvious suspects (BlueZ registering a
+/// pairing agent, UPower's `EnumerateDevices`, the StatusNotifier host) are
+/// all equally plausible. Attribute first, restructure second.
+async fn timed<T>(name: &'static str, fut: impl std::future::Future<Output = T>) -> T {
+    let started = std::time::Instant::now();
+    let out = fut.await;
+    info!(
+        service = name,
+        ms = started.elapsed().as_millis() as u64,
+        "service ready"
+    );
+    out
+}
+
 pub async fn init_services(
     location_query: LocationQuery,
     temperature_unit: TemperatureUnit,
     weather_poll_minutes: u32,
 ) -> anyhow::Result<()> {
     info!("Initializing services...");
+    let init_started = std::time::Instant::now();
     let line_power_fut = async {
         if let Some(path) = find_line_power_path().await? {
             Ok::<_, anyhow::Error>(Some(
@@ -85,8 +106,12 @@ pub async fn init_services(
         power_profiles,
         systray,
     ) = tokio::try_join!(
-        async { Ok::<_, anyhow::Error>(AudioService::new().await?) },
-        async { Ok::<_, anyhow::Error>(BatteryService::new().await?) },
+        timed("audio", async {
+            Ok::<_, anyhow::Error>(AudioService::new().await?)
+        }),
+        timed("battery", async {
+            Ok::<_, anyhow::Error>(BatteryService::new().await?)
+        }),
         // Bluetooth is best-effort. `BluetoothService::new()` registers a BlueZ
         // pairing agent, which requires a running `org.bluez`. A host with no
         // adapter (e.g. a VM) has bluez installed but `bluetooth.service`
@@ -94,7 +119,7 @@ pub async fn init_services(
         // so activating org.bluez fails — without this guard that error aborts
         // the whole `try_join!` and the shell never starts. Degrade to "no
         // Bluetooth" instead; `bluetooth_service()` is then `None`.
-        async {
+        timed("bluetooth", async {
             Ok::<_, anyhow::Error>(match BluetoothService::new().await {
                 Ok(bt) => Some(bt),
                 Err(e) => {
@@ -102,7 +127,7 @@ pub async fn init_services(
                     None
                 }
             })
-        },
+        }),
         // Brightness is best-effort. `BrightnessService::new()` returns
         // `Ok(None)` when there's simply no backlight device, but a desktop
         // with no `/sys/class/backlight` at all — or a transient sysfs/D-Bus
@@ -110,7 +135,7 @@ pub async fn init_services(
         // whole `try_join!` and the shell never starts. Degrade to "no
         // brightness control"; `brightness_service()` is then `None` (its
         // callers already handle that).
-        async {
+        timed("brightness", async {
             Ok::<_, anyhow::Error>(match BrightnessService::new().await {
                 Ok(b) => b,
                 Err(e) => {
@@ -118,22 +143,24 @@ pub async fn init_services(
                     None
                 }
             })
-        },
-        async { MargoService::new().await },
-        line_power_fut,
-        async {
+        }),
+        timed("margo", async { MargoService::new().await }),
+        timed("line_power", line_power_fut),
+        timed("media", async {
             // `with_art_cache()` resolves MPRIS `mpris:artUrl`s (incl.
             // remote http(s) covers from Spotify / browsers) to local
             // files on `TrackMetadata::cover_art`, which the media
             // widgets render as album art.
             Ok::<_, anyhow::Error>(MediaService::builder().with_art_cache().build().await?)
-        },
-        async { Ok::<_, anyhow::Error>(NetworkService::new().await?) },
+        }),
+        timed("network", async {
+            Ok::<_, anyhow::Error>(NetworkService::new().await?)
+        }),
         // Notifications are best-effort. `NotificationService::new()` claims the
         // `org.freedesktop.Notifications` well-known name; if another daemon
         // (dunst / mako) already owns it, construction fails — that must not
         // abort login. Degrade to `None`; toasts just don't show.
-        async {
+        timed("notifications", async {
             Ok::<_, anyhow::Error>(match NotificationService::new().await {
                 Ok(n) => Some(n),
                 Err(e) => {
@@ -141,12 +168,12 @@ pub async fn init_services(
                     None
                 }
             })
-        },
+        }),
         // Power profiles are best-effort. `PowerProfilesService::new()` talks to
         // `power-profiles-daemon` over D-Bus; on a host without ppd installed it
         // fails, which must not block the shell. Degrade to `None`; the profile
         // pill / control-center tile hide.
-        async {
+        timed("power_profiles", async {
             Ok::<_, anyhow::Error>(match PowerProfilesService::new().await {
                 Ok(p) => Some(p),
                 Err(e) => {
@@ -154,12 +181,12 @@ pub async fn init_services(
                     None
                 }
             })
-        },
+        }),
         // System tray is best-effort. Building the StatusNotifier host can
         // fail (e.g. the well-known name is already owned by another tray).
         // The tray pill is non-essential, so degrade to "no tray" rather than
         // blocking login; `sys_tray_service()` is then `None`.
-        async {
+        timed("systray", async {
             Ok::<_, anyhow::Error>(match SystemTrayService::builder().build().await {
                 Ok(t) => Some(t),
                 Err(e) => {
@@ -167,8 +194,15 @@ pub async fn init_services(
                     None
                 }
             })
-        },
+        }),
     )?;
+    // The bar cannot paint until this line is reached — the caller awaits us on
+    // the GTK main thread. Compare this against the slowest `service ready`
+    // line above to see whether the barrier is one slow peer or all of them.
+    info!(
+        ms = init_started.elapsed().as_millis() as u64,
+        "all services ready"
+    );
     let sysinfo = SysinfoService::builder().build();
     let weather = WeatherServiceBuilder::new()
         .poll_interval(Duration::from_mins(weather_poll_minutes.max(1) as u64))
