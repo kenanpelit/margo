@@ -11,8 +11,8 @@ license.workspace = true
 serde.workspace = true
 toml.workspace = true
 dirs.workspace = true
-# Backend (async-secret-service) is pinned once in the workspace dep; don't
-# re-add sync-secret-service here or keyring refuses to build (sync + async).
+# Backend + store selection (zbus, via keyring 4's `v1` feature) is pinned
+# once in the workspace dep; don't add features here.
 keyring = { workspace = true }
 thiserror.workspace = true
 tracing.workspace = true

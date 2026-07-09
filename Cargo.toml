@@ -162,16 +162,20 @@ rayon = "1"
 # Filesystem / config / IPC plumbing
 dirs = "6"
 # Cross-platform keyring — Linux backend is the Secret Service (gnome-keyring
-# / kde-wallet). Used by mshell-plugins to store `type = "secret"` settings
-# (API keys, tokens) outside plugins.toml, and by mcal for OAuth refresh
-# tokens. The default `sync-secret-service` (dbus-secret-service) backend fails
-# to persist items against gnome-keyring here (set_password Ok but get NoEntry);
-# the zbus-based `async-secret-service` backend works — pin it explicitly.
-keyring = { version = "3", default-features = false, features = [
-    "async-secret-service",
-    "async-io",
-    "crypto-rust",
-] }
+# / kde-wallet). Used by mshell-plugins for `type = "secret"` settings, mcal
+# for OAuth refresh tokens, and mshell-ai for the API key.
+#
+# keyring 4 moved the backends into separate store crates. The `v1` feature
+# selects `zbus-secret-service-keyring-store` (zbus + secret-service 5, on the
+# workspace's own zbus 5) and installs it as the default store lazily on the
+# first `Entry::new`. Keep `default-features = false, features = ["v1"]`: the
+# `cli` feature additionally pulls `dbus-secret-service-keyring-store` (libdbus),
+# which silently fails to persist against gnome-keyring here (set_password Ok
+# but a later get returns NoEntry) — same trap as keyring 3's dbus backend.
+# Staying on the zbus store also keeps the tree off the duplicate zbus 4 stack
+# that keyring 3's async-secret-service was the last consumer of. `crypto-rust`
+# rides in via the store's default; zbus's own default runtime is async-io.
+keyring = { version = "4", default-features = false, features = ["v1"] }
 figment = { version = "0.10", features = ["yaml"] }
 fontconfig = "0.10"
 futures = "0.3"
