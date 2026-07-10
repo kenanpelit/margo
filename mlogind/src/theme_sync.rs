@@ -1,9 +1,10 @@
-//! The greeter's backdrop and palette: baked by the user, placed by root.
+//! The greeter's backdrop, palette and face: baked by the user, placed by root.
 //!
-//! `mgreet` renders a blurred copy of the desktop's wallpaper and the matugen
-//! colours that go with it. Neither can live where it is written: the greeter
-//! runs as `mlogind-greeter` (A2) and `$HOME` is `0710`, so it cannot read a
-//! thing out of the user's home. Root must carry them across.
+//! `mgreet` renders a blurred copy of the desktop's wallpaper, the matugen
+//! colours that go with it, and the user's `~/.face`. None of them can live
+//! where it is written: the greeter runs as `mlogind-greeter` (A2) and `$HOME`
+//! is `0710`, so it cannot read a thing out of the user's home. Root must carry
+//! them across.
 //!
 //! Root must not *open* them, though. `~/.cache/mshell/wallpaper.raw` is a path
 //! the user controls; a symlink pointing at `/etc/shadow` would be read as root
@@ -34,6 +35,18 @@
 //! Baking the blur here rather than at render time buys a privacy property for
 //! free: what reaches the greeter is a small, blurred derivative. The sharp
 //! original never leaves `$HOME`.
+//!
+//! The avatar is the one thing copied through byte for byte, because GTK will
+//! decode it and we will not link an image library to do it first. So it is
+//! bounded and sniffed instead: at most [`MAX_AVATAR_BYTES`], and it must open
+//! with a PNG or JPEG signature — by the child, which chose it, and again by the
+//! parent, which does not trust the child. That keeps `~/.face → ~/.ssh/id_ed25519`
+//! from publishing a private key under `/var/lib`.
+//!
+//! There is one avatar file, not one per user: it belongs to whoever logged in
+//! last, which is exactly the user the greeter's cache pre-fills. `mgreet` draws
+//! it only while the typed name still matches that user, and a monogram
+//! otherwise — so a second user never wears the first one's face.
 
 use std::fs::{self, File, OpenOptions, Permissions};
 use std::io::{self, Read, Write};
@@ -49,11 +62,15 @@ pub const STATE_DIR: &str = "/var/lib/mgreet";
 
 const BACKGROUND_NAME: &str = "background.raw";
 const THEME_CSS_NAME: &str = "theme.css";
+const AVATAR_NAME: &str = "avatar";
 
-/// Sources, relative to the user's home. All three are read by the child.
-const WALLPAPER_REL: &str = ".cache/mshell/wallpaper.raw";
-const THEME_CSS_REL: &str = ".cache/mshell/last_theme.css";
-const VARIABLES_REL: &str = ".config/margo/mlogind-variables.toml";
+/// Sources, relative to the user's home. The child reads them all, taking the
+/// first name in each list that both exists and looks like what it claims to be.
+const WALLPAPER_REL: &[&str] = &[".cache/mshell/wallpaper.raw"];
+const THEME_CSS_REL: &[&str] = &[".cache/mshell/last_theme.css"];
+const VARIABLES_REL: &[&str] = &[".config/margo/mlogind-variables.toml"];
+/// `~/.face` is the freedesktop convention; `~/.face.icon` is KDE's older spelling.
+const AVATAR_REL: &[&str] = &[".face", ".face.icon"];
 
 /// A blurred 960 px image upscaled to 4K is indistinguishable from a blurred 4K
 /// one, and costs 2.3 MB instead of 33 MB.
@@ -66,6 +83,8 @@ pub const BLUR_PASSES: usize = 3;
 /// 4K RGBA is 33 MB; twice that is generous, and it bounds the child.
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_TEXT_BYTES: u64 = 1024 * 1024;
+/// A face, not a photo album. GTK decodes this one in the greeter's address space.
+const MAX_AVATAR_BYTES: u64 = 8 * 1024 * 1024;
 
 /// The child's own watchdog. The work is ~10 ms; a wedged reader must never
 /// stall the next greeter.
@@ -236,17 +255,48 @@ fn bake(raw: &[u8]) -> Option<Vec<u8>> {
 
 // ── The privileged half ──────────────────────────────────────────────────────
 
+/// A PNG or JPEG signature. Both loaders GTK reaches for first, and the only two
+/// formats a face is ever stored in.
+fn is_image(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"\x89PNG\r\n\x1a\n") || bytes.starts_with(&[0xff, 0xd8, 0xff])
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
     /// A raw image. Baked by the child, re-validated by the parent.
     Background,
+    /// An encoded image, copied through verbatim and sniffed at both ends.
+    Avatar,
     /// Copied through verbatim.
     Text,
 }
 
+impl Kind {
+    /// The most this source may be. The child stops reading here; the parent
+    /// refuses to publish anything longer.
+    fn cap(self) -> u64 {
+        match self {
+            Kind::Background => MAX_INPUT_BYTES,
+            Kind::Avatar => MAX_AVATAR_BYTES,
+            Kind::Text => MAX_TEXT_BYTES,
+        }
+    }
+
+    /// Is this candidate the thing we came for? Applied to each source name in
+    /// turn, so `~/.face` being a text file falls through to `~/.face.icon`
+    /// rather than poisoning the slot.
+    fn accepts(self, bytes: &[u8]) -> bool {
+        match self {
+            Kind::Background => parse_header(bytes).is_some(),
+            Kind::Avatar => is_image(bytes),
+            Kind::Text => true,
+        }
+    }
+}
+
 /// One file in flight: opened by root, written by the child, renamed by root.
 struct Output {
-    source: &'static str,
+    sources: &'static [&'static str],
     tmp: PathBuf,
     dest: PathBuf,
     file: File,
@@ -254,7 +304,7 @@ struct Output {
 }
 
 impl Output {
-    fn open(dest: PathBuf, source: &'static str, kind: Kind) -> io::Result<Self> {
+    fn open(dest: PathBuf, sources: &'static [&'static str], kind: Kind) -> io::Result<Self> {
         let mut tmp = dest.clone().into_os_string();
         tmp.push(".tmp");
         let tmp = PathBuf::from(tmp);
@@ -270,7 +320,7 @@ impl Output {
         fs::set_permissions(&tmp, Permissions::from_mode(0o644))?;
 
         Ok(Self {
-            source,
+            sources,
             tmp,
             dest,
             file,
@@ -287,10 +337,12 @@ impl Output {
             return Ok(None);
         }
 
-        let sane = match self.kind {
-            Kind::Background => baked_is_sane(&self.tmp, len),
-            Kind::Text => len <= MAX_TEXT_BYTES,
-        };
+        let sane = len <= self.kind.cap()
+            && match self.kind {
+                Kind::Background => baked_is_sane(&self.tmp, len),
+                Kind::Avatar => starts_with_image_signature(&self.tmp),
+                Kind::Text => true,
+            };
         if !sane {
             let _ = fs::remove_file(&self.tmp);
             return Err(io::Error::other(format!(
@@ -327,6 +379,19 @@ fn baked_is_sane(path: &Path, len: u64) -> bool {
         return false;
     };
     validate(len, width, height).is_some()
+}
+
+/// The parent sniffs the published avatar itself. The child chose the file, and
+/// the child is the user.
+fn starts_with_image_signature(path: &Path) -> bool {
+    let Ok(mut file) = File::open(path) else {
+        return false;
+    };
+    let mut head = [0u8; 8];
+    if file.read_exact(&mut head).is_err() {
+        return false;
+    }
+    is_image(&head)
 }
 
 fn read_capped(path: &Path, cap: u64) -> Option<Vec<u8>> {
@@ -370,19 +435,21 @@ fn child(user: &UserInfo, outputs: &mut [Output]) -> ! {
 
     let home = Path::new(&user.home_dir);
     for output in outputs.iter_mut() {
-        let cap = match output.kind {
-            Kind::Background => MAX_INPUT_BYTES,
-            Kind::Text => MAX_TEXT_BYTES,
-        };
-        let Some(raw) = read_capped(&home.join(output.source), cap) else {
+        let kind = output.kind;
+        let Some(raw) = output
+            .sources
+            .iter()
+            .filter_map(|rel| read_capped(&home.join(rel), kind.cap()))
+            .find(|raw| kind.accepts(raw))
+        else {
             continue;
         };
-        let bytes = match output.kind {
+        let bytes = match kind {
             Kind::Background => match bake(&raw) {
                 Some(baked) => baked,
                 None => continue,
             },
-            Kind::Text => raw,
+            Kind::Avatar | Kind::Text => raw,
         };
         let _ = output.file.write_all(&bytes);
     }
@@ -410,6 +477,7 @@ pub fn sync(user: &UserInfo) -> io::Result<Vec<PathBuf>> {
     let mut outputs = vec![
         Output::open(state.join(BACKGROUND_NAME), WALLPAPER_REL, Kind::Background)?,
         Output::open(state.join(THEME_CSS_NAME), THEME_CSS_REL, Kind::Text)?,
+        Output::open(state.join(AVATAR_NAME), AVATAR_REL, Kind::Avatar)?,
         Output::open(variables, VARIABLES_REL, Kind::Text)?,
     ];
 
@@ -573,5 +641,33 @@ mod tests {
     fn baking_refuses_an_image_it_cannot_trust() {
         assert!(bake(&[0u8; 4]).is_none());
         assert!(bake(&raw(0, 0, 0)).is_none());
+    }
+
+    #[test]
+    fn an_avatar_must_open_with_a_png_or_jpeg_signature() {
+        assert!(is_image(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"));
+        assert!(is_image(&[0xff, 0xd8, 0xff, 0xe0]));
+    }
+
+    #[test]
+    fn an_avatar_that_is_not_an_image_is_refused() {
+        // `~/.face` is a path the user owns. Pointed at a private key, a shell
+        // history or a mail spool, it would otherwise be republished under
+        // /var/lib, world-readable, by root.
+        assert!(!is_image(b"-----BEGIN OPENSSH PRIVATE KEY-----"));
+        assert!(!is_image(b"GIF89a"));
+        assert!(!is_image(b""));
+        assert!(!is_image(b"\x89PNG"), "a truncated signature is not a PNG");
+    }
+
+    #[test]
+    fn a_source_that_fails_its_own_sniff_falls_through_to_the_next_name() {
+        // `.face` before `.face.icon`: the first name that *is* an image wins,
+        // not merely the first that exists.
+        assert!(!Kind::Avatar.accepts(b"not an image"));
+        assert!(Kind::Avatar.accepts(&[0xff, 0xd8, 0xff]));
+        assert!(Kind::Background.accepts(&raw(2, 2, 0)));
+        assert!(!Kind::Background.accepts(b"short"));
+        assert!(Kind::Text.accepts(b"anything at all"));
     }
 }

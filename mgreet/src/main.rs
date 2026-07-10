@@ -16,9 +16,11 @@
 //! real via `[display] host = "gui"`.
 
 mod auth;
+mod avatar;
 mod background;
 mod battery;
 mod cache;
+mod keyboard;
 mod power;
 mod sessions;
 mod style;
@@ -73,6 +75,13 @@ pub struct State {
     /// The blurred wallpaper the theme sync left for us, if any. Uploaded once
     /// and shared by every per-monitor window.
     pub background: Option<gdk::Texture>,
+    /// The face of the user the avatar belongs to, if there is one.
+    pub avatar: Option<gdk::Texture>,
+    /// Whose face that is. There is one avatar file — the last user to log in —
+    /// so it is drawn only while the typed name still matches this.
+    pub avatar_owner: Option<String>,
+    /// The keymap the greeter's compositor was started with, e.g. `tr(f)`.
+    pub layout: Option<String>,
 }
 
 impl State {
@@ -155,10 +164,25 @@ fn main() -> glib::ExitCode {
         let raw = sock.as_ref().map(|fd| fd.as_raw_fd());
         style::install(&display, matugen_css(raw.is_some()).as_deref());
 
+        // Whose avatar `/var/lib/mgreet/avatar` is. In the real greeter that is
+        // the last user to log in, which is exactly the name the cache
+        // pre-fills. Under `--preview` we are reading our own `~/.face`, so it
+        // is us — and the field is seeded with our name, or the preview would
+        // show a monogram of the empty string and prove nothing.
+        let avatar_owner = if raw.is_some() {
+            cached_user.clone()
+        } else {
+            std::env::var("USER").ok().filter(|u| !u.is_empty())
+        };
+        let username = gtk::EntryBuffer::new(cached_user.as_deref().or(avatar_owner.as_deref()));
+
         let state = Rc::new(State {
             preview,
             background: background::load(),
-            username: gtk::EntryBuffer::new(cached_user.as_deref()),
+            avatar: avatar::load(raw.is_some()),
+            avatar_owner,
+            layout: keyboard::layout(),
+            username,
             password: gtk::EntryBuffer::new(None::<&str>),
             sessions: sessions::list(),
             // SAFETY: `raw` came from the `OwnedFd` moved in alongside it, and

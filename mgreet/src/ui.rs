@@ -18,6 +18,10 @@ use crate::State;
 /// `style.scss`, or the class is pulled while the animation is still running.
 const SHAKE_MS: u64 = 420;
 
+/// The avatar circle, in logical pixels. Also its corner radius — `.mgreet-avatar`
+/// is a pill, and a square pill is a circle.
+const AVATAR_PX: i32 = 84;
+
 /// Every control on one monitor's card.
 ///
 /// A greeter draws the same card on every output, but a failed login has to
@@ -211,6 +215,9 @@ fn build_card(state: &Rc<State>, connector: &str) -> CardWidgets {
 
     card.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
+    // ── Avatar ──
+    card.append(&build_avatar(state));
+
     // ── Username ──
     // No visible caption on any of the three rows: each control already names
     // itself (the entries via their placeholder, the drop-down via the selected
@@ -232,15 +239,35 @@ fn build_card(state: &Rc<State>, connector: &str) -> CardWidgets {
     password.set_hexpand(true);
     password.update_property(&[gtk::accessible::Property::Label("Password")]);
 
-    // ── Caps Lock warning ── (critical for password entry). Updated from the
-    // modifier state on each keystroke in the password field. Grouped tightly
-    // with the field so it reads as belonging to the one it warns about.
+    // ── The row under the password ──
+    //
+    // Two things that only matter to the field above them, so they live with it:
+    // the Caps Lock warning (left, appears on demand) and the keyboard layout
+    // (right, always). The layout badge keeps the row a fixed height, so Caps
+    // Lock coming on no longer nudges the card.
+    //
+    // A login screen that will not take your password is a bad place to find out
+    // the machine booted `us` while your keyboard is Turkish-F.
     let password_group = gtk::Box::new(gtk::Orientation::Vertical, 6);
     password_group.append(&password);
+
+    let meta = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let caps = label(&["mgreet-caps"]);
     caps.set_text("\u{2191} Caps Lock is on");
     caps.set_visible(false);
-    password_group.append(&caps);
+    caps.set_hexpand(true);
+    caps.set_xalign(0.0);
+    meta.append(&caps);
+    if let Some(layout) = state.layout.as_deref() {
+        let badge = gtk::Label::new(Some(&layout.to_uppercase()));
+        badge.add_css_class("mgreet-kbd");
+        badge.set_halign(gtk::Align::End);
+        badge.update_property(&[gtk::accessible::Property::Label(&format!(
+            "Keyboard layout {layout}"
+        ))]);
+        meta.append(&badge);
+    }
+    password_group.append(&meta);
     card.append(&password_group);
     {
         let caps_ctrl = gtk::EventControllerKey::new();
@@ -275,7 +302,13 @@ fn build_card(state: &Rc<State>, connector: &str) -> CardWidgets {
     {
         sessions.set_selected(idx);
     }
-    card.append(&sessions);
+    // A drop-down with one entry is a label that asks to be clicked. It stays
+    // built either way — `submit_login` reads `selected()`, which is 0 — but the
+    // card only shows it when there is a choice to make, or when there is
+    // nothing to choose at all and the user needs to know why.
+    if state.sessions.len() != 1 {
+        card.append(&sessions);
+    }
 
     // ── Status line ──
     // One conversation, many monitors: the runner's prompts and errors have to
@@ -344,6 +377,71 @@ fn build_card(state: &Rc<State>, connector: &str) -> CardWidgets {
         login_label,
         spinner,
     }
+}
+
+/// The circle above the username field: the user's face, or their initial.
+///
+/// The picture is only shown while the typed name is the one the avatar belongs
+/// to — there is a single `/var/lib/mgreet/avatar`, left by the last user to log
+/// in. Type someone else's name and it becomes their monogram; clear the field
+/// and the circle disappears rather than sitting there empty.
+///
+/// GTK's CSS `overflow` is ignored on a `GtkBox`, so the clip is set in code and
+/// only the corner radius comes from the stylesheet.
+fn build_avatar(state: &Rc<State>) -> gtk::Widget {
+    let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    frame.add_css_class("mgreet-avatar");
+    frame.set_overflow(gtk::Overflow::Hidden);
+    frame.set_size_request(AVATAR_PX, AVATAR_PX);
+    frame.set_halign(gtk::Align::Center);
+
+    let stack = gtk::Stack::new();
+    stack.set_hexpand(true);
+    stack.set_vexpand(true);
+
+    let monogram = gtk::Label::new(None);
+    monogram.add_css_class("mgreet-monogram");
+    stack.add_named(&monogram, Some("monogram"));
+
+    if let Some(texture) = state.avatar.as_ref() {
+        let picture = gtk::Picture::for_paintable(texture);
+        picture.set_content_fit(gtk::ContentFit::Cover);
+        picture.set_can_shrink(true);
+        picture.set_can_target(false);
+        stack.add_named(&picture, Some("picture"));
+    }
+    frame.append(&stack);
+
+    // Captured by value, not through `state`: the handler outlives this call and
+    // hangs off the buffer that `State` owns, so borrowing `State` back into it
+    // would be a cycle the greeter never breaks.
+    let owner = state.avatar_owner.clone();
+    let has_picture = state.avatar.is_some();
+    let refresh: Rc<dyn Fn(&str)> = {
+        let (frame, stack, monogram) = (frame.clone(), stack.clone(), monogram.clone());
+        Rc::new(move |name: &str| {
+            if has_picture && owner.as_deref() == Some(name) {
+                stack.set_visible_child_name("picture");
+                frame.set_visible(true);
+            } else if let Some(initial) = crate::avatar::monogram(name) {
+                monogram.set_text(&initial);
+                stack.set_visible_child_name("monogram");
+                frame.set_visible(true);
+            } else {
+                frame.set_visible(false);
+            }
+        })
+    };
+
+    refresh(&state.username.text());
+    {
+        let refresh = refresh.clone();
+        state
+            .username
+            .connect_text_notify(move |buffer| refresh(&buffer.text()));
+    }
+
+    frame.upcast()
 }
 
 /// Lock the card while PAM is thinking, unlock it when PAM asks a question.
