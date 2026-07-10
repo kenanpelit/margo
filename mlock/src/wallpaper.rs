@@ -15,6 +15,21 @@
 
 use std::path::{Path, PathBuf};
 
+/// What goes behind the auth column.
+///
+/// The distinction is not cosmetic. A photograph needs a dim and a vignette to
+/// keep the clock and the password field legible over whatever happens to be in
+/// it. A flat colour has nothing to separate — dimming it only darkens the
+/// colour the user picked, which is why `#1e1e2e` used to reach the screen as
+/// roughly `#0d0d15`. So the renderer asks which one it is rather than treating
+/// a solid colour as a very small photograph.
+pub enum Backdrop {
+    /// A flat colour, painted exactly as chosen.
+    Solid((f64, f64, f64)),
+    /// A blurred image, dimmed and vignetted.
+    Image(image::RgbaImage),
+}
+
 const BLUR_SIGMA: f32 = 18.0;
 const RESIZE_LONG_EDGE: u32 = 1920;
 
@@ -63,29 +78,21 @@ pub fn load_avatar(user: &str) -> Option<image::RgbaImage> {
 /// a solid colour, a specific image, or (default) the desktop wallpaper.
 /// `None` only when a wallpaper/image source is wanted but unavailable —
 /// render.rs then paints the palette's solid backdrop.
-pub fn load_background() -> Option<image::RgbaImage> {
+pub fn load_background() -> Option<Backdrop> {
     use crate::background::BgMode;
     let bg = crate::background::read();
     match bg.mode {
-        BgMode::Color => Some(solid_image(bg.color)),
+        BgMode::Color => Some(Backdrop::Solid(bg.color)),
         // Custom image, falling back to the desktop wallpaper if the
         // configured path is missing/unreadable.
         BgMode::Image => bg
             .image
             .as_deref()
             .and_then(load_blurred_path)
-            .or_else(load_blurred),
-        BgMode::Wallpaper => load_blurred(),
+            .or_else(load_blurred)
+            .map(Backdrop::Image),
+        BgMode::Wallpaper => load_blurred().map(Backdrop::Image),
     }
-}
-
-/// A small solid-colour image. Painted cover-scaled like a wallpaper, so
-/// it fills any output and flows through the same dim + vignette — no
-/// special case in the renderer.
-fn solid_image(color: (f64, f64, f64)) -> image::RgbaImage {
-    let to_u8 = |c: f64| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
-    let px = image::Rgba([to_u8(color.0), to_u8(color.1), to_u8(color.2), 255]);
-    image::RgbaImage::from_pixel(16, 16, px)
 }
 
 pub fn load_blurred() -> Option<image::RgbaImage> {

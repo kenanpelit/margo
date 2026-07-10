@@ -34,11 +34,11 @@ pub(crate) fn fail_message(fail_count: u32) -> String {
 
 pub struct MlockState {
     pub conn: Connection,
-    /// Decoded + blurred wallpaper for the active output. Loaded once
-    /// at startup and shared across all per-output surfaces (cairo
-    /// scales it to fit each one). `None` if no wallpaper is set or
-    /// the path didn't decode.
-    pub wallpaper: Option<image::RgbaImage>,
+    /// What goes behind the auth column: the user's flat colour, or a decoded +
+    /// blurred image. Resolved once at startup and shared across all per-output
+    /// surfaces (cairo scales it to fit each one). `None` when an image was
+    /// wanted but no candidate decoded.
+    pub backdrop: Option<crate::wallpaper::Backdrop>,
     /// Pre-loaded user avatar (192×192 RGBA). `None` if neither
     /// `~/.face` nor `AccountsService` provided one.
     pub avatar: Option<image::RgbaImage>,
@@ -97,11 +97,11 @@ impl MlockState {
         // Resolve the configured background once (wallpaper / solid
         // colour / custom image — ~/.config/margo/mlock.conf). `None`
         // means render.rs draws the solid palette fallback instead.
-        let wallpaper = crate::wallpaper::load_background();
-        if wallpaper.is_some() {
-            info!("wallpaper backdrop loaded");
-        } else {
-            warn!("no wallpaper backdrop — using solid fallback");
+        let backdrop = crate::wallpaper::load_background();
+        match &backdrop {
+            Some(crate::wallpaper::Backdrop::Image(_)) => info!("backdrop: blurred image"),
+            Some(crate::wallpaper::Backdrop::Solid(_)) => info!("backdrop: solid colour"),
+            None => warn!("no backdrop image resolved — using the palette surface"),
         }
         let avatar = crate::wallpaper::load_avatar(&user);
         if avatar.is_some() {
@@ -113,7 +113,7 @@ impl MlockState {
 
         let mut state = Self {
             conn: conn.clone(),
-            wallpaper,
+            backdrop,
             avatar,
             accent,
             toggles,
@@ -348,7 +348,7 @@ impl MlockState {
                     qh,
                     &self.seat_state,
                     &self.user,
-                    self.wallpaper.as_ref(),
+                    self.backdrop.as_ref(),
                     self.avatar.as_ref(),
                     self.accent,
                     &self.toggles,
@@ -568,27 +568,39 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for M
                 surface.height = height;
                 surface.needs_redraw = true;
             }
-            if let Some(shm) = state.shm.clone() {
-                let user = state.user.clone();
-                let wallpaper = state.wallpaper.clone();
-                let avatar = state.avatar.clone();
-                let toggles = state.toggles;
-                let info = state.info.clone();
-                if let Some(surface) = state.surfaces.get_mut(*idx) {
-                    match surface.render(
-                        &shm,
-                        qh,
-                        &state.seat_state,
-                        &user,
-                        wallpaper.as_ref(),
-                        avatar.as_ref(),
-                        state.accent,
-                        &toggles,
-                        &info,
-                    ) {
-                        Ok(()) => info!(idx, "initial render dispatched"),
-                        Err(e) => warn!(idx, "initial render failed: {e:#}"),
-                    }
+            // Disjoint field borrows, not clones: `surfaces` is taken mutably
+            // while the backdrop, the avatar and the seat are read. The clones
+            // this replaces copied the whole decoded wallpaper — nine megabytes
+            // — once per output, to satisfy a borrow the compiler was willing to
+            // split all along.
+            let MlockState {
+                shm,
+                surfaces,
+                seat_state,
+                user,
+                backdrop,
+                avatar,
+                accent,
+                toggles,
+                info,
+                ..
+            } = state;
+            if let Some(shm) = shm.as_ref()
+                && let Some(surface) = surfaces.get_mut(*idx)
+            {
+                match surface.render(
+                    shm,
+                    qh,
+                    seat_state,
+                    user,
+                    backdrop.as_ref(),
+                    avatar.as_ref(),
+                    *accent,
+                    toggles,
+                    info,
+                ) {
+                    Ok(()) => info!(idx, "initial render dispatched"),
+                    Err(e) => warn!(idx, "initial render failed: {e:#}"),
                 }
             }
         }

@@ -22,6 +22,7 @@ use crate::icons;
 use crate::seat::SeatState;
 
 const DIM_ALPHA: f64 = 0.55;
+const VIGNETTE_ALPHA: f64 = 0.35;
 
 // Palette over the dimmed wallpaper. Read once from the shell's matugen
 // output so the locker is tonally coherent with the rest of the desktop
@@ -30,6 +31,7 @@ const DIM_ALPHA: f64 = 0.55;
 #[derive(Clone, Copy)]
 pub struct Palette {
     pub bg: (f64, f64, f64),     // surface — solid fallback behind wallpaper
+    pub dim: (f64, f64, f64),    // surface-container-lowest — the wash + vignette
     pub text: (f64, f64, f64),   // on-surface — dominant clock + headings
     pub muted: (f64, f64, f64),  // on-surface-variant — secondary text recedes
     pub accent: (f64, f64, f64), // primary — the single accent (input focus)
@@ -39,6 +41,7 @@ pub struct Palette {
 impl Palette {
     const FALLBACK: Self = Self {
         bg: (0.05, 0.05, 0.10),
+        dim: (0.03, 0.03, 0.06),
         text: (0.96, 0.97, 0.98),
         muted: (0.78, 0.80, 0.86),
         accent: (0.96, 0.97, 0.98),
@@ -52,12 +55,58 @@ fn palette() -> &'static Palette {
     PALETTE.get_or_init(|| read_palette().unwrap_or(Palette::FALLBACK))
 }
 
+/// The desktop's own UI font family, so the locker is set in the same face as
+/// the shell rather than in one that merely happens to match today.
+///
+/// GTK's `gtk-font-name` is the source of truth for every other surface on this
+/// desktop (`mshell`'s stylesheet declares `--font-family-primary: inherit`).
+/// `$GTK_FONT_NAME` wins if set; otherwise the GTK 4 then GTK 3 `settings.ini`.
+fn font_family() -> &'static str {
+    static FAMILY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    FAMILY.get_or_init(|| read_font_family().unwrap_or_else(|| FONT_FALLBACK.to_string()))
+}
+
+fn read_font_family() -> Option<String> {
+    let described = std::env::var("GTK_FONT_NAME")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            let base = config_home()?;
+            ["gtk-4.0", "gtk-3.0"].iter().find_map(|dir| {
+                let ini = std::fs::read_to_string(base.join(dir).join("settings.ini")).ok()?;
+                gtk_font_name(&ini).map(str::to_string)
+            })
+        })?;
+    // "Maple Mono NF 12", "Cantarell Bold 11" — pango knows how to take the
+    // family out of a font description; the sizes below are ours, not GTK's.
+    let family = pango::FontDescription::from_string(&described).family()?;
+    Some(family.to_string())
+}
+
+/// The `gtk-font-name = <description>` value out of a GTK `settings.ini`.
+fn gtk_font_name(ini: &str) -> Option<&str> {
+    ini.lines()
+        .map(str::trim)
+        .filter(|line| !line.starts_with('#'))
+        .find_map(|line| line.strip_prefix("gtk-font-name"))
+        .and_then(|rest| rest.trim_start().strip_prefix('='))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn config_home() -> Option<std::path::PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
+}
+
 // Avatar.
 const AVATAR_SIZE: f64 = 84.0;
 const AVATAR_RING_W: f64 = 2.0;
 
-// Typography.
-const FONT_FAMILY: &str = "Maple Mono NF, Noto Sans, sans";
+// Typography. Only used when GTK names no font of its own.
+const FONT_FALLBACK: &str = "Noto Sans, sans";
 const FONT_CLOCK_PT: i32 = 88;
 const FONT_DATE_PT: i32 = 20;
 const FONT_GREETING_PT: i32 = 18;
@@ -99,15 +148,77 @@ pub fn matugen_accent() -> (f64, f64, f64) {
     palette().accent
 }
 
-/// Parse the whole shell palette from `$XDG_CACHE_HOME/margo/
-/// mshell-colors.toml` (matugen output) so the locker tracks the wallpaper
-/// theme. Hand-parsed to keep a TOML dependency out of the locker; any
-/// missing key falls back to the neutral default for that role.
+/// The shell palette, preferring the Material 3 token sheet matugen writes on
+/// every theme change (`~/.cache/mshell/last_theme.css` — the same file mgreet
+/// reads) and falling back to the derived five-colour TOML that external panels
+/// use. Any missing key falls back to the neutral default for that role.
+///
+/// The CSS carries tokens the TOML never had: `--surface-container-lowest` is a
+/// real darkest surface rather than a guess, and `--on-surface-variant` is the
+/// palette's own secondary text tier rather than `on-surface` mixed a third of
+/// the way toward the background.
 fn read_palette() -> Option<Palette> {
-    let dir = std::env::var_os("XDG_CACHE_HOME")
+    css_palette().or_else(toml_palette)
+}
+
+fn cache_home() -> Option<std::path::PathBuf> {
+    std::env::var_os("XDG_CACHE_HOME")
         .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))?;
-    let toml = std::fs::read_to_string(dir.join("margo").join("mshell-colors.toml")).ok()?;
+        .filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))
+}
+
+fn css_palette() -> Option<Palette> {
+    let css = std::fs::read_to_string(cache_home()?.join("mshell").join("last_theme.css")).ok()?;
+    Some(palette_from_css(&css))
+}
+
+/// Split from the filesystem read so the token names are testable.
+fn palette_from_css(css: &str) -> Palette {
+    let fb = Palette::FALLBACK;
+    let token = |name: &str| css_token(css, name);
+    Palette {
+        bg: token("surface").unwrap_or(fb.bg),
+        dim: token("surface-container-lowest")
+            .or_else(|| token("surface"))
+            .unwrap_or(fb.dim),
+        text: token("on-surface").unwrap_or(fb.text),
+        muted: token("on-surface-variant").unwrap_or(fb.muted),
+        accent: token("primary").unwrap_or(fb.accent),
+        danger: token("error").unwrap_or(fb.danger),
+    }
+}
+
+/// `--<name>: #rrggbb;` anywhere in the sheet.
+///
+/// Not anchored to the start of a line — a stylesheet may put its whole `:root`
+/// block on one — but anchored on both ends of the name. The trailing colon
+/// stops `--primary` from reading `--primary-container`, and the character
+/// before the `--` must not be part of an identifier. The value is cut at its
+/// `;`, so a token whose value is not a hex colour cannot borrow the `#` of the
+/// declaration below it.
+fn css_token(css: &str, name: &str) -> Option<(f64, f64, f64)> {
+    let needle = format!("--{name}:");
+    let start = css.match_indices(&needle).find_map(|(at, _)| {
+        let preceding = css[..at].chars().next_back();
+        match preceding {
+            None => Some(at),
+            Some(c) if !c.is_alphanumeric() && c != '-' => Some(at),
+            Some(_) => None,
+        }
+    })? + needle.len();
+
+    let value = &css[start..];
+    let value = &value[..value.find(';').unwrap_or(value.len())];
+    let hex = value.trim().strip_prefix('#')?;
+    parse_hex6(&hex.chars().take(6).collect::<String>())
+}
+
+/// The legacy five-colour file external panels (e.g. `mvpn menu`) read.
+/// Hand-parsed to keep a TOML dependency out of the locker.
+fn toml_palette() -> Option<Palette> {
+    let toml =
+        std::fs::read_to_string(cache_home()?.join("margo").join("mshell-colors.toml")).ok()?;
     let fb = Palette::FALLBACK;
     let bg = field_base(&toml, "background_color").unwrap_or(fb.bg);
     let text = field_bare(&toml, "text_color").unwrap_or(fb.text);
@@ -116,8 +227,10 @@ fn read_palette() -> Option<Palette> {
     // Secondary text tier: on-surface pulled ~⅓ toward the surface so
     // metadata recedes without a second hue (DESIGN.md §1 fonts).
     let muted = mix(text, bg, 0.34);
+    // No darkest-surface token here; the surface itself is the closest thing.
     Some(Palette {
         bg,
+        dim: bg,
         text,
         muted,
         accent,
@@ -165,7 +278,7 @@ pub fn draw_lock_frame(
     stride: i32,
     seat: &SeatState,
     user: &str,
-    wallpaper: Option<&image::RgbaImage>,
+    backdrop: Option<&crate::wallpaper::Backdrop>,
     avatar: Option<&image::RgbaImage>,
     accent: (f64, f64, f64),
     toggles: &crate::config::LockToggles,
@@ -183,21 +296,36 @@ pub fn draw_lock_frame(
     let cr = cairo::Context::new(&surface)?;
     let pal = palette();
 
-    // 1. Wallpaper or solid fallback.
-    if let Some(wp) = wallpaper {
-        paint_wallpaper_cover(&cr, wp, width, height)?;
-    } else {
-        cr.set_source_rgb(pal.bg.0, pal.bg.1, pal.bg.2);
-        cr.paint().ok();
+    // 1–3. The backdrop, and — over a photograph only — the wash and vignette
+    //      that keep the auth column legible against it.
+    //
+    //      A flat colour gets neither. There is nothing behind a solid fill to
+    //      separate the column from, so the dim was only darkening the colour
+    //      the user chose: `#1e1e2e` reached the screen as roughly `#0d0d15`,
+    //      darker still at the edges. The colour picked in Settings → Lock
+    //      Screen is now the colour on the glass.
+    //
+    //      The wash is the palette's darkest surface rather than black, so a
+    //      warm theme no longer gets a cold grey screen (DESIGN.md §1, "never
+    //      hardcode colours").
+    match backdrop {
+        Some(crate::wallpaper::Backdrop::Image(image)) => {
+            paint_wallpaper_cover(&cr, image, width, height)?;
+            cr.set_source_rgba(pal.dim.0, pal.dim.1, pal.dim.2, DIM_ALPHA);
+            cr.paint().ok();
+            draw_vignette(&cr, width, height, pal.dim);
+        }
+        Some(crate::wallpaper::Backdrop::Solid(colour)) => {
+            cr.set_source_rgb(colour.0, colour.1, colour.2);
+            cr.paint().ok();
+        }
+        // Wallpaper mode with nothing to show. The palette's own surface, which
+        // is already a considered backdrop colour.
+        None => {
+            cr.set_source_rgb(pal.bg.0, pal.bg.1, pal.bg.2);
+            cr.paint().ok();
+        }
     }
-
-    // 2. Uniform dim.
-    cr.set_source_rgba(0.0, 0.0, 0.0, DIM_ALPHA);
-    cr.paint().ok();
-
-    // 3. Vignette — radial fade darkens the edges, draws the eye to
-    //    the centre.
-    draw_vignette(&cr, width, height);
 
     // 4. Build the (config-gated) text layouts up-front so we can measure
     //    heights BEFORE laying out — the centred stack stays balanced no
@@ -207,15 +335,20 @@ pub fn draw_lock_frame(
 
     let greeting_layout = toggles.greeting.then(|| {
         let s = format!("{}, {}", greeting_for(now.hour()), display_name(user));
-        layout(&cr, &s, FONT_GREETING_PT, false)
+        layout(&cr, &s, FONT_GREETING_PT, pango::Weight::Normal)
     });
-    let clock_layout = layout(&cr, &now.format("%H:%M").to_string(), FONT_CLOCK_PT, true);
+    let clock_layout = layout(
+        &cr,
+        &now.format("%H:%M").to_string(),
+        FONT_CLOCK_PT,
+        pango::Weight::Light,
+    );
     let date_layout = toggles.date.then(|| {
         layout(
             &cr,
             &now.format("%A, %-d %B %Y").to_string(),
             FONT_DATE_PT,
-            false,
+            pango::Weight::Normal,
         )
     });
 
@@ -335,7 +468,7 @@ pub fn draw_lock_frame(
     // 11. Caps Lock chip — drawn caps glyph + label.
     if caps_visible {
         y += GAP_INPUT_CAPS;
-        let chip = layout(&cr, "CAPS LOCK", FONT_CAPS_PT, true);
+        let chip = layout(&cr, "CAPS LOCK", FONT_CAPS_PT, pango::Weight::Medium);
         let (cw, ch) = chip.pixel_size();
         let icon_w = ch as f64 * 1.05;
         let icon_gap = 8.0;
@@ -382,7 +515,7 @@ pub fn draw_lock_frame(
             "Type your password".to_string()
         }
     });
-    let layout_status = layout(&cr, &status_text, FONT_STATUS_PT, false);
+    let layout_status = layout(&cr, &status_text, FONT_STATUS_PT, pango::Weight::Normal);
     let (sw, sh) = layout_status.pixel_size();
     if is_lock_hint {
         let icon_w = sh as f64 * 0.95;
@@ -414,7 +547,7 @@ pub fn draw_lock_frame(
     // 13. Power-confirm banner OR F-key hint row.
     if let Some((action, _)) = seat.power_confirm {
         let msg = format!("Press the F-key again to confirm: {}", action.label());
-        let layout_confirm = layout(&cr, &msg, FONT_STATUS_PT, true);
+        let layout_confirm = layout(&cr, &msg, FONT_STATUS_PT, pango::Weight::Medium);
         let (cw, _) = layout_confirm.pixel_size();
         cr.set_source_rgb(pal.danger.0, pal.danger.1, pal.danger.2);
         cr.move_to(cx - cw as f64 / 2.0, y);
@@ -437,7 +570,7 @@ pub fn draw_lock_frame(
         let measured: Vec<(pango::Layout, f64, f64)> = chips
             .iter()
             .map(|(_, label)| {
-                let l = layout(&cr, label, FONT_CAPS_PT, false);
+                let l = layout(&cr, label, FONT_CAPS_PT, pango::Weight::Normal);
                 let (lw, lh) = l.pixel_size();
                 (l, icon_w + icon_gap + lw as f64, lh as f64)
             })
@@ -474,7 +607,12 @@ pub fn draw_lock_frame(
     if toggles.layout
         && let Some(name) = seat.layout_name()
     {
-        let lay = layout(&cr, &name.to_uppercase(), FONT_CAPS_PT, true);
+        let lay = layout(
+            &cr,
+            &name.to_uppercase(),
+            FONT_CAPS_PT,
+            pango::Weight::Medium,
+        );
         cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.8);
         cr.move_to(32.0, 24.0);
         pangocairo::functions::show_layout(&cr, &lay);
@@ -534,7 +672,7 @@ fn draw_info_cluster(
     // Walk upward from the bottom margin.
     let mut baseline = height - 36.0;
     if !context_line.is_empty() {
-        let l = layout(cr, &context_line, FONT_INFO_PT, false);
+        let l = layout(cr, &context_line, FONT_INFO_PT, pango::Weight::Normal);
         let (lw, lh) = l.pixel_size();
         baseline -= lh as f64;
         cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.85);
@@ -545,7 +683,7 @@ fn draw_info_cluster(
     if let Some(np) = now_playing {
         let icon_w = FONT_INFO_PT as f64 * 1.1;
         let gap = 7.0;
-        let l = layout(cr, &np, FONT_INFO_PT, true);
+        let l = layout(cr, &np, FONT_INFO_PT, pango::Weight::Medium);
         let (lw, lh) = l.pixel_size();
         baseline -= lh as f64;
         let total_w = icon_w + gap + lw as f64;
@@ -584,13 +722,7 @@ fn draw_battery(cr: &cairo::Context, right_x: f64, top_y: f64, bat: crate::batte
     };
 
     let text = format!("{}%", bat.percent);
-    let layout = pangocairo::functions::create_layout(cr);
-    let mut desc = pango::FontDescription::new();
-    desc.set_family(FONT_FAMILY);
-    desc.set_size(FONT_CAPS_PT * pango::SCALE);
-    desc.set_weight(pango::Weight::Medium);
-    layout.set_font_description(Some(&desc));
-    layout.set_text(&text);
+    let layout = layout(cr, &text, FONT_CAPS_PT, pango::Weight::Medium);
     let (tw, th) = layout.pixel_size();
 
     // Drawn battery glyph + percent, right-aligned to `right_x`.
@@ -617,16 +749,19 @@ fn draw_battery(cr: &cairo::Context, right_x: f64, top_y: f64, bat: crate::batte
     pangocairo::functions::show_layout(cr, &layout);
 }
 
-fn layout(cr: &cairo::Context, text: &str, pt: i32, bold: bool) -> pango::Layout {
+/// A pango layout in the desktop's font at `pt` and `weight`.
+///
+/// `weight` rather than a `bold` flag: the clock is the one element large enough
+/// that its weight is a composition decision, and at 88 pt Bold it read as a
+/// terminal banner. Maple Mono NF — like most modern faces — ships Thin through
+/// ExtraBold, and pango falls back to the nearest available weight when it does
+/// not.
+fn layout(cr: &cairo::Context, text: &str, pt: i32, weight: pango::Weight) -> pango::Layout {
     let layout = pangocairo::functions::create_layout(cr);
     let mut desc = pango::FontDescription::new();
-    desc.set_family(FONT_FAMILY);
+    desc.set_family(font_family());
     desc.set_size(pt * pango::SCALE);
-    desc.set_weight(if bold {
-        pango::Weight::Bold
-    } else {
-        pango::Weight::Normal
-    });
+    desc.set_weight(weight);
     layout.set_font_description(Some(&desc));
     layout.set_text(text);
     layout
@@ -701,13 +836,15 @@ fn rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
     cr.close_path();
 }
 
-fn draw_vignette(cr: &cairo::Context, w: i32, h: i32) {
+/// Radial fade that darkens the edges and draws the eye to the centre. Tinted
+/// with the palette's darkest surface, like the wash it sits on.
+fn draw_vignette(cr: &cairo::Context, w: i32, h: i32, tint: (f64, f64, f64)) {
     let cx = w as f64 / 2.0;
     let cy = h as f64 / 2.0;
     let radius = (cx * cx + cy * cy).sqrt();
     let pat = cairo::RadialGradient::new(cx, cy, radius * 0.5, cx, cy, radius);
-    pat.add_color_stop_rgba(0.0, 0.0, 0.0, 0.0, 0.0);
-    pat.add_color_stop_rgba(1.0, 0.0, 0.0, 0.0, 0.35);
+    pat.add_color_stop_rgba(0.0, tint.0, tint.1, tint.2, 0.0);
+    pat.add_color_stop_rgba(1.0, tint.0, tint.1, tint.2, VIGNETTE_ALPHA);
     cr.set_source(&pat).ok();
     cr.paint().ok();
 }
@@ -795,4 +932,107 @@ fn paint_wallpaper_cover(
     cr.restore()?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Palette, css_token, gtk_font_name, palette_from_css};
+
+    /// The shape mshell writes: a `:root` block of Material 3 tokens.
+    const CSS: &str = "\
+:root {
+    --surface: #1b1e2b;
+    --on-surface: #d9def0;
+    --on-surface-variant: #a6acc9;
+    --surface-container-lowest: #15171f;
+    --primary: #5ec8c5;
+    --primary-container: #2a4f4e;
+    --error: #f7768e;
+    --error-container: #5c1f2b;
+}
+";
+
+    fn rgb(hex: u32) -> (f64, f64, f64) {
+        let c = |shift: u32| ((hex >> shift) & 0xff) as f64 / 255.0;
+        (c(16), c(8), c(0))
+    }
+
+    #[test]
+    fn a_whole_root_block_on_one_line_still_parses() {
+        // Nothing promises mshell keeps writing one declaration per line, and a
+        // locker that silently loses its palette is a locker nobody notices is
+        // broken until the theme changes.
+        let pal = palette_from_css(":root { --surface: #1b1e2b; --primary: #5ec8c5; }");
+        assert_eq!(pal.bg, rgb(0x1b1e2b));
+        assert_eq!(pal.accent, rgb(0x5ec8c5));
+    }
+
+    #[test]
+    fn a_token_whose_value_is_not_a_hex_colour_does_not_borrow_the_next_one() {
+        // `--surface-tint-color` can be an `rgb()`. Cutting at the `;` keeps the
+        // search from walking into the declaration below.
+        let css = ":root {\n    --primary: rgb(94, 200, 197);\n    --error: #f7768e;\n}";
+        assert_eq!(css_token(css, "primary"), None);
+        assert_eq!(css_token(css, "error"), Some(rgb(0xf7768e)));
+    }
+
+    #[test]
+    fn a_token_name_must_match_exactly_not_by_prefix() {
+        // `--primary` and `--primary-container` share a prefix, as do
+        // `--on-surface` / `--on-surface-variant` and `--error` /
+        // `--error-container`. A prefix match reads the wrong colour, and the
+        // wrong colour on a lock screen is a password field that looks like an
+        // error.
+        assert_eq!(css_token(CSS, "primary"), Some(rgb(0x5ec8c5)));
+        assert_eq!(css_token(CSS, "on-surface"), Some(rgb(0xd9def0)));
+        assert_eq!(css_token(CSS, "error"), Some(rgb(0xf7768e)));
+    }
+
+    #[test]
+    fn the_palette_reads_every_role_from_its_own_token() {
+        let pal = palette_from_css(CSS);
+        assert_eq!(pal.bg, rgb(0x1b1e2b));
+        assert_eq!(pal.dim, rgb(0x15171f), "the wash is the darkest surface");
+        assert_eq!(pal.text, rgb(0xd9def0));
+        assert_eq!(pal.muted, rgb(0xa6acc9));
+        assert_eq!(pal.accent, rgb(0x5ec8c5));
+        assert_eq!(pal.danger, rgb(0xf7768e));
+    }
+
+    #[test]
+    fn a_missing_token_falls_back_to_its_role_default() {
+        // An older matugen, or a truncated write. The locker still renders.
+        let pal = palette_from_css(":root { --surface: #1b1e2b; }\n");
+        assert_eq!(pal.bg, rgb(0x1b1e2b));
+        assert_eq!(pal.text, Palette::FALLBACK.text);
+        assert_eq!(pal.danger, Palette::FALLBACK.danger);
+    }
+
+    #[test]
+    fn a_sheet_without_the_darkest_surface_dims_with_the_surface_itself() {
+        // Never the fallback near-black: that would be a cold wash under a warm
+        // palette, which is the whole reason the wash stopped being black.
+        let pal = palette_from_css(":root { --surface: #1b1e2b; }\n");
+        assert_eq!(pal.dim, rgb(0x1b1e2b));
+    }
+
+    #[test]
+    fn the_gtk_font_name_is_read_out_of_settings_ini() {
+        let ini =
+            "[Settings]\ngtk-application-prefer-dark-theme=1\ngtk-font-name=Maple Mono NF 12\n";
+        assert_eq!(gtk_font_name(ini), Some("Maple Mono NF 12"));
+    }
+
+    #[test]
+    fn a_commented_out_font_is_not_the_font() {
+        let ini = "[Settings]\n#gtk-font-name=Cantarell 11\ngtk-font-name = Inter 10\n";
+        assert_eq!(gtk_font_name(ini), Some("Inter 10"));
+    }
+
+    #[test]
+    fn an_ini_without_a_font_names_none() {
+        assert_eq!(gtk_font_name("[Settings]\ngtk-theme-name=Adwaita\n"), None);
+        assert_eq!(gtk_font_name("gtk-font-name=\n"), None);
+        assert_eq!(gtk_font_name(""), None);
+    }
 }

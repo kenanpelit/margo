@@ -56,7 +56,7 @@ impl MlockSurface {
         qh: &QueueHandle<MlockState>,
         seat_state: &SeatState,
         user: &str,
-        wallpaper: Option<&image::RgbaImage>,
+        backdrop: Option<&crate::wallpaper::Backdrop>,
         avatar: Option<&image::RgbaImage>,
         accent: (f64, f64, f64),
         toggles: &crate::config::LockToggles,
@@ -93,7 +93,7 @@ impl MlockSurface {
         // Draw via cairo. ImageSurface borrows the buffer; we flush
         // before unmap.
         crate::render::draw_lock_frame(
-            pixels, width, height, stride, seat_state, user, wallpaper, avatar, accent, toggles,
+            pixels, width, height, stride, seat_state, user, backdrop, avatar, accent, toggles,
             info,
         )?;
 

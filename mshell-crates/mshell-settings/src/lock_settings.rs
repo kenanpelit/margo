@@ -236,7 +236,7 @@ impl Component for LockSettingsModel {
                             gtk::Label {
                                 add_css_class: "label-small",
                                 set_halign: gtk::Align::Start,
-                                set_label: "Desktop wallpaper, a flat colour, or a fixed image. A slight dim + vignette is always applied so the clock and prompt stay legible.",
+                                set_label: "Desktop wallpaper, a flat colour, or a fixed image. Images are blurred, dimmed and vignetted so the clock and prompt stay legible; a flat colour is drawn exactly as picked.",
                                 set_xalign: 0.0,
                                 set_wrap: true,
                                 set_natural_wrap_mode: gtk::NaturalWrapMode::None,
@@ -272,7 +272,7 @@ impl Component for LockSettingsModel {
                             gtk::Label {
                                 add_css_class: "label-small",
                                 set_halign: gtk::Align::Start,
-                                set_label: "Hex colour for the “Solid colour” mode.",
+                                set_label: "Hex colour for the “Solid colour” mode. Drawn as picked — no dim, no vignette.",
                                 set_xalign: 0.0,
                                 set_wrap: true,
                                 set_natural_wrap_mode: gtk::NaturalWrapMode::None,
