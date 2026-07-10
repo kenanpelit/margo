@@ -407,6 +407,12 @@ toml_config_struct! { DisplayConfig, PartialDisplayConfig, RoughDisplayConfig,
     // adapts to hotplug: unplug the external and the greeter follows to the
     // laptop panel.
     output_mode => String,
+    // Seconds of no keyboard or pointer activity before the "gui" greeter paints
+    // itself black and forgets anything typed into the password field. Any key,
+    // click or movement brings it back, and that first key wakes the screen
+    // rather than landing in the field. `0` disables it. The "cage" and "tty"
+    // hosts have no such surface and ignore it.
+    blank_timeout => u16,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

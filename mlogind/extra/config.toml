@@ -164,3 +164,8 @@ host = "gui"
 # monitor (the last-connected), centred + native res, follows hotplug. "extend"
 # = span all monitors as one surface (login block lands on the monitor seam).
 output_mode = "last"
+# Seconds of no keyboard or pointer activity before the "gui" greeter goes black
+# and forgets a half-typed password. Any key, click or movement wakes it, and
+# that first key wakes the screen rather than landing in the password field.
+# 0 disables it. Only the "gui" host has a surface to blank.
+blank_timeout = 300

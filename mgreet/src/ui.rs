@@ -59,6 +59,10 @@ pub struct WindowWidgets {
     window: gtk::Window,
     overlay: gtk::Overlay,
     idle: gtk::Box,
+    /// The black sheet over everything, including the card. Not an overlay of
+    /// `overlay` — the card is added to that one *last*, so it would land on
+    /// top of the blanking.
+    blank: gtk::Box,
 }
 
 impl WindowWidgets {
@@ -207,7 +211,53 @@ pub fn build_window(
         overlay.add_overlay(&footer);
     }
 
-    window.set_child(Some(&overlay));
+    // The blanking sheet lives above the whole overlay rather than inside it, so
+    // the card — which `activate` adds last — cannot end up on top of it.
+    let root = gtk::Overlay::new();
+    root.set_child(Some(&overlay));
+    let blank = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    blank.add_css_class("mgreet-blank");
+    blank.set_visible(false);
+    blank.set_can_target(false);
+    root.add_overlay(&blank);
+    window.set_child(Some(&root));
+
+    // Wake before anything else sees the event. Capture phase, so the keystroke
+    // that lights the screen back up never reaches the password field it was
+    // pointed at — nor the F-keys, which would otherwise power the machine off
+    // for someone who only meant to see the login screen again.
+    if state.blank_secs > 0 {
+        let key = gtk::EventControllerKey::new();
+        key.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let (state_k, windows_k) = (state.clone(), windows.clone());
+        key.connect_key_pressed(move |_, _, _, _| {
+            if note_activity(&state_k, &windows_k) {
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        window.add_controller(key);
+
+        let motion = gtk::EventControllerMotion::new();
+        motion.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let (state_m, windows_m) = (state.clone(), windows.clone());
+        motion.connect_motion(move |_, _, _| {
+            note_activity(&state_m, &windows_m);
+        });
+        window.add_controller(motion);
+
+        let click = gtk::GestureClick::new();
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let (state_c, windows_c) = (state.clone(), windows.clone());
+        click.connect_pressed(move |gesture, _, _, _| {
+            if note_activity(&state_c, &windows_c) {
+                // The click that wakes the screen does not also press "Log in".
+                gesture.set_state(gtk::EventSequenceState::Claimed);
+            }
+        });
+        window.add_controller(click);
+    }
 
     // The card follows the pointer onto this screen — but not mid-conversation:
     // a brushed mouse must not carry a card away from the answer PAM is waiting
@@ -272,6 +322,70 @@ pub fn build_window(
         window,
         overlay,
         idle,
+        blank,
+    }
+}
+
+/// Count the seconds of silence, and go black at the end of them.
+///
+/// A repeating tick rather than a one-shot rescheduled on each keystroke:
+/// `remove()` on a source that has already fired aborts the process, and a
+/// greeter is the wrong place to discover that. One wake-up a second is nothing.
+pub fn start_idle_watch(state: &Rc<State>, windows: &Windows) {
+    let limit = state.blank_secs;
+    if limit == 0 {
+        return;
+    }
+    let (state, windows) = (state.clone(), windows.clone());
+    glib::timeout_add_seconds_local(1, move || {
+        // Never while PAM is thinking, or waiting on an answer it asked for: a
+        // fingerprint reader takes its time, and the conversation is bounded by
+        // the runner rather than by this counter.
+        if state.conversing.get() || state.blanked.get() {
+            state.idle_ticks.set(0);
+        } else {
+            let ticks = state.idle_ticks.get().saturating_add(1);
+            state.idle_ticks.set(ticks);
+            if ticks >= limit {
+                blank(&state, &windows);
+            }
+        }
+        glib::ControlFlow::Continue
+    });
+}
+
+/// Something happened. Returns whether this event was spent waking the screen
+/// and must go no further.
+fn note_activity(state: &Rc<State>, windows: &Windows) -> bool {
+    state.idle_ticks.set(0);
+    if !state.blanked.get() {
+        return false;
+    }
+    state.blanked.set(false);
+    for window in windows.borrow().values() {
+        window.blank.set_visible(false);
+        window.blank.set_can_target(false);
+    }
+    focus_card(state);
+    true
+}
+
+/// Paint every screen black and forget the half-typed password.
+///
+/// Whoever typed it walked away; the next person to touch the mouse should not
+/// find their session one Enter away. The username stays — the greeter would
+/// have pre-filled it from the cache anyway.
+fn blank(state: &Rc<State>, windows: &Windows) {
+    if state.blanked.get() {
+        return;
+    }
+    state.blanked.set(true);
+    state.password.set_text("");
+    state.password_pending.set(false);
+    broadcast(state, "", false);
+    for window in windows.borrow().values() {
+        window.blank.set_can_target(true);
+        window.blank.set_visible(true);
     }
 }
 

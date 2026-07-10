@@ -215,7 +215,12 @@ fn spawn_greeter(
                 .env("MLOGIND_POWER", power_env(config))
                 // Read-only: mgreet pre-fills the last user + session. The
                 // *write* is the runner's job now.
-                .env("MLOGIND_CACHE_PATH", &config.cache_path);
+                .env("MLOGIND_CACHE_PATH", &config.cache_path)
+                // Seconds before the greeter blanks itself; 0 disables.
+                .env(
+                    "MLOGIND_BLANK_SECS",
+                    config.display.blank_timeout.to_string(),
+                );
             (cmd, runtime_dir.join("margo-greeter.log"))
         }
     } else {

@@ -110,6 +110,28 @@ window.mgreet-root {
   }
 }
 
+// ── Blanked ───────────────────────────────────────────────────────
+//
+// Not DPMS — margo owns the backlight. This is what the greeter can honestly
+// promise on its own: a machine left at the login screen stops advertising who
+// last used it, on what host, over their wallpaper. It fades in; it leaves at
+// once, because the person waking it is standing there.
+//
+// Literal black, not a palette token: there is nothing to theme about "off".
+@keyframes mgreet-blank-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.mgreet-blank {
+  background-color: #000000;
+  animation: mgreet-blank-in 600ms ease-out;
+}
+
 // ── The monitors without the card ─────────────────────────────────
 //
 // A clock, and how to bring the card here. Deliberately quiet: the eye should
