@@ -18,7 +18,17 @@
 //! builder. The other variants are parsed by the config crate so a
 //! config line that picks them doesn't fail validation; they will
 //! engage once `render_element()` grows the corresponding code paths.
+//!
+//! Raw backdrop: a `.raw` path is not decoded through the `image`
+//! crate but read as a headed `[u32 LE width][u32 LE height][RGBA]`
+//! buffer — the format `mlogind`'s theme sync bakes into
+//! `/var/lib/mgreet/background.raw` and `mgreet` paints. Pointing the
+//! greeter compositor at that same file makes margo's first frame
+//! pixel-identical to the greeter's backdrop, so the login card fades
+//! in over an unchanging wallpaper instead of over the packaged
+//! default. Keep the header contract in step with `theme_sync.rs`.
 
+use std::io;
 use std::path::{Path, PathBuf};
 
 use drm_fourcc::DrmFourcc;
@@ -186,7 +196,16 @@ fn resolve_path(explicit: Option<&str>) -> Option<PathBuf> {
     None
 }
 
+/// The greeter backdrop's header size, in bytes: two little-endian `u32`s.
+const RAW_HEADER: usize = 8;
+
 fn decode_to_buffer(path: &Path) -> Result<(MemoryRenderBuffer, (u32, u32)), image::ImageError> {
+    if is_raw_backdrop(path) {
+        // `image::ImageError: From<io::Error>`, so a raw failure surfaces
+        // through the same `warn!(error = %e)` path as a decode failure.
+        return Ok(decode_raw(path)?);
+    }
+
     let img = image::open(path)?;
     let rgba = img.to_rgba8();
     let (w, h) = (rgba.width(), rgba.height());
@@ -207,6 +226,59 @@ fn decode_to_buffer(path: &Path) -> Result<(MemoryRenderBuffer, (u32, u32)), ima
     Ok((buffer, (w, h)))
 }
 
+/// A `.raw` path is the headed greeter backdrop, not an image the `image`
+/// crate can open. Match by extension, case-insensitively.
+fn is_raw_backdrop(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("raw"))
+}
+
+/// Read a `[u32 LE width][u32 LE height][RGBA]` backdrop straight into a
+/// render buffer. The trailing RGBA is already in `Abgr8888` byte order
+/// (R first, A last) and opaque, so — like the `image` path above — no
+/// swizzle or premultiply is needed.
+fn decode_raw(path: &Path) -> io::Result<(MemoryRenderBuffer, (u32, u32))> {
+    let bytes = std::fs::read(path)?;
+    let (w, h) = parse_raw_header(&bytes).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "raw backdrop: header disagrees with byte count",
+        )
+    })?;
+    let buffer = MemoryRenderBuffer::from_slice(
+        &bytes[RAW_HEADER..],
+        DrmFourcc::Abgr8888,
+        Size::<i32, Buffer>::from((w as i32, h as i32)),
+        1,
+        Transform::Normal,
+        None,
+    );
+    Ok((buffer, (w, h)))
+}
+
+/// `(width, height)` of a `[u32 LE w][u32 LE h][RGBA]` buffer whose length
+/// agrees. Overflow is a rejection, not a wrap: the file is machine-written
+/// by `mlogind`, but a stray or truncated one must never make us index past
+/// the slice. Mirrors `theme_sync.rs::parse_header` — one shared contract.
+fn parse_raw_header(bytes: &[u8]) -> Option<(u32, u32)> {
+    if bytes.len() < RAW_HEADER {
+        return None;
+    }
+    let width = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    let height = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let body = (width as usize)
+        .checked_mul(height as usize)?
+        .checked_mul(4)?;
+    if bytes.len() != body.checked_add(RAW_HEADER)? {
+        return None;
+    }
+    Some((width, height))
+}
+
 fn exists_and_readable(p: &Path) -> bool {
     std::fs::metadata(p).map(|m| m.is_file()).unwrap_or(false)
 }
@@ -224,5 +296,62 @@ fn expand_home(p: &str) -> PathBuf {
         home_dir()
     } else {
         PathBuf::from(p)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `[w][h][RGBA]` buffer whose body is `fill` — the shape
+    /// `theme_sync.rs` writes to `background.raw`.
+    fn raw(width: u32, height: u32, fill: u8) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&width.to_le_bytes());
+        buf.extend_from_slice(&height.to_le_bytes());
+        buf.resize(RAW_HEADER + (width as usize) * (height as usize) * 4, fill);
+        buf
+    }
+
+    #[test]
+    fn a_well_formed_backdrop_header_round_trips() {
+        assert_eq!(parse_raw_header(&raw(3, 5, 0)), Some((3, 5)));
+    }
+
+    #[test]
+    fn a_header_that_disagrees_with_the_byte_count_is_rejected() {
+        let mut buf = raw(3, 5, 0);
+        buf.pop();
+        assert_eq!(parse_raw_header(&buf), None);
+    }
+
+    #[test]
+    fn a_truncated_file_is_rejected_rather_than_indexed() {
+        assert_eq!(parse_raw_header(&[1, 2, 3]), None);
+    }
+
+    #[test]
+    fn a_zero_dimension_is_rejected() {
+        assert_eq!(parse_raw_header(&raw(0, 5, 0)), None);
+        assert_eq!(parse_raw_header(&raw(5, 0, 0)), None);
+    }
+
+    #[test]
+    fn a_dimension_product_that_would_overflow_is_rejected_not_wrapped() {
+        // The file is machine-written but still untrusted: `w*h*4` must not
+        // wrap into a small number that happens to match the real length.
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&u32::MAX.to_le_bytes());
+        buf.extend_from_slice(&u32::MAX.to_le_bytes());
+        buf.resize(RAW_HEADER + 4, 0);
+        assert_eq!(parse_raw_header(&buf), None);
+    }
+
+    #[test]
+    fn only_a_raw_extension_takes_the_headed_path() {
+        assert!(is_raw_backdrop(Path::new("/var/lib/mgreet/background.raw")));
+        assert!(is_raw_backdrop(Path::new("/tmp/x.RAW")));
+        assert!(!is_raw_backdrop(Path::new("/usr/share/margo/wallpapers/default.jpg")));
+        assert!(!is_raw_backdrop(Path::new("/home/u/wall.png")));
     }
 }

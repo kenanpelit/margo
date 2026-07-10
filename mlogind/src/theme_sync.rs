@@ -64,6 +64,16 @@ const BACKGROUND_NAME: &str = "background.raw";
 const THEME_CSS_NAME: &str = "theme.css";
 const AVATAR_NAME: &str = "avatar";
 
+/// The baked backdrop's published path, `/var/lib/mgreet/background.raw`. The
+/// GUI greeter's throwaway margo config is pointed here (see
+/// `write_greeter_conf`) so the compositor's first frame is the same blurred
+/// wallpaper `mgreet` paints — no flash of the packaged default in between.
+/// World-readable (see [`sync`]), so the unprivileged greeter can load it. The
+/// `[u32 LE w][u32 LE h][RGBA]` contract is shared with margo's raw loader.
+pub fn background_path() -> PathBuf {
+    Path::new(STATE_DIR).join(BACKGROUND_NAME)
+}
+
 /// Sources, relative to the user's home. The child reads them all, taking the
 /// first name in each list that both exists and looks like what it claims to be.
 const WALLPAPER_REL: &[&str] = &[".cache/mshell/wallpaper.raw"];
