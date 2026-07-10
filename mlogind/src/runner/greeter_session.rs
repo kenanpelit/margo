@@ -36,27 +36,38 @@ use super::session_active;
 /// this into `EXIT_HOST_UNAVAILABLE` and the daemon falls down the host ladder.
 pub const EXIT_NO_SESSION: i32 = 1;
 
-/// A [`pam::Converse`] for a stack that never asks anything.
+/// A [`pam::Converse`] for a stack that asks nothing but the login name.
 ///
 /// The greeter user is not a login: `/etc/pam.d/mlogind-greeter` is `pam_permit`
 /// in its auth phase and exists for `pam_systemd` in its session phase. Any
-/// prompt at all means the stack was edited into something it should not be, so
+/// *question* means the stack was edited into something it should not be, so
 /// refuse rather than guess an answer.
+///
+/// The one exception is not a question. `Authenticator::with_handler` calls
+/// `pam_start(service, None, …)`, leaving `PAM_USER` unset, so the first module
+/// to call `pam_get_user()` — `pam_permit` itself — makes libpam ask "login:"
+/// over the conversation. We already know the answer. [`GreeterConv`] answers the
+/// identical prompt for the user's own login.
+///
+/// [`GreeterConv`]: super::converse::GreeterConv
 struct SilentConv {
     username: String,
+    /// Whether the `pam_get_user()` prompt has been answered. Everything after it
+    /// is a real question.
+    username_answered: bool,
 }
 
 impl pam::Converse for SilentConv {
     fn prompt_echo(&mut self, msg: &CStr) -> Result<CString, ()> {
-        error!(
-            "greeter session: PAM asked '{}'; the greeter stack must not prompt",
-            msg.to_string_lossy()
-        );
-        Err(())
+        if !self.username_answered {
+            self.username_answered = true;
+            return CString::new(self.username.clone()).map_err(|_| ());
+        }
+        self.refuse(msg)
     }
 
     fn prompt_blind(&mut self, msg: &CStr) -> Result<CString, ()> {
-        self.prompt_echo(msg)
+        self.refuse(msg)
     }
 
     fn info(&mut self, msg: &CStr) {
@@ -69,6 +80,16 @@ impl pam::Converse for SilentConv {
 
     fn username(&self) -> &str {
         &self.username
+    }
+}
+
+impl SilentConv {
+    fn refuse(&self, msg: &CStr) -> Result<CString, ()> {
+        error!(
+            "greeter session: PAM asked '{}'; the greeter stack must not prompt",
+            msg.to_string_lossy()
+        );
+        Err(())
     }
 }
 
@@ -107,6 +128,7 @@ pub fn run(config: &Config, mut cmd: Command) -> ! {
 
     let conv = SilentConv {
         username: session_user.clone(),
+        username_answered: false,
     };
     let mut auth = match Authenticator::with_handler(&config.greeter_pam_service, conv) {
         Ok(auth) => auth,
@@ -119,8 +141,10 @@ pub fn run(config: &Config, mut cmd: Command) -> ! {
         }
     };
 
-    // `pam_permit`: nothing is asked, nothing is checked. `open_session` refuses
-    // to run without this, and it is where `pam_systemd` lives.
+    // `pam_permit`: nothing is checked. The one thing it does ask is the login
+    // name, via `pam_get_user()`, because `with_handler` starts PAM with no user
+    // — `SilentConv` answers that and refuses everything else. `open_session`
+    // refuses to run without this, and it is where `pam_systemd` lives.
     if let Err(err) = auth.authenticate() {
         error!("greeter session: PAM refused the greeter user: {err}");
         std::process::exit(EXIT_NO_SESSION);
@@ -206,5 +230,49 @@ fn drop_privileges(cmd: &mut Command, user: &UserInfo) {
                 .and(nix::unistd::setuid(Uid::from_raw(uid)))
                 .map_err(|err| err.into())
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pam::Converse;
+
+    fn conv() -> SilentConv {
+        SilentConv {
+            username: "mlogind-greeter".to_string(),
+            username_answered: false,
+        }
+    }
+
+    #[test]
+    fn the_first_echo_prompt_is_pam_get_user_and_gets_answered() {
+        // `Authenticator::with_handler` calls `pam_start(service, None, …)`, so
+        // PAM_USER is unset and the first module to want it — `pam_permit` in
+        // the auth phase — makes libpam ask "login:" over the conversation.
+        // Refusing that is not strictness, it is CONV_ERR for the whole stack.
+        let mut conv = conv();
+        let answer = conv.prompt_echo(c"login: ").expect("pam_get_user refused");
+        assert_eq!(answer.to_str().unwrap(), "mlogind-greeter");
+    }
+
+    #[test]
+    fn a_later_echo_prompt_is_a_real_question_and_is_refused() {
+        let mut conv = conv();
+        conv.prompt_echo(c"login: ").unwrap();
+        assert!(conv.prompt_echo(c"Verification code: ").is_err());
+    }
+
+    #[test]
+    fn a_blind_prompt_is_always_refused() {
+        // The greeter user has no password. Anything asking for one in secret
+        // means the stack was edited into a login, so fail rather than guess.
+        assert!(conv().prompt_blind(c"Password: ").is_err());
+    }
+
+    #[test]
+    fn open_session_reads_the_username_back() {
+        // `Authenticator::open_session` looks the account up through this.
+        assert_eq!(conv().username(), "mlogind-greeter");
     }
 }

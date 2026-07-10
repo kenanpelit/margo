@@ -17,8 +17,10 @@
 # `pam_loginuid` makes the audit subsystem attribute the greeter's actions to the
 # greeter rather than to root.
 #
-# Do NOT add an auth module that prompts. mlogind's greeter-session conversation
-# refuses every prompt and fails the session rather than guessing an answer.
+# Do NOT add an auth module that asks a question. mlogind's greeter-session
+# conversation answers exactly one prompt — the `pam_get_user()` login name,
+# which `pam_permit` triggers because mlogind starts PAM with no user set — and
+# refuses everything after it rather than guessing an answer.
 
 auth        required    pam_env.so
 auth        required    pam_permit.so
