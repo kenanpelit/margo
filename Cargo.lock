@@ -4593,6 +4593,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mlogind-proto"
+version = "1.1.6"
+dependencies = [
+ "libc",
+ "zeroize",
+]
+
+[[package]]
 name = "mlua"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

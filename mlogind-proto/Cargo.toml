@@ -1,0 +1,21 @@
+# mlogind-proto — the greeter ⇄ session-runner wire protocol.
+#
+# Shared by `mlogind` (the privileged runner + the TUI greeter) and `mgreet`
+# (the GTK greeter), the way atrium shares `lib/ipc.c` between `main-txt.c`
+# and `main-gtk.c`.
+#
+# Licensed MIT OR Apache-2.0 — matching `mlogind`, the more restrictive of the
+# two consumers. `mgreet` is GPL-3.0-or-later and may consume permissive code.
+[package]
+name = "mlogind-proto"
+description = "Wire protocol between mlogind's session runner and its greeters"
+license = "MIT OR Apache-2.0"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Scrubs decoded PAM responses (passwords, OTPs) from the heap on drop.
+zeroize.workspace = true
+libc.workspace = true
