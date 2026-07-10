@@ -6,6 +6,23 @@ cache_path = "/var/cache/mlogind"
 
 do_log = true
 pam_service = "mlogind"
+
+# The unprivileged system user the graphical greeter runs as. The greeter runs no
+# PAM and holds no credentials, so it has no business being root: it is a GTK
+# stack decoding images and shaping text on the most exposed surface the machine
+# has. logind grants its session the seat's DRM and input devices via ACLs, so
+# this user needs no supplementary groups.
+#
+# Created by systemd-sysusers from /usr/lib/sysusers.d/mlogind.conf. If it is
+# missing, mlogind logs an error and runs the greeter as root rather than leaving
+# you unable to log in. Set to "" to keep the greeter root deliberately.
+greeter_user = "mlogind-greeter"
+
+# PAM stack that opens the greeter's logind session (/etc/pam.d/mlogind-greeter).
+# It authenticates nothing — `pam_permit` — because the greeter user is not a
+# login. What it is for is `pam_systemd`, which registers the session with
+# class=greeter on the right seat and VT, so libseat can hand margo the DRM node.
+greeter_pam_service = "mlogind-greeter"
 system_shell = "/bin/sh"
 initial_path = "/usr/local/sbin:/usr/local/bin:/usr/bin:/bin"
 shell_login_flag = "short"

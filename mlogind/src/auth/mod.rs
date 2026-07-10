@@ -76,6 +76,32 @@ pub fn lookup(username: &str) -> Result<UserInfo, AuthenticationError> {
     })
 }
 
+/// Resolve the unprivileged user the greeter should run as.
+///
+/// `None` means "stay root", and both routes to it are legitimate:
+///
+/// - `greeter_user = ""` — the administrator asked for it.
+/// - the user is named but absent from the passwd database — a package upgrade
+///   where `systemd-sysusers` never ran. This is a misconfiguration, and it is
+///   logged as an error, but it is not a reason to refuse to boot a greeter. A
+///   machine nobody can log into is worse than a greeter with too much privilege.
+pub fn lookup_greeter(greeter_user: &str) -> Option<UserInfo> {
+    if greeter_user.is_empty() {
+        info!("greeter_user is empty; the greeter will run as root");
+        return None;
+    }
+    match lookup(greeter_user) {
+        Ok(info) => Some(info),
+        Err(err) => {
+            log::error!(
+                "greeter user '{greeter_user}' cannot be resolved ({err}); \
+                 running the greeter as ROOT. Run `systemd-sysusers` to fix this."
+            );
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,6 +114,23 @@ mod tests {
         assert_eq!(info.uid, 0);
         assert!(!info.shell.is_empty());
         assert!(!info.home_dir.is_empty());
+    }
+
+    #[test]
+    fn an_empty_greeter_user_means_stay_root_without_a_lookup() {
+        assert!(lookup_greeter("").is_none());
+    }
+
+    #[test]
+    fn a_missing_greeter_user_means_stay_root_rather_than_fail() {
+        // Never a lockout: a machine nobody can log into is worse than a greeter
+        // with too much privilege.
+        assert!(lookup_greeter("\u{1}definitely-not-a-user").is_none());
+    }
+
+    #[test]
+    fn a_present_greeter_user_resolves() {
+        assert_eq!(lookup_greeter("root").map(|u| u.uid), Some(0));
     }
 
     #[test]

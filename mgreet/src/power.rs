@@ -1,10 +1,15 @@
 //! Power actions — the greeter's F-key footer, mirrored from mlogind's TUI
-//! (`ui/key_menu.rs`). The orchestrator serialises its resolved
-//! `power_controls` (base + extra entries) into `MLOGIND_POWER` as one
-//! `key<TAB>hint<TAB>cmd` line per action, so the GUI greeter shows and runs
-//! exactly what the TUI greeter would.
-
-use std::process::{Command, Stdio};
+//! (`ui/key_menu.rs`).
+//!
+//! The greeter used to run the command itself. It cannot any more: it is an
+//! unprivileged system user, and `systemctl poweroff` is not its to run. It sends
+//! `Request::Power { index }` to the root session runner instead, which resolves
+//! the index against its own `power_controls` and runs what is written there.
+//!
+//! An index, never a command. Letting the greeter name what root executes would
+//! hand back, in one line, exactly the privilege that deprivileging it took away.
+//! So the runner serialises `MLOGIND_POWER` as `index<TAB>key<TAB>hint` — the
+//! command is not in there at all.
 
 #[derive(Clone)]
 pub struct PowerAction {
@@ -12,13 +17,13 @@ pub struct PowerAction {
     pub key: String,
     /// Short label, e.g. "Shutdown".
     pub hint: String,
-    /// Shell command run via `sh -c` when the key is pressed.
-    pub cmd: String,
+    /// Position in the runner's resolved action list. This is the wire value.
+    pub index: u32,
 }
 
-/// Parse `MLOGIND_POWER` (`key\thint\tcmd` per line). Falls back to a sensible
-/// built-in set when the env var is absent (preview / bare run), so the footer
-/// is never empty — though preview never actually runs them.
+/// Parse `MLOGIND_POWER` (`index\tkey\thint` per line). Falls back to a sensible
+/// built-in set when the env var is absent (preview / bare run), so the footer is
+/// never empty — though preview never actually triggers anything.
 pub fn from_env() -> Vec<PowerAction> {
     let parsed = parse_power(&std::env::var("MLOGIND_POWER").unwrap_or_default());
     if parsed.is_empty() {
@@ -28,19 +33,23 @@ pub fn from_env() -> Vec<PowerAction> {
     }
 }
 
-/// Parse the `MLOGIND_POWER` payload — one `key\thint\tcmd` line per action.
-/// Split from the env read so it is testable. A line needs all three
-/// tab-separated fields with a non-empty key and hint; the command may be empty.
+/// Parse the `MLOGIND_POWER` payload — one `index<TAB>key<TAB>hint` line per
+/// action. Split from the env read so it is testable.
+///
+/// The index is explicit rather than implied by line order: the runner skips
+/// entries with a blank key or hint when it writes this, but they still occupy a
+/// slot in the list `Request::Power` indexes into. Inferring it from the line
+/// number would silently shift every action after a blank one.
 fn parse_power(raw: &str) -> Vec<PowerAction> {
     raw.lines()
         .filter_map(|line| {
             let mut f = line.splitn(3, '\t');
             match (f.next(), f.next(), f.next()) {
-                (Some(k), Some(h), Some(c)) if !k.is_empty() && !h.is_empty() => {
+                (Some(i), Some(k), Some(h)) if !k.is_empty() && !h.is_empty() => {
                     Some(PowerAction {
+                        index: i.parse().ok()?,
                         key: k.to_string(),
                         hint: h.to_string(),
-                        cmd: c.to_string(),
                     })
                 }
                 _ => None,
@@ -49,33 +58,21 @@ fn parse_power(raw: &str) -> Vec<PowerAction> {
         .collect()
 }
 
+/// What a `power_controls`-less mlogind would show. The indices match the order
+/// the runner's own defaults land in, so a preview footer reads like the real one.
 fn defaults() -> Vec<PowerAction> {
     [
-        ("F1", "Shutdown", "systemctl poweroff"),
-        ("F2", "Reboot", "systemctl reboot"),
-        ("F3", "Suspend", "systemctl suspend"),
+        (0, "F1", "Shutdown"),
+        (1, "F2", "Reboot"),
+        (2, "F3", "Suspend"),
     ]
     .into_iter()
-    .map(|(key, hint, cmd)| PowerAction {
+    .map(|(index, key, hint)| PowerAction {
+        index,
         key: key.to_string(),
         hint: hint.to_string(),
-        cmd: cmd.to_string(),
     })
     .collect()
-}
-
-/// Run the action's command via `sh -c`, detached. Fire-and-forget: a
-/// poweroff/reboot takes the session down anyway; suspend returns and the
-/// greeter stays up. Callers gate this on real-greeter mode so a preview run
-/// under the live session can never trigger it.
-pub fn run(action: &PowerAction) {
-    let _ = Command::new("/bin/sh")
-        .arg("-c")
-        .arg(&action.cmd)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
 }
 
 #[cfg(test)]
@@ -84,38 +81,47 @@ mod tests {
 
     #[test]
     fn parses_tab_separated_actions() {
-        let raw = "F1\tShutdown\tsystemctl poweroff\nF2\tReboot\tsystemctl reboot";
-        let a = parse_power(raw);
+        let a = parse_power("0\tF1\tShutdown\n1\tF2\tReboot");
         assert_eq!(a.len(), 2);
-        assert_eq!((a[0].key.as_str(), a[0].hint.as_str()), ("F1", "Shutdown"));
-        assert_eq!(a[0].cmd, "systemctl poweroff");
-        assert_eq!(a[1].key, "F2");
+        assert_eq!(
+            (a[0].index, a[0].key.as_str(), a[0].hint.as_str()),
+            (0, "F1", "Shutdown")
+        );
+        assert_eq!((a[1].index, a[1].key.as_str()), (1, "F2"));
     }
 
     #[test]
-    fn line_missing_the_command_field_is_dropped() {
-        // splitn needs all three tab fields; a two-field line has no cmd → dropped.
+    fn a_gap_in_the_indices_is_preserved() {
+        // The runner skipped a blank entry at slot 1. Renumbering here would make
+        // F2 reboot the machine when the user asked it to suspend.
+        let a = parse_power("0\tF1\tShutdown\n2\tF2\tSuspend");
+        assert_eq!(a[1].index, 2);
+    }
+
+    #[test]
+    fn a_line_missing_a_field_is_dropped() {
+        assert!(parse_power("0\tF1").is_empty());
         assert!(parse_power("F1\tShutdown").is_empty());
     }
 
     #[test]
-    fn empty_command_field_is_kept() {
-        let a = parse_power("F1\tShutdown\t");
-        assert_eq!(a.len(), 1);
-        assert_eq!(a[0].cmd, "");
+    fn a_non_numeric_index_is_dropped_rather_than_defaulted_to_zero() {
+        // Slot zero is "shut down" in every stock config. Never guess it.
+        assert!(parse_power("x\tF1\tShutdown").is_empty());
+        assert!(parse_power("\tF1\tShutdown").is_empty());
     }
 
     #[test]
     fn blank_key_or_hint_is_rejected() {
-        assert!(parse_power("\tShutdown\tcmd").is_empty());
-        assert!(parse_power("F1\t\tcmd").is_empty());
+        assert!(parse_power("0\t\tShutdown").is_empty());
+        assert!(parse_power("0\tF1\t").is_empty());
     }
 
     #[test]
-    fn command_keeps_embedded_tabs() {
-        // splitn(3) stops after the third field, so tabs inside the command survive.
-        let a = parse_power("F1\tShutdown\techo a\tb");
-        assert_eq!(a[0].cmd, "echo a\tb");
+    fn a_hint_keeps_embedded_tabs() {
+        // splitn(3) stops after the third field.
+        let a = parse_power("0\tF1\tShut\tdown");
+        assert_eq!(a[0].hint, "Shut\tdown");
     }
 
     #[test]
@@ -124,11 +130,11 @@ mod tests {
     }
 
     #[test]
-    fn defaults_provide_the_standard_three() {
+    fn defaults_provide_the_standard_three_in_order() {
         let a = defaults();
         assert_eq!(a.len(), 3);
-        assert_eq!((a[0].key.as_str(), a[0].hint.as_str()), ("F1", "Shutdown"));
-        assert_eq!((a[1].key.as_str(), a[1].hint.as_str()), ("F2", "Reboot"));
-        assert_eq!((a[2].key.as_str(), a[2].hint.as_str()), ("F3", "Suspend"));
+        assert_eq!((a[0].index, a[0].hint.as_str()), (0, "Shutdown"));
+        assert_eq!((a[1].index, a[1].hint.as_str()), (1, "Reboot"));
+        assert_eq!((a[2].index, a[2].hint.as_str()), (2, "Suspend"));
     }
 }

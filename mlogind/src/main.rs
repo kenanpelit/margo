@@ -175,17 +175,40 @@ pub fn initialize_panic_handler() {
     }));
 }
 
+/// Point the logger at `log_path`, or run without a log.
+///
+/// It used to `exit(1)` when the file could not be opened. The greeter is
+/// unprivileged now and cannot write `/var/log`, so that was a lockout with
+/// extra steps — and it was always the wrong trade: a login manager that refuses
+/// to start because a log is unwritable is worse than one with no log.
 fn setup_logger(log_path: &str) {
-    let log_file = Box::new(File::create(log_path).unwrap_or_else(|_| {
-        eprintln!("Failed to open log file: '{log_path}'");
-        std::process::exit(1);
-    }));
-
-    env_logger::builder()
+    let mut builder = env_logger::builder();
+    builder
         .filter_level(log::LevelFilter::Info)
-        .target(env_logger::Target::Pipe(log_file))
-        .format_timestamp_secs()
-        .init();
+        .format_timestamp_secs();
+
+    match File::create(log_path) {
+        Ok(file) => {
+            builder.target(env_logger::Target::Pipe(Box::new(file)));
+        }
+        Err(err) => {
+            eprintln!("mlogind: cannot open log file '{log_path}' ({err}); logging to stderr");
+        }
+    }
+    builder.init();
+}
+
+/// Where a greeter hosted by the session runner should log.
+///
+/// `config.client_log_path` is `/var/log/…`, which the unprivileged greeter user
+/// cannot write. `pam_systemd` gave the greeter session its own runtime dir; use
+/// that. Falls back to the configured path when there is none (a root greeter),
+/// and [`setup_logger`] tolerates it being unwritable either way.
+fn greeter_log_path(config: &Config) -> String {
+    match std::env::var("XDG_RUNTIME_DIR") {
+        Ok(dir) if !dir.is_empty() => format!("{dir}/mlogind-greeter.log"),
+        _ => config.client_log_path.clone(),
+    }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -244,10 +267,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     // log so it doesn't clobber the orchestrator's main log.
     if !cli.no_log {
         let greet_is_hosted = cli.greet && std::env::var_os("MLOGIND_SOCK_FD").is_some();
+        let hosted_log = greet_is_hosted.then(|| greeter_log_path(&config));
         let log_path: &str = if cli.preview || (cli.greet && !greet_is_hosted) {
             PREVIEW_LOG_PATH
-        } else if greet_is_hosted {
-            &config.client_log_path
+        } else if let Some(path) = hosted_log.as_deref() {
+            path
         } else {
             &config.main_log_path
         };
@@ -431,31 +455,6 @@ pub(crate) fn which(cmd: &str) -> Option<PathBuf> {
     fallback.is_file().then_some(fallback)
 }
 
-/// Ensure a seat provider exists for cage. libseat's `builtin` backend is
-/// compiled out on most distros (incl. Arch), and the root orchestrator has no
-/// logind session — so cage's only viable backend is seatd. If its socket isn't
-/// already present (an enabled `seatd.service`), start seatd ourselves and wait
-/// briefly for the socket. The returned child is kept alive for the host loop;
-/// `None` means seatd was already running or its binary is missing (in which
-/// case cage will fail and we fall back to the TTY greeter).
-fn ensure_seatd() -> Option<std::process::Child> {
-    let sock = Path::new("/run/seatd.sock");
-    if sock.exists() {
-        return None;
-    }
-    let seatd = which("seatd")?;
-    info!("orchestrator: starting seatd (no logind session; libseat builtin absent)");
-    let child = std::process::Command::new(seatd).spawn().ok()?;
-    for _ in 0..40 {
-        if sock.exists() {
-            info!("orchestrator: seatd socket is up");
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
-    Some(child)
-}
-
 /// Read the system console keyboard config (`/etc/vconsole.conf`, written by
 /// localectl) and translate its already-xkb-shaped fields into the
 /// `XKB_DEFAULT_*` env vars cage builds its keymap from — so the greeter uses
@@ -513,7 +512,11 @@ pub(crate) fn write_greeter_conf(path: &Path) -> io::Result<()> {
         conf.push_str(&val);
         conf.push('\n');
     }
-    std::fs::write(path, conf)
+    std::fs::write(path, conf)?;
+    // margo reads this as the unprivileged greeter user. It carries a keyboard
+    // layout and nothing else.
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644))
 }
 
 /// How many consecutive fast crashes of a session runner mean the host itself
@@ -538,11 +541,10 @@ const RUNNER_CRASH_WINDOW: Duration = Duration::from_secs(2);
 fn run_hosted(config: &Config, host: Host) -> Result<(), Box<dyn Error>> {
     host.preflight()?;
 
-    // margo and cage need a seat, and a session-less root process has no logind
-    // one — so seatd is the only libseat backend available. Kept alive for the
-    // whole host loop, not per runner.
-    let _seatd = host.needs_seatd().then(ensure_seatd);
-
+    // No `ensure_seatd()` here any more. The greeter now runs inside its own
+    // logind session (see runner::greeter_session), so libseat finds its logind
+    // backend by itself — and `seatd` existed only because a session-less root
+    // process could not.
     let mut fast_crashes = 0u32;
     loop {
         let (runner_fd, greeter_fd) = runner::socketpair()?;
@@ -646,7 +648,7 @@ fn run_tty_host(config: &Config) -> Result<(), Box<dyn Error>> {
 /// Reap `pid` and reduce its wait status to an exit code. A runner killed by a
 /// signal reports `128 + signo`, the shell convention, so it can never collide
 /// with one of the runner's own codes.
-fn wait_for(pid: libc::pid_t) -> i32 {
+pub(crate) fn wait_for(pid: libc::pid_t) -> i32 {
     let mut status: libc::c_int = 0;
     // SAFETY: `status` is a valid out-pointer; `pid` is our direct child.
     while unsafe { libc::waitpid(pid, &mut status, 0) } < 0 {

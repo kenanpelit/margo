@@ -94,7 +94,7 @@ impl<'a, T: Transport> GreeterConv<'a, T> {
         loop {
             match self.conn.recv_request() {
                 Ok(None) => return,
-                Ok(Some(_)) => {} // a late Cancel, say. Ignore it; we are past that.
+                Ok(Some(_)) => {} // a late Cancel or Power. Ignore it; we are past that.
                 Err(err) => {
                     warn!("runner: error while waiting for the greeter to exit: {err}");
                     return;
@@ -115,40 +115,49 @@ impl<'a, T: Transport> GreeterConv<'a, T> {
             return Err(());
         }
 
-        // Exactly one frame answers a prompt. Anything else ends the attempt.
-        match self.conn.recv_request() {
-            Ok(Some(Request::Response { secret })) => {
-                // PAM's C API cannot carry an interior NUL, so a response
-                // holding one is unanswerable rather than silently truncated.
-                //
-                // The CString we hand back is freed by libpam, not by us —
-                // there is no hook to scrub it. Our own copy dies with
-                // `secret`, which is `Zeroizing`.
-                CString::new(secret.to_vec()).map_err(|_| {
-                    warn!("runner: greeter sent a response containing a NUL byte");
-                })
-            }
-            Ok(Some(Request::Cancel)) => {
-                info!("runner: greeter cancelled the conversation");
-                self.abort = Some(Abort::Cancelled);
-                Err(())
-            }
-            Ok(Some(Request::Begin { user, session })) => {
-                // Out of turn. Keep it for the next attempt rather than
-                // deadlocking on a prompt nobody is listening to.
-                warn!("runner: greeter restarted the form mid-prompt");
-                self.pending_begin = Some((user, session));
-                self.abort = Some(Abort::Cancelled);
-                Err(())
-            }
-            Ok(None) => {
-                info!("runner: greeter closed the socket mid-prompt");
-                self.abort = Some(Abort::Eof);
-                Err(())
-            }
-            Err(err) => {
-                self.give_up(err);
-                Err(())
+        // One frame answers a prompt. Anything else ends the attempt — except a
+        // stray `Power`, which is not an answer and must not kill an attempt PAM
+        // is in the middle of.
+        loop {
+            match self.conn.recv_request() {
+                Ok(Some(Request::Response { secret })) => {
+                    // PAM's C API cannot carry an interior NUL, so a response
+                    // holding one is unanswerable rather than silently truncated.
+                    //
+                    // The CString we hand back is freed by libpam, not by us —
+                    // there is no hook to scrub it. Our own copy dies with
+                    // `secret`, which is `Zeroizing`.
+                    return CString::new(secret.to_vec()).map_err(|_| {
+                        warn!("runner: greeter sent a response containing a NUL byte");
+                    });
+                }
+                // Both greeters refuse the power keys mid-conversation, so this
+                // is a bug on the other side. Say so and keep waiting.
+                Ok(Some(Request::Power { index })) => {
+                    warn!("runner: greeter sent Power({index}) while PAM held a prompt; ignoring");
+                }
+                Ok(Some(Request::Cancel)) => {
+                    info!("runner: greeter cancelled the conversation");
+                    self.abort = Some(Abort::Cancelled);
+                    return Err(());
+                }
+                Ok(Some(Request::Begin { user, session })) => {
+                    // Out of turn. Keep it for the next attempt rather than
+                    // deadlocking on a prompt nobody is listening to.
+                    warn!("runner: greeter restarted the form mid-prompt");
+                    self.pending_begin = Some((user, session));
+                    self.abort = Some(Abort::Cancelled);
+                    return Err(());
+                }
+                Ok(None) => {
+                    info!("runner: greeter closed the socket mid-prompt");
+                    self.abort = Some(Abort::Eof);
+                    return Err(());
+                }
+                Err(err) => {
+                    self.give_up(err);
+                    return Err(());
+                }
             }
         }
     }
@@ -352,6 +361,24 @@ mod tests {
             conv.take_pending_begin(),
             Some(("bob".into(), "margo".into()))
         );
+    }
+
+    #[test]
+    fn a_power_frame_mid_prompt_is_ignored_not_mistaken_for_an_answer() {
+        // The user hit F1 while PAM was thinking. Answering the prompt with it
+        // would authenticate against garbage; aborting would lose the attempt.
+        let mut conn = conv_over(vec![
+            Request::Power { index: 0 },
+            Request::Response {
+                secret: Zeroizing::new(b"hunter2".to_vec()),
+            },
+        ]);
+        let mut conv = GreeterConv::new(&mut conn, "alice".into());
+
+        assert_eq!(conv.prompt_blind(&c("Password:")), Ok(c("hunter2")));
+        assert_eq!(conv.abort(), None);
+        // Exactly one prompt went out, not two.
+        assert_eq!(conn.get_mut().sent.len(), 1);
     }
 
     #[test]

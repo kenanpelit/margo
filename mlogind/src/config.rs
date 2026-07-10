@@ -202,6 +202,18 @@ toml_config_struct! { Config, PartialConfig, RoughConfig,
     do_log => bool,
 
     pam_service => String,
+
+    // The unprivileged system user the greeter (margo+mgreet, or cage+foot) runs
+    // as. Its logind session is created either way; only the setuid is
+    // conditional. Empty string → the greeter stays root. A user named here but
+    // absent from /etc/passwd logs an error and the greeter stays root too: a
+    // machine nobody can log into is worse than a greeter with too much
+    // privilege, and the error is loud.
+    greeter_user => String,
+    // PAM stack used to open the greeter's logind session. Authenticates nothing
+    // (pam_permit); pam_systemd in its session phase is the point.
+    greeter_pam_service => String,
+
     system_shell => String,
     initial_path => String,
 

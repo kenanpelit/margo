@@ -162,6 +162,7 @@ backup=(
   "etc/mlogind/config.toml"
   "etc/mlogind/variables.toml"
   "etc/pam.d/mlogind"
+  "etc/pam.d/mlogind-greeter"
   "etc/mlogind/xsetup.sh"
 )
 # Cargo profile already enables thin LTO; the outer makepkg LTO
@@ -634,6 +635,19 @@ package() {
     "$pkgdir/etc/mlogind/variables.toml"
   install -Dm644 "mlogind/extra/mlogind.pam" \
     "$pkgdir/etc/pam.d/mlogind"
+  # The greeter runs as an unprivileged system user and gets its logind
+  # session (and therefore its DRM node) from this PAM stack. It
+  # authenticates nothing — pam_permit — so installing it grants no
+  # login. pacman's systemd-sysusers hook creates the user for us.
+  install -Dm644 "mlogind/extra/mlogind-greeter.pam" \
+    "$pkgdir/etc/pam.d/mlogind-greeter"
+  install -Dm644 "mlogind/extra/mlogind.sysusers" \
+    "$pkgdir/usr/lib/sysusers.d/mlogind.conf"
+  # Not on the greeter's own path (its power keys go through the root
+  # session runner over the mlogind-proto socket) — this is for anything
+  # else running inside the greeter's session. GDM and SDDM ship the same.
+  install -Dm644 "mlogind/extra/60-mlogind-greeter.rules" \
+    "$pkgdir/usr/share/polkit-1/rules.d/60-mlogind-greeter.rules"
   install -Dm755 "mlogind/extra/xsetup.sh" \
     "$pkgdir/etc/mlogind/xsetup.sh"
   # Session-script dirs mlogind scans (config.toml: scripts_path);

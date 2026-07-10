@@ -136,6 +136,15 @@ pub fn set_cache(environment: Option<&str>, username: Option<&str>, config: &Con
             warn!("Failed to set username to cache file. Reason: '{err}'");
         }
         _ => {
+            // The greeter runs unprivileged and pre-fills the last username from
+            // this file. Say 0644 outright rather than inheriting whatever umask
+            // the daemon happened to be started with.
+            use std::os::unix::fs::PermissionsExt;
+            if let Err(err) =
+                std::fs::set_permissions(cache_path, std::fs::Permissions::from_mode(0o644))
+            {
+                warn!("Failed to make the cache file readable by the greeter: '{err}'");
+            }
             info!("Successfully set username in cache file");
         }
     }

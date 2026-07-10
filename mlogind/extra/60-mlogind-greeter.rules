@@ -1,0 +1,35 @@
+/* Let the mlogind greeter user power the machine down.
+ *
+ * mlogind's own greeters do NOT rely on this: their F-key footer sends
+ * `Request::Power { index }` to the root session runner, which resolves the
+ * index against /etc/mlogind/config.toml and runs the command itself. That path
+ * needs no polkit and works with polkitd stopped.
+ *
+ * This rule exists for everything else that may run inside the greeter's logind
+ * session — an accessibility helper, a future lock screen, a `loginctl` call
+ * from a debug shell. GDM and SDDM ship the equivalent.
+ *
+ * Only actions on the local, active session are granted. `*-multiple-sessions`
+ * and `*-ignore-inhibit` are deliberately absent: a greeter must not be able to
+ * shut down out from under a logged-in user, or override an inhibitor.
+ */
+polkit.addRule(function (action, subject) {
+    if (subject.user !== "mlogind-greeter") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    if (!subject.local || !subject.active) {
+        return polkit.Result.NOT_HANDLED;
+    }
+
+    switch (action.id) {
+        case "org.freedesktop.login1.power-off":
+        case "org.freedesktop.login1.reboot":
+        case "org.freedesktop.login1.halt":
+        case "org.freedesktop.login1.suspend":
+        case "org.freedesktop.login1.hibernate":
+        case "org.freedesktop.login1.hybrid-sleep":
+            return polkit.Result.YES;
+        default:
+            return polkit.Result.NOT_HANDLED;
+    }
+});

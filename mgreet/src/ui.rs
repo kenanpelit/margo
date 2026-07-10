@@ -87,14 +87,21 @@ pub fn build_window(
     let key = gtk::EventControllerKey::new();
     let app_weak = app.downgrade();
     let allow_escape_quit = !state.real();
-    let power = state.power.clone();
-    let power_live = state.real();
+    let state_keys = state.clone();
     key.connect_key_pressed(move |_, keyval, _, _| {
         if let Some(name) = keyval.name()
-            && let Some(action) = power.iter().find(|a| a.key == name.as_str())
+            && let Some(action) = state_keys.power.iter().find(|a| a.key == name.as_str())
         {
-            if power_live {
-                crate::power::run(action);
+            // Not mid-conversation: a Power frame would land in the runner's PAM
+            // conversation callback, where it is not an answer to the prompt PAM
+            // is holding open.
+            if state_keys.real() && !state_keys.conversing.get() {
+                let index = action.index;
+                if !send(&state_keys, &Request::Power { index }) {
+                    lost(&state_keys);
+                }
+                // The runner always replies; its Info/Error lands in the fd
+                // watcher and reaches every monitor's status line from there.
             }
             return glib::Propagation::Stop;
         }

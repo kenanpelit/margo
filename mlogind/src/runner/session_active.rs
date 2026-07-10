@@ -10,9 +10,13 @@
 //! `sd_session_is_active()` reads `/run/systemd/sessions/<id>`, so we read it
 //! too rather than linking `libsystemd` for one boolean.
 
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use log::{info, warn};
+
+/// Where logind keeps its session state files.
+const SESSIONS: &str = "/run/systemd/sessions";
 
 /// How long we are willing to wait. Generous: activation is normally a few
 /// milliseconds, and the cost of guessing low is a black screen.
@@ -52,7 +56,7 @@ pub fn wait() {
         info!("runner: XDG_SESSION_ID unset; not waiting for a logind session");
         return;
     };
-    let path = std::path::Path::new("/run/systemd/sessions").join(&id);
+    let path = Path::new(SESSIONS).join(&id);
 
     let started = Instant::now();
     loop {
@@ -89,6 +93,83 @@ pub fn wait() {
         }
         std::thread::sleep(POLL);
     }
+}
+
+/// The VT a logind session state file claims, if it claims one.
+///
+/// Sessions that are not on a VT (an SSH login, a `systemd --user` manager)
+/// have no `VTNr` at all, which is why this is an `Option` rather than a zero.
+pub fn vt_of(contents: &str) -> Option<u32> {
+    for line in contents.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() == "VTNr" {
+            return value.trim().parse().ok();
+        }
+    }
+    None
+}
+
+/// The names of the sessions, among `entries`, that sit on `vtnr`.
+///
+/// Split from the directory walk so the decision is testable from fixtures.
+pub fn sessions_on_vt(entries: &[(String, String)], vtnr: u32) -> Vec<&str> {
+    entries
+        .iter()
+        .filter(|(_, contents)| vt_of(contents) == Some(vtnr))
+        .map(|(name, _)| name.as_str())
+        .collect()
+}
+
+/// Block until no logind session claims `vtnr`, or until [`TIMEOUT`] elapses.
+///
+/// The greeter session and the user session share one VT — atrium holds a single
+/// VT per seat and runs them on it in sequence, and so do we. `pam_close_session`
+/// in the greeter-session process starts the teardown, but logind finishes it
+/// asynchronously, and `pam_systemd` will not put the user's session on a VT that
+/// still has one.
+///
+/// Like [`wait`], this never fails the login: on timeout it warns and proceeds.
+pub fn wait_vt_free(vtnr: u32) {
+    let started = Instant::now();
+    loop {
+        let entries = read_sessions();
+        let occupied = sessions_on_vt(&entries, vtnr);
+        if occupied.is_empty() {
+            info!(
+                "runner: VT {vtnr} free after {} ms",
+                started.elapsed().as_millis()
+            );
+            return;
+        }
+
+        if started.elapsed() >= TIMEOUT {
+            warn!(
+                "runner: VT {vtnr} still held by logind session(s) {} after {} ms; continuing",
+                occupied.join(", "),
+                TIMEOUT.as_millis()
+            );
+            return;
+        }
+        std::thread::sleep(POLL);
+    }
+}
+
+/// `(session id, state file contents)` for every session logind currently knows.
+/// An unreadable directory reads as "no sessions" — the caller then proceeds,
+/// which is the same thing it would do on a timeout.
+fn read_sessions() -> Vec<(String, String)> {
+    let Ok(dir) = std::fs::read_dir(SESSIONS) else {
+        return Vec::new();
+    };
+    dir.flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_str()?.to_owned();
+            let contents = std::fs::read_to_string(entry.path()).ok()?;
+            Some((name, contents))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -135,5 +216,43 @@ mod tests {
     fn whitespace_and_comments_do_not_confuse_the_parse() {
         assert_eq!(parse_active("  STATE = active \n"), Some(true));
         assert_eq!(parse_active("#STATE=active\nSTATE=online\n"), Some(false));
+    }
+
+    #[test]
+    fn a_session_on_a_vt_reports_its_number() {
+        assert_eq!(vt_of("UID=0\nVTNr=1\nSTATE=active\n"), Some(1));
+        assert_eq!(vt_of("VTNr = 7 \n"), Some(7));
+    }
+
+    #[test]
+    fn a_session_without_a_vt_has_none() {
+        // An SSH login, or the user's `systemd --user` manager.
+        assert_eq!(vt_of("UID=1000\nREMOTE=1\n"), None);
+        assert_eq!(vt_of(""), None);
+    }
+
+    #[test]
+    fn a_non_numeric_vt_is_not_a_vt() {
+        // Never parse this into a 0 that then matches VT 0.
+        assert_eq!(vt_of("VTNr=tty1\n"), None);
+        assert_eq!(vt_of("VTNr=\n"), None);
+    }
+
+    #[test]
+    fn only_the_sessions_on_our_vt_are_reported() {
+        let entries = vec![
+            ("c1".to_string(), "VTNr=1\nCLASS=greeter\n".to_string()),
+            ("c2".to_string(), "VTNr=2\n".to_string()),
+            ("c3".to_string(), "REMOTE=1\n".to_string()),
+            ("c4".to_string(), "VTNr=1\n".to_string()),
+        ];
+        assert_eq!(sessions_on_vt(&entries, 1), vec!["c1", "c4"]);
+        assert_eq!(sessions_on_vt(&entries, 2), vec!["c2"]);
+        assert!(sessions_on_vt(&entries, 3).is_empty());
+    }
+
+    #[test]
+    fn an_empty_session_list_leaves_every_vt_free() {
+        assert!(sessions_on_vt(&[], 1).is_empty());
     }
 }

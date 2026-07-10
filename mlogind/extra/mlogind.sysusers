@@ -1,0 +1,9 @@
+# The unprivileged system user mlogind's graphical greeter runs as.
+#
+# No shell, no home directory, no supplementary groups. logind grants the
+# greeter's session the seat's DRM and input devices through ACLs, so membership
+# in `video` or `input` would be a downgrade, not a requirement.
+#
+# If this user is missing, mlogind logs an error and runs the greeter as root
+# rather than leaving the machine unusable. Run `systemd-sysusers` to create it.
+u mlogind-greeter - "mlogind greeter" - -

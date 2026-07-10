@@ -150,8 +150,10 @@ start because a log is unwritable is a lockout with extra steps.
   membership in `video`/`input` is not needed and would be a downgrade.
 - `mlogind/extra/mlogind-greeter.pam` → `/etc/pam.d/mlogind-greeter`.
 - `mlogind/extra/60-mlogind-greeter.rules` → the polkit rule.
-- `PKGBUILD` (`backup=` for the pam file, `install -Dm644` for all three) and
-  `install.sh`.
+- `PKGBUILD` only: `backup=` for the pam file, `install -Dm644` for all three.
+  `install.sh` ships binaries and has never installed mlogind's `/etc` files, so
+  a source install gets the loud "greeter user missing, running as root" path
+  until the admin runs `systemd-sysusers`.
 
 The PAM stack is a `pam_permit` auth with a real session:
 

@@ -31,17 +31,21 @@ const HEADER: usize = 5;
 /// Largest payload that still fits inside [`MAX_FRAME`].
 pub const MAX_PAYLOAD: usize = MAX_FRAME - HEADER;
 
-// Request tags (greeter → runner).
-const REQ_BEGIN: u8 = 1;
-const REQ_RESPONSE: u8 = 2;
-const REQ_CANCEL: u8 = 3;
+// The two directions live in disjoint tag ranges. They are separate namespaces
+// — nothing ever decodes a frame with the wrong function — but a decoder that is
+// wired up backwards should say so, not stumble onto a neighbouring variant that
+// happens to share a tag and a payload length. Requests below 0x10, events at or
+// above it.
+const REQ_BEGIN: u8 = 0x01;
+const REQ_RESPONSE: u8 = 0x02;
+const REQ_CANCEL: u8 = 0x03;
+const REQ_POWER: u8 = 0x04;
 
-// Event tags (runner → greeter).
-const EV_PROMPT: u8 = 1;
-const EV_INFO: u8 = 2;
-const EV_ERROR: u8 = 3;
-const EV_SUCCESS: u8 = 4;
-const EV_FAILURE: u8 = 5;
+const EV_PROMPT: u8 = 0x10;
+const EV_INFO: u8 = 0x11;
+const EV_ERROR: u8 = 0x12;
+const EV_SUCCESS: u8 = 0x13;
+const EV_FAILURE: u8 = 0x14;
 
 /// Everything that can go wrong at the protocol boundary.
 ///
@@ -98,6 +102,14 @@ pub enum Request {
     Response { secret: Zeroizing<Vec<u8>> },
     /// Abandon the conversation in flight; the greeter is going back to a blank form.
     Cancel,
+    /// Run the configured power action at `index` — shut down, reboot, suspend.
+    ///
+    /// An index, not a command. The greeter is unprivileged; the runner is root.
+    /// Letting the greeter name the command would hand back, in one line, exactly
+    /// the privilege deprivileging it took away. `index` is resolved against the
+    /// runner's own `power_controls` (`base_entries` then `entries`), so the
+    /// greeter cannot reach anything that is not already in the config file.
+    Power { index: u32 },
 }
 
 /// Runner → greeter.
@@ -154,6 +166,7 @@ pub fn encode_request(req: &Request) -> Result<Zeroizing<Vec<u8>>, ProtoError> {
             (REQ_RESPONSE, b)
         }
         Request::Cancel => (REQ_CANCEL, Vec::new()),
+        Request::Power { index } => (REQ_POWER, index.to_be_bytes().to_vec()),
     };
     finish(tag, body)
 }
@@ -259,6 +272,9 @@ pub fn decode_request(frame: &[u8]) -> Result<Request, ProtoError> {
             secret: Zeroizing::new(c.bytes()?.to_vec()),
         }),
         REQ_CANCEL => Ok(Request::Cancel),
+        REQ_POWER => Ok(Request::Power {
+            index: u32::from_be_bytes(c.take(4)?.try_into().map_err(|_| ProtoError::Truncated)?),
+        }),
         t => Err(ProtoError::UnknownTag(t)),
     }
 }
@@ -378,6 +394,8 @@ mod tests {
                 secret: Zeroizing::new(b"hunter2".to_vec()),
             },
             Request::Cancel,
+            Request::Power { index: 0 },
+            Request::Power { index: u32::MAX },
         ] {
             let frame = encode_request(&req).expect("encode");
             assert_eq!(decode_request(&frame).expect("decode"), req);
@@ -517,6 +535,26 @@ mod tests {
         put_bytes(&mut body, b"margo");
         let frame = finish(REQ_BEGIN, body).expect("encode");
         assert!(matches!(decode_request(&frame), Err(ProtoError::NotUtf8)));
+    }
+
+    #[test]
+    fn a_power_frame_is_meaningless_in_the_other_direction() {
+        // Before the tag ranges were split, `Power` and `Success` both had tag 4
+        // and only their payload lengths kept them apart. A greeter echoing its
+        // own frame back must never read as an authenticated login.
+        let frame = encode_request(&Request::Power { index: 0 }).expect("encode");
+        assert!(matches!(
+            decode_event(&frame),
+            Err(ProtoError::UnknownTag(REQ_POWER))
+        ));
+    }
+
+    #[test]
+    fn a_truncated_power_index_is_an_error() {
+        let mut frame = vec![REQ_POWER];
+        frame.extend_from_slice(&2u32.to_be_bytes());
+        frame.extend_from_slice(&[0, 0]);
+        assert!(matches!(decode_request(&frame), Err(ProtoError::Truncated)));
     }
 
     #[test]

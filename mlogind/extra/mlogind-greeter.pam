@@ -1,0 +1,34 @@
+#%PAM-1.0
+#
+# PAM stack for mlogind's graphical greeter — installed as
+# /etc/pam.d/mlogind-greeter.
+#
+# It authenticates NOTHING. The greeter user (see `greeter_user` in
+# /etc/mlogind/config.toml) is not a login; there is no password, no shell and
+# no home directory. `pam_permit` is the whole auth phase, deliberately.
+#
+# What this file is actually for is the SESSION phase. `pam_systemd` registers a
+# logind session with class=greeter on the seat and VT mlogind exported into the
+# environment. That session is what lets logind hand the greeter's compositor the
+# DRM node and the input devices, through ACLs — which is why the greeter needs
+# no membership in `video` or `input`, and why mlogind no longer has to start
+# `seatd` by hand.
+#
+# `pam_loginuid` makes the audit subsystem attribute the greeter's actions to the
+# greeter rather than to root.
+#
+# Do NOT add an auth module that prompts. mlogind's greeter-session conversation
+# refuses every prompt and fails the session rather than guessing an answer.
+
+auth        required    pam_env.so
+auth        required    pam_permit.so
+
+account     required    pam_permit.so
+
+# Nothing here should ever change a password.
+password    required    pam_deny.so
+
+session     optional    pam_keyinit.so force revoke
+session     required    pam_limits.so
+session     required    pam_loginuid.so
+-session    optional    pam_systemd.so

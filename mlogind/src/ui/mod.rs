@@ -312,7 +312,6 @@ impl LoginForm {
                 key_menu: KeyMenuWidget::new(
                     config.power_controls.clone(),
                     config.environment_switcher.clone(),
-                    config.system_shell.clone(),
                 ),
                 environment: Arc::new(Mutex::new(SwitcherWidget::new(
                     crate::post_login::get_envs(&config)
@@ -603,7 +602,22 @@ impl LoginForm {
                         }
 
                         (KeyCode::F(_), _, _) => {
-                            self.widgets.key_menu.key_press(key.code);
+                            // Power actions are the root runner's to perform: under
+                            // `cage` this same form is the unprivileged greeter, and
+                            // in `--preview` it must not shut the machine down at
+                            // all (it used to — `mlogind --preview` plus F1).
+                            if let Some(index) = self.widgets.key_menu.power_index(key.code) {
+                                match conn.as_mut() {
+                                    Some(conn) => {
+                                        if let Some(msg) = request_power(conn, index, &redraw) {
+                                            status_message.set(msg);
+                                        }
+                                    }
+                                    None => info!(
+                                        "greeter: power action {index} ignored; no session runner"
+                                    ),
+                                }
+                            }
                             self.widgets.environment_guard().key_press(key.code);
 
                             switcher_hidden = self
@@ -712,6 +726,31 @@ impl LoginForm {
 
         Ok(outcome)
     }
+}
+
+/// Ask the session runner to run power action `index`, and wait for its verdict.
+///
+/// The runner always answers — `Info` on success, `Error` on failure — so this
+/// cannot hang when an action returns instead of taking the machine down
+/// (`suspend`). Returns a status message when there is something to say.
+fn request_power(
+    conn: &mut Conn<FdTransport>,
+    index: usize,
+    redraw: &dyn Fn(),
+) -> Option<StatusMessage> {
+    let index = u32::try_from(index).ok()?;
+    if conn.send_request(&Request::Power { index }).is_err() {
+        return Some(ErrorStatusMessage::RunnerGone.into());
+    }
+    let message = match conn.recv_event() {
+        Ok(Some(ProtoEvent::Info { text })) => StatusMessage::FromRunner(text),
+        Ok(Some(ProtoEvent::Error { text })) => ErrorStatusMessage::FromRunner(text).into(),
+        // Anything else here is the runner losing the plot; do not act on it.
+        Ok(Some(_)) => ErrorStatusMessage::FromRunner("Unexpected reply".into()).into(),
+        Ok(None) | Err(_) => ErrorStatusMessage::RunnerGone.into(),
+    };
+    redraw();
+    Some(message)
 }
 
 /// Where a pumped conversation left off.

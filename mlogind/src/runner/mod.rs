@@ -19,14 +19,14 @@ use std::error::Error;
 use std::io;
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::Command;
 
 use log::{error, info, warn};
 use mlogind_proto::{Conn, Event, FdTransport, Request};
 use pam::Authenticator;
 
 use crate::auth::{self, utmpx::add_utmpx_entry, UserInfo};
-use crate::config::Config;
+use crate::config::{Config, PowerControl};
 use crate::info_caching::set_cache;
 use crate::post_login::{
     self,
@@ -38,6 +38,7 @@ use crate::post_login::{
 };
 
 mod converse;
+mod greeter_session;
 pub mod session_active;
 
 use converse::{Abort, GreeterConv};
@@ -78,11 +79,6 @@ impl Host {
             crate::which(bin).ok_or_else(|| format!("`{bin}` not found in PATH"))?;
         }
         Ok(())
-    }
-
-    /// Does this host need a seat provider started for it?
-    pub fn needs_seatd(self) -> bool {
-        matches!(self, Self::Gui | Self::Cage)
     }
 }
 
@@ -132,9 +128,10 @@ pub fn run(config: &Config, host: Host, rfd: OwnedFd, gfd: OwnedFd) -> ! {
     // SAFETY: `rfd` is a live SOCK_SEQPACKET socket owned by this scope, and it
     // outlives the `Conn` — `rfd` is dropped at the end of this function, which
     // only runs after `serve` returns.
-    let mut conn = Conn::new(unsafe { FdTransport::new(rfd.as_raw_fd()) });
+    let runner_fd = rfd.as_raw_fd();
+    let mut conn = Conn::new(unsafe { FdTransport::new(runner_fd) });
 
-    let code = match spawn_greeter(config, host, gfd) {
+    let code = match spawn_greeter(config, host, gfd, runner_fd) {
         Ok(greeter) => serve(config, host, &mut conn, greeter),
         Err(err) => {
             error!("runner: cannot start the {host:?} greeter host: {err}");
@@ -147,9 +144,13 @@ pub fn run(config: &Config, host: Host, rfd: OwnedFd, gfd: OwnedFd) -> ! {
     std::process::exit(code)
 }
 
-/// The greeter process and where its output went, if this host has one.
+/// The greeter-session process and where its host's output went.
+///
+/// A forked pid rather than a `std::process::Child`: between the runner and
+/// `margo` there is now a process that opens the greeter's logind session, drops
+/// privilege, and holds the PAM handle for as long as the greeter lives.
 struct Greeter {
-    child: Child,
+    pid: libc::pid_t,
     log: PathBuf,
 }
 
@@ -157,6 +158,7 @@ fn spawn_greeter(
     config: &Config,
     host: Host,
     gfd: OwnedFd,
+    runner_fd: RawFd,
 ) -> Result<Option<Greeter>, Box<dyn Error>> {
     if host == Host::Tty {
         // The greeter is our parent; it kept its own copy of the socket.
@@ -166,12 +168,13 @@ fn spawn_greeter(
 
     use std::os::unix::fs::PermissionsExt;
 
-    // Root has no XDG_RUNTIME_DIR. Give the greeter compositor a private 0700
-    // tmpfs dir. It no longer holds a credential file — that is the point of A1
-    // — but cage and margo still want somewhere to put their sockets.
+    // A world-readable state dir: the greeter is unprivileged now and margo has
+    // to read `greeter.conf`. Nothing secret has lived here since A1 removed the
+    // credential hand-off. The greeter's own runtime dir comes from pam_systemd
+    // (/run/user/<uid>) and is not this.
     let runtime_dir = PathBuf::from("/run/mlogind");
     std::fs::create_dir_all(&runtime_dir)?;
-    std::fs::set_permissions(&runtime_dir, std::fs::Permissions::from_mode(0o700))?;
+    std::fs::set_permissions(&runtime_dir, std::fs::Permissions::from_mode(0o755))?;
 
     // atrium's `CREDENTIALS_FD` idiom: the socket rides across `exec` on a
     // known number, announced in the environment.
@@ -188,14 +191,16 @@ fn spawn_greeter(
 
             let greeter_conf = runtime_dir.join("greeter.conf");
             crate::write_greeter_conf(&greeter_conf)?;
-            let mgreet_log = runtime_dir.join("mgreet.log");
 
             // However mgreet exits, quit margo so this host returns. The `;`
-            // runs the quit even if mgreet crashed.
+            // runs the quit even if mgreet crashed. mgreet's stderr used to be
+            // redirected to a file in this directory, which meant the greeter
+            // needed write access to it; it now flows through margo's stderr
+            // into the log the runner opens below, as root, and passes down as
+            // an inherited fd.
             let startup = format!(
-                "{mgreet} 2>{log}; {mctl} dispatch quit",
+                "{mgreet}; {mctl} dispatch quit",
                 mgreet = mgreet.display(),
-                log = mgreet_log.display(),
                 mctl = mctl.display(),
             );
 
@@ -231,11 +236,12 @@ fn spawn_greeter(
         }
     };
 
-    cmd.env("XDG_RUNTIME_DIR", &runtime_dir)
-        .env("MLOGIND_SOCK_FD", &sock_fd)
-        // libseat: logind (no session) → fails; force seatd, the only backend
-        // available to a session-less root process here.
-        .env("LIBSEAT_BACKEND", "seatd");
+    // XDG_RUNTIME_DIR is deliberately NOT set: pam_systemd gives the greeter
+    // session its own (/run/user/<uid>), and a root-owned path in its way would
+    // only break it. Nor is LIBSEAT_BACKEND: the greeter has a real logind
+    // session now, so libseat finds its logind backend by itself. Those two lines
+    // were the entire reason `seatd` had to be started by hand.
+    cmd.env("MLOGIND_SOCK_FD", &sock_fd);
     // Match the greeter keyboard to the machine's console layout.
     for (key, val) in crate::vconsole_xkb_env() {
         cmd.env(key, val);
@@ -249,26 +255,112 @@ fn spawn_greeter(
     }
 
     info!("runner: launching the {host:?} greeter host");
-    let child = cmd.spawn()?;
 
-    // Our copy must go, or the greeter exiting never reads as EOF.
+    // SAFETY: mlogind is single-threaded.
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    if pid == 0 {
+        // A fork is not an exec, so CLOEXEC did nothing for our inherited copy
+        // of the runner's end. Close it, or the greeter exiting never reads as
+        // EOF and `serve` waits forever.
+        // SAFETY: this child never touches that descriptor again.
+        unsafe { libc::close(runner_fd) };
+        greeter_session::run(config, cmd);
+    }
+
+    // Our copy of the greeter's end must go too, for the same reason.
     drop(gfd);
 
-    Ok(Some(Greeter { child, log }))
+    Ok(Some(Greeter { pid, log }))
 }
 
-/// Serialise the resolved power controls so mgreet renders the same F-key
-/// footer and runs the same commands as the TUI greeter: one
-/// `key<TAB>hint<TAB>cmd` line per entry.
-fn power_env(config: &Config) -> String {
+/// Every configured power action, base entries first.
+///
+/// This ordering *is* the wire format: `Request::Power` carries an index into
+/// this list, and both greeters build their footer from the same config in the
+/// same order. Filtering here — dropping an entry with a blank key, say — would
+/// silently shift every index after it.
+fn power_entries(config: &Config) -> Vec<&PowerControl> {
     config
         .power_controls
         .base_entries
         .0
         .iter()
         .chain(config.power_controls.entries.0.iter())
-        .filter(|p| !p.key.is_empty() && !p.hint.is_empty())
-        .map(|p| format!("{}\t{}\t{}", p.key, p.hint, p.cmd))
+        .collect()
+}
+
+/// Run the configured power action at `index`, as root, and always answer.
+///
+/// The greeter sends an index, never a command: it is unprivileged, we are not,
+/// and letting it name what we run would hand back in one line exactly the
+/// privilege it just gave up.
+///
+/// The reply matters. Most power actions never return — the machine is going
+/// down — but `suspend` does, and a greeter that blocks for an answer (the TUI)
+/// must not hang when one does.
+fn run_power(config: &Config, index: u32, conn: &mut Conn<FdTransport>) {
+    let entries = power_entries(config);
+    let Some(entry) = usize::try_from(index).ok().and_then(|i| entries.get(i)) else {
+        // Both sides read the same config in the same order, so this means they
+        // disagree about it. Worth saying out loud rather than running entry 0.
+        error!("runner: greeter asked for power action {index}, which does not exist");
+        let _ = conn.send_event(&Event::Error {
+            text: "Unknown power action".to_string(),
+        });
+        return;
+    };
+
+    info!(
+        "runner: running power action '{}': {}",
+        entry.hint, entry.cmd
+    );
+    let output = Command::new(&config.system_shell)
+        .arg("-c")
+        .arg(&entry.cmd)
+        .output();
+
+    let event = match output {
+        Ok(out) if out.status.success() => Event::Info {
+            text: format!("{}…", entry.hint),
+        },
+        Ok(out) => {
+            error!(
+                "runner: power action '{}' exited {}: {}",
+                entry.hint,
+                out.status,
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
+            Event::Error {
+                text: format!("Failed to {}", entry.hint),
+            }
+        }
+        Err(err) => {
+            error!("runner: could not run power action '{}': {err}", entry.hint);
+            Event::Error {
+                text: format!("Failed to {}", entry.hint),
+            }
+        }
+    };
+    let _ = conn.send_event(&event);
+}
+
+/// Serialise the power controls mgreet renders in its F-key footer: one
+/// `index<TAB>key<TAB>hint` line per entry.
+///
+/// The command is deliberately absent. mgreet is unprivileged and could not run
+/// it anyway; shipping root commands into an unprivileged process's environment
+/// buys nothing. The index is explicit rather than implied by line order,
+/// because blank entries are skipped here but still occupy a slot in
+/// [`power_entries`], which is what `Request::Power` indexes into.
+fn power_env(config: &Config) -> String {
+    power_entries(config)
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| !p.key.is_empty() && !p.hint.is_empty())
+        .map(|(i, p)| format!("{i}\t{}\t{}", p.key, p.hint))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -288,6 +380,11 @@ fn serve(
             Some(begin) => begin,
             None => match conn.recv_request() {
                 Ok(Some(Request::Begin { user, session })) => (user, session),
+                // The greeter is unprivileged; shutting the machine down is ours.
+                Ok(Some(Request::Power { index })) => {
+                    run_power(config, index, conn);
+                    continue;
+                }
                 // A Cancel with no conversation in flight, or a stray Response.
                 Ok(Some(_)) => continue,
                 Ok(None) => return no_login(greeter.as_mut()),
@@ -362,8 +459,8 @@ fn serve(
                 // The greeter compositor can die tearing down its outputs long
                 // after the login was captured. Honour the login regardless: the
                 // kernel drops DRM master on exit either way.
-                Reaped::Abnormal(status) => warn!(
-                    "runner: {host:?} greeter host exited abnormally ({status}) after the login was captured; continuing"
+                Reaped::Abnormal(code) => warn!(
+                    "runner: {host:?} greeter host exited abnormally ({code}) after the login was captured; continuing"
                 ),
                 Reaped::Clean => {}
             },
@@ -391,19 +488,15 @@ fn resolve_session(config: &Config, name: &str) -> Option<PostLoginEnvironment> 
 
 enum Reaped {
     Clean,
-    Abnormal(std::process::ExitStatus),
+    Abnormal(i32),
 }
 
 fn reap(greeter: &mut Greeter) -> Reaped {
-    match greeter.child.wait() {
-        Ok(status) if status.success() => Reaped::Clean,
-        Ok(status) => {
+    match crate::wait_for(greeter.pid) {
+        0 => Reaped::Clean,
+        code => {
             tail_log(&greeter.log);
-            Reaped::Abnormal(status)
-        }
-        Err(err) => {
-            error!("runner: could not wait for the greeter host: {err}");
-            Reaped::Clean
+            Reaped::Abnormal(code)
         }
     }
 }
@@ -415,18 +508,14 @@ fn no_login(greeter: Option<&mut Greeter>) -> i32 {
         info!("runner: greeter produced no login");
         return EXIT_NO_LOGIN;
     };
-    match greeter.child.wait() {
-        Ok(status) if status.success() => {
+    match crate::wait_for(greeter.pid) {
+        0 => {
             info!("runner: greeter produced no login");
             EXIT_NO_LOGIN
         }
-        Ok(status) => {
-            error!("runner: greeter host exited abnormally ({status}) with no login");
+        code => {
+            error!("runner: greeter host exited abnormally ({code}) with no login");
             tail_log(&greeter.log);
-            EXIT_HOST_UNAVAILABLE
-        }
-        Err(err) => {
-            error!("runner: could not wait for the greeter host: {err}");
             EXIT_HOST_UNAVAILABLE
         }
     }
@@ -466,6 +555,12 @@ fn start_session(
     remove_xdg();
     set_session_params(post_login_env);
     set_seat_vars(config.tty);
+
+    // The greeter session lived on this VT. `pam_close_session` started its
+    // teardown when the greeter-session process exited, but logind finishes
+    // asynchronously — and pam_systemd will not put a session on a VT that still
+    // has one.
+    session_active::wait_vt_free(u32::from(config.tty));
 
     if let Err(err) = auth.open_session() {
         error!("runner: failed to open a PAM session: {err}");
