@@ -124,9 +124,9 @@ const FONT_INFO_PT: i32 = 13;
 // clock and date, a hairline rule, the avatar, the password field, an optional
 // Caps Lock chip, and the status line — one panel, not a stack of free-floating
 // elements over the wallpaper. Only the power chips sit outside it, below.
-const CARD_PAD_X: f64 = 44.0;
-const CARD_PAD_Y: f64 = 34.0;
-const CARD_MIN_W: f64 = 360.0;
+const CARD_PAD_X: f64 = 48.0;
+const CARD_PAD_Y: f64 = 40.0;
+const CARD_MIN_W: f64 = 380.0;
 const CARD_RADIUS: f64 = 26.0;
 const RULE_H: f64 = 1.0;
 
@@ -631,6 +631,10 @@ pub fn draw_lock_frame(
         cr.move_to(ccx - sw as f64 / 2.0, y);
         pangocairo::functions::show_layout(&cr, &layout_status);
     }
+    // Advance past the status line — its own height, matching `inner_h`'s
+    // `GAP_ABOVE_STATUS + status_h`. Without this the footer rule was drawn on
+    // top of the text.
+    y += status_h;
 
     // 16. Footer inside the card: a rule, the meta line, an optional now-playing
     //     line, and the power chips — all of it once floated in the corners.
@@ -793,29 +797,30 @@ fn shake_offset(seat: &SeatState) -> f64 {
     (t * SHAKE_FREQ_HZ * std::f64::consts::TAU).sin() * SHAKE_AMPLITUDE * envelope
 }
 
-/// The frosted-glass card behind the auth column: a soft drop shadow, a
-/// translucent darkest-surface fill the blurred wallpaper reads through, and a
-/// hairline top-edge highlight. mgreet's `.mgreet-card`, in cairo.
+/// The frosted-glass card behind the auth column: a translucent
+/// darkest-surface fill the blurred wallpaper reads through, ringed by two
+/// hairlines — a darker outer one that lifts it off the wallpaper and a lighter
+/// inner one like light catching a glass edge. mgreet's `.mgreet-card`, in cairo.
+///
+/// No drop shadow. Cairo has no gaussian blur, and a shadow faked from a few
+/// concentric translucent rects banded into visible haloes rather than a soft
+/// falloff — worse than none. The two rings separate the card cleanly, which is
+/// the shadow's only real job over an already-blurred backdrop.
 fn draw_card_panel(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, pal: &Palette) {
-    for (off, alpha) in [(3.0, 0.22), (10.0, 0.13), (22.0, 0.07)] {
-        let off: f64 = off;
-        rounded_rect(
-            cr,
-            x - off,
-            y + off * 0.7,
-            w + off * 2.0,
-            h + off * 2.0,
-            CARD_RADIUS + off,
-        );
-        cr.set_source_rgba(0.0, 0.0, 0.0, alpha);
-        cr.fill().ok();
-    }
     rounded_rect(cr, x, y, w, h, CARD_RADIUS);
-    cr.set_source_rgba(pal.dim.0, pal.dim.1, pal.dim.2, 0.62);
-    cr.fill_preserve().ok();
-    // A touch of the on-surface tone, like light catching a glass edge.
+    cr.set_source_rgba(pal.dim.0, pal.dim.1, pal.dim.2, 0.66);
+    cr.fill().ok();
+
+    // Outer hairline, just outside the fill: a darker seam so the card reads as
+    // an edge even where its fill is close to the wallpaper behind it.
     cr.set_line_width(1.0);
-    cr.set_source_rgba(pal.text.0, pal.text.1, pal.text.2, 0.10);
+    rounded_rect(cr, x - 0.5, y - 0.5, w + 1.0, h + 1.0, CARD_RADIUS + 0.5);
+    cr.set_source_rgba(0.0, 0.0, 0.0, 0.28);
+    cr.stroke().ok();
+
+    // Inner hairline: a touch of on-surface, the light on a glass rim.
+    rounded_rect(cr, x + 0.5, y + 0.5, w - 1.0, h - 1.0, CARD_RADIUS - 0.5);
+    cr.set_source_rgba(pal.text.0, pal.text.1, pal.text.2, 0.12);
     cr.stroke().ok();
 }
 
