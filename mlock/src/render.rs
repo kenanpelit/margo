@@ -1,7 +1,7 @@
 //! Cairo + pango drawing for one lock frame.
 //!
-//! A centred glass card — mgreet's shape — holds the whole auth column, every
-//! element config-gated:
+//! A single centred glass card — mgreet's shape — holds everything, top to
+//! bottom, each element config-gated:
 //!   • greeting line ("Good morning, Kenan")
 //!   • clock + date pair
 //!   • a hairline rule
@@ -9,13 +9,14 @@
 //!   • slim password capsule (shake + soft shadow) holding the dots
 //!   • optional Caps Lock chip
 //!   • status line — fail message + attempt count, or typing hint
-//! The card shakes as one on a failed attempt. The power-action chips
-//! (F1/F2/F3) sit just below it, outside the card.
+//!   • a footer, below a second rule:
+//!       – meta line: keyboard layout · weather · notifications · battery
+//!       – optional now-playing line (published by the shell — see `sidecar`)
+//!       – power-action chips (F1/F2/F3)
 //!
-//! Absolutely-positioned extras (don't perturb the centred card):
-//!   • top-right battery, top-left keyboard layout
-//!   • bottom-centre live info — weather · notifications, and a
-//!     now-playing line — published by the shell (see `sidecar`).
+//! Nothing floats free any more — the battery, keyboard layout and live info
+//! that used to sit in the screen corners are all inside the card now. The
+//! whole card, footer included, shakes as one on a failed attempt.
 
 use anyhow::Result;
 use cairo::{Format, ImageSurface};
@@ -138,7 +139,11 @@ const GAP_RULE_AVATAR: f64 = 20.0;
 const GAP_AVATAR_FIELD: f64 = 18.0;
 const GAP_FIELD_CAPS: f64 = 12.0;
 const GAP_ABOVE_STATUS: f64 = 16.0;
-const GAP_CARD_POWER: f64 = 26.0;
+// The footer, inside the card below the status line: a second rule, the meta
+// line (layout · weather · notifications · battery), an optional now-playing
+// line, and the power chips. All of it used to float in the screen corners.
+const GAP_STATUS_FOOTER: f64 = 20.0;
+const FOOTER_GAP: f64 = 14.0;
 
 // Compact password input — a slim capsule, not the old 720 px slab. Sized
 // to read as a single tidy field whatever the password length.
@@ -384,6 +389,28 @@ pub fn draw_lock_frame(
     };
     let status_h = FONT_STATUS_PT as f64 * 1.6;
 
+    // 5. The footer, inside the card below the status line: a meta line
+    //    (layout · weather · notifications · battery), an optional now-playing
+    //    line, and the power chips — everything that used to float in a screen
+    //    corner. Built now so its size folds into the card's.
+    let meta_line = footer_meta(seat, toggles, info);
+    let meta_layout = (!meta_line.is_empty())
+        .then(|| layout(&cr, &meta_line, FONT_INFO_PT, pango::Weight::Normal));
+    let media_line = (toggles.media && info.has_media()).then(|| now_playing(info));
+    let media_layout = media_line
+        .as_ref()
+        .map(|s| layout(&cr, s, FONT_INFO_PT, pango::Weight::Medium));
+    let power = PowerRow::build(&cr, seat);
+
+    let meta_dim = meta_layout.as_ref().map(|l| l.pixel_size());
+    let media_dim = media_layout.as_ref().map(|l| l.pixel_size());
+    let meta_w = meta_dim.map_or(0, |d| d.0) as f64;
+    let meta_h = meta_dim.map_or(0, |d| d.1) as f64;
+    let media_icon_w = FONT_INFO_PT as f64 * 1.1;
+    let media_gap = 7.0;
+    let media_h = media_dim.map_or(0, |d| d.1) as f64;
+    let media_w = media_dim.map_or(0.0, |d| media_icon_w + media_gap + d.0 as f64);
+
     // Card inner height: every present row plus its leading gap, matching the
     // draw walk below exactly.
     let mut inner_h = clock_h as f64;
@@ -402,23 +429,30 @@ pub fn draw_lock_frame(
         inner_h += GAP_FIELD_CAPS + caps_chip_h;
     }
     inner_h += GAP_ABOVE_STATUS + status_h;
+    // Footer: a rule, then whichever of the meta / media / power rows are present.
+    inner_h += GAP_STATUS_FOOTER + RULE_H;
+    if meta_layout.is_some() {
+        inner_h += FOOTER_GAP + meta_h;
+    }
+    if media_layout.is_some() {
+        inner_h += FOOTER_GAP + media_h;
+    }
+    inner_h += FOOTER_GAP + power.height;
 
     // Card width: the widest row it has to hold, floored at CARD_MIN_W.
     let inner_w = INPUT_W
         .max(greeting_w)
         .max(date_w)
         .max(clock_w as f64)
-        .max(AVATAR_SIZE);
+        .max(AVATAR_SIZE)
+        .max(meta_w)
+        .max(media_w)
+        .max(power.width);
     let card_w = (inner_w + CARD_PAD_X * 2.0).max(CARD_MIN_W);
     let card_h = inner_h + CARD_PAD_Y * 2.0;
 
-    // 5. Power row — measured now so the card and it centre as one block, drawn
-    //    after the card below.
-    let power = PowerRow::build(&cr, seat);
-
-    let total = card_h + GAP_CARD_POWER + power.height;
     let cx = width as f64 / 2.0;
-    let card_top = ((height as f64 - total) / 2.0).max(24.0);
+    let card_top = ((height as f64 - card_h) / 2.0).max(24.0);
 
     // The shake moves the whole card, not just the field — mgreet shakes the
     // card. `ccx` is the content centre inside the shaken card.
@@ -598,57 +632,69 @@ pub fn draw_lock_frame(
         pangocairo::functions::show_layout(&cr, &layout_status);
     }
 
-    // 16. Power-confirm banner OR F-key chip row, below the card. Not shaken —
-    //     it is not part of the auth attempt that failed.
-    power.draw(&cr, cx, card_top + card_h + GAP_CARD_POWER, pal);
+    // 16. Footer inside the card: a rule, the meta line, an optional now-playing
+    //     line, and the power chips — all of it once floated in the corners.
+    //     Drawn on `ccx`, so it shakes with the card, unlike the old outside row.
+    y += GAP_STATUS_FOOTER;
+    let foot_rule_w = (card_w - CARD_PAD_X * 2.0).min(inner_w);
+    rounded_rect(
+        &cr,
+        ccx - foot_rule_w / 2.0,
+        y,
+        foot_rule_w,
+        RULE_H,
+        RULE_H / 2.0,
+    );
+    cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.20);
+    cr.fill().ok();
+    y += RULE_H;
 
-    // 14. Top-right battery indicator (laptops only).
-    if toggles.battery
-        && let Some(bat) = seat.battery
-    {
-        draw_battery(&cr, width as f64 - 32.0, 28.0, bat);
+    if let Some(ml) = &meta_layout {
+        y += FOOTER_GAP;
+        cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.85);
+        cr.move_to(ccx - meta_w / 2.0, y);
+        pangocairo::functions::show_layout(&cr, ml);
+        y += meta_h;
     }
 
-    // 15. Top-left keyboard layout (multi-layout setups only).
-    //     Absolutely positioned like the battery, so it never
-    //     perturbs the centred stack's height maths.
-    if toggles.layout
-        && let Some(name) = seat.layout_name()
-    {
-        let lay = layout(
+    if let Some(ml) = &media_layout {
+        y += FOOTER_GAP;
+        let x0 = ccx - media_w / 2.0;
+        icons::note(
             &cr,
-            &name.to_uppercase(),
-            FONT_CAPS_PT,
-            pango::Weight::Medium,
+            x0 + media_icon_w / 2.0,
+            y + media_h / 2.0,
+            media_icon_w,
+            pal.accent,
+            0.9,
         );
-        cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.8);
-        cr.move_to(32.0, 24.0);
-        pangocairo::functions::show_layout(&cr, &lay);
+        cr.set_source_rgba(pal.text.0, pal.text.1, pal.text.2, 0.9);
+        cr.move_to(x0 + media_icon_w + media_gap, y);
+        pangocairo::functions::show_layout(&cr, ml);
+        y += media_h;
     }
 
-    // 16. Bottom-centre info cluster — live desktop context published by
-    //     the shell (notifications / weather / now-playing). Absolutely
-    //     positioned at the bottom edge so it never disturbs the centred
-    //     auth column; each line is gated by both its config toggle and
-    //     whether there's anything to show.
-    draw_info_cluster(&cr, cx, height as f64, toggles, info, pal);
+    y += FOOTER_GAP;
+    power.draw(&cr, ccx, y, pal);
 
     surface.flush();
     Ok(())
 }
 
-/// Draw the bottom-centre context lines, stacked upward from the bottom
-/// edge: a now-playing line (title — artist) above a combined
-/// weather · notifications line.
-fn draw_info_cluster(
-    cr: &cairo::Context,
-    cx: f64,
-    height: f64,
+/// The card's meta line: `layout · weather · notifications · battery`, each
+/// piece gated by its `mlock.conf` toggle and by having something to show. What
+/// used to be four separate corner indicators, folded into one quiet row.
+fn footer_meta(
+    seat: &SeatState,
     toggles: &crate::config::LockToggles,
     info: &crate::sidecar::LockInfo,
-    pal: &Palette,
-) {
+) -> String {
     let mut bits: Vec<String> = Vec::new();
+    if toggles.layout
+        && let Some(name) = seat.layout_name()
+    {
+        bits.push(name.to_uppercase());
+    }
     if toggles.weather && !info.weather.is_empty() {
         bits.push(info.weather.clone());
     }
@@ -659,54 +705,28 @@ fn draw_info_cluster(
             format!("{} notifications", info.notifications)
         });
     }
-    let context_line = bits.join("    ·    ");
-
-    let now_playing = if toggles.media && info.has_media() {
-        Some(
-            match (info.media_title.is_empty(), info.media_artist.is_empty()) {
-                (false, false) => format!(
-                    "{} — {}",
-                    trunc(&info.media_title),
-                    trunc(&info.media_artist)
-                ),
-                (false, true) => trunc(&info.media_title),
-                _ => trunc(&info.media_artist),
-            },
-        )
-    } else {
-        None
-    };
-
-    // Walk upward from the bottom margin.
-    let mut baseline = height - 36.0;
-    if !context_line.is_empty() {
-        let l = layout(cr, &context_line, FONT_INFO_PT, pango::Weight::Normal);
-        let (lw, lh) = l.pixel_size();
-        baseline -= lh as f64;
-        cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.85);
-        cr.move_to(cx - lw as f64 / 2.0, baseline);
-        pangocairo::functions::show_layout(cr, &l);
-        baseline -= 8.0;
+    if toggles.battery
+        && let Some(bat) = seat.battery
+    {
+        bits.push(if bat.charging {
+            format!("{}% charging", bat.percent)
+        } else {
+            format!("{}%", bat.percent)
+        });
     }
-    if let Some(np) = now_playing {
-        let icon_w = FONT_INFO_PT as f64 * 1.1;
-        let gap = 7.0;
-        let l = layout(cr, &np, FONT_INFO_PT, pango::Weight::Medium);
-        let (lw, lh) = l.pixel_size();
-        baseline -= lh as f64;
-        let total_w = icon_w + gap + lw as f64;
-        let x0 = cx - total_w / 2.0;
-        icons::note(
-            cr,
-            x0 + icon_w / 2.0,
-            baseline + lh as f64 / 2.0,
-            icon_w,
-            pal.accent,
-            0.9,
-        );
-        cr.set_source_rgba(pal.text.0, pal.text.1, pal.text.2, 0.9);
-        cr.move_to(x0 + icon_w + gap, baseline);
-        pangocairo::functions::show_layout(cr, &l);
+    bits.join("    ·    ")
+}
+
+/// The now-playing line: `title — artist`, or whichever half is present.
+fn now_playing(info: &crate::sidecar::LockInfo) -> String {
+    match (info.media_title.is_empty(), info.media_artist.is_empty()) {
+        (false, false) => format!(
+            "{} — {}",
+            trunc(&info.media_title),
+            trunc(&info.media_artist)
+        ),
+        (false, true) => trunc(&info.media_title),
+        _ => trunc(&info.media_artist),
     }
 }
 
@@ -719,42 +739,6 @@ fn trunc(s: &str) -> String {
     let mut out: String = s.chars().take(MAX.saturating_sub(1)).collect();
     out.push('…');
     out
-}
-
-fn draw_battery(cr: &cairo::Context, right_x: f64, top_y: f64, bat: crate::battery::BatteryInfo) {
-    let pal = palette();
-    let color = if bat.percent <= 15 && !bat.charging {
-        pal.danger
-    } else {
-        pal.muted
-    };
-
-    let text = format!("{}%", bat.percent);
-    let layout = layout(cr, &text, FONT_CAPS_PT, pango::Weight::Medium);
-    let (tw, th) = layout.pixel_size();
-
-    // Drawn battery glyph + percent, right-aligned to `right_x`.
-    let icon_w = 24.0;
-    let gap = 8.0;
-    let x0 = right_x - (icon_w + gap + tw as f64);
-    let icy = top_y + th as f64 / 2.0;
-
-    icons::battery(
-        cr,
-        x0 + icon_w / 2.0,
-        icy,
-        icon_w,
-        bat.percent as f64 / 100.0,
-        color,
-        0.92,
-    );
-    if bat.charging {
-        icons::bolt(cr, x0 + icon_w * 0.42, icy, icon_w * 0.46, pal.accent, 1.0);
-    }
-
-    cr.set_source_rgba(color.0, color.1, color.2, 0.92);
-    cr.move_to(x0 + icon_w + gap, top_y);
-    pangocairo::functions::show_layout(cr, &layout);
 }
 
 /// A pango layout in the desktop's font at `pt` and `weight`.
@@ -838,10 +822,11 @@ fn draw_card_panel(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, pal: &Pa
 /// One power action's glyph painter (icons::power / restart / moon).
 type PowerIcon = fn(&cairo::Context, f64, f64, f64, (f64, f64, f64), f64);
 
-/// The power controls under the card. Measured before the card is placed — so
-/// the card and this row centre as one block — and drawn after it.
+/// The power controls, in the card's footer. Measured before the card is placed
+/// — so its width and height fold into the card's — and drawn inside it.
 struct PowerRow {
     height: f64,
+    width: f64,
     kind: PowerKind,
 }
 
@@ -867,9 +852,10 @@ impl PowerRow {
         if let Some((action, _)) = seat.power_confirm {
             let msg = format!("Press the F-key again to confirm: {}", action.label());
             let l = layout(cr, &msg, FONT_STATUS_PT, pango::Weight::Medium);
-            let height = l.pixel_size().1 as f64;
+            let (lw, lh) = l.pixel_size();
             return Self {
-                height,
+                height: lh as f64,
+                width: lw as f64,
                 kind: PowerKind::Confirm(l),
             };
         }
@@ -892,8 +878,14 @@ impl PowerRow {
             })
             .collect();
         let height = measured.iter().map(|m| m.3).fold(0.0_f64, f64::max) + Self::PAD_Y * 2.0;
+        let width = measured
+            .iter()
+            .map(|m| m.2 + Self::PAD_X * 2.0)
+            .sum::<f64>()
+            + Self::CHIP_GAP * (measured.len() as f64 - 1.0);
         Self {
             height,
+            width,
             kind: PowerKind::Chips(measured),
         }
     }
@@ -908,12 +900,7 @@ impl PowerRow {
                 pangocairo::functions::show_layout(cr, l);
             }
             PowerKind::Chips(measured) => {
-                let total_w: f64 = measured
-                    .iter()
-                    .map(|m| m.2 + Self::PAD_X * 2.0)
-                    .sum::<f64>()
-                    + Self::CHIP_GAP * (measured.len() as f64 - 1.0);
-                let mut x = cx - total_w / 2.0;
+                let mut x = cx - self.width / 2.0;
                 for (icon_fn, l, content_w, label_h) in measured {
                     let chip_w = content_w + Self::PAD_X * 2.0;
                     let icy = y + self.height / 2.0;

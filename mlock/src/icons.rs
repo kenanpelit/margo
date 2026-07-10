@@ -80,52 +80,6 @@ pub fn note(cr: &Context, cx: f64, cy: f64, size: f64, color: Rgb, alpha: f64) {
     cr.fill().ok();
 }
 
-/// Battery body + terminal nub + a fill bar at `level` (0..1).
-pub fn battery(cr: &Context, cx: f64, cy: f64, size: f64, level: f64, color: Rgb, alpha: f64) {
-    let w = size;
-    let h = size * 0.52;
-    let bw = w * 0.88;
-    let x = cx - w / 2.0;
-    let y = cy - h / 2.0;
-    pen(cr, h, color, alpha);
-    let lw = cr.line_width();
-    rrect(cr, x, y, bw, h, h * 0.24);
-    cr.stroke().ok();
-    // Terminal nub.
-    let nub_h = h * 0.42;
-    rrect(cr, x + bw, cy - nub_h / 2.0, w * 0.07, nub_h, w * 0.03);
-    cr.fill().ok();
-    // Fill bar.
-    let pad = lw * 1.4;
-    let fill_w = (bw - pad * 2.0) * level.clamp(0.0, 1.0);
-    if fill_w > 0.5 {
-        rrect(
-            cr,
-            x + pad,
-            y + pad,
-            fill_w,
-            h - pad * 2.0,
-            (h - pad * 2.0) * 0.3,
-        );
-        cr.fill().ok();
-    }
-}
-
-/// Lightning bolt (solid) — charging glyph.
-pub fn bolt(cr: &Context, cx: f64, cy: f64, size: f64, color: Rgb, alpha: f64) {
-    cr.set_source_rgba(color.0, color.1, color.2, alpha);
-    let s = size;
-    cr.new_sub_path();
-    cr.move_to(cx + s * 0.10, cy - s * 0.5);
-    cr.line_to(cx - s * 0.22, cy + s * 0.06);
-    cr.line_to(cx - s * 0.02, cy + s * 0.06);
-    cr.line_to(cx - s * 0.10, cy + s * 0.5);
-    cr.line_to(cx + s * 0.22, cy - s * 0.06);
-    cr.line_to(cx + s * 0.02, cy - s * 0.06);
-    cr.close_path();
-    cr.fill().ok();
-}
-
 /// Caps-lock glyph — an up-arrow over a baseline bar (the ⇪ shape).
 pub fn caps(cr: &Context, cx: f64, cy: f64, size: f64, color: Rgb, alpha: f64) {
     pen(cr, size, color, alpha);
