@@ -14,11 +14,17 @@
 //!
 //! GTK decodes the file. `mlogind` bounded it and checked it opens with a PNG or
 //! JPEG signature before publishing it, at both ends of the fork.
+//!
+//! What comes back is cropped to a centred square here, because the card draws it
+//! in a circle and a `GtkImage` fits rather than crops: a 16:9 face would sit in
+//! the circle with two wedges of background beside it.
 
 use gtk4 as gtk;
 
 use gtk::gdk;
 use gtk::gio;
+use gtk::glib;
+use gtk::prelude::*;
 use std::path::{Path, PathBuf};
 
 /// Where the theme sync leaves it. Machine-written, so `/var/lib`.
@@ -27,8 +33,13 @@ const SYSTEM_PATH: &str = "/var/lib/mgreet/avatar";
 /// `~/.face` is the freedesktop convention; `.face.icon` is KDE's older spelling.
 const HOME_NAMES: &[&str] = &[".face", ".face.icon"];
 
-/// The avatar texture, or `None` when the user has no `~/.face` (which is most
-/// users, and not an error).
+/// A face, not a wallpaper. Cropping downloads the decoded pixels into main
+/// memory — four bytes an edge squared — so anything past this is drawn as it
+/// came, wedges and all, rather than costing the greeter 100 MB to round off.
+const MAX_CROP_EDGE: i32 = 2048;
+
+/// The avatar texture, cropped square, or `None` when the user has no `~/.face`
+/// (which is most users, and not an error).
 pub fn load(real_greeter: bool) -> Option<gdk::Texture> {
     let path = if real_greeter {
         PathBuf::from(SYSTEM_PATH)
@@ -40,7 +51,52 @@ pub fn load(real_greeter: bool) -> Option<gdk::Texture> {
     }
     // A file that survived the sync's signature check can still fail to decode —
     // truncated, or a format GTK was built without. No avatar, then.
-    gdk::Texture::from_file(&gio::File::for_path(&path)).ok()
+    let texture = gdk::Texture::from_file(&gio::File::for_path(&path)).ok()?;
+    Some(crop_to_square(&texture).unwrap_or(texture))
+}
+
+/// The largest centred square that fits in a `width × height` image.
+fn centre_square(width: i32, height: i32) -> Option<(i32, i32, i32)> {
+    if width <= 0 || height <= 0 || width == height {
+        return None; // nothing to crop, or nothing to crop *from*
+    }
+    let side = width.min(height);
+    Some(((width - side) / 2, (height - side) / 2, side))
+}
+
+/// Copy the centred square out of `texture`. `None` when it is already square,
+/// degenerate, or too large to be worth downloading.
+///
+/// The pixel format is whatever `download` hands us — the crop only moves rows
+/// around, so it never has to know which one that is.
+fn crop_to_square(texture: &gdk::Texture) -> Option<gdk::Texture> {
+    let (width, height) = (texture.width(), texture.height());
+    if width > MAX_CROP_EDGE || height > MAX_CROP_EDGE {
+        return None;
+    }
+    let (x, y, side) = centre_square(width, height)?;
+
+    let stride = width as usize * 4;
+    let mut pixels = vec![0u8; stride * height as usize];
+    texture.download(&mut pixels, stride);
+
+    let row_bytes = side as usize * 4;
+    let mut cropped = Vec::with_capacity(row_bytes * side as usize);
+    for row in 0..side as usize {
+        let start = (row + y as usize) * stride + x as usize * 4;
+        cropped.extend_from_slice(&pixels[start..start + row_bytes]);
+    }
+
+    Some(
+        gdk::MemoryTexture::new(
+            side,
+            side,
+            gdk::MemoryFormat::B8g8r8a8Premultiplied,
+            &glib::Bytes::from_owned(cropped),
+            row_bytes,
+        )
+        .upcast(),
+    )
 }
 
 fn home_face() -> Option<PathBuf> {
@@ -66,7 +122,36 @@ pub fn monogram(name: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::monogram;
+    use super::{centre_square, monogram};
+
+    #[test]
+    fn a_square_image_is_left_alone() {
+        assert_eq!(centre_square(256, 256), None);
+    }
+
+    #[test]
+    fn a_wide_image_is_cropped_from_the_middle() {
+        // 1600×900 → the middle 900×900, so the face and not the left shoulder.
+        assert_eq!(centre_square(1600, 900), Some((350, 0, 900)));
+    }
+
+    #[test]
+    fn a_tall_image_is_cropped_from_the_middle() {
+        assert_eq!(centre_square(900, 1600), Some((0, 350, 900)));
+    }
+
+    #[test]
+    fn an_odd_remainder_never_walks_off_the_edge() {
+        // 101×100: the offset rounds down, so x + side stays inside the width.
+        let (x, y, side) = centre_square(101, 100).expect("not square");
+        assert!(x + side <= 101 && y + side <= 100, "{x},{y},{side}");
+    }
+
+    #[test]
+    fn a_degenerate_image_is_not_cropped() {
+        assert_eq!(centre_square(0, 100), None);
+        assert_eq!(centre_square(100, -1), None);
+    }
 
     #[test]
     fn the_monogram_is_the_first_letter_capitalised() {

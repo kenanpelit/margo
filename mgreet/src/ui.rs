@@ -661,12 +661,20 @@ fn build_card(state: &Rc<State>) -> CardWidgets {
 ///
 /// GTK's CSS `overflow` is ignored on a `GtkBox`, so the clip is set in code and
 /// only the corner radius comes from the stylesheet.
+///
+/// The face is a `GtkImage` with a pixel size, not a `GtkPicture`: a picture's
+/// *natural* size is the photograph's own, and `set_size_request` is a floor
+/// rather than a ceiling, so a 512 px `~/.face` grew the card to 512 px of
+/// avatar. `pixel_size` is the ceiling. `avatar::load` has already cropped the
+/// texture square, because a `GtkImage` fits its paintable rather than cropping
+/// it and the circle would otherwise show two wedges of background.
 fn build_avatar(state: &Rc<State>) -> gtk::Widget {
     let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
     frame.add_css_class("mgreet-avatar");
     frame.set_overflow(gtk::Overflow::Hidden);
     frame.set_size_request(AVATAR_PX, AVATAR_PX);
     frame.set_halign(gtk::Align::Center);
+    frame.set_valign(gtk::Align::Center);
 
     let stack = gtk::Stack::new();
     stack.set_hexpand(true);
@@ -677,9 +685,8 @@ fn build_avatar(state: &Rc<State>) -> gtk::Widget {
     stack.add_named(&monogram, Some("monogram"));
 
     if let Some(texture) = state.avatar.as_ref() {
-        let picture = gtk::Picture::for_paintable(texture);
-        picture.set_content_fit(gtk::ContentFit::Cover);
-        picture.set_can_shrink(true);
+        let picture = gtk::Image::from_paintable(Some(texture));
+        picture.set_pixel_size(AVATAR_PX);
         picture.set_can_target(false);
         stack.add_named(&picture, Some("picture"));
     }
