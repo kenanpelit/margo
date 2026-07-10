@@ -4,12 +4,22 @@
 // greeter always looks right even before any matugen colours are overlaid.
 // At runtime mgreet loads this CSS first, then — if present — a matugen
 // colours file as a second, higher-priority provider, so the login screen
-// tracks the wallpaper theme exactly like the shell. Token names match the
-// M3 set the shell uses (--surface, --on-surface, --primary, …).
+// tracks the wallpaper theme exactly like the shell.
+//
+// EVERY COLOUR TOKEN HERE MUST BE ONE MATUGEN WRITES. The overlay only sets the
+// M3 names emitted by `mshell-matugen::css_mapping::to_css`; a token outside
+// that set can never be overridden, so it silently keeps its Dracula value while
+// everything around it turns. `--bg` and `--danger` were exactly that: the dim
+// over the wallpaper stayed cold blue-grey under a warm palette, and Caps Lock
+// warned in the wrong red. They are now `--surface-container-lowest` (the
+// darkest surface in the M3 ladder) and `--error`. `style.rs` has a test.
+//
+// Only the geometry tokens (`--radius-*`) are ours alone, and matugen has no
+// opinion about those.
 
 :root {
-  --bg: #1e1f29;
   --surface: #282a36;
+  --surface-container-lowest: #1e1f29;
   --surface-container: #313442;
   --surface-container-high: #3a3d4d;
   --on-surface: #f8f8f2;
@@ -19,7 +29,7 @@
   --primary-container: #44415a;
   --on-primary-container: #e9defa;
   --outline: #6272a4;
-  --danger: #ff5555;
+  --error: #ff5555;
   --radius-lg: 22px;
   --radius-md: 14px;
   --radius-pill: 999px;
@@ -30,14 +40,14 @@
 // that bleed through (neither around the card nor on any uncovered edge). Both
 // the window and the scrim are solid so the surface is fully opaque end to end.
 window.mgreet-root {
-  background: var(--bg);
+  background: var(--surface-container-lowest);
 }
 
 // Solid backdrop behind the card (a subtle vertical wash of the palette for a
 // little depth). Opaque on purpose — see above. Used only when no wallpaper has
 // been synced; with one, `.mgreet-dim` takes this job.
 .mgreet-scrim {
-  background: linear-gradient(180deg, var(--bg) 0%, var(--surface) 100%);
+  background: linear-gradient(180deg, var(--surface-container-lowest) 0%, var(--surface) 100%);
 }
 
 // The wallpaper mlogind's theme sync baked for us (downscaled + blurred) sits
@@ -45,10 +55,10 @@ window.mgreet-root {
 //
 // A separate widget with `opacity`, not a translucent colour: whether GTK's
 // `alpha()` accepts a `var()` is not something the login screen should depend
-// on. Because the colour is still `--bg`, the matugen overlay re-tints the dim
-// without the image being baked again.
+// on. The colour is the darkest M3 surface, so the matugen overlay re-tints the
+// dim without the image being baked again.
 .mgreet-dim {
-  background: var(--bg);
+  background: var(--surface-container-lowest);
   opacity: 0.55;
 }
 
@@ -252,7 +262,7 @@ window.mgreet-root {
   color: var(--on-surface-variant);
 }
 .mgreet-status.error {
-  color: var(--danger);
+  color: var(--error);
   font-weight: 600;
 }
 
@@ -266,7 +276,7 @@ window.mgreet-root {
 .mgreet-caps {
   font-size: 12px;
   font-weight: 600;
-  color: var(--danger);
+  color: var(--error);
 }
 
 // Battery indicator, top-right corner.
