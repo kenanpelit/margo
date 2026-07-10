@@ -31,7 +31,7 @@ use gtk4 as gtk;
 use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::path::PathBuf;
@@ -61,12 +61,14 @@ pub struct State {
     pub password_pending: Cell<bool>,
     /// A `Begin` is in flight and PAM has not asked anything yet.
     pub conversing: Cell<bool>,
-    /// Every monitor's card, keyed by connector. One conversation, many
-    /// monitors — and a hotplug rebuild must not leave the dead ones behind.
-    pub cards: RefCell<HashMap<String, ui::CardWidgets>>,
-    /// The connector whose card was last submitted from, so a failure can hand
-    /// the keyboard back to the screen the user is looking at.
-    pub last_submit: RefCell<Option<String>>,
+    /// The login card. There is one conversation, so there is one card: it is
+    /// carried between monitors rather than duplicated onto each. Built by the
+    /// first `sync_windows`, because it needs an `Rc<State>` to submit from.
+    pub card: OnceCell<ui::CardWidgets>,
+    /// Which monitor is holding the card. `None` only before the first monitor
+    /// arrives, and in the moment between the active one unplugging and its
+    /// replacement being chosen.
+    pub active: RefCell<Option<String>>,
 
     /// Last-used session name to pre-select (from the shared cache), if any.
     pub initial_session: Option<String>,
@@ -192,8 +194,8 @@ fn main() -> glib::ExitCode {
             awaiting_prompt: Cell::new(false),
             password_pending: Cell::new(false),
             conversing: Cell::new(false),
-            cards: RefCell::new(HashMap::new()),
-            last_submit: RefCell::new(None),
+            card: OnceCell::new(),
+            active: RefCell::new(None),
             initial_session: cached_session.clone(),
             power: power::from_env(),
         });
@@ -212,8 +214,7 @@ fn main() -> glib::ExitCode {
             );
         }
 
-        let windows: Rc<RefCell<HashMap<String, gtk::Window>>> =
-            Rc::new(RefCell::new(HashMap::new()));
+        let windows: ui::Windows = Rc::new(RefCell::new(HashMap::new()));
 
         sync_windows(app, &state, &windows);
 
@@ -233,12 +234,9 @@ fn main() -> glib::ExitCode {
 }
 
 /// Create/destroy per-monitor greeter windows to match the live output list,
-/// keyed by connector name (mirrors mshell's monitor reconcile).
-fn sync_windows(
-    app: &gtk::Application,
-    state: &Rc<State>,
-    windows: &Rc<RefCell<HashMap<String, gtk::Window>>>,
-) {
+/// keyed by connector name (mirrors mshell's monitor reconcile), and make sure
+/// exactly one of them is holding the card.
+fn sync_windows(app: &gtk::Application, state: &Rc<State>, windows: &ui::Windows) {
     let Some(display) = gdk::Display::default() else {
         return;
     };
@@ -255,26 +253,42 @@ fn sync_windows(
         }
     }
 
-    let mut map = windows.borrow_mut();
-    let live: Vec<String> = current.iter().map(|(c, _)| c.clone()).collect();
-    let stale: Vec<String> = map.keys().filter(|c| !live.contains(c)).cloned().collect();
-    for connector in stale {
-        if let Some(window) = map.remove(&connector) {
-            window.close();
+    // Before any window can be handed the card, the card has to exist.
+    ui::ensure_card(state);
+
+    {
+        let mut map = windows.borrow_mut();
+        let live: Vec<String> = current.iter().map(|(c, _)| c.clone()).collect();
+        let stale: Vec<String> = map.keys().filter(|c| !live.contains(c)).cloned().collect();
+        for connector in stale {
+            if let Some(window) = map.remove(&connector) {
+                // Lift the card off first: closing a GtkWindow destroys its whole
+                // child tree, and this is the only card there is.
+                ui::detach_card(state, &window, &connector);
+                window.close();
+            }
         }
-        // Its card went with it; the conversation must not keep writing to
-        // widgets nobody can see.
-        state.cards.borrow_mut().remove(&connector);
-        // Its `Ref` is dropped before the `borrow_mut` below, deliberately: a
-        // BorrowMutError here would abort the process that gates the machine.
-        let was_last = state.last_submit.borrow().as_deref() == Some(connector.as_str());
-        if was_last {
-            *state.last_submit.borrow_mut() = None;
+        for (connector, monitor) in &current {
+            map.entry(connector.clone())
+                .or_insert_with(|| ui::build_window(app, monitor, state, connector, windows));
         }
     }
-    for (connector, monitor) in current {
-        map.entry(connector.clone())
-            .or_insert_with(|| ui::build_window(app, &monitor, state, &connector));
+
+    // Nobody is holding it — first sync, or the monitor that was went away.
+    // Something must, or there is no way to log in and, in the real greeter, no
+    // surface with the keyboard.
+    let orphaned = state.active.borrow().is_none();
+    if orphaned {
+        let geometry: Vec<(String, i32, i32)> = current
+            .iter()
+            .map(|(connector, monitor)| {
+                let geo = monitor.geometry();
+                (connector.clone(), geo.x(), geo.y())
+            })
+            .collect();
+        if let Some(connector) = ui::preferred_output(&geometry) {
+            ui::activate(state, windows, &connector);
+        }
     }
 }
 

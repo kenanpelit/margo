@@ -1,6 +1,15 @@
-//! The per-monitor greeter window: a fullscreen layer-shell surface with a
-//! centred login card. Username/password entries share the [`State`] buffers,
-//! so input on any monitor is reflected on all of them.
+//! The per-monitor greeter window: a fullscreen layer-shell surface showing
+//! either the login card or a clock.
+//!
+//! There is one conversation with the session runner, so there is one card. It
+//! is carried to whichever monitor the user is at — the pointer entering a
+//! screen, or a click on it, moves it there — and every other monitor shows the
+//! time. This is the part worth taking from plasma-login-manager: a greeter that
+//! puts a live, focusable password field on all three of your screens has told
+//! you nothing about which one is listening. Only the monitor holding the card
+//! takes the keyboard (`KeyboardMode::Exclusive`); the rest take none, so
+//! "which screen am I typing into" has one answer instead of whichever layer
+//! surface the compositor happened to prefer.
 
 use gtk4 as gtk;
 
@@ -9,10 +18,16 @@ use gtk::glib;
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use mlogind_proto::Request;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use zeroize::Zeroizing;
 
 use crate::State;
+
+/// The live per-monitor windows, keyed by connector. Handlers hold a clone and
+/// borrow it at event time, never across a call into [`activate`].
+pub type Windows = Rc<RefCell<HashMap<String, WindowWidgets>>>;
 
 /// How long `.shake` stays on the card. Must outlast the keyframe in
 /// `style.scss`, or the class is pulled while the animation is still running.
@@ -22,12 +37,11 @@ const SHAKE_MS: u64 = 420;
 /// is a pill, and a square pill is a circle.
 const AVATAR_PX: i32 = 84;
 
-/// Every control on one monitor's card.
+/// Every control on the one login card.
 ///
-/// A greeter draws the same card on every output, but a failed login has to
-/// shake all of them, a busy conversation has to lock all of them, and a hotplug
-/// rebuild must not leave a dead one behind. One handle per monitor, keyed by
-/// connector.
+/// One conversation, one card. A failed login shakes it, a busy conversation
+/// locks it, and it moves between monitors — none of which needs a copy per
+/// output, which is what it used to be.
 pub struct CardWidgets {
     pub card: gtk::Box,
     pub status: gtk::Label,
@@ -39,18 +53,110 @@ pub struct CardWidgets {
     pub spinner: gtk::Spinner,
 }
 
+/// One monitor's surface: the backdrop, whatever is over it, and the clock that
+/// shows when the card is somewhere else.
+pub struct WindowWidgets {
+    window: gtk::Window,
+    overlay: gtk::Overlay,
+    idle: gtk::Box,
+}
+
+impl WindowWidgets {
+    /// Take the surface down. The caller must have lifted the card off first —
+    /// closing a `GtkWindow` destroys everything under it.
+    pub fn close(self) {
+        self.window.close();
+    }
+}
+
+/// Which monitor gets the card before the user has said anything: the one at the
+/// compositor's layout origin — what a desktop calls the primary — else whichever
+/// we were handed first.
+///
+/// Ordering is not the compositor's promise to keep, so this reads the geometry
+/// rather than trusting the enumeration.
+pub fn preferred_output(monitors: &[(String, i32, i32)]) -> Option<String> {
+    monitors
+        .iter()
+        .find(|(_, x, y)| *x == 0 && *y == 0)
+        .or_else(|| monitors.first())
+        .map(|(connector, _, _)| connector.clone())
+}
+
+/// Build the one card, if it does not exist yet.
+pub fn ensure_card(state: &Rc<State>) {
+    // `get_or_init`, not `set`: `build_card` is not cheap and must not run twice
+    // per hotplug.
+    state.card.get_or_init(|| build_card(state));
+}
+
+/// Move the card to `connector`, and the keyboard with it.
+///
+/// A no-op if it is already there. The keyboard is *given* before it is taken
+/// away: between those two calls no surface holds it, and this is the process
+/// that gates the machine — an ordering that leaves a window with no keyboard
+/// and no successor would need a VT switch to escape.
+pub fn activate(state: &Rc<State>, windows: &Windows, connector: &str) {
+    let already_here = state.active.borrow().as_deref() == Some(connector);
+    if already_here {
+        return;
+    }
+    let Some(card) = state.card.get() else {
+        return;
+    };
+
+    let previous = state.active.borrow().clone();
+    {
+        let map = windows.borrow();
+        let Some(target) = map.get(connector) else {
+            return; // the monitor went away between the event and the handler
+        };
+        if state.real() {
+            target.window.set_keyboard_mode(KeyboardMode::Exclusive);
+        }
+        if let Some(previous) = previous.as_deref().and_then(|c| map.get(c)) {
+            previous.overlay.remove_overlay(&card.card);
+            if state.real() {
+                previous.window.set_keyboard_mode(KeyboardMode::None);
+            }
+            previous.idle.set_visible(true);
+        }
+        target.overlay.add_overlay(&card.card);
+        target.idle.set_visible(false);
+    }
+
+    *state.active.borrow_mut() = Some(connector.to_string());
+    focus_card(state);
+}
+
+/// Lift the card off `window` if it is the one holding it, leaving it parentless
+/// until the next [`activate`]. Called just before a monitor's window is closed.
+pub fn detach_card(state: &Rc<State>, window: &WindowWidgets, connector: &str) {
+    let holds_it = state.active.borrow().as_deref() == Some(connector);
+    if !holds_it {
+        return;
+    }
+    if let Some(card) = state.card.get() {
+        window.overlay.remove_overlay(&card.card);
+    }
+    // The `Ref` above is dropped before this `borrow_mut`, deliberately: a
+    // BorrowMutError here would abort the process that gates the machine.
+    *state.active.borrow_mut() = None;
+}
+
 /// Build (and present) a greeter window pinned to `monitor`, filling it.
 pub fn build_window(
     app: &gtk::Application,
     monitor: &gdk::Monitor,
     state: &Rc<State>,
     connector: &str,
-) -> gtk::Window {
+    windows: &Windows,
+) -> WindowWidgets {
     let window = gtk::Window::new();
     window.add_css_class("mgreet-root");
     app.add_window(&window);
 
-    // Fullscreen layer-shell surface on THIS monitor that owns the keyboard.
+    // Fullscreen layer-shell surface on THIS monitor.
     window.init_layer_shell();
     window.set_monitor(Some(monitor));
     window.set_layer(Layer::Overlay);
@@ -59,10 +165,13 @@ pub fn build_window(
     for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
         window.set_anchor(edge, true);
     }
-    // Real greeter owns the keyboard exclusively; the preview / dry-run (run
-    // under a live session) uses OnDemand so a test run can never trap input.
+    // The real greeter's keyboard belongs to whichever surface holds the card,
+    // and `activate` hands it over. Starting every window Exclusive was the old
+    // behaviour, and left the compositor to pick which one heard the password.
+    // The preview / dry-run (run under a live session) uses OnDemand so a test
+    // run can never trap input.
     window.set_keyboard_mode(if state.real() {
-        KeyboardMode::Exclusive
+        KeyboardMode::None
     } else {
         KeyboardMode::OnDemand
     });
@@ -76,18 +185,13 @@ pub fn build_window(
     let geo = monitor.geometry();
     window.set_default_size(geo.width().max(1), geo.height().max(1));
 
-    let widgets = build_card(state, connector);
-    let card = widgets.card.clone();
-    card.set_halign(gtk::Align::Center);
-    card.set_valign(gtk::Align::Center);
-    state
-        .cards
-        .borrow_mut()
-        .insert(connector.to_string(), widgets);
-
     let overlay = gtk::Overlay::new();
     build_backdrop(&overlay, &window, state.background.as_ref());
-    overlay.add_overlay(&card);
+
+    // The clock this monitor shows while the card is elsewhere. `activate` hides
+    // it on the monitor it moves the card to.
+    let idle = build_idle_panel();
+    overlay.add_overlay(&idle);
 
     // Battery indicator, top-right (laptops only — None on a desktop).
     if let Some(battery) = build_battery() {
@@ -104,6 +208,26 @@ pub fn build_window(
     }
 
     window.set_child(Some(&overlay));
+
+    // The card follows the pointer onto this screen — but not mid-conversation:
+    // a brushed mouse must not carry a card away from the answer PAM is waiting
+    // for. A click always moves it; that is the deliberate gesture.
+    {
+        let motion = gtk::EventControllerMotion::new();
+        let (state, windows, connector) = (state.clone(), windows.clone(), connector.to_string());
+        motion.connect_enter(move |_, _, _| {
+            if !state.conversing.get() {
+                activate(&state, &windows, &connector);
+            }
+        });
+        window.add_controller(motion);
+    }
+    {
+        let click = gtk::GestureClick::new();
+        let (state, windows, connector) = (state.clone(), windows.clone(), connector.to_string());
+        click.connect_pressed(move |_, _, _, _| activate(&state, &windows, &connector));
+        window.add_controller(click);
+    }
 
     // Keyboard: the power F-keys anywhere (real greeter ONLY — a preview run
     // under the live session must never poweroff the machine), plus Escape to
@@ -143,7 +267,52 @@ pub fn build_window(
     // multi-monitor 4-anchor layer surface: present() adds toplevel raise/focus
     // semantics a layer surface shouldn't need.
     window.set_visible(true);
-    window
+
+    WindowWidgets {
+        window,
+        overlay,
+        idle,
+    }
+}
+
+/// What a monitor shows when the card is on another one: the time, the date, the
+/// hostname, and how to bring the card here.
+///
+/// Its clock ticks off a weak reference and stops itself once the panel is gone.
+/// The old per-monitor card held its labels strongly, so every unplugged monitor
+/// left a 1 Hz timer running over widgets nobody could see.
+fn build_idle_panel() -> gtk::Box {
+    let panel = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    panel.add_css_class("mgreet-idle");
+    panel.set_halign(gtk::Align::Center);
+    panel.set_valign(gtk::Align::Center);
+    // Clicks belong to the window's gesture, which is what moves the card here.
+    panel.set_can_target(false);
+
+    let clock = label(&["mgreet-idle-clock"]);
+    let date = label(&["mgreet-date"]);
+    panel.append(&clock);
+    panel.append(&date);
+    if let Some(host) = hostname() {
+        let host_label = label(&["mgreet-host"]);
+        host_label.set_text(&host);
+        panel.append(&host_label);
+    }
+    let hint = label(&["mgreet-idle-hint"]);
+    hint.set_text("Move here to log in");
+    panel.append(&hint);
+
+    set_time(&clock, &date);
+    let (clock, date) = (clock.downgrade(), date.downgrade());
+    glib::timeout_add_seconds_local(1, move || {
+        let (Some(clock), Some(date)) = (clock.upgrade(), date.upgrade()) else {
+            return glib::ControlFlow::Break;
+        };
+        set_time(&clock, &date);
+        glib::ControlFlow::Continue
+    });
+
+    panel
 }
 
 /// Put the wallpaper under the card, or the flat scrim when there is none.
@@ -186,9 +355,11 @@ fn build_backdrop(overlay: &gtk::Overlay, window: &gtk::Window, background: Opti
     overlay.add_overlay(&dim);
 }
 
-fn build_card(state: &Rc<State>, connector: &str) -> CardWidgets {
+fn build_card(state: &Rc<State>) -> CardWidgets {
     let card = gtk::Box::new(gtk::Orientation::Vertical, 14);
     card.add_css_class("mgreet-card");
+    card.set_halign(gtk::Align::Center);
+    card.set_valign(gtk::Align::Center);
 
     // ── Clock / greeting / date ──
     let greeting = label(&["mgreet-greeting"]);
@@ -334,8 +505,7 @@ fn build_card(state: &Rc<State>, connector: &str) -> CardWidgets {
     // Submit: the button, or Enter in the password field.
     let submit: Rc<dyn Fn()> = {
         let state = state.clone();
-        let connector = connector.to_string();
-        Rc::new(move || submit_login(&state, &connector))
+        Rc::new(move || submit_login(&state))
     };
     {
         let submit = submit.clone();
@@ -353,19 +523,8 @@ fn build_card(state: &Rc<State>, connector: &str) -> CardWidgets {
         });
     }
 
-    // Focus the empty field once the window is shown.
-    {
-        let username = username.clone();
-        let password = password.clone();
-        let has_user = !state.username.text().is_empty();
-        glib::idle_add_local_once(move || {
-            if has_user {
-                password.grab_focus();
-            } else {
-                username.grab_focus();
-            }
-        });
-    }
+    // Focus is not grabbed here: the card has no window yet. `activate` does it
+    // when it parents the card onto a monitor.
 
     CardWidgets {
         card,
@@ -452,55 +611,62 @@ fn build_avatar(state: &Rc<State>) -> gtk::Widget {
 /// forwards a real prompt — an OTP, a new password after expiry — the fields
 /// come back, because that prompt is exactly what the user must now answer.
 fn refresh_busy(state: &Rc<State>) {
+    let Some(card) = state.card.get() else {
+        return;
+    };
     let busy = state.conversing.get() && !state.awaiting_prompt.get();
-    for card in state.cards.borrow().values() {
-        card.username.set_sensitive(!busy);
-        card.password.set_sensitive(!busy);
-        card.sessions.set_sensitive(!busy);
-        card.login.set_sensitive(!busy);
-        card.spinner.set_visible(busy);
-        if busy {
-            card.spinner.start();
-        } else {
-            card.spinner.stop();
-        }
-        card.login_label
-            .set_text(if busy { "Verifying…" } else { "Log in" });
+    card.username.set_sensitive(!busy);
+    card.password.set_sensitive(!busy);
+    card.sessions.set_sensitive(!busy);
+    card.login.set_sensitive(!busy);
+    card.spinner.set_visible(busy);
+    if busy {
+        card.spinner.start();
+    } else {
+        card.spinner.stop();
     }
+    card.login_label
+        .set_text(if busy { "Verifying…" } else { "Log in" });
 }
 
-/// Shake every card. The keyframe lives in `style.scss`; the class is pulled
-/// again once it has run, so the next failure can retrigger it.
+/// Shake the card. The keyframe lives in `style.scss`; the class is pulled again
+/// once it has run, so the next failure can retrigger it.
 ///
 /// Two failures inside `SHAKE_MS` would coalesce into one shake — GTK settles
 /// style once per frame, so removing and re-adding the class in the same tick is
 /// not a restart. PAM takes the better part of a second to say no, so this is a
 /// race nobody can lose.
 fn shake(state: &Rc<State>) {
-    for card in state.cards.borrow().values() {
-        card.card.add_css_class("shake");
-        let weak = card.card.downgrade();
-        glib::timeout_add_local_once(std::time::Duration::from_millis(SHAKE_MS), move || {
-            if let Some(card) = weak.upgrade() {
-                card.remove_css_class("shake");
-            }
-        });
-    }
-}
-
-/// Put the caret back where the password goes, on the monitor the user is at.
-///
-/// Not every monitor: `grab_focus` on each card in turn would leave the keyboard
-/// wherever the iteration happened to end, which on a two-monitor greeter is a
-/// coin flip. Disabling the entry (see `refresh_busy`) drops focus, so something
-/// has to put it back.
-fn focus_password(state: &Rc<State>) {
-    let Some(connector) = state.last_submit.borrow().clone() else {
+    let Some(card) = state.card.get() else {
         return;
     };
-    if let Some(card) = state.cards.borrow().get(&connector) {
-        card.password.grab_focus();
-    }
+    card.card.add_css_class("shake");
+    let weak = card.card.downgrade();
+    glib::timeout_add_local_once(std::time::Duration::from_millis(SHAKE_MS), move || {
+        if let Some(card) = weak.upgrade() {
+            card.remove_css_class("shake");
+        }
+    });
+}
+
+/// Put the caret where the next keystroke belongs: the password, unless there is
+/// no username yet.
+///
+/// Deferred to an idle callback because the two callers hand the card a new home
+/// first — `activate` has only just parented it, and `refresh_busy` dropped
+/// focus when it disabled the entry.
+fn focus_card(state: &Rc<State>) {
+    let Some(card) = state.card.get() else {
+        return;
+    };
+    let target = if state.awaiting_prompt.get() || !state.username.text().is_empty() {
+        card.password.clone()
+    } else {
+        card.username.clone()
+    };
+    glib::idle_add_local_once(move || {
+        target.grab_focus();
+    });
 }
 
 /// The machine hostname (from /etc/hostname), if set.
@@ -569,24 +735,17 @@ fn build_power_footer(actions: &[crate::power::PowerAction]) -> gtk::Box {
 /// loop. That is the difference from the old greeter, whose in-process
 /// `pam_authenticate` froze the UI for the length of the PAM stack — which is
 /// why there was never an "Authenticating…" frame to paint.
-fn submit_login(state: &Rc<State>, connector: &str) {
-    let user = state.username.text().to_string();
-    let (session, status) = {
-        let cards = state.cards.borrow();
-        let Some(card) = cards.get(connector) else {
-            return; // the monitor went away between the click and the handler
-        };
-        let session = state
-            .sessions
-            .get(card.sessions.selected() as usize)
-            .map(|s| s.name.clone())
-            .unwrap_or_default();
-        (session, card.status.clone())
+fn submit_login(state: &Rc<State>) {
+    let Some(card) = state.card.get() else {
+        return;
     };
-
-    // Remember which screen asked, so a failure can hand the keyboard back to
-    // the password field the user is actually looking at.
-    *state.last_submit.borrow_mut() = Some(connector.to_string());
+    let user = state.username.text().to_string();
+    let session = state
+        .sessions
+        .get(card.sessions.selected() as usize)
+        .map(|s| s.name.clone())
+        .unwrap_or_default();
+    let status = card.status.clone();
 
     match crate::auth::decide_submit(
         &user,
@@ -664,7 +823,7 @@ pub fn on_runner_event(app: &gtk::Application, state: &Rc<State>) -> glib::Contr
             state.password.set_text("");
             state.awaiting_prompt.set(true);
             refresh_busy(state);
-            focus_password(state);
+            focus_card(state);
             broadcast(state, &text, false);
         }
         crate::auth::Action::Note(text) => broadcast(state, &text, false),
@@ -683,7 +842,7 @@ pub fn on_runner_event(app: &gtk::Application, state: &Rc<State>) -> glib::Contr
             refresh_busy(state);
             broadcast(state, &reason, true);
             shake(state);
-            focus_password(state);
+            focus_card(state);
         }
     }
     glib::ControlFlow::Continue
@@ -712,9 +871,9 @@ fn send(state: &Rc<State>, request: &Request) -> bool {
     }
 }
 
-/// Show `text` on every monitor's status line.
+/// Show `text` on the card's status line, wherever the card currently is.
 fn broadcast(state: &Rc<State>, text: &str, error: bool) {
-    for card in state.cards.borrow().values() {
+    if let Some(card) = state.card.get() {
         set_status(&card.status, text, error);
     }
 }
@@ -761,17 +920,60 @@ fn update_clock(greeting: &gtk::Label, clock: &gtk::Label, date: &gtk::Label) {
     let Ok(now) = glib::DateTime::now_local() else {
         return;
     };
-    let g = match now.hour() {
+    greeting.set_text(match now.hour() {
         5..=11 => "Good morning",
         12..=16 => "Good afternoon",
         17..=20 => "Good evening",
         _ => "Good night",
+    });
+    set_time(clock, date);
+}
+
+/// The time and the date. Shared by the card's header and the idle monitors'
+/// clock, which is the same clock in a larger hand.
+fn set_time(clock: &gtk::Label, date: &gtk::Label) {
+    let Ok(now) = glib::DateTime::now_local() else {
+        return;
     };
-    greeting.set_text(g);
     if let Ok(t) = now.format("%H:%M") {
         clock.set_text(&t);
     }
     if let Ok(d) = now.format("%A, %e %B") {
         date.set_text(d.trim());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::preferred_output;
+
+    fn at(connector: &str, x: i32, y: i32) -> (String, i32, i32) {
+        (connector.to_string(), x, y)
+    }
+
+    #[test]
+    fn the_monitor_at_the_layout_origin_gets_the_card() {
+        let monitors = [at("DP-2", 1920, 0), at("eDP-1", 0, 0)];
+        assert_eq!(preferred_output(&monitors).as_deref(), Some("eDP-1"));
+    }
+
+    #[test]
+    fn with_no_monitor_at_the_origin_the_first_one_gets_it() {
+        // A compositor may lay its outputs out anywhere; the card still has to
+        // land somewhere, because in the real greeter that is the only surface
+        // holding the keyboard.
+        let monitors = [at("DP-2", 1920, 40), at("eDP-1", 0, 1080)];
+        assert_eq!(preferred_output(&monitors).as_deref(), Some("DP-2"));
+    }
+
+    #[test]
+    fn enumeration_order_does_not_decide_it() {
+        let monitors = [at("HDMI-A-1", -1920, 0), at("eDP-1", 0, 0)];
+        assert_eq!(preferred_output(&monitors).as_deref(), Some("eDP-1"));
+    }
+
+    #[test]
+    fn no_monitors_means_nothing_to_activate() {
+        assert_eq!(preferred_output(&[]), None);
     }
 }
