@@ -27,6 +27,21 @@ scope for this slice** — see the closing section.
   Two tests: the line appears iff the file exists, and the config never carries
   an autostart.
 
+**Multi-monitor wallpaper offset — `margo/src/wallpaper.rs` + two callers.**
+Exposed by the sync backdrop: on a second monitor the greeter wallpaper appeared
+shoved to the right (a sliver of image), with the `rootcolor` grey clear across
+the rest. Root cause: `WallpaperState::render_element` placed the element at the
+output's **global** position (`output_geo.loc`), but the udev renderer composites
+each output in its own **local** space (as the cursor / lock-surface / solid
+overview backdrop all already do at `(0, 0)`). So an output at global x=1920 got
+its wallpaper pushed 1920 px right. Fix: render at the local origin `(0, 0)` and
+drop the now-unused `output_loc`/`output_scale` params — which also fixes the same
+latent offset in the overview backdrop's image path (`render_elements.rs:1338`).
+Single-monitor (origin `(0,0)`) hid it; the desktop never hit it (mshell owns the
+wallpaper there), so only the dual-monitor greeter surfaced it. Header-parse unit
+tests already cover the raw loader; this is a positioning fix, verified by reading
+the udev renderer's local-coordinate convention.
+
 **Flash 1 (the VT) — `mlogind/src/vt_blank.rs` (new).** Between `chvt` to the
 greeter VT and smithay's first modeset (~1.5 s), the kernel fbcon still owns the
 screen: a black field with a blinking cursor, which reads as "the console"

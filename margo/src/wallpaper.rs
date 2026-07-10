@@ -115,17 +115,23 @@ impl WallpaperState {
         }
     }
 
-    /// Build a render element sized to fit `output_geom` (logical
-    /// coordinates, scaled to `output_scale`). Currently implements
-    /// `Cover` fit only: the image is upscaled until both output
-    /// dimensions are filled, then a centred sub-region is sampled
-    /// so the visible area is exactly the output rectangle.
+    /// Build a render element that fills `output_size` (logical) with the
+    /// wallpaper, `Cover`-fit: a centred sub-region of the source whose aspect
+    /// ratio matches the output is sampled and scaled to fill it exactly.
+    ///
+    /// The element is positioned at the output-**local** origin `(0, 0)`. The
+    /// udev renderer composites each output in its own local coordinate space
+    /// (see the cursor / lock-surface handling in `render_elements.rs`, and the
+    /// solid overview backdrop that already anchors at `(0, 0)`), so a wallpaper
+    /// always starts at its output's top-left. Passing the output's *global*
+    /// position here — as this once did — offset the wallpaper by that origin on
+    /// every non-primary output: on a second monitor at global x=1920 the
+    /// wallpaper was shoved 1920 px right, showing a sliver on the right and the
+    /// `rootcolor` clear (grey) across the rest.
     pub fn render_element(
         &self,
         renderer: &mut GlesRenderer,
-        output_loc: Point<f64, Logical>,
         output_size: Size<i32, Logical>,
-        output_scale: f64,
     ) -> Option<MemoryRenderBufferRenderElement<GlesRenderer>> {
         let (img_w, img_h) = (self.natural_size.0 as f64, self.natural_size.1 as f64);
         if img_w <= 0.0 || img_h <= 0.0 {
@@ -148,22 +154,17 @@ impl WallpaperState {
         };
         let src_x = (img_w - src_w) / 2.0;
         let src_y = (img_h - src_h) / 2.0;
-        // Smithay's `from_buffer` takes the sample region and the
-        // destination size in *logical* units — it treats the buffer
-        // dimensions as logical 1:1, and resolves physical scaling
-        // internally via the renderer's output scale. We can stay in
-        // logical coords throughout.
+        // Smithay's `from_buffer` takes the sample region and the destination
+        // size in *logical* units and resolves physical scaling internally via
+        // the output scale, so we stay in logical coords for the size. The
+        // location is physical; at the local origin it is `(0, 0)` either way.
         let src =
             Rectangle::<f64, Logical>::new(Point::from((src_x, src_y)), Size::from((src_w, src_h)));
         let dst_size = Size::<i32, Logical>::from((output_size.w, output_size.h));
-        let render_pos = Point::<f64, Physical>::from((
-            output_loc.x * output_scale,
-            output_loc.y * output_scale,
-        ));
 
         MemoryRenderBufferRenderElement::from_buffer(
             renderer,
-            render_pos,
+            Point::<f64, Physical>::from((0.0, 0.0)),
             &self.buffer,
             None,
             Some(src),
