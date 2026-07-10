@@ -7,7 +7,10 @@
 #     lockscreen), `mlayout` (per-tag layout profile manager),
 #     `mscreenshot` (grim/slurp pipeline), `mvisual` (output
 #     monitor-profile manager), `mpicker` (native colour picker —
-#     frozen screencap + zoom lens, drops the hyprpicker dep)
+#     frozen screencap + zoom lens, drops the hyprpicker dep),
+#     `mvpn` (native Mullvad VPN control — full CLI + GTK4 layer-shell
+#     panel; drives the `mullvad` daemon, optional), `mcal` (read-only
+#     calendar CLI over local .ics + remote iCal subscriptions)
 #   * `mshell` first-party desktop shell (GTK4 + relm4 + layer-shell)
 #     and its `mshellctl` / `mshellshare` IPC siblings
 #   * `mwizard` first-launch setup wizard (writes the shell profile
@@ -26,9 +29,9 @@
 # simply not run `mshell`; the helper binaries are still useful.
 
 pkgname=margo-git
-pkgver=r1297.a9c6806
+pkgver=r2115.24455f9d
 pkgrel=1
-pkgdesc="Rust/Smithay Wayland tiling compositor + first-party mshell desktop (mango heritage)"
+pkgdesc="Rust/Smithay Wayland tiling compositor with a first-party GTK4 desktop shell (mshell)"
 url="https://github.com/kenanpelit/margo"
 arch=("x86_64")
 license=("GPL-3.0-or-later")
@@ -133,7 +136,7 @@ optdepends=(
   "iwd: alternative wireless backend for the network widget"
   "ufw: needed by the mshell nufw firewall widget"
   "podman: needed by the mshell npodman widget"
-  "mullvad-vpn: needed by the mshell ndns VPN-switcher widget"
+  "mullvad-vpn: the VPN daemon driven by the mvpn binary (CLI + GTK panel)"
   "blocky: local DNS resolver controlled by the ndns widget"
   "curl: used by the nip public-IP widget (already pulled by base)"
   # mlogind (TUI login manager)
@@ -237,7 +240,8 @@ build() {
   # out to powerprofilesctl) with no zbus/tokio, so it's safe here too.
   cargo build --frozen --release \
     -p margo -p start-margo \
-    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay -p mdots -p mcal
+    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay \
+    -p mdots -p mcal
 
   # mshell trio + mpicker + mwizard. mpicker pulls
   # mshell-screenshot (→ wayle-* → zbus/tokio), so it has to
@@ -259,7 +263,7 @@ build() {
   # mgreet (native GTK4 + gtk4-layer-shell login greeter, launched by
   # mlogind's `[display] host = "gui"`) builds here too — it links the same
   # gtk4/gtk4-layer-shell stack as the shell, so it shares that resolution
-  # rather than leaking GTK into margo's graph.
+  # rather than leaking GTK into margo's (zbus-only, no-tokio) graph.
   cargo build --frozen --release \
     --features mshell/wasm-plugins \
     -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard \
@@ -279,7 +283,8 @@ check() {
     --package margo-layouts \
     --package mctl \
     --package mlayout \
-    --package mdots ||
+    --package mdots \
+    --package mcal ||
     echo "::: margo: test suite reported failures (non-blocking)"
 }
 
@@ -298,8 +303,8 @@ package() {
   local bin
   for bin in \
       margo start-margo \
-      mctl mlock mlayout mscreenshot mvisual mlogind mgreet mpower mplay mdots mcal \
-      mshell mshellctl mshellshare mpicker mwizard mkeys mvpn; do
+      mctl mlock mlayout mscreenshot mvisual mlogind mgreet mpower mplay \
+      mshell mshellctl mshellshare mpicker mwizard mkeys mvpn mdots mcal; do
     install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
   done
 
