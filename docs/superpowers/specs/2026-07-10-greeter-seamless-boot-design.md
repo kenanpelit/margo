@@ -1,7 +1,7 @@
 # Seamless greeter boot — the wallpaper that is already right
 
 **Date:** 2026-07-10
-**Status:** implemented (Flash 2 — wallpaper sync); Flash 1 (VT) deferred
+**Status:** implemented — Flash 2 (wallpaper sync) and Flash 1 (VT blank)
 **Scope:** kill the boot flash where margo shows a generic wallpaper (and the VT
 shows mlogind) before mgreet draws. Binary consolidation is explicitly **out of
 scope for this slice** — see the closing section.
@@ -27,10 +27,19 @@ scope for this slice** — see the closing section.
   Two tests: the line appears iff the file exists, and the config never carries
   an autostart.
 
-**Flash 1 (the VT) was deliberately not touched.** The user's chosen direction
-was "Senkron zemin" (Flash 2). Clearing/blanking VT 7 before margo takes DRM is a
-separate, riskier change (KD_GRAPHICS / VT ioctls on the login path) and is left
-as an explicit follow-up rather than bundled in.
+**Flash 1 (the VT) — `mlogind/src/vt_blank.rs` (new).** Between `chvt` to the
+greeter VT and smithay's first modeset (~1.5 s), the kernel fbcon still owns the
+screen: a black field with a blinking cursor, which reads as "the console"
+flashing before the greeter. margo doesn't set `KD_GRAPHICS` itself (it relies on
+the DRM-master handover blanking fbcon), so nothing covers that gap. `vt_blank`
+holds the VT in `KD_GRAPHICS` from just after `chvt` for the whole graphical-host
+lifetime — so the console is already black when margo arrives, and stays black
+across greeter↔session handovers too. It is a guard (`VtBlank`) that keeps the
+tty fd open (the kernel may revert the mode on last close) and restores `KD_TEXT`
+on `Drop`. **Lockout-safe:** the guard is dropped before the TTY-greeter
+fallback draws (a text prompt on a blanked console would be invisible), and a
+failed blank logs and continues — a flash, never a lockout. Best-effort
+throughout; verified `clippy -p mlogind` clean.
 
 ## The problem, measured
 
@@ -103,14 +112,14 @@ session's wallpaper. On the very first boot on a fresh machine there is no synce
 file yet, and margo shows its packaged default — acceptable, and self-correcting
 after the first login.
 
-### 3. The VT flash (secondary)
+### 3. The VT flash (shipped)
 
-Flash 1 is smaller and separate. mlogind already switches to VT 7; before it
-launches the gui host it can clear that VT and hide the cursor, so the ~1.6 s
-before margo is a clean black rather than a console with a blinking caret. This
-is a nice-to-have in this slice — if it turns out to need `KD_GRAPHICS`/ioctl
-gymnastics that risk the login path, it is deferred rather than rushed. The
-wallpaper flash (Flash 2) is the one that matters and is fully addressed by 1+2.
+Flash 1 is smaller and separate. mlogind switches to the greeter VT via `chvt`;
+right after, `vt_blank::graphics` puts that VT in `KD_GRAPHICS` so the kernel
+stops drawing the text console (cursor and all) — a clean black instead of a
+blinking caret — and holds it there for the whole graphical-host lifetime. The
+guard restores `KD_TEXT` on drop, and the caller drops it before the TTY-greeter
+fallback so that path stays visible and loginnable. See "What shipped" above.
 
 ## Formats and validation
 

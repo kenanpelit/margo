@@ -27,6 +27,7 @@ mod post_login;
 mod runner;
 mod theme_sync;
 mod ui;
+mod vt_blank;
 
 use config::Config;
 
@@ -326,6 +327,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     // degrades to the next one and never locks the user out.
     if !cli.preview {
         let host = config.display.host.to_ascii_lowercase();
+        // A graphical host owns the DRM master, but not until its compositor's
+        // first modeset (~1.5 s). Hold the VT in graphics mode from now so the
+        // kernel text console (a bare blinking cursor) never flashes in that gap
+        // — and stays black across greeter↔session handovers too. The guard
+        // restores text on drop; the graphical `Ok` arms exit mlogind (so drop
+        // is right), and the fall-through drops it before the TTY greeter, whose
+        // prompt would be invisible on a blanked console.
+        let graphical = host == "gui" || host == "cage";
+        let vt = if graphical {
+            vt_blank::graphics(config.tty)
+        } else {
+            None
+        };
+
         if host == "gui" {
             match run_hosted(&config, Host::Gui) {
                 Ok(()) => {
@@ -335,7 +350,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Err(e) => warn!("gui host unavailable ({e}); falling back to the cage host"),
             }
         }
-        if host == "gui" || host == "cage" {
+        if graphical {
             match run_hosted(&config, Host::Cage) {
                 Ok(()) => {
                     info!("mlogind is booting down");
@@ -345,6 +360,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
 
+        // Falling through to the TTY greeter: hand the console back to text
+        // before it draws (no-op when we never blanked).
+        drop(vt);
         run_tty_host(&config)?;
         info!("mlogind is booting down");
         return Ok(());

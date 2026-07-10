@@ -351,7 +351,9 @@ mod tests {
     fn only_a_raw_extension_takes_the_headed_path() {
         assert!(is_raw_backdrop(Path::new("/var/lib/mgreet/background.raw")));
         assert!(is_raw_backdrop(Path::new("/tmp/x.RAW")));
-        assert!(!is_raw_backdrop(Path::new("/usr/share/margo/wallpapers/default.jpg")));
+        assert!(!is_raw_backdrop(Path::new(
+            "/usr/share/margo/wallpapers/default.jpg"
+        )));
         assert!(!is_raw_backdrop(Path::new("/home/u/wall.png")));
     }
 }
