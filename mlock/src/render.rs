@@ -1,15 +1,18 @@
 //! Cairo + pango drawing for one lock frame.
 //!
-//! Centred auth column (top → bottom), every element config-gated:
-//!   • optional round avatar
+//! A centred glass card — mgreet's shape — holds the whole auth column, every
+//! element config-gated:
 //!   • greeting line ("Good morning, Kenan")
 //!   • clock + date pair
+//!   • a hairline rule
+//!   • optional round avatar
 //!   • slim password capsule (shake + soft shadow) holding the dots
 //!   • optional Caps Lock chip
 //!   • status line — fail message + attempt count, or typing hint
-//!   • power-action chips (F1/F2/F3)
+//! The card shakes as one on a failed attempt. The power-action chips
+//! (F1/F2/F3) sit just below it, outside the card.
 //!
-//! Absolutely-positioned extras (don't perturb the centred column):
+//! Absolutely-positioned extras (don't perturb the centred card):
 //!   • top-right battery, top-left keyboard layout
 //!   • bottom-centre live info — weather · notifications, and a
 //!     now-playing line — published by the shell (see `sidecar`).
@@ -107,22 +110,35 @@ const AVATAR_RING_W: f64 = 2.0;
 
 // Typography. Only used when GTK names no font of its own.
 const FONT_FALLBACK: &str = "Noto Sans, sans";
-const FONT_CLOCK_PT: i32 = 88;
+// Smaller than the old free-floating 88: inside a card the clock no longer has
+// the whole screen to fill, and mgreet's card clock is this size.
+const FONT_CLOCK_PT: i32 = 60;
 const FONT_DATE_PT: i32 = 20;
 const FONT_GREETING_PT: i32 = 18;
 const FONT_STATUS_PT: i32 = 13;
 const FONT_CAPS_PT: i32 = 12;
 const FONT_INFO_PT: i32 = 13;
 
-// Stack gaps — §0.8 spacing scale (4/8/12/16/24/32) so the centred stack
-// keeps a single rhythm. Tighter than before so the composition reads as
-// a calm column rather than a sprawled one.
-const GAP_AVATAR_GREETING: f64 = 18.0;
-const GAP_GREETING_CLOCK: f64 = 20.0;
+// The glass card that holds the whole auth column, mgreet's shape: greeting,
+// clock and date, a hairline rule, the avatar, the password field, an optional
+// Caps Lock chip, and the status line — one panel, not a stack of free-floating
+// elements over the wallpaper. Only the power chips sit outside it, below.
+const CARD_PAD_X: f64 = 44.0;
+const CARD_PAD_Y: f64 = 34.0;
+const CARD_MIN_W: f64 = 360.0;
+const CARD_RADIUS: f64 = 26.0;
+const RULE_H: f64 = 1.0;
+
+// Stack gaps — §0.8 spacing scale (4/8/12/16/24/32) so the column keeps a
+// single rhythm. Top of the card to the bottom, then the gap to the power row.
+const GAP_GREETING_CLOCK: f64 = 4.0;
 const GAP_CLOCK_DATE: f64 = 6.0;
-const GAP_DATE_INPUT: f64 = 32.0;
-const GAP_INPUT_CAPS: f64 = 14.0;
-const GAP_CAPS_STATUS: f64 = 12.0;
+const GAP_DATE_RULE: f64 = 20.0;
+const GAP_RULE_AVATAR: f64 = 20.0;
+const GAP_AVATAR_FIELD: f64 = 18.0;
+const GAP_FIELD_CAPS: f64 = 12.0;
+const GAP_ABOVE_STATUS: f64 = 16.0;
+const GAP_CARD_POWER: f64 = 26.0;
 
 // Compact password input — a slim capsule, not the old 720 px slab. Sized
 // to read as a single tidy field whatever the password length.
@@ -327,15 +343,15 @@ pub fn draw_lock_frame(
         }
     }
 
-    // 4. Build the (config-gated) text layouts up-front so we can measure
-    //    heights BEFORE laying out — the centred stack stays balanced no
-    //    matter which elements the user turned off.
+    // 4. Build the (config-gated) text layouts up-front so we can measure the
+    //    card BEFORE laying out — it stays balanced no matter which elements
+    //    the user turned off.
     let now = Local::now();
     let show_avatar = toggles.avatar && avatar.is_some();
 
     let greeting_layout = toggles.greeting.then(|| {
         let s = format!("{}, {}", greeting_for(now.hour()), display_name(user));
-        layout(&cr, &s, FONT_GREETING_PT, pango::Weight::Normal)
+        layout(&cr, &s, FONT_GREETING_PT, pango::Weight::Medium)
     });
     let clock_layout = layout(
         &cr,
@@ -353,8 +369,12 @@ pub fn draw_lock_frame(
     });
 
     let (clock_w, clock_h) = clock_layout.pixel_size();
-    let greeting_h = greeting_layout.as_ref().map_or(0, |l| l.pixel_size().1) as f64;
-    let date_h = date_layout.as_ref().map_or(0, |l| l.pixel_size().1) as f64;
+    let greeting_dim = greeting_layout.as_ref().map(|l| l.pixel_size());
+    let date_dim = date_layout.as_ref().map(|l| l.pixel_size());
+    let greeting_w = greeting_dim.map_or(0, |d| d.0) as f64;
+    let greeting_h = greeting_dim.map_or(0, |d| d.1) as f64;
+    let date_w = date_dim.map_or(0, |d| d.0) as f64;
+    let date_h = date_dim.map_or(0, |d| d.1) as f64;
 
     let caps_visible = seat.caps_lock;
     let caps_chip_h = if caps_visible {
@@ -364,65 +384,100 @@ pub fn draw_lock_frame(
     };
     let status_h = FONT_STATUS_PT as f64 * 1.6;
 
-    // Each present block contributes its own leading/trailing gap, so the
-    // total matches the draw walk below exactly.
-    let mut total = clock_h as f64 + GAP_DATE_INPUT + INPUT_H + GAP_CAPS_STATUS + status_h;
-    if show_avatar {
-        total += AVATAR_SIZE + GAP_AVATAR_GREETING;
-    }
+    // Card inner height: every present row plus its leading gap, matching the
+    // draw walk below exactly.
+    let mut inner_h = clock_h as f64;
     if greeting_layout.is_some() {
-        total += greeting_h + GAP_GREETING_CLOCK;
+        inner_h += greeting_h + GAP_GREETING_CLOCK;
     }
     if date_layout.is_some() {
-        total += GAP_CLOCK_DATE + date_h;
+        inner_h += GAP_CLOCK_DATE + date_h;
     }
+    inner_h += GAP_DATE_RULE + RULE_H + GAP_RULE_AVATAR;
+    if show_avatar {
+        inner_h += AVATAR_SIZE + GAP_AVATAR_FIELD;
+    }
+    inner_h += INPUT_H;
     if caps_visible {
-        total += GAP_INPUT_CAPS + caps_chip_h;
+        inner_h += GAP_FIELD_CAPS + caps_chip_h;
+    }
+    inner_h += GAP_ABOVE_STATUS + status_h;
+
+    // Card width: the widest row it has to hold, floored at CARD_MIN_W.
+    let inner_w = INPUT_W
+        .max(greeting_w)
+        .max(date_w)
+        .max(clock_w as f64)
+        .max(AVATAR_SIZE);
+    let card_w = (inner_w + CARD_PAD_X * 2.0).max(CARD_MIN_W);
+    let card_h = inner_h + CARD_PAD_Y * 2.0;
+
+    // 5. Power row — measured now so the card and it centre as one block, drawn
+    //    after the card below.
+    let power = PowerRow::build(&cr, seat);
+
+    let total = card_h + GAP_CARD_POWER + power.height;
+    let cx = width as f64 / 2.0;
+    let card_top = ((height as f64 - total) / 2.0).max(24.0);
+
+    // The shake moves the whole card, not just the field — mgreet shakes the
+    // card. `ccx` is the content centre inside the shaken card.
+    let shake_dx = shake_offset(seat);
+    let card_x = cx - card_w / 2.0 + shake_dx;
+    let ccx = cx + shake_dx;
+
+    // 6. The glass panel itself.
+    draw_card_panel(&cr, card_x, card_top, card_w, card_h, pal);
+
+    let mut y = card_top + CARD_PAD_Y;
+
+    // 7. Greeting.
+    if let Some(gl) = &greeting_layout {
+        cr.set_source_rgb(pal.muted.0, pal.muted.1, pal.muted.2);
+        cr.move_to(ccx - greeting_w / 2.0, y);
+        pangocairo::functions::show_layout(&cr, gl);
+        y += greeting_h + GAP_GREETING_CLOCK;
     }
 
-    let cx = width as f64 / 2.0;
-    let mut y = (height as f64 - total) / 2.0;
+    // 8. Clock.
+    cr.set_source_rgb(pal.text.0, pal.text.1, pal.text.2);
+    cr.move_to(ccx - clock_w as f64 / 2.0, y);
+    pangocairo::functions::show_layout(&cr, &clock_layout);
+    y += clock_h as f64;
 
-    // 5. Avatar.
+    // 9. Date.
+    if let Some(dl) = &date_layout {
+        y += GAP_CLOCK_DATE;
+        cr.set_source_rgb(pal.muted.0, pal.muted.1, pal.muted.2);
+        cr.move_to(ccx - date_w / 2.0, y);
+        pangocairo::functions::show_layout(&cr, dl);
+        y += date_h;
+    }
+
+    // 10. Hairline rule separating the header from the auth controls, mgreet's
+    //     separator. Inset from the card edges.
+    y += GAP_DATE_RULE;
+    let rule_w = (card_w - CARD_PAD_X * 2.0).min(inner_w);
+    rounded_rect(&cr, ccx - rule_w / 2.0, y, rule_w, RULE_H, RULE_H / 2.0);
+    cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.20);
+    cr.fill().ok();
+    y += RULE_H + GAP_RULE_AVATAR;
+
+    // 11. Avatar.
     if show_avatar && let Some(av) = avatar {
         draw_avatar(
             &cr,
-            cx,
+            ccx,
             y + AVATAR_SIZE / 2.0,
             AVATAR_SIZE / 2.0,
             av,
             accent,
         )?;
-        y += AVATAR_SIZE + GAP_AVATAR_GREETING;
+        y += AVATAR_SIZE + GAP_AVATAR_FIELD;
     }
 
-    // 6. Greeting.
-    if let Some(gl) = &greeting_layout {
-        cr.set_source_rgb(pal.muted.0, pal.muted.1, pal.muted.2);
-        cr.move_to(cx - gl.pixel_size().0 as f64 / 2.0, y);
-        pangocairo::functions::show_layout(&cr, gl);
-        y += greeting_h + GAP_GREETING_CLOCK;
-    }
-
-    // 7. Clock.
-    cr.set_source_rgb(pal.text.0, pal.text.1, pal.text.2);
-    cr.move_to(cx - clock_w as f64 / 2.0, y);
-    pangocairo::functions::show_layout(&cr, &clock_layout);
-    y += clock_h as f64;
-
-    // 8. Date.
-    if let Some(dl) = &date_layout {
-        y += GAP_CLOCK_DATE;
-        cr.set_source_rgb(pal.muted.0, pal.muted.1, pal.muted.2);
-        cr.move_to(cx - dl.pixel_size().0 as f64 / 2.0, y);
-        pangocairo::functions::show_layout(&cr, dl);
-        y += date_h;
-    }
-    y += GAP_DATE_INPUT;
-
-    // 9. Compact password capsule with shake offset + soft shadow.
-    let shake_dx = shake_offset(seat);
-    let input_x = cx - INPUT_W / 2.0 + shake_dx;
+    // 12. Compact password capsule with soft shadow.
+    let input_x = ccx - INPUT_W / 2.0;
 
     // On a failed attempt the border escalates to the danger tone alongside
     // the shake + red status line (DESIGN.md §2 severity ladder).
@@ -433,7 +488,7 @@ pub fn draw_lock_frame(
     };
     draw_input_pill(&cr, input_x, y, INPUT_W, INPUT_H, border);
 
-    // 10. Dots / placeholder, centred in the capsule. The visible-dot count
+    // 13. Dots / placeholder, centred in the capsule. The visible-dot count
     //     is capped to what fits inside the pill's padding.
     let band_y = y + INPUT_H / 2.0;
     let fit =
@@ -443,7 +498,7 @@ pub fn draw_lock_frame(
 
     if visible_dots > 0 {
         let total_dot_w = visible_dots as f64 * (DOT_RADIUS * 2.0 + DOT_SPACING) - DOT_SPACING;
-        let mut dx = cx - total_dot_w / 2.0 + DOT_RADIUS + shake_dx;
+        let mut dx = ccx - total_dot_w / 2.0 + DOT_RADIUS;
         cr.set_source_rgb(accent.0, accent.1, accent.2);
         for _ in 0..visible_dots {
             cr.arc(dx, band_y, DOT_RADIUS, 0.0, std::f64::consts::TAU);
@@ -454,7 +509,7 @@ pub fn draw_lock_frame(
         cr.set_source_rgba(accent.0, accent.1, accent.2, 0.35);
         rounded_rect(
             &cr,
-            cx - PLACEHOLDER_PILL_W / 2.0 + shake_dx,
+            ccx - PLACEHOLDER_PILL_W / 2.0,
             band_y - PLACEHOLDER_PILL_H / 2.0,
             PLACEHOLDER_PILL_W,
             PLACEHOLDER_PILL_H,
@@ -465,9 +520,9 @@ pub fn draw_lock_frame(
 
     y += INPUT_H;
 
-    // 11. Caps Lock chip — drawn caps glyph + label.
+    // 14. Caps Lock chip — drawn caps glyph + label.
     if caps_visible {
-        y += GAP_INPUT_CAPS;
+        y += GAP_FIELD_CAPS;
         let chip = layout(&cr, "CAPS LOCK", FONT_CAPS_PT, pango::Weight::Medium);
         let (cw, ch) = chip.pixel_size();
         let icon_w = ch as f64 * 1.05;
@@ -475,7 +530,7 @@ pub fn draw_lock_frame(
         let pad_x = 14.0;
         let pad_y = 6.0;
         let content_w = icon_w + icon_gap + cw as f64;
-        let chip_x = cx - content_w / 2.0;
+        let chip_x = ccx - content_w / 2.0;
         rounded_rect(
             &cr,
             chip_x - pad_x,
@@ -504,9 +559,9 @@ pub fn draw_lock_frame(
         y += caps_chip_h;
     }
 
-    // 12. Status line (fail / hint). The empty-password hint leads with a
+    // 15. Status line (fail / hint). The empty-password hint leads with a
     //     drawn padlock instead of an emoji.
-    y += GAP_CAPS_STATUS;
+    y += GAP_ABOVE_STATUS;
     let is_lock_hint = seat.fail_message.is_none() && visible_dots == 0;
     let status_text = seat.fail_message.clone().unwrap_or_else(|| {
         if visible_dots > 0 {
@@ -521,7 +576,7 @@ pub fn draw_lock_frame(
         let icon_w = sh as f64 * 0.95;
         let icon_gap = 8.0;
         let total = icon_w + icon_gap + sw as f64;
-        let x0 = cx - total / 2.0;
+        let x0 = ccx - total / 2.0;
         icons::lock(
             &cr,
             x0 + icon_w / 2.0,
@@ -539,60 +594,13 @@ pub fn draw_lock_frame(
         } else {
             cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.7);
         }
-        cr.move_to(cx - sw as f64 / 2.0, y);
+        cr.move_to(ccx - sw as f64 / 2.0, y);
         pangocairo::functions::show_layout(&cr, &layout_status);
     }
-    y += sh as f64 + 12.0;
 
-    // 13. Power-confirm banner OR F-key hint row.
-    if let Some((action, _)) = seat.power_confirm {
-        let msg = format!("Press the F-key again to confirm: {}", action.label());
-        let layout_confirm = layout(&cr, &msg, FONT_STATUS_PT, pango::Weight::Medium);
-        let (cw, _) = layout_confirm.pixel_size();
-        cr.set_source_rgb(pal.danger.0, pal.danger.1, pal.danger.2);
-        cr.move_to(cx - cw as f64 / 2.0, y);
-        pangocairo::functions::show_layout(&cr, &layout_confirm);
-    } else {
-        // Power-action chips: a drawn icon + key + label, laid out in a
-        // centred row, instead of one dim line of plain text.
-        type IconFn = fn(&cairo::Context, f64, f64, f64, (f64, f64, f64), f64);
-        let chips: [(IconFn, &str); 3] = [
-            (icons::power, "F1  Shut down"),
-            (icons::restart, "F2  Restart"),
-            (icons::moon, "F3  Suspend"),
-        ];
-        let icon_w = FONT_CAPS_PT as f64 * 1.15;
-        let icon_gap = 7.0;
-        let pad_x = 12.0;
-        let pad_y = 6.0;
-        let chip_gap = 10.0;
-
-        let measured: Vec<(pango::Layout, f64, f64)> = chips
-            .iter()
-            .map(|(_, label)| {
-                let l = layout(&cr, label, FONT_CAPS_PT, pango::Weight::Normal);
-                let (lw, lh) = l.pixel_size();
-                (l, icon_w + icon_gap + lw as f64, lh as f64)
-            })
-            .collect();
-        let total_w: f64 = measured.iter().map(|m| m.1 + pad_x * 2.0).sum::<f64>()
-            + chip_gap * (chips.len() as f64 - 1.0);
-        let chip_h = measured.iter().map(|m| m.2).fold(0.0_f64, f64::max) + pad_y * 2.0;
-
-        let mut x = cx - total_w / 2.0;
-        for ((icon_fn, _), m) in chips.iter().zip(measured.iter()) {
-            let chip_w = m.1 + pad_x * 2.0;
-            let icy = y + chip_h / 2.0;
-            rounded_rect(&cr, x, y, chip_w, chip_h, 10.0);
-            cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.10);
-            cr.fill().ok();
-            icon_fn(&cr, x + pad_x + icon_w / 2.0, icy, icon_w, pal.muted, 0.85);
-            cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.78);
-            cr.move_to(x + pad_x + icon_w + icon_gap, icy - m.2 / 2.0);
-            pangocairo::functions::show_layout(&cr, &m.0);
-            x += chip_w + chip_gap;
-        }
-    }
+    // 16. Power-confirm banner OR F-key chip row, below the card. Not shaken —
+    //     it is not part of the auth attempt that failed.
+    power.draw(&cr, cx, card_top + card_h + GAP_CARD_POWER, pal);
 
     // 14. Top-right battery indicator (laptops only).
     if toggles.battery
@@ -799,6 +807,138 @@ fn shake_offset(seat: &SeatState) -> f64 {
     // Decaying sine — disturbing then settled.
     let t = (SHAKE_DURATION_MS as f64 - remaining) / 1000.0;
     (t * SHAKE_FREQ_HZ * std::f64::consts::TAU).sin() * SHAKE_AMPLITUDE * envelope
+}
+
+/// The frosted-glass card behind the auth column: a soft drop shadow, a
+/// translucent darkest-surface fill the blurred wallpaper reads through, and a
+/// hairline top-edge highlight. mgreet's `.mgreet-card`, in cairo.
+fn draw_card_panel(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, pal: &Palette) {
+    for (off, alpha) in [(3.0, 0.22), (10.0, 0.13), (22.0, 0.07)] {
+        let off: f64 = off;
+        rounded_rect(
+            cr,
+            x - off,
+            y + off * 0.7,
+            w + off * 2.0,
+            h + off * 2.0,
+            CARD_RADIUS + off,
+        );
+        cr.set_source_rgba(0.0, 0.0, 0.0, alpha);
+        cr.fill().ok();
+    }
+    rounded_rect(cr, x, y, w, h, CARD_RADIUS);
+    cr.set_source_rgba(pal.dim.0, pal.dim.1, pal.dim.2, 0.62);
+    cr.fill_preserve().ok();
+    // A touch of the on-surface tone, like light catching a glass edge.
+    cr.set_line_width(1.0);
+    cr.set_source_rgba(pal.text.0, pal.text.1, pal.text.2, 0.10);
+    cr.stroke().ok();
+}
+
+/// One power action's glyph painter (icons::power / restart / moon).
+type PowerIcon = fn(&cairo::Context, f64, f64, f64, (f64, f64, f64), f64);
+
+/// The power controls under the card. Measured before the card is placed — so
+/// the card and this row centre as one block — and drawn after it.
+struct PowerRow {
+    height: f64,
+    kind: PowerKind,
+}
+
+enum PowerKind {
+    /// An F-key was pressed and is awaiting its confirming second press.
+    Confirm(pango::Layout),
+    /// The resting F1/F2/F3 chip row: (glyph, label, content width, label height).
+    Chips(Vec<(PowerIcon, pango::Layout, f64, f64)>),
+}
+
+impl PowerRow {
+    const PAD_X: f64 = 12.0;
+    const PAD_Y: f64 = 6.0;
+    const CHIP_GAP: f64 = 10.0;
+    const ICON_GAP: f64 = 7.0;
+    const RADIUS: f64 = 10.0;
+
+    fn icon_w() -> f64 {
+        FONT_CAPS_PT as f64 * 1.15
+    }
+
+    fn build(cr: &cairo::Context, seat: &SeatState) -> Self {
+        if let Some((action, _)) = seat.power_confirm {
+            let msg = format!("Press the F-key again to confirm: {}", action.label());
+            let l = layout(cr, &msg, FONT_STATUS_PT, pango::Weight::Medium);
+            let height = l.pixel_size().1 as f64;
+            return Self {
+                height,
+                kind: PowerKind::Confirm(l),
+            };
+        }
+        let chips: [(PowerIcon, &str); 3] = [
+            (icons::power, "F1  Shut down"),
+            (icons::restart, "F2  Restart"),
+            (icons::moon, "F3  Suspend"),
+        ];
+        let measured: Vec<(PowerIcon, pango::Layout, f64, f64)> = chips
+            .iter()
+            .map(|(f, label)| {
+                let l = layout(cr, label, FONT_CAPS_PT, pango::Weight::Normal);
+                let (lw, lh) = l.pixel_size();
+                (
+                    *f,
+                    l,
+                    Self::icon_w() + Self::ICON_GAP + lw as f64,
+                    lh as f64,
+                )
+            })
+            .collect();
+        let height = measured.iter().map(|m| m.3).fold(0.0_f64, f64::max) + Self::PAD_Y * 2.0;
+        Self {
+            height,
+            kind: PowerKind::Chips(measured),
+        }
+    }
+
+    /// Draw centred on `cx`, top at `y`.
+    fn draw(&self, cr: &cairo::Context, cx: f64, y: f64, pal: &Palette) {
+        match &self.kind {
+            PowerKind::Confirm(l) => {
+                let cw = l.pixel_size().0 as f64;
+                cr.set_source_rgb(pal.danger.0, pal.danger.1, pal.danger.2);
+                cr.move_to(cx - cw / 2.0, y);
+                pangocairo::functions::show_layout(cr, l);
+            }
+            PowerKind::Chips(measured) => {
+                let total_w: f64 = measured
+                    .iter()
+                    .map(|m| m.2 + Self::PAD_X * 2.0)
+                    .sum::<f64>()
+                    + Self::CHIP_GAP * (measured.len() as f64 - 1.0);
+                let mut x = cx - total_w / 2.0;
+                for (icon_fn, l, content_w, label_h) in measured {
+                    let chip_w = content_w + Self::PAD_X * 2.0;
+                    let icy = y + self.height / 2.0;
+                    rounded_rect(cr, x, y, chip_w, self.height, Self::RADIUS);
+                    cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.10);
+                    cr.fill().ok();
+                    icon_fn(
+                        cr,
+                        x + Self::PAD_X + Self::icon_w() / 2.0,
+                        icy,
+                        Self::icon_w(),
+                        pal.muted,
+                        0.85,
+                    );
+                    cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.78);
+                    cr.move_to(
+                        x + Self::PAD_X + Self::icon_w() + Self::ICON_GAP,
+                        icy - label_h / 2.0,
+                    );
+                    pangocairo::functions::show_layout(cr, l);
+                    x += chip_w + Self::CHIP_GAP;
+                }
+            }
+        }
+    }
 }
 
 /// The slim password capsule — a frosted full-radius pill with a soft
