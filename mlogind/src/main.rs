@@ -715,8 +715,14 @@ mod tests {
     #[test]
     fn the_greeter_config_never_carries_an_autostart() {
         // The one invariant the login gate cannot afford to lose: the greeter
-        // compositor must never launch the user's desktop.
+        // compositor must never launch the user's desktop. Checked on directive
+        // lines only — the header comment says "no autostart" by design, so a
+        // plain substring match on the whole text would (and did) false-positive.
         let conf = greeter_conf_text(&[], Some(Path::new("/var/lib/mgreet/background.raw")));
-        assert!(!conf.contains("autostart"));
+        let has_autostart_directive = conf
+            .lines()
+            .filter(|line| !line.trim_start().starts_with('#'))
+            .any(|line| line.contains("autostart"));
+        assert!(!has_autostart_directive);
     }
 }
