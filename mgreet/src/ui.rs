@@ -51,18 +51,12 @@ pub fn build_window(
     let geo = monitor.geometry();
     window.set_default_size(geo.width().max(1), geo.height().max(1));
 
-    // Opaque backdrop; a centred card floats over it (Overlay stacks children).
-    let scrim = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    scrim.add_css_class("mgreet-scrim");
-    scrim.set_hexpand(true);
-    scrim.set_vexpand(true);
-
     let card = build_card(state, connector);
     card.set_halign(gtk::Align::Center);
     card.set_valign(gtk::Align::Center);
 
     let overlay = gtk::Overlay::new();
-    overlay.set_child(Some(&scrim));
+    build_backdrop(&overlay, &window, state.background.as_ref());
     overlay.add_overlay(&card);
 
     // Battery indicator, top-right (laptops only — None on a desktop).
@@ -120,6 +114,46 @@ pub fn build_window(
     // semantics a layer surface shouldn't need.
     window.set_visible(true);
     window
+}
+
+/// Put the wallpaper under the card, or the flat scrim when there is none.
+///
+/// The overlay's *child* is the bottom layer; everything added afterwards stacks
+/// above it. So the picture goes in as the child and the dim rides over it,
+/// under the card.
+///
+/// The dim is its own widget rather than a translucent colour on the scrim
+/// because GTK's colour functions and CSS custom properties do not obviously
+/// compose — `alpha(var(--bg), .55)` is not something a login screen should rest
+/// on. `opacity` on a box is unambiguous, and it still tracks the matugen
+/// palette through `--bg`, so re-theming never re-bakes the image.
+fn build_backdrop(overlay: &gtk::Overlay, window: &gtk::Window, background: Option<&gdk::Texture>) {
+    let Some(texture) = background else {
+        // Opaque, deliberately: the host compositor renders its own wallpaper
+        // behind this layer surface and a greeter must never let it through.
+        let scrim = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        scrim.add_css_class("mgreet-scrim");
+        scrim.set_hexpand(true);
+        scrim.set_vexpand(true);
+        overlay.set_child(Some(&scrim));
+        return;
+    };
+
+    window.add_css_class("has-background");
+
+    let picture = gtk::Picture::for_paintable(texture);
+    // `Cover` crops rather than letterboxes, so a 960 px landscape backdrop
+    // fills a portrait monitor too. `can_shrink` keeps the picture's natural
+    // size from forcing the window larger than the output.
+    picture.set_content_fit(gtk::ContentFit::Cover);
+    picture.set_can_shrink(true);
+    picture.set_can_target(false);
+    overlay.set_child(Some(&picture));
+
+    let dim = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    dim.add_css_class("mgreet-dim");
+    dim.set_can_target(false);
+    overlay.add_overlay(&dim);
 }
 
 fn build_card(state: &Rc<State>, connector: &str) -> gtk::Box {

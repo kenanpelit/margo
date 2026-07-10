@@ -25,6 +25,7 @@ mod console_palette;
 mod info_caching;
 mod post_login;
 mod runner;
+mod theme_sync;
 mod ui;
 
 use config::Config;
@@ -32,52 +33,40 @@ use config::Config;
 use crate::cli::{Cli, Commands};
 use crate::runner::Host;
 
-const DEFAULT_VARIABLES_PATH: &str = "/etc/mlogind/variables.toml";
+pub(crate) const DEFAULT_VARIABLES_PATH: &str = "/etc/mlogind/variables.toml";
 const DEFAULT_CONFIG_PATH: &str = "/etc/mlogind/config.toml";
 const PREVIEW_LOG_PATH: &str = "mlogind.log";
 
-/// `mlogind sync-theme`: copy the active margo matugen palette
-/// (`~/.config/margo/mlogind-variables.toml`, written by mshell-matugen on
-/// every theme change) into `/etc/mlogind/variables.toml`, so the
-/// pre-login greeter matches the user's wallpaper. Run privileged; under
-/// sudo the *invoking* user is resolved via `SUDO_USER`.
+/// `mlogind sync-theme`: refresh everything the pre-login greeters render from
+/// the user's desktop — the TUI's matugen palette, and mgreet's matugen CSS plus
+/// a blurred copy of the wallpaper. Run privileged; under sudo the *invoking*
+/// user is resolved via `SUDO_USER`.
+///
+/// The reading is done by a forked child running as that user, never as root:
+/// see [`crate::theme_sync`].
 fn sync_theme() -> Result<(), Box<dyn Error>> {
-    use uzers::os::unix::UserExt;
-
-    let home: PathBuf = match std::env::var_os("SUDO_USER") {
-        Some(name) => uzers::get_user_by_name(&name)
-            .map(|u| u.home_dir().to_path_buf())
-            .ok_or_else(|| format!("unknown SUDO_USER '{}'", name.to_string_lossy()))?,
-        None => std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .ok_or("neither SUDO_USER nor HOME is set; pass the palette explicitly")?,
+    let username = match std::env::var("SUDO_USER") {
+        Ok(name) => name,
+        // Not under sudo. Whoever we are is whose desktop we sync — which for a
+        // bare `mlogind sync-theme` as root means root's, and that is honest.
+        Err(_) => uzers::get_current_username()
+            .and_then(|name| name.into_string().ok())
+            .ok_or("cannot tell whose theme to sync; run it as `sudo mlogind sync-theme`")?,
     };
 
-    let src = home.join(".config/margo/mlogind-variables.toml");
-    let dst = Path::new(DEFAULT_VARIABLES_PATH);
+    let user = auth::lookup(&username)?;
+    let written = theme_sync::sync(&user)
+        .map_err(|err| format!("{err} — run privileged, e.g. `sudo mlogind sync-theme`"))?;
 
-    let body = std::fs::read_to_string(&src).map_err(|e| {
-        format!(
-            "cannot read {} ({e}) — apply a margo matugen theme first",
-            src.display()
+    if written.is_empty() {
+        return Err(format!(
+            "nothing to sync from {username}'s desktop — apply a margo matugen theme first"
         )
-    })?;
-
-    if let Some(parent) = dst.parent() {
-        std::fs::create_dir_all(parent)?;
+        .into());
     }
-    std::fs::write(dst, &body).map_err(|e| {
-        format!(
-            "cannot write {} ({e}) — run privileged, e.g. `sudo mlogind sync-theme`",
-            dst.display()
-        )
-    })?;
-
-    println!(
-        "mlogind: synced palette {} → {}",
-        src.display(),
-        dst.display()
-    );
+    for path in written {
+        println!("mlogind: wrote {}", path.display());
+    }
     Ok(())
 }
 

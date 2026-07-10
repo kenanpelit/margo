@@ -16,6 +16,7 @@
 //! real via `[display] host = "gui"`.
 
 mod auth;
+mod background;
 mod battery;
 mod cache;
 mod power;
@@ -66,6 +67,9 @@ pub struct State {
     pub initial_session: Option<String>,
     /// Power actions for the F-key footer (from MLOGIND_POWER or a default set).
     pub power: Vec<power::PowerAction>,
+    /// The blurred wallpaper the theme sync left for us, if any. Uploaded once
+    /// and shared by every per-monitor window.
+    pub background: Option<gdk::Texture>,
 }
 
 impl State {
@@ -150,6 +154,7 @@ fn main() -> glib::ExitCode {
 
         let state = Rc::new(State {
             preview,
+            background: background::load(),
             username: gtk::EntryBuffer::new(cached_user.as_deref()),
             password: gtk::EntryBuffer::new(None::<&str>),
             sessions: sessions::list(),
@@ -249,8 +254,13 @@ fn sync_windows(
 /// which reads as "the greeter ignores my theme".
 fn matugen_css(real_greeter: bool) -> Option<String> {
     if real_greeter {
-        // Root, pre-session: no user cache is readable, so use a synced path.
-        std::fs::read_to_string("/etc/mgreet/theme.css").ok()
+        // Pre-session, and since A2 not even root: `$HOME` is 0710, so no user
+        // cache is reachable. `mlogind`'s theme sync leaves a copy here.
+        //
+        // This used to read `/etc/mgreet/theme.css`, which nothing has ever
+        // written — so the real greeter always rendered the baked Dracula
+        // palette, whatever the wallpaper theme was.
+        std::fs::read_to_string("/var/lib/mgreet/theme.css").ok()
     } else {
         // Under a live session: reuse the shell's cached theme so the greeter
         // matches the desktop the user just came from.

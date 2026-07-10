@@ -34,9 +34,22 @@ window.mgreet-root {
 }
 
 // Solid backdrop behind the card (a subtle vertical wash of the palette for a
-// little depth). Opaque on purpose — see above.
+// little depth). Opaque on purpose — see above. Used only when no wallpaper has
+// been synced; with one, `.mgreet-dim` takes this job.
 .mgreet-scrim {
   background: linear-gradient(180deg, var(--bg) 0%, var(--surface) 100%);
+}
+
+// The wallpaper mlogind's theme sync baked for us (downscaled + blurred) sits
+// under everything; this dims it so the card stays legible over a bright image.
+//
+// A separate widget with `opacity`, not a translucent colour: whether GTK's
+// `alpha()` accepts a `var()` is not something the login screen should depend
+// on. Because the colour is still `--bg`, the matugen overlay re-tints the dim
+// without the image being baked again.
+.mgreet-dim {
+  background: var(--bg);
+  opacity: 0.55;
 }
 
 // ── The login card ────────────────────────────────────────────────

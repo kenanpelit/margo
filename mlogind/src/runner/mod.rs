@@ -594,6 +594,18 @@ fn start_session(
     spawned.wait();
     info!("runner: session ended");
 
+    // The wallpaper the user just left becomes the next greeter's backdrop. We
+    // are root, we know the user, and nothing is waiting on us. A failure here
+    // is a decoration that did not get prepared — never a reason to change how
+    // the login ended.
+    match crate::theme_sync::sync(user_info) {
+        Ok(written) if written.is_empty() => {
+            info!("runner: nothing to sync into the greeter's theme");
+        }
+        Ok(written) => info!("runner: refreshed {} greeter asset(s)", written.len()),
+        Err(err) => warn!("runner: could not refresh the greeter's theme: {err}"),
+    }
+
     drop(utmpx_session);
     // `auth` drops in the caller → pam_close_session + setcred(DELETE) + pam_end.
     EXIT_SESSION_ENDED
