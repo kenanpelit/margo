@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use log::{error, info};
 
-use crate::auth::AuthUserInfo;
+use crate::auth::UserInfo;
 use crate::config::Config;
 use crate::post_login::wait_with_log::SessionChild;
 
@@ -70,7 +70,7 @@ fn handle_sigusr1(_: i32) {
     }
 }
 
-pub fn setup_x(user_info: &AuthUserInfo, config: &Config) -> Result<SessionChild, XSetupError> {
+pub fn setup_x(user_info: &UserInfo, config: &Config) -> Result<SessionChild, XSetupError> {
     use std::os::unix::process::CommandExt;
 
     info!("Start setup of X server");

@@ -4,11 +4,15 @@ use ratatui::style::{Color, Style};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::auth::AuthenticationError;
-
 #[derive(Clone)]
 pub enum ErrorStatusMessage {
-    AuthenticationError(AuthenticationError),
+    /// Verbatim text from the session runner: a `Failure` reason, or a
+    /// `PAM_ERROR_MSG` the stack raised mid-conversation ("account expired",
+    /// "fingerprint not recognised"). The runner decides what the user is told;
+    /// whether the account even exists is not the greeter's business.
+    FromRunner(String),
+    /// The session runner went away. Nothing the user types can help.
+    RunnerGone,
     NoGraphicalEnvironment,
     FailedGraphicalEnvironment,
     FailedDesktop,
@@ -20,7 +24,8 @@ impl From<ErrorStatusMessage> for Box<str> {
         use ErrorStatusMessage::*;
 
         match err {
-            AuthenticationError(_) => "Authentication failed".into(),
+            FromRunner(text) => text.into(),
+            RunnerGone => "Lost the session runner. Check the logs".into(),
             NoGraphicalEnvironment => "No graphical environment specified".into(),
             FailedGraphicalEnvironment => "Failed booting into the graphical environment".into(),
             FailedDesktop => "Failed booting into desktop environment".into(),
@@ -64,6 +69,11 @@ impl From<InfoStatusMessage> for StatusMessage {
 pub enum StatusMessage {
     Error(ErrorStatusMessage),
     Info(InfoStatusMessage),
+    /// A `PAM_TEXT_INFO` message, or the text of a prompt the form cannot
+    /// answer from the fields the user already filled in — "Touch your security
+    /// key", "New password:". Rendered like an info message: it is a question,
+    /// not a failure.
+    FromRunner(String),
 }
 
 impl From<StatusMessage> for Box<str> {
@@ -73,6 +83,7 @@ impl From<StatusMessage> for Box<str> {
         match msg {
             Error(sm) => sm.into(),
             Info(sm) => sm.into(),
+            FromRunner(text) => text.into(),
         }
     }
 }

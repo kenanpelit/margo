@@ -6,16 +6,18 @@
 //! relm4: a login gate must be maximally robust, and fewer layers means
 //! fewer ways to abort.
 //!
-//! Real PAM auth, the mlogind credential hand-off, the shared last-login cache,
-//! the power-action F-key footer, and a battery indicator are all live. Run
+//! The greeter runs NO PAM of its own. It speaks `mlogind-proto` over the socket
+//! the session runner leaves on `$MLOGIND_SOCK_FD`, answering the questions PAM
+//! actually asks — which is what makes a fingerprint reader prompt once instead
+//! of twice, and an OTP module work at all. The shared last-login cache, the
+//! power-action F-key footer and a battery indicator are all live. Run
 //! `mgreet --preview` under a live margo session for a non-destructive dry-run
-//! (no PAM, no hand-off, power keys inert); the mlogind orchestrator runs it for
+//! (no socket, no login, power keys inert); the mlogind orchestrator runs it for
 //! real via `[display] host = "gui"`.
 
 mod auth;
 mod battery;
 mod cache;
-mod handoff;
 mod power;
 mod sessions;
 mod style;
@@ -26,25 +28,14 @@ use gtk4 as gtk;
 use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use mlogind_proto::{Conn, FdTransport};
 use sessions::Session;
-
-/// Real-greeter parameters: where to write the credential hand-off and which
-/// PAM service to authenticate against. `None` → preview / dry-run: no PAM, no
-/// hand-off, submit never quits and never touches the session.
-#[derive(Clone)]
-pub struct Greeter {
-    pub result_path: PathBuf,
-    pub pam_service: String,
-    /// Shared last-login cache (mlogind's `config.cache_path`). Read to pre-fill
-    /// the username + session, rewritten on a successful login. `None` disables
-    /// the feature (e.g. the orchestrator didn't hand a path over).
-    pub cache_path: Option<PathBuf>,
-}
 
 /// Shared greeter state. The username/password [`gtk::EntryBuffer`]s are shared
 /// by every per-monitor window, so typing on any screen updates them all — and
@@ -54,11 +45,44 @@ pub struct State {
     pub username: gtk::EntryBuffer,
     pub password: gtk::EntryBuffer,
     pub sessions: Vec<Session>,
-    pub greeter: Option<Greeter>,
+
+    /// The socket to the session runner. Owned here so it outlives every
+    /// borrow of `conn`, which only holds its number.
+    _sock: Option<OwnedFd>,
+    /// The conversation. `None` → dry-run: submit echoes and quits nothing.
+    pub conn: Option<RefCell<Conn<FdTransport>>>,
+    /// The runner asked something the form could not answer; the password field
+    /// now holds the reply rather than a password.
+    pub awaiting_prompt: Cell<bool>,
+    /// We still hold the password typed at submit, for PAM's first blind prompt.
+    pub password_pending: Cell<bool>,
+    /// A `Begin` is in flight and PAM has not asked anything yet.
+    pub conversing: Cell<bool>,
+    /// Every window's status line, keyed by connector. One conversation, many
+    /// monitors — and a hotplug rebuild must not leave the dead ones behind.
+    pub status: RefCell<HashMap<String, gtk::Label>>,
+
     /// Last-used session name to pre-select (from the shared cache), if any.
     pub initial_session: Option<String>,
     /// Power actions for the F-key footer (from MLOGIND_POWER or a default set).
     pub power: Vec<power::PowerAction>,
+}
+
+impl State {
+    /// Is there a session runner listening? Everything destructive is gated on this.
+    pub fn real(&self) -> bool {
+        self.conn.is_some()
+    }
+}
+
+/// Adopt the socket the session runner left on `$MLOGIND_SOCK_FD`.
+///
+/// A missing or unparsable value means nobody is orchestrating us — a UI dry-run.
+fn runner_socket() -> Option<OwnedFd> {
+    let raw: RawFd = std::env::var("MLOGIND_SOCK_FD").ok()?.parse().ok()?;
+    // SAFETY: the runner passed us this descriptor and closed its own copy, so
+    // we are its sole owner.
+    Some(unsafe { OwnedFd::from_raw_fd(raw) })
 }
 
 fn main() -> glib::ExitCode {
@@ -73,25 +97,22 @@ fn main() -> glib::ExitCode {
     // SAFETY: single-threaded here; GTK has not been initialised yet.
     unsafe { std::env::set_var("GTK_THEME", "Adwaita:dark") };
 
-    // Real greeter mode: the mlogind orchestrator exports MLOGIND_RESULT_PATH
-    // (the one-shot credential hand-off) and MLOGIND_PAM_SERVICE. Without the
-    // hand-off path — or under `--preview` — this is a non-destructive UI
-    // dry-run: OnDemand keyboard, no PAM, submit just echoes.
-    let greeter = if preview {
-        None
-    } else {
-        std::env::var_os("MLOGIND_RESULT_PATH").map(|path| Greeter {
-            result_path: PathBuf::from(path),
-            pam_service: std::env::var("MLOGIND_PAM_SERVICE")
-                .unwrap_or_else(|_| "login".to_string()),
-            cache_path: std::env::var_os("MLOGIND_CACHE_PATH").map(PathBuf::from),
-        })
-    };
+    // Real greeter mode: the session runner left us its end of a SOCK_SEQPACKET
+    // pair on MLOGIND_SOCK_FD (atrium's CREDENTIALS_FD idiom — the fd rides
+    // across exec, its number arrives in the environment). Without it — or under
+    // `--preview` — this is a non-destructive UI dry-run: OnDemand keyboard, no
+    // conversation, submit just echoes.
+    let sock = if preview { None } else { runner_socket() };
 
-    // Pre-fill the last user + session from the cache the orchestrator shares
-    // with the TUI greeter (only in real mode; preview never touches it).
-    let (cached_session, cached_user) = match greeter.as_ref().and_then(|g| g.cache_path.as_ref()) {
-        Some(path) => cache::read(path),
+    // Pre-fill the last user + session from the cache the runner shares with the
+    // TUI greeter. Read-only: the runner writes it, on a login that succeeded.
+    // A greeter has no business writing /var/cache, and under A2 — unprivileged
+    // greeter — it will not be able to.
+    let (cached_session, cached_user) = match sock
+        .as_ref()
+        .and(std::env::var_os("MLOGIND_CACHE_PATH").as_ref())
+    {
+        Some(path) => cache::read(std::path::Path::new(path)),
         None => (None, None),
     };
 
@@ -115,22 +136,48 @@ fn main() -> glib::ExitCode {
         None,
     );
 
+    // `connect_activate` wants an `Fn`, so the socket has to be taken out from
+    // behind a cell rather than moved out of the closure's capture.
+    let sock = RefCell::new(sock);
     app.connect_activate(move |app| {
         let Some(display) = gdk::Display::default() else {
             eprintln!("mgreet: no GDK display; cannot start the greeter");
             return;
         };
-        style::install(&display, matugen_css(greeter.is_some()).as_deref());
+        let sock = sock.borrow_mut().take();
+        let raw = sock.as_ref().map(|fd| fd.as_raw_fd());
+        style::install(&display, matugen_css(raw.is_some()).as_deref());
 
         let state = Rc::new(State {
             preview,
             username: gtk::EntryBuffer::new(cached_user.as_deref()),
             password: gtk::EntryBuffer::new(None::<&str>),
             sessions: sessions::list(),
-            greeter: greeter.clone(),
+            // SAFETY: `raw` came from the `OwnedFd` moved in alongside it, and
+            // `State` keeps that `OwnedFd` alive for the life of the `Conn`.
+            conn: raw.map(|fd| RefCell::new(Conn::new(unsafe { FdTransport::new(fd) }))),
+            _sock: sock,
+            awaiting_prompt: Cell::new(false),
+            password_pending: Cell::new(false),
+            conversing: Cell::new(false),
+            status: RefCell::new(HashMap::new()),
             initial_session: cached_session.clone(),
             power: power::from_env(),
         });
+
+        // Drive the conversation from the GTK main loop. GLib reports IN only
+        // when a datagram is queued or the peer hung up, so the `recv` inside
+        // never blocks the UI — which is exactly what the old in-process PAM
+        // call did.
+        if let Some(fd) = raw {
+            let app = app.clone();
+            let state = state.clone();
+            glib::unix_fd_add_local(
+                fd,
+                glib::IOCondition::IN | glib::IOCondition::HUP,
+                move |_, _| ui::on_runner_event(&app, &state),
+            );
+        }
 
         let windows: Rc<RefCell<HashMap<String, gtk::Window>>> =
             Rc::new(RefCell::new(HashMap::new()));
@@ -182,10 +229,13 @@ fn sync_windows(
         if let Some(window) = map.remove(&connector) {
             window.close();
         }
+        // Its status label went with it; the conversation must not keep writing
+        // to a widget nobody can see.
+        state.status.borrow_mut().remove(&connector);
     }
     for (connector, monitor) in current {
-        map.entry(connector)
-            .or_insert_with(|| ui::build_window(app, &monitor, state));
+        map.entry(connector.clone())
+            .or_insert_with(|| ui::build_window(app, &monitor, state, &connector));
     }
 }
 

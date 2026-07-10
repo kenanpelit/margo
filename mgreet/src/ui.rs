@@ -8,7 +8,9 @@ use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
+use mlogind_proto::Request;
 use std::rc::Rc;
+use zeroize::Zeroizing;
 
 use crate::State;
 
@@ -17,6 +19,7 @@ pub fn build_window(
     app: &gtk::Application,
     monitor: &gdk::Monitor,
     state: &Rc<State>,
+    connector: &str,
 ) -> gtk::Window {
     let window = gtk::Window::new();
     window.add_css_class("mgreet-root");
@@ -33,7 +36,7 @@ pub fn build_window(
     }
     // Real greeter owns the keyboard exclusively; the preview / dry-run (run
     // under a live session) uses OnDemand so a test run can never trap input.
-    window.set_keyboard_mode(if state.greeter.is_some() {
+    window.set_keyboard_mode(if state.real() {
         KeyboardMode::Exclusive
     } else {
         KeyboardMode::OnDemand
@@ -54,7 +57,7 @@ pub fn build_window(
     scrim.set_hexpand(true);
     scrim.set_vexpand(true);
 
-    let card = build_card(app, state);
+    let card = build_card(state, connector);
     card.set_halign(gtk::Align::Center);
     card.set_valign(gtk::Align::Center);
 
@@ -83,9 +86,9 @@ pub fn build_window(
     // quit in preview. Matching by GTK key name ("F1"…) mirrors the TUI.
     let key = gtk::EventControllerKey::new();
     let app_weak = app.downgrade();
-    let allow_escape_quit = state.greeter.is_none();
+    let allow_escape_quit = !state.real();
     let power = state.power.clone();
-    let power_live = state.greeter.is_some();
+    let power_live = state.real();
     key.connect_key_pressed(move |_, keyval, _, _| {
         if let Some(name) = keyval.name()
             && let Some(action) = power.iter().find(|a| a.key == name.as_str())
@@ -112,7 +115,7 @@ pub fn build_window(
     window
 }
 
-fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
+fn build_card(state: &Rc<State>, connector: &str) -> gtk::Box {
     let card = gtk::Box::new(gtk::Orientation::Vertical, 14);
     card.add_css_class("mgreet-card");
 
@@ -210,6 +213,12 @@ fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
     // ── Status line ──
     let status = label(&["mgreet-status"]);
     card.append(&status);
+    // One conversation, many monitors: the runner's prompts and errors have to
+    // land on every screen, not only the one the user happened to submit from.
+    state
+        .status
+        .borrow_mut()
+        .insert(connector.to_string(), status.clone());
 
     // ── Log-in button ──
     let login = gtk::Button::with_label("Log in");
@@ -218,11 +227,10 @@ fn build_card(app: &gtk::Application, state: &Rc<State>) -> gtk::Box {
 
     // Submit: the button, or Enter in the password field.
     let submit: Rc<dyn Fn()> = {
-        let app = app.clone();
         let state = state.clone();
         let status = status.clone();
         let sessions = sessions.clone();
-        Rc::new(move || submit_login(&app, &state, &status, &sessions))
+        Rc::new(move || submit_login(&state, &status, &sessions))
     };
     {
         let submit = submit.clone();
@@ -315,36 +323,28 @@ fn build_power_footer(actions: &[crate::power::PowerAction]) -> gtk::Box {
     row
 }
 
-/// Validate the login, then either hand it off to the orchestrator (real mode)
-/// or echo intent (preview). On a wrong password in real mode the greeter stays
-/// up and clears the field — it never tears the compositor down for a typo.
-fn submit_login(
-    app: &gtk::Application,
-    state: &Rc<State>,
-    status: &gtk::Label,
-    sessions: &gtk::DropDown,
-) {
+/// Open a conversation with the session runner, answer a prompt it is holding
+/// open, or — with no runner — echo intent.
+///
+/// Nothing here blocks. `Begin` and `Response` are one small datagram each; the
+/// runner's replies arrive later, in [`on_runner_event`], from the GTK main
+/// loop. That is the difference from the old greeter, whose in-process
+/// `pam_authenticate` froze the UI for the length of the PAM stack — which is
+/// why there was never an "Authenticating…" frame to paint.
+fn submit_login(state: &Rc<State>, status: &gtk::Label, sessions: &gtk::DropDown) {
     let user = state.username.text().to_string();
-    let pass = zeroize::Zeroizing::new(state.password.text().to_string());
     let session = state
         .sessions
         .get(sessions.selected() as usize)
         .map(|s| s.name.clone())
         .unwrap_or_default();
 
-    // `pam_service == None` selects the preview branch inside `decide_submit`.
-    // The whole decision (empty-checks, preview echo, auth) lives there so it is
-    // unit-tested with a fake authenticator; here we only apply its verdict to
-    // the widgets. Note there is no "Authenticating…" transient: the PAM call
-    // blocks the GTK main loop, so such a status is never painted before the
-    // result overwrites it.
-    let pam_service = state.greeter.as_ref().map(|g| g.pam_service.as_str());
     match crate::auth::decide_submit(
-        &crate::auth::PamAuthenticator,
         &user,
-        &pass,
         &session,
-        pam_service,
+        state.awaiting_prompt.get(),
+        state.conversing.get(),
+        state.real(),
     ) {
         crate::auth::Submit::Reject(msg) => set_status(status, msg, true),
         crate::auth::Submit::Preview(msg) => {
@@ -352,32 +352,125 @@ fn submit_login(
             // Length only — never the password itself.
             eprintln!(
                 "[mgreet] (preview) would authenticate user={user:?} session={session:?} pass_len={}",
-                pass.len()
+                state.password.text().len()
             );
         }
-        // Validated: hand the credentials to the orchestrator, then quit so the
-        // greeter compositor exits and it launches the session. `greeter` is
-        // always `Some` here (auth only runs in real mode); the guard just
-        // avoids an unwrap on the login path.
-        crate::auth::Submit::Success => {
-            if let Some(greeter) = state.greeter.as_ref() {
-                match crate::handoff::write(&greeter.result_path, &user, &session, &pass) {
-                    Ok(()) => {
-                        // Remember this login for next time (shared with the TUI greeter).
-                        if let Some(cache_path) = greeter.cache_path.as_deref() {
-                            crate::cache::write(cache_path, &session, &user);
-                        }
-                        app.quit();
-                    }
-                    Err(e) => set_status(status, &format!("Login hand-off failed: {e}"), true),
-                }
+        // Enter pressed again while PAM is still thinking. Say nothing new.
+        crate::auth::Submit::Busy => {}
+        crate::auth::Submit::Begin => {
+            state.password_pending.set(true);
+            state.conversing.set(true);
+            set_status(status, "Verifying credentials", false);
+            if !send(state, &Request::Begin { user, session }) {
+                lost(state);
             }
         }
-        crate::auth::Submit::Failure(msg) => {
-            state.password.set_text("");
-            set_status(status, &msg, true);
+        crate::auth::Submit::Answer => {
+            state.awaiting_prompt.set(false);
+            let answer = take_secret(state);
+            if !send(state, &Request::Response { secret: answer }) {
+                lost(state);
+            }
         }
     }
+}
+
+/// One frame arrived on the runner's socket. Read it and act.
+///
+/// Returns [`glib::ControlFlow::Break`] once the conversation is over, which
+/// removes the source: after `Success` the application is quitting, and after a
+/// hangup there is nothing left to read.
+pub fn on_runner_event(app: &gtk::Application, state: &Rc<State>) -> glib::ControlFlow {
+    let Some(conn) = state.conn.as_ref() else {
+        return glib::ControlFlow::Break;
+    };
+
+    let event = match conn.borrow_mut().recv_event() {
+        Ok(Some(event)) => event,
+        // A clean EOF and a broken frame mean the same thing to the user.
+        Ok(None) => {
+            lost(state);
+            return glib::ControlFlow::Break;
+        }
+        Err(err) => {
+            eprintln!("[mgreet] protocol error: {err}");
+            lost(state);
+            return glib::ControlFlow::Break;
+        }
+    };
+
+    match crate::auth::decide_event(event, state.password_pending.get()) {
+        crate::auth::Action::AnswerWithPassword => {
+            let secret = take_secret(state);
+            if !send(state, &Request::Response { secret }) {
+                lost(state);
+                return glib::ControlFlow::Break;
+            }
+        }
+        // A question the form cannot answer: an OTP, a new password after
+        // expiry, a second factor. The password field becomes its answer box.
+        crate::auth::Action::AskUser(text) => {
+            state.password.set_text("");
+            state.awaiting_prompt.set(true);
+            broadcast(state, &text, false);
+        }
+        crate::auth::Action::Note(text) => broadcast(state, &text, false),
+        crate::auth::Action::Warn(text) => broadcast(state, &text, true),
+        crate::auth::Action::Done => {
+            // Quit so the greeter compositor exits and the runner — which has
+            // been holding the PAM handle all along — opens the session.
+            app.quit();
+            return glib::ControlFlow::Break;
+        }
+        crate::auth::Action::Failed(reason) => {
+            state.password.set_text("");
+            state.awaiting_prompt.set(false);
+            state.password_pending.set(false);
+            state.conversing.set(false);
+            broadcast(state, &reason, true);
+        }
+    }
+    glib::ControlFlow::Continue
+}
+
+/// Lift the password field's contents out as a scrubbing buffer and blank the
+/// field. This is a root process: freed heap survives in core dumps and swap.
+fn take_secret(state: &Rc<State>) -> Zeroizing<Vec<u8>> {
+    let text = Zeroizing::new(state.password.text().to_string());
+    state.password.set_text("");
+    state.password_pending.set(false);
+    Zeroizing::new(text.as_bytes().to_vec())
+}
+
+/// `false` if the socket broke. The caller tells the user.
+fn send(state: &Rc<State>, request: &Request) -> bool {
+    let Some(conn) = state.conn.as_ref() else {
+        return false;
+    };
+    match conn.borrow_mut().send_request(request) {
+        Ok(()) => true,
+        Err(err) => {
+            eprintln!("[mgreet] could not reach the session runner: {err}");
+            false
+        }
+    }
+}
+
+/// Show `text` on every monitor's status line.
+fn broadcast(state: &Rc<State>, text: &str, error: bool) {
+    for label in state.status.borrow().values() {
+        set_status(label, text, error);
+    }
+}
+
+/// The runner is gone. Say so and stop taking input for a login that cannot
+/// happen; the orchestrator will notice its child died and start a fresh one.
+fn lost(state: &Rc<State>) {
+    state.password.set_text("");
+    state.awaiting_prompt.set(false);
+    state.password_pending.set(false);
+    state.conversing.set(false);
+    broadcast(state, "Lost the session runner. Check the logs", true);
 }
 
 fn set_status(label: &gtk::Label, text: &str, error: bool) {

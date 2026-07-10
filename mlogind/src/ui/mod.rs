@@ -5,20 +5,17 @@ use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use crate::auth::try_validate;
 use crate::config::{Config, FocusBehaviour, SwitcherVisibility};
 use crate::info_caching::{get_cached_information, set_cache};
 use crate::post_login::PostLoginEnvironment;
-use crate::{start_session, Hooks, StartSessionError};
+use mlogind_proto::{Conn, Event as ProtoEvent, FdTransport, Request};
 use status_message::StatusMessage;
-use std::path::{Path, PathBuf};
+use zeroize::Zeroizing;
 
 use crossterm::cursor::MoveTo;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use crossterm::execute;
-use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen,
-};
+use crossterm::terminal::{disable_raw_mode, Clear, ClearType, LeaveAlternateScreen};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Alignment;
 use ratatui::style::{Color, Modifier, Style};
@@ -168,9 +165,25 @@ impl InputMode {
 
 enum UIThreadRequest {
     Redraw,
+    /// Leave the alternate screen. The runner is about to take the VT, and the
+    /// form never comes back — it exits, and the daemon draws a fresh one after
+    /// the session ends. (There used to be an `EnableTui` for the return trip,
+    /// back when the form itself forked the session and waited for it.)
     DisableTui,
-    EnableTui,
-    StopDrawing,
+    StopDrawing(Outcome),
+}
+
+/// Why the login form stopped drawing.
+///
+/// The form no longer runs a session itself, so it has to say what it did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// The user left (Esc in preview), or there was never a runner to talk to.
+    Quit,
+    /// PAM said yes. The runner is waiting for us to release the screen.
+    SessionStarting,
+    /// The session runner died mid-conversation. The caller should start a new one.
+    RunnerGone,
 }
 
 #[derive(Clone)]
@@ -233,56 +246,12 @@ impl Widgets {
     }
 }
 
-/// Hand the validated login to the root orchestrator via a private tmpfs file.
-/// Format is newline-delimited `LOGIN\n<user>\n<session>\n<password>` — the
-/// password is the final line (single-line inputs can't contain a newline, so
-/// no escaping is needed). Written `0600` in the root-only runtime dir; the
-/// orchestrator overwrites and removes it the instant it's read.
-fn write_greet_result(
-    path: &Path,
-    username: &str,
-    session: &str,
-    password: &str,
-) -> io::Result<()> {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
-
-    let mut body = zeroize::Zeroizing::new(String::with_capacity(
-        username.len() + session.len() + password.len() + 8,
-    ));
-    body.push_str("LOGIN\n");
-    body.push_str(username);
-    body.push('\n');
-    body.push_str(session);
-    body.push('\n');
-    body.push_str(password);
-
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(path)?;
-    file.write_all(body.as_bytes())?;
-    file.flush()?;
-    Ok(())
-}
-
 /// App holds the state of the application
 #[derive(Clone)]
 pub struct LoginForm {
-    /// Whether the application is running in preview mode
+    /// No socket to a session runner: submit only animates. Set by `--preview`,
+    /// and by a bare `mlogind --greet` with no `MLOGIND_SOCK_FD`.
     preview: bool,
-
-    /// Whether this instance is the cage/foot-hosted greeter (`--greet`).
-    /// In greet mode a successful login is handed to the orchestrator via
-    /// [`Self::greet_result_path`] instead of forking the session here.
-    greet: bool,
-
-    /// Where the greeter writes the validated `(user, session, password)` for
-    /// the orchestrator to pick up. `None` in greet mode means "UI dry-run":
-    /// behave like preview so `mlogind --greet` can be eyeballed in a terminal.
-    greet_result_path: Option<PathBuf>,
 
     widgets: Widgets,
 
@@ -335,20 +304,9 @@ impl LoginForm {
         }
     }
 
-    /// Turn this form into the cage/foot-hosted greeter. `result_path` is where
-    /// the validated login is handed off to the orchestrator; `None` runs a
-    /// preview-style UI dry-run (for eyeballing `mlogind --greet` in a terminal).
-    pub fn into_greeter(mut self, result_path: Option<PathBuf>) -> LoginForm {
-        self.greet = true;
-        self.greet_result_path = result_path;
-        self
-    }
-
     pub fn new(config: Config, preview: bool) -> LoginForm {
         LoginForm {
             preview,
-            greet: false,
-            greet_result_path: None,
             widgets: Widgets {
                 background: BackgroundWidget::new(config.background.clone()),
                 key_menu: KeyMenuWidget::new(
@@ -396,7 +354,18 @@ impl LoginForm {
         }
     }
 
-    pub fn run(self, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
+    /// Draw the form and, if we have a socket to a session runner, drive one
+    /// login conversation over it.
+    ///
+    /// `conn` is taken by value: the event loop lives on its own thread, and a
+    /// borrow could not cross `thread::spawn`. The caller keeps the `OwnedFd`;
+    /// `Conn` only borrows the number. We join the thread before returning, so
+    /// the fd cannot be closed underneath it.
+    pub fn run(
+        self,
+        terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+        conn: Option<Conn<FdTransport>>,
+    ) -> io::Result<Outcome> {
         self.load_cache();
         let input_mode = LoginFormInputMode::new(match self.config.focus_behaviour {
             FocusBehaviour::FirstNonCached => match (
@@ -474,7 +443,7 @@ impl LoginForm {
             });
         }
 
-        std::thread::spawn(move || {
+        let event_thread = std::thread::spawn(move || {
             let mut switcher_hidden = self
                 .widgets
                 .environment
@@ -489,48 +458,21 @@ impl LoginForm {
                 Err(err) => warn!("Failed to send UI request. Reason: {}", err),
             };
 
-            let pre_auth = || {
-                self.widgets.clear_password();
+            let redraw = || send_ui_request(UIThreadRequest::Redraw);
 
-                status_message.set(InfoStatusMessage::Authenticating);
-                send_ui_request(UIThreadRequest::Redraw);
-            };
-            let pre_environment = || {
-                // Remember username and environment for next time
-                self.set_cache();
-
-                status_message.set(InfoStatusMessage::LoggingIn);
-                send_ui_request(UIThreadRequest::Redraw);
-
-                // Disable the rendering of the login manager
-                send_ui_request(UIThreadRequest::DisableTui);
-            };
-            let pre_return = || {
-                // Enable the rendering of the login manager
-                send_ui_request(UIThreadRequest::EnableTui);
-
-                status_message.clear();
-                send_ui_request(UIThreadRequest::Redraw);
-            };
-
-            let hooks = Hooks {
-                pre_validate: None,
-                pre_auth: Some(&pre_auth),
-                pre_environment: Some(&pre_environment),
-                pre_wait: None,
-                pre_return: Some(&pre_return),
-            };
+            let mut conn = conn;
+            // True while PAM is mid-conversation and has asked something the
+            // filled-in form could not answer. The next Enter sends the reply
+            // rather than starting a fresh login.
+            let mut awaiting_prompt = false;
 
             loop {
                 if let Ok(Event::Key(key)) = event::read() {
                     match (key.code, input_mode.get(), key.modifiers) {
                         (KeyCode::Enter, InputMode::Password, _) => {
-                            // `--greet` with no hand-off path is a UI dry-run:
-                            // fall through the preview animation like `--preview`.
-                            let dry_run =
-                                self.preview || (self.greet && self.greet_result_path.is_none());
-                            if dry_run {
-                                // This is only for demonstration purposes
+                            let Some(conn) = conn.as_mut() else {
+                                // No runner to talk to (`--preview`, or a bare
+                                // `mlogind --greet`). Animate and stay put.
                                 status_message.set(InfoStatusMessage::Authenticating);
                                 send_ui_request(UIThreadRequest::Redraw);
                                 std::thread::sleep(Duration::from_secs(2));
@@ -541,96 +483,93 @@ impl LoginForm {
 
                                 status_message.clear();
                                 send_ui_request(UIThreadRequest::Redraw);
-                            } else if self.greet {
-                                // Greeter (inside cage/foot): validate for instant
-                                // UX, then hand the login to the orchestrator and
-                                // stop. The orchestrator re-runs the full PAM
-                                // conversation and launches the session on the bare
-                                // VT (cage cannot host the compositor itself).
-                                let environment_name =
-                                    self.widgets.get_environment().map(|(title, _)| title);
-                                let username = self.widgets.get_username();
-                                let password = zeroize::Zeroizing::new(self.widgets.get_password());
+                                continue;
+                            };
 
-                                let Some(env_name) = environment_name else {
+                            let pumped = if awaiting_prompt {
+                                awaiting_prompt = false;
+                                // Answering an extra PAM question — an OTP, a
+                                // new password. Zeroizing: this is a root
+                                // process, and freed heap survives in core
+                                // dumps and swap.
+                                let answer = Zeroizing::new(self.widgets.get_password());
+                                self.widgets.clear_password();
+                                let sent = conn.send_request(&Request::Response {
+                                    secret: Zeroizing::new(answer.as_bytes().to_vec()),
+                                });
+                                if sent.is_err() {
+                                    Pumped::Disconnected
+                                } else {
+                                    let mut nothing = None;
+                                    pump(
+                                        conn,
+                                        &mut nothing,
+                                        &self.widgets,
+                                        &status_message,
+                                        &redraw,
+                                    )
+                                }
+                            } else {
+                                let Some((env_name, _)) = self.widgets.get_environment() else {
                                     status_message.set(ErrorStatusMessage::NoGraphicalEnvironment);
                                     send_ui_request(UIThreadRequest::Redraw);
                                     continue;
                                 };
+                                let username = self.widgets.get_username();
+                                let mut password =
+                                    Some(Zeroizing::new(self.widgets.get_password()));
+                                self.widgets.clear_password();
 
                                 status_message.set(InfoStatusMessage::Authenticating);
                                 send_ui_request(UIThreadRequest::Redraw);
 
-                                // Pre-flight the password so "wrong password" shows
-                                // in the native greeter, not after cage tears down.
-                                // NOTE: PAM auth therefore runs twice (here + the
-                                // orchestrator) — fine for a password stack, but a
-                                // single-use OTP module would need the greeter to
-                                // skip this pre-flight.
-                                match try_validate(&username, &password, &self.config.pam_service) {
-                                    Ok(creds) => drop(creds),
-                                    Err(err) => {
-                                        status_message
-                                            .set(ErrorStatusMessage::AuthenticationError(err));
-                                        send_ui_request(UIThreadRequest::Redraw);
-                                        continue;
-                                    }
+                                let sent = conn.send_request(&Request::Begin {
+                                    user: username,
+                                    session: env_name,
+                                });
+                                if sent.is_err() {
+                                    Pumped::Disconnected
+                                } else {
+                                    pump(
+                                        conn,
+                                        &mut password,
+                                        &self.widgets,
+                                        &status_message,
+                                        &redraw,
+                                    )
                                 }
+                            };
 
-                                if let Some(path) = &self.greet_result_path {
-                                    if let Err(e) =
-                                        write_greet_result(path, &username, &env_name, &password)
-                                    {
-                                        error!("greeter: failed to hand off login: {e}");
-                                        status_message
-                                            .set(ErrorStatusMessage::FailedGraphicalEnvironment);
-                                        send_ui_request(UIThreadRequest::Redraw);
-                                        continue;
-                                    }
+                            match pumped {
+                                // The runner is holding a prompt open for us.
+                                Pumped::NeedInput => {
+                                    awaiting_prompt = true;
+                                    input_mode.set(InputMode::Password);
                                 }
-
-                                // Stop the greeter; run() returns and the process
-                                // exits, handing the VT back to the orchestrator.
-                                req_send_channel.send(UIThreadRequest::StopDrawing).ok();
-                                return;
-                            } else {
-                                let environment =
-                                    self.widgets.get_environment().map(|(_, content)| content);
-                                let username = self.widgets.get_username();
-                                // Wrap the plaintext copy so it's scrubbed from
-                                // the heap when it drops after start_session,
-                                // instead of lingering in freed memory on a
-                                // root process (recoverable via core dump/swap).
-                                let password = zeroize::Zeroizing::new(self.widgets.get_password());
-                                let config = self.config.clone();
-
-                                let Some(post_login_env) = environment else {
-                                    status_message.set(ErrorStatusMessage::NoGraphicalEnvironment);
+                                // Wrong password. The socket is still good and
+                                // the runner is already waiting for a new Begin.
+                                Pumped::Failed => input_mode.set(InputMode::Password),
+                                Pumped::Success => {
+                                    status_message.set(InfoStatusMessage::LoggingIn);
                                     send_ui_request(UIThreadRequest::Redraw);
-                                    continue;
-                                };
-
-                                match start_session(
-                                    &username,
-                                    &password,
-                                    &post_login_env,
-                                    &hooks,
-                                    &config,
-                                ) {
-                                    Ok(()) => {}
-                                    Err(StartSessionError::AuthenticationError(err)) => {
-                                        status_message
-                                            .set(ErrorStatusMessage::AuthenticationError(err));
-                                        send_ui_request(UIThreadRequest::Redraw);
-                                    }
-                                    Err(StartSessionError::ForkFailed) => {
-                                        error!("Failed to fork session child process");
-                                        send_ui_request(UIThreadRequest::EnableTui);
-
-                                        status_message
-                                            .set(ErrorStatusMessage::FailedGraphicalEnvironment);
-                                        send_ui_request(UIThreadRequest::Redraw);
-                                    }
+                                    // Hand the screen back before the runner
+                                    // opens DRM on this very VT.
+                                    send_ui_request(UIThreadRequest::DisableTui);
+                                    req_send_channel
+                                        .send(UIThreadRequest::StopDrawing(
+                                            Outcome::SessionStarting,
+                                        ))
+                                        .ok();
+                                    return;
+                                }
+                                Pumped::Disconnected => {
+                                    error!("greeter: lost the session runner");
+                                    status_message.set(ErrorStatusMessage::RunnerGone);
+                                    send_ui_request(UIThreadRequest::Redraw);
+                                    req_send_channel
+                                        .send(UIThreadRequest::StopDrawing(Outcome::RunnerGone))
+                                        .ok();
+                                    return;
                                 }
                             }
                         }
@@ -652,7 +591,10 @@ impl LoginForm {
                         (KeyCode::Esc, InputMode::Normal, _) => {
                             if self.preview {
                                 info!("Pressed escape in preview mode to exit the application");
-                                req_send_channel.send(UIThreadRequest::StopDrawing).unwrap();
+                                req_send_channel
+                                    .send(UIThreadRequest::StopDrawing(Outcome::Quit))
+                                    .ok();
+                                return;
                             }
                         }
 
@@ -706,7 +648,8 @@ impl LoginForm {
 
         // Start the UI thread. This actually draws to the screen.
         //
-        // This blocks until we actually call StopDrawing
+        // This blocks until the event thread calls StopDrawing.
+        let mut outcome = Outcome::Quit;
         while let Ok(request) = req_recv_channel.recv() {
             use std::sync::atomic::Ordering;
             match request {
@@ -753,18 +696,97 @@ impl LoginForm {
                     )?;
                     terminal.show_cursor()?;
                 }
-                UIThreadRequest::EnableTui => {
-                    enable_raw_mode()?;
-                    let mut stdout = io::stdout();
-                    execute!(stdout, EnterAlternateScreen)?;
-                    terminal.clear()?;
-                    tui_enabled.store(true, Ordering::Relaxed);
+                UIThreadRequest::StopDrawing(reason) => {
+                    outcome = reason;
+                    break;
                 }
-                _ => break,
             }
         }
 
-        Ok(())
+        // The event thread has already returned by the time it sends
+        // StopDrawing, so this is prompt — and it guarantees nothing still
+        // holds the socket when the caller drops the fd.
+        if event_thread.join().is_err() {
+            error!("greeter: the event thread panicked");
+        }
+
+        Ok(outcome)
+    }
+}
+
+/// Where a pumped conversation left off.
+enum Pumped {
+    /// PAM asked something the filled-in form cannot answer.
+    NeedInput,
+    Success,
+    /// This attempt failed. The socket is still good; retry from the form.
+    Failed,
+    /// The runner is gone. Nothing the user types can help.
+    Disconnected,
+}
+
+/// Drive the conversation until it needs the user again, or ends.
+///
+/// `password` is the one answer we already hold. PAM's first *blind* prompt is
+/// the password prompt — the runner answers the username prompt itself, from
+/// `Begin`, so it never reaches us. Everything after that is a real question: a
+/// second factor, an expired-password change. Those go back to the form.
+fn pump(
+    conn: &mut Conn<FdTransport>,
+    password: &mut Option<Zeroizing<String>>,
+    widgets: &Widgets,
+    status_message: &LoginFormStatusMessage,
+    redraw: &dyn Fn(),
+) -> Pumped {
+    loop {
+        let event = match conn.recv_event() {
+            Ok(Some(event)) => event,
+            Ok(None) => return Pumped::Disconnected,
+            Err(err) => {
+                error!("greeter: protocol error: {err}");
+                return Pumped::Disconnected;
+            }
+        };
+
+        match event {
+            ProtoEvent::Prompt { echo, text } => {
+                if !echo {
+                    if let Some(secret) = password.take() {
+                        let sent = conn.send_request(&Request::Response {
+                            secret: Zeroizing::new(secret.as_bytes().to_vec()),
+                        });
+                        if sent.is_err() {
+                            return Pumped::Disconnected;
+                        }
+                        continue;
+                    }
+                }
+                // A question the form has no answer for. The reply is always
+                // masked, whatever `echo` asked for: A1's TUI has exactly one
+                // spare field and it is the password widget. Echoing an
+                // echo-on prompt is phase D.
+                let _ = echo;
+                widgets.clear_password();
+                status_message.set(StatusMessage::FromRunner(text));
+                redraw();
+                return Pumped::NeedInput;
+            }
+            ProtoEvent::Info { text } => {
+                status_message.set(StatusMessage::FromRunner(text));
+                redraw();
+            }
+            ProtoEvent::Error { text } => {
+                status_message.set(ErrorStatusMessage::FromRunner(text));
+                redraw();
+            }
+            ProtoEvent::Success => return Pumped::Success,
+            ProtoEvent::Failure { reason } => {
+                widgets.clear_password();
+                status_message.set(ErrorStatusMessage::FromRunner(reason));
+                redraw();
+                return Pumped::Failed;
+            }
+        }
     }
 }
 

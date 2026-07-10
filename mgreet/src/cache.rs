@@ -3,8 +3,10 @@
 //! mlogind caches the last environment + username at `config.cache_path`
 //! (`mlogind/src/info_caching.rs`) as two lines — `ENVIRONMENT\nUSERNAME`.
 //! mgreet reads the same file (path handed over as `MLOGIND_CACHE_PATH`) to
-//! pre-fill the username and pre-select the session, and rewrites it on a
-//! successful login, so both greeters remember the same last user.
+//! pre-fill the username and pre-select the session. It does NOT write it: the
+//! session runner does, on a login that actually succeeded. A greeter has no
+//! business writing `/var/cache` as root, and once it drops its privileges it
+//! will not be able to.
 
 use std::path::Path;
 
@@ -28,18 +30,6 @@ fn parse_cache(text: &str) -> (Option<String>, Option<String>) {
             .map(str::to_string)
     };
     (field(lines.next()), field(lines.next()))
-}
-
-/// Write `ENVIRONMENT\nUSERNAME\n`, matching mlogind's `info_caching` format so
-/// the TUI greeter reads it back identically. Best-effort.
-pub fn write(path: &Path, environment: &str, username: &str) {
-    let _ = std::fs::write(path, format_cache(environment, username));
-}
-
-/// The exact on-disk cache text — `ENVIRONMENT\nUSERNAME\n`. Split from [`write`]
-/// so the format is testable without a filesystem.
-fn format_cache(environment: &str, username: &str) -> String {
-    format!("{environment}\n{username}\n")
 }
 
 #[cfg(test)]
@@ -70,11 +60,11 @@ mod tests {
     }
 
     #[test]
-    fn format_round_trips_through_parse() {
-        let text = format_cache("Sway", "carol");
-        assert_eq!(text, "Sway\ncarol\n");
+    fn the_runners_own_format_parses_here() {
+        // mlogind's `info_caching::set_cache` writes exactly this. Pinned so a
+        // change on that side cannot silently stop pre-filling the form.
         assert_eq!(
-            parse_cache(&text),
+            parse_cache("Sway\ncarol\n"),
             (Some("Sway".to_string()), Some("carol".to_string()))
         );
     }

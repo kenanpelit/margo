@@ -7,7 +7,7 @@ use std::path::Path;
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 
-use crate::auth::AuthUserInfo;
+use crate::auth::UserInfo;
 use crate::config::{Config, ShellLoginFlag};
 use crate::post_login::x::setup_x;
 
@@ -68,10 +68,7 @@ impl From<XSetupError> for EnvironmentStartError {
     }
 }
 
-fn lower_command_permissions_to_user(
-    mut command: Command,
-    user_info: &AuthUserInfo<'_>,
-) -> Command {
+fn lower_command_permissions_to_user(mut command: Command, user_info: &UserInfo) -> Command {
     let uid = user_info.uid;
     let gid = user_info.primary_gid;
     let groups = user_info
@@ -154,7 +151,7 @@ impl SpawnedEnvironment {
 impl PostLoginEnvironment {
     pub fn spawn(
         &self,
-        user_info: &AuthUserInfo<'_>,
+        user_info: &UserInfo,
         config: &Config,
     ) -> Result<SpawnedEnvironment, EnvironmentStartError> {
         let shell_login_flag = match config.shell_login_flag {

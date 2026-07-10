@@ -1,9 +1,13 @@
 use std::fs::File;
 use std::io;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::time::{Duration, Instant};
 use std::{
     error::Error,
     path::{Path, PathBuf},
 };
+
+use mlogind_proto::{Conn, FdTransport};
 
 use crossterm::{
     execute,
@@ -20,24 +24,13 @@ mod config;
 mod console_palette;
 mod info_caching;
 mod post_login;
+mod runner;
 mod ui;
 
-use auth::try_validate;
 use config::Config;
-use post_login::PostLoginEnvironment;
 
-use crate::{
-    auth::utmpx::add_utmpx_entry,
-    cli::{Cli, Commands},
-};
-
-use self::{
-    auth::{open_session, AuthenticationError, ValidatedCredentials},
-    post_login::env_variables::{
-        remove_xdg, set_basic_variables, set_display, set_seat_vars, set_session_params,
-        set_session_vars, set_xdg_common_paths,
-    },
-};
+use crate::cli::{Cli, Commands};
+use crate::runner::Host;
 
 const DEFAULT_VARIABLES_PATH: &str = "/etc/mlogind/variables.toml";
 const DEFAULT_CONFIG_PATH: &str = "/etc/mlogind/config.toml";
@@ -250,10 +243,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     // it. The real greeter (spawned by the orchestrator) logs to its own client
     // log so it doesn't clobber the orchestrator's main log.
     if !cli.no_log {
-        let greet_has_result = cli.greet && std::env::var_os("MLOGIND_RESULT_PATH").is_some();
-        let log_path: &str = if cli.preview || (cli.greet && !greet_has_result) {
+        let greet_is_hosted = cli.greet && std::env::var_os("MLOGIND_SOCK_FD").is_some();
+        let log_path: &str = if cli.preview || (cli.greet && !greet_is_hosted) {
             PREVIEW_LOG_PATH
-        } else if greet_has_result {
+        } else if greet_is_hosted {
             &config.client_log_path
         } else {
             &config.main_log_path
@@ -321,7 +314,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     if !cli.preview {
         let host = config.display.host.to_ascii_lowercase();
         if host == "gui" {
-            match run_gui_host(&config) {
+            match run_hosted(&config, Host::Gui) {
                 Ok(()) => {
                     info!("mlogind is booting down");
                     return Ok(());
@@ -330,7 +323,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         if host == "gui" || host == "cage" {
-            match run_cage_host(&config) {
+            match run_hosted(&config, Host::Cage) {
                 Ok(()) => {
                     info!("mlogind is booting down");
                     return Ok(());
@@ -338,12 +331,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Err(e) => warn!("cage host unavailable ({e}); falling back to the TTY greeter"),
             }
         }
+
+        run_tty_host(&config)?;
+        info!("mlogind is booting down");
+        return Ok(());
     }
 
-    // Start application (classic in-process greeter + fallback).
+    // `--preview`: the TUI in a terminal emulator. No fork, no PAM, no session.
     let mut terminal = tui_enable()?;
-    let login_form = ui::LoginForm::new(config, cli.preview);
-    login_form.run(&mut terminal)?;
+    let _ = ui::LoginForm::new(config, true).run(&mut terminal, None)?;
     tui_disable(terminal)?;
 
     info!("mlogind is booting down");
@@ -375,211 +371,54 @@ pub fn tui_disable(mut terminal: Terminal<CrosstermBackend<io::Stdout>>) -> io::
     Ok(())
 }
 
-struct Hooks<'a> {
-    pre_validate: Option<&'a dyn Fn()>,
-    pre_auth: Option<&'a dyn Fn()>,
-    pre_environment: Option<&'a dyn Fn()>,
-    pre_wait: Option<&'a dyn Fn()>,
-    pre_return: Option<&'a dyn Fn()>,
-}
-
-pub enum StartSessionError {
-    AuthenticationError(AuthenticationError),
-    ForkFailed,
-}
-
-impl From<AuthenticationError> for StartSessionError {
-    fn from(value: AuthenticationError) -> Self {
-        Self::AuthenticationError(value)
-    }
-}
-
-fn start_session(
-    username: &str,
-    password: &str,
-    post_login_env: &PostLoginEnvironment,
-    hooks: &Hooks<'_>,
-    config: &Config,
-) -> Result<(), StartSessionError> {
-    info!(
-        "Starting new session for '{}' in environment '{:?}'",
-        username, post_login_env
-    );
-
-    if let Some(pre_validate_hook) = hooks.pre_validate {
-        pre_validate_hook();
-    }
-
-    if let Some(pre_auth_hook) = hooks.pre_auth {
-        pre_auth_hook();
-    }
-
-    // Validate credentials before opening a session.
-    let creds = try_validate(username, password, &config.pam_service)?;
-
-    if let Some(pre_environment_hook) = hooks.pre_environment {
-        pre_environment_hook();
-    }
-
-    // Fork the session. The session is opened inside the child process after fork(), so that the
-    // session lifetime is coupled to the child PID.  For systemd-logind, it sees the
-    // session-leader PID gone and cleans up immediately.
-    let child_pid = unsafe { libc::fork() };
-    if child_pid == -1 {
-        error!("fork() failed ({})", unsafe { *libc::__errno_location() });
-        return Err(StartSessionError::ForkFailed);
-    }
-
-    if child_pid == 0 {
-        session_child(creds, post_login_env, username, config);
-    }
-
-    // The creditionals (i.e. the PAM handle) should be forgotten. The child owns it.
-    std::mem::forget(creds);
-
-    if let Some(pre_wait_hook) = hooks.pre_wait {
-        pre_wait_hook();
-    }
-
-    info!("Waiting for session child (pid {child_pid}) to exit");
-
-    let mut status: libc::c_int = 0;
-    unsafe { libc::waitpid(child_pid, &mut status, 0) };
-
-    info!("Session child exited. Returning to mlogind...");
-
-    if let Some(pre_return_hook) = hooks.pre_return {
-        pre_return_hook();
-    }
-
-    Ok(())
-}
-
-/// Body of the forked child process.
+/// Greeter mode (`mlogind --greet`), run inside the cage/foot host.
 ///
-/// Opens the PAM session (so logind registers this PID as the session leader),
-/// spawns the compositor, waits for it to exit, then terminates.  The `-> !`
-/// return type makes explicit that this function never returns to the caller.
-fn session_child(
-    creds: ValidatedCredentials<'_>,
-    post_login_env: &PostLoginEnvironment,
-    username: &str,
-    config: &Config,
-) -> ! {
-    let tty = config.tty;
-    let uid = creds.uid;
-    let homedir = creds.home_dir.clone();
-    let shell = creds.shell.clone();
-
-    // Set the vars pam_systemd needs to register the session on the right
-    // seat/VT before calling open_session.
-    if matches!(post_login_env, PostLoginEnvironment::X { .. }) {
-        set_display(&config.x11.x11_display);
-    }
-    remove_xdg();
-    set_session_params(post_login_env);
-    set_seat_vars(tty);
-
-    let auth_session = match open_session(creds) {
-        Ok(s) => s,
-        Err(err) => {
-            error!("Child: failed to open PAM session: {err}");
-            std::process::exit(1);
-        }
-    };
-
-    // Set the remaining variables after pam_open_session has run — pam_systemd
-    // populates XDG_RUNTIME_DIR and XDG_SESSION_ID, which set_session_vars /
-    // set_xdg_common_paths adopt via set_or_own.
-    set_session_vars(uid);
-    set_basic_variables(username, &homedir, &shell, &config.initial_path);
-    set_xdg_common_paths(&homedir);
-
-    let spawned_environment = match post_login_env.spawn(&auth_session, config) {
-        Ok(env) => env,
-        Err(err) => {
-            error!("Child: failed to start environment: {err}");
-            std::process::exit(1);
-        }
-    };
-
-    let pid = spawned_environment.pid();
-    let utmpx_session = add_utmpx_entry(username, tty, pid);
-
-    info!("Child: waiting for environment to terminate");
-    spawned_environment.wait();
-    info!("Child: environment terminated");
-
-    drop(utmpx_session);
-    drop(auth_session);
-    std::process::exit(0);
-}
-
-/// Greeter entry point (`mlogind --greet`), run inside the cage/foot host.
-/// Renders the normal login UI in foot (truecolor, native resolution) and — on
-/// a validated login — writes the credentials to `$MLOGIND_RESULT_PATH` for the
-/// orchestrator, then exits. With no result path it is a preview-style UI
-/// dry-run (so `mlogind --greet` can be eyeballed in an ordinary terminal).
+/// Renders the normal login UI in foot (truecolor, native resolution) and
+/// speaks the runner's protocol over `$MLOGIND_SOCK_FD`. It runs no PAM of its
+/// own — that is the whole point of A1 — so a fingerprint or OTP module prompts
+/// exactly once, here, and the runner answers PAM with what we type.
+///
+/// With no socket it is a preview-style UI dry-run, so `mlogind --greet` can
+/// still be eyeballed in an ordinary terminal.
 fn run_greeter(config: Config) -> Result<(), Box<dyn Error>> {
-    let result_path = std::env::var_os("MLOGIND_RESULT_PATH").map(PathBuf::from);
-
     initialize_panic_handler();
-    // We're in foot (truecolor emulator), not the bare VT — take the
+    // We're in foot (a truecolor emulator), not the bare VT — take the
     // pass-through palette path, exactly like `--preview`.
     console_palette::init(true);
 
+    let sock = greeter_socket();
     let mut terminal = tui_enable()?;
-    // With no hand-off path this is a UI dry-run (`mlogind --greet` in a plain
-    // terminal): run it as a preview so Esc quits and Enter merely animates —
-    // there is no orchestrator to receive a login.
-    let login_form = if result_path.is_some() {
-        ui::LoginForm::new(config, false).into_greeter(result_path)
-    } else {
-        ui::LoginForm::new(config, true)
+    let form = ui::LoginForm::new(config, sock.is_none());
+    let outcome = match sock.as_ref() {
+        // SAFETY: `fd` is the inherited socket, owned by `sock`, which outlives
+        // the `Conn` — `run` joins its event thread before returning.
+        Some(fd) => {
+            let conn = Conn::new(unsafe { FdTransport::new(fd.as_raw_fd()) });
+            form.run(&mut terminal, Some(conn))
+        }
+        None => form.run(&mut terminal, None),
     };
-    login_form.run(&mut terminal)?;
     tui_disable(terminal)?;
+    let outcome = outcome?;
 
-    info!("greeter exiting");
+    info!("greeter exiting ({outcome:?})");
     Ok(())
 }
 
-/// The validated login handed back by the greeter.
-struct GreetResult {
-    username: String,
-    env_name: String,
-    password: zeroize::Zeroizing<String>,
-}
-
-/// Read the credential hand-off file, then overwrite + remove it so the
-/// password never lingers in the tmpfs. Returns `None` if the greeter produced
-/// no login (quit, crash, or reboot/poweroff handled inside the greeter).
-fn read_and_shred_greet_result(path: &Path) -> Option<GreetResult> {
-    let raw = match std::fs::read_to_string(path) {
-        Ok(s) => zeroize::Zeroizing::new(s),
-        Err(_) => return None,
-    };
-
-    // Best-effort shred: overwrite with zeros of the same length, then unlink.
-    if let Ok(meta) = std::fs::metadata(path) {
-        let _ = std::fs::write(path, vec![0u8; meta.len() as usize]);
-    }
-    let _ = std::fs::remove_file(path);
-
-    // `LOGIN\n<user>\n<session>\n<password>` — password is the final field.
-    let mut lines = raw.splitn(4, '\n');
-    match (lines.next(), lines.next(), lines.next(), lines.next()) {
-        (Some("LOGIN"), Some(user), Some(env), Some(pass)) => Some(GreetResult {
-            username: user.to_string(),
-            env_name: env.to_string(),
-            password: zeroize::Zeroizing::new(pass.to_string()),
-        }),
-        _ => None,
-    }
+/// Adopt the socket the runner left us on `$MLOGIND_SOCK_FD`.
+///
+/// atrium's `CREDENTIALS_FD` idiom: the fd rides across `exec` (the runner
+/// cleared `FD_CLOEXEC`) and the number arrives in the environment. A missing
+/// or unparsable value means nobody is orchestrating us — a UI dry-run.
+fn greeter_socket() -> Option<OwnedFd> {
+    let raw: RawFd = std::env::var("MLOGIND_SOCK_FD").ok()?.parse().ok()?;
+    // SAFETY: the runner passed us this descriptor and closed its own copy, so
+    // we are its sole owner.
+    Some(unsafe { OwnedFd::from_raw_fd(raw) })
 }
 
 /// Resolve an executable by scanning `PATH`, falling back to `/usr/bin`.
-fn which(cmd: &str) -> Option<PathBuf> {
+pub(crate) fn which(cmd: &str) -> Option<PathBuf> {
     if let Some(paths) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&paths) {
             let candidate = dir.join(cmd);
@@ -622,7 +461,7 @@ fn ensure_seatd() -> Option<std::process::Child> {
 /// `XKB_DEFAULT_*` env vars cage builds its keymap from — so the greeter uses
 /// the machine's layout (e.g. Turkish-F: `XKBLAYOUT=tr` + `XKBVARIANT=f`)
 /// instead of cage's `us` default. Empty if the file is missing.
-fn vconsole_xkb_env() -> Vec<(&'static str, String)> {
+pub(crate) fn vconsole_xkb_env() -> Vec<(&'static str, String)> {
     let mut env = Vec::new();
     let Ok(text) = std::fs::read_to_string("/etc/vconsole.conf") else {
         return env;
@@ -648,143 +487,6 @@ fn vconsole_xkb_env() -> Vec<(&'static str, String)> {
     env
 }
 
-/// Orchestrator: host the greeter inside `cage -s -- foot <self> --greet` so
-/// every connected monitor renders at its native KMS mode, read the validated
-/// login it hands back, and launch the session on the bare VT. Loops
-/// (re-greeting after logout) until the greeter produces no login. Returns
-/// `Err` — so `main` falls back to the in-process TTY greeter — when the
-/// cage/foot host cannot run at all (missing binaries or a failed cage init),
-/// so a broken host never locks the user out.
-fn run_cage_host(config: &Config) -> Result<(), Box<dyn Error>> {
-    use std::os::unix::fs::PermissionsExt;
-    use std::process::Command;
-
-    let cage = which("cage").ok_or("`cage` not found in PATH")?;
-    let foot = which("foot").ok_or("`foot` not found in PATH")?;
-    let self_exe = std::env::current_exe()?;
-
-    // Root has no XDG_RUNTIME_DIR; give cage a private tmpfs dir (0700) that
-    // also holds the one-shot credential hand-off file.
-    let runtime_dir = PathBuf::from("/run/mlogind");
-    std::fs::create_dir_all(&runtime_dir)?;
-    std::fs::set_permissions(&runtime_dir, std::fs::Permissions::from_mode(0o700))?;
-    let result_path = runtime_dir.join("result");
-    let cage_log = runtime_dir.join("cage.log");
-
-    // cage needs a seat; make sure seatd is up (see ensure_seatd). Kept alive
-    // for the whole host loop.
-    let _seatd = ensure_seatd();
-
-    // The orchestrator runs the full PAM conversation itself, so no UI hooks.
-    let hooks = Hooks {
-        pre_validate: None,
-        pre_auth: None,
-        pre_environment: None,
-        pre_wait: None,
-        pre_return: None,
-    };
-
-    loop {
-        // Never let a stale hand-off file leak a previous password.
-        let _ = std::fs::remove_file(&result_path);
-
-        info!("orchestrator: launching cage+foot greeter");
-        let mut cmd = Command::new(&cage);
-        cmd.arg("-m") // output mode: "last" confines the greeter to one monitor
-            .arg(&config.display.output_mode)
-            .arg("-s") // allow VT switching → escape hatch stays open
-            .arg("--")
-            .arg(&foot)
-            .arg(&self_exe)
-            .arg("--greet")
-            .env("XDG_RUNTIME_DIR", &runtime_dir)
-            .env("MLOGIND_RESULT_PATH", &result_path)
-            // libseat: logind (no session) → fails; force seatd, the only
-            // backend available to a session-less root process here.
-            .env("LIBSEAT_BACKEND", "seatd");
-        // Match the greeter keyboard to the machine's console layout.
-        for (key, val) in vconsole_xkb_env() {
-            cmd.env(key, val);
-        }
-        // Capture cage's own stdout/stderr — it inherits the greeter's VT
-        // otherwise, where a later TUI redraw wipes any error it printed.
-        if let Ok(out) = std::fs::File::create(&cage_log) {
-            if let Ok(err) = out.try_clone() {
-                cmd.stdout(out).stderr(err);
-            }
-        }
-        let status = cmd
-            .status()
-            .map_err(|e| format!("failed to spawn cage: {e}"))?;
-
-        // Read the hand-off FIRST — cage 0.3.1 tends to SIGSEGV while tearing
-        // down its DRM outputs after the greeter exits, but by then the login is
-        // already in the result file. Honour that login regardless of cage's exit
-        // code (the kernel drops DRM master on process exit; the session launches
-        // on the bare VT just as it does after the TTY greeter).
-        let captured = read_and_shred_greet_result(&result_path);
-        if !status.success() {
-            if captured.is_some() {
-                warn!("cage exited abnormally ({status}) after the login was captured; continuing to the session");
-            } else {
-                // No login and cage failed → surface its log + fall back to TTY.
-                if let Ok(text) = std::fs::read_to_string(&cage_log) {
-                    let tail: Vec<&str> = text.lines().rev().take(12).collect();
-                    for line in tail.into_iter().rev() {
-                        error!("cage: {line}");
-                    }
-                }
-                return Err(format!("cage exited abnormally ({status})").into());
-            }
-        }
-
-        match captured {
-            Some(result) => launch_greet_result(config, &hooks, result),
-            None => {
-                info!("orchestrator: greeter produced no login; exiting host");
-                return Ok(());
-            }
-        }
-    }
-}
-
-/// Resolve the session the greeter chose (by name, via `get_envs`) and launch
-/// it. Shared by the cage and GUI hosts. On an unknown session name it logs and
-/// returns, so the host loop simply re-greets on the next iteration.
-fn launch_greet_result(config: &Config, hooks: &Hooks<'_>, result: GreetResult) {
-    // The greeter and the orchestrator both derive the session list from
-    // get_envs (same order), so a name that round-trips resolves here.
-    let post_login_env = post_login::get_envs(config)
-        .into_iter()
-        .find(|(name, _)| *name == result.env_name)
-        .map(|(_, content)| content);
-    let Some(post_login_env) = post_login_env else {
-        error!(
-            "orchestrator: greeter chose unknown session '{}'",
-            result.env_name
-        );
-        return;
-    };
-
-    info!("orchestrator: launching session for '{}'", result.username);
-    match start_session(
-        &result.username,
-        &result.password,
-        &post_login_env,
-        hooks,
-        config,
-    ) {
-        Ok(()) => info!("orchestrator: session ended; re-greeting"),
-        Err(StartSessionError::AuthenticationError(err)) => {
-            error!("orchestrator: authentication failed: {err}");
-        }
-        Err(StartSessionError::ForkFailed) => {
-            error!("orchestrator: failed to fork the session");
-        }
-    }
-    // `result` (and its zeroizing password) drops here → scrubbed.
-}
-
 /// Write the throwaway margo config the GUI greeter runs under: the machine
 /// keyboard layout (translated from `/etc/vconsole.conf` via `vconsole_xkb_env`
 /// so Turkish-F etc. carries into the login prompt) and nothing else —
@@ -792,7 +494,7 @@ fn launch_greet_result(config: &Config, hooks: &Hooks<'_>, result: GreetResult) 
 /// user's desktop. Rewritten on every host start. Because the file already
 /// exists when margo loads it, margo's first-run bootstrap leaves it untouched
 /// (it only writes a full default config for a *missing* path).
-fn write_greeter_conf(path: &Path) -> io::Result<()> {
+pub(crate) fn write_greeter_conf(path: &Path) -> io::Result<()> {
     let mut conf = String::from(
         "# Auto-generated by mlogind for the GUI greeter — DO NOT EDIT.\n\
          # Rewritten on every login. Minimal margo config: keyboard layout only,\n\
@@ -814,141 +516,152 @@ fn write_greeter_conf(path: &Path) -> io::Result<()> {
     std::fs::write(path, conf)
 }
 
-/// Orchestrator: host the greeter under a dedicated root `margo` instance so
-/// every connected monitor renders at its native mode AND the GTK login card
-/// (`mgreet`) gets a layer-shell surface on each output — the thing cage could
-/// never do (no layer-shell, so it only ever greeted on one monitor). margo is
-/// launched with a throwaway greeter config (keyboard layout, no autostart) and
-/// `--startup-command "mgreet …; mctl dispatch quit"`: mgreet owns the login
-/// card, and however it exits the shell then quits margo, so this host returns
-/// and we read the login mgreet handed back — the same crash-tolerant flow as
-/// the cage host. Loops (re-greeting after logout) until no login is produced.
-/// Returns `Err` — so `main` falls back to the cage / TTY greeter — when margo
-/// can't run at all, so a broken host never locks the user out.
-fn run_gui_host(config: &Config) -> Result<(), Box<dyn Error>> {
-    use std::os::unix::fs::PermissionsExt;
-    use std::process::Command;
+/// How many consecutive fast crashes of a session runner mean the host itself
+/// is broken. Introduced by A1: the runner is now a fork, so a runner that dies
+/// instantly would otherwise spin the daemon in a tight fork loop at boot.
+/// A real backoff (timerfd, per-seat, atrium's `daemon/core/main.c`) is phase B.
+const RUNNER_CRASH_LIMIT: u32 = 5;
+const RUNNER_CRASH_WINDOW: Duration = Duration::from_secs(2);
 
-    let margo = which("margo").ok_or("`margo` not found in PATH")?;
-    let mgreet = which("mgreet").ok_or("`mgreet` not found in PATH")?;
-    // mgreet tears margo down via `mctl dispatch quit`; require it up front so
-    // we fall back rather than launch a greeter we could never shut down.
-    let mctl = which("mctl").ok_or("`mctl` not found in PATH")?;
+/// Orchestrate a hosted greeter: fork a session runner, let it own the login
+/// from the first prompt to the last `pam_close_session`, and fork a fresh one
+/// when the session ends.
+///
+/// The daemon deliberately does nothing else. It never calls PAM, so nothing it
+/// does can pollute a session's cgroup or `loginuid`, and no PAM handle can
+/// survive from one login to the next. The runner spawns the greeter itself, so
+/// the session compositor cannot open DRM before the greeter compositor has
+/// released it.
+///
+/// Returns `Err` only when the host cannot run at all, so `main` falls down the
+/// `gui → cage → tty` ladder and a broken host never locks the user out.
+fn run_hosted(config: &Config, host: Host) -> Result<(), Box<dyn Error>> {
+    host.preflight()?;
 
-    // Root has no XDG_RUNTIME_DIR; give margo a private tmpfs dir (0700) that
-    // also holds the greeter config, logs, and the one-shot credential file.
-    let runtime_dir = PathBuf::from("/run/mlogind");
-    std::fs::create_dir_all(&runtime_dir)?;
-    std::fs::set_permissions(&runtime_dir, std::fs::Permissions::from_mode(0o700))?;
-    let result_path = runtime_dir.join("result");
-    let greeter_conf = runtime_dir.join("greeter.conf");
-    let margo_log = runtime_dir.join("margo-greeter.log");
-    let mgreet_log = runtime_dir.join("mgreet.log");
+    // margo and cage need a seat, and a session-less root process has no logind
+    // one — so seatd is the only libseat backend available. Kept alive for the
+    // whole host loop, not per runner.
+    let _seatd = host.needs_seatd().then(ensure_seatd);
 
-    write_greeter_conf(&greeter_conf)?;
-
-    // Serialise the resolved power controls (base + extra) so mgreet renders the
-    // same F-key footer and runs the same commands as the TUI greeter: one
-    // `key<TAB>hint<TAB>cmd` line per entry.
-    let power_env: String = config
-        .power_controls
-        .base_entries
-        .0
-        .iter()
-        .chain(config.power_controls.entries.0.iter())
-        .filter(|p| !p.key.is_empty() && !p.hint.is_empty())
-        .map(|p| format!("{}\t{}\t{}", p.key, p.hint, p.cmd))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    // margo needs a seat; make sure seatd is up (root, no logind session → the
-    // libseat builtin backend is absent, so seatd is the only option). Same as
-    // the cage host; kept alive for the whole host loop.
-    let _seatd = ensure_seatd();
-
-    // The orchestrator runs the full PAM conversation itself, so no UI hooks.
-    let hooks = Hooks {
-        pre_validate: None,
-        pre_auth: None,
-        pre_environment: None,
-        pre_wait: None,
-        pre_return: None,
-    };
-
-    // Startup command: run mgreet (capturing its stderr for debugging), then
-    // quit margo whatever way mgreet exited so the host returns. `mctl` reaches
-    // margo via MARGO_SOCKET, which margo exports into the environment before it
-    // spawns this command. The `;` runs the quit even if mgreet crashed.
-    let startup = format!(
-        "{mgreet} 2>{log}; {mctl} dispatch quit",
-        mgreet = mgreet.display(),
-        log = mgreet_log.display(),
-        mctl = mctl.display(),
-    );
-
+    let mut fast_crashes = 0u32;
     loop {
-        // Never let a stale hand-off file leak a previous password.
-        let _ = std::fs::remove_file(&result_path);
+        let (runner_fd, greeter_fd) = runner::socketpair()?;
+        let started = Instant::now();
 
-        info!("orchestrator: launching margo+mgreet greeter");
-        let mut cmd = Command::new(&margo);
-        cmd.arg("--config")
-            .arg(&greeter_conf)
-            // Pure-Wayland greeter — never bring up an X server as root.
-            .arg("--no-xwayland")
-            .arg("--startup-command")
-            .arg(&startup)
-            .env("XDG_RUNTIME_DIR", &runtime_dir)
-            .env("MLOGIND_RESULT_PATH", &result_path)
-            .env("MLOGIND_PAM_SERVICE", &config.pam_service)
-            // Shared last-login cache (same file the TUI greeter uses) so mgreet
-            // can pre-fill the previous username + session and update it.
-            .env("MLOGIND_CACHE_PATH", &config.cache_path)
-            // Power controls (F-key footer) mirrored from the TUI greeter.
-            .env("MLOGIND_POWER", &power_env)
-            // libseat: logind (no session) → fails; force seatd, the only
-            // backend available to a session-less root process here.
-            .env("LIBSEAT_BACKEND", "seatd");
-        // Belt and braces: margo reads xkb from greeter.conf, but also export
-        // XKB_DEFAULT_* for any toolkit that consults the environment directly.
-        for (key, val) in vconsole_xkb_env() {
-            cmd.env(key, val);
+        // SAFETY: mlogind is single-threaded, so the child inherits no locks it
+        // could deadlock on before `exec`.
+        let pid = unsafe { libc::fork() };
+        if pid < 0 {
+            return Err(io::Error::last_os_error().into());
         }
-        if let Ok(out) = std::fs::File::create(&margo_log) {
-            if let Ok(err) = out.try_clone() {
-                cmd.stdout(out).stderr(err);
+        if pid == 0 {
+            runner::run(config, host, runner_fd, greeter_fd);
+        }
+        // The runner owns both ends now: one to speak on, one to hand its greeter.
+        drop(runner_fd);
+        drop(greeter_fd);
+
+        match wait_for(pid) {
+            runner::EXIT_SESSION_ENDED => {
+                info!("orchestrator: session ended; re-greeting");
+                fast_crashes = 0;
             }
-        }
-        let status = cmd
-            .status()
-            .map_err(|e| format!("failed to spawn margo: {e}"))?;
-
-        // Read the hand-off FIRST — margo, like cage, can exit non-zero while
-        // tearing down its DRM outputs, but by then the login is already in the
-        // result file. Honour it regardless of the exit code.
-        let captured = read_and_shred_greet_result(&result_path);
-        if !status.success() {
-            if captured.is_some() {
-                warn!(
-                    "margo greeter exited abnormally ({status}) after the login was captured; continuing to the session"
-                );
-            } else {
-                if let Ok(text) = std::fs::read_to_string(&margo_log) {
-                    let tail: Vec<&str> = text.lines().rev().take(12).collect();
-                    for line in tail.into_iter().rev() {
-                        error!("margo-greeter: {line}");
-                    }
-                }
-                return Err(format!("margo greeter exited abnormally ({status})").into());
-            }
-        }
-
-        match captured {
-            Some(result) => launch_greet_result(config, &hooks, result),
-            None => {
+            runner::EXIT_NO_LOGIN => {
                 info!("orchestrator: greeter produced no login; exiting host");
                 return Ok(());
             }
+            runner::EXIT_HOST_UNAVAILABLE => {
+                return Err(format!("the {host:?} greeter host could not run").into());
+            }
+            code => {
+                error!("orchestrator: session runner exited with {code}");
+                if started.elapsed() < RUNNER_CRASH_WINDOW {
+                    fast_crashes += 1;
+                    if fast_crashes >= RUNNER_CRASH_LIMIT {
+                        return Err(format!(
+                            "the {host:?} session runner crashed {fast_crashes} times in a row"
+                        )
+                        .into());
+                    }
+                } else {
+                    fast_crashes = 0;
+                }
+            }
         }
+    }
+}
+
+/// The last rung of the ladder: the TUI form, drawn by the daemon itself on the
+/// bare VT.
+///
+/// Here the greeter is the *parent* of the runner rather than its child, but
+/// the protocol is symmetric so nothing else changes — and, crucially, PAM
+/// still runs in exactly one place. The daemon closes its end of the socket
+/// after leaving the alternate screen; that EOF is what tells the runner the VT
+/// is free and it may open DRM.
+fn run_tty_host(config: &Config) -> Result<(), Box<dyn Error>> {
+    loop {
+        let (runner_fd, greeter_fd) = runner::socketpair()?;
+
+        // SAFETY: single-threaded; see `run_hosted`.
+        let pid = unsafe { libc::fork() };
+        if pid < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        if pid == 0 {
+            runner::run(config, Host::Tty, runner_fd, greeter_fd);
+        }
+        drop(runner_fd);
+
+        // SAFETY: `greeter_fd` owns the descriptor and outlives `run`, which
+        // joins its event thread before returning.
+        let conn = Conn::new(unsafe { FdTransport::new(greeter_fd.as_raw_fd()) });
+        let mut terminal = tui_enable()?;
+        let outcome = ui::LoginForm::new(config.clone(), false).run(&mut terminal, Some(conn));
+        tui_disable(terminal)?;
+        let outcome = outcome?;
+
+        // Off the screen. The runner has been waiting for exactly this.
+        drop(greeter_fd);
+
+        let code = wait_for(pid);
+        match outcome {
+            ui::Outcome::Quit => {
+                info!("orchestrator: greeter produced no login; exiting host");
+                return Ok(());
+            }
+            ui::Outcome::SessionStarting if code == runner::EXIT_SESSION_ENDED => {
+                info!("orchestrator: session ended; re-greeting");
+            }
+            ui::Outcome::SessionStarting => {
+                error!("orchestrator: session runner exited with {code}");
+            }
+            ui::Outcome::RunnerGone => {
+                error!("orchestrator: session runner vanished (exit {code}); re-greeting");
+            }
+        }
+    }
+}
+
+/// Reap `pid` and reduce its wait status to an exit code. A runner killed by a
+/// signal reports `128 + signo`, the shell convention, so it can never collide
+/// with one of the runner's own codes.
+fn wait_for(pid: libc::pid_t) -> i32 {
+    let mut status: libc::c_int = 0;
+    // SAFETY: `status` is a valid out-pointer; `pid` is our direct child.
+    while unsafe { libc::waitpid(pid, &mut status, 0) } < 0 {
+        let err = io::Error::last_os_error();
+        if err.kind() == io::ErrorKind::Interrupted {
+            continue;
+        }
+        error!("orchestrator: waitpid({pid}) failed: {err}");
+        return runner::EXIT_SESSION_FAILED;
+    }
+    if libc::WIFEXITED(status) {
+        libc::WEXITSTATUS(status)
+    } else if libc::WIFSIGNALED(status) {
+        128 + libc::WTERMSIG(status)
+    } else {
+        runner::EXIT_SESSION_FAILED
     }
 }

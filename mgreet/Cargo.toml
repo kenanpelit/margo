@@ -18,10 +18,9 @@ gtk4.workspace = true
 gtk4-layer-shell.workspace = true
 zeroize.workspace = true
 libc.workspace = true
-# Pin 0.7.0 to match mlogind's proven PAM path exactly (workspace default is
-# 0.8): mgreet's pre-flight and the orchestrator's `try_validate` must run the
-# identical conversation, so a login that passes here always passes there.
-pam = "0.7.0"
+# The greeter ⇄ session-runner protocol. mgreet runs no PAM of its own, so the
+# `pam` dependency is gone: the runner asks, we answer.
+mlogind-proto = { path = "../mlogind-proto" }
 
 [build-dependencies]
 grass.workspace = true

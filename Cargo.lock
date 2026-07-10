@@ -4460,7 +4460,7 @@ dependencies = [
  "gtk4",
  "gtk4-layer-shell",
  "libc",
- "pam",
+ "mlogind-proto",
  "zeroize",
 ]
 
@@ -4580,6 +4580,7 @@ dependencies = [
  "libc",
  "log",
  "mio 0.8.11",
+ "mlogind-proto",
  "nix 0.23.2",
  "once_cell",
  "pam",

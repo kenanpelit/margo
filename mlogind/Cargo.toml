@@ -16,6 +16,8 @@ rust-version = "1.84.0"
 readme = "README.md"
 
 [dependencies]
+# The greeter ⇄ runner protocol, shared with mgreet.
+mlogind-proto = { path = "../mlogind-proto" }
 # UI and TUI interface
 ratatui = "0.21.0"
 crossterm = "0.26"
