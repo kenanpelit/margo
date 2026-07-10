@@ -118,6 +118,12 @@ window.mgreet-root {
 // once, because the person waking it is standing there.
 //
 // Literal black, not a palette token: there is nothing to theme about "off".
+//
+// The fade rides on `.fading-in`, which `blank()` adds and the wake removes,
+// rather than on `.mgreet-blank` itself. A monitor plugged in while the greeter
+// is already black is born blanked — and a fade there would show it the
+// wallpaper and the hostname for 600 ms on the way down, which is the one thing
+// blanking is for.
 @keyframes mgreet-blank-in {
   from {
     opacity: 0;
@@ -129,6 +135,9 @@ window.mgreet-root {
 
 .mgreet-blank {
   background-color: #000000;
+}
+
+.mgreet-blank.fading-in {
   animation: mgreet-blank-in 600ms ease-out;
 }
 

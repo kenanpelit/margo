@@ -96,10 +96,17 @@ pub fn ensure_card(state: &Rc<State>) {
 
 /// Move the card to `connector`, and the keyboard with it.
 ///
-/// A no-op if it is already there. The keyboard is *given* before it is taken
-/// away: between those two calls no surface holds it, and this is the process
-/// that gates the machine — an ordering that leaves a window with no keyboard
-/// and no successor would need a VT switch to escape.
+/// A no-op if it is already there.
+///
+/// The hand-over is not atomic and cannot be made so: each window's keyboard
+/// mode is a `wl_surface.commit` of its own, and which one the compositor
+/// processes first is GTK's business, not ours. margo's log shows the drop
+/// landing before the take, leaving ~3 ms with no surface holding the keyboard.
+/// That is survivable — nothing can be typed into a gap that short, and the next
+/// commit closes it. What this function does guarantee is that the two calls are
+/// unconditional once the target is known: no `?`, no early return between them,
+/// so a window is never left with the keyboard taken away and no successor to
+/// give it to. That state would need a VT switch to escape.
 pub fn activate(state: &Rc<State>, windows: &Windows, connector: &str) {
     let already_here = state.active.borrow().as_deref() == Some(connector);
     if already_here {
@@ -217,8 +224,12 @@ pub fn build_window(
     root.set_child(Some(&overlay));
     let blank = gtk::Box::new(gtk::Orientation::Vertical, 0);
     blank.add_css_class("mgreet-blank");
-    blank.set_visible(false);
-    blank.set_can_target(false);
+    // Born blanked if the greeter already is. A monitor plugged in while the
+    // screens are black would otherwise light up showing the hostname and the
+    // wallpaper the blanking exists to hide.
+    let blanked = state.blanked.get();
+    blank.set_visible(blanked);
+    blank.set_can_target(blanked);
     root.add_overlay(&blank);
     window.set_child(Some(&root));
 
@@ -365,6 +376,8 @@ fn note_activity(state: &Rc<State>, windows: &Windows) -> bool {
     for window in windows.borrow().values() {
         window.blank.set_visible(false);
         window.blank.set_can_target(false);
+        // Armed again for the next blanking; a window born black never had it.
+        window.blank.remove_css_class("fading-in");
     }
     focus_card(state);
     true
@@ -384,6 +397,9 @@ fn blank(state: &Rc<State>, windows: &Windows) {
     state.password_pending.set(false);
     broadcast(state, "", false);
     for window in windows.borrow().values() {
+        // The class before the map: GTK settles style once per frame, so a
+        // widget shown and then classed does not run the keyframe.
+        window.blank.add_css_class("fading-in");
         window.blank.set_can_target(true);
         window.blank.set_visible(true);
     }
