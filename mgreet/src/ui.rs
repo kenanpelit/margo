@@ -14,6 +14,27 @@ use zeroize::Zeroizing;
 
 use crate::State;
 
+/// How long `.shake` stays on the card. Must outlast the keyframe in
+/// `style.scss`, or the class is pulled while the animation is still running.
+const SHAKE_MS: u64 = 420;
+
+/// Every control on one monitor's card.
+///
+/// A greeter draws the same card on every output, but a failed login has to
+/// shake all of them, a busy conversation has to lock all of them, and a hotplug
+/// rebuild must not leave a dead one behind. One handle per monitor, keyed by
+/// connector.
+pub struct CardWidgets {
+    pub card: gtk::Box,
+    pub status: gtk::Label,
+    pub username: gtk::Entry,
+    pub password: gtk::Entry,
+    pub sessions: gtk::DropDown,
+    pub login: gtk::Button,
+    pub login_label: gtk::Label,
+    pub spinner: gtk::Spinner,
+}
+
 /// Build (and present) a greeter window pinned to `monitor`, filling it.
 pub fn build_window(
     app: &gtk::Application,
@@ -51,9 +72,14 @@ pub fn build_window(
     let geo = monitor.geometry();
     window.set_default_size(geo.width().max(1), geo.height().max(1));
 
-    let card = build_card(state, connector);
+    let widgets = build_card(state, connector);
+    let card = widgets.card.clone();
     card.set_halign(gtk::Align::Center);
     card.set_valign(gtk::Align::Center);
+    state
+        .cards
+        .borrow_mut()
+        .insert(connector.to_string(), widgets);
 
     let overlay = gtk::Overlay::new();
     build_backdrop(&overlay, &window, state.background.as_ref());
@@ -125,8 +151,8 @@ pub fn build_window(
 /// The dim is its own widget rather than a translucent colour on the scrim
 /// because GTK's colour functions and CSS custom properties do not obviously
 /// compose — `alpha(var(--bg), .55)` is not something a login screen should rest
-/// on. `opacity` on a box is unambiguous, and it still tracks the matugen
-/// palette through `--bg`, so re-theming never re-bakes the image.
+/// on. `opacity` on a box is unambiguous, and the colour is still an M3 surface
+/// token, so re-theming re-tints the dim without re-baking the image.
 fn build_backdrop(overlay: &gtk::Overlay, window: &gtk::Window, background: Option<&gdk::Texture>) {
     let Some(texture) = background else {
         // Opaque, deliberately: the host compositor renders its own wallpaper
@@ -156,7 +182,7 @@ fn build_backdrop(overlay: &gtk::Overlay, window: &gtk::Window, background: Opti
     overlay.add_overlay(&dim);
 }
 
-fn build_card(state: &Rc<State>, connector: &str) -> gtk::Box {
+fn build_card(state: &Rc<State>, connector: &str) -> CardWidgets {
     let card = gtk::Box::new(gtk::Orientation::Vertical, 14);
     card.add_css_class("mgreet-card");
 
@@ -252,26 +278,31 @@ fn build_card(state: &Rc<State>, connector: &str) -> gtk::Box {
     card.append(&sessions);
 
     // ── Status line ──
-    let status = label(&["mgreet-status"]);
-    card.append(&status);
     // One conversation, many monitors: the runner's prompts and errors have to
     // land on every screen, not only the one the user happened to submit from.
-    state
-        .status
-        .borrow_mut()
-        .insert(connector.to_string(), status.clone());
+    let status = label(&["mgreet-status"]);
+    card.append(&status);
 
     // ── Log-in button ──
-    let login = gtk::Button::with_label("Log in");
+    // A box rather than a plain label, so the spinner can appear beside the text
+    // while PAM is thinking instead of the button silently doing nothing.
+    let login = gtk::Button::new();
     login.add_css_class("mgreet-login");
+    let login_content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    login_content.set_halign(gtk::Align::Center);
+    let spinner = gtk::Spinner::new();
+    spinner.set_visible(false);
+    let login_label = gtk::Label::new(Some("Log in"));
+    login_content.append(&spinner);
+    login_content.append(&login_label);
+    login.set_child(Some(&login_content));
     card.append(&login);
 
     // Submit: the button, or Enter in the password field.
     let submit: Rc<dyn Fn()> = {
         let state = state.clone();
-        let status = status.clone();
-        let sessions = sessions.clone();
-        Rc::new(move || submit_login(&state, &status, &sessions))
+        let connector = connector.to_string();
+        Rc::new(move || submit_login(&state, &connector))
     };
     {
         let submit = submit.clone();
@@ -303,7 +334,75 @@ fn build_card(state: &Rc<State>, connector: &str) -> gtk::Box {
         });
     }
 
-    card
+    CardWidgets {
+        card,
+        status,
+        username,
+        password,
+        sessions,
+        login,
+        login_label,
+        spinner,
+    }
+}
+
+/// Lock the card while PAM is thinking, unlock it when PAM asks a question.
+///
+/// Busy means a `Begin` (or an answer) is in flight and nothing has been asked
+/// back yet: there is nothing to type, and a second Enter would arrive in a
+/// conversation callback that is not waiting for one. The moment the runner
+/// forwards a real prompt — an OTP, a new password after expiry — the fields
+/// come back, because that prompt is exactly what the user must now answer.
+fn refresh_busy(state: &Rc<State>) {
+    let busy = state.conversing.get() && !state.awaiting_prompt.get();
+    for card in state.cards.borrow().values() {
+        card.username.set_sensitive(!busy);
+        card.password.set_sensitive(!busy);
+        card.sessions.set_sensitive(!busy);
+        card.login.set_sensitive(!busy);
+        card.spinner.set_visible(busy);
+        if busy {
+            card.spinner.start();
+        } else {
+            card.spinner.stop();
+        }
+        card.login_label
+            .set_text(if busy { "Verifying…" } else { "Log in" });
+    }
+}
+
+/// Shake every card. The keyframe lives in `style.scss`; the class is pulled
+/// again once it has run, so the next failure can retrigger it.
+///
+/// Two failures inside `SHAKE_MS` would coalesce into one shake — GTK settles
+/// style once per frame, so removing and re-adding the class in the same tick is
+/// not a restart. PAM takes the better part of a second to say no, so this is a
+/// race nobody can lose.
+fn shake(state: &Rc<State>) {
+    for card in state.cards.borrow().values() {
+        card.card.add_css_class("shake");
+        let weak = card.card.downgrade();
+        glib::timeout_add_local_once(std::time::Duration::from_millis(SHAKE_MS), move || {
+            if let Some(card) = weak.upgrade() {
+                card.remove_css_class("shake");
+            }
+        });
+    }
+}
+
+/// Put the caret back where the password goes, on the monitor the user is at.
+///
+/// Not every monitor: `grab_focus` on each card in turn would leave the keyboard
+/// wherever the iteration happened to end, which on a two-monitor greeter is a
+/// coin flip. Disabling the entry (see `refresh_busy`) drops focus, so something
+/// has to put it back.
+fn focus_password(state: &Rc<State>) {
+    let Some(connector) = state.last_submit.borrow().clone() else {
+        return;
+    };
+    if let Some(card) = state.cards.borrow().get(&connector) {
+        card.password.grab_focus();
+    }
 }
 
 /// The machine hostname (from /etc/hostname), if set.
@@ -372,13 +471,24 @@ fn build_power_footer(actions: &[crate::power::PowerAction]) -> gtk::Box {
 /// loop. That is the difference from the old greeter, whose in-process
 /// `pam_authenticate` froze the UI for the length of the PAM stack — which is
 /// why there was never an "Authenticating…" frame to paint.
-fn submit_login(state: &Rc<State>, status: &gtk::Label, sessions: &gtk::DropDown) {
+fn submit_login(state: &Rc<State>, connector: &str) {
     let user = state.username.text().to_string();
-    let session = state
-        .sessions
-        .get(sessions.selected() as usize)
-        .map(|s| s.name.clone())
-        .unwrap_or_default();
+    let (session, status) = {
+        let cards = state.cards.borrow();
+        let Some(card) = cards.get(connector) else {
+            return; // the monitor went away between the click and the handler
+        };
+        let session = state
+            .sessions
+            .get(card.sessions.selected() as usize)
+            .map(|s| s.name.clone())
+            .unwrap_or_default();
+        (session, card.status.clone())
+    };
+
+    // Remember which screen asked, so a failure can hand the keyboard back to
+    // the password field the user is actually looking at.
+    *state.last_submit.borrow_mut() = Some(connector.to_string());
 
     match crate::auth::decide_submit(
         &user,
@@ -387,9 +497,9 @@ fn submit_login(state: &Rc<State>, status: &gtk::Label, sessions: &gtk::DropDown
         state.conversing.get(),
         state.real(),
     ) {
-        crate::auth::Submit::Reject(msg) => set_status(status, msg, true),
+        crate::auth::Submit::Reject(msg) => set_status(&status, msg, true),
         crate::auth::Submit::Preview(msg) => {
-            set_status(status, &msg, false);
+            set_status(&status, &msg, false);
             // Length only — never the password itself.
             eprintln!(
                 "[mgreet] (preview) would authenticate user={user:?} session={session:?} pass_len={}",
@@ -401,13 +511,15 @@ fn submit_login(state: &Rc<State>, status: &gtk::Label, sessions: &gtk::DropDown
         crate::auth::Submit::Begin => {
             state.password_pending.set(true);
             state.conversing.set(true);
-            set_status(status, "Verifying credentials", false);
+            refresh_busy(state);
+            broadcast(state, "Verifying credentials", false);
             if !send(state, &Request::Begin { user, session }) {
                 lost(state);
             }
         }
         crate::auth::Submit::Answer => {
             state.awaiting_prompt.set(false);
+            refresh_busy(state);
             let answer = take_secret(state);
             if !send(state, &Request::Response { secret: answer }) {
                 lost(state);
@@ -453,6 +565,8 @@ pub fn on_runner_event(app: &gtk::Application, state: &Rc<State>) -> glib::Contr
         crate::auth::Action::AskUser(text) => {
             state.password.set_text("");
             state.awaiting_prompt.set(true);
+            refresh_busy(state);
+            focus_password(state);
             broadcast(state, &text, false);
         }
         crate::auth::Action::Note(text) => broadcast(state, &text, false),
@@ -468,7 +582,10 @@ pub fn on_runner_event(app: &gtk::Application, state: &Rc<State>) -> glib::Contr
             state.awaiting_prompt.set(false);
             state.password_pending.set(false);
             state.conversing.set(false);
+            refresh_busy(state);
             broadcast(state, &reason, true);
+            shake(state);
+            focus_password(state);
         }
     }
     glib::ControlFlow::Continue
@@ -499,8 +616,8 @@ fn send(state: &Rc<State>, request: &Request) -> bool {
 
 /// Show `text` on every monitor's status line.
 fn broadcast(state: &Rc<State>, text: &str, error: bool) {
-    for label in state.status.borrow().values() {
-        set_status(label, text, error);
+    for card in state.cards.borrow().values() {
+        set_status(&card.status, text, error);
     }
 }
 
@@ -511,6 +628,9 @@ fn lost(state: &Rc<State>) {
     state.awaiting_prompt.set(false);
     state.password_pending.set(false);
     state.conversing.set(false);
+    // Unlock, or the card stays greyed out forever behind a message that says to
+    // go read a log the user cannot reach from a login screen.
+    refresh_busy(state);
     broadcast(state, "Lost the session runner. Check the logs", true);
 }
 

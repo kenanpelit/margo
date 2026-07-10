@@ -59,9 +59,12 @@ pub struct State {
     pub password_pending: Cell<bool>,
     /// A `Begin` is in flight and PAM has not asked anything yet.
     pub conversing: Cell<bool>,
-    /// Every window's status line, keyed by connector. One conversation, many
+    /// Every monitor's card, keyed by connector. One conversation, many
     /// monitors — and a hotplug rebuild must not leave the dead ones behind.
-    pub status: RefCell<HashMap<String, gtk::Label>>,
+    pub cards: RefCell<HashMap<String, ui::CardWidgets>>,
+    /// The connector whose card was last submitted from, so a failure can hand
+    /// the keyboard back to the screen the user is looking at.
+    pub last_submit: RefCell<Option<String>>,
 
     /// Last-used session name to pre-select (from the shared cache), if any.
     pub initial_session: Option<String>,
@@ -165,7 +168,8 @@ fn main() -> glib::ExitCode {
             awaiting_prompt: Cell::new(false),
             password_pending: Cell::new(false),
             conversing: Cell::new(false),
-            status: RefCell::new(HashMap::new()),
+            cards: RefCell::new(HashMap::new()),
+            last_submit: RefCell::new(None),
             initial_session: cached_session.clone(),
             power: power::from_env(),
         });
@@ -234,9 +238,15 @@ fn sync_windows(
         if let Some(window) = map.remove(&connector) {
             window.close();
         }
-        // Its status label went with it; the conversation must not keep writing
-        // to a widget nobody can see.
-        state.status.borrow_mut().remove(&connector);
+        // Its card went with it; the conversation must not keep writing to
+        // widgets nobody can see.
+        state.cards.borrow_mut().remove(&connector);
+        // Its `Ref` is dropped before the `borrow_mut` below, deliberately: a
+        // BorrowMutError here would abort the process that gates the machine.
+        let was_last = state.last_submit.borrow().as_deref() == Some(connector.as_str());
+        if was_last {
+            *state.last_submit.borrow_mut() = None;
+        }
     }
     for (connector, monitor) in current {
         map.entry(connector.clone())
