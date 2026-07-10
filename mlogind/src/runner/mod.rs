@@ -539,6 +539,21 @@ fn tail_log(path: &Path) {
 /// our `loginuid`, and makes us the logind session leader. Keeping the runner
 /// alive for the whole session is what lets logind tear the session down the
 /// moment we exit.
+/// Refresh what the greeters render from the user's desktop: mgreet's blurred
+/// backdrop and matugen CSS, and the TUI's palette.
+///
+/// Best-effort by construction. A decoration that could not be prepared is never
+/// a reason to change how a login ends, so nothing here reaches the exit code.
+fn refresh_greeter_theme(user_info: &UserInfo) {
+    match crate::theme_sync::sync(user_info) {
+        Ok(written) if written.is_empty() => {
+            info!("runner: nothing to sync into the greeter's theme");
+        }
+        Ok(written) => info!("runner: refreshed {} greeter asset(s)", written.len()),
+        Err(err) => warn!("runner: could not refresh the greeter's theme: {err}"),
+    }
+}
+
 fn start_session(
     config: &Config,
     auth: &mut Authenticator<'_, GreeterConv<'_, FdTransport>>,
@@ -590,21 +605,27 @@ fn start_session(
 
     let utmpx_session = add_utmpx_entry(username, config.tty, spawned.pid());
 
+    // Bake the greeter's backdrop while the session is coming up. The runner is
+    // idle here until the session ends, so this costs nothing anyone can feel.
+    //
+    // Doing it *only* at logout was wrong: a machine that reboots rather than
+    // logging out kills the runner before it gets there, so the sync would never
+    // run at all and the login screen would stay flat forever. Whatever else
+    // happens now, one sync has already landed.
+    //
+    // mshell rewrites `wallpaper.raw` shortly after it starts, so this can read
+    // a half-written file. That loses safely: a header that disagrees with the
+    // byte count is rejected, nothing is published, and the copy already on disk
+    // stands.
+    refresh_greeter_theme(user_info);
+
     info!("runner: waiting for the session to end");
     spawned.wait();
     info!("runner: session ended");
 
-    // The wallpaper the user just left becomes the next greeter's backdrop. We
-    // are root, we know the user, and nothing is waiting on us. A failure here
-    // is a decoration that did not get prepared — never a reason to change how
-    // the login ended.
-    match crate::theme_sync::sync(user_info) {
-        Ok(written) if written.is_empty() => {
-            info!("runner: nothing to sync into the greeter's theme");
-        }
-        Ok(written) => info!("runner: refreshed {} greeter asset(s)", written.len()),
-        Err(err) => warn!("runner: could not refresh the greeter's theme: {err}"),
-    }
+    // Again, with the desktop gone. This one catches a wallpaper the user
+    // changed during the session, and reads a file nothing is still writing.
+    refresh_greeter_theme(user_info);
 
     drop(utmpx_session);
     // `auth` drops in the caller → pam_close_session + setcred(DELETE) + pam_end.
