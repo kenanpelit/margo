@@ -552,6 +552,10 @@ pub(crate) fn write_greeter_conf(path: &Path) -> io::Result<()> {
 /// A real backoff (timerfd, per-seat, atrium's `daemon/core/main.c`) is phase B.
 const RUNNER_CRASH_LIMIT: u32 = 5;
 const RUNNER_CRASH_WINDOW: Duration = Duration::from_secs(2);
+/// Linear backoff per consecutive fast crash. Only the crash path waits; a
+/// normal session end re-greets with no delay. Keeps a runner that dies
+/// instantly from hammering DRM/logind faster than a transient failure clears.
+const RUNNER_CRASH_BACKOFF: Duration = Duration::from_millis(250);
 
 /// Orchestrate a hosted greeter: fork a session runner, let it own the login
 /// from the first prompt to the last `pam_close_session`, and fork a fresh one
@@ -612,6 +616,11 @@ fn run_hosted(config: &Config, host: Host) -> Result<(), Box<dyn Error>> {
                         )
                         .into());
                     }
+                    // Space the retries out so an instantly-dying runner doesn't
+                    // spin the fork loop; the happy path never reaches here.
+                    let backoff = RUNNER_CRASH_BACKOFF * fast_crashes;
+                    warn!("orchestrator: backing off {backoff:?} before the next runner");
+                    std::thread::sleep(backoff);
                 } else {
                     fast_crashes = 0;
                 }

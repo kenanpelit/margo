@@ -113,7 +113,19 @@ fn runner_socket() -> Option<OwnedFd> {
     let raw: RawFd = std::env::var("MLOGIND_SOCK_FD").ok()?.parse().ok()?;
     // SAFETY: the runner passed us this descriptor and closed its own copy, so
     // we are its sole owner.
-    Some(unsafe { OwnedFd::from_raw_fd(raw) })
+    let fd = unsafe { OwnedFd::from_raw_fd(raw) };
+    // The fd was left inheritable so it could ride the runner's exec into us.
+    // Now that we own it, re-arm close-on-exec: this socket carries PAM's
+    // prompts and the password we send back, and must not be inherited by any
+    // helper GTK/glib spawns (an IM module, a portal, a dbus launcher).
+    // SAFETY: `fd` owns the descriptor; F_SETFD only touches its flags.
+    unsafe {
+        let flags = libc::fcntl(fd.as_raw_fd(), libc::F_GETFD);
+        if flags >= 0 {
+            libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, flags | libc::FD_CLOEXEC);
+        }
+    }
+    Some(fd)
 }
 
 fn main() -> glib::ExitCode {

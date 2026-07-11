@@ -1025,28 +1025,24 @@ fn draw_avatar(
 
 fn paint_wallpaper_cover(
     cr: &cairo::Context,
-    wp: &image::RgbaImage,
+    wp: &crate::wallpaper::PremulImage,
     target_w: i32,
     target_h: i32,
 ) -> Result<()> {
-    let (iw, ih) = (wp.width() as i32, wp.height() as i32);
-    let stride = iw * 4;
-    let len = (stride * ih) as usize;
+    let (iw, ih) = (wp.width, wp.height);
 
-    let mut bgra: Vec<u8> = Vec::with_capacity(len);
-    for px in wp.chunks_exact(4) {
-        let r = px[0] as u16;
-        let g = px[1] as u16;
-        let b = px[2] as u16;
-        let a = px[3] as u16;
-        let pm = |c: u16| ((c * a + 127) / 255) as u8;
-        bgra.push(pm(b));
-        bgra.push(pm(g));
-        bgra.push(pm(r));
-        bgra.push(a as u8);
-    }
-
-    let src = ImageSurface::create_for_data(bgra, Format::ARgb32, iw, ih, stride)?;
+    // Borrow the premultiplied buffer that was built once at resolve time —
+    // no per-frame copy or premultiply. cairo only reads from a source
+    // surface, and `wp` outlives this call, so the borrow is sound.
+    let src = unsafe {
+        ImageSurface::create_for_data_unsafe(
+            wp.bgra.as_ptr() as *mut u8,
+            Format::ARgb32,
+            iw,
+            ih,
+            wp.stride(),
+        )?
+    };
 
     let sx = target_w as f64 / iw as f64;
     let sy = target_h as f64 / ih as f64;

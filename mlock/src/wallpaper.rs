@@ -27,7 +27,46 @@ pub enum Backdrop {
     /// A flat colour, painted exactly as chosen.
     Solid((f64, f64, f64)),
     /// A blurred image, dimmed and vignetted.
-    Image(image::RgbaImage),
+    Image(PremulImage),
+}
+
+/// A backdrop already converted to cairo's premultiplied ARgb32 (BGRA) layout.
+///
+/// The lock screen re-renders on every keystroke, clock tick and pointer wake.
+/// Converting the ~8 MB blurred wallpaper from RGBA to premultiplied BGRA on
+/// each of those frames was pure repeated work — the pixels never change once
+/// resolved. Do it once here and let the renderer blit the cached buffer.
+pub struct PremulImage {
+    /// Premultiplied BGRA bytes, `width * height * 4`.
+    pub bgra: Vec<u8>,
+    pub width: i32,
+    pub height: i32,
+}
+
+impl PremulImage {
+    /// Premultiply an RGBA image into cairo's ARgb32 (BGRA, alpha-premultiplied)
+    /// layout, once, at resolve time.
+    pub fn from_rgba(img: &image::RgbaImage) -> Self {
+        let (width, height) = (img.width() as i32, img.height() as i32);
+        let mut bgra: Vec<u8> = Vec::with_capacity((width * height * 4) as usize);
+        for px in img.chunks_exact(4) {
+            let a = px[3] as u16;
+            let pm = |c: u8| ((c as u16 * a + 127) / 255) as u8;
+            bgra.push(pm(px[2])); // b
+            bgra.push(pm(px[1])); // g
+            bgra.push(pm(px[0])); // r
+            bgra.push(px[3]); // a, unchanged
+        }
+        Self {
+            bgra,
+            width,
+            height,
+        }
+    }
+
+    pub fn stride(&self) -> i32 {
+        self.width * 4
+    }
 }
 
 const BLUR_SIGMA: f32 = 18.0;
@@ -90,8 +129,10 @@ pub fn load_background() -> Option<Backdrop> {
             .as_deref()
             .and_then(load_blurred_path)
             .or_else(load_blurred)
-            .map(Backdrop::Image),
-        BgMode::Wallpaper => load_blurred().map(Backdrop::Image),
+            .map(|img| Backdrop::Image(PremulImage::from_rgba(&img))),
+        BgMode::Wallpaper => {
+            load_blurred().map(|img| Backdrop::Image(PremulImage::from_rgba(&img)))
+        }
     }
 }
 
