@@ -614,15 +614,13 @@ impl MargoService {
             .iter()
             .find(|m| m.name.get() == name)
             .map(|m| m.active_workspace.get().id)
-        {
-            if let Some(w) = self
+            && let Some(w) = self
                 .workspaces
                 .get()
                 .into_iter()
                 .find(|w| w.id.get() == ws_id && w.monitor.get() == name)
-            {
-                return Some(w);
-            }
+        {
+            return Some(w);
         }
         // Cold fallback: read the socket synchronously.
         let ws_id = {
