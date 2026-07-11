@@ -1002,7 +1002,11 @@ impl Component for ClipboardModel {
                 gtk::glib::timeout_add_local_once(
                     std::time::Duration::from_millis(70),
                     move || {
-                        debounce_sender.input(ClipboardInput::ApplySearch(generation));
+                        // Fallible: menu teardown can outrun the debounce;
+                        // `input()` on a dead runtime aborts the shell.
+                        let _ = debounce_sender
+                            .input_sender()
+                            .send(ClipboardInput::ApplySearch(generation));
                     },
                 );
             }

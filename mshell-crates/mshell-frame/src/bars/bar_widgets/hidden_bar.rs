@@ -15,6 +15,8 @@ use mshell_common::hidden_bar::HiddenBarVerb;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
 
 pub(crate) struct HiddenBarInit {
@@ -43,8 +45,12 @@ pub(crate) struct HiddenBarModel {
     hover_delay_ms: u32,
     auto_collapse: bool,
     collapse_delay_ms: u32,
-    hover_source: Option<glib::SourceId>,
-    collapse_source: Option<glib::SourceId>,
+    // Shared slots (app_launcher pattern): the one-shot clears its own slot
+    // *before* dispatching, so cancel never calls `remove()` on a source
+    // that already fired — that panics in glib and, from a main-loop
+    // callback, aborts the whole shell.
+    hover_source: Rc<Cell<Option<glib::SourceId>>>,
+    collapse_source: Rc<Cell<Option<glib::SourceId>>>,
     // Keep the child controllers alive; dropping them would tear down the
     // hidden widgets. Not read directly.
     _child_controllers: Vec<Box<dyn GenericWidgetController>>,
@@ -155,8 +161,8 @@ impl Component for HiddenBarModel {
             hover_delay_ms: init.hover_delay_ms,
             auto_collapse: init.auto_collapse,
             collapse_delay_ms: init.collapse_delay_ms,
-            hover_source: None,
-            collapse_source: None,
+            hover_source: Rc::new(Cell::new(None)),
+            collapse_source: Rc::new(Cell::new(None)),
             _child_controllers: init.child_controllers,
         };
 
@@ -232,36 +238,56 @@ impl Component for HiddenBarModel {
             }
             HiddenBarInput::HoverEnter => {
                 self.cancel_collapse();
-                if self.auto_expand && !self.expanded && self.hover_source.is_none() {
-                    let s = sender.clone();
-                    let id = glib::timeout_add_local_once(
-                        Duration::from_millis(self.hover_delay_ms as u64),
-                        move || s.input(HiddenBarInput::RevealNow),
-                    );
-                    self.hover_source = Some(id);
+                if self.auto_expand && !self.expanded {
+                    // Keep an already-counting reveal timer instead of
+                    // restarting the delay.
+                    let pending = self.hover_source.take();
+                    if pending.is_some() {
+                        self.hover_source.set(pending);
+                    } else {
+                        let s = sender.clone();
+                        let slot = self.hover_source.clone();
+                        let id = glib::timeout_add_local_once(
+                            Duration::from_millis(self.hover_delay_ms as u64),
+                            move || {
+                                // Clear the slot *before* dispatching so a
+                                // cancel racing the fired timer never sees a
+                                // dead SourceId; fallible send because the
+                                // drawer can be torn down (bar rebuild) while
+                                // the timer is pending — `input()` would abort.
+                                slot.set(None);
+                                let _ = s.input_sender().send(HiddenBarInput::RevealNow);
+                            },
+                        );
+                        self.hover_source.set(Some(id));
+                    }
                 }
             }
             HiddenBarInput::HoverLeave => {
                 self.cancel_hover();
-                if self.expanded
-                    && self.auto_collapse
-                    && !self.pinned
-                    && self.collapse_source.is_none()
-                {
-                    let s = sender.clone();
-                    let id = glib::timeout_add_local_once(
-                        Duration::from_millis(self.collapse_delay_ms as u64),
-                        move || s.input(HiddenBarInput::CollapseNow),
-                    );
-                    self.collapse_source = Some(id);
+                if self.expanded && self.auto_collapse && !self.pinned {
+                    let pending = self.collapse_source.take();
+                    if pending.is_some() {
+                        self.collapse_source.set(pending);
+                    } else {
+                        let s = sender.clone();
+                        let slot = self.collapse_source.clone();
+                        let id = glib::timeout_add_local_once(
+                            Duration::from_millis(self.collapse_delay_ms as u64),
+                            move || {
+                                slot.set(None);
+                                let _ = s.input_sender().send(HiddenBarInput::CollapseNow);
+                            },
+                        );
+                        self.collapse_source.set(Some(id));
+                    }
                 }
             }
             HiddenBarInput::RevealNow => {
-                self.hover_source = None;
+                // The one-shot already cleared its own slot when it fired.
                 self.expand();
             }
             HiddenBarInput::CollapseNow => {
-                self.collapse_source = None;
                 if !self.pinned {
                     self.collapse();
                 }
@@ -280,6 +306,8 @@ impl HiddenBarModel {
     }
 
     fn cancel_hover(&mut self) {
+        // `take()` yields `None` once the one-shot has fired (it clears the
+        // slot before dispatching), so this never removes a dead source.
         if let Some(s) = self.hover_source.take() {
             s.remove();
         }

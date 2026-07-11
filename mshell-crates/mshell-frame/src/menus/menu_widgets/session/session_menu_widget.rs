@@ -388,7 +388,11 @@ impl SessionMenuWidgetModel {
 fn schedule_tick(sender: &ComponentSender<SessionMenuWidgetModel>, generation: u64) {
     let sender = sender.clone();
     glib::timeout_add_local_once(Duration::from_secs(1), move || {
-        sender.input(SessionMenuWidgetInput::Tick(generation));
+        // Fallible: a frame rebuild mid-countdown drops the component and
+        // `input()` on the dead runtime would abort the shell.
+        let _ = sender
+            .input_sender()
+            .send(SessionMenuWidgetInput::Tick(generation));
     });
 }
 

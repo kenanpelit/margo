@@ -271,7 +271,9 @@ impl Component for SummonSettingsModel {
                     self.armed = true;
                     let s = sender.clone();
                     gtk::glib::timeout_add_local_once(Duration::from_millis(450), move || {
-                        s.input(SummonSettingsInput::DoPersist);
+                        // Fallible: the page can be dropped before the
+                        // debounce fires; `input()` would abort the shell.
+                        let _ = s.input_sender().send(SummonSettingsInput::DoPersist);
                     });
                 }
             }

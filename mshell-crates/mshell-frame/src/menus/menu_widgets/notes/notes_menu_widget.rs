@@ -267,7 +267,9 @@ impl Component for NotesMenuWidgetModel {
                 let token = token.clone();
                 glib::timeout_add_local_once(SAVE_DEBOUNCE, move || {
                     if token.get() == next {
-                        sender.input(NotesMenuWidgetInput::PersistNow);
+                        // Fallible: menu teardown can outrun the debounce;
+                        // `input()` on a dead runtime aborts the shell.
+                        let _ = sender.input_sender().send(NotesMenuWidgetInput::PersistNow);
                     }
                 });
             });
@@ -535,7 +537,7 @@ fn make_note_row(note: &Note, sender: &ComponentSender<NotesMenuWidgetModel>) ->
                             false,
                         )
                         .to_string();
-                    sender.input(NotesMenuWidgetInput::UpdateNote {
+                    let _ = sender.input_sender().send(NotesMenuWidgetInput::UpdateNote {
                         id: id.clone(),
                         title,
                         body,
@@ -596,7 +598,7 @@ fn make_todo_row(todo: &Todo, sender: &ComponentSender<NotesMenuWidgetModel>) ->
         let token = edit_token.clone();
         glib::timeout_add_local_once(SAVE_DEBOUNCE, move || {
             if token.get() == next {
-                s.input(NotesMenuWidgetInput::UpdateTodo {
+                let _ = s.input_sender().send(NotesMenuWidgetInput::UpdateTodo {
                     id: id.clone(),
                     text: entry_clone.text().to_string(),
                 });

@@ -683,7 +683,11 @@ impl Component for BarModel {
                     let s = sender.clone();
                     gtk::glib::timeout_add_local_once(
                         std::time::Duration::from_millis(delay),
-                        move || s.input(BarInput::HideIfStale(generation)),
+                        // Fallible: the bar can be torn down (monitor unplug,
+                        // rebuild) while this is pending — `input()` would abort.
+                        move || {
+                            let _ = s.input_sender().send(BarInput::HideIfStale(generation));
+                        },
                     );
                 }
             }
