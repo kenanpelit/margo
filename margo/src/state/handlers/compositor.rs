@@ -279,8 +279,16 @@ impl CompositorHandler for MargoState {
                 // asked them to, and without this refresh the border
                 // stays drawn around the larger layout-reserved rect,
                 // leaving a wallpaper strip between the visible window
-                // and its frame.
-                crate::border::refresh(self);
+                // and its frame. Only the committing window's geometry
+                // can have changed, so refresh just its border rather
+                // than looping every client's `window.geometry()` lock.
+                if let Some(idx) = self
+                    .clients
+                    .iter()
+                    .position(|c| c.window.wl_surface().as_deref() == Some(&root))
+                {
+                    crate::border::refresh_one(self, idx);
+                }
             }
 
             let layer_output = self.space.outputs().find_map(|output| {
@@ -335,11 +343,23 @@ impl CompositorHandler for MargoState {
                             .cloned()
                     };
                     if let Some(layer) = layer {
+                        use smithay::wayland::shell::wlr_layer::ExclusiveZone;
                         layer.layer_surface().with_cached_state(|cur| {
+                            // Hash the raw enum values, not their Debug
+                            // strings: this runs on every layer commit (a
+                            // mshell bar re-flows several times a second),
+                            // and the old five `format!("{:?}", …)` calls
+                            // heap-allocated a String each, per commit.
                             (cur.size.w, cur.size.h).hash(&mut layout_hasher);
-                            format!("{:?}", cur.anchor).hash(&mut layout_hasher);
-                            format!("{:?}", cur.exclusive_zone).hash(&mut layout_hasher);
-                            format!("{:?}", cur.exclusive_edge).hash(&mut layout_hasher);
+                            cur.anchor.hash(&mut layout_hasher); // Anchor: Hash (bitflags)
+                            // ExclusiveZone isn't Hash; map to (tag, value).
+                            let ez: (u8, u32) = match cur.exclusive_zone {
+                                ExclusiveZone::Exclusive(z) => (0, z),
+                                ExclusiveZone::Neutral => (1, 0),
+                                ExclusiveZone::DontCare => (2, 0),
+                            };
+                            ez.hash(&mut layout_hasher);
+                            cur.exclusive_edge.hash(&mut layout_hasher); // Option<Anchor>: Hash
                             (
                                 cur.margin.top,
                                 cur.margin.bottom,
@@ -347,33 +367,25 @@ impl CompositorHandler for MargoState {
                                 cur.margin.right,
                             )
                                 .hash(&mut layout_hasher);
-                            format!("{:?}", cur.layer).hash(&mut layout_hasher);
-                            format!("{:?}", cur.keyboard_interactivity).hash(&mut kb_hasher);
+                            (cur.layer as u32).hash(&mut layout_hasher);
+                            (cur.keyboard_interactivity as u32).hash(&mut kb_hasher);
                         });
                     }
                     (layout_hasher.finish(), kb_hasher.finish())
                 };
 
-                // Combined hash kept in the same map slot so existing
-                // bookkeeping in `layer_destroyed` (a single `remove`
-                // call) stays correct.
-                let new_hash = new_layout_hash ^ new_kb_hash.rotate_left(1);
+                // Store the PURE layout hash (not a layout^kb combination).
+                // The old XOR-combined hash meant a keyboard_interactivity
+                // flip also changed this value → a spurious full arrange +
+                // work-area recompute on every Exclusive↔None toggle. kb is
+                // tracked in its own map below.
                 let key = root.id();
-                let prev_combined = self.layer_layout_hashes.get(&key).copied();
-                let layout_changed = prev_combined
-                    .map(|h| {
-                        // Lower 64 bits = layout hash; we packed layout ^ rotated kb.
-                        // Recover layout part by re-xoring rotated kb; if the
-                        // stored hash matches the new layout hash xor'd with
-                        // the *previously stored* kb hash, layout didn't change.
-                        // Simpler: just compare the new layout/kb pair against
-                        // a per-surface (layout, kb) tuple. Use parallel maps.
-                        h != new_hash
-                    })
-                    .unwrap_or(true)
-                    || !initial_sent;
+                let prev_layout = self.layer_layout_hashes.get(&key).copied();
+                let layout_changed =
+                    prev_layout.map(|h| h != new_layout_hash).unwrap_or(true) || !initial_sent;
                 if layout_changed {
-                    self.layer_layout_hashes.insert(key.clone(), new_hash);
+                    self.layer_layout_hashes
+                        .insert(key.clone(), new_layout_hash);
                 }
 
                 // Track keyboard_interactivity separately so we only

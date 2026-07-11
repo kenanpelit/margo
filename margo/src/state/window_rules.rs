@@ -382,7 +382,6 @@ impl MargoState {
         window: &Window,
         toplevel: &ToplevelSurface,
     ) {
-        let (app_id, title) = read_toplevel_identity(toplevel);
         let Some(idx) = self
             .clients
             .iter()
@@ -391,19 +390,27 @@ impl MargoState {
             return;
         };
 
-        let (app_id_changed, title_changed, old_monitor, handle) = {
-            let client = &mut self.clients[idx];
-            let app_id_changed = client.app_id != app_id;
-            let title_changed = client.title != title;
-            if !app_id_changed && !title_changed {
-                return;
-            }
+        // Compare the freshly-committed identity against the client's
+        // current one inside the surface-state lock; only clone the
+        // strings out when something changed. This handler fires on every
+        // toplevel commit and is a no-op >99% of the time.
+        let Some((app_id, title, app_id_changed, title_changed)) =
+            read_toplevel_identity_if_changed(
+                toplevel,
+                &self.clients[idx].app_id,
+                &self.clients[idx].title,
+            )
+        else {
+            return;
+        };
 
+        let (old_monitor, handle) = {
+            let client = &mut self.clients[idx];
             let old_monitor = client.monitor;
             let handle = client.foreign_toplevel_handle.clone();
             client.app_id = app_id.clone();
             client.title = title.clone();
-            (app_id_changed, title_changed, old_monitor, handle)
+            (old_monitor, handle)
         };
 
         if let Some(handle) = handle {

@@ -76,166 +76,184 @@ pub fn refresh(state: &mut MargoState) {
     let focused = state.focused_client_idx();
     let n = state.clients.len();
     for idx in 0..n {
-        let (geom, width, hide) = {
-            let c = &state.clients[idx];
-            let mon_idx = c.monitor;
-            let visible = mon_idx < state.monitors.len()
-                && c.is_visible_on(mon_idx, state.monitors[mon_idx].current_tagset());
-            // Hide the border for the duration of an open transition.
-            // The OpenCloseRenderElement is drawing the surface scaled
-            // around `c.geom`'s centre, so a full-slot border around it
-            // would visibly precede the window into existence by ~180 ms.
-            // Letting the border pop in at the end of the open
-            // animation matches niri/Hyprland behaviour and is far less
-            // jarring than the alternative.
-            let hide = c.no_border || c.is_fullscreen || !visible || c.opening_animation.is_some();
-
-            // The border has to wrap the *actual* on-screen content,
-            // not the layout-reserved rect: Electron clients (Helium
-            // browser, Spotify, Discord) silently clamp our
-            // `xdg_toplevel.configure(size)` against their internal
-            // min-size and render narrower than we asked, leaving a
-            // wallpaper strip between the visible window and the
-            // border drawn at `c.geom`.
-            //
-            // Three cases:
-            //
-            //   1. A resize-snapshot is in flight. The renderer is
-            //      drawing a captured texture *scaled to `c.geom`* and
-            //      hiding the live surface, so the visible content
-            //      fills the interpolated slot exactly. Border tracks
-            //      `c.geom`.
-            //
-            //   2. A move/spring animation is running with no snapshot
-            //      (pure translate, dimensions unchanged). The slot's
-            //      `width/height` already match the buffer; tracking
-            //      `c.geom` is the same as tracking the buffer. Either
-            //      works, but `c.geom` is cheaper.
-            //
-            //   3. Steady state OR mid-animation when the buffer
-            //      doesn't match the slot. Always clamp the border
-            //      box to `min(actual, slot)`. This is the case the
-            //      old `!anim.running` gate left uncovered: when
-            //      Helium/Spotify settle at a buffer size smaller
-            //      than the slot we requested, the post-settle frame
-            //      would draw the border at the slot rect even though
-            //      the live surface only covered a sub-rectangle.
-            // Read the client-declared geometry rect. `loc` is the
-            // offset of the "drawable area" within the wl_buffer
-            // (Electron clients sometimes report a non-zero loc to
-            // exclude shadow / titlebar). `size` is the declared
-            // visible size — what the client thinks is on-screen.
-            let geom_rect = c.window.geometry();
-            let actual = geom_rect.size;
-            // `snapshot_pending` covers the gap between
-            // arrange_monitor flagging a resize transition and the
-            // renderer actually capturing a texture for it: arrange
-            // runs `border::refresh` synchronously, but the snapshot
-            // capture only fires on the next render. Without rolling
-            // `pending` into `active`, the arrange-time refresh would
-            // shrink the border to `actual` while the next render's
-            // `ResizeRenderElement` paints the snapshot stretched to
-            // the full slot — that's the "border ve pencere bağımsız
-            // haraket ediyor" mismatch the user sees on Spotify
-            // during super+r.
-            let snapshot_active = c.resize_snapshot.is_some() || c.snapshot_pending;
-            let mut g = c.geom;
-            let mut border_shrunk_to_actual = false;
-            if !snapshot_active {
-                // Clamp to the visible bounds: a buffer rendered at
-                // c.geom.loc covers (c.geom.loc, geometry.size); the
-                // rest is clipped to the slot anyway. Clipping the
-                // border to `min(actual, slot)` makes the frame hug
-                // whatever the user actually sees.
-                if actual.w > 0 && actual.w < g.width {
-                    g.width = actual.w;
-                    border_shrunk_to_actual = true;
-                }
-                if actual.h > 0 && actual.h < g.height {
-                    g.height = actual.h;
-                    border_shrunk_to_actual = true;
-                }
-            }
-
-            // Diagnostic — fires when something interesting is
-            // happening (deviation from slot, mid-flight animation,
-            // non-zero geometry offset, or active snapshot). Includes
-            // `loc` so we can spot Electron-style buffer offsets that
-            // would otherwise be invisible to the existing
-            // `slot vs actual` summary.
-            if border_shrunk_to_actual
-                || c.animation.running
-                || snapshot_active
-                || geom_rect.loc.x != 0
-                || geom_rect.loc.y != 0
-                || (actual.w != 0 && actual.w != c.geom.width)
-                || (actual.h != 0 && actual.h != c.geom.height)
-            {
-                tracing::trace!(
-                    "border[{}]: slot={}x{}+{}+{} geom_loc={}+{} geom_size={}x{} drawn={}x{} \
-                     anim={} snap={} shrunk={}",
-                    c.app_id.as_str(),
-                    c.geom.width,
-                    c.geom.height,
-                    c.geom.x,
-                    c.geom.y,
-                    geom_rect.loc.x,
-                    geom_rect.loc.y,
-                    actual.w,
-                    actual.h,
-                    g.width,
-                    g.height,
-                    c.animation.running,
-                    snapshot_active,
-                    border_shrunk_to_actual,
-                );
-            }
-
-            (g, c.border_width as f32, hide)
-        };
-        let color = if hide {
-            [0.0; 4]
-        } else if state.clients[idx].opacity_animation.running
-            && state.clients[idx].opacity_animation.current_border_color != [0.0, 0.0, 0.0, 0.0]
-        {
-            // Focus crossfade is in flight — use the interpolated
-            // colour from `tick_animations`. Reading directly off the
-            // animation struct keeps the cross-fade visible *between*
-            // arrange passes too (every render driven by an
-            // animation tick refreshes this).
-            state.clients[idx].opacity_animation.current_border_color
-        } else {
-            color_for(state, idx, focused == Some(idx))
-        };
-        // Overview-selected thumbnail gets a thicker border so the
-        // keyboard / pointer pick reads at a glance even at small
-        // thumbnail sizes. Multiplier is config-driven, default 1.6
-        // (clamped 1.0–4.0). Hidden borders stay at 0.
-        let mut effective = if hide { 0.0 } else { width };
-        if !hide && state.is_overview_open() && state.clients[idx].is_overview_hovered {
-            let mul = state
-                .config
-                .overview_selected_border_multiplier
-                .clamp(1.0, 4.0);
-            effective *= mul;
-        }
-        // The border is a concentric ring around the (rounded) window: its
-        // INNER edge must match the window's corner radius (`border_radius`)
-        // so it hugs the content with no gap, and its OUTER edge is that
-        // radius plus the border width. The shader derives the inner radius as
-        // `radius - border_width`, so pass `border_radius + width` as the outer
-        // radius → inner == the window's radius. A square window
-        // (border_radius 0) keeps a square border.
-        let base_radius = state.config.border_radius as f32;
-        let radius = if base_radius > 0.0 {
-            base_radius + effective
-        } else {
-            0.0
-        };
-        state.clients[idx]
-            .border
-            .update(geom, effective, radius, color);
+        refresh_client(state, idx, focused);
     }
+}
+
+/// Recompute the border for a single client. The per-surface commit
+/// handler uses this: only the committing window's geometry can have
+/// changed on a commit, so re-deriving *every* client's border — each a
+/// `window.geometry()` `with_states` lock — on every commit was O(n)
+/// waste under video/typing load (n windows committing → n² geometry
+/// reads per second).
+pub fn refresh_one(state: &mut MargoState, idx: usize) {
+    if idx >= state.clients.len() {
+        return;
+    }
+    let focused = state.focused_client_idx();
+    refresh_client(state, idx, focused);
+}
+
+fn refresh_client(state: &mut MargoState, idx: usize, focused: Option<usize>) {
+    let (geom, width, hide) = {
+        let c = &state.clients[idx];
+        let mon_idx = c.monitor;
+        let visible = mon_idx < state.monitors.len()
+            && c.is_visible_on(mon_idx, state.monitors[mon_idx].current_tagset());
+        // Hide the border for the duration of an open transition.
+        // The OpenCloseRenderElement is drawing the surface scaled
+        // around `c.geom`'s centre, so a full-slot border around it
+        // would visibly precede the window into existence by ~180 ms.
+        // Letting the border pop in at the end of the open
+        // animation matches niri/Hyprland behaviour and is far less
+        // jarring than the alternative.
+        let hide = c.no_border || c.is_fullscreen || !visible || c.opening_animation.is_some();
+
+        // The border has to wrap the *actual* on-screen content,
+        // not the layout-reserved rect: Electron clients (Helium
+        // browser, Spotify, Discord) silently clamp our
+        // `xdg_toplevel.configure(size)` against their internal
+        // min-size and render narrower than we asked, leaving a
+        // wallpaper strip between the visible window and the
+        // border drawn at `c.geom`.
+        //
+        // Three cases:
+        //
+        //   1. A resize-snapshot is in flight. The renderer is
+        //      drawing a captured texture *scaled to `c.geom`* and
+        //      hiding the live surface, so the visible content
+        //      fills the interpolated slot exactly. Border tracks
+        //      `c.geom`.
+        //
+        //   2. A move/spring animation is running with no snapshot
+        //      (pure translate, dimensions unchanged). The slot's
+        //      `width/height` already match the buffer; tracking
+        //      `c.geom` is the same as tracking the buffer. Either
+        //      works, but `c.geom` is cheaper.
+        //
+        //   3. Steady state OR mid-animation when the buffer
+        //      doesn't match the slot. Always clamp the border
+        //      box to `min(actual, slot)`. This is the case the
+        //      old `!anim.running` gate left uncovered: when
+        //      Helium/Spotify settle at a buffer size smaller
+        //      than the slot we requested, the post-settle frame
+        //      would draw the border at the slot rect even though
+        //      the live surface only covered a sub-rectangle.
+        // Read the client-declared geometry rect. `loc` is the
+        // offset of the "drawable area" within the wl_buffer
+        // (Electron clients sometimes report a non-zero loc to
+        // exclude shadow / titlebar). `size` is the declared
+        // visible size — what the client thinks is on-screen.
+        let geom_rect = c.window.geometry();
+        let actual = geom_rect.size;
+        // `snapshot_pending` covers the gap between
+        // arrange_monitor flagging a resize transition and the
+        // renderer actually capturing a texture for it: arrange
+        // runs `border::refresh` synchronously, but the snapshot
+        // capture only fires on the next render. Without rolling
+        // `pending` into `active`, the arrange-time refresh would
+        // shrink the border to `actual` while the next render's
+        // `ResizeRenderElement` paints the snapshot stretched to
+        // the full slot — that's the "border ve pencere bağımsız
+        // haraket ediyor" mismatch the user sees on Spotify
+        // during super+r.
+        let snapshot_active = c.resize_snapshot.is_some() || c.snapshot_pending;
+        let mut g = c.geom;
+        let mut border_shrunk_to_actual = false;
+        if !snapshot_active {
+            // Clamp to the visible bounds: a buffer rendered at
+            // c.geom.loc covers (c.geom.loc, geometry.size); the
+            // rest is clipped to the slot anyway. Clipping the
+            // border to `min(actual, slot)` makes the frame hug
+            // whatever the user actually sees.
+            if actual.w > 0 && actual.w < g.width {
+                g.width = actual.w;
+                border_shrunk_to_actual = true;
+            }
+            if actual.h > 0 && actual.h < g.height {
+                g.height = actual.h;
+                border_shrunk_to_actual = true;
+            }
+        }
+
+        // Diagnostic — fires when something interesting is
+        // happening (deviation from slot, mid-flight animation,
+        // non-zero geometry offset, or active snapshot). Includes
+        // `loc` so we can spot Electron-style buffer offsets that
+        // would otherwise be invisible to the existing
+        // `slot vs actual` summary.
+        if border_shrunk_to_actual
+            || c.animation.running
+            || snapshot_active
+            || geom_rect.loc.x != 0
+            || geom_rect.loc.y != 0
+            || (actual.w != 0 && actual.w != c.geom.width)
+            || (actual.h != 0 && actual.h != c.geom.height)
+        {
+            tracing::trace!(
+                "border[{}]: slot={}x{}+{}+{} geom_loc={}+{} geom_size={}x{} drawn={}x{} \
+                     anim={} snap={} shrunk={}",
+                c.app_id.as_str(),
+                c.geom.width,
+                c.geom.height,
+                c.geom.x,
+                c.geom.y,
+                geom_rect.loc.x,
+                geom_rect.loc.y,
+                actual.w,
+                actual.h,
+                g.width,
+                g.height,
+                c.animation.running,
+                snapshot_active,
+                border_shrunk_to_actual,
+            );
+        }
+
+        (g, c.border_width as f32, hide)
+    };
+    let color = if hide {
+        [0.0; 4]
+    } else if state.clients[idx].opacity_animation.running
+        && state.clients[idx].opacity_animation.current_border_color != [0.0, 0.0, 0.0, 0.0]
+    {
+        // Focus crossfade is in flight — use the interpolated
+        // colour from `tick_animations`. Reading directly off the
+        // animation struct keeps the cross-fade visible *between*
+        // arrange passes too (every render driven by an
+        // animation tick refreshes this).
+        state.clients[idx].opacity_animation.current_border_color
+    } else {
+        color_for(state, idx, focused == Some(idx))
+    };
+    // Overview-selected thumbnail gets a thicker border so the
+    // keyboard / pointer pick reads at a glance even at small
+    // thumbnail sizes. Multiplier is config-driven, default 1.6
+    // (clamped 1.0–4.0). Hidden borders stay at 0.
+    let mut effective = if hide { 0.0 } else { width };
+    if !hide && state.is_overview_open() && state.clients[idx].is_overview_hovered {
+        let mul = state
+            .config
+            .overview_selected_border_multiplier
+            .clamp(1.0, 4.0);
+        effective *= mul;
+    }
+    // The border is a concentric ring around the (rounded) window: its
+    // INNER edge must match the window's corner radius (`border_radius`)
+    // so it hugs the content with no gap, and its OUTER edge is that
+    // radius plus the border width. The shader derives the inner radius as
+    // `radius - border_width`, so pass `border_radius + width` as the outer
+    // radius → inner == the window's radius. A square window
+    // (border_radius 0) keeps a square border.
+    let base_radius = state.config.border_radius as f32;
+    let radius = if base_radius > 0.0 {
+        base_radius + effective
+    } else {
+        0.0
+    };
+    state.clients[idx]
+        .border
+        .update(geom, effective, radius, color);
 }
 
 pub fn render_elements(

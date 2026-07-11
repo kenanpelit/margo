@@ -442,6 +442,40 @@ pub(crate) fn read_toplevel_identity(surface: &ToplevelSurface) -> (String, Stri
     })
 }
 
+/// Like [`read_toplevel_identity`] but compares against the client's
+/// current `(app_id, title)` *inside* the surface-state lock and clones
+/// the strings out only when something actually changed. The per-commit
+/// identity refresh runs on every toplevel commit (60 fps video → per
+/// window per frame) and early-returns unchanged >99% of the time, so the
+/// two unconditional `String` clones the plain reader does were pure
+/// waste there. Returns `(app_id, title, app_id_changed, title_changed)`
+/// or `None` when neither changed.
+pub(crate) fn read_toplevel_identity_if_changed(
+    surface: &ToplevelSurface,
+    cur_app_id: &str,
+    cur_title: &str,
+) -> Option<(String, String, bool, bool)> {
+    with_states(surface.wl_surface(), |states| {
+        let data = states
+            .data_map
+            .get::<XdgToplevelSurfaceData>()
+            .and_then(|data| data.lock().ok())?;
+        let app_id = data.app_id.as_deref().unwrap_or_default();
+        let title = data.title.as_deref().unwrap_or_default();
+        let app_id_changed = app_id != cur_app_id;
+        let title_changed = title != cur_title;
+        if !app_id_changed && !title_changed {
+            return None;
+        }
+        Some((
+            app_id.to_owned(),
+            title.to_owned(),
+            app_id_changed,
+            title_changed,
+        ))
+    })
+}
+
 /// Clamp `(w, h)` in place against `min_*`/`max_*` constraints. Each
 /// constraint is ignored if its value is `0`.
 pub(crate) fn clamp_size(w: &mut i32, h: &mut i32, min_w: i32, min_h: i32, max_w: i32, max_h: i32) {
