@@ -162,8 +162,29 @@ pub struct ClipboardWatcher {
     history: ClipboardHistory,
     event_tx: broadcast::Sender<ClipboardEvent>,
     command_tx: mpsc::Sender<WatcherCommand>,
+    /// Write end of the watcher's wake pipe. Poked after every command
+    /// send so the watcher thread's `poll()` returns immediately instead
+    /// of relying on a periodic timeout — the loop can then block
+    /// indefinitely between real events.
+    wake_tx: OwnedFd,
     settings: SharedSettings,
     persister: Persister,
+}
+
+/// A blocking self-pipe: a byte written to the returned write end wakes a
+/// `poll()` waiting on the read end. Both ends are close-on-exec; the
+/// write end is non-blocking so a poke can never stall the UI thread.
+fn make_wake_pipe() -> std::io::Result<(OwnedFd, OwnedFd)> {
+    let mut fds = [0 as libc::c_int; 2];
+    // SAFETY: `fds` is a valid 2-element array; pipe2 fills both slots.
+    let ret = unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC | libc::O_NONBLOCK) };
+    if ret != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: pipe2 succeeded, so both are fresh owned fds.
+    let read = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+    let write = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+    Ok((read, write))
 }
 
 impl ClipboardWatcher {
@@ -197,6 +218,7 @@ impl ClipboardWatcher {
 
         let (event_tx, _) = broadcast::channel(BROADCAST_CAPACITY);
         let (command_tx, command_rx) = mpsc::channel();
+        let (wake_rx, wake_tx) = make_wake_pipe()?;
 
         let watcher_history = history.clone();
         let watcher_tx = event_tx.clone();
@@ -209,6 +231,7 @@ impl ClipboardWatcher {
                     watcher_history,
                     watcher_tx,
                     command_rx,
+                    wake_rx,
                     watcher_settings,
                     watcher_persister,
                 ) {
@@ -220,6 +243,7 @@ impl ClipboardWatcher {
             history,
             event_tx,
             command_tx,
+            wake_tx,
             settings: shared,
             persister,
         })
@@ -246,6 +270,14 @@ impl ClipboardWatcher {
                 mime_type: entry.mime_type.clone(),
                 data: entry.data.clone(),
             });
+            // Poke the wake pipe so the watcher's blocking poll() returns
+            // and drains the command. One byte; the write end is
+            // non-blocking so a full pipe (already-signalled) just EAGAINs.
+            let byte = [0u8; 1];
+            // SAFETY: wake_tx is a valid, open, non-blocking fd for its lifetime.
+            unsafe {
+                libc::write(self.wake_tx.as_raw_fd(), byte.as_ptr().cast(), 1);
+            }
         }
     }
 
@@ -327,6 +359,7 @@ fn run_watcher(
     history: ClipboardHistory,
     event_tx: broadcast::Sender<ClipboardEvent>,
     command_rx: mpsc::Receiver<WatcherCommand>,
+    wake_rx: OwnedFd,
     settings: SharedSettings,
     persister: Persister,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -364,10 +397,12 @@ fn run_watcher(
 
     info!("Clipboard watcher started");
 
-    // We need to wake the event loop when a command arrives, not just
-    // when a Wayland event comes in. Use the Wayland fd + a short poll
-    // timeout so we can check the command channel periodically.
+    // Wake the event loop on EITHER a Wayland event OR a UI command, by
+    // polling the Wayland fd and the command wake pipe together. With the
+    // pipe in the set we can block indefinitely between events instead of
+    // spinning a 20 Hz poll just to check the command channel.
     let wayland_fd = conn.as_fd();
+    let wake_fd = wake_rx.as_raw_fd();
 
     loop {
         // Flush any pending outgoing requests.
@@ -382,22 +417,37 @@ fn run_watcher(
         // the top of the next iteration) and fall through to service the
         // command channel, rather than `unwrap()`-panicking the thread.
         if let Some(read_guard) = event_queue.prepare_read() {
-            // Poll the Wayland fd with a short timeout so we also
-            // check the command channel. 50ms is responsive enough.
-            let mut poll_fd = [libc::pollfd {
-                fd: wayland_fd.as_raw_fd(),
-                events: libc::POLLIN,
-                revents: 0,
-            }];
-            let ret = unsafe { libc::poll(poll_fd.as_mut_ptr(), 1, 50) };
+            // Block until Wayland data OR a command poke arrives (-1 =
+            // infinite). The pipe is level-triggered and we always drain
+            // the command channel below, so no wake is ever missed.
+            let mut poll_fds = [
+                libc::pollfd {
+                    fd: wayland_fd.as_raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                },
+                libc::pollfd {
+                    fd: wake_fd,
+                    events: libc::POLLIN,
+                    revents: 0,
+                },
+            ];
+            let ret = unsafe { libc::poll(poll_fds.as_mut_ptr(), 2, -1) };
 
-            if ret > 0 && (poll_fd[0].revents & libc::POLLIN != 0) {
+            if ret > 0 && (poll_fds[0].revents & libc::POLLIN != 0) {
                 // Wayland data available — read and dispatch.
                 read_guard.read().ok();
                 event_queue.dispatch_pending(&mut state)?;
             } else {
-                // Timeout or no data — cancel the read guard.
+                // Woken by a command (or an error) — cancel the read guard.
                 drop(read_guard);
+            }
+
+            // Drain the wake pipe so it doesn't keep the poll hot.
+            if ret > 0 && (poll_fds[1].revents & libc::POLLIN != 0) {
+                let mut sink = [0u8; 64];
+                // SAFETY: wake_fd is valid + non-blocking; read to EAGAIN.
+                while unsafe { libc::read(wake_fd, sink.as_mut_ptr().cast(), sink.len()) } > 0 {}
             }
         }
 

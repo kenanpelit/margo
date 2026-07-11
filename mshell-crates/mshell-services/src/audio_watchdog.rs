@@ -63,7 +63,11 @@ pub fn spawn_audio_health_watchdog() {
         // Snapshot the audio server's PIDs. wayle opened its libpulse
         // connection at startup; if any of these restarts later (a different
         // MainPID), that connection is dead with no way back.
-        let baseline_pids = audio_service_pids();
+        // Run the blocking `systemctl` probe on the blocking pool, not on
+        // one of the (few) shared async workers this runtime has.
+        let baseline_pids = tokio::task::spawn_blocking(audio_service_pids)
+            .await
+            .unwrap_or_default();
 
         let mut consecutive_failures: u32 = 0;
 
@@ -74,7 +78,10 @@ pub fn spawn_audio_health_watchdog() {
             // real failure mode — wayle keeps answering from its frozen device
             // store after the context dies, so the command probe below can't see
             // it. A PID change is definitive, so it needs no transient guard.
-            let restarted = audio_server_restarted(&baseline_pids, &audio_service_pids());
+            let current_pids = tokio::task::spawn_blocking(audio_service_pids)
+                .await
+                .unwrap_or_default();
+            let restarted = audio_server_restarted(&baseline_pids, &current_pids);
 
             // Secondary signal: the command channel itself went away (the
             // backend task actually exited). `CommandChannelDisconnected` =

@@ -624,6 +624,22 @@ impl Component for Shell {
                     if let Some(toast) = &group._toast {
                         toast.widget().close();
                     }
+                    // These three were dropped without an explicit close,
+                    // unlike every sibling above — a relm4 Controller / a
+                    // mapped gtk::Window is not destroyed just by dropping
+                    // the handle, so on monitor hot-unplug the standalone
+                    // dock, network OSD, and corner overlays leaked as
+                    // orphaned surfaces (and could reappear on the wrong
+                    // output). `RebuildDocks` already closes mdock this way.
+                    if let Some(mdock) = &group.mdock {
+                        mdock.widget().close();
+                    }
+                    if let Some(network_osd) = &group._network_osd {
+                        network_osd.widget().close();
+                    }
+                    for corner in &group._screen_corners {
+                        corner.close();
+                    }
                 }
             }
             ShellInput::Quit => {

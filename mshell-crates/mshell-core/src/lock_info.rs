@@ -15,6 +15,7 @@ use std::time::Duration;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
 use mshell_services::{media_service, notification_service, weather_service};
+use mshell_session::session_lock::session_locked;
 use mshell_utils::weather::get_temperature_string;
 use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::glib;
@@ -28,6 +29,14 @@ const REFRESH_SECS: u64 = 3;
 pub fn start() {
     let last = RefCell::new(String::new());
     glib::timeout_add_local(Duration::from_secs(REFRESH_SECS), move || {
+        // Only the lock screen (mlock) reads this sidecar. When the
+        // session is unlocked — the overwhelming majority of the time —
+        // skip the reactive service reads + string building entirely; the
+        // file only needs to track live state while it's actually being
+        // shown. (The bare timer wakeup is 0.33 Hz, negligible.)
+        if !session_locked() {
+            return glib::ControlFlow::Continue;
+        }
         let body = build();
         if *last.borrow() != body {
             if let Err(e) = write(&body) {

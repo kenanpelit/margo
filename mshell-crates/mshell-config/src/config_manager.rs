@@ -228,7 +228,7 @@ impl ConfigManager {
                 info!("Config reloaded");
             }
             Err(e) => {
-                eprintln!("config: reload failed (keeping last-good): {e}");
+                error!(error = %e, "config: reload failed (keeping last-good)");
             }
         }
     }

@@ -302,12 +302,17 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             let inp = (audio.default_input_volume.clamp(0, 100) as f64) / 100.0;
             tokio_rt().spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                let _ = std::process::Command::new("wpctl")
-                    .args(["set-volume", "@DEFAULT_AUDIO_SINK@", &format!("{out:.2}")])
-                    .status();
-                let _ = std::process::Command::new("wpctl")
-                    .args(["set-volume", "@DEFAULT_AUDIO_SOURCE@", &format!("{inp:.2}")])
-                    .status();
+                // Run the blocking wpctl calls on the blocking pool so they
+                // don't pin one of the runtime's shared async workers.
+                let _ = tokio::task::spawn_blocking(move || {
+                    let _ = std::process::Command::new("wpctl")
+                        .args(["set-volume", "@DEFAULT_AUDIO_SINK@", &format!("{out:.2}")])
+                        .status();
+                    let _ = std::process::Command::new("wpctl")
+                        .args(["set-volume", "@DEFAULT_AUDIO_SOURCE@", &format!("{inp:.2}")])
+                        .status();
+                })
+                .await;
             });
         }
     }

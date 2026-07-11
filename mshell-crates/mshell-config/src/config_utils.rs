@@ -86,7 +86,7 @@ fn migrate_profile_file(path: &Path) {
     match crate::migration::migrate_yaml(&raw) {
         Ok(m) if m.changed => {
             if let Err(e) = crate::atomic_write::atomic_write(path, m.yaml.as_bytes()) {
-                eprintln!("config: profile migration write-back failed: {e}");
+                tracing::error!(error = %e, "config: profile migration write-back failed");
             } else {
                 info!(
                     "Migrated profile {} from config_version {} to {}",
@@ -97,7 +97,9 @@ fn migrate_profile_file(path: &Path) {
             }
         }
         Ok(_) => {}
-        Err(e) => eprintln!("config: profile migration parse failed (leaving as-is): {e}"),
+        Err(e) => {
+            tracing::error!(error = %e, "config: profile migration parse failed (leaving as-is)")
+        }
     }
 }
 
@@ -132,14 +134,24 @@ pub(crate) fn watch_config_loop(
     let mut last_event_at = Instant::now();
     const DEBOUNCE_MS: u64 = 200;
     loop {
-        match rx.recv_timeout(Duration::from_millis(50)) {
+        // When idle, block indefinitely for the next event; only poll on
+        // the debounce deadline while a change is pending. The old
+        // unconditional `recv_timeout(50ms)` was a permanent 20 Hz wakeup
+        // thread for a file that changes a few times a day.
+        let recv = if pending {
+            let wait = Duration::from_millis(DEBOUNCE_MS).saturating_sub(last_event_at.elapsed());
+            rx.recv_timeout(wait)
+        } else {
+            rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected)
+        };
+        match recv {
             Ok(Ok(event)) => {
                 if is_relevant_config_event(&event) {
                     pending = true;
                     last_event_at = Instant::now();
                 }
             }
-            Ok(Err(e)) => eprintln!("config: watch error: {e}"),
+            Ok(Err(e)) => tracing::error!(error = %e, "config: watch error"),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
@@ -168,7 +180,9 @@ pub(crate) fn watch_config_loop(
                     config.patch(new_cfg);
                     info!("New config loaded in watch loop");
                 }
-                Err(e) => eprintln!("config: reload failed (keeping last-good): {e}"),
+                Err(e) => {
+                    tracing::error!(error = %e, "config: reload failed (keeping last-good)")
+                }
             }
         }
     }
