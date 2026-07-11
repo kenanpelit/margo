@@ -1058,3 +1058,81 @@ architecture-/upstream-blocked, not effort-bound — see §15.10.)
 - Reactive store: field-level signals so a write doesn't wake every
   root-bound effect (the `BarModel::rebuild_slot` guard handles the
   symptom; this would remove the cause). See `code-quality-roadmap.md`.
+
+### 2026-07-11 review — deferred perf/quality items
+
+The 2026-07-11 perf/quality review's fixes shipped in 9 waves plus a
+`docs`/`unsafe-gate`/`mctl perf`/regression-test follow-up. What's parked
+below is real but deliberately not rushed — none is a live bug, and the
+render-path items can't be verified headless.
+
+**Render-path refactors (need live GPU + on-hardware verify — Meteor
+Lake).** The keystone is *repaint scope*, and the rest chains off it:
+- **Output-scoped repaint.** `request_repaint` (`state.rs`,
+  `mark_all_clocks_dirty`) still dirties *every* output's clock because
+  it doesn't know which output a change touched. Add
+  `request_repaint(RepaintScope)` / `request_repaint_output(&Output)` so
+  pointer motion, a single window commit, an animation step, or a layer
+  commit only wakes the affected output. Enables the next two.
+- **Animation-tick damage set.** `state/animation_tick.rs` returns a bare
+  `bool`; the caller then re-scans every visible client, rebuilds a Vec,
+  and refreshes global z-order + all borders. Return
+  `AnimationDamage { clients, outputs, stacking_changed }` so only moving
+  windows re-map and only affected outputs/borders refresh.
+- **Blur damage cache.** `backend/udev/frame.rs` calls
+  `reset_buffers()` every rendered frame while blur is on, defeating
+  buffer-age damage. This is a *deliberate* flicker fix for Intel Arc
+  MTL (the dev's own GPU); the replacement is blur-region-expanded damage
+  + a per-output backdrop cache, keeping full-redraw as the safe
+  fallback. High regression risk → verify on hardware.
+- **Screencast cursor-only frame.** `screencasting/pw_utils.rs` re-renders
+  a full video frame even when only the cursor moved (its own FIXME).
+  Needs OBS-PipeWire compat verified first, alongside the DMABUF-render
+  and reliable-cursor-buffer TODOs there.
+
+**Cheaper compositor structure (no HW needed).**
+- Fold the per-output frame clock into `MargoMonitor` instead of a
+  name-keyed `HashMap` (`state/frame_clock_sched.rs` still snapshots a
+  `Vec<(Output, Duration)>` on the non-fast-path) — simplifies hotplug +
+  borrow management.
+- Build the spring params / `AnimTickSpec` once at config reload into an
+  `AnimationRuntimeConfig` rather than every frame (`main.rs` render
+  loop) — cheap, but P2 not P0 (it's a few float ops, not an alloc).
+- Group `MargoState`'s ~144 fields into sub-structs
+  (`FrameSchedulerState`, `CaptureState`, `AnimationState`, `IpcState`,
+  `LayerCacheState`) to sharpen invariants + borrows. Single-owner state
+  stays; this is internal grouping only.
+
+**Config.** Full declarative option-descriptor table: one source driving
+parse + validate + completion + docs, replacing the parallel
+`parse_option` match / `OPTION_KEYS` / validator `BOOL_KEYS`/`UINT_KEYS`/
+`ENUM_KEYS`. Large parser rewrite; the *drift* it targets is already
+locked by `option_keys_match_parser_arms`,
+`typed_tables_only_list_real_option_keys`, and
+`typed_tables_are_mutually_disjoint`, so this is polish, not a fix.
+
+**Shell / IPC.**
+- Central shell task supervisor (`TaskScope`): menu-close cancellation,
+  replace-latest per key, bounded queue — instead of every widget
+  managing its own `spawn`/`spawn_future_local`/timer lifecycle.
+- MPRIS: per-player bounded actor + timeout + command coalescing.
+  `ipc.rs` already runs each media key as a detached `spawn_future_local`
+  (so a wedged player can't stall the loop), but rapid keys can pile up
+  many ~25 s tasks that finish out of order.
+- Topic-aware IPC snapshot: a `DirtyTopics` bitset + revision + per-topic
+  cache so a `tags`-only subscriber doesn't build the whole client/output
+  tree. Low practical impact today — the shell subscribes to full
+  `state` — so cheap-but-minor.
+
+**Gates / tooling / tests.**
+- `clippy::undocumented_unsafe_blocks = deny` — a `// SAFETY:` comment on
+  all ~250 unsafe blocks (`unsafe_op_in_unsafe_fn` already deny'd).
+- Panic-ratchet reduction target: drive the baseline 320 → 250 → 200,
+  compositor event/render/IPC paths first.
+- Criterion benches beyond parser/layout: animation tick, render-scene at
+  1/16/64 clients, IPC snapshot build, layer commit hash.
+- `mctl perf`: add p50/p95 render time + damage area + direct-scanout
+  ratio (needs new per-frame timing instrumentation; the render/empty/
+  queued/queue-error counters ship today).
+- Real nested smoke test on a weekly or self-hosted GPU runner
+  (`smoke.yml` currently can't drive true nested winit).
