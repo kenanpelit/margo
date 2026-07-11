@@ -1044,6 +1044,27 @@ impl Cast {
         }
     }
 
+    /// Ensure exactly one wake is pending so the cast keeps ticking
+    /// without an unconditional per-tick global repaint. If a redraw is
+    /// already scheduled (the frame was throttled by
+    /// [`check_time_and_schedule`](Self::check_time_and_schedule)) keep
+    /// it; otherwise arm a one-shot at the next frame boundary
+    /// (`last_frame_time + min_time_between_frames`, or now if we haven't
+    /// rendered yet). This bounds cast wakeups to the stream's frame
+    /// cadence instead of spinning the event loop between vblanks.
+    pub fn ensure_next_frame_scheduled(&mut self, output: Output) {
+        if self.scheduled_redraw.is_some() {
+            return;
+        }
+        let target = if self.last_frame_time.is_zero() {
+            get_monotonic_time()
+        } else {
+            let min = self.inner.borrow().min_time_between_frames;
+            self.last_frame_time + min
+        };
+        self.schedule_redraw(output, target);
+    }
+
     fn dequeue_available_buffer(&mut self) -> Option<NonNull<pw_buffer>> {
         unsafe { NonNull::new(self.stream.dequeue_raw_buffer()) }
     }

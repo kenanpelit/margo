@@ -540,21 +540,43 @@ pub(super) fn drain_active_cast_frames(
         }
     }
 
-    let any_active = casts.iter().any(|c| c.is_active());
+    // Keep each active cast ticking via its OWN per-cast timer at the
+    // next frame boundary, rather than an unconditional global repaint
+    // every tick. The old `if any_active { state.request_repaint() }`
+    // re-pinged immediately regardless of pacing, so a single active cast
+    // spun the event loop at max rate on a static scene — the throttle in
+    // `check_time_and_schedule` only skipped the *render*, not the ping.
+    // Rendered casts schedule their next frame here; a cast the pacing
+    // layer already throttled keeps its existing timer (the method
+    // no-ops when one is pending).
+    for cast in casts.iter_mut() {
+        if !cast.is_active() {
+            continue;
+        }
+        let output = match &cast.target {
+            CastTarget::Output { name, .. } => state
+                .monitors
+                .iter()
+                .find(|m| m.output.name() == *name)
+                .map(|m| m.output.clone()),
+            CastTarget::Window { id } => state
+                .clients
+                .iter()
+                .find(|c| c.id == *id)
+                .and_then(|c| state.monitors.get(c.monitor))
+                .map(|m| m.output.clone()),
+            CastTarget::Nothing => state.monitors.first().map(|m| m.output.clone()),
+        };
+        if let Some(output) = output {
+            cast.ensure_next_frame_scheduled(output);
+        }
+    }
+
     if let Some(s) = state.screencasting.as_mut() {
         s.casts = casts;
     }
     for id in to_stop {
         state.stop_cast(id);
-    }
-    // Keep the repaint chain ticking while a cast is active.
-    // Without this, after the first frame the repaint scheduler
-    // goes idle (no input/animation = no dirty), and the cast
-    // freezes. The pacing layer (`check_time_and_schedule`) above
-    // ensures we don't burn frames on static scenes — that runs
-    // before render and bails early when too soon.
-    if any_active {
-        state.request_repaint();
     }
 }
 
