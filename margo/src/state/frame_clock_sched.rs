@@ -66,13 +66,43 @@ impl MargoState {
         if !self.per_output_frame_clock_enabled() {
             return;
         }
-        self.ensure_output_clocks();
-        let names: Vec<String> = self.per_output_clocks.keys().cloned().collect();
-        for name in names {
-            if let Some(clock) = self.per_output_clocks.get_mut(&name) {
-                clock.dirty = true;
-            }
-            self.arm_present_timer(&name);
+        // Fast path: if every known output already has a dirty clock with
+        // a timer armed (or a flip in flight), a repeated request_repaint
+        // in the same frame — the common case during a commit burst — has
+        // nothing to add. Skips the snapshot + per-output name()/arm work
+        // below. A count mismatch (hotplug, missing clock) falls through
+        // to the full loop, so this stays correct.
+        if !self.per_output_clocks.is_empty()
+            && self.per_output_clocks.len() == self.monitors.len()
+            && self
+                .per_output_clocks
+                .values()
+                .all(|c| c.dirty && (c.timer_token.is_some() || c.pending_vblank))
+        {
+            return;
+        }
+        // Snapshot the live outputs once (name + refresh) and reuse it to
+        // both dirty the clock and arm its timer. The old code did
+        // `keys().cloned()` (a Vec<String>) then re-found each output by
+        // name inside every `arm_present_timer` — O(n²) `Output::name()`
+        // clones-under-mutex on a path that runs on every pointer motion
+        // and surface commit.
+        let outputs: Vec<(Output, Duration)> = self
+            .monitors
+            .iter()
+            .map(|m| {
+                let out = m.output.clone();
+                let interval = Self::output_refresh_interval(&out);
+                (out, interval)
+            })
+            .collect();
+        for (output, interval) in &outputs {
+            let name = output.name();
+            self.per_output_clocks
+                .entry(name.clone())
+                .or_default()
+                .dirty = true;
+            self.arm_present_timer_for(&name, output, *interval);
         }
     }
 
@@ -84,17 +114,29 @@ impl MargoState {
         if !self.per_output_frame_clock_enabled() {
             return;
         }
-        // Find the live output for its refresh interval.
-        let Some(output) = self
-            .monitors
-            .iter()
-            .find(|m| m.output.name() == name)
-            .map(|m| m.output.clone())
+        // Find the live output for its refresh interval, then defer to the
+        // shared arm. Hot callers that already hold the output
+        // (`mark_all_clocks_dirty`) skip this lookup via
+        // `arm_present_timer_for`.
+        let Some((output, interval)) =
+            self.monitors
+                .iter()
+                .find(|m| m.output.name() == name)
+                .map(|m| {
+                    let out = m.output.clone();
+                    let interval = Self::output_refresh_interval(&out);
+                    (out, interval)
+                })
         else {
             return;
         };
-        let interval = Self::output_refresh_interval(&output);
+        self.arm_present_timer_for(name, &output, interval);
+    }
 
+    /// Arm the present timer for `name` using an already-resolved output +
+    /// refresh interval, skipping the by-name monitor lookup in
+    /// [`Self::arm_present_timer`]. Same no-op guards.
+    fn arm_present_timer_for(&mut self, name: &str, _output: &Output, interval: Duration) {
         let Some(clock) = self.per_output_clocks.get_mut(name) else {
             return;
         };
