@@ -291,6 +291,11 @@ fn parse_monitorrule(val: &str) -> Result<LayoutOutput> {
         transform: 0,
     };
 
+    // Capture scale rather than dividing width/height in place: the
+    // tokens are comma-separated in any order, and applying scale the
+    // instant we see `scale:` silently no-ops when it precedes
+    // `width:`/`height:` (both still 0). Fold it in once, after the loop.
+    let mut scale = 1.0f32;
     for token in val.split(',') {
         let token = token.trim();
         if token.is_empty() {
@@ -315,15 +320,19 @@ fn parse_monitorrule(val: &str) -> Result<LayoutOutput> {
             "scale" => {
                 let s: f32 = v.parse().unwrap_or(1.0);
                 if s > 0.0 {
-                    // Preview wants logical (post-scale) size:
-                    // shrink the physical mode size by the scale.
-                    out.width = (out.width as f32 / s).round() as i32;
-                    out.height = (out.height as f32 / s).round() as i32;
+                    scale = s;
                 }
             }
             "transform" | "rr" => out.transform = v.parse().unwrap_or(0),
             _ => {}
         }
+    }
+
+    // Preview wants the logical (post-scale) size: shrink the physical
+    // mode by the scale factor once both dimensions are known.
+    if scale != 1.0 {
+        out.width = (out.width as f32 / scale).round() as i32;
+        out.height = (out.height as f32 / scale).round() as i32;
     }
 
     if matches!(out.transform, 1 | 3 | 5 | 7) {
@@ -412,6 +421,20 @@ monitorrule = name:eDP-1,width:1920,height:1200,x:320,y:1440,scale:1.5
         let layout = parse_file(&path).unwrap();
         assert_eq!(layout.outputs[0].width, 1080);
         assert_eq!(layout.outputs[0].height, 1920);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn scale_is_order_independent() {
+        // Regression: `scale:` before `width:`/`height:` used to no-op
+        // (both dims still 0 when scale was applied in place), leaving
+        // the physical size. Both orders must yield the logical size.
+        let body = "monitorrule = name:eDP-1,scale:1.5,width:1920,height:1200\n";
+        let path = std::path::PathBuf::from("/tmp/layout_scale_order.conf");
+        std::fs::write(&path, body).unwrap();
+        let layout = parse_file(&path).unwrap();
+        assert_eq!(layout.outputs[0].width, 1280); // 1920 / 1.5
+        assert_eq!(layout.outputs[0].height, 800); // 1200 / 1.5
         let _ = std::fs::remove_file(path);
     }
 }

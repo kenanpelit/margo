@@ -2524,8 +2524,12 @@ fn cmd_clients(
         if c["scanout"].as_bool().unwrap_or(false) {
             markers.push_str(&format!("{green}★{reset} "));
         }
-        let app_disp = if app.len() > max_app {
-            format!("{}…", &app[..max_app.saturating_sub(1)])
+        // Count/slice by chars, not bytes: a byte slice panics when
+        // `max_app-1` lands mid-UTF-8 (app-ids can be non-ASCII), and
+        // byte-length over-counts a short multibyte name as too wide.
+        let app_disp = if app.chars().count() > max_app {
+            let keep = max_app.saturating_sub(1);
+            format!("{}…", app.chars().take(keep).collect::<String>())
         } else {
             app.to_string()
         };
