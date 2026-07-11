@@ -22,9 +22,45 @@ impl MargoState {
         if topic == "state" {
             return self.ipc_state_snapshot();
         }
+        // `perf` is not a projection of the snapshot: the per-output frame
+        // counters live in `perf_counters`, mirrored from the udev backend,
+        // and are deliberately kept out of the hot `state` document.
+        if topic == "perf" {
+            return build_perf_payload(&self.perf_counters);
+        }
         let snap = self.ipc_state_snapshot();
         project_topic(&snap, &self.current_kb_layout, topic, args)
     }
+}
+
+/// Build the `perf` topic payload from the mirrored per-output counters.
+/// Pure (no compositor state) so the empty-ratio math and output shape are
+/// unit-testable in isolation. Outputs are sorted by name for stable output.
+pub fn build_perf_payload(
+    counters: &std::collections::HashMap<String, crate::state::OutputPerf>,
+) -> Value {
+    let mut names: Vec<&String> = counters.keys().collect();
+    names.sort();
+    let outputs: Vec<Value> = names
+        .into_iter()
+        .map(|name| {
+            let p = &counters[name];
+            let empty_ratio = if p.renders > 0 {
+                p.empties as f64 / p.renders as f64
+            } else {
+                0.0
+            };
+            json!({
+                "name": name,
+                "renders": p.renders,
+                "queued": p.queued,
+                "empties": p.empties,
+                "empty_ratio": empty_ratio,
+                "queue_errors": p.queue_errors,
+            })
+        })
+        .collect();
+    json!({ "outputs": outputs })
 }
 
 /// Project a `get`/`watch` topic out of an already-built state snapshot.
@@ -203,5 +239,39 @@ mod tests {
             project_topic(&snap(), "tr", "frobnicate", &[]),
             json!({ "error": "unknown topic: frobnicate" })
         );
+    }
+
+    #[test]
+    fn perf_payload_sorts_outputs_and_computes_empty_ratio() {
+        use crate::state::OutputPerf;
+        let mut counters = std::collections::HashMap::new();
+        counters.insert(
+            "DP-1".to_string(),
+            OutputPerf {
+                renders: 100,
+                queued: 75,
+                empties: 25,
+                queue_errors: 2,
+            },
+        );
+        counters.insert(
+            "eDP-1".to_string(),
+            OutputPerf {
+                renders: 0,
+                queued: 0,
+                empties: 0,
+                queue_errors: 0,
+            },
+        );
+        let out = super::build_perf_payload(&counters);
+        let arr = out["outputs"].as_array().unwrap();
+        // Sorted by name: DP-1 before eDP-1.
+        assert_eq!(arr[0]["name"], json!("DP-1"));
+        assert_eq!(arr[1]["name"], json!("eDP-1"));
+        // 25/100 = 0.25.
+        assert_eq!(arr[0]["empty_ratio"], json!(0.25));
+        assert_eq!(arr[0]["queue_errors"], json!(2));
+        // No divide-by-zero on a never-rendered output.
+        assert_eq!(arr[1]["empty_ratio"], json!(0.0));
     }
 }

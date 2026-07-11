@@ -190,6 +190,18 @@ fn config_has_title_rules(config: &Config) -> bool {
     })
 }
 
+/// Per-output frame counters, mirrored out of the udev backend's
+/// `OutputDevice` so `mctl perf` (the `get perf` IPC topic) can read them
+/// without borrowing the `BackendData` — which `MargoState` deliberately
+/// doesn't hold, to keep the render borrow and the IPC borrow disjoint.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct OutputPerf {
+    pub renders: u64,
+    pub queued: u64,
+    pub empties: u64,
+    pub queue_errors: u64,
+}
+
 pub struct MargoState {
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
@@ -509,6 +521,10 @@ pub struct MargoState {
     /// in the same refresh cycle (which is what caused the bar
     /// flicker). Keyed by output name because `Output` is not `Hash`.
     pub frame_callback_sequence: std::collections::HashMap<String, u32>,
+    /// Per-output frame counters mirrored from the udev backend each render,
+    /// keyed by output name (same key as `frame_callback_sequence`). Read by
+    /// the `perf` IPC topic; empty under the winit/nested backend.
+    pub perf_counters: std::collections::HashMap<String, OutputPerf>,
     /// One pending estimated-vblank Timer per output. Inserted from
     /// the empty-render path (`render_frame` reports
     /// `is_empty == true` so no DRM page-flip + no real VBlank event
@@ -1173,6 +1189,7 @@ impl MargoState {
             layer_layout_hashes: std::collections::HashMap::new(),
             layer_kb_interactivity_hashes: std::collections::HashMap::new(),
             frame_callback_sequence: std::collections::HashMap::new(),
+            perf_counters: std::collections::HashMap::new(),
             estimated_vblank_timers: std::collections::HashMap::new(),
             per_output_clocks: std::collections::HashMap::new(),
             cursor_shape_manager_state,

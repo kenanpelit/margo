@@ -633,4 +633,15 @@ fn render_output(
             "render_frame failed",
         ),
     }
+
+    // Mirror this output's counters into MargoState so the `perf` IPC topic
+    // (`mctl perf`) can read them without borrowing the udev BackendData.
+    // Only reached when a render was actually attempted (the dpms/disabled
+    // early-returns above skip it), and keyed by name like
+    // frame_callback_sequence, so no new per-frame allocation is introduced.
+    let perf = state.perf_counters.entry(od.output.name()).or_default();
+    perf.renders = od.render_count;
+    perf.queued = od.queued_count;
+    perf.empties = od.empty_count;
+    perf.queue_errors = od.queue_error_count;
 }

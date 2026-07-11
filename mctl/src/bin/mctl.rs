@@ -585,10 +585,30 @@ enum Command {
         json: bool,
     },
 
+    /// Per-output frame counters: renders, empties, empty ratio, queue errors.
+    #[command(
+        display_order = 5,
+        long_about = "Per-output render counters, read live from the compositor \
+                      (the `perf` IPC topic — kept out of the hot state stream). \
+                      For each output: total renders, frames actually queued to \
+                      the DRM plane, empty (no-damage) frames and their ratio, \
+                      and queue errors. A high empty ratio is healthy (the \
+                      compositor skipping redundant work); rising queue errors \
+                      point at a flaky modeset/plane.\n\
+                      \n\
+                      EXAMPLES:\n  \
+                        mctl perf\n  \
+                        mctl perf --json | jq '.outputs[] | {name, empty_ratio}'"
+    )]
+    Perf {
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Print the focused window's app_id + title (terse, scriptable).
     #[command(
         alias = "active",
-        display_order = 5,
+        display_order = 6,
         long_about = "Print the focused window's app_id + title in a single \
                       line — designed for status-bar scripts that just need \
                       `who has focus right now`. `--json` for the full \
@@ -812,6 +832,9 @@ fn main() -> Result<()> {
         }
         Command::Outputs { json } => {
             return cmd_outputs(*json);
+        }
+        Command::Perf { json } => {
+            return cmd_perf(*json);
         }
         Command::Focused { json } => {
             return cmd_focused(*json);
@@ -1101,6 +1124,7 @@ fn main() -> Result<()> {
         | Command::ConfigErrors
         | Command::Clients { .. }
         | Command::Outputs { .. }
+        | Command::Perf { .. }
         | Command::Focused { .. }
         | Command::Plugin { .. } => {
             // These return early at the top of `main`; this arm only
@@ -2615,6 +2639,57 @@ fn cmd_outputs(json_out: bool) -> Result<()> {
         };
         println!(
             "{active_mark}{bold}{name:<8}{reset}  {dim}{x:>4},{y:<4}{reset}  {dim}{scale:<6.2}{reset}  {cyan}{mode:<10}{reset}  {tag_str} {dim}({w}×{h} logical){reset}",
+        );
+    }
+
+    Ok(())
+}
+
+fn cmd_perf(json_out: bool) -> Result<()> {
+    use std::io::IsTerminal;
+    let perf = mctl::ipc_client::request_once("get perf").with_context(|| {
+        format!(
+            "query margo IPC socket {}: is margo running?",
+            mctl::ipc_client::socket_path().display()
+        )
+    })?;
+    let outputs = perf["outputs"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("perf reply missing `outputs` array"))?;
+
+    if json_out {
+        println!("{}", serde_json::to_string_pretty(outputs)?);
+        return Ok(());
+    }
+
+    if outputs.is_empty() {
+        // The winit/nested backend keeps no per-output DRM counters.
+        println!("no per-output counters (winit/nested backend, or nothing rendered yet)");
+        return Ok(());
+    }
+
+    let tty = std::io::stdout().is_terminal();
+    let bold = if tty { "\x1b[1m" } else { "" };
+    let dim = if tty { "\x1b[2m" } else { "" };
+    let cyan = if tty { "\x1b[36m" } else { "" };
+    let yellow = if tty { "\x1b[33m" } else { "" };
+    let reset = if tty { "\x1b[0m" } else { "" };
+
+    println!(
+        "{bold}{:<10}  {:>10}  {:>10}  {:>10}  {:>7}  {:>7}{reset}",
+        "OUTPUT", "RENDERS", "QUEUED", "EMPTIES", "EMPTY%", "Q-ERR",
+    );
+    for o in outputs {
+        let name = o["name"].as_str().unwrap_or("");
+        let renders = o["renders"].as_u64().unwrap_or(0);
+        let queued = o["queued"].as_u64().unwrap_or(0);
+        let empties = o["empties"].as_u64().unwrap_or(0);
+        let empty_pct = o["empty_ratio"].as_f64().unwrap_or(0.0) * 100.0;
+        let q_err = o["queue_errors"].as_u64().unwrap_or(0);
+        // Queue errors are the one counter that's bad when non-zero.
+        let err_col = if q_err > 0 { yellow } else { dim };
+        println!(
+            "{bold}{name:<10}{reset}  {renders:>10}  {dim}{queued:>10}{reset}  {cyan}{empties:>10}{reset}  {cyan}{empty_pct:>6.1}%{reset}  {err_col}{q_err:>7}{reset}",
         );
     }
 
