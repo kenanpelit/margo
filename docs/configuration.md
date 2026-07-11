@@ -32,7 +32,7 @@ animation_curve_open = 0.16,1.0,0.30,1.0   # ease-out-expo
 # Keys
 bind = super,       Return, spawn, kitty
 bind = super,       q,      killclient
-bind = super,       space,  spawn, qs -c noctalia-shell ipc call launcher toggle
+bind = super,       space,  spawn, mshellctl menu app-launcher
 bind = super+ctrl,  s,      sticky_window
 bind = super+ctrl,  r,      reload_config
 

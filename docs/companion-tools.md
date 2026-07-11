@@ -9,10 +9,12 @@ Margo ships several binaries that share its workspace:
 | **`mlayout`** | named monitor profiles |
 | **`mscreenshot`** | screen / region / window capture |
 | **`mvpn`** | native Mullvad VPN control (CLI + the DNS/VPN bar menu) |
+| **`mcal`** | calendar — local + remote ICS (read-only), CLI + Settings → Calendar |
 | **`mplay`** | mpv companion — window control, video wallpaper, media keys |
 | **`mpower`** | automatic power-profile daemon + manual `cycle` / `set` |
 | **`mkeys`** | on-screen keyboard (layer-shell, virtual-keyboard protocol) |
-| **`mlogind`** | TUI login / display manager (matugen-themed) |
+| **`mlogind`** | login / display manager (matugen-themed) — TUI or GTK4 greeter |
+| **`mgreet`** | GTK4 multi-monitor login greeter for `mlogind` (the default host) |
 | **`mdots`** | declarative Arch package + dotfiles manager (pacman/AUR/Flatpak/Nix, Lua modules, SOPS/age secrets) |
 
 Run any of them with `--help` for the full command surface.
@@ -163,17 +165,40 @@ user-agent) is built in — no external `yt-dlp-mpv` script. Optional deps:
 
 ## `mlogind`
 
-A first-party **TUI login / display manager**, forked from [lemurs](https://github.com/coastalwhite/lemurs) (MIT/Apache-2.0). It runs as a systemd service on a bare VT — no compositor needed to log in — draws a `ratatui` greeter (user + session switcher + password), authenticates through PAM, sets up the environment + utmpx, and launches the chosen X11 / Wayland session (margo included). margo appears as a session out of the box (`/usr/share/wayland-sessions/margo.desktop`).
+A first-party **login / display manager**, forked from [lemurs](https://github.com/coastalwhite/lemurs) (MIT/Apache-2.0). It runs as a systemd service on a bare VT — no compositor needed to log in — presents a greeter (user + session switcher + password), authenticates through PAM, sets up the environment + utmpx, and launches the chosen X11 / Wayland session (margo included). The greeter renders either as a GTK4 multi-monitor surface (`mgreet`, the default) or a built-in `ratatui` TUI — see [`mgreet`](#mgreet) below. margo appears as a session out of the box (`/usr/share/wayland-sessions/margo.desktop`).
 
 ```bash
 mlogind --preview        # draw the greeter in the current session (no login, no root)
 sudo mlogind sync-theme   # repaint /etc/mlogind/variables.toml from the active wallpaper
 ```
 
+- **Greeter host.** `[display] host` in `/etc/mlogind/config.toml` picks how the greeter reaches the screen: `gui` (the shipped default — the GTK4 [`mgreet`](#mgreet) greeter under a throwaway root `margo`, a login card on every monitor at its own native mode), `cage` (a `cage` wlroots kiosk hosting a terminal greeter), or `tty` (the in-process `ratatui` greeter straight to the VT). `gui` auto-falls back to `cage`, then `tty`, if `margo` / `mgreet` / `mctl` can't start — so it never locks you out.
 - **Theming.** Colours are `$`-variables resolved from `/etc/mlogind/variables.toml`, mapped from the margo **matugen** palette — the active session stands out in the accent colour. `mlogind sync-theme` copies the live wallpaper palette (margo writes it to `~/.config/margo/mlogind-variables.toml` on every theme change) into the greeter, so the login screen tracks the desktop.
 - **Power controls.** `F1` Shutdown · `F2` Reboot · `F3` Suspend.
 - **Fingerprint (opt-in).** Handled at the PAM level — uncomment `pam_fprintd.so` in `/etc/pam.d/mlogind` after `fprintd-enroll`.
 - **Packaging.** Config + PAM + the systemd unit install to `/etc/mlogind/`, `/etc/pam.d/mlogind`, and `/usr/lib/systemd/system/mlogind.service`, but the package never enables it — switching login managers is a deliberate `systemctl disable --now <old-dm> && systemctl enable mlogind`. Defaults to `tty2`; for another VT add a drop-in under `/etc/systemd/system/mlogind.service.d/`.
+
+## `mgreet`
+
+The GTK4 **graphical login greeter** for [`mlogind`](#mlogind), and its default
+greeter host. Where the TUI greeter is a `ratatui` VT surface, `mgreet` renders
+one `gtk4-layer-shell` card per output under a throwaway root `margo` instance —
+so a login prompt lands on *every* connected monitor at its own native mode
+(something the older `cage` host could not do). It wears the same **matugen**
+palette as the desktop, shows the wallpaper as a blurred backdrop and the
+`~/.face` avatar, and blanks itself after `[display] blank_timeout` seconds of
+inactivity (any key wakes it without landing in the field).
+
+```bash
+mgreet --preview     # draw the greeter in the current session — no PAM, power keys inert
+```
+
+`mgreet` never authenticates or opens the session itself: it collects the
+username + password and hands them to the privileged `mlogind` orchestrator over
+a one-shot socket, which runs PAM and launches the session — that split keeps the
+GTK4 front-end unprivileged. You don't invoke it directly; `mlogind` starts it
+when `[display] host = "gui"` (the default). Use `--preview` to see it
+non-destructively.
 
 ## `mpower`
 
@@ -239,6 +264,26 @@ mvpn ensure                            # drive the blocky DNS guard from VPN sta
   **Settings → VPN**.
 - **osc-mullvad compatible.** Reads the existing `favorites.txt` / `slot.state`
   unchanged and honours the `OSC_MULLVAD_*` env overrides.
+
+## `mcal`
+
+A read-only **calendar** viewer — a GTK-free engine + CLI. Reads local `.ics`
+folders and remote iCalendar subscriptions, and connects **Google** calendars
+over OAuth. The same engine backs the shell: **Settings → Calendar** manages the
+sources, and the dashboard / clock calendar marks the days that have events.
+
+```bash
+mcal today                            # events happening today
+mcal agenda 14                        # events over the next 14 days (default 7)
+mcal on 2026-07-20                    # events on a specific date
+mcal --ics https://…/feed.ics today  # add a remote subscription (repeatable)
+mcal account setup google            # connect a Google account (OAuth)
+mcal account list                    # list connected accounts (remove with: account remove <id>)
+```
+
+Local calendars live under `~/.config/margo/calendars` by default (`--dir`
+overrides). It's a viewer for now — creating and editing events is not yet
+supported.
 
 ## `mkeys`
 

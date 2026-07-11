@@ -32,7 +32,7 @@ hide:
 **margo** is a Wayland compositor in the dwl/dwm tradition — Rust + [Smithay],
 tags instead of workspaces, a 15-layout tiling catalogue. But margo ships
 something the others don't: **[mshell](#the-shell-mshell)**, a complete GTK4
-desktop shell — bars, 30-plus widgets, an app launcher, a dashboard,
+desktop shell — bars, 50-plus widgets, an app launcher, a dashboard,
 quick-settings, notifications, OSD, a lock screen, and a settings app — all
 recoloured from your wallpaper with Material You. Plus a **native, GNOME-free
 screen-share and screenshot portal**.
@@ -58,7 +58,7 @@ piece and themed as one piece.
 |---|:---:|:---:|:---:|:---:|
 | Language | Rust | Rust | C++ | C |
 | **Bundled desktop shell** | ✅ mshell | ➖ BYO | ➖ BYO¹ | ➖ BYO |
-| Bar + 30-plus widgets | ✅ | waybar | waybar | waybar-dwl |
+| Bar + 50-plus widgets | ✅ | waybar | waybar | waybar-dwl |
 | App launcher (15 providers) | ✅ | rofi | rofi | rofi |
 | Dashboard + quick-settings | ✅ | — | — | — |
 | Notifications / OSD / lock | ✅ | BYO | hypr* | BYO |
@@ -75,7 +75,8 @@ piece and themed as one piece.
 
 The honest pitch: niri's scrollable tiling and Hyprland's ecosystem are great.
 margo's bet is **one integrated, modern, Rust stack** — compositor + shell +
-login (`mlogind`) + portals — that looks polished and works out of the box.
+login (`mlogind` with the GTK4 `mgreet` greeter) + portals — that looks polished
+and works out of the box.
 
 ---
 
@@ -96,7 +97,7 @@ A GTK4 + relm4 desktop shell that subscribes to margo's IPC socket (`watch state
 its state live. Everything below is configured from a single YAML profile — no
 scripting glue.
 
-- **Top/bottom bars with 30-plus widgets.** Tags, layout switcher, active window, media player, clock, a rich **dashboard**, notifications, twilight, keybind cheatsheet, network console with traffic graphs, combined CPU / audio / power pills, Bluetooth, a Mullvad **VPN** pill (with a built-in DNS / Blocky section), a native **AI** assistant (multi-provider streaming chat with live model discovery), system-update count, clipboard history, screenshot/recording, wallpaper, SSH sessions, UFW, Podman, IP, notes, tray — arrange any of them in any slot.
+- **Top/bottom bars with 50-plus widgets.** Tags, layout switcher, active window, media player, clock, a rich **dashboard**, notifications, twilight, keybind cheatsheet, network console with traffic graphs, combined CPU / audio / power pills, Bluetooth, a Mullvad **VPN** pill (with a built-in DNS / Blocky section), a native **AI** assistant (multi-provider streaming chat with live model discovery), system-update count, clipboard history, screenshot/recording, wallpaper, SSH sessions, UFW, Podman, IP, notes, tray — arrange any of them in any slot.
 - **App launcher with ~15 providers.** Apps (fuzzy + frecency), calculator, window switcher, SSH, clipboard, emoji, symbols, web search, Arch packages, audio devices, Bluetooth, power actions, scripts, settings deep-links — with Tab provider cycling, pin/unpin, exact-match toggle, and quick-activate keys.
 - **Dashboard + quick-settings.** A hero clock, calendar + weather, an at-a-glance "overview intelligence" card, connectivity, audio, system status, media — plus a quick-action grid (airplane, nightlight, color picker, lock, logout, reboot, shutdown).
 - **Material You theming.** matugen extracts a palette from your wallpaper and recolours the whole shell **and** the compositor's window borders. Wallpaper rotation, dark/light, and a live theme picker are built in.
@@ -252,4 +253,4 @@ scripts. The whole shell recolours itself from your wallpaper.
 
 Built on [Smithay] (compositor toolkit). Patterns and inventory borrowed from [niri](https://github.com/YaLTeR/niri) (focus oracle, hotplug, screencast portal, transactional resize), [mango](https://github.com/mangowm/mango) (feature inventory, IPC surface, default keybinds), [dwl](https://codeberg.org/dwl/dwl) (the original dwm-on-wlroots), [anvil](https://github.com/Smithay/smithay/tree/master/anvil) (Smithay's reference compositor), and [Hyprland](https://hypr.land) (color-management protocol shape).
 
-Original portions of dwl, dwm, sway, tinywl, and wlroots are preserved under their respective licenses.
+Derived portions of mango, dwl, dwm, OkShell, niri, and noctalia are preserved under their respective licenses (see `licenses/`). margo is a pure-Smithay Rust compositor — it carries no wlroots, tinywl, or sway code.

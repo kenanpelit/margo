@@ -26,7 +26,7 @@
 
 ---
 
-**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a complete first-party stack for everyday use: a GTK4 desktop shell (`mshell`) with bar / menus / notifications / OSD / settings UI, a control CLI (`mctl`), a screen locker (`mlock`), a TUI login manager (`mlogind`), monitor profiles (`mlayout`), a screenshot helper (`mscreenshot`), and an automatic power-profile manager (`mpower`). The whole stack ships from one workspace and one release. The compositor exposes a scriptable Unix control socket (`get` / `watch` / `dispatch`) plus the standard `ext-workspace` + `foreign-toplevel-list` protocols, so third-party bars (sfwbar, ironbar) work too — but you don't need one.
+**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a complete first-party stack for everyday use: a GTK4 desktop shell (`mshell`) with bar / menus / notifications / OSD / settings UI, a control CLI (`mctl`), a screen locker (`mlock`), a login manager (`mlogind`) with a GTK4 greeter (`mgreet`), monitor profiles (`mlayout`), a screenshot helper (`mscreenshot`), an automatic power-profile manager (`mpower`), an on-screen keyboard (`mkeys`) and Mullvad VPN control (`mvpn`). The whole stack ships from one workspace and one release. The compositor exposes a scriptable Unix control socket (`get` / `watch` / `dispatch`) plus the standard `ext-workspace` + `foreign-toplevel-list` protocols, so third-party bars (sfwbar, ironbar) work too — but you don't need one.
 
 [Smithay]: https://github.com/Smithay/smithay
 [mango]: https://github.com/mangowm/mango
@@ -74,7 +74,7 @@ itself from your wallpaper with Material You.
 </tr>
 </table>
 
-<sub>Twenty of mshell's 30-plus widgets and menus — every one recolours itself from your wallpaper with Material You. More on the <a href="https://kenanpelit.github.io/margo/">documentation site</a>.</sub>
+<sub>Twenty of mshell's 50-plus widgets and menus — every one recolours itself from your wallpaper with Material You. More on the <a href="https://kenanpelit.github.io/margo/">documentation site</a>.</sub>
 
 ## Binaries
 
@@ -88,12 +88,17 @@ Each binary lives in its own top-level directory — the name links to it.
 | [`mshell`](mshell/) | GTK4 desktop shell — bar, menus, OSD, in-app Settings |
 | [`mshellctl`](mshellctl/) | Shell IPC CLI — menus, audio, wallpaper, lock |
 | [`mlock`](mlock/) | Screen locker — `ext-session-lock-v1` + PAM |
-| [`mlogind`](mlogind/) | TUI login / display manager — PAM, matugen-themed |
+| [`mlogind`](mlogind/) | Login / display manager — PAM, matugen-themed, TUI or GTK4 greeter |
+| [`mgreet`](mgreet/) | Optional GTK4 graphical greeter for `mlogind` — per-output layer-shell |
 | [`mpower`](mpower/) | Automatic power-profile manager — CPU + AC/battery aware |
 | [`mlayout`](mlayout/) | Named monitor profiles |
 | [`mscreenshot`](mscreenshot/) | Screen / region / window capture |
 | [`mplay`](mplay/) | mpv companion — window control, video wallpaper, media keys |
+| [`mkeys`](mkeys/) | On-screen keyboard — `zwp_virtual_keyboard`, layer-shell, en/tr |
+| [`mvpn`](mvpn/) | Mullvad VPN control — CLI + GTK4 layer-shell panel |
+| [`mcal`](mcal/) | Calendar — local + remote ICS, CLI + in-shell UI |
 | [`mpicker`](mpicker/) | Native colour picker — frozen screencap + zoom lens |
+| [`mdots`](mdots/) | Dotfile manager — Nix-aware TUI (vendored `dcli` fork) |
 | [`mwizard`](mwizard/) | First-launch setup wizard launcher |
 | [`mvisual`](mvisual/) | Renderer visual debugger |
 | [`margo-portal`](margo-portal/) | xdg-desktop-portal screencast / screenshot backend |
@@ -142,9 +147,10 @@ Ready-to-copy session glue (a Wayland-session `.desktop`, a uwsm wrapper, the `m
 
 - **`mlock`** uses `ext-session-lock-v1`, so the compositor cooperates: locked sessions stay locked across mlock crashes, and only `margo`'s `force_unlock` keybind can break out. Renders a blurred wallpaper, large clock, time-of-day greeting, avatar (`~/.face` or AccountsService), frosted password card with shake-on-fail and an attempt counter. Authenticates the session owner via PAM. Battery indicator and `F1/F2/F3` power keys with a two-press confirmation banner.
 
-## Login manager (`mlogind`)
+## Login manager (`mlogind` + `mgreet`)
 
-- **`mlogind`** is a first-party **TUI login / display manager**, forked from [lemurs](https://github.com/coastalwhite/lemurs) (MIT/Apache-2.0) and brought under the workspace. It runs as a systemd service on a bare VT — no compositor needed to log in — drawing a `ratatui` greeter (user field + session switcher + password), authenticating through PAM, and launching the chosen X11 / Wayland session (margo included). Themed from the margo **matugen** palette via `$`-variables in `/etc/mlogind/variables.toml`; `sudo mlogind sync-theme` repaints it from the active wallpaper so the greeter matches the desktop. Power controls (`F1` Shutdown / `F2` Reboot / `F3` Suspend) and opt-in fingerprint login (`pam_fprintd`). The package ships its config + PAM + systemd unit to `/etc` (inert until you `systemctl enable mlogind`); it never auto-replaces your current display manager.
+- **`mlogind`** is a first-party **login / display manager**, forked from [lemurs](https://github.com/coastalwhite/lemurs) (MIT/Apache-2.0) and brought under the workspace. It runs as a systemd service on a bare VT — no compositor needed to log in — presenting a greeter (user field + session switcher + password) that is GTK4 and multi-monitor (`mgreet`) by default or a built-in `ratatui` TUI, authenticating through PAM, and launching the chosen X11 / Wayland session (margo included). Themed from the margo **matugen** palette via `$`-variables in `/etc/mlogind/variables.toml`; `sudo mlogind sync-theme` repaints it from the active wallpaper so the greeter matches the desktop. Power controls (`F1` Shutdown / `F2` Reboot / `F3` Suspend) and opt-in fingerprint login (`pam_fprintd`). The package ships its config + PAM + systemd unit to `/etc` (inert until you `systemctl enable mlogind`); it never auto-replaces your current display manager.
+- **`mgreet`** is the default **GTK4 graphical greeter** for `mlogind` (`[display] host = "gui"` in `/etc/mlogind/config.toml`). It renders as a per-output `gtk4-layer-shell` surface under a throwaway root `margo` instance — so a login card lands on *every* connected monitor at its own native mode, which the older `cage`-based greeter couldn't do — carrying the same matugen theme, the wallpaper as a blurred backdrop, and the `~/.face` avatar so the login screen matches the desktop across all screens. Privileged PAM auth stays in `mlogind`; `mgreet` is the unprivileged front-end that hands captured credentials back over a one-shot socket. If `margo` / `mgreet` / `mctl` can't start it falls back to `cage`, then to the in-process `ratatui` TUI on the bare VT — so it can never lock you out. Preview it non-destructively (no PAM, power keys inert) with `mgreet --preview`.
 
 ## Shell (`mshell`)
 
@@ -223,7 +229,8 @@ path is recorded in `/usr/local/share/margo/install-manifest.txt`, so
 
 ```bash
 cargo build --release --workspace
-for bin in margo start-margo mctl mshell mshellctl mlock mlayout mscreenshot mvisual mlogind mpower mplay mwizard mpicker; do
+for bin in margo start-margo mctl mshell mshellctl mshellshare mlock mlogind mgreet \
+           mpower mlayout mscreenshot mplay mkeys mvpn mcal mpicker mdots mvisual mwizard; do
   sudo install -Dm755 target/release/$bin /usr/bin/$bin
 done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop

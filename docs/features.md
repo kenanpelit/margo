@@ -39,8 +39,8 @@ The GTK4 + relm4 shell hosting the bars, menus, settings, and dashboard.
   tiles, menu-shortcut grid (`mshellctl menu mdash`).
 - **Control Center** — quick-settings menu (sliders + toggle grid).
 - **Settings** — in-shell GTK settings for the whole stack (Appearance, Bar,
-  Widgets, Network, Bluetooth, Power, Sound, Animations, Keybinds, AI, Toasts,
-  and more).
+  Widgets, Network, Bluetooth, Power, Sound, Animations, Keybinds, Calendar, AI,
+  Toasts, and more).
 - **Notifications** — first-party center with history, inline reply, sounds,
   progress, and Do Not Disturb.
 - **Toasts** — corner cards announcing *state changes* (power, audio device,
@@ -66,13 +66,15 @@ Standalone tools that ship with margo. Full guide:
 | `mctl` | Compositor IPC client — control + introspect margo. |
 | `mshellctl` | Shell IPC client — toggle menus, query state. |
 | `mvpn` | Mullvad VPN control (CLI + GTK panel). |
+| `mcal` | Calendar — local + remote ICS (read-only), CLI + Settings → Calendar. |
 | `mplay` | mpv companion: window control + video-wallpaper engine. |
 | `mkeys` | On-screen keyboard. |
 | `mpicker` | Screen colour picker. |
 | `mscreenshot` | Screenshot CLI (region / window / output). |
 | `mpower` | Automatic power-profile manager (CPU + AC/battery aware). |
 | `mlock` | Lock screen (PAM + ext-session-lock-v1). |
-| `mlogind` | TUI login / display manager. |
+| `mlogind` | Login / display manager (PAM); GTK4 multi-monitor greeter by default. |
+| `mgreet` | GTK4 graphical login greeter for `mlogind` — per-output, matugen-themed. |
 | `mlayout` | Saved tiling-layout snapshots. |
 | `mdots` | Declarative Arch package + dotfiles manager (pacman/AUR/Flatpak/Nix, SOPS/age secrets). |
 | `start-margo` | Hang-aware session supervisor (systemd watchdog, restart backoff). |

@@ -12,7 +12,7 @@ cd margo
 ./install.sh --help
 ```
 
-It installs all twelve binaries (compositor + shell + helpers), the
+It installs every binary (compositor + shell + helpers), the
 `margo-portal` screencast/screenshot backend, the Wayland session entry,
 example configs and layouts, and shell completions.
 
@@ -65,7 +65,8 @@ removes exactly what was added.
 ```bash
 git clone https://github.com/kenanpelit/margo
 cd margo && cargo build --release --workspace
-for bin in margo start-margo mctl mshell mshellctl mlock mlayout mscreenshot mvisual mpower; do
+for bin in margo start-margo mctl mshell mshellctl mshellshare mlock mlogind mgreet \
+           mpower mlayout mscreenshot mplay mkeys mvpn mcal mpicker mdots mvisual mwizard; do
   sudo install -Dm755 target/release/$bin /usr/bin/$bin
 done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop
