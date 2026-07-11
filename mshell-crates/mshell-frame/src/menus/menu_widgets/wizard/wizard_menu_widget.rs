@@ -43,7 +43,7 @@ const THEMES: &[(Themes, &str)] = &[
     (Themes::CatppuccinMocha, "Catppuccin Mocha"),
     (Themes::GruvboxDarkMedium, "Gruvbox Dark"),
     (Themes::KanagawaWave, "Kanagawa Wave"),
-    (Themes::Cyberpunk, "Cyberpunk"),
+    (Themes::TokyoNight, "Tokyo Night"),
 ];
 
 const FONT_SCALES: &[(f64, &str)] = &[

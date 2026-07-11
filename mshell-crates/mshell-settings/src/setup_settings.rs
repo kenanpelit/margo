@@ -23,8 +23,8 @@ use relm4::gtk::prelude::{
 use relm4::gtk::{gio, glib};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
-/// Curated theme presets (the full 50+ catalogue lives on the Theme
-/// page). `Wallpaper` is the matugen-from-wallpaper Material You mode.
+/// Curated theme presets (the full 20-theme catalogue lives on the
+/// Theme page). `Wallpaper` is the matugen-from-wallpaper Material You mode.
 const SETUP_THEMES: &[(Themes, &str)] = &[
     (Themes::Wallpaper, "Wallpaper (Material You)"),
     (Themes::Default, "Default"),
@@ -33,7 +33,7 @@ const SETUP_THEMES: &[(Themes, &str)] = &[
     (Themes::CatppuccinMocha, "Catppuccin Mocha"),
     (Themes::GruvboxDarkMedium, "Gruvbox Dark"),
     (Themes::KanagawaWave, "Kanagawa Wave"),
-    (Themes::Cyberpunk, "Cyberpunk"),
+    (Themes::TokyoNight, "Tokyo Night"),
 ];
 
 /// Global UI font-scale presets (multiplies every `--font-*` token).

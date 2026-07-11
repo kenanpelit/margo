@@ -32,9 +32,11 @@
 
 use serde_yaml::{Mapping, Value};
 
+use crate::schema::themes::Themes;
+
 /// The current on-disk profile format version. A profile file with a lower (or
 /// absent → treated as 0) `config_version` is migrated up to this on load.
-pub const CONFIG_VERSION: u32 = 2;
+pub const CONFIG_VERSION: u32 = 3;
 
 /// The YAML key carrying the format version.
 const VERSION_KEY: &str = "config_version";
@@ -78,6 +80,9 @@ fn apply_step(from: u32, doc: &mut Mapping) {
     if from == 1 {
         migrate_v1_to_v2(doc);
     }
+    if from == 2 {
+        migrate_v2_to_v3(doc);
+    }
 }
 
 /// v1 → v2: the "Eventide" scheme was promoted to margo's house theme and
@@ -92,6 +97,31 @@ fn migrate_v1_to_v2(doc: &mut Mapping) {
     let dead = matches!(
         theme.get("theme"),
         Some(Value::String(s)) if s == "Eventide" || s == "KenpLight"
+    );
+    if dead {
+        theme.insert(
+            Value::String("theme".to_string()),
+            Value::String("Kenp".to_string()),
+        );
+    }
+}
+
+/// v2 → v3: the theme catalogue was culled to a curated set of 20 (every light
+/// scheme plus a number of dark variants were dropped). Rewrite any profile
+/// still selecting a variant that no longer exists onto the house theme `Kenp`
+/// — an unknown enum value would otherwise fail to deserialize and reset the
+/// *whole* profile to defaults on load.
+///
+/// Liveness is decided by [`Themes::from_cli`], which resolves against the
+/// current variant set, so this step needs no hardcoded name list and keeps
+/// working if the catalogue is culled again in a later version.
+fn migrate_v2_to_v3(doc: &mut Mapping) {
+    let Some(Value::Mapping(theme)) = doc.get_mut("theme") else {
+        return;
+    };
+    let dead = matches!(
+        theme.get("theme"),
+        Some(Value::String(s)) if Themes::from_cli(s).is_none()
     );
     if dead {
         theme.insert(
@@ -235,6 +265,42 @@ idle:
         let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
         let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
         assert_eq!(theme.as_str(), Some("TokyoNight"), "live theme preserved");
+    }
+
+    #[test]
+    fn v2_to_v3_rewrites_culled_theme_to_kenp() {
+        // A sampling of variants dropped in the v3 catalogue cull: a light
+        // scheme, a dropped dark variant, and a removed brand theme.
+        for dead in ["SolarizedLight", "Miasma", "Cyberpunk", "TokyoNightStorm"] {
+            let old = format!("config_version: 2\ntheme:\n  theme: {dead}\n  css_file: \"\"\n");
+            let m = migrate_yaml(&old).unwrap();
+            assert!(m.changed, "{dead} → Kenp is a content change");
+
+            let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
+            assert_eq!(read_version(&out), CONFIG_VERSION);
+            let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
+            assert_eq!(theme.as_str(), Some("Kenp"), "{dead} rewritten to Kenp");
+
+            // The rewritten profile deserializes into the live Config type.
+            serde_yaml::from_str::<crate::schema::config::Config>(&m.yaml)
+                .unwrap_or_else(|e| panic!("migrated {dead} profile no longer parses: {e}"));
+
+            // Idempotent: re-running leaves it on Kenp and reports no change.
+            let again = migrate_yaml(&m.yaml).unwrap();
+            assert!(!again.changed, "already-migrated {dead} profile is a no-op");
+        }
+    }
+
+    #[test]
+    fn v2_to_v3_leaves_surviving_themes_untouched() {
+        // Both a retained classic and a newly-imported community theme survive.
+        for live in ["TokyoNight", "Vesper", "AyuDark", "Default", "Wallpaper"] {
+            let old = format!("config_version: 2\ntheme:\n  theme: {live}\n");
+            let m = migrate_yaml(&old).unwrap();
+            let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
+            let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
+            assert_eq!(theme.as_str(), Some(live), "live theme {live} preserved");
+        }
     }
 
     #[test]
