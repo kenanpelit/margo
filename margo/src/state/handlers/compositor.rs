@@ -333,45 +333,51 @@ impl CompositorHandler for MargoState {
                 // keyboard_interactivity changes (noctalia/rofi
                 // launcher flips `Exclusive <-> None`).
                 let (new_layout_hash, new_kb_hash) = {
-                    use std::collections::hash_map::DefaultHasher;
-                    use std::hash::{Hash, Hasher};
-                    let mut layout_hasher = DefaultHasher::new();
-                    let mut kb_hasher = DefaultHasher::new();
                     let layer = {
                         let map = layer_map_for_output(&output);
                         map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
                             .cloned()
                     };
-                    if let Some(layer) = layer {
-                        use smithay::wayland::shell::wlr_layer::ExclusiveZone;
-                        layer.layer_surface().with_cached_state(|cur| {
-                            // Hash the raw enum values, not their Debug
-                            // strings: this runs on every layer commit (a
-                            // mshell bar re-flows several times a second),
-                            // and the old five `format!("{:?}", …)` calls
-                            // heap-allocated a String each, per commit.
-                            (cur.size.w, cur.size.h).hash(&mut layout_hasher);
-                            cur.anchor.hash(&mut layout_hasher); // Anchor: Hash (bitflags)
-                            // ExclusiveZone isn't Hash; map to (tag, value).
-                            let ez: (u8, u32) = match cur.exclusive_zone {
-                                ExclusiveZone::Exclusive(z) => (0, z),
-                                ExclusiveZone::Neutral => (1, 0),
-                                ExclusiveZone::DontCare => (2, 0),
-                            };
-                            ez.hash(&mut layout_hasher);
-                            cur.exclusive_edge.hash(&mut layout_hasher); // Option<Anchor>: Hash
-                            (
-                                cur.margin.top,
-                                cur.margin.bottom,
-                                cur.margin.left,
-                                cur.margin.right,
-                            )
-                                .hash(&mut layout_hasher);
-                            (cur.layer as u32).hash(&mut layout_hasher);
-                            (cur.keyboard_interactivity as u32).hash(&mut kb_hasher);
-                        });
+                    match layer {
+                        Some(layer) => {
+                            use smithay::wayland::shell::wlr_layer::ExclusiveZone;
+                            layer.layer_surface().with_cached_state(|cur| {
+                                // ExclusiveZone / exclusive_edge aren't primitive;
+                                // normalise to the (tag, value) shape the pure
+                                // hasher takes, so the raw values are hashed (not
+                                // their Debug strings — the old `format!("{:?}")`
+                                // path heap-allocated a String per layer commit,
+                                // and a mshell bar re-flows several times a second).
+                                let ez: (u8, u32) = match cur.exclusive_zone {
+                                    ExclusiveZone::Exclusive(z) => (0, z),
+                                    ExclusiveZone::Neutral => (1, 0),
+                                    ExclusiveZone::DontCare => (2, 0),
+                                };
+                                let edge: (u8, u32) = match cur.exclusive_edge {
+                                    Some(a) => (1, a.bits()),
+                                    None => (0, 0),
+                                };
+                                layer_commit_hashes(
+                                    (cur.size.w, cur.size.h),
+                                    cur.anchor.bits(),
+                                    ez,
+                                    edge,
+                                    (
+                                        cur.margin.top,
+                                        cur.margin.bottom,
+                                        cur.margin.left,
+                                        cur.margin.right,
+                                    ),
+                                    cur.layer as u32,
+                                    cur.keyboard_interactivity as u32,
+                                )
+                            })
+                        }
+                        // No layer surface for this root (shouldn't happen on a
+                        // layer commit): fall back to the empty-hasher pair, the
+                        // same constants the previous inline code produced.
+                        None => layer_commit_hashes_empty(),
                     }
-                    (layout_hasher.finish(), kb_hasher.finish())
                 };
 
                 // Store the PURE layout hash (not a layout^kb combination).
@@ -512,4 +518,77 @@ pub fn output_for_root(state: &MargoState, root: &WlSurface) -> Option<smithay::
         }
     }
     None
+}
+
+/// Hash a layer surface's committed state into a `(layout, keyboard)` pair.
+///
+/// The two hashers are deliberately separate: `keyboard_interactivity` feeds
+/// only the second, so an `Exclusive`↔`None` toggle changes the kb hash but
+/// leaves the layout hash untouched. That's what stops a bar/panel flipping
+/// its keyboard grab from forcing a full re-arrange + work-area recompute
+/// (the layout hash drives arrange; the kb hash drives focus refresh).
+///
+/// Primitive-typed on purpose — the caller normalises smithay's `Anchor` /
+/// `ExclusiveZone` / `Layer` enums to their raw values, so this stays pure
+/// and unit-testable without a live compositor.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn layer_commit_hashes(
+    size: (i32, i32),
+    anchor_bits: u32,
+    exclusive_zone: (u8, u32),
+    exclusive_edge: (u8, u32),
+    margins: (i32, i32, i32, i32),
+    layer: u32,
+    keyboard_interactivity: u32,
+) -> (u64, u64) {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut layout = DefaultHasher::new();
+    let mut kb = DefaultHasher::new();
+    size.hash(&mut layout);
+    anchor_bits.hash(&mut layout);
+    exclusive_zone.hash(&mut layout);
+    exclusive_edge.hash(&mut layout);
+    margins.hash(&mut layout);
+    layer.hash(&mut layout);
+    keyboard_interactivity.hash(&mut kb);
+    (layout.finish(), kb.finish())
+}
+
+/// The `(layout, keyboard)` pair for a layer commit with no resolvable layer
+/// surface — two empty-hasher finishes, matching the previous inline code.
+fn layer_commit_hashes_empty() -> (u64, u64) {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hasher;
+    (DefaultHasher::new().finish(), DefaultHasher::new().finish())
+}
+
+#[cfg(test)]
+mod layer_hash_tests {
+    use super::layer_commit_hashes;
+
+    /// A baseline layer state (an anchored top bar, keyboard None).
+    fn base() -> (u64, u64) {
+        layer_commit_hashes((1920, 40), 0b0001, (0, 40), (0, 0), (0, 0, 0, 0), 2, 0)
+    }
+
+    #[test]
+    fn keyboard_flip_changes_only_the_kb_hash() {
+        let (layout0, kb0) = base();
+        // Same layout, keyboard_interactivity None(0) → Exclusive(1).
+        let (layout1, kb1) =
+            layer_commit_hashes((1920, 40), 0b0001, (0, 40), (0, 0), (0, 0, 0, 0), 2, 1);
+        assert_eq!(layout0, layout1, "layout hash must not move on a kb flip");
+        assert_ne!(kb0, kb1, "kb hash must move on a kb flip");
+    }
+
+    #[test]
+    fn a_layout_field_changes_only_the_layout_hash() {
+        let (layout0, kb0) = base();
+        // Same keyboard, exclusive zone 40 → 48 (a bar height change).
+        let (layout1, kb1) =
+            layer_commit_hashes((1920, 40), 0b0001, (0, 48), (0, 0), (0, 0, 0, 0), 2, 0);
+        assert_ne!(layout0, layout1, "layout hash must move on a layout change");
+        assert_eq!(kb0, kb1, "kb hash must not move on a layout change");
+    }
 }
