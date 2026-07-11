@@ -101,6 +101,15 @@ doc_lazy_continuation = "allow"
 # clearer at the use sites (pct math) than `n.checked_div(d)`.
 manual_checked_ops = "allow"
 
+# Rustc lints. This crate is ~250 unsafe sites deep into DRM / PipeWire /
+# PAM / clipboard FFI, so make the edition-2024 default a hard gate: every
+# unsafe op must sit in an explicit `unsafe {}` even inside an `unsafe fn`,
+# so the audited boundary is always visible at the call site rather than
+# implied by the signature. (CI's `-D warnings` already enforced this; the
+# `deny` locks it in for local `cargo build` too.)
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
 [workspace.dependencies]
 # Core (shared by every crate)
 anyhow = "1.0"
