@@ -155,6 +155,28 @@ pub fn read() -> Option<StateJson> {
     serde_json::from_str::<StateJson>(line.trim()).ok()
 }
 
+/// Send a one-shot `dispatch …` frame over margo's IPC socket and read
+/// (then discard) the `{"ok"/"error"}` reply. Same newline protocol as
+/// [`read`], bounded by [`READ_TIMEOUT`] in both directions. Lets the
+/// shell issue compositor actions over the socket it already speaks,
+/// instead of forking an `mctl` process per dispatch. `req` is the frame
+/// without its trailing newline (e.g. `"dispatch view 4"`).
+pub fn send_dispatch(req: &str) -> std::io::Result<()> {
+    use std::io::{BufRead, BufReader, Write};
+    let mut sock = std::os::unix::net::UnixStream::connect(socket_path())?;
+    sock.set_read_timeout(Some(READ_TIMEOUT))?;
+    sock.set_write_timeout(Some(READ_TIMEOUT))?;
+    sock.write_all(req.as_bytes())?;
+    sock.write_all(b"\n")?;
+    // Drain the single-line reply so the compositor's writer doesn't
+    // block; the outcome is best-effort (the old `mctl` path only logged
+    // a non-zero exit), so a read timeout here is not an error.
+    let mut reader = BufReader::new(sock);
+    let mut line = String::new();
+    let _ = reader.read_line(&mut line);
+    Ok(())
+}
+
 /// Margo encodes tag IDs as a bitmask — convert the lowest-set bit
 /// to a 1-indexed tag number (1..=9). Returns 0 when the mask has
 /// no bits set, mirroring the "no active workspace" sentinel.

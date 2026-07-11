@@ -561,20 +561,32 @@ impl MargoService {
             return Ok(());
         }
 
-        // Spawn `mctl dispatch …`. Non-blocking, error logged.
-        let mut command = tokio::process::Command::new("mctl");
-        command.arg("dispatch");
-        for a in &args {
-            command.arg(a);
-        }
-        match command.status().await {
-            Ok(status) if status.success() => Ok(()),
-            Ok(status) => {
-                tracing::warn!(?status, args = ?args, "mctl dispatch returned non-zero");
+        // Write the `dispatch …` frame straight to margo's IPC socket
+        // (the same one `state_json::read` / the `watch state`
+        // subscription use) instead of forking an `mctl` process per
+        // dispatch from this large-RSS, many-thread shell. The blocking
+        // round-trip runs on the blocking pool so it never stalls an
+        // async worker; errors are logged, not surfaced (matches the old
+        // fire-and-forget behaviour).
+        let req = {
+            let mut s = String::from("dispatch");
+            for a in &args {
+                if a.is_empty() {
+                    continue;
+                }
+                s.push(' ');
+                s.push_str(a);
+            }
+            s
+        };
+        match tokio::task::spawn_blocking(move || state_json::send_dispatch(&req)).await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, args = ?args, "dispatch socket write failed");
                 Ok(())
             }
             Err(e) => {
-                tracing::warn!(error = %e, args = ?args, "mctl dispatch spawn failed");
+                tracing::warn!(error = %e, args = ?args, "dispatch task join failed");
                 Ok(())
             }
         }
@@ -592,6 +604,26 @@ impl MargoService {
     /// output.
     pub async fn active_workspace(&self) -> Option<Arc<Workspace>> {
         let name = self.active_monitor_name().await?;
+        // Fast path: the focused monitor's active workspace id is mirrored
+        // in the store (`Monitor.active_workspace`) — avoid the blocking
+        // socket read + full-state parse the fallback does.
+        if let Some(ws_id) = self
+            .monitors
+            .get()
+            .iter()
+            .find(|m| m.name.get() == name)
+            .map(|m| m.active_workspace.get().id)
+        {
+            if let Some(w) = self
+                .workspaces
+                .get()
+                .into_iter()
+                .find(|w| w.id.get() == ws_id && w.monitor.get() == name)
+            {
+                return Some(w);
+            }
+        }
+        // Cold fallback: read the socket synchronously.
         let ws_id = {
             let state = state_json::read()?;
             let out = state.outputs.iter().find(|o| o.name == name)?;
@@ -656,6 +688,17 @@ impl MargoService {
 
     /// Snapshot the focused client.
     pub async fn active_window(&self) -> Option<Arc<Client>> {
+        // Fast path: the focused client is mirrored into the store by the
+        // `watch state` subscription (`sync.rs` sets `focused_client` with
+        // a change-guard) — a zero-I/O read, like `active_monitor_name`.
+        // The old unconditional `state_json::read()` did a blocking socket
+        // round-trip + full-state parse on every call; dock items poll this
+        // per item on each refresh.
+        if let Some(c) = self.focused_client.get() {
+            return Some(c);
+        }
+        // Cold fallback: before the first state push has populated the
+        // store, read the socket synchronously (same as before).
         let address = {
             let state = state_json::read()?;
             let c = state.clients.iter().find(|c| c.focused)?;

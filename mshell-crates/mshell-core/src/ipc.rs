@@ -429,23 +429,37 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         // toasts "Audio input" on the default-device change.
                     }
                 }
+                // MPRIS control on its own main-thread task, NOT inline:
+                // a wedged player (a SIGSTOP'd app not answering D-Bus, up
+                // to the ~25 s zbus timeout) would otherwise block this
+                // serial loop and freeze every command queued behind it —
+                // volume keys, menu toggles. `spawn_future_local` keeps the
+                // same GTK-main thread, so pick_player / notify_media's
+                // reactive reads stay sound; only the *ordering* dependency
+                // is dropped, which is fine for fire-and-forget media keys.
                 IPCCommand::MediaToggle(target) => {
-                    if let Some(p) = pick_player(&target) {
-                        let _ = p.play_pause().await;
-                        notify_media(p);
-                    }
+                    glib::spawn_future_local(async move {
+                        if let Some(p) = pick_player(&target) {
+                            let _ = p.play_pause().await;
+                            notify_media(p);
+                        }
+                    });
                 }
                 IPCCommand::MediaNext(target) => {
-                    if let Some(p) = pick_player(&target) {
-                        let _ = p.next().await;
-                        notify_media(p);
-                    }
+                    glib::spawn_future_local(async move {
+                        if let Some(p) = pick_player(&target) {
+                            let _ = p.next().await;
+                            notify_media(p);
+                        }
+                    });
                 }
                 IPCCommand::MediaPrev(target) => {
-                    if let Some(p) = pick_player(&target) {
-                        let _ = p.previous().await;
-                        notify_media(p);
-                    }
+                    glib::spawn_future_local(async move {
+                        if let Some(p) = pick_player(&target) {
+                            let _ = p.previous().await;
+                            notify_media(p);
+                        }
+                    });
                 }
                 IPCCommand::BrightnessUp => {
                     if let Some(brightness_service) = brightness_service()
