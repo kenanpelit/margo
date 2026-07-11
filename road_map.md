@@ -93,7 +93,7 @@ The floor everything else stands on. Behaviour-stable for the lifetime of the pr
 - **Damage tracking** — `OutputDamageTracker` per-frame; custom render elements bump `CommitCounter` only on geometry / shader-uniform change.
 - **Presentation-time accuracy** (`bcb6fb4`) — feedback signalled at VBlank, not submit.
 
-**Worth revisiting.** Frame clock is single-output today; multi-monitor mixed-refresh (60Hz + 144Hz) uses a global tick. Per-output `next_frame_at` scheduling would let each monitor pace independently. Spring physics carries per-type state — a future "spring everything" pass would unify the animation-tick code.
+**Worth revisiting.** Per-output frame scheduling now exists behind the opt-in `per_output_frame_clock` knob (`state/frame_clock_sched.rs`): each output arms its own present timer at its own refresh, so a 60 Hz + 144 Hz mix paces independently instead of on one global tick. The remaining gap is *repaint scope*, not scheduling: `request_repaint` still marks **every** output's clock dirty (`state.rs`, `mark_all_clocks_dirty`) because it doesn't know which output a change touched. The next step is an output-scoped `request_repaint(RepaintScope)` so pointer motion, a single window commit, or a layer commit only wakes the affected output — which in turn lets the animation tick return a damage set (moved clients + output mask) instead of a bare `bool`, and lets blur redraw a damaged region instead of resetting all buffers. Spring physics still carries per-type state; a future "spring everything" pass would unify the animation-tick code.
 
 ---
 
