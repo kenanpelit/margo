@@ -374,10 +374,12 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                             }
                         }
                     }
+                    // Never log WHICH key: with `log_to_file` on, keycodes
+                    // typed here are the unlock password. Focus target at
+                    // trace is enough to debug "lock screen gets no keys".
                     let focus = state.seat.get_keyboard().and_then(|kb| kb.current_focus());
-                    tracing::info!(
-                        "lock: forwarding key keycode={} state={:?} focus={}",
-                        keycode.raw(),
+                    tracing::trace!(
+                        "lock: forwarding key state={:?} focus={}",
                         key_state,
                         match &focus {
                             Some(crate::state::FocusTarget::SessionLock(_)) => "SessionLock",
