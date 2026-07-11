@@ -169,6 +169,9 @@ fn configured_list_max_height() -> i32 {
 /// `connect_setup` and re-read in `connect_bind` to repaint for the
 /// newly-bound [`ClipRow`].
 struct RowWidgets {
+    /// Root content surface. Its alternating background class is updated on
+    /// every bind because GtkListView recycles row widgets as the user scrolls.
+    content: gtk::Box,
     title: gtk::Label,
     type_icon: gtk::Image,
     /// Refined-category badge (URL / CODE / MAIL / COLOR). Hidden for the
@@ -677,6 +680,7 @@ impl Component for ClipboardModel {
             list_item.set_child(Some(&overlay));
 
             let rw = RowWidgets {
+                content,
                 title,
                 type_icon,
                 badge_box,
@@ -706,6 +710,18 @@ impl Component for ClipboardModel {
                 return;
             };
             let row = bo.borrow::<EntryView>();
+
+            // Give adjacent clipboard entries distinct resting surfaces. Use
+            // the logical filtered-list position rather than CSS `nth-child`:
+            // ListView virtualizes and recycles its row widgets, so DOM-like
+            // child order is not a stable proxy for the entry's actual index.
+            rw.content.remove_css_class("clipboard-item-even");
+            rw.content.remove_css_class("clipboard-item-odd");
+            if list_item.position().is_multiple_of(2) {
+                rw.content.add_css_class("clipboard-item-even");
+            } else {
+                rw.content.add_css_class("clipboard-item-odd");
+            }
 
             rw.title.set_label(&relative_time(row.timestamp));
             rw.type_icon
@@ -751,9 +767,12 @@ impl Component for ClipboardModel {
         factory.connect_unbind(move |_, list_item| {
             let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
             if let Some(rw) = unsafe { list_item.data::<RowWidgets>(ROW_DATA_KEY) } {
+                let rw = unsafe { rw.as_ref() };
                 // Drop the preview (and its texture) so a recycled slot
                 // doesn't pin off-screen image memory.
-                clear_box(&unsafe { rw.as_ref() }.preview_box);
+                clear_box(&rw.preview_box);
+                rw.content.remove_css_class("clipboard-item-even");
+                rw.content.remove_css_class("clipboard-item-odd");
             }
         });
 

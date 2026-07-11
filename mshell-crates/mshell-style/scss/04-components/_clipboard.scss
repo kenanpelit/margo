@@ -171,7 +171,22 @@
   font-size: var(--font-xs);
   font-family: var(--font-family-monospace);
   color: var(--on-surface);
-  @include state-layer();
+}
+
+// Alternating tonal surfaces make the boundary between consecutive copies
+// immediately visible, including when two neighbouring entries contain
+// similarly-shaped multi-line text. The classes follow the logical filtered
+// list position (assigned on factory bind), so virtualization cannot scramble
+// the pattern. Each variant supplies its own base to the canonical state-layer
+// mixin; hover/press therefore tint the resting colour instead of replacing it.
+.clipboard-item.clipboard-item-even {
+  background-color: var(--surface-container);
+  @include state-layer(var(--surface-container));
+}
+
+.clipboard-item.clipboard-item-odd {
+  background-color: var(--surface-container-low);
+  @include state-layer(var(--surface-container-low));
 }
 
 // Compact density (Settings → clipboard.density): tighter padding so
