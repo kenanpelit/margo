@@ -66,12 +66,14 @@ pub(super) fn output_refresh_duration(output: &Output) -> std::time::Duration {
         .unwrap_or_else(|| std::time::Duration::from_secs_f64(1.0 / 60.0))
 }
 
-/// Monotonic clock as a `Duration` since process start. Used as the
-/// `now` argument for `OutputPresentationFeedback::presented` so
-/// every cast/screencopy/feedback path agrees on the same epoch.
+/// Real CLOCK_MONOTONIC time as a `Duration`. Used as the `now`
+/// argument for `wp_presentation_feedback.presented` and wlr-screencopy
+/// `ready`. These timestamps MUST be in CLOCK_MONOTONIC — the same clock
+/// margo advertises (`PresentationState::new`) and that clients read via
+/// `clock_gettime` — or A/V-sync consumers (mpv --vo=gpu-next) see the
+/// presentation time offset by the machine's uptime-at-launch. The old
+/// process-start `Instant` epoch broke that; delegate to the shared
+/// clock helper pw_utils already uses.
 pub(super) fn monotonic_now() -> std::time::Duration {
-    use std::sync::OnceLock;
-    use std::time::Instant;
-    static START: OnceLock<Instant> = OnceLock::new();
-    START.get_or_init(Instant::now).elapsed()
+    crate::utils::get_monotonic_time()
 }

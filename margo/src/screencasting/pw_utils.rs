@@ -841,7 +841,7 @@ impl PipeWire {
                 }
             })
             .register()
-            .unwrap();
+            .context("error registering pw stream listener")?;
 
         trace!(
             %stream_id,
@@ -996,23 +996,27 @@ impl Cast {
         let now = get_monotonic_time();
         let duration = target_time.saturating_sub(now);
         let timer = Timer::from_duration(duration);
-        let token = self
-            .event_loop
-            .insert_source(timer, move |_, _, state| {
-                // Guard against output disconnecting before the
-                // timer has a chance to run. Margo: check the
-                // output is still in `monitors`, then trigger a
-                // global repaint (margo's redraw scheduler is
-                // global today; per-output gating is a follow-up).
-                let still_alive = state.monitors.iter().any(|m| m.output == output);
-                if still_alive {
-                    state.request_repaint();
-                }
+        let token = self.event_loop.insert_source(timer, move |_, _, state| {
+            // Guard against output disconnecting before the
+            // timer has a chance to run. Margo: check the
+            // output is still in `monitors`, then trigger a
+            // global repaint (margo's redraw scheduler is
+            // global today; per-output gating is a follow-up).
+            let still_alive = state.monitors.iter().any(|m| m.output == output);
+            if still_alive {
+                state.request_repaint();
+            }
 
-                TimeoutAction::Drop
-            })
-            .unwrap();
-        self.scheduled_redraw = Some(token);
+            TimeoutAction::Drop
+        });
+        // Degrade instead of aborting the whole compositor: a failed
+        // timer insert (fd exhaustion under many concurrent casts, loop
+        // teardown) just means this cast won't self-schedule its next
+        // redraw — a dropped frame, not a dead session.
+        match token {
+            Ok(token) => self.scheduled_redraw = Some(token),
+            Err(err) => warn!("cast schedule_redraw insert_source failed: {err:?}"),
+        }
     }
 
     fn remove_scheduled_redraw(&mut self) {
@@ -1128,21 +1132,26 @@ impl Cast {
                 trace!("scheduling buffer to queue");
                 let stream_id = self.stream_id;
                 let source = Generic::new(sync_fd, Interest::READ, Mode::OneShot);
-                self.event_loop
-                    .insert_source(source, move |_, _, state| {
-                        // Margo: `casting` lives directly on
-                        // MargoState (no Niri sub-struct).
-                        if let Some(casting) = state.screencasting.as_mut() {
-                            for cast in &mut casting.casts {
-                                if cast.stream_id == stream_id {
-                                    cast.queue_completed_buffers();
-                                }
+                let res = self.event_loop.insert_source(source, move |_, _, state| {
+                    // Margo: `casting` lives directly on
+                    // MargoState (no Niri sub-struct).
+                    if let Some(casting) = state.screencasting.as_mut() {
+                        for cast in &mut casting.casts {
+                            if cast.stream_id == stream_id {
+                                cast.queue_completed_buffers();
                             }
                         }
+                    }
 
-                        Ok(PostAction::Remove)
-                    })
-                    .unwrap();
+                    Ok(PostAction::Remove)
+                });
+                // Don't abort the session on a failed fence-source insert:
+                // fall back to queuing what's ready now (the buffer is
+                // already pushed to `rendering_buffers`).
+                if let Err(err) = res {
+                    warn!("cast queue_after_sync insert_source failed: {err:?}; queueing now");
+                    self.queue_completed_buffers();
+                }
             }
         }
     }
@@ -1255,7 +1264,17 @@ impl Cast {
             // Unfortunately, I think the OBS PipeWire code needs to be updated first to cleanly
             // allow for that codepath.
             let fd = (*(*spa_buffer).datas).fd;
-            let dmabuf = inner_.dmabufs[&fd].clone();
+            // The stream can hand back a buffer whose fd was never
+            // registered in `dmabufs` (add_buffer bailed on a plane
+            // mismatch / GBM failure and the async stop_cast hasn't
+            // landed yet). Indexing panicked and ended the whole session;
+            // return the buffer and skip the frame instead.
+            let Some(dmabuf) = inner_.dmabufs.get(&fd).cloned() else {
+                warn!("cast buffer fd not in dmabufs map, skipping frame");
+                drop(inner);
+                return_unused_buffer(&self.stream, pw_buffer);
+                return false;
+            };
 
             let res = render_to_dmabuf(renderer, damage_tracker, dmabuf, elements, states);
             drop(inner);
@@ -1305,7 +1324,11 @@ impl Cast {
             }
 
             let fd = (*(*spa_buffer).datas).fd;
-            let dmabuf = self.inner.borrow().dmabufs[&fd].clone();
+            let Some(dmabuf) = self.inner.borrow().dmabufs.get(&fd).cloned() else {
+                warn!("cast clear buffer fd not in dmabufs map, skipping frame");
+                return_unused_buffer(&self.stream, pw_buffer);
+                return false;
+            };
 
             match clear_dmabuf(renderer, dmabuf) {
                 Ok(sync_point) => {

@@ -136,6 +136,14 @@ impl ImageCopyCaptureHandler for MargoState {
         // Hold the session so it doesn't drop (drop sends
         // `stopped` to the client). Sessions live until the
         // client tears them down or the source becomes invalid.
+        //
+        // Defensively reap any dead sessions first: `session_destroyed`
+        // is the primary prune point, but retaining only live sessions
+        // here bounds growth even if a session goes invalid without
+        // firing that hook.
+        use smithay::utils::IsAlive;
+        self.image_copy_capture_sessions
+            .retain(|s| s.as_ref().alive());
         self.image_copy_capture_sessions.push(session);
     }
 
@@ -199,5 +207,14 @@ impl ImageCopyCaptureHandler for MargoState {
         // happen unless someone wires a custom source we don't
         // recognise.
         frame.fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+    }
+
+    fn session_destroyed(&mut self, session: SessionRef) {
+        // Release the held Session (and its protocol resources) when the
+        // client tears it down. Without this the sessions Vec is
+        // push-only — every Window/Screen pick in a browser share dialog
+        // leaked a Session handle for the life of the compositor.
+        self.image_copy_capture_sessions
+            .retain(|s| s.as_ref() != session);
     }
 }

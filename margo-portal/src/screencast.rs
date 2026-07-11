@@ -18,7 +18,7 @@
 use crate::mutter::{MutterScreenCastProxy, MutterSessionProxy, MutterStreamProxy};
 use crate::picker::{self, Source};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
@@ -44,25 +44,35 @@ struct SessionState {
     requested_types: u32,
     /// Cursor mode the app asked for.
     cursor_mode: u32,
+    /// Path of the live Mutter-shim session, set once `start` captures.
+    /// `PortalSession::close` uses it to `Stop` the compositor-side cast
+    /// so ending a share doesn't leak the Cast + PipeWire stream.
+    mutter_session_path: Option<OwnedObjectPath>,
 }
+
+type Sessions = Arc<Mutex<HashMap<String, SessionState>>>;
 
 pub struct ScreenCastBackend {
     /// Session-bus connection (used to reach margo's Mutter shim).
     conn: Connection,
-    sessions: Mutex<HashMap<String, SessionState>>,
+    sessions: Sessions,
 }
 
 impl ScreenCastBackend {
     pub fn new(conn: Connection) -> Self {
         Self {
             conn,
-            sessions: Mutex::new(HashMap::new()),
+            sessions: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
     /// Drive margo's Mutter shim to start capturing `source`, returning
     /// the PipeWire node id once the stream is live.
-    async fn capture(&self, source: &Source, cursor_mode: u32) -> anyhow::Result<u32> {
+    async fn capture(
+        &self,
+        source: &Source,
+        cursor_mode: u32,
+    ) -> anyhow::Result<(u32, OwnedObjectPath)> {
         let sc = MutterScreenCastProxy::new(&self.conn).await?;
         let mutter_session_path = sc.create_session(HashMap::new()).await?;
         let session = MutterSessionProxy::builder(&self.conn)
@@ -106,7 +116,7 @@ impl ScreenCastBackend {
             None => anyhow::bail!("Mutter stream closed before PipeWireStreamAdded"),
         };
         info!(node_id, ?source, "margo-portal: capture started");
-        Ok(node_id)
+        Ok((node_id, mutter_session_path))
     }
 }
 
@@ -147,6 +157,8 @@ impl ScreenCastBackend {
         // can Close it.
         let session_obj = PortalSession {
             handle: key.clone(),
+            conn: self.conn.clone(),
+            sessions: self.sessions.clone(),
         };
         if let Err(e) = server.at(session_handle.as_ref(), session_obj).await {
             warn!(error = %e, "create_session: failed to export Session object");
@@ -213,13 +225,17 @@ impl ScreenCastBackend {
             }
         };
 
-        let node_id = match self.capture(&source, cursor).await {
+        let (node_id, mutter_path) = match self.capture(&source, cursor).await {
             Ok(n) => n,
             Err(e) => {
                 warn!(error = %e, "start: capture failed");
                 return (RESPONSE_ERROR, HashMap::new());
             }
         };
+        // Remember the live Mutter session so Close can stop it.
+        if let Some(s) = self.sessions.lock().unwrap().get_mut(&key) {
+            s.mutter_session_path = Some(mutter_path);
+        }
 
         // results = { streams: a(ua{sv}) } — one (node_id, props).
         let mut stream_props: HashMap<String, OwnedValue> = HashMap::new();
@@ -244,11 +260,36 @@ impl ScreenCastBackend {
 /// close the session.
 struct PortalSession {
     handle: String,
+    conn: Connection,
+    sessions: Sessions,
 }
 
 #[interface(name = "org.freedesktop.impl.portal.Session")]
 impl PortalSession {
     async fn close(&self) {
+        // Drop our bookkeeping and, if a capture was live, Stop the
+        // Mutter-shim session so the compositor-side Cast + PipeWire
+        // stream are released. Without this every start/stop share cycle
+        // leaked a live session inside margo until compositor restart.
+        let mutter_path = self
+            .sessions
+            .lock()
+            .unwrap()
+            .remove(&self.handle)
+            .and_then(|s| s.mutter_session_path);
+        if let Some(path) = mutter_path {
+            match MutterSessionProxy::builder(&self.conn).path(path) {
+                Ok(builder) => match builder.build().await {
+                    Ok(proxy) => {
+                        if let Err(e) = proxy.stop().await {
+                            warn!(error = %e, "close: Mutter session stop failed");
+                        }
+                    }
+                    Err(e) => warn!(error = %e, "close: Mutter session proxy build failed"),
+                },
+                Err(e) => warn!(error = %e, "close: bad Mutter session path"),
+            }
+        }
         debug!(session = %self.handle, "session closed");
     }
 

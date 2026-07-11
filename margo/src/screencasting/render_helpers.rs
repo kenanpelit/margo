@@ -165,15 +165,31 @@ fn render_elements(
     frame
         .clear(Color32F::TRANSPARENT, &[output_rect])
         .context("error clearing")?;
+    // Full-redraw each element into the target. The old loop drew
+    // NOTHING (it only touched the vars to silence warnings), so every
+    // Metadata-cursor cast shipped a fully transparent bitmap — an
+    // invisible pointer in OBS / libwebrtc. Elements arrive already
+    // relocated to the buffer origin (the caller passes
+    // `cursor_data.relocated`), so we draw each at its own geometry with
+    // full damage; opaque regions empty (cursor has alpha), no effects
+    // cache. Mirrors smithay's own damage-tracker draw call.
     for element in elements {
-        let _ = element;
-        // niri's loop calls element.draw + tracks damage; for the
-        // cast path we always full-redraw so we can skip damage
-        // tracking. Use RelocateRenderElement to ensure elements
-        // sit at the buffer's origin instead of their world
-        // positions.
-        let location = scale; // placeholder use to silence unused var warning
-        let _ = location;
+        let element_geometry = element.geometry(scale);
+        let Some(mut element_damage) = output_rect.intersection(element_geometry) else {
+            continue;
+        };
+        element_damage.loc -= element_geometry.loc;
+        let element_src = element.src();
+        element
+            .draw(
+                &mut frame,
+                element_src,
+                element_geometry,
+                &[element_damage],
+                &[],
+                None,
+            )
+            .context("error drawing element")?;
     }
     let sync = frame.finish().context("error finishing frame")?;
     Ok(sync)

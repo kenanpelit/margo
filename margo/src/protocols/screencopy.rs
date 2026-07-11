@@ -602,10 +602,9 @@ impl Screencopy {
 /// Module-private monotonic clock for `submit_after_sync` timestamps.
 /// Only needed when that fn is actually wired up (dmabuf path) — until
 /// then the caller in udev.rs uses its own monotonic_now() directly.
+/// CLOCK_MONOTONIC (not a process-start epoch) so screencopy `ready`
+/// timestamps match the clock clients read.
 #[allow(dead_code)]
 fn monotonic_now() -> Duration {
-    use std::sync::OnceLock;
-    use std::time::Instant;
-    static START: OnceLock<Instant> = OnceLock::new();
-    START.get_or_init(Instant::now).elapsed()
+    crate::utils::get_monotonic_time()
 }
