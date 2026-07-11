@@ -117,7 +117,12 @@ fn validate_text(
         let raw_val = &raw[eq_pos + 1..];
         let key = raw_key.trim();
         let val_trim_offset = raw_val.len() - raw_val.trim_start().len();
-        let val = strip_inline_comment(raw_val).trim().to_string();
+        // Reuse the parser's stripper so the validator sees the exact
+        // same value the parser will — critically, its hex-colour guard
+        // keeps `focuscolor = #c66b25` from being mistaken for a comment.
+        let val = crate::parser::strip_inline_comment(raw_val)
+            .trim()
+            .to_string();
 
         // include/source path resolution check.
         if key == "include" || key == "source" {
@@ -363,19 +368,6 @@ fn check_csv_commas(
         }
         i += 1;
     }
-}
-
-fn strip_inline_comment(s: &str) -> &str {
-    // Match parser.rs strip_inline_comment: only strip ` #` at a
-    // whitespace boundary so hex colours and regex anchors survive.
-    let mut last_was_ws = true;
-    for (i, c) in s.char_indices() {
-        if last_was_ws && c == '#' {
-            return &s[..i];
-        }
-        last_was_ws = c.is_whitespace();
-    }
-    s
 }
 
 fn resolve_include_path(include: &str, relative_to: &Path) -> PathBuf {

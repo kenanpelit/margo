@@ -133,7 +133,7 @@ fn parse_file(
 /// literal can quote-escape (`#` → `\#` in their shell, which the
 /// stripper leaves alone since it's not a config-level `#`) or use
 /// a wrapper script.
-fn strip_inline_comment(line: &str) -> &str {
+pub(crate) fn strip_inline_comment(line: &str) -> &str {
     let bytes = line.as_bytes();
     let mut prev_ws = false;
     for (i, &b) in bytes.iter().enumerate() {
@@ -1316,21 +1316,37 @@ fn parse_fold(s: &str) -> FoldState {
 fn parse_color(s: &str) -> Result<Rgba> {
     let s = s.trim().trim_start_matches("0x").trim_start_matches('#');
     let hex = u32::from_str_radix(s, 16).context("invalid color")?;
-    // format: RRGGBBAA (8 digits) or RRGGBB (6 digits)
-    let (r, g, b, a) = if s.len() >= 8 {
-        (
-            ((hex >> 24) & 0xff) as f32 / 255.0,
-            ((hex >> 16) & 0xff) as f32 / 255.0,
-            ((hex >> 8) & 0xff) as f32 / 255.0,
-            (hex & 0xff) as f32 / 255.0,
-        )
-    } else {
-        (
+    // Accept the CSS-style forms and reject everything else. The old
+    // `len >= 8 ? RRGGBBAA : RRGGBB` fork silently mis-parsed a 5- or
+    // 7-digit typo as RRGGBB (keeping the low 24 bits) — a wrong colour
+    // with no error. Each shorthand nibble is doubled (`#f80` == `#ff8800`,
+    // i.e. `nibble / 15.0` == `(nibble * 17) / 255.0`).
+    let (r, g, b, a) = match s.len() {
+        3 => (
+            ((hex >> 8) & 0xf) as f32 / 15.0,
+            ((hex >> 4) & 0xf) as f32 / 15.0,
+            (hex & 0xf) as f32 / 15.0,
+            1.0,
+        ),
+        4 => (
+            ((hex >> 12) & 0xf) as f32 / 15.0,
+            ((hex >> 8) & 0xf) as f32 / 15.0,
+            ((hex >> 4) & 0xf) as f32 / 15.0,
+            (hex & 0xf) as f32 / 15.0,
+        ),
+        6 => (
             ((hex >> 16) & 0xff) as f32 / 255.0,
             ((hex >> 8) & 0xff) as f32 / 255.0,
             (hex & 0xff) as f32 / 255.0,
             1.0,
-        )
+        ),
+        8 => (
+            ((hex >> 24) & 0xff) as f32 / 255.0,
+            ((hex >> 16) & 0xff) as f32 / 255.0,
+            ((hex >> 8) & 0xff) as f32 / 255.0,
+            (hex & 0xff) as f32 / 255.0,
+        ),
+        n => bail!("color must be 3, 4, 6, or 8 hex digits, got {n}"),
     };
     Ok(Rgba([r, g, b, a]))
 }
@@ -1374,7 +1390,13 @@ fn parse_float_list(s: &str) -> Vec<f32> {
 // ── Primitive parsers ────────────────────────────────────────────────────────
 
 fn parse_bool(s: &str) -> bool {
-    matches!(s.trim(), "1" | "true" | "yes" | "on")
+    // Case-insensitive: `True`, `YES`, `On` are the same as their
+    // lowercase forms. Without this, a capitalised value silently
+    // parses as `false` — the worst kind of config typo.
+    matches!(
+        s.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 fn parse_i32(s: &str) -> i32 {
     s.trim().parse().unwrap_or(0)
@@ -1667,6 +1689,21 @@ pub const OPTION_KEYS: &[&str] = &[
     "monly",
     "enable_gaps",
     "gaps_enabled",
+    // Gap-size aliases handled by parse_option's `gap*`/`gaps_*`
+    // arms — must be listed here or the validator wrongly warns
+    // W001 (unknown key) on a value the parser happily accepts.
+    "gap",
+    "gaps",
+    "gappi",
+    "gaps_in",
+    "gapsin",
+    "inner_gaps",
+    "window_gap",
+    "gappo",
+    "gaps_out",
+    "gapsout",
+    "outer_gaps",
+    "monitor_gap",
     "snap_distance",
     "swipe_min_threshold",
     "syncobj_enable",
@@ -1728,6 +1765,96 @@ mod tests {
         // Values within the limit pass through untouched.
         assert_eq!(clamp_keyword("slide_in", 9), "slide_in");
         assert_eq!(clamp_keyword("", 9), "");
+    }
+
+    /// Drift guard: every scalar key `parse_option` handles must appear
+    /// in `OPTION_KEYS`, or the validator emits a bogus W001 ("unknown
+    /// key") for a value the parser silently accepts. The list is
+    /// hand-maintained, so scrape `parse_option`'s own source at test
+    /// time and diff it against the const rather than trusting a human
+    /// to keep two lists in sync.
+    #[test]
+    fn option_keys_match_parser_arms() {
+        let src = include_str!("parser.rs");
+        let lines: Vec<&str> = src.lines().collect();
+        let start = lines
+            .iter()
+            .position(|l| l.trim_start().starts_with("fn parse_option"))
+            .expect("parse_option fn");
+        // The catch-all arm that warns on an unrecognised key marks the
+        // end of the real key list; inner `other =>` arms of nested
+        // matches are indented deeper and precede their own warns.
+        let end = (start..lines.len())
+            .find(|&i| {
+                lines[i].trim_start().starts_with("other =>")
+                    && lines
+                        .get(i + 1)
+                        .is_some_and(|n| n.contains("unknown config key"))
+            })
+            .expect("parse_option catch-all");
+
+        // Top-level match arms sit at exactly 8 spaces of indent; nested
+        // match arms (e.g. inside `overview_style`) are deeper, so an
+        // indent test cleanly separates keys from enum-variant strings.
+        let mut arm_keys = std::collections::BTreeSet::new();
+        for &l in &lines[start..end] {
+            if !(l.starts_with("        \"") || l.starts_with("        | \"")) {
+                continue;
+            }
+            let pat = l.split("=>").next().unwrap_or(l);
+            let mut rest = pat;
+            while let Some(a) = rest.find('"') {
+                let after = &rest[a + 1..];
+                let Some(b) = after.find('"') else { break };
+                arm_keys.insert(after[..b].to_string());
+                rest = &after[b + 1..];
+            }
+        }
+
+        let known: std::collections::BTreeSet<String> =
+            super::OPTION_KEYS.iter().map(|s| s.to_string()).collect();
+        let missing: Vec<&String> = arm_keys.difference(&known).collect();
+        assert!(
+            missing.is_empty(),
+            "parse_option handles keys absent from OPTION_KEYS \
+             (the validator would wrongly warn W001 on them): {missing:?}"
+        );
+    }
+
+    #[test]
+    fn parse_bool_is_case_insensitive() {
+        for t in ["1", "true", "TRUE", "True", "yes", "YES", "on", "On"] {
+            assert!(super::parse_bool(t), "{t:?} should be true");
+        }
+        for f in ["0", "false", "FALSE", "no", "off", "", "enabled"] {
+            assert!(!super::parse_bool(f), "{f:?} should be false");
+        }
+    }
+
+    #[test]
+    fn parse_color_forms_and_shorthands() {
+        // Full forms (channel exprs mirror the impl for bit-exact f32).
+        assert_eq!(
+            super::parse_color("#ff8800").unwrap().0,
+            [1.0, 136.0 / 255.0, 0.0, 1.0]
+        );
+        assert_eq!(
+            super::parse_color("#00000000").unwrap().0,
+            [0.0, 0.0, 0.0, 0.0]
+        );
+        // 3/4-digit shorthand doubles each nibble (`#f80` → `#ff8800`).
+        assert_eq!(
+            super::parse_color("#f80").unwrap().0,
+            [1.0, 8.0 / 15.0, 0.0, 1.0]
+        );
+        assert_eq!(
+            super::parse_color("#f808").unwrap().0,
+            [1.0, 8.0 / 15.0, 0.0, 8.0 / 15.0]
+        );
+        // A stray 5- or 7-digit typo is an error, not a silent mis-parse.
+        assert!(super::parse_color("#ff880").is_err());
+        assert!(super::parse_color("#ff88000").is_err());
+        assert!(super::parse_color("#nothex").is_err());
     }
 
     #[test]
