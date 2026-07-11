@@ -27,11 +27,14 @@ impl MargoState {
     /// timer eventually fired half a minute later, by which time
     /// the sweep had already elapsed and we landed on Scheduled.
     ///
-    /// Fix: insert a fresh single-shot Timer source from here that
-    /// re-rearms itself the same way the kick-off timer in
-    /// `main.rs` does. Multiple in-flight timers are fine — calloop
-    /// keeps them separate, and on each fire `tick_twilight` is
-    /// idempotent (it reads live config + override state).
+    /// Fix: RE-ARM the single steady-state timer rather than stacking a
+    /// new one. calloop timers can't be rescheduled in place, so we
+    /// remove the in-flight token and insert a fresh self-re-arming
+    /// timer at the near-term interval, storing the new token. The old
+    /// code inserted a permanent self-re-arming timer here on *every*
+    /// call, so each `mctl twilight` toggle leaked a ticker that woke
+    /// the loop (and forced a gamma repaint) for the rest of the
+    /// session. `tick_twilight` is idempotent, so re-arming is safe.
     pub fn force_tick_twilight(&mut self) {
         // Every explicit twilight change (toggle / reset / set / preview /
         // test, and the `mctl twilight preset` writers) funnels through here,
@@ -47,13 +50,20 @@ impl MargoState {
         // night-light button polls `mctl twilight status`) must see,
         // without spamming a file write on every 50 ms transition tick.
         self.mark_state_dirty();
+        // Drop the currently-scheduled tick and replace it with one at the
+        // freshly-computed interval, so exactly one twilight timer is ever
+        // in flight.
+        if let Some(token) = self.twilight_timer_token.take() {
+            self.loop_handle.remove(token);
+        }
         let timer = smithay::reexports::calloop::timer::Timer::from_duration(next);
-        let _ = self
+        self.twilight_timer_token = self
             .loop_handle
             .insert_source(timer, move |_, _, state: &mut MargoState| {
                 let next = state.tick_twilight();
                 smithay::reexports::calloop::timer::TimeoutAction::ToDuration(next)
-            });
+            })
+            .ok();
     }
 
     /// Schedule-mode presets, served from `twilight_schedule_cache`.
@@ -157,16 +167,24 @@ impl MargoState {
             self.pending_gamma.retain(|(o, _)| o != &output);
             self.pending_gamma.push((output, Some(cached.clone())));
         }
+        self.twilight_ramp_active = true;
         self.request_repaint();
     }
 
     /// Restore the kernel's default identity ramp on every output.
-    /// Used when twilight is disabled mid-session.
+    /// Used when twilight is disabled mid-session. No-ops while already
+    /// cleared so a disabled-twilight session doesn't re-push identity
+    /// gamma + repaint every tick — the disabled branch of
+    /// `tick_twilight` calls this once per minute otherwise.
     fn clear_twilight_ramp(&mut self) {
+        if !self.twilight_ramp_active {
+            return;
+        }
         for mon in &self.monitors {
             self.pending_gamma.retain(|(o, _)| o != &mon.output);
             self.pending_gamma.push((mon.output.clone(), None));
         }
+        self.twilight_ramp_active = false;
         self.request_repaint();
     }
 }

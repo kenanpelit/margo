@@ -37,6 +37,7 @@ pub use self::data::{
 };
 pub(crate) use self::data::{
     WindowRuleReason, clamp_size, matches_layer_name, matches_rule_text, read_toplevel_identity,
+    read_toplevel_identity_if_changed,
 };
 pub use self::focus_target::FocusTarget;
 pub use self::scroller_overview::{ScrollerOverview, overview_cells};
@@ -833,10 +834,19 @@ pub struct MargoState {
     /// this on the calloop timer and pushes gamma ramps into
     /// `pending_gamma` for every connected output.
     pub twilight: crate::twilight::TwilightState,
-    /// `Some` while the twilight tick timer is in flight. We
-    /// re-insert on every tick (single-shot pattern) and key off
-    /// this to avoid double-arming.
-    pub twilight_timer_armed: bool,
+    /// Token of the single self-re-arming twilight tick timer. A
+    /// force-tick (from `mctl twilight …` / `reload_config`) removes
+    /// this one and re-inserts at the near-term interval instead of
+    /// stacking a fresh permanent ticker per dispatch — the old
+    /// `bool` guard was never consulted, so every toggle leaked a
+    /// timer that kept waking the loop forever.
+    pub twilight_timer_token: Option<smithay::reexports::calloop::RegistrationToken>,
+    /// Whether a non-identity twilight ramp is currently applied. Starts
+    /// `true` so the first disabled tick clears once (guaranteeing
+    /// identity at startup); thereafter `clear_twilight_ramp` no-ops
+    /// while already cleared, so a disabled-twilight session stops
+    /// re-pushing gamma + repainting every 60 s.
+    pub twilight_ramp_active: bool,
     /// Cached `(schedule_dir, ScheduleData)` for Schedule mode. The schedule
     /// presets are static between explicit changes, but `tick_twilight` runs
     /// as often as every 50 ms during a sunrise/sunset sweep — re-reading +
@@ -1204,7 +1214,8 @@ impl MargoState {
             scroller_overview: None,
             hot_corner_dwelling: None,
             twilight: crate::twilight::TwilightState::default(),
-            twilight_timer_armed: false,
+            twilight_timer_token: None,
+            twilight_ramp_active: true,
             twilight_schedule_cache: None,
             hotplug_last_event_at: None,
             hotplug_rescan_pending: false,
