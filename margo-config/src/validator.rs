@@ -880,6 +880,41 @@ mod tests {
     }
 
     #[test]
+    fn typed_tables_are_mutually_disjoint() {
+        // A key has exactly one primitive type. If it appeared in two
+        // tables, the validator's if/else type check (BOOL → INT → UINT →
+        // FLOAT, then ENUM) would silently pick the first match and
+        // mis-validate every value the user writes for it.
+        use std::collections::HashMap;
+        let mut seen: HashMap<&str, &str> = HashMap::new();
+        for (label, keys) in [
+            ("BOOL", BOOL_KEYS),
+            ("INT", INT_KEYS),
+            ("UINT", UINT_KEYS),
+            ("FLOAT", FLOAT_KEYS),
+        ] {
+            for &k in keys {
+                assert!(
+                    seen.insert(k, label).is_none(),
+                    "`{k}` is classified as two primitive types (second: {label})"
+                );
+            }
+        }
+        for (k, _) in ENUM_KEYS {
+            assert!(
+                !seen.contains_key(k),
+                "`{k}` is in ENUM_KEYS and also a scalar type table"
+            );
+            // ENUM keys are real options too (the sibling ⊆ test doesn't
+            // cover them).
+            assert!(
+                crate::parser::OPTION_KEYS.contains(k),
+                "`{k}` is in ENUM_KEYS but not in parser::OPTION_KEYS"
+            );
+        }
+    }
+
+    #[test]
     fn comment_lines_are_skipped() {
         let r = validate_str("# this is a comment\n# bind = ,bad,,,\n");
         assert!(!r.has_errors() && !r.has_warnings());
