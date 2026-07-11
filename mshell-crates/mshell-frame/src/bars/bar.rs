@@ -57,8 +57,8 @@ use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
 use mshell_config::schema::config::CustomMenuRow;
 use mshell_config::schema::config::{
-    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, HiddenBarConfigStoreFields,
-    HorizontalBarStoreFields,
+    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, HiddenBarConfig,
+    HiddenBarConfigStoreFields, HorizontalBarStoreFields,
 };
 use mshell_utils::clear_box::clear_box;
 use reactive_graph::traits::*;
@@ -106,6 +106,10 @@ pub(crate) struct BarModel {
     start_widget_kinds: Vec<BarWidget>,
     center_widget_kinds: Vec<BarWidget>,
     end_widget_kinds: Vec<BarWidget>,
+    /// Last-applied `(hidden_widgets, hidden_bars)` — lets `RebuildHidden`
+    /// skip its destructive slot rebuild when the drawer definitions are
+    /// unchanged (its triggering effect re-fires on any config save).
+    hidden_sig: Option<(Vec<BarWidget>, Vec<HiddenBarConfig>)>,
     min_height: i32,
     min_width: i32,
     css_class: String,
@@ -164,9 +168,12 @@ pub(crate) enum BarInput {
     /// Forward a Hidden Bar IPC verb to this bar's drawers. The optional
     /// target name selects a single named drawer; `None` reaches all.
     HiddenBar(mshell_common::hidden_bar::HiddenBarVerb, Option<String>),
-    /// `hidden_widgets` config changed — rebuild the slot holding the drawer
-    /// so it re-reads its contents (live add/remove from Settings).
-    RebuildHidden,
+    /// `hidden_widgets` / `hidden_bars` config changed — rebuild the slot
+    /// holding the drawer so it re-reads its contents (live add/remove
+    /// from Settings). Carries the resolved definitions so the handler can
+    /// skip the destructive rebuild when they're actually unchanged (the
+    /// effect re-fires on any config save).
+    RebuildHidden(Vec<BarWidget>, Vec<HiddenBarConfig>),
     /// Apply (or clear) the frameless floating-panel inset and re-measure.
     /// Sent by the frame when "Enable frame drawing" or `bars.frame.frameless_gap`
     /// changes: with the frame OFF each bar paints its own inset floating panel
@@ -409,10 +416,10 @@ impl Component for BarModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let _ = config.clone().bars().top_bar().hidden_widgets().get();
+                    let hidden_widgets = config.clone().bars().top_bar().hidden_widgets().get();
                     // Also rebuild when a named drawer's definition changes.
-                    let _ = config.bars().widgets().hidden_bars().get();
-                    sender_clone.input(BarInput::RebuildHidden);
+                    let hidden_bars = config.bars().widgets().hidden_bars().get();
+                    sender_clone.input(BarInput::RebuildHidden(hidden_widgets, hidden_bars));
                 });
             }
             BarType::Bottom => {
@@ -469,10 +476,10 @@ impl Component for BarModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let _ = config.clone().bars().bottom_bar().hidden_widgets().get();
+                    let hidden_widgets = config.clone().bars().bottom_bar().hidden_widgets().get();
                     // Also rebuild when a named drawer's definition changes.
-                    let _ = config.bars().widgets().hidden_bars().get();
-                    sender_clone.input(BarInput::RebuildHidden);
+                    let hidden_bars = config.bars().widgets().hidden_bars().get();
+                    sender_clone.input(BarInput::RebuildHidden(hidden_widgets, hidden_bars));
                 });
             }
         }
@@ -556,6 +563,7 @@ impl Component for BarModel {
             center_widgets: Vec::new(),
             end_widgets: Vec::new(),
             start_widget_kinds: Vec::new(),
+            hidden_sig: None,
             center_widget_kinds: Vec::new(),
             end_widget_kinds: Vec::new(),
             min_width: 0,
@@ -696,7 +704,17 @@ impl Component for BarModel {
                     self.hovered = false;
                 }
             }
-            BarInput::RebuildHidden => {
+            BarInput::RebuildHidden(hidden_widgets, hidden_bars) => {
+                // Skip the destructive rebuild when the drawer definitions
+                // are unchanged: this effect re-fires on any config save,
+                // and rebuilding a slot restarts its widgets' pollers and
+                // flickers the bar × 2 bars × N monitors for drawer users.
+                let sig = (hidden_widgets, hidden_bars);
+                if self.hidden_sig.as_ref() == Some(&sig) {
+                    return;
+                }
+                self.hidden_sig = Some(sig);
+
                 fn holds_drawer(kinds: &[BarWidget]) -> bool {
                     kinds
                         .iter()

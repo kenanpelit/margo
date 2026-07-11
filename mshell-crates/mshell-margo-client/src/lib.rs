@@ -592,10 +592,11 @@ impl MargoService {
         }
     }
 
-    /// Snapshot the focused workspace. Reads state.json directly
-    /// so the answer always reflects the latest margo write, not
-    /// the most recent poll tick (which can lag by up to
-    /// `POLL_INTERVAL`).
+    /// Snapshot the focused workspace. Served from the reactive store
+    /// mirror of margo's `watch state` stream, falling back to a one-shot
+    /// socket read before the first push has populated it. (The old
+    /// `state.json` file was removed 2026-06-01; the live source is now
+    /// the IPC socket.)
     ///
     /// Resolves the active monitor via [`active_monitor_name`]
     /// (which prefers the focused client's monitor over the

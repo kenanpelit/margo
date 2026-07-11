@@ -812,10 +812,15 @@ fn add_move_focused_client_to_menu(
                 let workspace_id = workspace.id.get();
                 let hyprland_clone = hyprland.clone();
                 tokio::spawn(async move {
-                    let command =
-                        format!("hl.dsp.window.move({{ workspace = \"{}\" }})", workspace_id);
+                    // margo-native: `tag <bitmask>` moves the focused client
+                    // to the given tag. The shell's 1-indexed workspace id
+                    // maps to bit (id-1). The old `hl.dsp.window.move(...)`
+                    // string was never translated by margo-client, so this
+                    // menu item was a silent no-op (just a warn log).
+                    let mask = 1u32 << ((workspace_id.clamp(1, 31) - 1) as u32);
+                    let command = format!("dispatch tag {mask}");
                     if let Err(e) = hyprland_clone.dispatch(&command).await {
-                        error!(error = %e, "Failed to switch workspace");
+                        error!(error = %e, "Failed to move window to workspace");
                     }
                 });
             }

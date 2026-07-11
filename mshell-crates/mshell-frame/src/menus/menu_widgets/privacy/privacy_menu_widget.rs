@@ -24,7 +24,10 @@ pub(crate) struct PrivacyMenuWidgetModel {
 
 #[derive(Debug)]
 pub(crate) enum PrivacyMenuWidgetInput {
-    Tick,
+    /// Periodic refresh probe. The bool is whether the panel is currently
+    /// mapped: the tick is sent every second (so the timer can detect the
+    /// component being dropped and stop) but only does work while visible.
+    Tick(bool),
     Clear,
 }
 
@@ -114,13 +117,16 @@ impl SimpleComponent for PrivacyMenuWidgetModel {
         let tick_sender = sender.clone();
         let root_ref = root.clone();
         gtk::glib::timeout_add_local(Duration::from_secs(1), move || {
-            // Only refresh while actually on screen (menus are built eagerly
-            // per monitor but mostly hidden).
-            if root_ref.is_mapped()
-                && tick_sender
-                    .input_sender()
-                    .send(PrivacyMenuWidgetInput::Tick)
-                    .is_err()
+            // Probe the channel EVERY tick so the timer self-stops once the
+            // component is dropped. The old `is_mapped() && send().is_err()`
+            // only reached Break while mapped — a dropped (unmapped) widget
+            // left the timer ticking forever, pinning the whole widget tree
+            // alive via root_ref. is_mapped() now just tells the handler
+            // whether to actually do the refresh work.
+            if tick_sender
+                .input_sender()
+                .send(PrivacyMenuWidgetInput::Tick(root_ref.is_mapped()))
+                .is_err()
             {
                 return gtk::glib::ControlFlow::Break;
             }
@@ -137,7 +143,11 @@ impl SimpleComponent for PrivacyMenuWidgetModel {
                 self.last_sig.clear();
                 self.rebuild();
             }
-            PrivacyMenuWidgetInput::Tick => self.rebuild_if_changed(),
+            PrivacyMenuWidgetInput::Tick(mapped) => {
+                if mapped {
+                    self.rebuild_if_changed();
+                }
+            }
         }
     }
 }

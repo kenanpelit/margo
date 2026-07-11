@@ -537,11 +537,13 @@ fn make_note_row(note: &Note, sender: &ComponentSender<NotesMenuWidgetModel>) ->
                             false,
                         )
                         .to_string();
-                    let _ = sender.input_sender().send(NotesMenuWidgetInput::UpdateNote {
-                        id: id.clone(),
-                        title,
-                        body,
-                    });
+                    let _ = sender
+                        .input_sender()
+                        .send(NotesMenuWidgetInput::UpdateNote {
+                            id: id.clone(),
+                            title,
+                            body,
+                        });
                 }
             });
         }

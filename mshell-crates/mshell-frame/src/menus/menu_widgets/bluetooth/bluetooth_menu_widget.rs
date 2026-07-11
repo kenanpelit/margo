@@ -44,6 +44,11 @@ pub(crate) struct BluetoothMenuWidgetModel {
     /// MACs (uppercased) configured for login auto-connect — drives the
     /// ★ pin on each row. Snapshotted from config, refreshed on edits.
     autoconnect_macs: Vec<String>,
+    /// Whether this per-monitor menu is currently revealed. The device
+    /// list is only rebuilt while revealed; a state change (BlueZ battery
+    /// drip, connect/disconnect) arriving while hidden is ignored until
+    /// the next reveal rebuilds from current state — like notifications.rs.
+    revealed: bool,
 }
 
 #[derive(Debug)]
@@ -199,6 +204,7 @@ impl Component for BluetoothMenuWidgetModel {
             device_watcher_token: WatcherToken::new(),
             busy: HashMap::new(),
             autoconnect_macs: read_autoconnect_macs(),
+            revealed: false,
         };
 
         let widgets = view_output!();
@@ -305,6 +311,7 @@ impl Component for BluetoothMenuWidgetModel {
 
             // ── Discovery routing (frame drives this) ────────────
             BluetoothMenuWidgetInput::ParentRevealChanged(revealed) => {
+                self.revealed = revealed;
                 if let Some(bt) = bluetooth_service() {
                     if revealed {
                         tokio::spawn(async move {
@@ -338,14 +345,20 @@ impl Component for BluetoothMenuWidgetModel {
             }
         }
 
-        // Rebuild device list every message cycle.
-        Self::rebuild_device_list(
-            &widgets.device_list_box,
-            &self.devices,
-            &self.busy,
-            &self.autoconnect_macs,
-            &sender,
-        );
+        // Rebuild the device list only while revealed; a change arriving
+        // while hidden (BlueZ battery drip, connect/disconnect) is picked
+        // up by the rebuild that runs when ParentRevealChanged(true) next
+        // sets `revealed`. Avoids rebuilding all rows on every property
+        // update for a closed menu, per monitor.
+        if self.revealed {
+            Self::rebuild_device_list(
+                &widgets.device_list_box,
+                &self.devices,
+                &self.busy,
+                &self.autoconnect_macs,
+                &sender,
+            );
+        }
 
         self.update_view(widgets, sender);
     }
