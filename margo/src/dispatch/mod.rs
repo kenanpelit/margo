@@ -472,6 +472,16 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 state.activate_window_idx(arg.i as usize);
             }
         }
+        // Race-free variant of `focuswindow`: focus by the client's stable
+        // `id` (not its positional slot index), so a window that closed
+        // between the shell snapshotting and this dispatch arriving can't
+        // shift the index onto — and focus — the wrong window. Ids are
+        // session-monotonic from 1, so they fit the `arg.i` slot.
+        "focuswindowid" => {
+            if arg.i >= 0 {
+                state.activate_window_id(arg.i as u64);
+            }
+        }
         "focusstack" | "focusdir" => state.focus_stack(direction_arg(arg)),
         // niri-style MRU window switcher (Super+Tab). `arg.v` = scope
         // (all|output|workspace), `arg.v2` = filter (all|appid).

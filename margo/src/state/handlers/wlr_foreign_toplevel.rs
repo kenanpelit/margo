@@ -31,6 +31,18 @@ impl MargoState {
         }
     }
 
+    /// Focus a window by its stable, monotonic `id` (published in `state
+    /// snapshot`), resolving it to the current slot index. Unlike
+    /// [`Self::activate_window_idx`] this is race-free: the id never aliases a
+    /// different window even if the `clients` Vec shifted (another window
+    /// closed) between the shell reading the snapshot and this dispatch landing.
+    /// Backs the `focuswindowid` IPC dispatch. No-op if the id is gone.
+    pub(crate) fn activate_window_id(&mut self, id: u64) {
+        if let Some(idx) = self.clients.iter().position(|c| c.id == id) {
+            self.activate_window_idx(idx);
+        }
+    }
+
     /// Same as [`Self::activate_window_surface`] but addressed by client
     /// index (the `idx` published in `state snapshot`). Used by the
     /// `focuswindow` IPC dispatch so the dock can focus the exact window

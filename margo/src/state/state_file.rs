@@ -157,6 +157,11 @@ impl MargoState {
                     .map(|m| m.name.clone())
                     .unwrap_or_default();
                 json!({
+                    // Stable, monotonic per-window id (see `MargoClient::id`) —
+                    // the shell keys client identity on this so a window's
+                    // address survives another window closing (which shifts the
+                    // positional `idx`). `focuswindowid` targets it race-free.
+                    "id": c.id,
                     "idx": idx,
                     "monitor": mon_name,
                     "monitor_idx": c.monitor,

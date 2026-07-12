@@ -581,16 +581,22 @@ fn update_client_in_place(client: &Client, c: &RawClient, state: &StateJson) {
     }
 }
 
-/// Deterministic, stable Address for a margo client. Hyprland's
-/// addresses are 64-bit hex strings; we synthesize one from the
-/// client's monitor index + slot index (margo's `idx` field is
-/// per-output, so combine with `monitor_idx` to disambiguate).
-/// PID would be ideal but margo currently publishes pid = 0.
+/// Deterministic, **stable** Address for a margo client, derived from the
+/// compositor's monotonic per-window `id`. The id is never reused within a
+/// run, so — unlike the old `monitor_idx` + slot-`idx` synthesis — a window's
+/// address survives another window closing (which shifts every later `idx`),
+/// which is what keeps `Arc<Client>` identity and widget state from being lost
+/// and avoids spurious close/open churn. Falls back to the positional
+/// synthesis only when `id` is absent (`id == 0`: an older margo that predates
+/// the snapshot field).
 fn client_address(c: &RawClient) -> Address {
+    if c.id != 0 {
+        return Address::new(c.id.to_string());
+    }
     Address::new(format!(
         "{:04x}{:08x}",
         (c.monitor_idx as u16),
-        (c.idx as u32),
+        (c.idx as u32)
     ))
 }
 
@@ -660,4 +666,49 @@ fn build_client(
         xdg_description: Reactive::new(None),
         stable_id: Reactive::new(c.app_id.clone()),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The core of the stable-id fix: a window's Address must depend only on
+    /// its `id`, never on the positional slot `idx` — otherwise another window
+    /// closing (which shifts every later `idx`) would silently re-address
+    /// surviving windows, dropping their `Arc<Client>` identity and firing
+    /// spurious close/open events.
+    #[test]
+    fn client_address_is_stable_across_slot_shift() {
+        let at_slot = |id: u64, idx: i32| RawClient {
+            id,
+            idx,
+            monitor_idx: 0,
+            ..Default::default()
+        };
+        // Same window (same id), different slot → identical address.
+        assert_eq!(
+            client_address(&at_slot(5, 0)),
+            client_address(&at_slot(5, 3))
+        );
+        // Distinct windows → distinct addresses.
+        assert_ne!(
+            client_address(&at_slot(5, 0)),
+            client_address(&at_slot(6, 0))
+        );
+        // The address round-trips to the id for race-free `focuswindowid`.
+        assert_eq!(client_address(&at_slot(42, 7)).margo_id(), Some(42));
+    }
+
+    /// Without a compositor id (older snapshot) the address falls back to the
+    /// positional synthesis, so it stays non-empty and distinct per slot.
+    #[test]
+    fn client_address_falls_back_without_id() {
+        let legacy = |monitor_idx: i32, idx: i32| RawClient {
+            id: 0,
+            monitor_idx,
+            idx,
+            ..Default::default()
+        };
+        assert_ne!(client_address(&legacy(0, 0)), client_address(&legacy(0, 1)));
+    }
 }

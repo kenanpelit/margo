@@ -739,17 +739,18 @@ impl MargoDockItemModel {
 /// exact-window `focuswindow <idx>` verb (margo focuses it + jumps to its
 /// tag); falls back to viewing the window's tag if the synthesized address
 /// can't yield a client index.
-/// margo focus dispatch for a client — `dispatch focuswindow <idx>`, which
-/// margo resolves to `activate_window_idx` (jumps to the window's tag, focuses
-/// + raises it). `None` when the address can't be decoded to an index (the
-/// old Hyprland-style `hl.dsp.focus(...)` fallback was a no-op on margo, so we
-/// just skip rather than emit a dead command).
+/// margo focus dispatch for a client — `dispatch focuswindowid <id>`, which
+/// margo resolves to `activate_window_id` (jumps to the window's tag, focuses
+/// + raises it). Keyed on the client's stable id so a window closing between
+/// the click and the dispatch can't shift focus onto the wrong window. `None`
+/// when the address carries no id (legacy compositor), where we skip rather
+/// than emit a dead command.
 fn focus_command(client: &Client) -> Option<String> {
     client
         .address
         .get()
-        .margo_idx()
-        .map(|idx| format!("dispatch focuswindow {idx}"))
+        .margo_id()
+        .map(|id| format!("dispatch focuswindowid {id}"))
 }
 
 fn add_launch_to_menu(
@@ -917,8 +918,8 @@ fn add_window_details_to_menu(
         // `focuswindow address:0x…` string isn't one of the forms
         // `MargoService::dispatch` recognises, so it was silently dropped —
         // that's why picking a window from the menu did nothing. `focus_command`
-        // emits `dispatch focuswindow <idx>`, which margo turns into
-        // `activate_window_idx` (focuses the exact window + jumps to its tag).
+        // emits `dispatch focuswindowid <id>`, which margo turns into
+        // `activate_window_id` (focuses the exact window + jumps to its tag).
         let Some(command) = focus_command(client) else {
             return;
         };

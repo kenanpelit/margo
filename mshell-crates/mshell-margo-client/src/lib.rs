@@ -202,18 +202,14 @@ impl Address {
         self.0
     }
 
-    /// The margo client index this synthesized address encodes — the low
-    /// 32 bits of the `{:04x}{:08x}` form built by [`sync::client_address`]
-    /// (`monitor_idx` + `idx`). Lets a consumer focus the exact window via
-    /// `mctl dispatch focuswindow <idx>` (the same `idx` margo publishes in
-    /// `state.json`).
-    pub fn margo_idx(&self) -> Option<usize> {
-        if self.0.len() < 8 {
-            return None;
-        }
-        u32::from_str_radix(&self.0[self.0.len() - 8..], 16)
-            .ok()
-            .map(|n| n as usize)
+    /// The stable margo client `id` this address carries — a plain decimal
+    /// `u64` (see [`sync::client_address`]). Race-free focus target for
+    /// `mctl dispatch focuswindowid <id>`: unlike the old slot-index form, the
+    /// id can't alias a different window if the client list shifted between the
+    /// shell snapshotting and the dispatch landing. `None` for a legacy
+    /// hex-synthesized address (a compositor predating the `id` snapshot field).
+    pub fn margo_id(&self) -> Option<u64> {
+        self.0.parse::<u64>().ok()
     }
 }
 

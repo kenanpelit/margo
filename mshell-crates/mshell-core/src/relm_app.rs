@@ -478,10 +478,10 @@ impl Component for Shell {
                         .filter(|c| c.class.get() == class)
                         .collect();
                     matching.sort_by_key(|c| c.address.get());
-                    if let Some(idx) = matching.first().and_then(|c| c.address.get().margo_idx()) {
+                    if let Some(id) = matching.first().and_then(|c| c.address.get().margo_id()) {
                         mshell_services::tokio_rt().spawn(async move {
                             let _ = margo_service()
-                                .dispatch(&format!("dispatch focuswindow {idx}"))
+                                .dispatch(&format!("dispatch focuswindowid {id}"))
                                 .await;
                         });
                     } else if let Some(info) = mshell_utils::app_info::find_app_info(&class) {

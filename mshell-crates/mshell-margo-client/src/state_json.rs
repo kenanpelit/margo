@@ -79,8 +79,13 @@ pub struct RawMode {
     pub refresh_mhz: u32,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct RawClient {
+    /// Stable, monotonic per-window id from the compositor. `serde(default)`
+    /// so a snapshot from an older margo (predating the field) still parses —
+    /// `client_address` then falls back to the positional synthesis.
+    #[serde(default)]
+    pub id: u64,
     pub app_id: String,
     pub title: String,
     pub pid: i32,
