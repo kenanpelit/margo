@@ -11,13 +11,19 @@ serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 xkbcommon = { version = "0.8" }
+# Bench-only. Optional + gated behind the `bench` feature (with
+# `required-features` on the bench target) so a plain `cargo test` / `cargo
+# check` cold build doesn't drag in the criterion/plotters chain. Run benches
+# with `cargo bench -p margo-config --features bench`.
+criterion = { version = "0.5", optional = true }
 
-[dev-dependencies]
-criterion = "0.5"
+[features]
+bench = ["dep:criterion"]
 
 [[bench]]
 name = "parse"
 harness = false
+required-features = ["bench"]
 
 [lints]
 workspace = true
