@@ -147,6 +147,32 @@ fn apply(service: &MargoService, state: &StateJson) {
     let mut next_ws: Vec<Arc<Workspace>> = Vec::with_capacity(state.tag_count as usize);
     let mut workspace_by_id: HashMap<i64, Arc<Workspace>> = HashMap::new();
 
+    // Per-tag window count + fullscreen flag, folded in one pass over clients
+    // (walking only each client's set tag-bits) instead of two full O(clients)
+    // scans per tag inside the loop below. This is the O(tags × clients) tag
+    // math the loop used to do; now it is ~O(clients).
+    let tag_count = state.tag_count as usize;
+    let tag_mask: u32 = if tag_count >= 32 {
+        u32::MAX
+    } else {
+        (1u32 << tag_count as u32) - 1
+    };
+    let mut windows_per_tag = vec![0u16; tag_count + 1];
+    let mut fullscreen_per_tag = vec![false; tag_count + 1];
+    for c in &state.clients {
+        let mut bits = c.tags & tag_mask;
+        while bits != 0 {
+            let idx = (bits.trailing_zeros() + 1) as usize;
+            bits &= bits - 1;
+            if !c.minimized {
+                windows_per_tag[idx] = windows_per_tag[idx].saturating_add(1);
+            }
+            if c.fullscreen {
+                fullscreen_per_tag[idx] = true;
+            }
+        }
+    }
+
     for tag in 1..=state.tag_count {
         let ws_id = tag as i64;
         let bit = 1u32 << (tag - 1);
@@ -161,16 +187,8 @@ fn apply(service: &MargoService, state: &StateJson) {
                     monitor_id(&state.active_output),
                 )
             });
-        let windows: u16 = state
-            .clients
-            .iter()
-            .filter(|c| c.tags & bit != 0 && !c.minimized)
-            .count()
-            .min(u16::MAX as usize) as u16;
-        let fullscreen = state
-            .clients
-            .iter()
-            .any(|c| c.tags & bit != 0 && c.fullscreen);
+        let windows = windows_per_tag[tag as usize];
+        let fullscreen = fullscreen_per_tag[tag as usize];
         let last = state
             .outputs
             .iter()
@@ -384,16 +402,23 @@ fn apply(service: &MargoService, state: &StateJson) {
 
     // ── Clients ──────────────────────────────────────────────────────
     let current_clients = service.clients.get();
+    // Index current clients by address so the per-client reuse lookup below is
+    // O(1) rather than a linear scan — the whole pass was O(clients²), the part
+    // that bites with many windows + frequent title/focus churn. Addresses are
+    // unique per window, so the map is 1:1 with `current_clients`.
+    let current_by_address: HashMap<Address, &Arc<Client>> = current_clients
+        .iter()
+        .map(|c| (c.address.get(), c))
+        .collect();
     let mut next_clients: Vec<Arc<Client>> = Vec::with_capacity(state.clients.len());
     for c in &state.clients {
         let addr = client_address(c);
-        let new_client =
-            if let Some(existing) = current_clients.iter().find(|cl| cl.address.get() == addr) {
-                update_client_in_place(existing, c, state);
-                Arc::clone(existing)
-            } else {
-                build_client(c, state, &workspace_by_id)
-            };
+        let new_client = if let Some(&existing) = current_by_address.get(&addr) {
+            update_client_in_place(existing, c, state);
+            Arc::clone(existing)
+        } else {
+            build_client(c, state, &workspace_by_id)
+        };
         next_clients.push(new_client);
     }
     // Client lifecycle + active-window events. mshell-port's
