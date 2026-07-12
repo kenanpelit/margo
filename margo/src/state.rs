@@ -200,6 +200,9 @@ pub struct OutputPerf {
     pub queued: u64,
     pub empties: u64,
     pub queue_errors: u64,
+    /// `render_frame` failures (see `OutputDevice::render_error_count`) —
+    /// distinct from `queue_errors`, and surfaced in `mctl perf --json`.
+    pub render_errors: u64,
     /// Rolling ~60 s window of recently rendered frames, backing the
     /// time-based metrics (`fps_*`, windowed empty ratio, `render_us_p*`)
     /// that the `perf` topic reports alongside the lifetime totals. Pushed

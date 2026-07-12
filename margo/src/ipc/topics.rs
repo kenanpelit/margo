@@ -94,6 +94,7 @@ pub fn build_perf_payload(
                 "empties": p.empties,
                 "empty_ratio": empty_ratio,
                 "queue_errors": p.queue_errors,
+                "render_errors": p.render_errors,
                 "fps_1s": fps(1.0),
                 "fps_10s": fps(10.0),
                 "fps_60s": fps(60.0),
@@ -358,6 +359,7 @@ mod tests {
                 queued: 2,
                 empties: 1,
                 queue_errors: 0,
+                render_errors: 4,
                 samples,
             },
         );
@@ -377,5 +379,7 @@ mod tests {
         assert_eq!(o["render_us_p50"], json!(3000));
         assert_eq!(o["render_us_p95"], json!(5000));
         assert_eq!(o["render_us_p99"], json!(5000));
+        // Lifetime render-error total is surfaced (mctl perf --json).
+        assert_eq!(o["render_errors"], json!(4));
     }
 }

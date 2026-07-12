@@ -643,13 +643,29 @@ fn render_output(
                 }
             }
         }
-        Err(e) => error!(
-            output = %od.output.name(),
-            reason = reason,
-            elements = elements.len(),
-            error = ?e,
-            "render_frame failed",
-        ),
+        Err(e) => {
+            // A failed render never presents, so — exactly like the queue-error
+            // path above — this output's per-output in-flight gate would
+            // otherwise never be cleared by a vblank, wedging the clock until
+            // some unrelated damage happens to kick it. Release + re-arm so the
+            // next tick retries (paced by the frame clock, so no busy spin), and
+            // rate-limit the log so a persistent GPU failure can't flood it.
+            od.render_error_count += 1;
+            if per_output {
+                state.clear_pending_vblank_per_output(&od.output);
+            }
+            state.request_repaint();
+            if od.render_error_count <= 10 || od.render_error_count.is_multiple_of(300) {
+                error!(
+                    output = %od.output.name(),
+                    reason = reason,
+                    errors = od.render_error_count,
+                    elements = elements.len(),
+                    error = ?e,
+                    "render_frame failed",
+                );
+            }
+        }
     }
 
     // Mirror this output's counters into MargoState so the `perf` IPC topic
@@ -669,4 +685,5 @@ fn render_output(
     perf.queued = od.queued_count;
     perf.empties = od.empty_count;
     perf.queue_errors = od.queue_error_count;
+    perf.render_errors = od.render_error_count;
 }

@@ -121,6 +121,11 @@ pub struct OutputDevice {
     pub(super) queued_count: u64,
     pub(super) empty_count: u64,
     pub(super) queue_error_count: u64,
+    /// `render_frame` returned `Err` (distinct from `queue_error_count`, which
+    /// counts a *successful* render whose page-flip submit failed). Both are a
+    /// no-present, but a render error needs its own clock recovery — see the
+    /// `Err` arm in `frame.rs`.
+    pub(super) render_error_count: u64,
     /// Per-CRTC GAMMA_LUT property handles, populated when the connector is
     /// bound. `None` if the kernel/driver doesn't expose GAMMA_LUT (in which
     /// case sunsetr / gammastep silently skip the output).
@@ -676,6 +681,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                 queued_count: 0,
                 empty_count: 0,
                 queue_error_count: 0,
+                render_error_count: 0,
                 gamma: gamma_props,
                 connector: *conn_handle,
                 dpms_off: false,
