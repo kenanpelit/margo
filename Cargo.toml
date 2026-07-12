@@ -164,7 +164,21 @@ reactive_graph = { version = "0.2", features = ["effects"] }
 reactive_stores = "0.4"
 
 # Image / theming
-image = { version = "0.25", features = ["png", "jpeg", "bmp"] }
+# Only the formats we actually decode — wallpapers (`image::open`) and
+# clipboard image previews (`ImageReader::with_guessed_format`): png, jpeg,
+# webp, gif, bmp. `default-features = false` drops image 0.25's heavy default
+# codecs (exr, tiff, qoi, hdr, dds, tga, pnm, ff, ico); none are referenced
+# anywhere (every decode path is format-guessed, not codec-specific), and they
+# dominate this dependency's compile time + binary size. webp/gif are kept
+# because they previously rode in via defaults and are common wallpaper /
+# copied-image formats — dropping them would silently regress those.
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "jpeg",
+    "webp",
+    "gif",
+    "bmp",
+] }
 grass = "0.13"
 lutgen = { version = "0.14", default-features = false, features = ["rayon"] }
 rayon = "1"
@@ -276,6 +290,18 @@ git = "https://github.com/Smithay/smithay.git"
 # (FB_DAMAGE_CLIPS plane-damage transform, multigpu dmabuf re-import, gles).
 rev = "cb1eb2a3f48d95a7ea4b030159a2512ba667a2fb"
 default-features = false
+
+# Local dev + test builds default to full DWARF (`debug = 2`), which is the
+# bulk of what balloons `target/` (tens of GB) and slows linking. We almost
+# never step through a debugger here; line tables are enough for readable
+# backtraces and `addr2line`. This does NOT touch `debug-assertions` /
+# `overflow-checks` (still on for dev/test), only the emitted debuginfo. CI
+# already builds with DEBUG=0, so this just trims the local inner loop.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"
 
 [profile.release]
 debug = "line-tables-only"
