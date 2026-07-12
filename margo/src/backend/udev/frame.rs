@@ -486,13 +486,21 @@ fn render_output(
     if state.config.blur || state.config.blur_layer {
         od.compositor.reset_buffers();
     }
+    let render_start = std::time::Instant::now();
     match od
         .compositor
         .render_frame(renderer, &elements, clear_color, frame_flags)
     {
         Ok(result) => {
+            // Time-based `perf` metrics: fold this frame's render latency + its
+            // empty flag into the per-output rolling window. Reading
+            // `result.is_empty` into a local is `result`'s last use, so its
+            // borrow ends before we touch `state`.
+            let render_us = render_start.elapsed().as_micros().min(u32::MAX as u128) as u32;
+            let is_empty = result.is_empty;
             od.render_count += 1;
-            if result.is_empty {
+            state.record_frame_sample(&od.output_name, is_empty, render_us);
+            if is_empty {
                 od.empty_count += 1;
                 tracing::trace!(
                     output = %od.output.name(),

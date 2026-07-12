@@ -194,12 +194,32 @@ fn config_has_title_rules(config: &Config) -> bool {
 /// `OutputDevice` so `mctl perf` (the `get perf` IPC topic) can read them
 /// without borrowing the `BackendData` — which `MargoState` deliberately
 /// doesn't hold, to keep the render borrow and the IPC borrow disjoint.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone)]
 pub struct OutputPerf {
     pub renders: u64,
     pub queued: u64,
     pub empties: u64,
     pub queue_errors: u64,
+    /// Rolling ~60 s window of recently rendered frames, backing the
+    /// time-based metrics (`fps_*`, windowed empty ratio, `render_us_p*`)
+    /// that the `perf` topic reports alongside the lifetime totals. Pushed
+    /// once per rendered frame by [`MargoState::record_frame_sample`], which
+    /// also prunes it to the window.
+    pub samples: std::collections::VecDeque<FrameSample>,
+}
+
+/// One rendered frame's timing, retained briefly per output so `perf` can
+/// report recent FPS and render-latency percentiles instead of only lifetime
+/// counters. `Copy` + tiny, so the rolling window is cheap to keep.
+#[derive(Debug, Clone, Copy)]
+pub struct FrameSample {
+    /// When this frame's `render_frame` completed (monotonic).
+    pub at: std::time::Instant,
+    /// The render produced no damage (nothing was submitted to KMS).
+    pub empty: bool,
+    /// Wall time spent in `render_frame` for this frame, in microseconds
+    /// (saturated at `u32::MAX`).
+    pub render_us: u32,
 }
 
 pub struct MargoState {
@@ -1476,6 +1496,41 @@ impl MargoState {
             "Margo",
             "Lock force-cleared",
         ]);
+    }
+
+    /// Record one rendered frame into the per-output rolling window that backs
+    /// the `perf` topic's time-based metrics. Cheap and always-on: an
+    /// allocation-free `get_mut` on the steady path (the entry exists after the
+    /// first frame), a `push_back`, and a prune of samples older than the 60 s
+    /// window (hard-capped so a high-refresh burst can't grow it unbounded).
+    pub fn record_frame_sample(&mut self, output_name: &str, empty: bool, render_us: u32) {
+        use std::time::{Duration, Instant};
+        const WINDOW: Duration = Duration::from_secs(60);
+        const CAP: usize = 16_384;
+
+        let now = Instant::now();
+        let perf = match self.perf_counters.get_mut(output_name) {
+            Some(perf) => perf,
+            None => self
+                .perf_counters
+                .entry(output_name.to_string())
+                .or_default(),
+        };
+        perf.samples.push_back(FrameSample {
+            at: now,
+            empty,
+            render_us,
+        });
+        while perf
+            .samples
+            .front()
+            .is_some_and(|s| now.duration_since(s.at) > WINDOW)
+        {
+            perf.samples.pop_front();
+        }
+        while perf.samples.len() > CAP {
+            perf.samples.pop_front();
+        }
     }
 
     pub fn request_repaint(&mut self) {

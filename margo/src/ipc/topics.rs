@@ -26,7 +26,7 @@ impl MargoState {
         // counters live in `perf_counters`, mirrored from the udev backend,
         // and are deliberately kept out of the hot `state` document.
         if topic == "perf" {
-            return build_perf_payload(&self.perf_counters);
+            return build_perf_payload(&self.perf_counters, std::time::Instant::now());
         }
         let snap = self.ipc_state_snapshot();
         project_topic(&snap, &self.current_kb_layout, topic, args)
@@ -34,10 +34,13 @@ impl MargoState {
 }
 
 /// Build the `perf` topic payload from the mirrored per-output counters.
-/// Pure (no compositor state) so the empty-ratio math and output shape are
-/// unit-testable in isolation. Outputs are sorted by name for stable output.
+/// `now` is threaded in (rather than read inside) so the windowed FPS /
+/// empty-ratio / latency-percentile math is deterministic and unit-testable in
+/// isolation. Pure (no compositor state). Outputs are sorted by name for stable
+/// output.
 pub fn build_perf_payload(
     counters: &std::collections::HashMap<String, crate::state::OutputPerf>,
+    now: std::time::Instant,
 ) -> Value {
     let mut names: Vec<&String> = counters.keys().collect();
     names.sort();
@@ -45,11 +48,45 @@ pub fn build_perf_payload(
         .into_iter()
         .map(|name| {
             let p = &counters[name];
+            // Lifetime (since-boot) ratio — kept for compatibility.
             let empty_ratio = if p.renders > 0 {
                 p.empties as f64 / p.renders as f64
             } else {
                 0.0
             };
+
+            // Time-based metrics over the rolling sample window: "how is it
+            // running *now*", which the cumulative counters can't show.
+            let secs_ago =
+                |s: &crate::state::FrameSample| now.saturating_duration_since(s.at).as_secs_f64();
+            let fps = |window: f64| {
+                let n = p.samples.iter().filter(|s| secs_ago(s) <= window).count();
+                n as f64 / window
+            };
+            // Recent (last 10 s) empty ratio: over-scheduling shows up here even
+            // when the lifetime ratio looks fine.
+            let (recent_total, recent_empty) = p
+                .samples
+                .iter()
+                .filter(|s| secs_ago(s) <= 10.0)
+                .fold((0u64, 0u64), |(t, e), s| (t + 1, e + s.empty as u64));
+            let empty_ratio_10s = if recent_total > 0 {
+                recent_empty as f64 / recent_total as f64
+            } else {
+                0.0
+            };
+            // Render-latency percentiles (µs) across the window — the tail (p95/
+            // p99) is where jank hides that the mean averages away.
+            let mut lat: Vec<u32> = p.samples.iter().map(|s| s.render_us).collect();
+            lat.sort_unstable();
+            let pct = |q: f64| -> u64 {
+                if lat.is_empty() {
+                    return 0;
+                }
+                let idx = (((lat.len() - 1) as f64) * q).round() as usize;
+                lat[idx] as u64
+            };
+
             json!({
                 "name": name,
                 "renders": p.renders,
@@ -57,6 +94,14 @@ pub fn build_perf_payload(
                 "empties": p.empties,
                 "empty_ratio": empty_ratio,
                 "queue_errors": p.queue_errors,
+                "fps_1s": fps(1.0),
+                "fps_10s": fps(10.0),
+                "fps_60s": fps(60.0),
+                "empty_ratio_10s": empty_ratio_10s,
+                "render_us_p50": pct(0.50),
+                "render_us_p95": pct(0.95),
+                "render_us_p99": pct(0.99),
+                "window_samples": p.samples.len(),
             })
         })
         .collect();
@@ -252,6 +297,7 @@ mod tests {
                 queued: 75,
                 empties: 25,
                 queue_errors: 2,
+                ..Default::default()
             },
         );
         counters.insert(
@@ -261,9 +307,10 @@ mod tests {
                 queued: 0,
                 empties: 0,
                 queue_errors: 0,
+                ..Default::default()
             },
         );
-        let out = super::build_perf_payload(&counters);
+        let out = super::build_perf_payload(&counters, std::time::Instant::now());
         let arr = out["outputs"].as_array().unwrap();
         // Sorted by name: DP-1 before eDP-1.
         assert_eq!(arr[0]["name"], json!("DP-1"));
@@ -273,5 +320,62 @@ mod tests {
         assert_eq!(arr[0]["queue_errors"], json!(2));
         // No divide-by-zero on a never-rendered output.
         assert_eq!(arr[1]["empty_ratio"], json!(0.0));
+    }
+
+    #[test]
+    fn perf_payload_computes_windowed_fps_and_latency_percentiles() {
+        use crate::state::{FrameSample, OutputPerf};
+        use std::time::{Duration, Instant};
+
+        // Fix a reference "now" 30 s after the samples' base so every sample
+        // sits at a known age; build_perf_payload takes `now` as a parameter.
+        let now = Instant::now() + Duration::from_secs(30);
+        let mut samples = std::collections::VecDeque::new();
+        // 25 s old — inside the 60 s window only. Empty frame, 5 ms render.
+        samples.push_back(FrameSample {
+            at: now - Duration::from_secs(25),
+            empty: true,
+            render_us: 5000,
+        });
+        // 5 s old — inside 10 s + 60 s. Non-empty, 3 ms.
+        samples.push_back(FrameSample {
+            at: now - Duration::from_secs(5),
+            empty: false,
+            render_us: 3000,
+        });
+        // 0.5 s old — inside all three windows. Non-empty, 1 ms.
+        samples.push_back(FrameSample {
+            at: now - Duration::from_millis(500),
+            empty: false,
+            render_us: 1000,
+        });
+
+        let mut counters = std::collections::HashMap::new();
+        counters.insert(
+            "DP-1".to_string(),
+            OutputPerf {
+                renders: 3,
+                queued: 2,
+                empties: 1,
+                queue_errors: 0,
+                samples,
+            },
+        );
+        let out = super::build_perf_payload(&counters, now);
+        let o = &out["outputs"][0];
+
+        let approx = |v: &Value, want: f64| (v.as_f64().unwrap() - want).abs() < 1e-9;
+        // 1 frame in the last 1 s, 2 in 10 s, 3 in 60 s → count / window.
+        assert!(approx(&o["fps_1s"], 1.0));
+        assert!(approx(&o["fps_10s"], 0.2));
+        assert!(approx(&o["fps_60s"], 0.05));
+        assert_eq!(o["window_samples"], json!(3));
+        // Recent (10 s) window holds the two non-empty frames → 0 empty ratio,
+        // even though the lifetime ratio is 1/3.
+        assert!(approx(&o["empty_ratio_10s"], 0.0));
+        // Percentiles over sorted [1000, 3000, 5000] µs.
+        assert_eq!(o["render_us_p50"], json!(3000));
+        assert_eq!(o["render_us_p95"], json!(5000));
+        assert_eq!(o["render_us_p99"], json!(5000));
     }
 }

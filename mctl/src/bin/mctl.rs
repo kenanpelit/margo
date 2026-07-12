@@ -588,21 +588,29 @@ enum Command {
     /// Per-output frame counters: renders, empties, empty ratio, queue errors.
     #[command(
         display_order = 5,
-        long_about = "Per-output render counters, read live from the compositor \
-                      (the `perf` IPC topic — kept out of the hot state stream). \
-                      For each output: total renders, frames actually queued to \
-                      the DRM plane, empty (no-damage) frames and their ratio, \
-                      and queue errors. A high empty ratio is healthy (the \
-                      compositor skipping redundant work); rising queue errors \
-                      point at a flaky modeset/plane.\n\
+        long_about = "Per-output render performance, read live from the \
+                      compositor (the `perf` IPC topic — kept out of the hot \
+                      state stream). The table shows the last-60s rolling window: \
+                      windowed frame rate (1s + 60s), the recent empty (no-damage) \
+                      ratio, and the render-latency tail (p50/p95/p99 ms) — the \
+                      last is where jank hides that a mean would average away. \
+                      A high empty ratio is healthy (the compositor skipping \
+                      redundant work); rising queue errors point at a flaky \
+                      modeset/plane. `--json` also carries the lifetime totals \
+                      (renders / queued / empties) and every window (fps_1s / \
+                      fps_10s / fps_60s).\n\
                       \n\
                       EXAMPLES:\n  \
-                        mctl perf\n  \
-                        mctl perf --json | jq '.outputs[] | {name, empty_ratio}'"
+                        mctl perf                       # one-shot table\n  \
+                        mctl perf --watch               # live, refreshes every 1s\n  \
+                        mctl perf --json | jq '.outputs[] | {name, fps_60s, render_us_p99}'"
     )]
     Perf {
         #[arg(long)]
         json: bool,
+        /// Refresh the table once a second until interrupted (ignored with --json).
+        #[arg(long)]
+        watch: bool,
     },
 
     /// Print the focused window's app_id + title (terse, scriptable).
@@ -833,8 +841,8 @@ fn main() -> Result<()> {
         Command::Outputs { json } => {
             return cmd_outputs(*json);
         }
-        Command::Perf { json } => {
-            return cmd_perf(*json);
+        Command::Perf { json, watch } => {
+            return cmd_perf(*json, *watch);
         }
         Command::Focused { json } => {
             return cmd_focused(*json);
@@ -2645,7 +2653,26 @@ fn cmd_outputs(json_out: bool) -> Result<()> {
     Ok(())
 }
 
-fn cmd_perf(json_out: bool) -> Result<()> {
+fn cmd_perf(json_out: bool, watch: bool) -> Result<()> {
+    if watch && !json_out {
+        // Live-refresh mode: clear + redraw once a second. The compositor keeps
+        // a rolling 60 s sample window, so the windowed columns are meaningful
+        // even on the very first frame. Loop exits (returns Err) if margo goes
+        // away — request_once fails and the `?` propagates out.
+        loop {
+            // Clear screen + home the cursor, then draw one snapshot.
+            print!("\x1b[2J\x1b[H");
+            perf_print_once(false)?;
+            use std::io::Write;
+            std::io::stdout().flush().ok();
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+    }
+    perf_print_once(json_out)
+}
+
+/// Fetch the `perf` topic once and print it (table or `--json`).
+fn perf_print_once(json_out: bool) -> Result<()> {
     use std::io::IsTerminal;
     let perf = mctl::ipc_client::request_once("get perf").with_context(|| {
         format!(
@@ -2675,21 +2702,36 @@ fn cmd_perf(json_out: bool) -> Result<()> {
     let yellow = if tty { "\x1b[33m" } else { "" };
     let reset = if tty { "\x1b[0m" } else { "" };
 
+    // Live health first (windowed FPS + recent empty ratio + render-latency
+    // tail), then lifetime queue-error total. Cumulative renders/queued/empties
+    // stay available via `--json`.
     println!(
-        "{bold}{:<10}  {:>10}  {:>10}  {:>10}  {:>7}  {:>7}{reset}",
-        "OUTPUT", "RENDERS", "QUEUED", "EMPTIES", "EMPTY%", "Q-ERR",
+        "{bold}{:<10}  {:>7}  {:>7}  {:>7}  {:>22}  {:>6}{reset}",
+        "OUTPUT", "FPS 1s", "FPS 60s", "EMPTY%", "RENDER p50/p95/p99 ms", "Q-ERR",
     );
     for o in outputs {
         let name = o["name"].as_str().unwrap_or("");
-        let renders = o["renders"].as_u64().unwrap_or(0);
-        let queued = o["queued"].as_u64().unwrap_or(0);
-        let empties = o["empties"].as_u64().unwrap_or(0);
-        let empty_pct = o["empty_ratio"].as_f64().unwrap_or(0.0) * 100.0;
         let q_err = o["queue_errors"].as_u64().unwrap_or(0);
         // Queue errors are the one counter that's bad when non-zero.
         let err_col = if q_err > 0 { yellow } else { dim };
+        let n = o["window_samples"].as_u64().unwrap_or(0);
+        if n == 0 {
+            // Output present but no frames in the window yet — don't invent 0.0s.
+            println!(
+                "{bold}{name:<10}{reset}  {dim}{:>7}  {:>7}  {:>7}  {:>22}{reset}  {err_col}{q_err:>6}{reset}",
+                "—", "—", "—", "—",
+            );
+            continue;
+        }
+        let fps1 = o["fps_1s"].as_f64().unwrap_or(0.0);
+        let fps60 = o["fps_60s"].as_f64().unwrap_or(0.0);
+        let empty_pct = o["empty_ratio_10s"].as_f64().unwrap_or(0.0) * 100.0;
+        let p50 = o["render_us_p50"].as_u64().unwrap_or(0) as f64 / 1000.0;
+        let p95 = o["render_us_p95"].as_u64().unwrap_or(0) as f64 / 1000.0;
+        let p99 = o["render_us_p99"].as_u64().unwrap_or(0) as f64 / 1000.0;
+        let lat = format!("{p50:.2} / {p95:.2} / {p99:.2}");
         println!(
-            "{bold}{name:<10}{reset}  {renders:>10}  {dim}{queued:>10}{reset}  {cyan}{empties:>10}{reset}  {cyan}{empty_pct:>6.1}%{reset}  {err_col}{q_err:>7}{reset}",
+            "{bold}{name:<10}{reset}  {cyan}{fps1:>7.1}{reset}  {fps60:>7.1}  {cyan}{empty_pct:>6.1}%{reset}  {lat:>22}  {err_col}{q_err:>6}{reset}",
         );
     }
 
