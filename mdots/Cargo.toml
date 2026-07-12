@@ -39,4 +39,4 @@ ratatui = "0.28"
 crossterm = "0.28"
 tempfile = "3.8"
 mlua = { version = "0.10", features = ["lua54", "vendored", "serialize"] }
-dirs = "5.0"
+dirs = "6"

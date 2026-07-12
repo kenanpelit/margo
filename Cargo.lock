@@ -1807,15 +1807,6 @@ dependencies = [
 
 [[package]]
 name = "dirs"
-version = "5.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
-dependencies = [
- "dirs-sys 0.4.1",
-]
-
-[[package]]
-name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
@@ -1832,18 +1823,6 @@ dependencies = [
  "libc",
  "redox_users 0.4.6",
  "winapi",
-]
-
-[[package]]
-name = "dirs-sys"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "520f05a5cbd335fae5a99ff7a6ab8627577660ee5cfd6a94a6a929b52ff0321c"
-dependencies = [
- "libc",
- "option-ext",
- "redox_users 0.4.6",
- "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -4334,7 +4313,7 @@ dependencies = [
 name = "mcal"
 version = "1.1.8"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "chrono",
  "chrono-tz 0.10.4",
  "dirs 6.0.0",
@@ -4382,7 +4361,7 @@ dependencies = [
  "clap_mangen",
  "colored",
  "crossterm 0.28.1",
- "dirs 5.0.1",
+ "dirs 6.0.0",
  "glob",
  "hostname",
  "indicatif",
