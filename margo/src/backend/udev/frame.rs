@@ -594,11 +594,21 @@ fn render_output(
                     // a frame_clock yet, so we use the
                     // simpler "callbacks at VBlank, not at submit"
                     // gate instead.
-                    let entry = state
+                    // Keyed off the cached `od.output_name` via `get_mut` so
+                    // the steady-state hot path allocates nothing; only the
+                    // first frame after a hotplug inserts (cloning the name
+                    // once). `insert(name, 1)` matches the old
+                    // `entry().or_insert(0)` + `wrapping_add(1)`.
+                    if let Some(seq) = state
                         .frame_callback_sequence
-                        .entry(od.output.name())
-                        .or_insert(0);
-                    *entry = entry.wrapping_add(1);
+                        .get_mut(od.output_name.as_str())
+                    {
+                        *seq = seq.wrapping_add(1);
+                    } else {
+                        state
+                            .frame_callback_sequence
+                            .insert(od.output_name.clone(), 1);
+                    }
                     state.post_repaint(&od.output, state.clock.now());
                     state.display_handle.flush_clients().ok();
                 }
@@ -635,11 +645,18 @@ fn render_output(
     }
 
     // Mirror this output's counters into MargoState so the `perf` IPC topic
-    // (`mctl perf`) can read them without borrowing the udev BackendData.
-    // Only reached when a render was actually attempted (the dpms/disabled
-    // early-returns above skip it), and keyed by name like
-    // frame_callback_sequence, so no new per-frame allocation is introduced.
-    let perf = state.perf_counters.entry(od.output.name()).or_default();
+    // (`mctl perf`) can read them without borrowing the udev BackendData. Only
+    // reached when a render was actually attempted (the dpms/disabled
+    // early-returns above skip it). Keyed off the cached `od.output_name` via
+    // `get_mut`, so the steady-state hot path does no allocation — only the
+    // first frame after a hotplug inserts (cloning the name once).
+    let perf = match state.perf_counters.get_mut(od.output_name.as_str()) {
+        Some(perf) => perf,
+        None => state
+            .perf_counters
+            .entry(od.output_name.clone())
+            .or_default(),
+    };
     perf.renders = od.render_count;
     perf.queued = od.queued_count;
     perf.empties = od.empty_count;

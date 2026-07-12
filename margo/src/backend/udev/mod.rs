@@ -110,6 +110,12 @@ type GbmDrmCompositor =
 
 pub struct OutputDevice {
     pub output: Output,
+    /// The output's connector name (e.g. `eDP-1`), cached at creation.
+    /// `Output::name()` locks the output's inner mutex and clones a fresh
+    /// `String` on every call, so the per-frame render path keys
+    /// `perf_counters` / `frame_callback_sequence` off this stable copy
+    /// instead — no allocation on the steady-state hot path.
+    pub(super) output_name: String,
     pub(super) compositor: GbmDrmCompositor,
     pub(super) render_count: u64,
     pub(super) queued_count: u64,
@@ -663,6 +669,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
         backend_outputs.insert(
             crtc,
             OutputDevice {
+                output_name: output.name(),
                 output,
                 compositor,
                 render_count: 0,

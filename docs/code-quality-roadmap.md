@@ -1,12 +1,13 @@
 # Code-quality roadmap
 
 A grounded review of margo (compositor + mshell shell) as a codebase, with
-prioritised improvement work. Snapshot metrics (2026-06-12, v1.0.3): ~180k
-LOC Rust, 53 workspace crates, 765 test fns, 23 TODO/FIXME, ~581
-`unwrap`/`expect`/`panic` (non-test). Trend note vs the 2026-05-31
-snapshot: tests grew 503 → 765 ✅, but `state.rs` regrew past its Phase-2
-target (2944 → 4045 lines) and the unwrap count crept up 563 → 581 —
-the two ratchets to watch.
+prioritised improvement work. Snapshot metrics (2026-07-12, v1.1.8): ~298k
+LOC Rust, 62 workspace crates, 1173 test fns, 249 `unsafe` sites,
+panic-ratchet baseline 320 (non-test `unwrap`/`expect`/`panic`). These figures
+come from [`scripts/metrics.sh`](https://github.com/kenanpelit/margo/blob/main/scripts/metrics.sh),
+which is the canonical live source — run it for the current numbers rather than
+trusting this line, since the snapshot drifts between refreshes. (Earlier
+snapshots for trend: 2026-06-12 v1.0.3 was ~180k LOC / 53 crates / 765 tests.)
 
 > **Update (1.0.6 internals pass, 2026-06-13):** the unwrap ratchet is now
 > a CI hard gate (`scripts/panic-ratchet.sh`, baseline 334 — can only drop);
