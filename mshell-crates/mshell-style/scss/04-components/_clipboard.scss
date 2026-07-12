@@ -175,13 +175,17 @@
 
 // Alternating tonal surfaces make the boundary between consecutive copies
 // immediately visible, including when two neighbouring entries contain
-// similarly-shaped multi-line text. The classes follow the logical filtered
-// list position (assigned on factory bind), so virtualization cannot scramble
-// the pattern. Each variant supplies its own base to the canonical state-layer
-// mixin; hover/press therefore tint the resting colour instead of replacing it.
+// similarly-shaped multi-line text. The two tiers deliberately STRADDLE the
+// panel's own `--surface-container` background (even one step above, odd one
+// step below) — a two-step spread that reads clearly at a glance while both
+// rows still lift off the panel, without leaving the neutral surface ladder.
+// The classes follow the logical filtered list position (assigned on factory
+// bind), so virtualization cannot scramble the pattern. Each variant supplies
+// its own base to the canonical state-layer mixin; hover/press therefore tint
+// the resting colour instead of replacing it.
 .clipboard-item.clipboard-item-even {
-  background-color: var(--surface-container);
-  @include state-layer(var(--surface-container));
+  background-color: var(--surface-container-high);
+  @include state-layer(var(--surface-container-high));
 }
 
 .clipboard-item.clipboard-item-odd {
