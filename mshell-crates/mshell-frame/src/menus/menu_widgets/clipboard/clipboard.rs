@@ -252,6 +252,9 @@ pub(crate) enum ClipboardInput {
     CycleTab,
     SelectNext,
     SelectPrev,
+    /// Jump selection to the first / last filtered row (vim `gg` / `G`).
+    SelectFirst,
+    SelectLast,
     /// Copy the selected row (Enter).
     CopySelected,
     /// Copy a specific row by id (row activation / single click).
@@ -805,11 +808,18 @@ impl Component for ClipboardModel {
         // before the focused search entry. That lets nav shortcuts keep
         // working while typing a filter; plain characters fall through.
         let key_sender = sender.clone();
+        // vim `gg`: a bare `g` is a prefix that arms this flag; the next key
+        // either completes the jump (a second `g`) or cancels it. Owned by the
+        // key closure (a plain `Cell` — `Fn` only needs `&self` to mutate it).
+        let pending_g = std::cell::Cell::new(false);
         let key = gtk::EventControllerKey::new();
         key.set_propagation_phase(gtk::PropagationPhase::Capture);
         key.connect_key_pressed(move |_, keyval, _, modifier| {
             let ctrl = modifier.contains(gtk::gdk::ModifierType::CONTROL_MASK);
             let searching = search_is_active();
+            // Any keypress clears a half-typed `gg`; only a fresh bare `g`
+            // (arm below) re-arms it. Captured here so every arm cancels.
+            let was_pending_g = pending_g.replace(false);
             match keyval {
                 gtk::gdk::Key::slash if !searching && !ctrl => {
                     key_sender.input(ClipboardInput::EnterSearch);
@@ -872,6 +882,23 @@ impl Component for ClipboardModel {
                     key_sender.input(ClipboardInput::CopySelected);
                     gtk::glib::Propagation::Stop
                 }
+                // vim `gg` — first `g` arms, second `g` jumps to the top (most
+                // recent). Gated on `!searching` so `g` still types into the
+                // `/` filter. The keyval is case-specific, so `G` (shift) below
+                // is a distinct arm, not this one.
+                gtk::gdk::Key::g if !searching && !ctrl => {
+                    if was_pending_g {
+                        key_sender.input(ClipboardInput::SelectFirst);
+                    } else {
+                        pending_g.set(true);
+                    }
+                    gtk::glib::Propagation::Stop
+                }
+                // vim `G` — jump to the last (oldest) filtered row.
+                gtk::gdk::Key::G if !searching && !ctrl => {
+                    key_sender.input(ClipboardInput::SelectLast);
+                    gtk::glib::Propagation::Stop
+                }
                 _ => gtk::glib::Propagation::Proceed,
             }
         });
@@ -903,6 +930,7 @@ impl Component for ClipboardModel {
             (&["/"][..], "Search"),
             (&["1-4", "Tab"][..], "Tabs"),
             (&["Ctrl", "n/k"][..], "Move"),
+            (&["gg", "G"][..], "Jump"),
             (&["\u{21B5}"][..], "Copy"),
             (&["Ctrl", "p"][..], "Pin"),
             (&["Del"][..], "Remove"),
@@ -952,6 +980,8 @@ impl Component for ClipboardModel {
             }
             ClipboardInput::SelectNext => self.move_selection(1),
             ClipboardInput::SelectPrev => self.move_selection(-1),
+            ClipboardInput::SelectFirst => self.jump_to_edge(false),
+            ClipboardInput::SelectLast => self.jump_to_edge(true),
             ClipboardInput::CopySelected => {
                 if let Some(id) = self.selected_id() {
                     sender.input(ClipboardInput::CopyId(id));
@@ -1150,6 +1180,19 @@ impl ClipboardModel {
         self.selection.set_selected(next);
         self.list_view
             .scroll_to(next, gtk::ListScrollFlags::FOCUS, None);
+    }
+
+    /// Jump selection to the first (`gg`) or last (`G`) filtered row and
+    /// scroll + focus it into view. No-op on an empty list.
+    fn jump_to_edge(&self, to_end: bool) {
+        let n = self.selection.n_items();
+        if n == 0 {
+            return;
+        }
+        let pos = if to_end { n - 1 } else { 0 };
+        self.selection.set_selected(pos);
+        self.list_view
+            .scroll_to(pos, gtk::ListScrollFlags::FOCUS, None);
     }
 }
 
