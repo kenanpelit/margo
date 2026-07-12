@@ -44,10 +44,22 @@ pub(crate) struct ActiveWindowModel {
     class: String,
     title: String,
     /// Holds the (start/stop) marquee scroll timer. Only `Some` while the
-    /// title actually overflows — see `wire_marquee`. Stored to keep it alive
-    /// for the widget's lifetime.
-    #[allow(dead_code)]
+    /// title actually overflows — see `wire_marquee`. Removed in `Drop` so a
+    /// bar rebuild while a long title is scrolling doesn't leak the 33 Hz timer
+    /// (and, via the scroller it clones, the detached widget).
     marquee_source: Rc<RefCell<Option<glib::SourceId>>>,
+}
+
+impl Drop for ActiveWindowModel {
+    fn drop(&mut self) {
+        // A dropped `SourceId` does NOT remove the GLib source, so mirror
+        // `sync_marquee`'s stop path explicitly: without this, dropping the
+        // model (a bar rebuild) while the marquee is running would leave the
+        // timer firing forever against a detached widget it keeps alive.
+        if let Some(id) = self.marquee_source.borrow_mut().take() {
+            id.remove();
+        }
+    }
 }
 
 #[derive(Debug)]
