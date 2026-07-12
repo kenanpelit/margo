@@ -24,7 +24,7 @@ Three categories of documentation deliberately don't live here:
 
 * **End-user docs** — README.md handles install, basic
   configuration, and the per-action reference is generated
-  from `margo-ipc/src/actions.rs` via `mctl actions --verbose`.
+  from `mctl/src/actions.rs` via `mctl actions --verbose`.
 * **Per-feature deep dives** — code-adjacent comments + the
   module-level docstring (`//!` block at the top of each
   `.rs` file) are the source of truth. Duplicating into

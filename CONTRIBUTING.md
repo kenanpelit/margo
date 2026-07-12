@@ -30,9 +30,12 @@ loop. `scripts/smoke-winit.sh` exercises the nested-mode end-to-end.
 ## Code layout
 
 ```
-margo/             compositor binary; bulk of the work lives here
-margo-config/      config parser crate
-margo-ipc/         mctl + the dispatch action catalogue
+margo/             compositor binary; bulk of the compositor work lives here
+margo-config/      compositor .conf parser + validator
+margo-layouts/     tiling layout algorithms (tile, scroller, grid, monocle, …)
+mctl/              compositor IPC client + the dispatch/action catalogue
+mshell/            GTK4 desktop shell (bar + menus + settings + dashboard)
+mshell-crates/     shell helper crates (frame, config, launcher, plugins, …)
 mlayout/           named monitor-arrangement profiles
 mscreenshot/       screenshot helper (grim/slurp/wl-copy orchestration)
 contrib/           shell completions, example init.rhai, plugins
@@ -63,7 +66,7 @@ reason in the surrounding comment.
 ## Testing
 
 ```bash
-cargo test --workspace             # unit + snapshot tests (62 today)
+cargo test --workspace             # unit + snapshot tests (run scripts/metrics.sh for the live count)
 cargo insta review                 # accept new layout snapshots
 scripts/smoke-winit.sh             # end-to-end (nested mode)
 scripts/post-install-smoke.sh      # post-install validation

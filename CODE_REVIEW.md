@@ -1,5 +1,15 @@
 # Margo Codebase Değerlendirmesi
 
+> **⚠️ Tarihsel snapshot (superseded).** Bu dosya, 2026-05-17'de yapılmış tek
+> seferlik bir denetim turunun kaydıdır. Aşağıdaki tüm metrikler (crate / LOC /
+> test sayıları ve bulgular) **o tarihe aittir ve güncel değildir** — ör. o gün
+> 39 crate / 133K LOC idi, bugün `scripts/metrics.sh` canlı sayımı çok daha
+> yüksek. Kod kalitesi için **canlı kaynak**:
+> [`docs/code-quality-roadmap.md`](docs/code-quality-roadmap.md) (yaşayan yol
+> haritası) + [`scripts/metrics.sh`](scripts/metrics.sh) (LOC/crate/test/unsafe
+> anlık sayım). Bu dosya yalnızca o turun neyi neden değiştirdiğinin tarihsel
+> kaydı olarak tutuluyor.
+
 **Tarih**: 2026-05-17
 **Kapsam**: 39 workspace crate, 585 Rust dosyası, 133,431 LOC.
 **Build durumu**: ✓ `cargo check --workspace` temiz.
