@@ -24,9 +24,14 @@ use std::time::Duration;
 
 /// How long to wait out a Connecting/Disconnecting transition before acting.
 const SETTLE_TIMEOUT: Duration = Duration::from_secs(12);
-/// Extra healthy-wait when we found Mullvad mid-transition at login.
-const TRANSITION_GRACE: Duration = Duration::from_secs(10);
 const SETTLE_POLL: Duration = Duration::from_secs(1);
+/// How long a Connected tunnel gets to pass the connectivity probe before the
+/// fail-safe engages. Right after login the first probes routinely fail —
+/// in-tunnel DNS and the first TLS handshake lag the tunnel by seconds — so a
+/// single-shot check would soft-disable a perfectly good VPN (observed on
+/// hardware 2026-07-14). Mirrors the old script's ensure grace loop.
+const HEALTH_GRACE: Duration = Duration::from_secs(20);
+const HEALTH_POLL: Duration = Duration::from_secs(2);
 
 /// One reconcile at a time — a shell-start run and a manual trigger must not
 /// interleave their Mullvad/Blocky steps.
@@ -155,6 +160,27 @@ async fn internet_ok() -> bool {
     .unwrap_or(false)
 }
 
+/// Poll until the tunnel is Connected AND the connectivity probe passes, for
+/// at most `grace`. Re-reads the daemon state every round, so it also rides
+/// out a Connecting→Connected transition started just before the call.
+async fn wait_healthy(grace: Duration) -> bool {
+    let mut waited = Duration::ZERO;
+    loop {
+        if vpn_state().await == VpnState::Connected && internet_ok().await {
+            return true;
+        }
+        if waited >= grace {
+            tracing::warn!(
+                state = ?vpn_state().await,
+                "login-net: vpn not healthy after grace window"
+            );
+            return false;
+        }
+        tokio::time::sleep(HEALTH_POLL).await;
+        waited += HEALTH_POLL;
+    }
+}
+
 /// Leave Mullvad in a state that cannot blackhole routing while Blocky takes
 /// over DNS: disconnect and switch off auto-connect + lockdown.
 async fn vpn_soft_disable() {
@@ -239,7 +265,7 @@ async fn settle_blocky_off(couple_blocky: bool) {
 async fn reconcile_vpn(couple_blocky: bool) -> (bool, String) {
     match settle_vpn(SETTLE_TIMEOUT).await {
         VpnState::Connected => {
-            if internet_ok().await {
+            if wait_healthy(HEALTH_GRACE).await {
                 settle_blocky_off(couple_blocky).await;
                 (true, "already connected".into())
             } else {
@@ -270,7 +296,7 @@ async fn reconcile_vpn(couple_blocky: bool) -> (bool, String) {
                 tracing::warn!(error = %e, "login-net: mullvad connect");
                 return (false, apply_fallback(couple_blocky, "connect failed").await);
             }
-            if settle_vpn(SETTLE_TIMEOUT).await == VpnState::Connected && internet_ok().await {
+            if wait_healthy(HEALTH_GRACE).await {
                 settle_blocky_off(couple_blocky).await;
                 (true, "connected".into())
             } else {
@@ -283,8 +309,7 @@ async fn reconcile_vpn(couple_blocky: bool) -> (bool, String) {
         VpnState::Transitioning => {
             // Still in transition after the settle window: give it the grace
             // period to become healthy, then enforce the fail-safe.
-            let state = settle_vpn(TRANSITION_GRACE).await;
-            if state == VpnState::Connected && internet_ok().await {
+            if wait_healthy(HEALTH_GRACE).await {
                 settle_blocky_off(couple_blocky).await;
                 (true, "connected after transition".into())
             } else {
