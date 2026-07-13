@@ -5100,6 +5100,7 @@ dependencies = [
  "reactive_graph",
  "tokio",
  "tracing",
+ "ureq",
  "wayle-audio",
  "wayle-battery",
  "wayle-bluetooth",
