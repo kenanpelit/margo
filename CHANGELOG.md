@@ -5,6 +5,88 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.9] – 2026-07-13
+
+**Presentation pacing done right, and repaints that stay on their own screen.**
+`wp_fifo_v1` + `wp_commit_timing_v1` are advertised again — this time with the
+barrier-release scheduler they always needed — and the whole damage path was
+rebuilt to be per-output: a commit, animation frame, cursor move or focus
+change now repaints exactly the displays it touches. The visible payoff: a
+Chromium/Brave video tab no longer freezes for seconds after a hidden-tag
+round trip, and idle outputs actually idle.
+
+Drop-in upgrade.
+
+### Added
+
+- **P15 — `wp_fifo_v1` + `wp_commit_timing_v1`, driven for real.** The globals
+  were briefly withdrawn because Smithay's managed implementations install
+  commit barriers margo never released, wedging any client that used them from
+  a hidden tag. `margo/src/state/pacing.rs` is the missing scheduler: FIFO
+  barriers signal at every per-output present (real vblank, empty present,
+  estimated vblank), hidden/locked/disabled surfaces release from the
+  frame-callback fallback tick, and commit-timing deadlines are honoured up to
+  the next refresh — plus an exact one-shot deadline wake armed from the
+  surface pre-commit hook, so a timed commit on an otherwise idle output
+  releases at its target time, not at the next unrelated frame. Mesa's Vulkan
+  WSI gets a real `VK_PRESENT_MODE_FIFO_KHR` on margo; video players get
+  compositor-driven frame pacing. The advertised protocol surface is back at
+  **57**. Regression-tested end to end in `margo/src/tests/pacing.rs`,
+  including the hidden-tag stall and the idle-output deadline wake.
+- **Callback-only liveness fallback.** A permanent 1 s timer (30 Hz during a
+  freshly mapped hidden window's warm-up) delivers `wl_surface.frame` to
+  frame-throttled trees on hidden tags without ever dirtying KMS, so
+  Electron/CEF renderers no longer suspend so deeply that a tag return takes
+  seconds to recover.
+- **Stable window identity end to end.** The compositor mints a monotonic
+  per-window `id` (never reused, never shifted by another window closing),
+  exposes it in the snapshot (`focus_history_v2`, client `id`), and the shell
+  addresses windows by it — dock clicks and app-group focus use the new
+  `focuswindowid` dispatch, so focusing a window can never hit the wrong one
+  through a stale slot index.
+- **`mctl perf` went time-based:** windowed FPS (1 s / 10 s / 60 s),
+  render-latency percentiles (p50/p95/p99), a 10 s empty-frame ratio and a
+  `--watch` live mode, instead of lifetime-average counters.
+- **Clipboard:** vim-style `gg`/`G` jump-to-oldest/newest in the history list,
+  and a wider tonal gap between alternating rows.
+
+### Fixed
+
+- **Session-lock input hardening.** Keys are dropped unless a buffer-ready
+  lock surface actually holds focus (nothing can leak to the desktop in the
+  lock-acquisition gap); pointer/axis events route only to ready lock
+  surfaces; activation, move/resize and popup grabs are inert while locked;
+  the render path never falls through to desktop windows on an output whose
+  lock surface hasn't committed yet; initial maps deferred during a lock
+  finish silently at unlock.
+- **Per-output frame clock recovery.** Render/queue failures now back off
+  behind a bounded exponential retry instead of an immediate global re-ping;
+  present, retry and cast timers carry ownership generations (a stale one-shot
+  can never mutate a replacement clock — no more manual calloop source
+  removal); vblank completion picks the accounting mode that queued the frame,
+  surviving a mid-flight config reload.
+- IPC `watch` subscriptions are deduplicated and capped (16/connection, 512
+  total); the active-window marquee timer is stopped when its widget model
+  drops; the mkeys control socket got 0600 permissions, a message length cap
+  and a read timeout.
+
+### Performance
+
+- **Repaints are scoped per output.** Surface commits resolve to the smallest
+  safe repaint scope (synchronized subsurfaces return early; popups resolve to
+  their owner; hidden clients and suppressed layers never dirty KMS);
+  animation ticks, cursor motion, arranges and focus changes repaint only the
+  outputs they touch. A busy window on one monitor no longer wakes the other.
+- The shell's state-sync projection is indexed (per-tag counters and address
+  lookups went from quadratic to linear in window count); `image` codecs
+  trimmed to the five margo decodes; `criterion` no longer compiles into test
+  builds; dev/test profiles use line-tables-only debug info.
+
+### Changed
+
+- The theme catalogue was curated from 53 schemes down to 20 dark ones, with
+  existing configs migrated (`CONFIG_VERSION=3`).
+
 ## [1.1.6] – 2026-07-09
 
 **A native login greeter, and a hardening pass over the whole workspace.**
@@ -3229,8 +3311,9 @@ mshelldash surface.
   - `wp_content_type_v1` — game / video / photo surface hints.
   - `wp_fifo_v1` + `wp_commit_timing_v1` — newer presentation
     pacing protocol bindings. Their globals were later withdrawn pending a
-    real FIFO/deadline barrier-release scheduler; advertising the managed
-    Smithay states alone was not a complete implementation.
+    real FIFO/deadline barrier-release scheduler (advertising the managed
+    Smithay states alone was not a complete implementation), then restored
+    in 1.1.9 once `state/pacing.rs` drove the barriers.
   - `wp_alpha_modifier_v1` — per-surface alpha hint.
   - `xdg_wm_dialog_v1` — modal-dialog hint.
   - `zwp_xwayland_keyboard_grab_v1` — XWayland-side keyboard grab.

@@ -52,6 +52,7 @@ use smithay::{
     },
     wayland::{
         buffer::BufferHandler,
+        commit_timing::CommitTimerStateUserData,
         compositor::{
             BufferAssignment, CompositorClientState, CompositorHandler, CompositorState,
             SurfaceAttributes, add_blocker, add_pre_commit_hook, get_parent, is_sync_subsurface,
@@ -156,6 +157,22 @@ impl CompositorHandler for MargoState {
                         }
                     }
                 }
+            }
+
+            // `wp_commit_timing_v1`: peek the pending timestamp before
+            // Smithay's managed hook — installed later, on `get_timer`, so it
+            // always runs after this one — consumes it into a barrier. Arming
+            // the wake here guarantees a timed commit on an otherwise idle
+            // output is released at its deadline instead of waiting for an
+            // unrelated present or the 1 s fallback tick.
+            let commit_deadline = with_states(surface, |states| {
+                states
+                    .data_map
+                    .get::<CommitTimerStateUserData>()
+                    .and_then(|timer| timer.borrow().timestamp)
+            });
+            if let Some(deadline) = commit_deadline {
+                state.schedule_commit_timer_wake(deadline);
             }
         });
         // HookId is intentionally dropped: the hook lives on the

@@ -121,8 +121,8 @@ runtime-checked even where the per-protocol behaviour isn't.
 | `ext_image_copy_capture_v1` (+ capture-source) | ✅ | ✅ | ❌ | ❌ | modern capture; output/toplevel source globals advertised, capture loop only manually exercised |
 | `linux_dmabuf_v1` | ✅ | ✅ | 🟢 `dmabuf.rs` (3) | ❌ | format/modifier advertisement asserted |
 | `linux_drm_syncobj_v1` | ✅ | ✅ | ❌ | ❌ | explicit-sync; needs real GPU timeline |
-| `wp_fifo_v1` | ❌ | ❌ | 🟢 `globals.rs` (negative registry assertion) | ❌ | Smithay's managed commit barrier is not driven yet; deliberately hidden instead of advertising a client-stalling partial implementation |
-| `wp_commit_timing_v1` | ❌ | ❌ | 🟢 `globals.rs` (negative registry assertion) | ❌ | needs a per-output deadline scheduler and barrier release path before advertisement |
+| `wp_fifo_v1` | ✅ | ✅ | 🟢 `pacing.rs` (2) + `globals.rs` registry assertion | ❌ | barriers released per-output present + hidden fallback (`state/pacing.rs`, 1.1.9); blocked-commit → present-release round trip asserted |
+| `wp_commit_timing_v1` | ✅ | ✅ | 🟢 `pacing.rs` (2) + `globals.rs` registry assertion | ❌ | deadline held past next refresh, released by `release_commit_timers_until` and the idle-output deadline wake |
 
 ## Idle / power / session
 

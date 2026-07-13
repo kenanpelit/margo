@@ -123,17 +123,21 @@ fn second_client_sees_the_same_globals_as_the_first() {
 }
 
 #[test]
-fn managed_pacing_globals_stay_hidden_until_their_blockers_are_driven() {
+fn pacing_globals_are_advertised_now_that_their_barriers_are_driven() {
     let mut fx = Fixture::new();
     let id = fx.add_client();
     fx.roundtrip(id);
     let advertised = fx.client(id).global_names();
 
+    // `state/pacing.rs` releases the managed commit blockers (per-output
+    // present + hidden fallback + deadline wake), so both globals are safe
+    // to expose again. If this fails, check that `MargoState::new` still
+    // creates both manager states.
     for protocol in ["wp_fifo_manager_v1", "wp_commit_timing_manager_v1"] {
         assert!(
-            !advertised.iter().any(|name| name == protocol),
-            "{protocol} installs managed commit blockers; advertising it before Margo has a \
-             presentation/deadline release path can freeze clients. advertised: {advertised:?}",
+            advertised.iter().any(|name| name == protocol),
+            "{protocol} must be advertised alongside its barrier scheduler. \
+             advertised: {advertised:?}",
         );
     }
 }

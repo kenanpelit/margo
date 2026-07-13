@@ -45,6 +45,7 @@ mod layer_shell;
 mod output_assignment;
 mod output_management;
 mod overview;
+mod pacing;
 mod pointer_constraints;
 mod repaint;
 mod screencopy;

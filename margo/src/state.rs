@@ -21,6 +21,7 @@ mod groups;
 pub(crate) use groups::GroupLock;
 pub mod mru_switcher;
 mod overview;
+mod pacing;
 mod scratchpad;
 pub(crate) use scratchpad::MatchOp;
 mod screencast;
@@ -461,6 +462,15 @@ pub struct MargoState {
     /// (disable presentation-time hints for games, allow tearing,
     /// etc.).
     pub content_type_state: smithay::wayland::content_type::ContentTypeState,
+    /// `wp_fifo_v1`: FIFO commit ordering. Smithay's managed state installs
+    /// commit barriers; `state/pacing.rs` releases them at each output's
+    /// present (and via the hidden-surface fallback), which is what makes
+    /// advertising this global safe — see road_map P15.
+    pub fifo_manager_state: smithay::wayland::fifo::FifoManagerState,
+    /// `wp_commit_timing_v1`: explicit commit-time targets. Barriers are
+    /// released by the same pacing scheduler (present pass + exact deadline
+    /// wake armed from the surface pre-commit hook).
+    pub commit_timing_manager_state: smithay::wayland::commit_timing::CommitTimingManagerState,
     /// `wp_alpha_modifier_v1`: per-surface alpha hint so apps can
     /// fade themselves without going through compositor effects.
     pub alpha_modifier_state: smithay::wayland::alpha_modifier::AlphaModifierState,
@@ -572,6 +582,11 @@ pub struct MargoState {
     /// Session-monotonic owner id for per-output present timers. Prevents a
     /// stale timer from a disable/replug cycle clearing a replacement clock.
     pub(crate) next_present_timer_id: u64,
+    /// Earliest armed `wp_commit_timing_v1` deadline wake plus its ownership
+    /// generation. The one-shot source is logically cancelled by replacing
+    /// this pair — never via `LoopHandle::remove`. See `state/pacing.rs`.
+    pub(crate) commit_timer_wake: Option<(smithay::wayland::commit_timing::Timestamp, u64)>,
+    pub(crate) next_commit_timer_wake_id: u64,
     /// Outputs temporarily held behind a render/queue-error backoff. The map
     /// keeps the exact `Output` identity as well as its connector name: if a
     /// connector is unplugged and quickly recreated under the same name, an
@@ -1045,13 +1060,16 @@ impl MargoState {
             );
         // `wp_content_type_v1` — surface content-type hints.
         let content_type_state = smithay::wayland::content_type::ContentTypeState::new::<Self>(&dh);
-        // Do not advertise `wp_fifo_v1` / `wp_commit_timing_v1` yet. Smithay's
-        // managed implementations install commit blockers which the compositor
-        // must explicitly release at presentation/deadline time. Advertising
-        // the globals without driving those blockers can freeze a modern
-        // Chromium surface after it has been hidden and shown again. Keep the
-        // Dispatch2 support compiled, but expose neither protocol until Margo
-        // has a real per-output FIFO/deadline scheduler.
+        // `wp_fifo_v1` + `wp_commit_timing_v1` — presentation pacing. These
+        // were withdrawn while nothing released Smithay's managed commit
+        // barriers (a hidden-then-shown Chromium surface stalled behind
+        // them); `state/pacing.rs` now signals FIFO barriers at every
+        // per-output present, releases hidden surfaces from the fallback
+        // timer, and honours commit-timing deadlines with an exact one-shot
+        // wake, so the globals are safe to advertise again.
+        let fifo_manager_state = smithay::wayland::fifo::FifoManagerState::new::<Self>(&dh);
+        let commit_timing_manager_state =
+            smithay::wayland::commit_timing::CommitTimingManagerState::new::<Self>(&dh);
         // `wp_alpha_modifier_v1` — per-surface alpha hint.
         let alpha_modifier_state =
             smithay::wayland::alpha_modifier::AlphaModifierState::new::<Self>(&dh);
@@ -1212,6 +1230,8 @@ impl MargoState {
             security_context_state,
             kde_decoration_state,
             content_type_state,
+            fifo_manager_state,
+            commit_timing_manager_state,
             alpha_modifier_state,
             xdg_dialog_state,
             xwayland_keyboard_grab_state,
@@ -1237,6 +1257,8 @@ impl MargoState {
             estimated_vblank_timers: std::collections::HashMap::new(),
             per_output_clocks: std::collections::HashMap::new(),
             next_present_timer_id: 0,
+            commit_timer_wake: None,
+            next_commit_timer_wake_id: 0,
             render_retry_pending: std::collections::HashMap::new(),
             next_render_retry_id: 0,
             cursor_shape_manager_state,
@@ -2409,6 +2431,11 @@ impl MargoState {
         {
             send_frames_surface_tree(surface, output, time, throttle, should_send);
         }
+
+        // Presentation pacing: this function runs exactly once per present
+        // cycle (real vblank, empty present, estimated vblank), which makes
+        // it the FIFO/commit-timing barrier release point for this output.
+        self.release_pacing_barriers(output);
     }
 
     /// Callback-only safety net for surfaces that are not currently mapped to
@@ -2458,6 +2485,11 @@ impl MargoState {
                 );
             }
         }
+
+        // Hidden surfaces never reach a per-output present pass; release
+        // their pacing barriers here so a FIFO client on a hidden tag keeps
+        // draining its commit queue at the fallback cadence.
+        self.release_hidden_pacing_barriers();
 
         self.display_handle.flush_clients().ok();
     }

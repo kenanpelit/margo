@@ -18,6 +18,12 @@ use smithay::reexports::wayland_protocols::ext::session_lock::v1::client::{
     ext_session_lock_surface_v1::{self, ExtSessionLockSurfaceV1},
     ext_session_lock_v1::{self, ExtSessionLockV1},
 };
+use smithay::reexports::wayland_protocols::wp::commit_timing::v1::client::{
+    wp_commit_timer_v1::WpCommitTimerV1, wp_commit_timing_manager_v1::WpCommitTimingManagerV1,
+};
+use smithay::reexports::wayland_protocols::wp::fifo::v1::client::{
+    wp_fifo_manager_v1::WpFifoManagerV1, wp_fifo_v1::WpFifoV1,
+};
 use smithay::reexports::wayland_protocols::wp::idle_inhibit::zv1::client::{
     zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1,
     zwp_idle_inhibitor_v1::{self, ZwpIdleInhibitorV1},
@@ -290,6 +296,24 @@ impl Client {
             &self.qh,
             (),
         )
+    }
+
+    /// Associate a `wp_fifo_v1` object with `surface` so tests can issue
+    /// `set_barrier` / `wait_barrier` pacing requests.
+    pub fn get_fifo(&mut self, surface: &WlSurface) -> WpFifoV1 {
+        let manager: WpFifoManagerV1 = self.bind_global(1);
+        let fifo = manager.get_fifo(surface, &self.qh, ());
+        self.connection.flush().expect("client flush");
+        fifo
+    }
+
+    /// Associate a `wp_commit_timer_v1` object with `surface` so tests can
+    /// stamp commits with target presentation times.
+    pub fn get_commit_timer(&mut self, surface: &WlSurface) -> WpCommitTimerV1 {
+        let manager: WpCommitTimingManagerV1 = self.bind_global(1);
+        let timer = manager.get_timer(surface, &self.qh, ());
+        self.connection.flush().expect("client flush");
+        timer
     }
 
     /// Create a fresh xdg_toplevel by binding xdg_wm_base, creating
@@ -572,6 +596,54 @@ impl Dispatch<WlSubsurface, ()> for ClientState {
         _: &mut Self,
         _: &WlSubsurface,
         _: <WlSubsurface as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<WpFifoManagerV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WpFifoManagerV1,
+        _: <WpFifoManagerV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<WpFifoV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WpFifoV1,
+        _: <WpFifoV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<WpCommitTimingManagerV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WpCommitTimingManagerV1,
+        _: <WpCommitTimingManagerV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<WpCommitTimerV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WpCommitTimerV1,
+        _: <WpCommitTimerV1 as Proxy>::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,

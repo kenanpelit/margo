@@ -1,12 +1,14 @@
 # Wayland Protocol Surface — margo vs niri vs Hyprland vs mango
 
-> **Correctness update (2026-07-13):** margo temporarily withdrew
-> `wp_fifo_v1` and `wp_commit_timing_v1`. The Smithay bindings remain compiled,
-> but their managed commit barriers were never released by Margo's presentation
-> scheduler; exposing them could stall Chromium after hiding and showing a
-> window. The June source-count below is retained as an historical audit of
-> `v1.0.7`; the current advertised surface is therefore **55** rather than 57
-> until a real FIFO/deadline scheduler lands.
+> **Correctness update (2026-07-13, resolved in 1.1.9):** margo briefly
+> withdrew `wp_fifo_v1` and `wp_commit_timing_v1` because their managed
+> commit barriers were never released (a hidden-then-shown Chromium surface
+> could stall behind them). Both globals are advertised again as of 1.1.9,
+> now driven by a real barrier-release scheduler
+> (`margo/src/state/pacing.rs`): FIFO barriers signal at every per-output
+> present, hidden surfaces release from the frame-callback fallback tick,
+> and commit-timing deadlines get an exact one-shot wake. The advertised
+> surface is back at **57**.
 
 > **Last refreshed:** 2026-06-17 — **margo column re-counted directly from
 > source** at `v1.0.7` (`446f8597`): margo advertises **57 protocol-bearing
@@ -54,7 +56,7 @@ numbers are comparable.
 | Compositor | Protocols (approx.) | Stack | Note |
 |---|---|---|---|
 | **Hyprland** `0.55.0` | **69** | C++ (hand-rolled) | Widest surface — 63 protocol modules + 6 core, plus Hyprland-only extensions (source-counted 2026-06-17) |
-| **margo** `main` | **55** | Rust / smithay | Modern surface; **ahead of niri and mango**; pursuing Hyprland. The June source count was 57; FIFO and commit-timing are currently withheld until their managed barriers are actually driven |
+| **margo** `main` | **57** | Rust / smithay | Modern surface; **ahead of niri and mango**; pursuing Hyprland. FIFO and commit-timing rejoined in 1.1.9, now backed by the `state/pacing.rs` barrier-release scheduler |
 | **mango** `0.13.1` | **~53** | C / wlroots | Broad-but-legacy: wlroots hands it everything for free (carried from 2026-05-28; not re-counted) |
 | **niri** `26.04` | **41** | Rust / smithay | Tightest surface; deliberately minimal (source-counted 2026-06-17) |
 
@@ -76,17 +78,18 @@ manual curation to separate true protocol globals from scene/output
 > carry forward from the 2026-05-28 four-way walk and were **not**
 > re-walked protocol-by-protocol here.
 
-The current standing picture: **margo (~55) leads its own C ancestor mango
+The current standing picture: **margo (~57) leads its own C ancestor mango
 (~53)** and niri (~41), having hand-rolled the three wlroots-freebies
 mango got for free — `zwlr_foreign_toplevel_manager_v1` (write-side, P2),
 `ext_workspace_v1` (P5), `zwlr_virtual_pointer_manager_v1` (P7) — on top
 of the *modern* surface (HDR colour-management, content-type,
-security-context, pointer-warp, xdg-dialog,
+fifo/commit-timing, security-context, pointer-warp, xdg-dialog,
 system-bell, toplevel-icon, toplevel-tag, xwayland-keyboard-grab) that
 mango's wlroots base doesn't expose. `output_power` now ships (external
-DPMS control). Current main additionally withholds `fifo`/`commit-timing`
-until their presentation barriers are driven; `tearing_control` and
-`drm_lease` remain architecture/upstream-blocked — see "remaining gaps" below.
+DPMS control), and `fifo`/`commit-timing` are driven by a real
+presentation scheduler since 1.1.9. The two margo still doesn't advertise
+(`tearing_control`, `drm_lease`) are blocked, not just deferred — see
+"remaining gaps" below.
 
 ## Core baseline — present in all four
 
@@ -129,8 +132,8 @@ niri and mango each miss large chunks.
 | `ext_image_copy_capture_v1` + capture-source | ✅ | ❌ | ✅ | ✅ | Modern screencast (replaces screencopy) |
 | `xwayland_shell_v1` | ✅ | ⚠️ diff path | ✅ | ❌ | HiDPI XWayland scaling |
 | `wp_content_type_v1` | ✅ | ❌ | ✅ | ❌ | Game / video / photo hint |
-| `wp_fifo_v1` | ❌ | ❌ | ✅ | ❌ | FIFO commit ordering; Margo binding present but global withheld until barriers are driven |
-| `wp_commit_timing_v1` | ❌ | ❌ | ✅ | ❌ | Explicit commit-time targets; needs Margo deadline scheduler |
+| `wp_fifo_v1` | ✅ | ❌ | ✅ | ❌ | FIFO commit ordering; barriers released by `state/pacing.rs` since 1.1.9 |
+| `wp_commit_timing_v1` | ✅ | ❌ | ✅ | ❌ | Explicit commit-time targets; deadline wake + present-pass release since 1.1.9 |
 | `wp_alpha_modifier_v1` | ✅ | ❌ | ✅ | ✅ | Per-surface alpha hint |
 | `xdg_wm_dialog_v1` | ✅ | ❌ | ✅ | ❌ | Modal dialog hint |
 | `xdg_system_bell_v1` | ✅ | ❌ | ✅ | ❌ | System bell |
