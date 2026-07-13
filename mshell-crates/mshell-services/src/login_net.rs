@@ -170,10 +170,10 @@ async fn wait_healthy(grace: Duration) -> bool {
             return true;
         }
         if waited >= grace {
-            tracing::warn!(
-                state = ?vpn_state().await,
-                "login-net: vpn not healthy after grace window"
-            );
+            // Resolve before the macro: an `.await` inside `warn!` holds a
+            // non-Send `Arguments` across the await and un-Sends the future.
+            let state = vpn_state().await;
+            tracing::warn!(?state, "login-net: vpn not healthy after grace window");
             return false;
         }
         tokio::time::sleep(HEALTH_POLL).await;
