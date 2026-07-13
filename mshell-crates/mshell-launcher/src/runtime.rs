@@ -575,6 +575,7 @@ impl LauncherRuntime {
                     quick_key,
                     hidden,
                     match_indices,
+                    zebra_odd: false,
                 }
             })
             .collect()

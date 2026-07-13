@@ -50,6 +50,9 @@ pub(crate) struct LauncherRowModel {
     /// `"1".."9"` quick-activate digit, or empty string for rows
     /// past the first nine.
     quick_key: String,
+    /// Clipboard-style alternating resting surface, stamped by the parent
+    /// over the final visual order (`app-launcher-item-even` / `-odd`).
+    zebra_odd: bool,
     is_selected: bool,
     /// Per-provider CSS modifier class (`row-apps`, `row-calc`, …) so
     /// SCSS can specialise the row layout/typography by source.
@@ -126,6 +129,11 @@ impl Component for LauncherRowModel {
                 } else {
                     let mut v =
                         vec!["ok-button-surface", "app-launcher-item", model.variant.as_str()];
+                    v.push(if model.zebra_odd {
+                        "app-launcher-item-odd"
+                    } else {
+                        "app-launcher-item-even"
+                    });
                     if model.is_selected {
                         v.push("selected");
                     }
@@ -242,6 +250,7 @@ impl Component for LauncherRowModel {
             quick_key,
             hidden,
             match_indices,
+            zebra_odd,
         } = params.display;
         // Hide the context menu entirely for rows without a
         // usage_key — those are synthetic (commands palette, etc.)
@@ -269,6 +278,7 @@ impl Component for LauncherRowModel {
             pin_button,
             hide_button,
             quick_key,
+            zebra_odd,
             is_selected: false,
             variant,
             source_label,
@@ -341,6 +351,7 @@ impl Component for LauncherRowModel {
                     quick_key,
                     hidden,
                     match_indices,
+                    zebra_odd,
                 } = display;
                 self.variant = row_variant(&item.provider_name);
                 self.is_header = item.provider_name == SECTION_HEADER_PROVIDER;
@@ -353,6 +364,7 @@ impl Component for LauncherRowModel {
                 self.match_indices = match_indices;
                 self.pinned = pinned;
                 self.quick_key = quick_key;
+                self.zebra_odd = zebra_odd;
                 self.hidden = hidden;
                 *self.usage_key.borrow_mut() = self.item.usage_key.clone();
 

@@ -1,3 +1,4 @@
+@use "../02-functions/index" as *;
 @use "../03-primitives/buttons";
 
 // ── App Launcher — clock-menu visual language ───────────────────
@@ -300,6 +301,25 @@
       opacity: 0.9;
     }
   }
+}
+
+// Zebra stripes — the clipboard panel's alternating tonal surfaces,
+// applied to the result rows so the boundary between neighbouring
+// results is visible at a glance. Same two tiers as `.clipboard-item-*`
+// (even one step above, odd one step below the panel surface); parity is
+// stamped in Rust over the final visual order and restarts under each
+// section caption. `:not(.selected)` keeps the resting/hover tiers from
+// tying with the `--primary-container` selection fill, and the canonical
+// state-layer mixin reproduces the row's primary-wash hover over each
+// zebra base instead of flattening it.
+.app-launcher-item.app-launcher-item-even:not(.selected) {
+  background-color: var(--surface-container-high);
+  @include state-layer(var(--surface-container-high));
+}
+
+.app-launcher-item.app-launcher-item-odd:not(.selected) {
+  background-color: var(--surface-container-low);
+  @include state-layer(var(--surface-container-low));
 }
 
 // ── Quick-activate digits ───────────────────────────────────────

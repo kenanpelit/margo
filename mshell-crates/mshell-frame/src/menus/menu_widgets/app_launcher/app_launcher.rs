@@ -1175,26 +1175,40 @@ impl AppLauncherModel {
     }
 
     fn push_results_to_dynamic_box(&self) {
-        let cloned: Vec<DisplayItem> = if self.headered_view() && self.distinct_section_count() > 1
-        {
-            // Walk the (already category-grouped) results and drop a
-            // non-interactive header row in front of each new group.
-            // Only when the list actually spans 2+ categories — a lone
-            // group needs no caption.
-            let mut out: Vec<DisplayItem> = Vec::with_capacity(self.results.len() + 8);
-            let mut current: Option<&str> = None;
-            for d in &self.results {
-                let section = section_for_provider(&d.item.provider_name);
-                if current != Some(section) {
-                    out.push(make_section_header(section));
-                    current = Some(section);
+        let mut cloned: Vec<DisplayItem> =
+            if self.headered_view() && self.distinct_section_count() > 1 {
+                // Walk the (already category-grouped) results and drop a
+                // non-interactive header row in front of each new group.
+                // Only when the list actually spans 2+ categories — a lone
+                // group needs no caption.
+                let mut out: Vec<DisplayItem> = Vec::with_capacity(self.results.len() + 8);
+                let mut current: Option<&str> = None;
+                for d in &self.results {
+                    let section = section_for_provider(&d.item.provider_name);
+                    if current != Some(section) {
+                        out.push(make_section_header(section));
+                        current = Some(section);
+                    }
+                    out.push(clone_display_item(d));
                 }
-                out.push(clone_display_item(d));
+                out
+            } else {
+                self.results.iter().map(clone_display_item).collect()
+            };
+        // Zebra parity follows the FINAL visual order (post-regroup,
+        // post-header-insertion) and restarts under each section caption,
+        // so every group's first row rests on the same tier. The row's
+        // `#[watch]`ed class list picks the parity up on create and on
+        // in-place DisplayChanged refreshes alike.
+        let mut stripe = 0usize;
+        for d in cloned.iter_mut() {
+            if d.item.provider_name == SECTION_HEADER_PROVIDER {
+                stripe = 0;
+            } else {
+                d.zebra_odd = !stripe.is_multiple_of(2);
+                stripe += 1;
             }
-            out
-        } else {
-            self.results.iter().map(clone_display_item).collect()
-        };
+        }
         let _ = self
             .dynamic_box
             .sender()
@@ -1645,6 +1659,7 @@ fn clone_display_item(src: &DisplayItem) -> DisplayItem {
         quick_key: src.quick_key.clone(),
         hidden: src.hidden,
         match_indices: src.match_indices.clone(),
+        zebra_odd: src.zebra_odd,
     }
 }
 
@@ -1728,6 +1743,7 @@ fn make_section_header(section: &str) -> DisplayItem {
         quick_key: String::new(),
         hidden: false,
         match_indices: Vec::new(),
+        zebra_odd: false,
     }
 }
 

@@ -100,6 +100,12 @@ pub struct DisplayItem {
     /// non-fuzzy / empty-query results — the UI then renders the name
     /// plainly. Char (not byte) indices; pair with `name.chars().enumerate()`.
     pub match_indices: Vec<u32>,
+
+    /// Zebra stripe parity for the row's resting surface (clipboard-style
+    /// alternating tonal backgrounds). Stamped by the UI over the final
+    /// visual order — after section regrouping and header insertion — so
+    /// providers and the runtime leave it `false`.
+    pub zebra_odd: bool,
 }
 
 impl std::fmt::Debug for DisplayItem {
@@ -110,6 +116,7 @@ impl std::fmt::Debug for DisplayItem {
             .field("quick_key", &self.quick_key)
             .field("hidden", &self.hidden)
             .field("match_indices", &self.match_indices)
+            .field("zebra_odd", &self.zebra_odd)
             .finish()
     }
 }
