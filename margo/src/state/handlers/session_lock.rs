@@ -7,9 +7,10 @@
 //! ("alt+l → black screen" symptom).
 
 use smithay::{
+    input::pointer::CursorImageStatus,
     output::Output,
     reexports::wayland_server::protocol::wl_output::WlOutput,
-    utils::Size,
+    utils::{SERIAL_COUNTER, Size},
     wayland::session_lock::{
         LockSurface, SessionLockHandler, SessionLockManagerState, SessionLocker,
     },
@@ -30,6 +31,22 @@ impl SessionLockHandler for MargoState {
         );
         confirmation.lock();
         self.session_locked = true;
+        // The protocol is now locked even before the client creates its first
+        // lock surface. Clear any desktop focus immediately so keys arriving
+        // in that gap can never be forwarded to the previously focused app.
+        if let Some(pointer) = self.seat.get_pointer() {
+            pointer.unset_grab(self, SERIAL_COUNTER.next_serial(), crate::utils::now_ms());
+        }
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.unset_grab(self);
+            keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
+        }
+        if let Some(touch) = self.seat.get_touch() {
+            touch.unset_grab(self);
+        }
+        self.cursor_status = CursorImageStatus::default_named();
+        self.input_gesture = Default::default();
+        self.input_touch = Default::default();
         self.arrange_all();
     }
 
@@ -37,6 +54,10 @@ impl SessionLockHandler for MargoState {
         tracing::info!("session_lock: unlock() called");
         self.session_locked = false;
         self.lock_surfaces.clear();
+        // Toplevels may have completed their initial configure while locked.
+        // They stayed deliberately deferred so they could neither map nor
+        // steal focus; finish those maps now that the desktop is visible.
+        self.finish_lock_deferred_maps();
         self.arrange_all();
         // After unlock, push focus back to a real window — by default
         // current_focus is still pointing at the (now-dead) lock surface
@@ -82,7 +103,7 @@ impl SessionLockHandler for MargoState {
             size.h
         );
 
-        self.lock_surfaces.push((output, surface));
+        self.lock_surfaces.push((output.clone(), surface));
         // Don't try to set focus here: the wl_surface exists but has no
         // buffer yet, so `wl_keyboard.enter` arrives before Qt's
         // QQuickWindow is paint-ready and the password TextInput's
@@ -90,7 +111,6 @@ impl SessionLockHandler for MargoState {
         // refresh once the surface attaches its first buffer, which
         // both fixes that timing AND picks the lock surface on the
         // user's monitor instead of the first one in `lock_surfaces`.
-        self.refresh_keyboard_focus();
-        self.request_repaint();
+        self.request_repaint_output(&output);
     }
 }

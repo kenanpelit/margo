@@ -58,6 +58,10 @@ pub struct RawOutput {
     pub occupied_tag_mask: u32,
     #[serde(default)]
     pub focus_history: Vec<String>,
+    /// Stable per-window MRU projection. Kept alongside the legacy app-id
+    /// array so compositor and shell can be upgraded independently.
+    #[serde(default)]
+    pub focus_history_v2: Vec<RawFocusHistoryEntry>,
     pub layout_idx: usize,
     pub width: i32,
     pub height: i32,
@@ -70,6 +74,12 @@ pub struct RawOutput {
     pub wallpaper: String,
     #[serde(default)]
     pub wallpapers_by_tag: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct RawFocusHistoryEntry {
+    pub id: u64,
+    pub app_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -275,9 +285,27 @@ mod tests {
         let s: StateJson = serde_json::from_str(json).expect("optional fields default");
         assert_eq!(s.outputs.len(), 1);
         assert!(s.outputs[0].focus_history.is_empty());
+        assert!(s.outputs[0].focus_history_v2.is_empty());
         assert!(s.outputs[0].mode.is_none(), "absent mode defaults to None");
         assert!(s.outputs[0].wallpaper.is_empty());
         assert!(!s.clients[0].urgent && !s.clients[0].global && !s.clients[0].scratchpad);
+    }
+
+    #[test]
+    fn parses_stable_focus_history_alongside_legacy_projection() {
+        let json = r#"{
+            "active_output":"DP-1","layouts":["tile"],"tag_count":9,
+            "outputs":[{"name":"DP-1","active":true,"active_tag_mask":1,
+                "occupied_tag_mask":1,"focus_history":["same.app","same.app"],
+                "focus_history_v2":[{"id":11,"app_id":"same.app"},
+                                    {"id":12,"app_id":"same.app"}],
+                "layout_idx":0,"width":1920,"height":1080,
+                "x":0,"y":0,"scale":1.0}],
+            "clients":[]
+        }"#;
+        let state: StateJson = serde_json::from_str(json).expect("v2 history parses");
+        assert_eq!(state.outputs[0].focus_history_v2[0].id, 11);
+        assert_eq!(state.outputs[0].focus_history_v2[1].id, 12);
     }
 
     #[test]

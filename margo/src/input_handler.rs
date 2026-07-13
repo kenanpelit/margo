@@ -144,6 +144,9 @@ fn derive_motion_code(dx: f64, dy: f64) -> u32 {
 /// path matched — handy when binding-debugging on a 2-in-1 with both
 /// a touchpad and a touchscreen.
 fn dispatch_swipe(state: &mut MargoState, dx: f64, dy: f64, fingers: u32, source: &'static str) {
+    if state.session_locked {
+        return;
+    }
     let total = (dx * dx + dy * dy).sqrt();
     let cfg_threshold = state.config.swipe_min_threshold as f64;
     let threshold = if cfg_threshold > 1.0 {
@@ -378,8 +381,10 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                     // typed here are the unlock password. Focus target at
                     // trace is enough to debug "lock screen gets no keys".
                     let focus = state.seat.get_keyboard().and_then(|kb| kb.current_focus());
+                    let lock_has_focus =
+                        matches!(focus, Some(crate::state::FocusTarget::SessionLock(_)));
                     tracing::trace!(
-                        "lock: forwarding key state={:?} focus={}",
+                        "lock: key state={:?} focus={} action={}",
                         key_state,
                         match &focus {
                             Some(crate::state::FocusTarget::SessionLock(_)) => "SessionLock",
@@ -387,9 +392,14 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                             Some(crate::state::FocusTarget::Window(_)) => "Window",
                             Some(crate::state::FocusTarget::Popup(_)) => "Popup",
                             None => "None",
-                        }
+                        },
+                        if lock_has_focus { "forward" } else { "drop" },
                     );
-                    return FilterResult::Forward;
+                    return if lock_has_focus {
+                        FilterResult::Forward
+                    } else {
+                        FilterResult::Intercept(())
+                    };
                 }
 
                 // `zwp_keyboard_shortcuts_inhibit_v1`: if the focused
@@ -653,12 +663,15 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
     state.clamp_pointer_to_outputs();
     state.input_pointer.motion_events += 1;
     state.refresh_pointer_monitor_tracking();
-    // Edge-scroller pointer focus (no-op unless
-    // `edge_scroller_focus_allow_speed > 0`). Speed = this event's
-    // accelerated motion magnitude.
-    let edge_speed = (event.delta_x().powi(2) + event.delta_y().powi(2)).sqrt();
-    state.maybe_edge_scroller_focus(edge_speed);
-    state.request_repaint();
+    // The hidden desktop must not react to edge focus or honour a stale
+    // desktop pointer constraint while the session lock owns input.
+    if !state.session_locked {
+        // Edge-scroller pointer focus (no-op unless
+        // `edge_scroller_focus_allow_speed > 0`). Speed = this event's
+        // accelerated motion magnitude.
+        let edge_speed = (event.delta_x().powi(2) + event.delta_y().powi(2)).sqrt();
+        state.maybe_edge_scroller_focus(edge_speed);
+    }
 
     // Pointer-constraints enforcement. Two cases:
     //   * Active LOCK: the cursor stays pinned at its prior absolute
@@ -670,7 +683,9 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
     //     since the source of truth lives there. Re-clamp ourselves
     //     against the constraint's region so subsequent libinput
     //     deltas accumulate from the clamped value.
-    if let Some(pointer) = state.seat.get_pointer() {
+    if !state.session_locked
+        && let Some(pointer) = state.seat.get_pointer()
+    {
         if let Some(focus_surface) = pointer
             .current_focus()
             .as_ref()
@@ -698,6 +713,7 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
 
     let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
     log_pointer_motion(state, "relative", pos);
+    request_cursor_repaint(state, Point::from((prev_x, prev_y)), pos);
 
     if state.session_locked {
         // Multi-monitor lock: keyboard focus has to follow the cursor so
@@ -921,6 +937,7 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
     event: E,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
+    let old_pos = Point::from((state.input_pointer.x, state.input_pointer.y));
     let output = state.space.outputs().next().cloned();
     if let Some(output) = output {
         let size = state
@@ -936,7 +953,7 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
         state.refresh_pointer_monitor_tracking();
         let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
         log_pointer_motion(state, "absolute", pos);
-        state.request_repaint();
+        request_cursor_repaint(state, old_pos, pos);
 
         let kbd_focus = focus_under(state, pos);
         apply_sloppy_focus(state, kbd_focus.as_ref().map(|(t, _)| t));
@@ -1004,6 +1021,29 @@ fn log_pointer_motion(state: &MargoState, kind: &str, pos: Point<f64, Logical>) 
     }
 }
 
+/// Repaint only displays touched by the cursor's old/new hotspot. Pointer
+/// motion can arrive hundreds of times per second; turning every event into a
+/// global scene repaint needlessly wakes idle secondary outputs.
+fn request_cursor_repaint(
+    state: &mut MargoState,
+    old_pos: Point<f64, Logical>,
+    new_pos: Point<f64, Logical>,
+) {
+    if old_pos == new_pos {
+        return;
+    }
+
+    let mut outputs: Vec<_> = state.space.output_under(old_pos).cloned().collect();
+    for output in state.space.output_under(new_pos) {
+        if !outputs.contains(output) {
+            outputs.push(output.clone());
+        }
+    }
+    for output in outputs {
+        state.request_repaint_output(&output);
+    }
+}
+
 fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
     state: &mut MargoState,
     event: E,
@@ -1012,6 +1052,32 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
     let btn_state = event.state();
     let button = event.button_code();
     let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
+
+    if state.session_locked {
+        let ptr_focus = pointer_focus_under(state, pos);
+        if let Some(ptr) = state.seat.get_pointer() {
+            ptr.motion(
+                state,
+                ptr_focus,
+                &MotionEvent {
+                    location: pos,
+                    serial,
+                    time: event.time_msec(),
+                },
+            );
+            ptr.button(
+                state,
+                &ButtonEvent {
+                    serial,
+                    time: event.time_msec(),
+                    button,
+                    state: btn_state,
+                },
+            );
+            ptr.frame(state);
+        }
+        return;
+    }
 
     // Scroller overview: a left-press activates the tag cell / window
     // under the cursor (switch + focus), a backdrop click closes. Every
@@ -1159,7 +1225,6 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
             }
         }
     }
-    state.request_repaint();
     if let Some(ptr) = state.seat.get_pointer() {
         ptr.button(
             state,
@@ -1175,6 +1240,34 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
 }
 
 fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(state: &mut MargoState, event: E) {
+    if state.session_locked {
+        let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
+        let ptr_focus = pointer_focus_under(state, pos);
+        if let Some(ptr) = state.seat.get_pointer() {
+            ptr.motion(
+                state,
+                ptr_focus,
+                &MotionEvent {
+                    location: pos,
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time: event.time_msec(),
+                },
+            );
+            let source = event.source();
+            let mut frame = AxisFrame::new(event.time_msec()).source(source);
+            for axis in [Axis::Horizontal, Axis::Vertical] {
+                if let Some(amount) = event.amount(axis) {
+                    frame = frame.value(axis, amount);
+                }
+                if let Some(v120) = event.amount_v120(axis) {
+                    frame = frame.v120(axis, v120 as i32);
+                }
+            }
+            ptr.axis(state, frame);
+            ptr.frame(state);
+        }
+        return;
+    }
     // Scroller overview: scroll continuously pans the tag strip on the
     // monitor under the pointer (niri-style), with momentum + snap handled
     // in the physics tick. Convert the device delta to cell units: a wheel
@@ -1249,7 +1342,6 @@ fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(state: &mut Marg
         ptr.axis(state, frame);
         ptr.frame(state);
     }
-    state.request_repaint();
 }
 
 /// Map a released modifier keysym to the matching `margo_config::Modifiers`
@@ -1321,14 +1413,19 @@ fn exclusive_keyboard_layer(state: &MargoState) -> Option<FocusTarget> {
             .or_else(|| state.monitors.first().map(|m| &m.output));
 
         if let Some(output) = output {
-            if let Some((_, surface)) = state.lock_surfaces.iter().find(|(o, _)| o == output) {
+            if let Some((_, surface)) = state
+                .lock_surfaces
+                .iter()
+                .find(|(o, surface)| o == output && MargoState::lock_surface_ready(surface))
+            {
                 return Some(FocusTarget::SessionLock(surface.clone()));
             }
         }
         // Fallback to the first available lock surface.
         return state
             .lock_surfaces
-            .first()
+            .iter()
+            .find(|(_, surface)| MargoState::lock_surface_ready(surface))
             .map(|(_, s)| FocusTarget::SessionLock(s.clone()));
     }
 
@@ -1346,6 +1443,7 @@ fn exclusive_keyboard_layer(state: &MargoState) -> Option<FocusTarget> {
             let map = layer_map_for_output(output);
             map.layers()
                 .find(|mapped| mapped.layer_surface() == &layer)
+                .filter(|mapped| state.layer_accepts_input_on_output(output, mapped.layer()))
                 .map(|mapped| mapped.layer_surface().clone())
         });
 
@@ -1366,7 +1464,7 @@ fn focus_under(
             state
                 .lock_surfaces
                 .iter()
-                .find(|(o, _)| o == output)
+                .find(|(o, surface)| o == output && MargoState::lock_surface_ready(surface))
                 .and_then(|(_, s)| {
                     // `output` came from `output_under`, so it is mapped and
                     // geometry is Some in practice. Use `?` rather than unwrap
@@ -1408,7 +1506,10 @@ fn pointer_focus_under(
     // route input to hidden background apps and defeat the lock.
     if state.session_locked {
         let output = state.space.output_under(pos).next()?;
-        let (_, lock_surface) = state.lock_surfaces.iter().find(|(o, _)| o == output)?;
+        let (_, lock_surface) = state
+            .lock_surfaces
+            .iter()
+            .find(|(o, surface)| o == output && MargoState::lock_surface_ready(surface))?;
         let output_geo = state.space.output_geometry(output)?;
         return Some((lock_surface.wl_surface().clone(), output_geo.loc.to_f64()));
     }
@@ -1448,6 +1549,9 @@ fn layer_pointer_under(
 
     for layer_kind in layer_kinds {
         for layer in layers.layers_on(*layer_kind).rev() {
+            if !state.layer_accepts_input_on_output(output, layer.layer()) {
+                continue;
+            }
             let Some(layer_geo) = layers.layer_geometry(layer) else {
                 continue;
             };
@@ -1476,6 +1580,9 @@ fn layer_focus_under(
 
     for layer_kind in layer_kinds {
         for layer in layers.layers_on(*layer_kind).rev() {
+            if !state.layer_accepts_input_on_output(output, layer.layer()) {
+                continue;
+            }
             let Some(layer_geo) = layers.layer_geometry(layer) else {
                 continue;
             };

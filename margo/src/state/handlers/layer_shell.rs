@@ -30,7 +30,7 @@ impl WlrLayerShellHandler for MargoState {
         &mut self,
         surface: WlrLayerSurface,
         output: Option<WlOutput>,
-        _layer: Layer,
+        layer: Layer,
         namespace: String,
     ) {
         let smithay_output = output
@@ -112,6 +112,8 @@ impl WlrLayerShellHandler for MargoState {
             self.layer_animations.insert(
                 wl_surface_clone.id(),
                 LayerSurfaceAnim {
+                    output: smithay_output.clone(),
+                    layer,
                     time_started: now,
                     duration: self.config.animation_duration_open,
                     progress: 0.0,
@@ -123,7 +125,9 @@ impl WlrLayerShellHandler for MargoState {
                     source_surface: None,
                 },
             );
-            self.request_repaint();
+            if self.layer_renders_on_output(&smithay_output, layer) {
+                self.request_repaint_output(&smithay_output);
+            }
         }
 
         tracing::info!(
@@ -197,6 +201,12 @@ impl WlrLayerShellHandler for MargoState {
             .find_map(|r| r.animation_type_close.clone())
             .unwrap_or_else(|| self.config.layer_animation_type_close.clone());
 
+        let layer_role = layer
+            .as_ref()
+            .map(|layer| layer.layer())
+            .unwrap_or(Layer::Top);
+        let layer_visible = self.layer_renders_on_output(&output, layer_role);
+
         if !layer_no_anim
             && self.config.animations
             && self.config.layer_animations
@@ -218,6 +228,8 @@ impl WlrLayerShellHandler for MargoState {
                 self.layer_animations.insert(
                     wl_surf.id(),
                     LayerSurfaceAnim {
+                        output: output.clone(),
+                        layer: layer_role,
                         time_started: now,
                         duration: self.config.animation_duration_close,
                         progress: 0.0,
@@ -229,7 +241,9 @@ impl WlrLayerShellHandler for MargoState {
                         source_surface: Some(wl_surf.clone()),
                     },
                 );
-                self.request_repaint();
+                if layer_visible {
+                    self.request_repaint_output(&output);
+                }
             }
         }
 
@@ -247,7 +261,11 @@ impl WlrLayerShellHandler for MargoState {
         self.layer_layout_hashes.remove(&wl_surf.id());
         self.layer_kb_interactivity_hashes.remove(&wl_surf.id());
 
-        self.refresh_output_work_area(&output);
+        if layer_visible {
+            self.refresh_output_work_area(&output);
+        } else {
+            self.update_output_work_area(&output);
+        }
 
         // Hand keyboard focus back to a real window when the layer that
         // had grabbed it (typically noctalia's launcher / settings panel

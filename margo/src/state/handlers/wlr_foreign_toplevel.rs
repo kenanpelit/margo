@@ -48,7 +48,10 @@ impl MargoState {
     /// `focuswindow` IPC dispatch so the dock can focus the exact window
     /// a user clicks, not just jump to its tag.
     pub(crate) fn activate_window_idx(&mut self, idx: usize) {
-        if idx >= self.clients.len() {
+        // Activation is a desktop operation.  During session lock it must
+        // not switch tags, raise hidden windows, or schedule desktop work;
+        // the central focus guard alone is too late for those mutations.
+        if self.session_locked || idx >= self.clients.len() {
             return;
         }
 

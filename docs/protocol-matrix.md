@@ -1,6 +1,6 @@
 # Protocol verification matrix — advertised vs implemented vs tested
 
-> **Last refreshed:** 2026-06-01 (`main`)
+> **Last refreshed:** 2026-07-13 (`main`)
 > **Companion doc:** [`protocol-comparison.md`](protocol-comparison.md) answers
 > *"what does each compositor advertise?"* (cross-project surface count).
 > **This** doc answers a different, internal question: *"for every protocol
@@ -121,8 +121,8 @@ runtime-checked even where the per-protocol behaviour isn't.
 | `ext_image_copy_capture_v1` (+ capture-source) | ✅ | ✅ | ❌ | ❌ | modern capture; output/toplevel source globals advertised, capture loop only manually exercised |
 | `linux_dmabuf_v1` | ✅ | ✅ | 🟢 `dmabuf.rs` (3) | ❌ | format/modifier advertisement asserted |
 | `linux_drm_syncobj_v1` | ✅ | ✅ | ❌ | ❌ | explicit-sync; needs real GPU timeline |
-| `wp_fifo_v1` | ✅ | ✅ | ❌ | ❌ | FIFO commit ordering; no probe |
-| `wp_commit_timing_v1` | ✅ | ✅ | ❌ | ❌ | commit-time targets; no probe |
+| `wp_fifo_v1` | ❌ | ❌ | 🟢 `globals.rs` (negative registry assertion) | ❌ | Smithay's managed commit barrier is not driven yet; deliberately hidden instead of advertising a client-stalling partial implementation |
+| `wp_commit_timing_v1` | ❌ | ❌ | 🟢 `globals.rs` (negative registry assertion) | ❌ | needs a per-output deadline scheduler and barrier release path before advertisement |
 
 ## Idle / power / session
 

@@ -8,6 +8,7 @@
 //! global type".
 
 use std::collections::BTreeMap;
+use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -40,12 +41,17 @@ use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::{
 };
 use wayland_backend::client::Backend;
 use wayland_client::globals::Global;
+use wayland_client::protocol::wl_buffer::WlBuffer;
 use wayland_client::protocol::wl_callback::{self, WlCallback};
 use wayland_client::protocol::wl_compositor::WlCompositor;
 use wayland_client::protocol::wl_display::WlDisplay;
 use wayland_client::protocol::wl_pointer::{self, WlPointer};
 use wayland_client::protocol::wl_registry::{self, WlRegistry};
 use wayland_client::protocol::wl_seat::{self, WlSeat};
+use wayland_client::protocol::wl_shm::{self, WlShm};
+use wayland_client::protocol::wl_shm_pool::WlShmPool;
+use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
+use wayland_client::protocol::wl_subsurface::WlSubsurface;
 use wayland_client::protocol::wl_surface::{self, WlSurface};
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
 
@@ -56,6 +62,7 @@ use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
 pub struct ClientId(u32);
 
 static NEXT_CLIENT_ID: AtomicU32 = AtomicU32::new(0);
+static NEXT_SHM_FILE_ID: AtomicU32 = AtomicU32::new(0);
 
 impl ClientId {
     fn next() -> Self {
@@ -224,6 +231,65 @@ impl Client {
         let surface = compositor.create_surface(&self.qh, ());
         self.connection.flush().expect("client flush");
         (compositor, surface)
+    }
+
+    /// Create a synchronized child subsurface, matching Chromium's atomic
+    /// video-surface commit shape. Synchronized is the protocol default, but
+    /// call `set_sync` explicitly so the test's intent is visible.
+    pub fn create_sync_subsurface(&mut self, parent: &WlSurface) -> (WlSurface, WlSubsurface) {
+        let compositor: WlCompositor = self.bind_global(6);
+        let subcompositor: WlSubcompositor = self.bind_global(1);
+        let child = compositor.create_surface(&self.qh, ());
+        let subsurface = subcompositor.get_subsurface(&child, parent, &self.qh, ());
+        subsurface.set_sync();
+        self.connection.flush().expect("client flush");
+        (child, subsurface)
+    }
+
+    /// Request a real `wl_surface.frame` callback and return the completion
+    /// sentinel used by visibility/pacing regression tests.
+    pub fn request_frame(&mut self, surface: &WlSurface) -> Arc<AtomicBool> {
+        let done = Arc::new(AtomicBool::new(false));
+        let _callback = surface.frame(&self.qh, done.clone());
+        self.connection.flush().expect("client flush");
+        done
+    }
+
+    /// Allocate a real XRGB8888 wl_shm buffer for surface-tree geometry tests.
+    /// The backing file is unlinked immediately after creation; Wayland keeps
+    /// the passed fd alive for the pool request.
+    pub fn create_shm_buffer(&self, width: i32, height: i32) -> WlBuffer {
+        let stride = width.checked_mul(4).expect("test shm stride overflow");
+        let len = stride
+            .checked_mul(height)
+            .expect("test shm buffer size overflow");
+        let path = std::env::temp_dir().join(format!(
+            "margo-wayland-test-{}-{}",
+            std::process::id(),
+            NEXT_SHM_FILE_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&path)
+            .expect("create test shm backing file");
+        file.set_len(len as u64)
+            .expect("size test shm backing file");
+        std::fs::remove_file(path).expect("unlink test shm backing file");
+
+        let shm: WlShm = self.bind_global(1);
+        let pool = shm.create_pool(file.as_fd(), len, &self.qh, ());
+        pool.create_buffer(
+            0,
+            width,
+            height,
+            stride,
+            wl_shm::Format::Xrgb8888,
+            &self.qh,
+            (),
+        )
     }
 
     /// Create a fresh xdg_toplevel by binding xdg_wm_base, creating
@@ -450,6 +516,66 @@ impl Dispatch<WlSurface, ()> for ClientState {
         // but we accept them silently if the harness later adds an
         // Output via MargoState.
         let _ = event;
+    }
+}
+
+impl Dispatch<WlShm, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WlShm,
+        _: wl_shm::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<WlShmPool, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WlShmPool,
+        _: <WlShmPool as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<WlBuffer, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WlBuffer,
+        _: <WlBuffer as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<WlSubcompositor, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WlSubcompositor,
+        _: <WlSubcompositor as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<WlSubsurface, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WlSubsurface,
+        _: <WlSubsurface as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
     }
 }
 

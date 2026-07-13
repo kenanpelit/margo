@@ -126,6 +126,10 @@ pub struct OutputDevice {
     /// no-present, but a render error needs its own clock recovery — see the
     /// `Err` arm in `frame.rs`.
     pub(super) render_error_count: u64,
+    /// Consecutive queue/render failures since the last empty or queued frame.
+    /// Drives bounded exponential retry backoff; lifetime telemetry remains in
+    /// the two counters above.
+    pub(super) render_failure_streak: u32,
     /// Per-CRTC GAMMA_LUT property handles, populated when the connector is
     /// bound. `None` if the kernel/driver doesn't expose GAMMA_LUT (in which
     /// case sunsetr / gammastep silently skip the output).
@@ -682,6 +686,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                 empty_count: 0,
                 queue_error_count: 0,
                 render_error_count: 0,
+                render_failure_streak: 0,
                 gamma: gamma_props,
                 connector: *conn_handle,
                 dpms_off: false,
@@ -782,13 +787,11 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                     // Also bumps the per-output frame_callback_sequence
                     // + sends frame callbacks — see `state::note_vblank`.
                     if let Some(out) = flipped_output {
-                        if state.per_output_frame_clock_enabled() {
-                            // Opt-in path: clear this output's in-flight
-                            // gate, stamp last_present, re-arm its timer.
-                            state.note_vblank_per_output(&out);
-                        } else {
-                            state.note_vblank(&out);
-                        }
+                        // Select by the gate that queued this specific frame,
+                        // not by the current config value: config reload may
+                        // flip the frame-clock mode while a page-flip is in
+                        // flight.
+                        state.note_backend_vblank(&out);
                     }
                 }
                 DrmEvent::Error(e) => error!("DRM error: {:?}", e),
@@ -1317,7 +1320,7 @@ pub(super) fn take_pending_open_close_captures(
         .layer_animations
         .iter()
         .filter_map(|(k, a)| {
-            if a.is_close && a.capture_pending {
+            if a.is_close && a.capture_pending && a.output == od.output {
                 Some(k.clone())
             } else {
                 None

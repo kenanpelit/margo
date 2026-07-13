@@ -123,6 +123,22 @@ fn second_client_sees_the_same_globals_as_the_first() {
 }
 
 #[test]
+fn managed_pacing_globals_stay_hidden_until_their_blockers_are_driven() {
+    let mut fx = Fixture::new();
+    let id = fx.add_client();
+    fx.roundtrip(id);
+    let advertised = fx.client(id).global_names();
+
+    for protocol in ["wp_fifo_manager_v1", "wp_commit_timing_manager_v1"] {
+        assert!(
+            !advertised.iter().any(|name| name == protocol),
+            "{protocol} installs managed commit blockers; advertising it before Margo has a \
+             presentation/deadline release path can freeze clients. advertised: {advertised:?}",
+        );
+    }
+}
+
+#[test]
 fn fixture_dispatches_without_clients() {
     // Pure-server smoke: stand up a Fixture, call dispatch a few
     // times without inserting any clients. Catches a regression

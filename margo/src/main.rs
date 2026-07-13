@@ -498,6 +498,21 @@ fn main() -> Result<()> {
         args.config.clone(),
     );
 
+    // Hidden workspaces do not participate in an output's normal vblank walk,
+    // but frame-throttled clients still need callback-only liveness. This one
+    // permanent source normally ticks once a second and temporarily runs at
+    // 30 Hz for a freshly mapped hidden client's finite warm-up window. It
+    // never creates a physical repaint.
+    loop_handle
+        .insert_source(
+            calloop::timer::Timer::from_duration(std::time::Duration::from_secs(1)),
+            |_, _, state: &mut MargoState| {
+                state.send_frame_callbacks_fallback();
+                calloop::timer::TimeoutAction::ToDuration(state.frame_callback_fallback_interval())
+            },
+        )
+        .map_err(|e| anyhow::anyhow!("frame-callback fallback timer: {e}"))?;
+
     // Socket IPC: export MARGO_SOCKET (before any child is spawned so
     // it's inherited) and bind the control socket on the event loop.
     ipc::export_socket_env();
@@ -1158,6 +1173,56 @@ fn main() -> Result<()> {
         state.flush_ipc_if_dirty();
         // Animation tick — split borrow across fields
         let now = utils::now_ms();
+        // Capture the client set before ticking as well as after: an
+        // animation that settles on this tick still needs one final frame, but
+        // its `running` flag will already be false afterwards.
+        let mut animation_clients: Vec<usize> = state
+            .clients
+            .iter()
+            .enumerate()
+            .filter(|(_, client)| {
+                client.animation.running
+                    || client.opacity_animation.running
+                    || client.opening_animation.is_some()
+                    || client.resize_snapshot.is_some()
+            })
+            .map(|(idx, _)| idx)
+            .collect();
+        let mut closing_animation_monitors: Vec<usize> = state
+            .closing_clients
+            .iter()
+            .filter_map(|client| {
+                if state.session_locked || state.scroller_overview.is_some() {
+                    return None;
+                }
+                let monitor = state
+                    .monitors
+                    .get(client.monitor)
+                    .filter(|monitor| monitor.enabled)?;
+                let tagset = if monitor.is_overview {
+                    !0
+                } else {
+                    monitor.current_tagset()
+                };
+                ((client.tags & tagset) != 0).then_some(client.monitor)
+            })
+            .collect();
+        let mut layer_animation_outputs: Vec<_> = state
+            .layer_animations
+            .values()
+            .filter(|anim| {
+                state.scroller_overview.is_none()
+                    && state.layer_renders_on_output(&anim.output, anim.layer)
+            })
+            .map(|anim| anim.output.clone())
+            .collect();
+        let mut unique_layer_outputs = Vec::new();
+        for output in layer_animation_outputs.drain(..) {
+            if !unique_layer_outputs.contains(&output) {
+                unique_layer_outputs.push(output);
+            }
+        }
+        layer_animation_outputs = unique_layer_outputs;
         let animations_changed = {
             let cfg = &state.config;
             let use_spring = cfg.animation_clock_move.eq_ignore_ascii_case("spring");
@@ -1196,17 +1261,111 @@ fn main() -> Result<()> {
             )
         };
         if animations_changed {
+            animation_clients.extend(
+                state
+                    .clients
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, client)| {
+                        client.animation.running
+                            || client.opacity_animation.running
+                            || client.opening_animation.is_some()
+                            || client.resize_snapshot.is_some()
+                    })
+                    .map(|(idx, _)| idx),
+            );
+            animation_clients.sort_unstable();
+            animation_clients.dedup();
+            closing_animation_monitors.extend(state.closing_clients.iter().filter_map(|client| {
+                if state.session_locked || state.scroller_overview.is_some() {
+                    return None;
+                }
+                let monitor = state
+                    .monitors
+                    .get(client.monitor)
+                    .filter(|monitor| monitor.enabled)?;
+                let tagset = if monitor.is_overview {
+                    !0
+                } else {
+                    monitor.current_tagset()
+                };
+                ((client.tags & tagset) != 0).then_some(client.monitor)
+            }));
+            closing_animation_monitors.sort_unstable();
+            closing_animation_monitors.dedup();
+            for output in state
+                .layer_animations
+                .values()
+                .filter(|anim| {
+                    state.scroller_overview.is_none()
+                        && state.layer_renders_on_output(&anim.output, anim.layer)
+                })
+                .map(|anim| anim.output.clone())
+            {
+                if !layer_animation_outputs.contains(&output) {
+                    layer_animation_outputs.push(output);
+                }
+            }
+
+            // Snapshot the old Space memberships and union them with every
+            // output intersected by the just-ticked geometry. This preserves
+            // the erase side of a cross-output move before `map_element`
+            // changes the element location below.
+            let mut animation_outputs = layer_animation_outputs;
+            for &idx in &animation_clients {
+                let Some(client) = state.clients.get(idx) else {
+                    continue;
+                };
+                if let Some(owner) = state
+                    .monitors
+                    .get(client.monitor)
+                    .filter(|monitor| monitor.enabled)
+                    .map(|monitor| monitor.output.clone())
+                    && state.client_renders_on_output(client, &owner)
+                    && !animation_outputs.contains(&owner)
+                {
+                    animation_outputs.push(owner);
+                }
+                for output in state.space.outputs_for_element(&client.window) {
+                    if state.client_renders_on_output(client, &output)
+                        && !animation_outputs.contains(&output)
+                    {
+                        animation_outputs.push(output);
+                    }
+                }
+                let geom = client.geom;
+                for monitor in state.monitors.iter().filter(|monitor| monitor.enabled) {
+                    let area = monitor.monitor_area;
+                    let intersects = geom.x < area.x + area.width
+                        && geom.x + geom.width > area.x
+                        && geom.y < area.y + area.height
+                        && geom.y + geom.height > area.y;
+                    if intersects
+                        && state.client_renders_on_output(client, &monitor.output)
+                        && !animation_outputs.contains(&monitor.output)
+                    {
+                        animation_outputs.push(monitor.output.clone());
+                    }
+                }
+            }
+            for &mon_idx in &closing_animation_monitors {
+                if let Some(output) = state
+                    .monitors
+                    .get(mon_idx)
+                    .filter(|monitor| monitor.enabled && !state.session_locked)
+                    .map(|monitor| monitor.output.clone())
+                    && !animation_outputs.contains(&output)
+                {
+                    animation_outputs.push(output);
+                }
+            }
+
             let animated: Vec<_> = state
                 .clients
                 .iter()
                 .filter(|client| {
                     state.monitors.get(client.monitor).is_some_and(|monitor| {
-                        let tagset = if monitor.is_overview {
-                            !0
-                        } else {
-                            monitor.current_tagset()
-                        };
-                        client.is_visible_on(client.monitor, tagset)
+                        state.client_renders_on_output(client, &monitor.output)
                     })
                 })
                 .map(|client| (client.window.clone(), client.geom))
@@ -1231,6 +1390,20 @@ fn main() -> Result<()> {
                 // `geometry.loc` short of where the border tracked.
                 state.space.map_element(window, (geom.x, geom.y), false);
             }
+            // `map_element` retains Smithay's old output-membership cache. A
+            // boundary-crossing animation must refresh that cache before the
+            // due-output batch starts, or whichever output renders first can
+            // see an empty/missing frame. Most animation frames remain inside
+            // one output and skip the O(windows × outputs) refresh entirely.
+            let membership_changed = animation_clients.iter().any(|&idx| {
+                state.clients.get(idx).is_some_and(|client| {
+                    let cached = state.space.outputs_for_element(&client.window);
+                    state.window_space_membership_is_stale(&client.window, &cached)
+                })
+            });
+            if membership_changed {
+                state.space.refresh();
+            }
             // smithay's `space.map_element` always moves the touched
             // element to the top of the stack, so an animated tile
             // would otherwise leap above an unrelated floating window
@@ -1238,14 +1411,16 @@ fn main() -> Result<()> {
             // every animation tick.
             state.enforce_z_order();
             border::refresh(state);
-            state.request_repaint();
+            for output in animation_outputs {
+                state.request_repaint_output(&output);
+            }
         }
 
         // Scroller-overview open/close zoom animation. Advances the
         // eased progress and keeps repainting until it settles (a close
         // also clears the overview here when it reaches 0).
         if state.tick_scroller_overview(now) {
-            state.request_repaint();
+            state.request_scene_repaint();
         }
 
         // Config-error overlay timeout. The banner is armed by

@@ -26,6 +26,8 @@
 //! finalize_initial_map to run.
 
 use super::fixture::Fixture;
+use crate::layout::LayoutId;
+use crate::state::FocusTarget;
 
 #[test]
 fn pre_commit_toplevel_is_pending_initial_map() {
@@ -174,5 +176,174 @@ fn destroying_one_of_two_toplevels_keeps_the_other() {
     assert_eq!(
         remaining[0].app_id, "beta",
         "destroying alpha must leave beta — index/shift bug regression",
+    );
+}
+
+#[test]
+fn focus_history_distinguishes_same_app_windows_by_stable_id() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    fx.add_keyboard();
+    let peer = fx.add_client();
+    let (_a_t, a_s) = fx.client(peer).create_toplevel();
+    let (b_t, b_s) = fx.client(peer).create_toplevel();
+    b_t.set_app_id("same.app".into());
+    a_s.commit();
+    b_s.commit();
+    fx.client(peer).flush();
+    fx.roundtrip(peer);
+
+    for client in &mut fx.server.state.clients {
+        client.app_id = "same.app".into();
+    }
+    let ids: std::collections::HashSet<_> = fx
+        .server
+        .state
+        .clients
+        .iter()
+        .map(|client| client.id)
+        .collect();
+    let history: std::collections::HashSet<_> = fx.server.state.monitors[0]
+        .focus_history
+        .iter()
+        .copied()
+        .collect();
+    assert_eq!(history, ids);
+
+    let snapshot = fx.server.state.build_state_snapshot();
+    let v2 = snapshot["outputs"][0]["focus_history_v2"]
+        .as_array()
+        .expect("id-bearing focus history");
+    assert_eq!(v2.len(), 2);
+    assert_ne!(v2[0]["id"], v2[1]["id"]);
+}
+
+#[test]
+fn focus_history_survives_scroller_slot_insertion() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    fx.add_keyboard();
+    let curtag = fx.server.state.monitors[0].pertag.curtag;
+    fx.server.state.monitors[0].pertag.ltidxs[curtag] = LayoutId::Scroller;
+    let peer = fx.add_client();
+
+    let (a_t, a_s) = fx.client(peer).create_toplevel();
+    a_t.set_app_id("alpha".into());
+    a_s.commit();
+    fx.client(peer).flush();
+    fx.roundtrip(peer);
+    let (c_t, c_s) = fx.client(peer).create_toplevel();
+    c_t.set_app_id("charlie".into());
+    c_s.commit();
+    fx.client(peer).flush();
+    fx.roundtrip(peer);
+
+    let a_idx = fx
+        .server
+        .state
+        .clients
+        .iter()
+        .position(|client| client.app_id == "alpha")
+        .expect("alpha");
+    let a_id = fx.server.state.clients[a_idx].id;
+    let c_id = fx
+        .server
+        .state
+        .clients
+        .iter()
+        .find(|client| client.app_id == "charlie")
+        .expect("charlie")
+        .id;
+    let a_window = fx.server.state.clients[a_idx].window.clone();
+    fx.server
+        .state
+        .focus_surface(Some(FocusTarget::Window(a_window)));
+
+    let (b_t, b_s) = fx.client(peer).create_toplevel();
+    b_t.set_app_id("beta".into());
+    b_s.commit();
+    fx.client(peer).flush();
+    fx.roundtrip(peer);
+    let b_id = fx
+        .server
+        .state
+        .clients
+        .iter()
+        .find(|client| client.app_id == "beta")
+        .expect("beta")
+        .id;
+
+    assert_eq!(
+        fx.server
+            .state
+            .clients
+            .iter()
+            .map(|client| client.id)
+            .collect::<Vec<_>>(),
+        vec![a_id, b_id, c_id],
+    );
+    assert_eq!(
+        fx.server.state.monitors[0]
+            .focus_history
+            .iter()
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![b_id, a_id, c_id],
+    );
+}
+
+#[test]
+fn destroying_client_prunes_focus_history_id() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    fx.add_keyboard();
+    let peer = fx.add_client();
+    let (a_t, a_s) = fx.client(peer).create_toplevel();
+    let (_b_t, b_s) = fx.client(peer).create_toplevel();
+    a_s.commit();
+    b_s.commit();
+    fx.client(peer).flush();
+    fx.roundtrip(peer);
+    let removed_id = fx.server.state.clients[0].id;
+
+    a_t.destroy();
+    fx.client(peer).flush();
+    fx.roundtrip(peer);
+
+    assert!(
+        fx.server.state.monitors[0]
+            .focus_history
+            .iter()
+            .all(|id| *id != removed_id),
+    );
+}
+
+#[test]
+fn focusing_after_monitor_move_rehomes_history_id() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    fx.add_output("DP-2", (1920, 1080));
+    fx.add_keyboard();
+    let peer = fx.add_client();
+    let (_toplevel, surface) = fx.client(peer).create_toplevel();
+    surface.commit();
+    fx.client(peer).flush();
+    fx.roundtrip(peer);
+    let client_id = fx.server.state.clients[0].id;
+    let window = fx.server.state.clients[0].window.clone();
+
+    fx.server.state.clients[0].monitor = 1;
+    fx.server
+        .state
+        .focus_surface(Some(FocusTarget::Window(window)));
+
+    assert!(
+        !fx.server.state.monitors[0]
+            .focus_history
+            .contains(&client_id)
+    );
+    assert_eq!(
+        fx.server.state.monitors[1].focus_history.front(),
+        Some(&client_id),
     );
 }

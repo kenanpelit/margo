@@ -46,6 +46,7 @@ mod output_assignment;
 mod output_management;
 mod overview;
 mod pointer_constraints;
+mod repaint;
 mod screencopy;
 mod selection;
 mod session_lock;

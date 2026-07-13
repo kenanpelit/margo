@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::cmp::min;
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -114,7 +114,12 @@ pub struct Cast {
     offer_alpha: bool,
     cursor_mode: CursorMode,
     pub last_frame_time: Duration,
-    scheduled_redraw: Option<RegistrationToken>,
+    /// Logical ownership of the one-shot redraw timer. The calloop source
+    /// removes itself with `TimeoutAction::Drop`; we must never call
+    /// `LoopHandle::remove` on its now-stale token. A generation lets an old
+    /// source fire harmlessly after cancellation or cast teardown.
+    scheduled_redraw: Rc<Cell<Option<u64>>>,
+    next_redraw_id: u64,
     // Incremented once per successful frame, stored in buffer meta.
     sequence_counter: u64,
     inner: Rc<RefCell<CastInner>>,
@@ -871,7 +876,8 @@ impl PipeWire {
             offer_alpha: alpha,
             cursor_mode,
             last_frame_time: Duration::ZERO,
-            scheduled_redraw: None,
+            scheduled_redraw: Rc::new(Cell::new(None)),
+            next_redraw_id: 0,
             sequence_counter: 0,
             inner,
         };
@@ -989,14 +995,22 @@ impl Cast {
     }
 
     fn schedule_redraw(&mut self, output: Output, target_time: Duration) {
-        if self.scheduled_redraw.is_some() {
+        if self.scheduled_redraw.get().is_some() {
             return;
         }
 
+        self.next_redraw_id = self.next_redraw_id.wrapping_add(1).max(1);
+        let redraw_id = self.next_redraw_id;
+        self.scheduled_redraw.set(Some(redraw_id));
+        let scheduled_redraw = self.scheduled_redraw.clone();
         let now = get_monotonic_time();
         let duration = target_time.saturating_sub(now);
         let timer = Timer::from_duration(duration);
         let token = self.event_loop.insert_source(timer, move |_, _, state| {
+            if scheduled_redraw.get() != Some(redraw_id) {
+                return TimeoutAction::Drop;
+            }
+            scheduled_redraw.set(None);
             // Guard against output disconnecting before the
             // timer has a chance to run. Margo: check the
             // output is still in `monitors`, then trigger a
@@ -1004,7 +1018,7 @@ impl Cast {
             // global today; per-output gating is a follow-up).
             let still_alive = state.monitors.iter().any(|m| m.output == output);
             if still_alive {
-                state.request_repaint();
+                state.wake_repaint_backend();
             }
 
             TimeoutAction::Drop
@@ -1013,16 +1027,16 @@ impl Cast {
         // timer insert (fd exhaustion under many concurrent casts, loop
         // teardown) just means this cast won't self-schedule its next
         // redraw — a dropped frame, not a dead session.
-        match token {
-            Ok(token) => self.scheduled_redraw = Some(token),
-            Err(err) => warn!("cast schedule_redraw insert_source failed: {err:?}"),
+        if let Err(err) = token {
+            if self.scheduled_redraw.get() == Some(redraw_id) {
+                self.scheduled_redraw.set(None);
+            }
+            warn!("cast schedule_redraw insert_source failed: {err:?}");
         }
     }
 
     fn remove_scheduled_redraw(&mut self) {
-        if let Some(token) = self.scheduled_redraw.take() {
-            self.event_loop.remove(token);
-        }
+        self.scheduled_redraw.set(None);
     }
 
     /// Checks whether this frame should be skipped because it's too soon.
@@ -1057,7 +1071,7 @@ impl Cast {
     /// rendered yet). This bounds cast wakeups to the stream's frame
     /// cadence instead of spinning the event loop between vblanks.
     pub fn ensure_next_frame_scheduled(&mut self, output: Output) {
-        if self.scheduled_redraw.is_some() {
+        if self.scheduled_redraw.get().is_some() {
             return;
         }
         let target = if self.last_frame_time.is_zero() {
@@ -1344,6 +1358,16 @@ impl Cast {
                 }
             }
         }
+    }
+}
+
+impl Drop for Cast {
+    fn drop(&mut self) {
+        // Logical cancellation only. The one-shot source owns its calloop
+        // lifetime and will observe the invalidated generation before
+        // returning `Drop`; removing a token here recreates the historical
+        // "event for non-existent source" race.
+        self.scheduled_redraw.set(None);
     }
 }
 

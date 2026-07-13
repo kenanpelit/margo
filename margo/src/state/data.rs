@@ -520,10 +520,12 @@ pub struct MargoMonitor {
     pub scale: f32,
     pub transform: i32,
     pub enabled: bool,
-    /// Last N focused-client indices for this monitor (MRU order,
-    /// most recent first). Capped at `FOCUS_HISTORY_DEPTH`. Exposed
-    /// in state snapshot as `focus_history`.
-    pub focus_history: VecDeque<usize>,
+    /// Last N focused-client stable ids for this monitor (MRU order,
+    /// most recent first). Capped at `FOCUS_HISTORY_DEPTH`.
+    ///
+    /// Vector slots change under scroller smart-insert and teardown; the
+    /// monotonic [`MargoClient::id`] neither shifts nor aliases another window.
+    pub focus_history: VecDeque<u64>,
     /// Number of u16 entries per channel in DRM `GAMMA_LUT_SIZE`.
     /// 0 → gamma control unsupported (winit backend or connector
     /// without GAMMA_LUT). Set by the udev backend on output add.
@@ -574,6 +576,8 @@ pub struct ClosingClient {
 /// per-tag visibility or monitor migration.
 #[derive(Debug)]
 pub struct LayerSurfaceAnim {
+    pub output: smithay::output::Output,
+    pub layer: smithay::wayland::shell::wlr_layer::Layer,
     pub time_started: u32,
     pub duration: u32,
     pub progress: f32,

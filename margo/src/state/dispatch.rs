@@ -354,7 +354,8 @@ impl MargoState {
         self.arrange_monitor(mon_idx);
         self.focus_first_visible_or_clear(mon_idx);
         if do_anim {
-            self.request_repaint();
+            let output = self.monitors[mon_idx].output.clone();
+            self.request_repaint_output(&output);
         }
         self.mark_state_dirty();
         // Phase 3 scripting: fire `on_tag_switch` handlers. Runs
@@ -1006,6 +1007,10 @@ impl MargoState {
         let active_tagset = self.monitors[mon_idx].current_tagset();
         self.clients.iter().any(|c| {
             c.monitor == mon_idx
+                && !c.is_initial_map_pending
+                && !c.is_minimized
+                && !c.is_killing
+                && (!c.is_in_scratchpad || c.is_scratchpad_show)
                 && c.fullscreen_mode == FullscreenMode::Exclusive
                 && c.is_visible_on(mon_idx, active_tagset)
         })
@@ -1242,6 +1247,15 @@ impl MargoState {
     /// (`isfloating`, custom geom, tag pinning, …) BEFORE the window
     /// is ever placed in the smithay space — no rule-jump flicker.
     pub(crate) fn finalize_initial_map(&mut self, idx: usize) {
+        self.finalize_initial_map_with_policy(idx, true, true);
+    }
+
+    fn finalize_initial_map_with_policy(
+        &mut self,
+        idx: usize,
+        allow_focus: bool,
+        allow_animation: bool,
+    ) {
         // Sync the latest app_id / title from the surface before
         // running window rules — by this point Qt has had its chance.
         if idx >= self.clients.len() {
@@ -1269,7 +1283,8 @@ impl MargoState {
         }
 
         let target_mon = self.clients[idx].monitor;
-        let focus_new = !self.clients[idx].no_focus && !self.clients[idx].open_silent;
+        let focus_new =
+            allow_focus && !self.clients[idx].no_focus && !self.clients[idx].open_silent;
         let window = self.clients[idx].window.clone();
 
         let map_loc = self
@@ -1368,7 +1383,8 @@ impl MargoState {
         // curve settles. This eliminates the "instant pop at the new
         // geom for one frame, then the animation kicks in" flash that
         // pure wrap-the-live-surface approaches produce.
-        if self.config.animations
+        if allow_animation
+            && self.config.animations
             && self.config.animation_duration_open > 0
             && !self.clients[idx].no_animation
             && !self.clients[idx].open_silent
@@ -1412,6 +1428,37 @@ impl MargoState {
         // Notify xdp-gnome's window picker so a live screencast
         // share dialog refreshes its list while open.
         self.emit_windows_changed();
+    }
+
+    /// Complete only the toplevels that actually attached a buffer while the
+    /// desktop was locked. Stable ids survive smart-insert/plugin mutations of
+    /// the client Vec; each id is resolved immediately before use. These maps
+    /// are intentionally silent: unlocking restores the previous selection
+    /// instead of letting the last background launch steal focus or animate.
+    pub(crate) fn finish_lock_deferred_maps(&mut self) {
+        use smithay::backend::renderer::utils::with_renderer_surface_state;
+
+        let ids: Vec<u64> = self
+            .clients
+            .iter()
+            .filter(|client| {
+                client.is_initial_map_pending
+                    && client.window.wl_surface().is_some_and(|surface| {
+                        with_renderer_surface_state(&surface, |state| state.buffer().is_some())
+                            .unwrap_or(false)
+                    })
+            })
+            .map(|client| client.id)
+            .collect();
+        for id in ids {
+            if let Some(idx) = self
+                .clients
+                .iter()
+                .position(|client| client.id == id && client.is_initial_map_pending)
+            {
+                self.finalize_initial_map_with_policy(idx, false, false);
+            }
+        }
     }
 }
 

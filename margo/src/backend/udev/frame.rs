@@ -316,6 +316,7 @@ fn apply_pending_gamma(
         // ramps on the next frame instead of sitting idle until
         // something else schedules it.
         state.request_repaint();
+        state.wake_repaint_backend();
     }
 }
 
@@ -357,7 +358,7 @@ fn apply_pending_dpms(outputs: &mut HashMap<crtc::Handle, OutputDevice>, state: 
     }
     if !deferred.is_empty() {
         state.pending_dpms = deferred;
-        state.request_repaint();
+        state.wake_repaint_backend();
     }
 }
 
@@ -371,8 +372,15 @@ pub(super) fn render_all_outputs(
     apply_pending_gamma(outputs, drm, state);
     apply_pending_dpms(outputs, state);
 
+    let per_output = state.per_output_frame_clock_enabled();
     for od in outputs.values_mut() {
-        render_output(renderer, od, state, reason, false);
+        if state.output_render_retry_pending(&od.output) {
+            continue;
+        }
+        if per_output {
+            state.begin_forced_render_per_output(&od.output);
+        }
+        render_output(renderer, od, state, reason, per_output);
     }
 }
 
@@ -416,11 +424,17 @@ fn render_output(
     // Rendering + queueing a frame would re-enable it, so skip entirely
     // until a `pending_dpms (output, true)` clears the flag.
     if od.dpms_off {
+        if per_output {
+            state.clear_pending_vblank_per_output(&od.output);
+        }
         return;
     }
     // Soft-disabled output: skip entirely.
     if let Some(mon) = state.monitors.iter().find(|m| m.output == od.output) {
         if !mon.enabled {
+            if per_output {
+                state.clear_pending_vblank_per_output(&od.output);
+            }
             return;
         }
     }
@@ -501,6 +515,8 @@ fn render_output(
             od.render_count += 1;
             state.record_frame_sample(&od.output_name, is_empty, render_us);
             if is_empty {
+                od.render_failure_streak = 0;
+                state.clear_output_render_retry(&od.output);
                 od.empty_count += 1;
                 tracing::trace!(
                     output = %od.output.name(),
@@ -549,11 +565,18 @@ fn render_output(
                     state.queue_estimated_vblank_timer(&od.output, refresh_interval);
                 }
                 state.display_handle.flush_clients().ok();
+                // Empty frames return before the common tail below. Publish
+                // here as well; otherwise `mctl perf` appears frozen and then
+                // reports a large fake burst the next time a non-empty frame
+                // happens to copy the accumulated counters.
+                publish_output_perf(od, state);
                 return;
             }
 
             match od.compositor.queue_frame(()) {
                 Ok(()) => {
+                    od.render_failure_streak = 0;
+                    state.clear_output_render_retry(&od.output);
                     od.queued_count += 1;
                     // Global gate only — the per-output path tracks its
                     // own in-flight state on the `OutputClock`
@@ -622,14 +645,15 @@ fn render_output(
                 }
                 Err(e) => {
                     od.queue_error_count += 1;
+                    od.render_failure_streak = od.render_failure_streak.saturating_add(1);
                     if per_output {
                         // No flip was scheduled, so no vblank will clear
-                        // this output's in-flight gate — release it and
-                        // re-arm so the next tick retries. (Skip
-                        // last_present stamp: the frame didn't present.)
+                        // this output's in-flight gate. Release it without an
+                        // immediate timer; the bounded retry below owns the
+                        // next wake-up.
                         state.clear_pending_vblank_per_output(&od.output);
                     }
-                    state.request_repaint();
+                    state.defer_output_render_retry(&od.output, od.render_failure_streak);
                     if od.queue_error_count <= 10 || od.queue_error_count.is_multiple_of(300) {
                         warn!(
                             output = %od.output.name(),
@@ -651,10 +675,11 @@ fn render_output(
             // next tick retries (paced by the frame clock, so no busy spin), and
             // rate-limit the log so a persistent GPU failure can't flood it.
             od.render_error_count += 1;
+            od.render_failure_streak = od.render_failure_streak.saturating_add(1);
             if per_output {
                 state.clear_pending_vblank_per_output(&od.output);
             }
-            state.request_repaint();
+            state.defer_output_render_retry(&od.output, od.render_failure_streak);
             if od.render_error_count <= 10 || od.render_error_count.is_multiple_of(300) {
                 error!(
                     output = %od.output.name(),
@@ -668,12 +693,12 @@ fn render_output(
         }
     }
 
-    // Mirror this output's counters into MargoState so the `perf` IPC topic
-    // (`mctl perf`) can read them without borrowing the udev BackendData. Only
-    // reached when a render was actually attempted (the dpms/disabled
-    // early-returns above skip it). Keyed off the cached `od.output_name` via
-    // `get_mut`, so the steady-state hot path does no allocation — only the
-    // first frame after a hotplug inserts (cloning the name once).
+    publish_output_perf(od, state);
+}
+
+/// Mirror backend-owned lifetime counters into `MargoState` for `mctl perf`.
+/// Called from both the normal tail and the early empty-frame return.
+fn publish_output_perf(od: &OutputDevice, state: &mut MargoState) {
     let perf = match state.perf_counters.get_mut(od.output_name.as_str()) {
         Some(perf) => perf,
         None => state

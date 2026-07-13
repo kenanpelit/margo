@@ -9,6 +9,16 @@
 use super::*;
 
 impl MargoState {
+    pub(crate) fn lock_surface_ready(
+        surface: &smithay::wayland::session_lock::LockSurface,
+    ) -> bool {
+        smithay::backend::renderer::utils::with_renderer_surface_state(
+            surface.wl_surface(),
+            |state| state.buffer().is_some(),
+        )
+        .unwrap_or(false)
+    }
+
     pub fn focused_client_idx(&self) -> Option<usize> {
         let keyboard = self.seat.get_keyboard()?;
         let focus = keyboard.current_focus()?;
@@ -79,13 +89,18 @@ impl MargoState {
                 .and_then(|i| self.monitors.get(i).map(|m| m.output.clone()));
 
             if let Some(out) = pointer_output {
-                if let Some((_, s)) = self.lock_surfaces.iter().find(|(o, _)| o == &out) {
+                if let Some((_, s)) = self
+                    .lock_surfaces
+                    .iter()
+                    .find(|(o, surface)| o == &out && Self::lock_surface_ready(surface))
+                {
                     return Some(FocusTarget::SessionLock(s.clone()));
                 }
             }
             return self
                 .lock_surfaces
-                .first()
+                .iter()
+                .find(|(_, surface)| Self::lock_surface_ready(surface))
                 .map(|(_, s)| FocusTarget::SessionLock(s.clone()));
         }
 
@@ -109,6 +124,7 @@ impl MargoState {
                     let map = layer_map_for_output(output);
                     map.layers()
                         .find(|m| m.layer_surface() == &layer)
+                        .filter(|mapped| self.layer_accepts_input_on_output(output, mapped.layer()))
                         .map(|m| m.layer_surface().clone())
                 });
                 if let Some(s) = mapped {
@@ -188,6 +204,13 @@ impl MargoState {
                     }
                 }
             }
+        }
+    }
+
+    /// Remove a closing window's stable identity from every monitor MRU.
+    pub(crate) fn remove_focus_history_id(&mut self, client_id: u64) {
+        for monitor in &mut self.monitors {
+            monitor.focus_history.retain(|id| *id != client_id);
         }
     }
 

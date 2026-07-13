@@ -56,6 +56,10 @@ pub struct OutputClock {
     /// In-flight present `Timer` token, so we can cancel/replace it on
     /// re-arm. `None` when no timer is currently scheduled.
     pub timer_token: Option<RegistrationToken>,
+    /// Monotonic ownership id for `timer_token`. Connector names and even the
+    /// same `Output` object can be reused across soft disable/enable; a stale
+    /// one-shot callback may mutate the clock only when this id still matches.
+    pub timer_id: u64,
 }
 
 impl OutputClock {

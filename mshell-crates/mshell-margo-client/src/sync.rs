@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::state_json::{RawClient, StateJson, lowest_tag, monitor_id, socket_path};
+use crate::state_json::{RawClient, RawOutput, StateJson, lowest_tag, monitor_id, socket_path};
 use crate::{
     Address, Client, ClientLocation, ClientSize, FullscreenMode, MargoEvent, MargoService, Monitor,
     Reactive, Workspace, WorkspaceInfo,
@@ -193,14 +193,7 @@ fn apply(service: &MargoService, state: &StateJson) {
             .outputs
             .iter()
             .find(|o| o.name == owner.0)
-            .and_then(|o| {
-                o.focus_history.iter().find_map(|app_id| {
-                    state
-                        .clients
-                        .iter()
-                        .find(|c| c.app_id == *app_id && c.tags & bit != 0)
-                })
-            });
+            .and_then(|o| most_recent_client_on_tag(o, state, bit));
         let last_window: Option<Address> = last.map(client_address);
         let last_window_title: String = last.map(|c| c.title.clone()).unwrap_or_default();
         let tiled_layout = state
@@ -573,7 +566,7 @@ fn update_client_in_place(client: &Client, c: &RawClient, state: &StateJson) {
         .outputs
         .iter()
         .find(|o| o.name == c.monitor)
-        .and_then(|o| o.focus_history.iter().position(|app| app == &c.app_id))
+        .and_then(|o| focus_history_position(o, c))
         .map(|p| p as i32)
         .unwrap_or(-1);
     if client.focus_history_id.get() != focus_history_id {
@@ -631,7 +624,7 @@ fn build_client(
         .outputs
         .iter()
         .find(|o| o.name == c.monitor)
-        .and_then(|o| o.focus_history.iter().position(|app| app == &c.app_id))
+        .and_then(|o| focus_history_position(o, c))
         .map(|p| p as i32)
         .unwrap_or(-1);
 
@@ -668,9 +661,83 @@ fn build_client(
     })
 }
 
+/// Prefer the stable id projection. The app-id fallback exists only for a
+/// rolling upgrade from an older compositor and cannot distinguish two
+/// windows owned by the same application.
+fn most_recent_client_on_tag<'a>(
+    output: &'a RawOutput,
+    state: &'a StateJson,
+    tag_bit: u32,
+) -> Option<&'a RawClient> {
+    if !output.focus_history_v2.is_empty() {
+        output.focus_history_v2.iter().find_map(|entry| {
+            state
+                .clients
+                .iter()
+                .find(|client| client.id == entry.id && client.tags & tag_bit != 0)
+        })
+    } else {
+        output.focus_history.iter().find_map(|app_id| {
+            state
+                .clients
+                .iter()
+                .find(|client| client.app_id == *app_id && client.tags & tag_bit != 0)
+        })
+    }
+}
+
+fn focus_history_position(output: &RawOutput, client: &RawClient) -> Option<usize> {
+    if !output.focus_history_v2.is_empty() && client.id != 0 {
+        output
+            .focus_history_v2
+            .iter()
+            .position(|entry| entry.id == client.id)
+    } else {
+        output
+            .focus_history
+            .iter()
+            .position(|app_id| app_id == &client.app_id)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_output(
+        focus_history: Vec<String>,
+        focus_history_v2: Vec<crate::state_json::RawFocusHistoryEntry>,
+    ) -> RawOutput {
+        RawOutput {
+            name: "DP-1".into(),
+            active: true,
+            active_tag_mask: 1,
+            occupied_tag_mask: 1,
+            focus_history,
+            focus_history_v2,
+            layout_idx: 0,
+            width: 1920,
+            height: 1080,
+            x: 0,
+            y: 0,
+            scale: 1.0,
+            mode: None,
+            wallpaper: String::new(),
+            wallpapers_by_tag: Vec::new(),
+        }
+    }
+
+    fn test_state(output: RawOutput, clients: Vec<RawClient>) -> StateJson {
+        StateJson {
+            active_output: "DP-1".into(),
+            focused_idx: None,
+            layouts: Vec::new(),
+            outputs: vec![output],
+            clients,
+            tag_count: 9,
+            keyboard_layout: String::new(),
+        }
+    }
 
     /// The core of the stable-id fix: a window's Address must depend only on
     /// its `id`, never on the positional slot `idx` — otherwise another window
@@ -710,5 +777,66 @@ mod tests {
             ..Default::default()
         };
         assert_ne!(client_address(&legacy(0, 0)), client_address(&legacy(0, 1)));
+    }
+
+    #[test]
+    fn focus_history_position_uses_id_for_same_app_windows() {
+        let output = test_output(
+            vec!["same.app".into(), "same.app".into()],
+            vec![
+                crate::state_json::RawFocusHistoryEntry {
+                    id: 12,
+                    app_id: "same.app".into(),
+                },
+                crate::state_json::RawFocusHistoryEntry {
+                    id: 11,
+                    app_id: "same.app".into(),
+                },
+            ],
+        );
+        let first = RawClient {
+            id: 11,
+            app_id: "same.app".into(),
+            tags: 1,
+            ..Default::default()
+        };
+        let second = RawClient {
+            id: 12,
+            app_id: "same.app".into(),
+            tags: 1,
+            ..Default::default()
+        };
+
+        assert_eq!(focus_history_position(&output, &second), Some(0));
+        assert_eq!(focus_history_position(&output, &first), Some(1));
+
+        let state = test_state(output.clone(), vec![first, second]);
+        assert_eq!(
+            most_recent_client_on_tag(&output, &state, 1).map(|client| client.id),
+            Some(12),
+        );
+    }
+
+    #[test]
+    fn focus_history_helpers_fall_back_to_legacy_projection() {
+        let output = test_output(vec!["beta".into(), "alpha".into()], Vec::new());
+        let alpha = RawClient {
+            app_id: "alpha".into(),
+            tags: 1,
+            ..Default::default()
+        };
+        let beta = RawClient {
+            app_id: "beta".into(),
+            tags: 1,
+            ..Default::default()
+        };
+        let state = test_state(output.clone(), vec![alpha.clone(), beta.clone()]);
+
+        assert_eq!(focus_history_position(&output, &beta), Some(0));
+        assert_eq!(focus_history_position(&output, &alpha), Some(1));
+        assert_eq!(
+            most_recent_client_on_tag(&output, &state, 1).map(|client| client.app_id.as_str()),
+            Some("beta"),
+        );
     }
 }

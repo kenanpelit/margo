@@ -3228,7 +3228,9 @@ mshelldash surface.
     Qt5 / KDE apps. Default mode Server (matches SSD-first policy).
   - `wp_content_type_v1` — game / video / photo surface hints.
   - `wp_fifo_v1` + `wp_commit_timing_v1` — newer presentation
-    pacing protocols.
+    pacing protocol bindings. Their globals were later withdrawn pending a
+    real FIFO/deadline barrier-release scheduler; advertising the managed
+    Smithay states alone was not a complete implementation.
   - `wp_alpha_modifier_v1` — per-surface alpha hint.
   - `xdg_wm_dialog_v1` — modal-dialog hint.
   - `zwp_xwayland_keyboard_grab_v1` — XWayland-side keyboard grab.

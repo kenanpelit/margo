@@ -13,7 +13,6 @@ impl MargoState {
         for mon_idx in 0..self.monitors.len() {
             self.arrange_monitor(mon_idx);
         }
-        self.request_repaint();
         self.mark_state_dirty();
         self.publish_a11y_window_list();
     }
@@ -31,7 +30,6 @@ impl MargoState {
                 self.arrange_monitor(idx);
             }
         }
-        self.request_repaint();
         self.mark_state_dirty();
         self.publish_a11y_window_list();
     }
@@ -46,6 +44,23 @@ impl MargoState {
         // being rendered just produces stale geometry.
         if !self.monitors[mon_idx].enabled {
             return;
+        }
+
+        // Preserve the old output footprint before any map/unmap/move below.
+        // A floating window (or a window moving between monitors) can overlap
+        // more than its owner output; both the old and new footprints must be
+        // repainted or the neighbouring output keeps stale pixels.
+        let mut repaint_outputs = vec![self.monitors[mon_idx].output.clone()];
+        for client in self
+            .clients
+            .iter()
+            .filter(|client| client.monitor == mon_idx)
+        {
+            for output in self.space.outputs_for_element(&client.window) {
+                if !repaint_outputs.contains(&output) {
+                    repaint_outputs.push(output);
+                }
+            }
         }
 
         // Adaptive layout: when `Config::auto_layout` is on AND the
@@ -604,14 +619,31 @@ impl MargoState {
         }
         self.enforce_z_order();
         crate::border::refresh(self);
-        self.request_repaint();
+        // `map_element` starts with an empty output-membership map. Populate
+        // it before the first render/callback cycle so a tag-return whose DRM
+        // render is empty can still deliver the waiting wl_surface.frame to
+        // the newly-visible window instead of stalling until unrelated damage.
+        self.space.refresh();
+        for client in self
+            .clients
+            .iter()
+            .filter(|client| client.monitor == mon_idx)
+        {
+            for output in self.space.outputs_for_element(&client.window) {
+                if !repaint_outputs.contains(&output) {
+                    repaint_outputs.push(output);
+                }
+            }
+        }
+        for output in repaint_outputs {
+            self.request_repaint_output(&output);
+        }
         // Refresh the IPC channels so `mctl clients`/`focused`/`status`
         // and any IPC `watch state` subscriber sees the new
         // windows the moment they're laid out. arrange_all already
         // covered both, but arrange_monitor (the path most map/unmap/
         // tag-move events take) didn't — leaving state snapshot + the bar
         // tag-counts stuck on the boot snapshot of zero.
-        self.mark_state_dirty();
         self.mark_state_dirty();
     }
 

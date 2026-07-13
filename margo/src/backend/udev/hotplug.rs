@@ -369,6 +369,7 @@ pub(super) fn setup_connector(
             empty_count: 0,
             queue_error_count: 0,
             render_error_count: 0,
+            render_failure_streak: 0,
             gamma: gamma_props,
             connector: conn_handle,
             dpms_off: false,

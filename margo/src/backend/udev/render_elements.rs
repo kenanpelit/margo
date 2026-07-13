@@ -667,7 +667,7 @@ pub(super) fn build_render_elements_inner(
         return Vec::new();
     };
 
-    if let Some((_, lock_surface)) = state.lock_surfaces.iter().find(|(o, _)| o == &od.output) {
+    if state.session_locked {
         let mut elements = Vec::new();
 
         // Highest priority: cursor (if inside this output)
@@ -710,17 +710,25 @@ pub(super) fn build_render_elements_inner(
             }
         }
 
-        // Lock surface
-        let lock_elements = render_elements_from_surface_tree(
-            renderer,
-            lock_surface.wl_surface(),
-            Point::<i32, Physical>::from((0, 0)), // Lock surface is always output-relative (0,0) in smithay
-            output_scale,
-            1.0,
-            Kind::Unspecified,
-        );
-        for e in lock_elements {
-            elements.push(MargoRenderElement::WaylandSurface(e));
+        // If the locker has not supplied a surface for this output yet, the
+        // black frame clear remains the entire scene. Never fall through to
+        // desktop windows during that protocol gap.
+        if let Some((_, lock_surface)) = state
+            .lock_surfaces
+            .iter()
+            .find(|(output, _)| output == &od.output)
+        {
+            let lock_elements = render_elements_from_surface_tree(
+                renderer,
+                lock_surface.wl_surface(),
+                Point::<i32, Physical>::from((0, 0)),
+                output_scale,
+                1.0,
+                Kind::Unspecified,
+            );
+            for e in lock_elements {
+                elements.push(MargoRenderElement::WaylandSurface(e));
+            }
         }
 
         return elements;
@@ -746,46 +754,21 @@ pub(super) fn build_render_elements_inner(
     }
 
     let layer_map = layer_map_for_output(&od.output);
-    // Exclusive fullscreen suppresses every layer-shell surface on the
-    // affected output — the focused window literally covers the
-    // panel, bar pixels included. WorkArea fullscreen leaves the bar
-    // visible and merely sizes the window to `work_area`.
-    let suppress_layers = state
-        .monitors
-        .iter()
-        .position(|m| m.output == od.output)
-        .map(|mon_idx| state.monitor_has_exclusive_fullscreen(mon_idx))
-        .unwrap_or(false);
-    let upper_layers: Vec<_> = if suppress_layers {
-        Vec::new()
-    } else {
-        layer_map
-            .layers()
-            .rev()
-            .filter(|surface| surface.layer() == WlrLayer::Overlay)
-            .chain(
-                layer_map
-                    .layers()
-                    .rev()
-                    .filter(|surface| surface.layer() == WlrLayer::Top),
-            )
-            .collect()
-    };
-    let lower_layers: Vec<_> = if suppress_layers {
-        Vec::new()
-    } else {
-        layer_map
-            .layers()
-            .rev()
-            .filter(|surface| surface.layer() == WlrLayer::Bottom)
-            .chain(
-                layer_map
-                    .layers()
-                    .rev()
-                    .filter(|surface| surface.layer() == WlrLayer::Background),
-            )
-            .collect()
-    };
+    // Use the same role-aware predicate as commit and callback scheduling.
+    // Exclusive fullscreen suppresses all layers; classic overview restores
+    // them even when an exclusive client appears among its thumbnails.
+    let upper_layers: Vec<_> = layer_map
+        .layers()
+        .rev()
+        .filter(|surface| state.layer_renders_on_output(&od.output, surface.layer()))
+        .filter(|surface| matches!(surface.layer(), WlrLayer::Overlay | WlrLayer::Top))
+        .collect();
+    let lower_layers: Vec<_> = layer_map
+        .layers()
+        .rev()
+        .filter(|surface| state.layer_renders_on_output(&od.output, surface.layer()))
+        .filter(|surface| matches!(surface.layer(), WlrLayer::Bottom | WlrLayer::Background))
+        .collect();
     let border_program = crate::render::rounded_border::shader(renderer).map(|program| program.0);
     let clipped_surface_program =
         crate::render::clipped_surface::shader(renderer).map(|program| program.0);
@@ -879,6 +862,30 @@ pub(super) fn build_render_elements_inner(
         &mut elements,
     );
 
+    push_closing_layers(
+        state,
+        &od.output,
+        output_scale,
+        clipped_surface_program.clone(),
+        &[WlrLayer::Overlay, WlrLayer::Top],
+        &mut elements,
+    );
+
+    // Closing-client snapshots. Each entry is a window whose toplevel
+    // role was destroyed but whose close animation hasn't finished;
+    // we render the captured texture scaled+faded around its last
+    // known geometry. Drawn before live clients because element[0] is
+    // topmost — slightly fragile if a new window mapped
+    // exactly underneath, but acceptable for a sub-second transition.
+    push_closing_clients(
+        state,
+        &od.output,
+        output_geo,
+        output_scale,
+        clipped_surface_program.clone(),
+        &mut elements,
+    );
+
     push_client_elements(
         renderer,
         state,
@@ -888,21 +895,6 @@ pub(super) fn build_render_elements_inner(
         border_program.clone(),
         clipped_surface_program.clone(),
         for_screencast,
-        &mut elements,
-    );
-
-    // Closing-client snapshots. Each entry is a window whose toplevel
-    // role was destroyed but whose close animation hasn't finished;
-    // we render the captured texture scaled+faded around its last
-    // known geometry. Drawn AFTER the live clients so it's on top of
-    // its old layer band — slightly fragile if a new window mapped
-    // exactly underneath, but acceptable for a sub-second transition.
-    push_closing_clients(
-        state,
-        &od.output,
-        output_geo,
-        output_scale,
-        clipped_surface_program.clone(),
         &mut elements,
     );
 
@@ -919,9 +911,9 @@ pub(super) fn build_render_elements_inner(
     push_closing_layers(
         state,
         &od.output,
-        output_geo,
         output_scale,
         clipped_surface_program,
+        &[WlrLayer::Bottom, WlrLayer::Background],
         &mut elements,
     );
 
@@ -2255,9 +2247,9 @@ fn push_layer_elements(
 fn push_closing_layers(
     state: &MargoState,
     output: &Output,
-    output_geo: Rectangle<i32, Logical>,
     output_scale: f64,
     clipped_surface_program: Option<GlesTexProgram>,
+    roles: &[WlrLayer],
     elements: &mut Vec<MargoRenderElement>,
 ) {
     let scale = Scale::from(output_scale);
@@ -2266,18 +2258,18 @@ fn push_closing_layers(
         return;
     };
     for (_id, anim) in state.layer_animations.iter() {
-        if !anim.is_close {
+        if !anim.is_close
+            || anim.output != *output
+            || !roles.contains(&anim.layer)
+            || !state.layer_renders_on_output(output, anim.layer)
+        {
             continue;
         }
         let Some(texture) = anim.texture.as_ref() else {
             continue;
         };
         let dst = smithay::utils::Rectangle::new(
-            (
-                anim.geom.x - output_geo.loc.x,
-                anim.geom.y - output_geo.loc.y,
-            )
-                .into(),
+            (anim.geom.x, anim.geom.y).into(),
             (anim.geom.width.max(1), anim.geom.height.max(1)).into(),
         );
         // Per-frame fresh Id — the ObjectId is stable across frames

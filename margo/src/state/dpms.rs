@@ -51,7 +51,7 @@ impl MargoState {
         } else {
             Some(std::time::Instant::now())
         };
-        self.request_repaint();
+        self.wake_repaint_backend();
     }
 
     /// Safety net: called from `handle_input` on any real input event. If a
@@ -111,6 +111,7 @@ impl MargoState {
             }
         }
         self.monitors[mon_idx].enabled = false;
+        self.drop_output_clock(&src_name);
         self.arrange_monitor(target);
         self.focus_first_visible_or_clear(target);
         self.publish_output_topology();

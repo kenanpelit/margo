@@ -146,6 +146,9 @@ impl OutputManagementHandler for MargoState {
         if changed {
             self.arrange_all();
             self.request_repaint();
+            if !self.pending_output_mode_changes.is_empty() {
+                self.wake_repaint_backend();
+            }
             // Re-publish topology so other wlr-output-management
             // clients (kanshi watchers, secondary wlr-randr) see
             // the new state.

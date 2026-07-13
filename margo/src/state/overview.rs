@@ -246,10 +246,10 @@ impl MargoState {
 
         let push_mru =
             |out: &mut Vec<usize>, seen: &mut std::collections::HashSet<usize>, tag_filter: u32| {
-                for &i in &self.monitors[mon_idx].focus_history {
-                    if i >= self.clients.len() {
+                for &id in &self.monitors[mon_idx].focus_history {
+                    let Some(i) = self.clients.iter().position(|client| client.id == id) else {
                         continue;
-                    }
+                    };
                     let c = &self.clients[i];
                     if tag_filter != 0 && (c.tags & tag_filter) == 0 {
                         continue;

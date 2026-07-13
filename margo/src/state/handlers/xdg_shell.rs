@@ -152,6 +152,9 @@ impl XdgShellHandler for MargoState {
     }
 
     fn move_request(&mut self, surface: ToplevelSurface, seat: WlSeat, serial: Serial) {
+        if self.session_locked {
+            return;
+        }
         let Some(seat) = Seat::<MargoState>::from_resource(&seat) else {
             return;
         };
@@ -199,6 +202,9 @@ impl XdgShellHandler for MargoState {
         serial: Serial,
         edges: xdg_toplevel::ResizeEdge,
     ) {
+        if self.session_locked {
+            return;
+        }
         let Some(seat) = Seat::<MargoState>::from_resource(&seat) else {
             return;
         };
@@ -236,6 +242,9 @@ impl XdgShellHandler for MargoState {
     }
 
     fn grab(&mut self, surface: PopupSurface, seat: WlSeat, serial: Serial) {
+        if self.session_locked {
+            return;
+        }
         tracing::info!("xdg_popup.grab fired serial={:?}", serial);
         // Proper xdg_popup.grab: set up smithay's PopupGrab so the
         // pointer + keyboard track the popup chain. Without the
@@ -407,12 +416,14 @@ impl XdgShellHandler for MargoState {
                 self.request_repaint();
             }
             let window = self.clients[idx].window.clone();
+            let client_id = self.clients[idx].id;
             // Capture the group before the client vanishes so we can
             // repair the one-active-member invariant afterwards.
             let group = self.group_of(idx);
             self.mru_remove_window(&window);
             self.space.unmap_elem(&window);
             self.clients.remove(idx);
+            self.remove_focus_history_id(client_id);
             self.shift_indices_after_remove(idx);
             if let Some(gid) = group {
                 self.repair_group(gid);

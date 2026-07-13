@@ -58,6 +58,13 @@ impl XdgActivationHandler for MargoState {
         token_data: XdgActivationTokenData,
         surface: WlSurface,
     ) {
+        // A valid token still must not mutate the hidden desktop while the
+        // session is locked.  `activate_window_idx` has the same central
+        // guard for foreign-toplevel and IPC activation paths.
+        if self.session_locked {
+            return;
+        }
+
         // Token expires after 10 s — older requests are stale.
         if token_data.timestamp.elapsed().as_secs() >= 10 {
             return;

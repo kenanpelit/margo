@@ -100,6 +100,11 @@ impl MargoState {
                 let active_tag = mon.tagset[mon.seltags];
                 let prev_tag = mon.tagset[mon.seltags ^ 1];
                 let active_output = i == focused_mon_idx;
+                let focus_history: Vec<_> = mon
+                    .focus_history
+                    .iter()
+                    .filter_map(|&id| self.clients.iter().find(|c| c.id == id && c.monitor == i))
+                    .collect();
                 json!({
                     "name": mon.name,
                     "active": active_output,
@@ -131,16 +136,16 @@ impl MargoState {
                         .map(|t| mon.pertag.wallpapers
                             .get(t).cloned().unwrap_or_default())
                         .collect::<Vec<_>>(),
-                    // W3.4: scratchpad summary (counts of visible /
-                    // hidden) and per-monitor focus history (MRU
-                    // app_ids, most recent first). MRU widgets and
-                    // dock indicators read these to render counts +
-                    // recently-used app rings.
+                    // Keep the legacy app-id array for rolling upgrades. V2
+                    // preserves per-window identity when one app owns several
+                    // toplevels.
                     "scratchpad_visible": scratchpad_visible[i],
                     "scratchpad_hidden": scratchpad_hidden[i],
-                    "focus_history": mon.focus_history.iter()
-                        .filter_map(|&idx| self.clients.get(idx))
+                    "focus_history": focus_history.iter()
                         .map(|c| c.app_id.clone())
+                        .collect::<Vec<_>>(),
+                    "focus_history_v2": focus_history.iter()
+                        .map(|c| json!({ "id": c.id, "app_id": c.app_id }))
                         .collect::<Vec<_>>(),
                 })
             })

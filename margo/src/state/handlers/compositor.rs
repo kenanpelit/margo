@@ -39,7 +39,10 @@
 
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
-    desktop::{PopupKind, WindowSurface, WindowSurfaceType, layer_map_for_output},
+    desktop::{
+        PopupKind, WindowSurface, WindowSurfaceType, find_popup_root_surface, layer_map_for_output,
+    },
+    input::pointer::CursorImageStatus,
     reexports::{
         calloop::Interest,
         wayland_server::{
@@ -168,18 +171,33 @@ impl CompositorHandler for MargoState {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
-        if !is_sync_subsurface(surface) {
-            let mut root = surface.clone();
-            while let Some(parent) = get_parent(&root) {
-                root = parent;
-            }
 
-            if self.session_locked
-                && self
-                    .lock_surfaces
+        let mut root = surface.clone();
+        while let Some(parent) = get_parent(&root) {
+            root = parent;
+        }
+
+        // A synchronized child's pending state is applied atomically with its
+        // parent commit. Repainting here is both premature and particularly
+        // expensive for Chromium video trees (several child commits can make
+        // up one frame). The eventual root commit performs all scene work and
+        // schedules exactly one repaint.
+        if is_sync_subsurface(surface) {
+            return;
+        }
+
+        {
+            let committed_lock = self.session_locked.then(|| {
+                self.lock_surfaces
                     .iter()
-                    .any(|(_, s)| s.wl_surface() == &root)
-            {
+                    .find(|(_, lock)| lock.wl_surface() == &root)
+                    .map(|(output, lock)| (output.clone(), lock.clone()))
+            });
+            if let Some(Some((output, lock))) = committed_lock {
+                if !Self::lock_surface_ready(&lock) {
+                    self.refresh_keyboard_focus();
+                    return;
+                }
                 tracing::info!(
                     "session_lock: commit on lock surface {:?}, surfaces total={}",
                     root.id(),
@@ -199,7 +217,7 @@ impl CompositorHandler for MargoState {
                 // on the cursor's output (not always the first
                 // surface in `lock_surfaces`).
                 self.refresh_keyboard_focus();
-                self.request_repaint();
+                self.request_repaint_output(&output);
                 return;
             }
 
@@ -210,15 +228,29 @@ impl CompositorHandler for MargoState {
             let deferred_idx = self.clients.iter().position(|c| {
                 c.is_initial_map_pending && c.window.wl_surface().as_deref() == Some(&root)
             });
-            if let Some(idx) = deferred_idx {
+            if let Some(idx) = deferred_idx.filter(|_| !self.session_locked) {
                 self.finalize_initial_map(idx);
             }
 
-            let committed_window = self
-                .space
-                .elements()
-                .find(|w| w.wl_surface().as_deref() == Some(&root))
-                .cloned();
+            // Hidden-tag windows are deliberately unmapped from `Space`, but
+            // their surface trees can still commit (especially after the
+            // low-frequency frame callback fallback). Smithay requires
+            // `Window::on_commit` for the toplevel and every desynchronised
+            // child commit so its cached bbox stays correct. Resolve through
+            // the authoritative client list first; the Space fallback covers
+            // any auxiliary window not represented there.
+            let committed_client_idx = self
+                .clients
+                .iter()
+                .position(|client| client.window.wl_surface().as_deref() == Some(&root));
+            let committed_window = committed_client_idx
+                .and_then(|idx| self.clients.get(idx).map(|client| client.window.clone()))
+                .or_else(|| {
+                    self.space
+                        .elements()
+                        .find(|window| window.wl_surface().as_deref() == Some(&root))
+                        .cloned()
+                });
             if let Some(window) = committed_window {
                 window.on_commit();
                 // Send the initial configure on first commit if not yet sent.
@@ -252,11 +284,7 @@ impl CompositorHandler for MargoState {
                 // stale buffer for a frame (the super+r lag symptom).
                 // Damage-driven renders don't run `tick_animations`, so
                 // the commit handler is where this drop has to happen.
-                if let Some(idx) = self
-                    .clients
-                    .iter()
-                    .position(|c| c.window.wl_surface().as_deref() == Some(&root))
-                {
+                if let Some(idx) = committed_client_idx {
                     if self.clients[idx].resize_snapshot.is_some() {
                         let target = if self.clients[idx].animation.running {
                             self.clients[idx].animation.current
@@ -282,11 +310,7 @@ impl CompositorHandler for MargoState {
                 // and its frame. Only the committing window's geometry
                 // can have changed, so refresh just its border rather
                 // than looping every client's `window.geometry()` lock.
-                if let Some(idx) = self
-                    .clients
-                    .iter()
-                    .position(|c| c.window.wl_surface().as_deref() == Some(&root))
-                {
+                if let Some(idx) = committed_client_idx {
                     crate::border::refresh_one(self, idx);
                 }
             }
@@ -304,6 +328,19 @@ impl CompositorHandler for MargoState {
             });
 
             if let Some(output) = layer_output {
+                let layer_role = {
+                    let map = layer_map_for_output(&output);
+                    map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
+                        .map(|layer| layer.layer())
+                };
+                if let Some(role) = layer_role
+                    && let Some(animation) = self.layer_animations.get_mut(&root.id())
+                {
+                    animation.output = output.clone();
+                    animation.layer = role;
+                }
+                let layer_visible =
+                    layer_role.is_some_and(|role| self.layer_renders_on_output(&output, role));
                 let initial_sent = with_states(&root, |states| {
                     states
                         .data_map
@@ -421,7 +458,11 @@ impl CompositorHandler for MargoState {
                         }
                     }
 
-                    self.refresh_output_work_area(&output);
+                    if layer_visible {
+                        self.refresh_output_work_area(&output);
+                    } else {
+                        self.update_output_work_area(&output);
+                    }
                 }
 
                 // Independent of arrange: only refresh keyboard focus
@@ -455,7 +496,18 @@ impl CompositorHandler for MargoState {
             }
         }
         self.popups.commit(surface);
-        self.request_repaint();
+        match repaint_target_for_root(self, &root) {
+            CommitRepaint::Output(output) => self.request_repaint_output(&output),
+            CommitRepaint::Outputs(outputs) => {
+                for output in outputs {
+                    self.request_repaint_output(&output);
+                }
+            }
+            CommitRepaint::None => {}
+            // Unknown auxiliary roles (cursor, DnD icon, a popup whose parent
+            // is not mapped yet) retain the conservative global fallback.
+            CommitRepaint::All => self.request_repaint(),
+        }
     }
 }
 
@@ -518,6 +570,153 @@ pub fn output_for_root(state: &MargoState, root: &WlSurface) -> Option<smithay::
         }
     }
     None
+}
+
+enum CommitRepaint {
+    Output(smithay::output::Output),
+    Outputs(Vec<smithay::output::Output>),
+    None,
+    All,
+}
+
+/// Resolve a committed root to the smallest safe physical repaint scope.
+/// Hidden clients keep receiving the low-frequency frame-callback fallback,
+/// but their commits do not dirty KMS until the tag is shown again. Freshly
+/// mapped hidden clients are warmed by a separate callback-only timer; both
+/// overview modes keep live off-tag content repainting.
+fn repaint_target_for_root(state: &mut MargoState, root: &WlSurface) -> CommitRepaint {
+    if let CursorImageStatus::Surface(cursor) = &state.cursor_status
+        && cursor == root
+    {
+        return state
+            .space
+            .output_under((state.input_pointer.x, state.input_pointer.y))
+            .next()
+            .cloned()
+            .map(CommitRepaint::Output)
+            .unwrap_or(CommitRepaint::None);
+    }
+
+    // The locked render path emits only the lock surface and cursor. Lock
+    // roots already take the exact-output early return in `commit`; every
+    // other client/layer/auxiliary commit is invisible and must not drive an
+    // empty physical frame behind the lock screen.
+    if state.session_locked {
+        return CommitRepaint::None;
+    }
+
+    // Popups are rendered as part of their owning toplevel/layer tree. Resolve
+    // that owner before selecting a repaint scope so an animated GTK/Chromium
+    // menu does not dirty every physical output.
+    let popup_root = state
+        .popups
+        .find_popup(root)
+        .and_then(|popup| find_popup_root_surface(&popup).ok());
+    let target_root = popup_root.as_ref().unwrap_or(root);
+
+    if let Some(client) = state
+        .clients
+        .iter()
+        .find(|client| client.window.wl_surface().as_deref() == Some(target_root))
+    {
+        let Some(monitor) = state
+            .monitors
+            .get(client.monitor)
+            .filter(|monitor| monitor.enabled)
+        else {
+            return CommitRepaint::None;
+        };
+
+        let tagset = if monitor.is_overview {
+            !0
+        } else {
+            monitor.current_tagset()
+        };
+        let physically_visible = !client.is_initial_map_pending
+            && !client.is_minimized
+            && !client.is_killing
+            && (client.is_visible_on(client.monitor, tagset)
+                || (state.client_renders_on_output(client, &monitor.output)
+                    && state.is_scroller_overview_open()));
+
+        return if physically_visible {
+            // Union three footprints: cached pre-commit Space membership
+            // (erase a shrinking/detached buffer), the compositor slot
+            // (scroller/floating geometry), and the freshly-updated surface
+            // bbox (raw, unclipped buffers when rounded clipping is disabled).
+            // This catches both old and new damage without a full
+            // `Space::refresh` on every client commit.
+            let mut outputs = state.space.outputs_for_element(&client.window);
+            let membership_changed =
+                state.window_space_membership_is_stale(&client.window, &outputs);
+            outputs.retain(|output| {
+                state
+                    .monitors
+                    .iter()
+                    .any(|candidate| candidate.enabled && candidate.output == *output)
+            });
+            let geom = client.geom;
+            let surface_bbox = state.space.element_bbox(&client.window);
+            for candidate in state.monitors.iter().filter(|candidate| candidate.enabled) {
+                let area = candidate.monitor_area;
+                let slot_intersects = geom.x < area.x + area.width
+                    && geom.x + geom.width > area.x
+                    && geom.y < area.y + area.height
+                    && geom.y + geom.height > area.y;
+                let surface_intersects = surface_bbox.is_some_and(|bbox| {
+                    bbox.loc.x < area.x + area.width
+                        && bbox.loc.x + bbox.size.w > area.x
+                        && bbox.loc.y < area.y + area.height
+                        && bbox.loc.y + bbox.size.h > area.y
+                });
+                if (slot_intersects || surface_intersects) && !outputs.contains(&candidate.output) {
+                    outputs.push(candidate.output.clone());
+                }
+            }
+            if state.is_scroller_overview_open() && !outputs.contains(&monitor.output) {
+                outputs.push(monitor.output.clone());
+            }
+            outputs.retain(|output| state.client_renders_on_output(client, output));
+            // A commit can change a surface-tree bbox before Smithay updates
+            // its cached output membership (Chromium does this while restoring
+            // a hidden video tab). Refresh after retaining old∪new repaint
+            // scope, but before either output can render the stale scene.
+            if membership_changed {
+                state.space.refresh();
+            }
+            match outputs.len() {
+                0 => CommitRepaint::None,
+                1 => CommitRepaint::Output(outputs.swap_remove(0)),
+                _ => CommitRepaint::Outputs(outputs),
+            }
+        } else {
+            CommitRepaint::None
+        };
+    }
+
+    if let Some((output, _)) = state
+        .lock_surfaces
+        .iter()
+        .find(|(_, lock)| lock.wl_surface() == target_root)
+    {
+        return CommitRepaint::Output(output.clone());
+    }
+
+    // Use the exact same layer-role visibility rule as rendering and frame
+    // callbacks. Hidden Top/Overlay surfaces must stay off KMS, while the
+    // Background/Bottom wallpaper embedded in scroller cells stays live.
+    for output in state.space.outputs() {
+        let map = layer_map_for_output(output);
+        if let Some(layer) = map.layer_for_surface(target_root, WindowSurfaceType::TOPLEVEL) {
+            if !state.layer_renders_on_output(output, layer.layer()) {
+                return CommitRepaint::None;
+            }
+        }
+    }
+
+    output_for_root(state, target_root)
+        .map(CommitRepaint::Output)
+        .unwrap_or(CommitRepaint::All)
 }
 
 /// Hash a layer surface's committed state into a `(layout, keyboard)` pair.

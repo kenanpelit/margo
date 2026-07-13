@@ -170,7 +170,7 @@ impl ImageCopyCaptureHandler for MargoState {
                         source: crate::PendingImageCopySource::Output(output.name()),
                         frame: Some(frame),
                     });
-                self.request_repaint();
+                self.wake_repaint_backend();
                 return;
             }
         }
@@ -194,7 +194,7 @@ impl ImageCopyCaptureHandler for MargoState {
                         source: crate::PendingImageCopySource::Toplevel(window),
                         frame: Some(frame),
                     });
-                self.request_repaint();
+                self.wake_repaint_backend();
                 return;
             }
             // Toplevel went away (closed) between session

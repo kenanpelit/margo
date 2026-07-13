@@ -34,7 +34,7 @@ impl MargoState {
                 // We just wake the loop so the first cast frame
                 // lands on the next VBlank instead of waiting on
                 // unrelated input.
-                self.request_repaint();
+                self.wake_repaint_backend();
             }
             PwToNiri::FatalError => {
                 tracing::warn!("stopping screencasting due to PipeWire fatal error");

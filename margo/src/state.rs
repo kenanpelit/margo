@@ -48,7 +48,10 @@ use std::{cell::RefCell, path::PathBuf, rc::Rc};
 use anyhow::{Context, Result};
 use smithay::{
     backend::allocator::dmabuf::Dmabuf,
-    desktop::{PopupManager, Space, Window, WindowSurface, layer_map_for_output},
+    desktop::{
+        PopupManager, Space, Window, WindowSurface, layer_map_for_output,
+        utils::send_frames_surface_tree,
+    },
     input::{Seat, SeatHandler, SeatState, pointer::CursorImageStatus},
     output::Output,
     reexports::{
@@ -78,7 +81,7 @@ use smithay::{
             wlr_data_control::DataControlState,
         },
         shell::{
-            wlr_layer::WlrLayerShellState,
+            wlr_layer::{Layer as WlrLayer, WlrLayerShellState},
             xdg::{
                 ToplevelSurface, XdgShellState, XdgToplevelSurfaceData,
                 decoration::XdgDecorationState,
@@ -458,12 +461,6 @@ pub struct MargoState {
     /// (disable presentation-time hints for games, allow tearing,
     /// etc.).
     pub content_type_state: smithay::wayland::content_type::ContentTypeState,
-    /// `wp_fifo_v1`: newer presentation-pacing protocol — clients
-    /// can request FIFO commit ordering.
-    pub fifo_manager_state: smithay::wayland::fifo::FifoManagerState,
-    /// `wp_commit_timing_v1`: companion to fifo — explicit
-    /// commit-time targets per surface.
-    pub commit_timing_manager_state: smithay::wayland::commit_timing::CommitTimingManagerState,
     /// `wp_alpha_modifier_v1`: per-surface alpha hint so apps can
     /// fade themselves without going through compositor effects.
     pub alpha_modifier_state: smithay::wayland::alpha_modifier::AlphaModifierState,
@@ -548,6 +545,10 @@ pub struct MargoState {
     /// keyed by output name (same key as `frame_callback_sequence`). Read by
     /// the `perf` IPC topic; empty under the winit/nested backend.
     pub perf_counters: std::collections::HashMap<String, OutputPerf>,
+    /// One process-lifetime synthetic output used only as the identity passed
+    /// to callback-only frame delivery for unmapped surfaces. Keeping it here
+    /// avoids allocating a fresh `Output` on every 32 ms warm-up tick.
+    frame_callback_fallback_output: Output,
     /// One pending estimated-vblank Timer per output. Inserted from
     /// the empty-render path (`render_frame` reports
     /// `is_empty == true` so no DRM page-flip + no real VBlank event
@@ -568,6 +569,16 @@ pub struct MargoState {
     /// this map stays empty and the global-tick path is taken
     /// unchanged. See `backend::udev::per_output_clock`.
     pub per_output_clocks: std::collections::HashMap<String, crate::frame_clock::OutputClock>,
+    /// Session-monotonic owner id for per-output present timers. Prevents a
+    /// stale timer from a disable/replug cycle clearing a replacement clock.
+    pub(crate) next_present_timer_id: u64,
+    /// Outputs temporarily held behind a render/queue-error backoff. The map
+    /// keeps the exact `Output` identity as well as its connector name: if a
+    /// connector is unplugged and quickly recreated under the same name, an
+    /// old one-shot timer must not consume the replacement output's retry.
+    /// Sources are logically cancelled and never manually removed.
+    pub(crate) render_retry_pending: std::collections::HashMap<String, (Output, u64)>,
+    pub(crate) next_render_retry_id: u64,
     /// `wp_cursor_shape_v1` — clients (GTK/Qt/Chromium) request a
     /// cursor by name instead of attaching their own surface. Without
     /// this, GTK rolls its own cursor surface and the buffer scale
@@ -1034,11 +1045,13 @@ impl MargoState {
             );
         // `wp_content_type_v1` — surface content-type hints.
         let content_type_state = smithay::wayland::content_type::ContentTypeState::new::<Self>(&dh);
-        // `wp_fifo_v1` + `wp_commit_timing_v1` — newer presentation
-        // pacing protocols.
-        let fifo_manager_state = smithay::wayland::fifo::FifoManagerState::new::<Self>(&dh);
-        let commit_timing_manager_state =
-            smithay::wayland::commit_timing::CommitTimingManagerState::new::<Self>(&dh);
+        // Do not advertise `wp_fifo_v1` / `wp_commit_timing_v1` yet. Smithay's
+        // managed implementations install commit blockers which the compositor
+        // must explicitly release at presentation/deadline time. Advertising
+        // the globals without driving those blockers can freeze a modern
+        // Chromium surface after it has been hidden and shown again. Keep the
+        // Dispatch2 support compiled, but expose neither protocol until Margo
+        // has a real per-output FIFO/deadline scheduler.
         // `wp_alpha_modifier_v1` — per-surface alpha hint.
         let alpha_modifier_state =
             smithay::wayland::alpha_modifier::AlphaModifierState::new::<Self>(&dh);
@@ -1199,8 +1212,6 @@ impl MargoState {
             security_context_state,
             kde_decoration_state,
             content_type_state,
-            fifo_manager_state,
-            commit_timing_manager_state,
             alpha_modifier_state,
             xdg_dialog_state,
             xwayland_keyboard_grab_state,
@@ -1213,8 +1224,21 @@ impl MargoState {
             layer_kb_interactivity_hashes: std::collections::HashMap::new(),
             frame_callback_sequence: std::collections::HashMap::new(),
             perf_counters: std::collections::HashMap::new(),
+            frame_callback_fallback_output: Output::new(
+                String::new(),
+                smithay::output::PhysicalProperties {
+                    size: (0, 0).into(),
+                    subpixel: smithay::output::Subpixel::Unknown,
+                    make: String::new(),
+                    model: String::new(),
+                    serial_number: String::new(),
+                },
+            ),
             estimated_vblank_timers: std::collections::HashMap::new(),
             per_output_clocks: std::collections::HashMap::new(),
+            next_present_timer_id: 0,
+            render_retry_pending: std::collections::HashMap::new(),
+            next_render_retry_id: 0,
             cursor_shape_manager_state,
             fractional_scale_manager_state,
             enable_gaps: config.enable_gaps,
@@ -1484,6 +1508,7 @@ impl MargoState {
         );
         self.session_locked = false;
         self.lock_surfaces.clear();
+        self.finish_lock_deferred_maps();
         self.arrange_all();
         self.refresh_keyboard_focus();
         let _ = crate::utils::spawn([
@@ -1537,40 +1562,190 @@ impl MargoState {
     }
 
     pub fn request_repaint(&mut self) {
+        self.request_scene_repaint();
+    }
+
+    /// Wake the udev repaint source immediately to drain work that is not
+    /// paced by scene damage: DPMS, DRM mode changes, image-copy frames, and
+    /// PipeWire cast buffers. This deliberately does not dirty a frame clock.
+    pub(crate) fn wake_repaint_backend(&self) {
+        if let Some(ping) = &self.repaint_ping {
+            ping.ping();
+        }
+    }
+
+    /// Mark global scene damage without forcing an immediate event-loop wake.
+    ///
+    /// Unlike [`Self::request_repaint`], this is for self-sustaining animation
+    /// ticks.  On the per-output clock path the already-armed present timers
+    /// are the pacer; pinging as well would immediately re-enter
+    /// post-dispatch, tick the animation again, and form a CPU busy-loop
+    /// between vblanks.  A direct ping is only needed when timer insertion
+    /// failed and no vblank/retry deadline can wake an enabled output.
+    pub fn request_scene_repaint(&mut self) {
         self.repaint_requested = true;
-        // Opt-in per-output frame clock: a global repaint can affect
-        // any output, so flag every output's clock dirty and ensure its
-        // present timer is armed. The per-output timers gate *when* each
-        // output actually renders (at its own refresh), and the repaint
-        // ping below still wakes the loop so a due output renders this
-        // turn. With the flag off this is a no-op and the original
-        // global path runs unchanged.
-        if self.per_output_frame_clock_enabled() {
-            self.mark_all_clocks_dirty();
-            if let Some(ping) = &self.repaint_ping {
+        if !self.per_output_frame_clock_enabled() {
+            let has_enabled_output = self.monitors.iter().any(|monitor| monitor.enabled);
+            let every_enabled_output_backing_off = has_enabled_output
+                && self
+                    .monitors
+                    .iter()
+                    .filter(|monitor| monitor.enabled)
+                    .all(|monitor| self.render_retry_pending.contains_key(&monitor.name));
+            if self.pending_vblanks == 0
+                && self.estimated_vblank_timers.is_empty()
+                && !every_enabled_output_backing_off
+                && let Some(ping) = &self.repaint_ping
+            {
                 ping.ping();
             }
             return;
         }
-        // Wake the redraw scheduler so the loop drains the flag this
-        // iteration. Coalesces: many request_repaint() calls between two
-        // dispatches still produce a single Ping event (eventfd semantics
-        // — see calloop ping source), so we don't need to track whether
-        // a wake is already pending.
-        //
-        // Suppress the ping while a previously-queued frame is still
-        // waiting for its vblank. The DRM compositor only accepts one
-        // pending page-flip per output, and the post-dispatch animation
-        // tick re-arms repaint every iteration; without this gate the
-        // ping callback would fire between vblanks and either render an
-        // identical scene (wasted work) or hit `queue_frame` "frame
-        // already pending" errors. The vblank handler re-emits the ping
-        // once it counts back down to zero.
-        if self.pending_vblanks == 0 {
+
+        self.mark_all_clocks_dirty();
+        let missing_wake = self
+            .monitors
+            .iter()
+            .filter(|monitor| monitor.enabled)
+            .any(|monitor| {
+                self.per_output_clocks
+                    .get(&monitor.name)
+                    .is_none_or(|clock| {
+                        clock.dirty
+                            && clock.timer_token.is_none()
+                            && !clock.pending_vblank
+                            && !self.render_retry_pending.contains_key(&monitor.name)
+                    })
+            });
+        if missing_wake && let Some(ping) = &self.repaint_ping {
+            ping.ping();
+        }
+    }
+
+    /// Request a repaint for one physical output. On the per-output clock path
+    /// this never dirties unrelated displays and repeated requests coalesce
+    /// behind the output's existing timer/vblank. The legacy global clock has
+    /// no scoped state, so it safely falls back to the paced
+    /// [`Self::request_scene_repaint`] path.
+    pub fn request_repaint_output(&mut self, output: &Output) {
+        if !self.per_output_frame_clock_enabled() {
+            self.request_scene_repaint();
+            return;
+        }
+
+        self.repaint_requested = true;
+        let should_ping = self.mark_output_clock_dirty(output);
+        if should_ping {
             if let Some(ping) = &self.repaint_ping {
                 ping.ping();
             }
         }
+    }
+
+    /// Whether Smithay's cached output set for `window` no longer matches its
+    /// current bbox. `Space::map_element` and `Window::on_commit` update the
+    /// location/tree immediately but output enter/leave membership only moves
+    /// on `Space::refresh`.
+    ///
+    /// Keeping this check separate lets high-frequency commit and animation
+    /// paths retain the cached fast path while still refreshing before the
+    /// first render that crosses an output boundary.
+    pub(crate) fn window_space_membership_is_stale(
+        &self,
+        window: &Window,
+        cached: &[Output],
+    ) -> bool {
+        let Some(bbox) = self.space.element_bbox(window) else {
+            return !cached.is_empty();
+        };
+
+        let mut actual_count = 0;
+        for output in self.space.outputs() {
+            let intersects = self
+                .space
+                .output_geometry(output)
+                .is_some_and(|geometry| geometry.intersection(bbox).is_some());
+            if intersects {
+                actual_count += 1;
+                if !cached.contains(output) {
+                    return true;
+                }
+            }
+        }
+        actual_count != cached.len()
+    }
+
+    /// Whether the display render path currently includes this layer-shell
+    /// role on `output`. Callback and commit scheduling use the same predicate
+    /// as element construction so a hidden bar cannot drive empty KMS frames
+    /// and a visible overview wallpaper cannot be accidentally frozen.
+    pub(crate) fn layer_renders_on_output(&self, output: &Output, layer: WlrLayer) -> bool {
+        if self.session_locked {
+            return false;
+        }
+        let Some(mon_idx) = self
+            .monitors
+            .iter()
+            .position(|monitor| monitor.enabled && monitor.output == *output)
+        else {
+            return false;
+        };
+
+        // The scroller renderer embeds only wallpaper-class layers in each
+        // workspace cell. Top/Overlay (bar, notifications) are replaced by
+        // the overview chrome.
+        if self.scroller_overview.is_some() {
+            return matches!(layer, WlrLayer::Background | WlrLayer::Bottom);
+        }
+
+        // Classic overview deliberately shows the complete desktop, including
+        // layers, even if a thumbnail client owns an exclusive lease.
+        self.monitors[mon_idx].is_overview || !self.monitor_has_exclusive_fullscreen(mon_idx)
+    }
+
+    /// Input follows layer visibility except in scroller overview, where
+    /// Background/Bottom surfaces are transformed and repeated into cells.
+    /// Their original LayerMap coordinates no longer match the picture, so
+    /// overview navigation exclusively owns input.
+    pub(crate) fn layer_accepts_input_on_output(&self, output: &Output, layer: WlrLayer) -> bool {
+        self.scroller_overview.is_none() && self.layer_renders_on_output(output, layer)
+    }
+
+    /// Whether `client` is part of the live scene and may contribute pixels to
+    /// `output` right now. Exclusive-fullscreen suppresses layers, not other
+    /// desktop toplevels, matching Space rendering and hit-testing.
+    pub(crate) fn client_renders_on_output(&self, client: &MargoClient, output: &Output) -> bool {
+        if self.session_locked
+            || client.is_initial_map_pending
+            || client.is_minimized
+            || client.is_killing
+            || (client.is_in_scratchpad && !client.is_scratchpad_show)
+        {
+            return false;
+        }
+        let output_enabled = self
+            .monitors
+            .iter()
+            .any(|monitor| monitor.enabled && monitor.output == *output);
+        if !output_enabled {
+            return false;
+        }
+        let Some(owner) = self
+            .monitors
+            .get(client.monitor)
+            .filter(|monitor| monitor.enabled)
+        else {
+            return false;
+        };
+        if self.scroller_overview.is_some() {
+            return owner.output == *output;
+        }
+        let tagset = if owner.is_overview {
+            !0
+        } else {
+            owner.current_tagset()
+        };
+        client.is_visible_on(client.monitor, tagset)
     }
 
     /// Called by the udev backend after a successful `queue_frame`.
@@ -1814,6 +1989,17 @@ impl MargoState {
     }
 
     pub(crate) fn refresh_output_work_area(&mut self, output: &Output) {
+        if let Some(mon_idx) = self.update_output_work_area(output) {
+            self.arrange_monitor(mon_idx);
+        }
+    }
+
+    /// Refresh the cached non-exclusive zone and return the affected monitor
+    /// only when its geometry changed. Callers whose layer is currently
+    /// suppressed (lock, exclusive fullscreen, scroller Top/Overlay) can keep
+    /// layout state current without scheduling invisible client animations or
+    /// a physical repaint; the normal reveal path arranges the monitor later.
+    pub(crate) fn update_output_work_area(&mut self, output: &Output) -> Option<usize> {
         let work_area = {
             let map = layer_map_for_output(output);
             map.non_exclusive_zone()
@@ -1842,19 +2028,31 @@ impl MargoState {
             // is the only thing that can actually move the work
             // area, and mshell-frame doesn't claim one.
             if self.monitors[mon_idx].work_area == new_work_area {
-                return;
+                return None;
             }
             self.monitors[mon_idx].work_area = new_work_area;
-            self.arrange_monitor(mon_idx);
+            return Some(mon_idx);
         }
+        None
     }
 
     pub fn focus_surface(&mut self, target: Option<FocusTarget>) {
         let _span = tracy_client::span!("focus_surface");
-        // W3.4: push to per-monitor focus_history when a new client
-        // takes focus. Walks `target` to a client index, drops dups
-        // (same client re-focused = front of queue, no churn), caps
-        // at FOCUS_HISTORY_DEPTH.
+        // Once ext-session-lock has been accepted, only its own surfaces may
+        // acquire focus. This central guard covers new toplevels, popup grabs,
+        // pointer focus changes, and layer focus races in one place. `None`
+        // remains allowed so lock acquisition can clear stale desktop focus.
+        if self.session_locked
+            && target.as_ref().is_some_and(|target| match target {
+                FocusTarget::SessionLock(surface) => !Self::lock_surface_ready(surface),
+                _ => true,
+            })
+        {
+            return;
+        }
+        // W3.4: push to per-monitor focus_history when a new client takes
+        // focus. Store stable ids, prune closed/moved entries, drop the newly
+        // focused id from every old position, and cap the MRU depth.
         const FOCUS_HISTORY_DEPTH: usize = 5;
         if let Some(FocusTarget::Window(w)) = &target {
             let new_idx = self.clients.iter().position(|c| &c.window == w);
@@ -1867,10 +2065,19 @@ impl MargoState {
                     self.clients[idx].last_focus_serial = self.focus_counter;
                 }
                 let mon = self.clients[idx].monitor;
+                let client_id = self.clients[idx].id;
+                let clients = &self.clients;
+                for (monitor_idx, monitor) in self.monitors.iter_mut().enumerate() {
+                    monitor.focus_history.retain(|id| {
+                        clients
+                            .iter()
+                            .any(|client| client.id == *id && client.monitor == monitor_idx)
+                            && *id != client_id
+                    });
+                }
                 if mon < self.monitors.len() {
                     let hist = &mut self.monitors[mon].focus_history;
-                    hist.retain(|&i| i != idx);
-                    hist.push_front(idx);
+                    hist.push_front(client_id);
                     while hist.len() > FOCUS_HISTORY_DEPTH {
                         hist.pop_back();
                     }
@@ -1974,8 +2181,36 @@ impl MargoState {
 
         // Refresh border colors so the focused/unfocused distinction
         // updates without waiting for the next arrange.
+        let mut repaint_outputs = Vec::with_capacity(2);
+        for idx in [prev_focus_idx, new_focus_idx].into_iter().flatten() {
+            let Some(client) = self.clients.get(idx) else {
+                continue;
+            };
+            let Some(output) = self
+                .monitors
+                .get(client.monitor)
+                .filter(|monitor| monitor.enabled)
+                .map(|monitor| monitor.output.clone())
+            else {
+                continue;
+            };
+            if !repaint_outputs.contains(&output) {
+                repaint_outputs.push(output);
+            }
+            for output in self.space.outputs_for_element(&client.window) {
+                if !repaint_outputs.contains(&output) {
+                    repaint_outputs.push(output);
+                }
+            }
+        }
         crate::border::refresh(self);
-        self.request_repaint();
+        if repaint_outputs.is_empty() {
+            self.request_repaint();
+        } else {
+            for output in repaint_outputs {
+                self.request_repaint_output(&output);
+            }
+        }
 
         // Mark dirty so IPC watch subscribers see the new focus (
         // waybar-dwl, …). The struct gets its title / appid /
@@ -2073,78 +2308,190 @@ impl MargoState {
             Some(output.clone())
         };
 
-        self.space.elements().for_each(|window| {
-            if self.space.outputs_for_element(window).contains(output) {
-                window.send_frame(output, time, throttle, should_send);
-            }
-        });
+        if !self.session_locked {
+            self.space.elements().for_each(|window| {
+                if self.space.outputs_for_element(window).contains(output) {
+                    window.send_frame(output, time, throttle, should_send);
+                }
+            });
 
-        // Warm-up nudge: for `warmup_hidden_ms` after a window first maps, keep
-        // delivering frame callbacks to it even while it sits on a hidden tag
-        // (it isn't in `space.elements()` above). Frame-throttled clients —
-        // Electron / CEF (Spotify, Webcord, Ferdium, …) — stall their renderer
-        // when no frames arrive, so apps launched at login onto a background
-        // tag never finish initialising until the tag is first visited. This
-        // lets them warm up regardless. The sequence-based `should_send` dedup
-        // keeps current-tag windows already served above from a double send.
-        let warmup = self.config.warmup_hidden_ms;
-        if warmup > 0
-            && let Some(mon_idx) = self.monitors.iter().position(|m| &m.output == output)
+            // Warm-up nudge: for `warmup_hidden_ms` after a window first maps, keep
+            // delivering frame callbacks to it even while it sits on a hidden tag
+            // (it isn't in `space.elements()` above). Frame-throttled clients —
+            // Electron / CEF (Spotify, Webcord, Ferdium, …) — stall their renderer
+            // when no frames arrive, so apps launched at login onto a background
+            // tag never finish initialising until the tag is first visited. This
+            // lets them warm up regardless. The sequence-based `should_send` dedup
+            // keeps current-tag windows already served above from a double send.
+            let warmup = self.config.warmup_hidden_ms;
+            if warmup > 0
+                && let Some(mon_idx) = self.monitors.iter().position(|m| &m.output == output)
+            {
+                let now = std::time::Instant::now();
+                let window = std::time::Duration::from_millis(warmup as u64);
+                let tagset = self.monitors[mon_idx].current_tagset();
+                for c in &mut self.clients {
+                    let Some(mapped_at) = c.mapped_at else {
+                        continue;
+                    };
+
+                    if now.saturating_duration_since(mapped_at) >= window {
+                        c.mapped_at = None;
+                        continue;
+                    }
+
+                    if c.monitor == mon_idx
+                        && !c.is_initial_map_pending
+                        && !c.is_visible_on(mon_idx, tagset)
+                        && !c.is_minimized
+                        && !c.is_killing
+                        && !c.is_in_scratchpad
+                    {
+                        c.window.send_frame(output, time, throttle, should_send);
+                    }
+                }
+            }
+
+            // While the scroller overview is open it renders EVERY tag's
+            // windows live — including ones unmapped from `space` (off-screen
+            // tags). Those never appear in `space.elements()`, so without
+            // this they get no frame callbacks and frame-throttled clients
+            // (GTK, Electron, …) won't repaint to the slot size
+            // `prearrange_overview_tags` configured for them — leaving them
+            // stale-sized in the overview until their tag is visited once.
+            // Nudge every overview-shown window on this output's monitor; the
+            // sequence-based `should_send` dedup keeps the current-tag windows
+            // already served above from being sent twice.
+            if self.is_scroller_overview_open()
+                && let Some(mon_idx) = self.monitors.iter().position(|m| &m.output == output)
+            {
+                for c in &self.clients {
+                    if c.monitor == mon_idx
+                        && !c.is_initial_map_pending
+                        && !c.is_minimized
+                        && !c.is_killing
+                        && !c.is_in_scratchpad
+                    {
+                        c.window.send_frame(output, time, throttle, should_send);
+                    }
+                }
+            }
+
+            {
+                let map = layer_map_for_output(output);
+                for layer in map
+                    .layers()
+                    .filter(|layer| self.layer_renders_on_output(output, layer.layer()))
+                {
+                    layer.send_frame(output, time, throttle, should_send);
+                }
+            }
+        }
+
+        for (lock_output, lock_surface) in &self.lock_surfaces {
+            if lock_output == output {
+                send_frames_surface_tree(
+                    lock_surface.wl_surface(),
+                    output,
+                    time,
+                    throttle,
+                    should_send,
+                );
+            }
+        }
+
+        if let CursorImageStatus::Surface(surface) = &self.cursor_status
+            && self
+                .space
+                .output_under((self.input_pointer.x, self.input_pointer.y))
+                .next()
+                == Some(output)
         {
+            send_frames_surface_tree(surface, output, time, throttle, should_send);
+        }
+    }
+
+    /// Callback-only safety net for surfaces that are not currently mapped to
+    /// an output (most importantly Chromium/Electron windows on a hidden tag).
+    /// Such clients otherwise receive no `wl_surface.frame` after the initial
+    /// warm-up window and can put their renderer/decoder into a deep suspended
+    /// state, making a tag return take seconds to recover.
+    ///
+    /// This does not dirty KMS or render a frame. Normally it mirrors niri's
+    /// one-second fallback. During a freshly mapped hidden window's configured
+    /// warm-up period the permanent timer temporarily runs at 30 Hz with a
+    /// matching throttle, preserving Electron/CEF startup without manufacturing
+    /// empty physical frames.
+    pub fn send_frame_callbacks_fallback(&mut self) {
+        let time = self.clock.now();
+        let now = std::time::Instant::now();
+        let warmup_window = std::time::Duration::from_millis(self.config.warmup_hidden_ms as u64);
+
+        for client in &self.clients {
+            let rendered_now = if self.scroller_overview.is_some() {
+                self.monitors
+                    .get(client.monitor)
+                    .is_some_and(|monitor| self.client_renders_on_output(client, &monitor.output))
+            } else {
+                self.space
+                    .outputs_for_element(&client.window)
+                    .iter()
+                    .any(|output| self.client_renders_on_output(client, output))
+            };
+            if !client.is_initial_map_pending && !client.is_killing && !rendered_now {
+                let warming = self.config.warmup_hidden_ms > 0
+                    && !client.is_minimized
+                    && (!client.is_in_scratchpad || client.is_scratchpad_show)
+                    && client.mapped_at.is_some_and(|mapped_at| {
+                        now.saturating_duration_since(mapped_at) < warmup_window
+                    });
+                let throttle = Some(if warming {
+                    std::time::Duration::from_millis(32)
+                } else {
+                    std::time::Duration::from_millis(995)
+                });
+                client.window.send_frame(
+                    &self.frame_callback_fallback_output,
+                    time,
+                    throttle,
+                    |_, _| None,
+                );
+            }
+        }
+
+        self.display_handle.flush_clients().ok();
+    }
+
+    /// Next delay for the permanent callback-only timer. It stays cheap at
+    /// idle and accelerates only while an eligible hidden client is inside its
+    /// finite startup warm-up window.
+    pub fn frame_callback_fallback_interval(&self) -> std::time::Duration {
+        let warmup = self.config.warmup_hidden_ms;
+        if warmup > 0 {
             let now = std::time::Instant::now();
             let window = std::time::Duration::from_millis(warmup as u64);
-            let tagset = self.monitors[mon_idx].current_tagset();
-            for c in &mut self.clients {
-                let Some(mapped_at) = c.mapped_at else {
-                    continue;
-                };
-
-                if now.saturating_duration_since(mapped_at) >= window {
-                    c.mapped_at = None;
-                    continue;
-                }
-
-                if c.monitor == mon_idx
-                    && !c.is_initial_map_pending
-                    && !c.is_visible_on(mon_idx, tagset)
-                    && !c.is_minimized
-                    && !c.is_killing
-                    && !c.is_in_scratchpad
+            let has_warming_hidden = self.clients.iter().any(|client| {
+                if client.is_initial_map_pending
+                    || client.is_minimized
+                    || client.is_killing
+                    || (client.is_in_scratchpad && !client.is_scratchpad_show)
                 {
-                    c.window.send_frame(output, time, throttle, should_send);
+                    return false;
                 }
+                let rendered_now = self
+                    .monitors
+                    .get(client.monitor)
+                    .is_some_and(|monitor| self.client_renders_on_output(client, &monitor.output));
+                !rendered_now
+                    && client
+                        .mapped_at
+                        .is_some_and(|mapped_at| now.saturating_duration_since(mapped_at) < window)
+            });
+            if has_warming_hidden {
+                return std::time::Duration::from_millis(32);
             }
         }
-
-        // While the scroller overview is open it renders EVERY tag's
-        // windows live — including ones unmapped from `space` (off-screen
-        // tags). Those never appear in `space.elements()`, so without
-        // this they get no frame callbacks and frame-throttled clients
-        // (GTK, Electron, …) won't repaint to the slot size
-        // `prearrange_overview_tags` configured for them — leaving them
-        // stale-sized in the overview until their tag is visited once.
-        // Nudge every overview-shown window on this output's monitor; the
-        // sequence-based `should_send` dedup keeps the current-tag windows
-        // already served above from being sent twice.
-        if self.is_scroller_overview_open()
-            && let Some(mon_idx) = self.monitors.iter().position(|m| &m.output == output)
-        {
-            for c in &self.clients {
-                if c.monitor == mon_idx
-                    && !c.is_initial_map_pending
-                    && !c.is_minimized
-                    && !c.is_killing
-                    && !c.is_in_scratchpad
-                {
-                    c.window.send_frame(output, time, throttle, should_send);
-                }
-            }
-        }
-
-        let map = layer_map_for_output(output);
-        for layer in map.layers() {
-            layer.send_frame(output, time, throttle, should_send);
-        }
+        std::time::Duration::from_secs(1)
     }
 
     /// Schedule an estimated-vblank Timer for `output`. Called from the
@@ -2209,6 +2556,18 @@ impl MargoState {
         let now = self.clock.now();
         self.send_frame_callbacks(output, now);
         self.display_handle.flush_clients().ok();
+
+        // Scene damage may have accumulated while this estimated-vblank
+        // timer was pacing an empty legacy-clock frame.  `request_scene_repaint`
+        // deliberately did not add a second wake; hand ownership back to the
+        // repaint source now that the pacing deadline has arrived.
+        if !self.per_output_frame_clock_enabled()
+            && self.repaint_requested
+            && self.pending_vblanks == 0
+            && let Some(ping) = &self.repaint_ping
+        {
+            ping.ping();
+        }
     }
 
     // ── Focus helpers ─────────────────────────────────────────────────────────
@@ -2562,10 +2921,12 @@ impl MargoState {
                 handle.send_closed();
             }
             let window = self.clients[idx].window.clone();
+            let client_id = self.clients[idx].id;
             let group = self.group_of(idx);
             self.mru_remove_window(&window);
             self.space.unmap_elem(&window);
             self.clients.remove(idx);
+            self.remove_focus_history_id(client_id);
             self.shift_indices_after_remove(idx);
             if let Some(gid) = group {
                 self.repair_group(gid);

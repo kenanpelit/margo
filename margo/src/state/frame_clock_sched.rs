@@ -52,7 +52,14 @@ impl MargoState {
         if !self.per_output_frame_clock_enabled() {
             return;
         }
-        let names: Vec<String> = self.monitors.iter().map(|m| m.output.name()).collect();
+        let names: Vec<String> = self
+            .monitors
+            .iter()
+            .filter(|monitor| monitor.enabled)
+            .map(|monitor| monitor.name.clone())
+            .collect();
+        self.per_output_clocks
+            .retain(|name, _| names.contains(name));
         for name in names {
             self.per_output_clocks.entry(name).or_default();
         }
@@ -66,6 +73,12 @@ impl MargoState {
         if !self.per_output_frame_clock_enabled() {
             return;
         }
+        self.ensure_output_clocks();
+        let enabled_count = self
+            .monitors
+            .iter()
+            .filter(|monitor| monitor.enabled)
+            .count();
         // Fast path: if every known output already has a dirty clock with
         // a timer armed (or a flip in flight), a repeated request_repaint
         // in the same frame — the common case during a commit burst — has
@@ -73,11 +86,13 @@ impl MargoState {
         // below. A count mismatch (hotplug, missing clock) falls through
         // to the full loop, so this stays correct.
         if !self.per_output_clocks.is_empty()
-            && self.per_output_clocks.len() == self.monitors.len()
-            && self
-                .per_output_clocks
-                .values()
-                .all(|c| c.dirty && (c.timer_token.is_some() || c.pending_vblank))
+            && self.per_output_clocks.len() == enabled_count
+            && self.per_output_clocks.iter().all(|(name, clock)| {
+                clock.dirty
+                    && (clock.timer_token.is_some()
+                        || clock.pending_vblank
+                        || self.render_retry_pending.contains_key(name))
+            })
         {
             return;
         }
@@ -87,23 +102,84 @@ impl MargoState {
         // name inside every `arm_present_timer` — O(n²) `Output::name()`
         // clones-under-mutex on a path that runs on every pointer motion
         // and surface commit.
-        let outputs: Vec<(Output, Duration)> = self
+        let outputs: Vec<(String, Output, Duration)> = self
             .monitors
             .iter()
+            .filter(|monitor| monitor.enabled)
             .map(|m| {
                 let out = m.output.clone();
                 let interval = Self::output_refresh_interval(&out);
-                (out, interval)
+                (m.name.clone(), out, interval)
             })
             .collect();
-        for (output, interval) in &outputs {
-            let name = output.name();
+        for (name, output, interval) in &outputs {
+            let clock = self.per_output_clocks.entry(name.clone()).or_default();
+            clock.dirty = true;
+            if !self.render_retry_pending.contains_key(name) {
+                self.arm_present_timer_for(name, output, *interval);
+            }
+        }
+    }
+
+    /// Mark exactly one output dirty, coalescing a commit burst behind the
+    /// output's already-armed timer or in-flight vblank. The hot fast path does
+    /// no `String`/`Output` clone: Chromium may commit several synchronized
+    /// subsurfaces for one video frame, and only the root commit should reach
+    /// here, but repeated root commits still need to be cheap.
+    ///
+    /// Returns `true` only when timer insertion failed and the caller must ping
+    /// immediately because no timer/vblank will wake the scheduler.
+    pub fn mark_output_clock_dirty(&mut self, output: &Output) -> bool {
+        if !self.per_output_frame_clock_enabled() {
+            return false;
+        }
+        let Some(mon_idx) = self
+            .monitors
+            .iter()
+            .position(|monitor| monitor.enabled && monitor.output == *output)
+        else {
+            return false;
+        };
+
+        let name = self.monitors[mon_idx].name.as_str();
+        if self.render_retry_pending.contains_key(name) {
             self.per_output_clocks
-                .entry(name.clone())
+                .entry(name.to_string())
                 .or_default()
                 .dirty = true;
-            self.arm_present_timer_for(&name, output, *interval);
+            return false;
         }
+        if self.per_output_clocks.get(name).is_some_and(|clock| {
+            clock.dirty && (clock.timer_token.is_some() || clock.pending_vblank)
+        }) {
+            return false;
+        }
+
+        let output = self.monitors[mon_idx].output.clone();
+        let interval = Self::output_refresh_interval(&output);
+        let name = self.monitors[mon_idx].name.clone();
+        let clock = self.per_output_clocks.entry(name.clone()).or_default();
+        clock.dirty = true;
+        self.arm_present_timer_for(&name, &output, interval);
+        !self
+            .per_output_clocks
+            .get(&name)
+            .is_some_and(|clock| clock.timer_token.is_some() || clock.pending_vblank)
+    }
+
+    /// Put an output rendered by the forced all-outputs path under the same
+    /// bookkeeping as an ordinary due-output render. This path is used for
+    /// startup and deferred backend work such as DPMS. Without it,
+    /// `render_all_outputs` increments the legacy global vblank counter while
+    /// the DRM event is handled by [`Self::note_vblank_per_output`], leaking
+    /// the global counter on every forced frame.
+    pub fn begin_forced_render_per_output(&mut self, output: &Output) {
+        if !self.per_output_frame_clock_enabled() {
+            return;
+        }
+        let clock = self.per_output_clocks.entry(output.name()).or_default();
+        clock.dirty = false;
+        clock.pending_vblank = true;
     }
 
     /// Arm (or re-arm) the present timer for `name`, scheduled at the
@@ -136,7 +212,7 @@ impl MargoState {
     /// Arm the present timer for `name` using an already-resolved output +
     /// refresh interval, skipping the by-name monitor lookup in
     /// [`Self::arm_present_timer`]. Same no-op guards.
-    fn arm_present_timer_for(&mut self, name: &str, _output: &Output, interval: Duration) {
+    fn arm_present_timer_for(&mut self, name: &str, output: &Output, interval: Duration) {
         let Some(clock) = self.per_output_clocks.get_mut(name) else {
             return;
         };
@@ -146,15 +222,32 @@ impl MargoState {
             return;
         }
         let delay = clock.next_tick_delay(Instant::now(), interval);
+        self.next_present_timer_id = self.next_present_timer_id.wrapping_add(1).max(1);
+        let timer_id = self.next_present_timer_id;
+        clock.timer_id = timer_id;
 
         let timer = Timer::from_duration(delay);
         let cb_name = name.to_string();
+        let cb_output = output.clone();
         let token = self.loop_handle.insert_source(timer, move |_, _, state| {
+            // Connector names can be reused after a quick unplug/replug. An
+            // old one-shot must not clear the replacement output's token or
+            // wake its clock early.
+            let owns_clock = state.monitors.iter().any(|monitor| {
+                monitor.enabled && monitor.output == cb_output && monitor.name == cb_name
+            }) && state
+                .per_output_clocks
+                .get(&cb_name)
+                .is_some_and(|clock| clock.timer_id == timer_id);
+            if !owns_clock {
+                return TimeoutAction::Drop;
+            }
             // Clear our token (the source is one-shot) before doing
             // work so `present_timer_fired` → `arm_present_timer` can
             // schedule the next one cleanly.
             if let Some(clock) = state.per_output_clocks.get_mut(&cb_name) {
                 clock.timer_token = None;
+                clock.timer_id = 0;
             }
             state.present_timer_fired(&cb_name);
             TimeoutAction::Drop
@@ -174,8 +267,14 @@ impl MargoState {
     /// don't render here (the timer callback has no backend handle) —
     /// instead wake the repaint source, whose callback owns the backend
     /// and renders exactly the due outputs via [`Self::take_due_outputs`].
-    pub fn present_timer_fired(&mut self, _name: &str) {
+    pub fn present_timer_fired(&mut self, name: &str) {
         if !self.per_output_frame_clock_enabled() {
+            return;
+        }
+        // Logical cancellation on hot-unplug removes the clock but leaves the
+        // one-shot calloop source alive.  Its eventual event must be a no-op,
+        // not an unrelated global wake.
+        if !self.per_output_clocks.contains_key(name) {
             return;
         }
         // Wake the redraw scheduler. Bypasses the global
@@ -213,6 +312,9 @@ impl MargoState {
             })
             .collect();
         for (name, output, interval) in candidates {
+            if self.render_retry_pending.contains_key(&name) {
+                continue;
+            }
             let Some(clock) = self.per_output_clocks.get_mut(&name) else {
                 continue;
             };
@@ -231,9 +333,6 @@ impl MargoState {
     /// `request_repaint` will flag). Mirrors the global path's
     /// `note_vblank` but scoped to one output.
     pub fn note_vblank_per_output(&mut self, output: &Output) {
-        if !self.per_output_frame_clock_enabled() {
-            return;
-        }
         let name = output.name();
         if let Some(clock) = self.per_output_clocks.get_mut(&name) {
             clock.last_present = Some(Instant::now());
@@ -248,6 +347,22 @@ impl MargoState {
         // scoped to this output so its clients pace at its refresh.
         let now = self.clock.now();
         self.send_frame_callbacks(output, now);
+    }
+
+    /// Complete a DRM vblank using the accounting mode that actually queued
+    /// the frame, rather than the config value at completion time. The config
+    /// can be reloaded while a flip is in flight; choosing by the new value
+    /// would leak either the per-output gate or the legacy global counter.
+    pub fn note_backend_vblank(&mut self, output: &Output) {
+        let pending_on_output_clock = self
+            .per_output_clocks
+            .get(&output.name())
+            .is_some_and(|clock| clock.pending_vblank);
+        if pending_on_output_clock {
+            self.note_vblank_per_output(output);
+        } else {
+            self.note_vblank(output);
+        }
     }
 
     /// Empty render on the per-output path: `render_frame` reported no
@@ -279,10 +394,10 @@ impl MargoState {
         self.send_frame_callbacks(output, now);
     }
 
-    /// Release this output's in-flight gate without stamping a present.
-    /// Used when a `queue_frame` failed: no flip was scheduled, so no
-    /// vblank is coming, and the gate would otherwise wedge the output.
-    /// Re-arms the present timer so the next tick retries.
+    /// Release this output's in-flight gate without stamping a present or
+    /// arming an immediate timer. Render failures use
+    /// [`Self::defer_output_render_retry`] to establish a bounded deadline;
+    /// DPMS/disabled paths are woken by their next explicit repaint request.
     pub fn clear_pending_vblank_per_output(&mut self, output: &Output) {
         if !self.per_output_frame_clock_enabled() {
             return;
@@ -291,17 +406,80 @@ impl MargoState {
         if let Some(clock) = self.per_output_clocks.get_mut(&name) {
             clock.pending_vblank = false;
         }
-        self.arm_present_timer(&name);
+    }
+
+    /// Defer a failed render/queue submission behind a single one-shot timer.
+    /// The delay starts at one refresh interval (never below 16 ms), doubles
+    /// for consecutive failures, and caps at one second. This applies in both
+    /// clock modes and, crucially, never manually removes a calloop source.
+    pub fn defer_output_render_retry(&mut self, output: &Output, failure_streak: u32) {
+        let name = output.name();
+        if self.per_output_frame_clock_enabled() {
+            let clock = self.per_output_clocks.entry(name.clone()).or_default();
+            clock.pending_vblank = false;
+            clock.dirty = true;
+        }
+        if self.render_retry_pending.contains_key(&name) {
+            return;
+        }
+        self.next_render_retry_id = self.next_render_retry_id.wrapping_add(1).max(1);
+        let retry_id = self.next_render_retry_id;
+        self.render_retry_pending
+            .insert(name.clone(), (output.clone(), retry_id));
+
+        let base = Self::output_refresh_interval(output).max(Duration::from_millis(16));
+        let shift = failure_streak.saturating_sub(1).min(6);
+        let delay = base
+            .saturating_mul(1_u32 << shift)
+            .min(Duration::from_secs(1));
+        let retry_output = output.clone();
+        let cb_name = name.clone();
+        let timer = Timer::from_duration(delay);
+        if let Err(error) = self.loop_handle.insert_source(timer, move |_, _, state| {
+            let owns_retry = state.render_retry_pending.get(&cb_name).is_some_and(
+                |(pending_output, pending_id)| {
+                    pending_output == &retry_output && *pending_id == retry_id
+                },
+            );
+            if owns_retry {
+                state.render_retry_pending.remove(&cb_name);
+            }
+            if owns_retry
+                && state
+                    .monitors
+                    .iter()
+                    .any(|monitor| monitor.enabled && monitor.output == retry_output)
+            {
+                state.request_repaint_output(&retry_output);
+            }
+            TimeoutAction::Drop
+        }) {
+            self.render_retry_pending.remove(&name);
+            tracing::warn!(output = %name, ?error, "render retry timer insert failed");
+        }
+    }
+
+    /// Clear a pending retry after an empty or successfully queued frame. Its
+    /// one-shot source may still fire later, but sees no map entry and no-ops.
+    pub fn clear_output_render_retry(&mut self, output: &Output) {
+        self.render_retry_pending.remove(&output.name());
+    }
+
+    pub fn output_render_retry_pending(&self, output: &Output) -> bool {
+        self.render_retry_pending
+            .get(&output.name())
+            .is_some_and(|(pending_output, _)| pending_output == output)
     }
 
     /// Drop the per-output clock for a removed output (hotplug-out), so
     /// a stale timer doesn't keep waking the loop for a gone display.
     pub fn drop_output_clock(&mut self, name: &str) {
-        if let Some(clock) = self.per_output_clocks.remove(name)
-            && let Some(token) = clock.timer_token
-        {
-            self.loop_handle.remove(token);
-        }
+        self.render_retry_pending.remove(name);
+        // Present timers are one-shot and their callback first resolves this
+        // map entry. Dropping only the logical clock avoids racing a queued
+        // calloop event with `LoopHandle::remove` (the source will fire once,
+        // observe the missing clock, and no-op).
+        self.per_output_clocks.remove(name);
     }
 }
 
