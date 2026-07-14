@@ -413,6 +413,12 @@ toml_config_struct! { DisplayConfig, PartialDisplayConfig, RoughDisplayConfig,
     // rather than landing in the field. `0` disables it. The "cage" and "tty"
     // hosts have no such surface and ignore it.
     blank_timeout => u16,
+    // Ask the kernel for the first free VT at startup (`VT_OPENQRY`) instead of
+    // taking the top-level `tty` number as-is. `tty` stays the fallback when the
+    // query fails, and an explicit `--tty N` on the command line always wins.
+    // Off by default: a fixed, predictable VT is the right call on a machine
+    // whose gettys are laid out around it.
+    dynamic_vt => bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

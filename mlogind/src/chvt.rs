@@ -13,6 +13,7 @@ use nix::unistd::close;
 use std::error::Error;
 use std::fmt::{self, Debug, Display, Formatter};
 
+const VT_OPENQRY: RequestType = 0x5600;
 const VT_ACTIVATE: RequestType = 0x5606;
 const VT_WAITACTIVE: RequestType = 0x5607;
 
@@ -30,6 +31,7 @@ pub enum ChvtError {
     OpenConsole,
     NotAConsole,
     GetFD,
+    OpenQry,
 }
 
 impl Error for ChvtError {}
@@ -101,17 +103,38 @@ fn get_fd() -> Result<c_int, ChvtError> {
 pub unsafe fn chvt(ttynum: i32) -> Result<(), ChvtError> {
     let fd = get_fd()?;
 
+    // `ioctl` reports errors as -1; the `> 0` checks this fork inherited were
+    // dead code, silently swallowing every activate/wait failure.
     let activate = unsafe { libc::ioctl(fd, VT_ACTIVATE, ttynum as c_int) };
-    if activate > 0 {
+    if activate < 0 {
+        let _ = close(fd);
         return Err(ChvtError::Activate);
     }
 
     let wait = unsafe { libc::ioctl(fd, VT_WAITACTIVE, ttynum) };
-    if wait > 0 {
+    if wait < 0 {
+        let _ = close(fd);
         return Err(ChvtError::WaitActive);
     }
 
     close(fd).map_err(|_| ChvtError::Close)?;
 
     Ok(())
+}
+
+/// Ask the kernel for the first console with no process attached
+/// (`VT_OPENQRY`) — the classic "find me a free VT" a display manager runs
+/// before taking one over.
+pub fn first_free_vt() -> Result<i32, ChvtError> {
+    let fd = get_fd()?;
+    let mut vt: c_int = -1;
+    // SAFETY: `fd` is a console fd; VT_OPENQRY writes the offered VT number
+    // through the pointer.
+    let rc = unsafe { libc::ioctl(fd, VT_OPENQRY, &mut vt) };
+    let _ = close(fd);
+    // `vt == -1` is the kernel's own "no free VT" answer.
+    if rc < 0 || vt <= 0 {
+        return Err(ChvtError::OpenQry);
+    }
+    Ok(vt)
 }

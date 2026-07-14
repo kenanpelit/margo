@@ -169,3 +169,9 @@ output_mode = "last"
 # that first key wakes the screen rather than landing in the password field.
 # 0 disables it. Only the "gui" host has a surface to blank.
 blank_timeout = 300
+# Ask the kernel for the first free VT at startup (VT_OPENQRY) instead of taking
+# the top-level `tty` number as-is. `tty` stays the fallback when the query
+# fails, and an explicit `--tty N` on the command line always wins. Off by
+# default: a fixed, predictable VT is the right call on a machine whose gettys
+# are laid out around it.
+dynamic_vt = false

@@ -22,12 +22,13 @@ mod chvt;
 mod cli;
 mod config;
 mod console_palette;
+mod daemon;
 mod info_caching;
 mod post_login;
 mod runner;
 mod theme_sync;
 mod ui;
-mod vt_blank;
+mod vt_guard;
 
 use config::Config;
 
@@ -300,6 +301,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         if let Some(tty) = cli.tty {
             info!("Overwritten the tty to '{tty}' with the --tty flag");
             config.tty = tty;
+        } else if config.display.dynamic_vt {
+            // Everything downstream — chvt, the VT guard, XDG_VTNR, utmpx,
+            // wait_vt_free — reads `config.tty`, so one assignment here
+            // switches the whole tree to the kernel's offer.
+            match chvt::first_free_vt() {
+                Ok(vt) if (1..=12).contains(&vt) => {
+                    info!("dynamic VT: the kernel offered tty{vt}");
+                    config.tty = vt as u8;
+                }
+                Ok(vt) => warn!(
+                    "dynamic VT: the kernel offered tty{vt}, outside 1-12; keeping tty{}",
+                    config.tty
+                ),
+                Err(err) => warn!("dynamic VT query failed ({err}); keeping tty{}", config.tty),
+            }
         }
 
         // Switch to the proper tty
@@ -327,42 +343,59 @@ fn main() -> Result<(), Box<dyn Error>> {
     // degrades to the next one and never locks the user out.
     if !cli.preview {
         let host = config.display.host.to_ascii_lowercase();
+        // The signal loop must exist before the first fork, so no SIGTERM can
+        // slip through unobserved while a graphical host holds the VT. If it
+        // cannot be set up (fd exhaustion — effectively never), degrade to the
+        // TTY greeter rather than running a hold we could not undo on signal.
+        let mut events = match daemon::Events::new() {
+            Ok(events) => Some(events),
+            Err(err) => {
+                warn!("cannot set up the daemon signal loop ({err}); using the TTY greeter");
+                None
+            }
+        };
         // A graphical host owns the DRM master, but not until its compositor's
-        // first modeset (~1.5 s). Hold the VT in graphics mode from now so the
-        // kernel text console (a bare blinking cursor) never flashes in that gap
-        // — and stays black across greeter↔session handovers too. The guard
-        // restores text on drop; the graphical `Ok` arms exit mlogind (so drop
-        // is right), and the fall-through drops it before the TTY greeter, whose
-        // prompt would be invisible on a blanked console.
-        let graphical = host == "gui" || host == "cage";
+        // first modeset (~1.5 s). Hold the VT in graphics mode (and its
+        // keyboard off — see vt_guard) from now so the kernel text console
+        // never flashes in that gap and no early-typed password key lands in
+        // the tty buffer. The guard restores both on drop; the graphical `Ok`
+        // arms exit mlogind (so drop is right), and the fall-through drops it
+        // before the TTY greeter, whose prompt would be invisible on a
+        // blanked, key-less console.
+        let graphical = (host == "gui" || host == "cage") && events.is_some();
         let vt = if graphical {
-            vt_blank::graphics(config.tty)
+            vt_guard::graphics(config.tty)
         } else {
             None
         };
 
-        if host == "gui" {
-            match run_hosted(&config, Host::Gui) {
-                Ok(()) => {
-                    info!("mlogind is booting down");
-                    return Ok(());
+        if let Some(events) = events.as_mut() {
+            if host == "gui" {
+                match run_hosted(&config, Host::Gui, events) {
+                    Ok(exit) => {
+                        info!("mlogind is booting down ({exit:?})");
+                        return Ok(());
+                    }
+                    Err(e) => warn!("gui host unavailable ({e}); falling back to the cage host"),
                 }
-                Err(e) => warn!("gui host unavailable ({e}); falling back to the cage host"),
             }
-        }
-        if graphical {
-            match run_hosted(&config, Host::Cage) {
-                Ok(()) => {
-                    info!("mlogind is booting down");
-                    return Ok(());
+            if graphical {
+                match run_hosted(&config, Host::Cage, events) {
+                    Ok(exit) => {
+                        info!("mlogind is booting down ({exit:?})");
+                        return Ok(());
+                    }
+                    Err(e) => warn!("cage host unavailable ({e}); falling back to the TTY greeter"),
                 }
-                Err(e) => warn!("cage host unavailable ({e}); falling back to the TTY greeter"),
             }
         }
 
-        // Falling through to the TTY greeter: hand the console back to text
-        // before it draws (no-op when we never blanked).
+        // Falling through to the TTY greeter: hand the console back its text
+        // mode and keyboard before it draws (no-op when we never held them),
+        // and restore the signal mask so a plain SIGTERM keeps killing the
+        // TUI daemon the way it always has.
         drop(vt);
+        drop(events);
         run_tty_host(&config)?;
         info!("mlogind is booting down");
         return Ok(());
@@ -549,13 +582,32 @@ pub(crate) fn write_greeter_conf(path: &Path) -> io::Result<()> {
 /// How many consecutive fast crashes of a session runner mean the host itself
 /// is broken. Introduced by A1: the runner is now a fork, so a runner that dies
 /// instantly would otherwise spin the daemon in a tight fork loop at boot.
-/// A real backoff (timerfd, per-seat, atrium's `daemon/core/main.c`) is phase B.
 const RUNNER_CRASH_LIMIT: u32 = 5;
 const RUNNER_CRASH_WINDOW: Duration = Duration::from_secs(2);
-/// Linear backoff per consecutive fast crash. Only the crash path waits; a
-/// normal session end re-greets with no delay. Keeps a runner that dies
-/// instantly from hammering DRM/logind faster than a transient failure clears.
+/// Base of the exponential crash backoff (phase B, atrium's timerfd idiom).
 const RUNNER_CRASH_BACKOFF: Duration = Duration::from_millis(250);
+const RUNNER_CRASH_BACKOFF_CAP: Duration = Duration::from_secs(4);
+
+/// Exponential backoff before the next runner after `fast_crashes` consecutive
+/// fast crashes: 250 ms, 500 ms, 1 s, 2 s, … capped at 4 s. Only the crash
+/// path waits; a normal session end re-greets with no delay.
+pub(crate) fn crash_backoff(fast_crashes: u32) -> Duration {
+    let shift = fast_crashes.saturating_sub(1).min(8);
+    RUNNER_CRASH_BACKOFF
+        .saturating_mul(1 << shift)
+        .min(RUNNER_CRASH_BACKOFF_CAP)
+}
+
+/// How a hosted greeter ended, both of which end mlogind cleanly.
+#[derive(Debug)]
+pub(crate) enum HostExit {
+    /// The greeter quit without a login.
+    Quit,
+    /// A termination signal arrived; the runner has been stopped. `main` must
+    /// NOT fall down the host ladder — a stopping service does not respawn a
+    /// greeter.
+    Terminated,
+}
 
 /// Orchestrate a hosted greeter: fork a session runner, let it own the login
 /// from the first prompt to the last `pam_close_session`, and fork a fresh one
@@ -569,7 +621,11 @@ const RUNNER_CRASH_BACKOFF: Duration = Duration::from_millis(250);
 ///
 /// Returns `Err` only when the host cannot run at all, so `main` falls down the
 /// `gui → cage → tty` ladder and a broken host never locks the user out.
-fn run_hosted(config: &Config, host: Host) -> Result<(), Box<dyn Error>> {
+fn run_hosted(
+    config: &Config,
+    host: Host,
+    events: &mut daemon::Events,
+) -> Result<HostExit, Box<dyn Error>> {
     host.preflight()?;
 
     // No `ensure_seatd()` here any more. The greeter now runs inside its own
@@ -578,6 +634,17 @@ fn run_hosted(config: &Config, host: Host) -> Result<(), Box<dyn Error>> {
     // process could not.
     let mut fast_crashes = 0u32;
     loop {
+        // Make our VT the active one. After a session ends the active VT is
+        // wherever the user last switched; the fresh greeter renders on ours.
+        // A no-op on the first pass (main just switched here). Deliberately no
+        // VT_PROCESS ownership: logind arbitrates VT switching for the logind
+        // sessions living on this VT, and a second VT_SETMODE owner would
+        // fight it (see the phase-B spec).
+        // SAFETY: single-threaded; chvt only ioctls a console fd it opens.
+        if let Err(err) = unsafe { chvt::chvt(config.tty.into()) } {
+            warn!("orchestrator: cannot re-activate tty{}: {err}", config.tty);
+        }
+
         let (runner_fd, greeter_fd) = runner::socketpair()?;
         let started = Instant::now();
 
@@ -594,14 +661,24 @@ fn run_hosted(config: &Config, host: Host) -> Result<(), Box<dyn Error>> {
         drop(runner_fd);
         drop(greeter_fd);
 
-        match wait_for(pid) {
+        let code = match events.wait_child(pid) {
+            daemon::Wait::Terminated => {
+                info!("orchestrator: termination signal; stopping the session runner");
+                let code = events.terminate_child(pid);
+                info!("orchestrator: session runner stopped ({code})");
+                return Ok(HostExit::Terminated);
+            }
+            daemon::Wait::Exited(code) => code,
+        };
+
+        match code {
             runner::EXIT_SESSION_ENDED => {
                 info!("orchestrator: session ended; re-greeting");
                 fast_crashes = 0;
             }
             runner::EXIT_NO_LOGIN => {
                 info!("orchestrator: greeter produced no login; exiting host");
-                return Ok(());
+                return Ok(HostExit::Quit);
             }
             runner::EXIT_HOST_UNAVAILABLE => {
                 return Err(format!("the {host:?} greeter host could not run").into());
@@ -617,10 +694,14 @@ fn run_hosted(config: &Config, host: Host) -> Result<(), Box<dyn Error>> {
                         .into());
                     }
                     // Space the retries out so an instantly-dying runner doesn't
-                    // spin the fork loop; the happy path never reaches here.
-                    let backoff = RUNNER_CRASH_BACKOFF * fast_crashes;
+                    // spin the fork loop; the happy path never reaches here. A
+                    // termination signal cuts the wait short.
+                    let backoff = crash_backoff(fast_crashes);
                     warn!("orchestrator: backing off {backoff:?} before the next runner");
-                    std::thread::sleep(backoff);
+                    if let daemon::Sleep::Terminated = events.sleep(backoff) {
+                        info!("orchestrator: termination signal during backoff");
+                        return Ok(HostExit::Terminated);
+                    }
                 } else {
                     fast_crashes = 0;
                 }
@@ -695,13 +776,7 @@ pub(crate) fn wait_for(pid: libc::pid_t) -> i32 {
         error!("orchestrator: waitpid({pid}) failed: {err}");
         return runner::EXIT_SESSION_FAILED;
     }
-    if libc::WIFEXITED(status) {
-        libc::WEXITSTATUS(status)
-    } else if libc::WIFSIGNALED(status) {
-        128 + libc::WTERMSIG(status)
-    } else {
-        runner::EXIT_SESSION_FAILED
-    }
+    daemon::decode_wait_status(status)
 }
 
 #[cfg(test)]
@@ -719,6 +794,28 @@ mod tests {
         let without = greeter_conf_text(&xkb, None);
         assert!(!without.contains("wallpaper"));
         assert!(without.contains("xkb_rules_layout = tr\n"));
+    }
+
+    #[test]
+    fn the_crash_backoff_doubles_and_caps() {
+        assert_eq!(crash_backoff(1), Duration::from_millis(250));
+        assert_eq!(crash_backoff(2), Duration::from_millis(500));
+        assert_eq!(crash_backoff(3), Duration::from_millis(1000));
+        assert_eq!(crash_backoff(4), Duration::from_millis(2000));
+        assert_eq!(crash_backoff(5), Duration::from_secs(4));
+        // Past the cap it stays put, whatever the counter says.
+        assert_eq!(crash_backoff(30), Duration::from_secs(4));
+        // 0 never occurs (the first crash is 1), but must not underflow.
+        assert_eq!(crash_backoff(0), Duration::from_millis(250));
+    }
+
+    #[test]
+    fn the_dynamic_vt_knob_defaults_off_and_the_baked_config_carries_it() {
+        // `Config` derives a non-optional Deserialize from the baked
+        // extra/config.toml: a missing key there would abort at startup, so
+        // this test failing to construct the default at all is the loud
+        // version of that mistake.
+        assert!(!Config::default().display.dynamic_vt);
     }
 
     #[test]

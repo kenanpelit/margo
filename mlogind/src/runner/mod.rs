@@ -125,6 +125,12 @@ fn clear_cloexec(fd: RawFd) -> io::Result<()> {
 /// the greeter exiting produces a clean EOF. For [`Host::Tty`] the parent kept
 /// it and ours is dropped immediately.
 pub fn run(config: &Config, host: Host, rfd: OwnedFd, gfd: OwnedFd) -> ! {
+    // The daemon blocks its fate signals for its signalfd loop, and the mask
+    // is inherited across fork AND exec — without this reset the user's own
+    // session would run with SIGTERM blocked, a desktop no `systemctl` could
+    // ever stop. First thing, before any child can be spawned.
+    crate::daemon::reset_signal_mask();
+
     // SAFETY: `rfd` is a live SOCK_SEQPACKET socket owned by this scope, and it
     // outlives the `Conn` — `rfd` is dropped at the end of this function, which
     // only runs after `serve` returns.
