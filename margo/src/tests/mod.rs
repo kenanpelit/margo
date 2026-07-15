@@ -33,6 +33,7 @@ mod fixture;
 mod server;
 
 mod active_output;
+mod arrange;
 mod bootstrap;
 mod color_management;
 mod dmabuf;

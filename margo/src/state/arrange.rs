@@ -34,6 +34,36 @@ impl MargoState {
         self.publish_a11y_window_list();
     }
 
+    /// The tiled-strip position that focus-following layouts (scroller,
+    /// vertical scroller, deck) should centre on.
+    ///
+    /// Normally it is the focused window's own slot. But when focus sits on
+    /// a surface that is *not* in the tiled strip — a floating keyring /
+    /// polkit dialog, a launcher layer surface, a scratchpad — the naive
+    /// lookup returns `None`, and every consumer falls back to slot 0. That
+    /// made scroller snap the whole strip to the *first* window the instant a
+    /// transient floating dialog grabbed focus, sliding the layout out from
+    /// under the window the user was working in — which is exactly why a
+    /// keyring prompt that we centre over window 2 ended up sitting over
+    /// window 1. Instead, hold the strip on the most-recently-focused window
+    /// that is *still tiled*, read from the per-monitor MRU `focus_history`
+    /// (most-recent first). Falls back to `None` (→ slot 0) only when nothing
+    /// in the history is tiled, e.g. a fresh tag.
+    pub(crate) fn focused_tiled_pos(
+        &self,
+        mon_idx: usize,
+        tiled: &[usize],
+        focused_idx: Option<usize>,
+    ) -> Option<usize> {
+        if let Some(pos) = focused_idx.and_then(|fi| tiled.iter().position(|&idx| idx == fi)) {
+            return Some(pos);
+        }
+        let mon = self.monitors.get(mon_idx)?;
+        mon.focus_history
+            .iter()
+            .find_map(|&id| tiled.iter().position(|&idx| self.clients[idx].id == id))
+    }
+
     pub fn arrange_monitor(&mut self, mon_idx: usize) {
         let _span = tracy_client::span!("arrange_monitor");
         if mon_idx >= self.monitors.len() {
@@ -171,9 +201,7 @@ impl MargoState {
             .iter()
             .map(|&i| self.clients[i].scroller_proportion)
             .collect();
-        let focused_tiled_pos = self
-            .focused_client_idx()
-            .and_then(|focused_idx| tiled.iter().position(|&idx| idx == focused_idx));
+        let focused_tiled_pos = self.focused_tiled_pos(mon_idx, &tiled, self.focused_client_idx());
 
         if !is_overview && self.config.smartgaps && tiled.len() <= 1 {
             // Collapse the OUTER gaps for a lone window — but not all the way to
