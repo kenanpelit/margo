@@ -30,6 +30,7 @@ use crate::launcher_settings::{LauncherSettingsInit, LauncherSettingsModel};
 use crate::layer_rules_settings::{LayerRulesInit, LayerRulesModel};
 use crate::lock_settings::{LockSettingsInit, LockSettingsModel};
 use crate::logging_settings::{LoggingInit, LoggingModel};
+use crate::login_settings::{LoginSettingsInit, LoginSettingsModel};
 use crate::media_player_settings::{MediaPlayerSettingsInit, MediaPlayerSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
 use crate::network_settings::{NetworkSettingsInit, NetworkSettingsModel};
@@ -209,6 +210,7 @@ fn build_top_page(route: &str) -> Option<BuiltPage> {
         "game_mode" => page!(GameModeSettingsModel => GameModeSettingsInit {}),
         "keyboard" => page!(KeyboardSettingsModel => KeyboardSettingsInit {}),
         "lock" => page!(LockSettingsModel => LockSettingsInit {}),
+        "login" => page!(LoginSettingsModel => LoginSettingsInit {}),
         "tiling_layout" => page!(TagLayoutSettingsModel => TagLayoutSettingsInit {}),
         "launcher" => page!(LauncherSettingsModel => LauncherSettingsInit {}),
         "bar" => page!(BarSettingsModel => BarSettingsInit {}),
@@ -1958,6 +1960,10 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
         "lockscreen password security blur unlock pam",
     ),
     (
+        "login",
+        "login greeter display manager mlogind autologin automatic background wallpaper random theme css osk on-screen keyboard blank host session boot",
+    ),
+    (
         "privacy",
         "location camera microphone permission history geoclue recent flatpak",
     ),
@@ -2025,6 +2031,12 @@ const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("keyboard", "keyboard"),
     ("lock", "lock"),
     ("lock screen", "lock"),
+    ("login", "login"),
+    ("login screen", "login"),
+    ("greeter", "login"),
+    ("autologin", "login"),
+    ("display manager", "login"),
+    ("mlogind", "login"),
     ("tiling layout", "tiling_layout"),
     ("tiling_layout", "tiling_layout"),
     ("about", "about"),
@@ -2254,6 +2266,11 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "lock",
         icon: "system-lock-screen-symbolic",
         label: "Lock Screen",
+    },
+    Page {
+        route: "login",
+        icon: "system-users-symbolic",
+        label: "Login Screen",
     },
     Page {
         route: "network",
