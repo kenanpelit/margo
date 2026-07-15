@@ -2627,7 +2627,24 @@ impl MargoState {
             );
             return false;
         }
-        Self::apply_matched_window_rules(&self.monitors, &mut self.clients[idx], &rules);
+        // On the initial map, `selected` still points at the window that had
+        // focus when this client opened (focus doesn't move to the new window
+        // until after this reapply). Centre any rule-floated dialog over that
+        // trigger window rather than the work-area centre. Later reapplies
+        // (`AppIdSettled`, `Reload`) must NOT re-centre — the user may have
+        // moved the window since — so they pass `None`.
+        let focus_anchor = if reason == WindowRuleReason::InitialMap {
+            let mon = self.clients[idx].monitor;
+            self.focus_anchor_for(mon, idx)
+        } else {
+            None
+        };
+        Self::apply_matched_window_rules(
+            &self.monitors,
+            &mut self.clients[idx],
+            &rules,
+            focus_anchor,
+        );
         tracing::debug!(
             target: "windowrule",
             reason = ?reason,

@@ -474,3 +474,149 @@ mod edge_cases {
         assert!(matches(rule, "[invalid", ""));
     }
 }
+
+// ── Float-dialog placement: centre over the focused window ────────────────────
+//
+// A rule-floated dialog (keyring / polkit prompt) should open over the window
+// that triggered it — the focused window — rather than the monitor centre. That
+// matters most in the scroller layout, where the focused window is rarely at
+// the work-area centre. These lock the `rule_float_geometry_for` +
+// `focus_anchor_for` contract: anchor-centring, on-screen clamping, and the
+// offset-rule escape hatch that keeps corner-pinned windows (copyq / PiP) put.
+
+#[cfg(test)]
+mod float_placement {
+    use super::*;
+    use crate::layout::Rect;
+    use crate::state::MargoState;
+
+    /// A single 1080p output whose `work_area` equals its full area (a bare
+    /// fixture reserves no bar space). Returns the fixture and that work area.
+    fn fixture_1080p() -> (Fixture, Rect) {
+        let mut fx = Fixture::with_config(Config::default());
+        fx.add_output("DP-1", (1920, 1080));
+        let area = fx.server.state.monitors[0].work_area;
+        (fx, area)
+    }
+
+    #[test]
+    fn empty_rule_no_anchor_centres_on_work_area() {
+        // Legacy behaviour, unchanged: no anchor → 60%-of-work-area, centred.
+        let (fx, area) = fixture_1080p();
+        let rule = WindowRule::default();
+        let g = MargoState::rule_float_geometry_for(&fx.server.state.monitors, 0, &rule, None);
+        let w = (area.width as f32 * 0.6) as i32;
+        let h = (area.height as f32 * 0.6) as i32;
+        assert_eq!(
+            g,
+            Rect::new(
+                area.x + (area.width - w) / 2,
+                area.y + (area.height - h) / 2,
+                w,
+                h,
+            )
+        );
+    }
+
+    #[test]
+    fn sized_rule_centres_over_focus_anchor() {
+        // A 400×200 dialog centres over the focused window's rect, not the
+        // monitor centre, when the anchor sits well inside the work area.
+        let (fx, area) = fixture_1080p();
+        let rule = WindowRule {
+            width: 400,
+            height: 200,
+            ..Default::default()
+        };
+        let anchor = Rect::new(area.x + 600, area.y + 400, 200, 200);
+        let g =
+            MargoState::rule_float_geometry_for(&fx.server.state.monitors, 0, &rule, Some(anchor));
+        assert_eq!(g.width, 400);
+        assert_eq!(g.height, 200);
+        assert_eq!(g.x, anchor.x + (anchor.width - 400) / 2);
+        assert_eq!(g.y, anchor.y + (anchor.height - 200) / 2);
+    }
+
+    #[test]
+    fn focus_anchor_placement_clamps_to_work_area() {
+        // A dialog centred over an edge-hugging window must stay fully
+        // on-screen — clamp to the work-area inner edges, never spill.
+        let (fx, area) = fixture_1080p();
+        let rule = WindowRule {
+            width: 400,
+            height: 200,
+            ..Default::default()
+        };
+        // Top-left corner window → clamp to the top-left work-area edge.
+        let tl = Rect::new(area.x, area.y, 60, 60);
+        let g = MargoState::rule_float_geometry_for(&fx.server.state.monitors, 0, &rule, Some(tl));
+        assert_eq!(g.x, area.x);
+        assert_eq!(g.y, area.y);
+        // Bottom-right corner window → clamp to the bottom-right inner edge.
+        let br = Rect::new(area.x + area.width - 60, area.y + area.height - 60, 60, 60);
+        let g = MargoState::rule_float_geometry_for(&fx.server.state.monitors, 0, &rule, Some(br));
+        assert_eq!(g.x, area.x + area.width - 400);
+        assert_eq!(g.y, area.y + area.height - 200);
+    }
+
+    #[test]
+    fn offset_rule_ignores_focus_anchor() {
+        // A rule that pins an explicit screen offset keeps its exact
+        // work-area-relative placement — the anchor is ignored so
+        // corner-pinned windows (copyq / PiP) never drift onto the focus.
+        let (fx, area) = fixture_1080p();
+        let rule = WindowRule {
+            width: 400,
+            height: 200,
+            offset_x: 50,
+            offset_y: -30,
+            ..Default::default()
+        };
+        let anchor = Rect::new(area.x + 600, area.y + 400, 200, 200);
+        let with =
+            MargoState::rule_float_geometry_for(&fx.server.state.monitors, 0, &rule, Some(anchor));
+        let without =
+            MargoState::rule_float_geometry_for(&fx.server.state.monitors, 0, &rule, None);
+        assert_eq!(with, without);
+        assert_eq!(with.x, area.x + (area.width - 400) / 2 + 50);
+        assert_eq!(with.y, area.y + (area.height - 200) / 2 - 30);
+    }
+
+    #[test]
+    fn focus_anchor_for_selection_guards() {
+        // `focus_anchor_for` returns the selected window's geom, except when
+        // the selection is the new window itself, the monitor is out of range,
+        // there is no selection, or the geom is degenerate.
+        let (mut fx, _area) = fixture_1080p();
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id("kitty".into());
+        toplevel.set_title("kitty".into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+
+        // No selection yet → None (work-area fallback), and an out-of-range
+        // monitor index is None, never a panic.
+        assert_eq!(fx.server.state.focus_anchor_for(0, 0), None);
+        assert_eq!(fx.server.state.focus_anchor_for(99, 0), None);
+
+        // Give the mapped client a known geometry and select it.
+        let cidx = 0usize;
+        fx.server.state.clients[cidx].monitor = 0;
+        fx.server.state.clients[cidx].geom = Rect::new(700, 500, 300, 250);
+        fx.server.state.monitors[0].selected = Some(cidx);
+
+        // A different new window anchors over the selected client…
+        assert_eq!(
+            fx.server.state.focus_anchor_for(0, 999),
+            Some(Rect::new(700, 500, 300, 250))
+        );
+        // …but a window can never anchor over itself.
+        assert_eq!(fx.server.state.focus_anchor_for(0, cidx), None);
+
+        // A degenerate (0×0) selection falls back to work-area centring.
+        fx.server.state.clients[cidx].geom = Rect::new(0, 0, 0, 0);
+        assert_eq!(fx.server.state.focus_anchor_for(0, 999), None);
+    }
+}

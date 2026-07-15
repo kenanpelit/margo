@@ -145,13 +145,16 @@ impl MargoState {
         // `self.clients`). The post-mount equivalent is
         // [`reapply_rules`].
         let rules = self.matching_window_rules(&client.app_id, &client.title);
-        Self::apply_matched_window_rules(&self.monitors, client, &rules);
+        // Pre-mount clients aren't in `self.clients` yet, so there is no
+        // "focused window" to anchor a dialog over — centre on the work area.
+        Self::apply_matched_window_rules(&self.monitors, client, &rules, None);
     }
 
     pub(crate) fn apply_matched_window_rules(
         monitors: &[MargoMonitor],
         client: &mut MargoClient,
         rules: &[WindowRule],
+        focus_anchor: Option<Rect>,
     ) {
         // Placement (`tags` / `monitor`) is a *one-time* decision, applied the
         // first time a rule matches (initial map, or the first time a late
@@ -302,7 +305,8 @@ impl MargoState {
                 || rule.offset_y != 0
             {
                 client.is_floating = true;
-                client.float_geom = Self::rule_float_geometry_for(monitors, client.monitor, rule);
+                client.float_geom =
+                    Self::rule_float_geometry_for(monitors, client.monitor, rule, focus_anchor);
             }
         }
         // Lock placement after the first time a rule actually set a tag /
@@ -323,7 +327,7 @@ impl MargoState {
         if client.is_floating && client.float_geom.width == 0 {
             let empty_rule = margo_config::WindowRule::default();
             client.float_geom =
-                Self::rule_float_geometry_for(monitors, client.monitor, &empty_rule);
+                Self::rule_float_geometry_for(monitors, client.monitor, &empty_rule, focus_anchor);
         }
         // After all matched rules are applied, clamp the floating geometry
         // to any size constraints picked up.
@@ -338,13 +342,38 @@ impl MargoState {
     }
 
     fn rule_float_geometry(&self, mon_idx: usize, rule: &WindowRule) -> Rect {
-        Self::rule_float_geometry_for(&self.monitors, mon_idx, rule)
+        Self::rule_float_geometry_for(&self.monitors, mon_idx, rule, None)
     }
 
-    fn rule_float_geometry_for(
+    /// The on-screen rect of the currently-focused window on `mon_idx`, used
+    /// as the centering anchor for a freshly-floated dialog so a keyring /
+    /// polkit prompt lands over the window that triggered it rather than the
+    /// monitor's centre. This matters most in the scroller layout, where the
+    /// focused window is rarely at the work-area centre — the old behaviour
+    /// popped the dialog over whichever window happened to sit in the middle.
+    ///
+    /// Returns `None` (→ caller falls back to work-area centring) when the
+    /// monitor has no selection, the selection is the new client itself, the
+    /// selected client lives on another monitor, or its geometry is
+    /// degenerate. Callers must read this at `InitialMap` time, before focus
+    /// moves to the new window, so `selected` still points at the trigger.
+    pub(crate) fn focus_anchor_for(&self, mon_idx: usize, new_idx: usize) -> Option<Rect> {
+        let sel = self.monitors.get(mon_idx)?.selected?;
+        if sel == new_idx {
+            return None;
+        }
+        let anchor = self.clients.get(sel)?;
+        if anchor.monitor != mon_idx || anchor.geom.width <= 0 || anchor.geom.height <= 0 {
+            return None;
+        }
+        Some(anchor.geom)
+    }
+
+    pub(crate) fn rule_float_geometry_for(
         monitors: &[MargoMonitor],
         mon_idx: usize,
         rule: &WindowRule,
+        focus_anchor: Option<Rect>,
     ) -> Rect {
         let area = monitors
             .get(mon_idx)
@@ -369,12 +398,23 @@ impl MargoState {
             (area.height as f32 * 0.6) as i32
         };
 
-        Rect::new(
-            area.x + (area.width - width) / 2 + rule.offset_x,
-            area.y + (area.height - height) / 2 + rule.offset_y,
-            width,
-            height,
-        )
+        let mut x = area.x + (area.width - width) / 2 + rule.offset_x;
+        let mut y = area.y + (area.height - height) / 2 + rule.offset_y;
+        // When the rule pins no explicit screen offset, centre the dialog over
+        // the focused window instead of the work-area centre, then clamp so a
+        // dialog centred over an edge window never spills off-screen. Rules
+        // that DO pin an offset (copyq corner, PiP, …) keep their exact
+        // screen-relative placement — the offset path above is left untouched.
+        if rule.offset_x == 0
+            && rule.offset_y == 0
+            && let Some(anchor) = focus_anchor
+        {
+            x = anchor.x + (anchor.width - width) / 2;
+            y = anchor.y + (anchor.height - height) / 2;
+            x = x.clamp(area.x, (area.x + area.width - width).max(area.x));
+            y = y.clamp(area.y, (area.y + area.height - height).max(area.y));
+        }
+        Rect::new(x, y, width, height)
     }
 
     pub(crate) fn refresh_wayland_toplevel_identity(
