@@ -50,9 +50,34 @@ fn parse(bytes: &[u8]) -> Option<(u32, u32, &[u8])> {
     Some((width, height, &bytes[HEADER..]))
 }
 
-/// The backdrop texture, if one has been synced. Uploaded once and shared by
+/// A background the runner picked from `[display] background_dir` — one random
+/// image per greeter start, the same file the compositor wallpaper shows, so
+/// the two can never disagree. Decoded by GTK's own loaders; mgreet still
+/// links no image crate. Not blurred: the `.mgreet-dim` overlay carries
+/// legibility for a photographic backdrop.
+fn from_env() -> Option<gdk::Texture> {
+    let path = std::env::var_os("MLOGIND_BACKGROUND")?;
+    match gdk::Texture::from_filename(&path) {
+        Ok(texture) => Some(texture),
+        Err(err) => {
+            // Fall back to the baked backdrop rather than the flat scrim —
+            // a background that cannot be decoded should degrade to the one
+            // that always can be.
+            eprintln!(
+                "[mgreet] cannot decode background {path:?} ({err}); using the baked backdrop"
+            );
+            None
+        }
+    }
+}
+
+/// The backdrop texture: the runner's `background_dir` pick when there is
+/// one, else the synced blurred wallpaper copy. Uploaded once and shared by
 /// every per-monitor window — `gdk::Texture` is refcounted, so cloning is free.
 pub fn load() -> Option<gdk::Texture> {
+    if let Some(texture) = from_env() {
+        return Some(texture);
+    }
     let bytes = std::fs::read(PATH).ok()?;
     let (width, height, pixels) = parse(&bytes)?;
 

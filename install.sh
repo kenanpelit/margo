@@ -375,6 +375,42 @@ debian_install_files() {
   install_file 644 "${REPO_ROOT}/assets/margo-portal.service" \
     "/usr/lib/systemd/user/margo-portal.service"
 
+  # ── mlogind display manager (opt-in; inert until `systemctl enable`) ──
+  # The same file set the Arch PKGBUILD ships; before this block the
+  # cross-distro path installed only the binary, so `host = "gui"` had no
+  # greeter user, no PAM stacks and no unit to enable. The /etc files are
+  # real config an admin may have edited: an existing file is left alone
+  # and deliberately NOT recorded in the manifest, so uninstall never
+  # deletes an admin's edits (pacman gets the same via backup=()).
+  local mlogind_src mlogind_dst mlogind_mode
+  while IFS='|' read -r mlogind_mode mlogind_src mlogind_dst; do
+    if [[ -e "$mlogind_dst" ]]; then
+      log "keep (exists): $mlogind_dst"
+    else
+      install_file "$mlogind_mode" "${REPO_ROOT}/${mlogind_src}" "$mlogind_dst"
+    fi
+  done <<'MLOGIND_ETC'
+644|mlogind/extra/config.toml|/etc/mlogind/config.toml
+644|mlogind/extra/variables.toml|/etc/mlogind/variables.toml
+644|mlogind/extra/mlogind.pam|/etc/pam.d/mlogind
+644|mlogind/extra/mlogind-greeter.pam|/etc/pam.d/mlogind-greeter
+644|mlogind/extra/mlogind-autologin.pam|/etc/pam.d/mlogind-autologin
+755|mlogind/extra/xsetup.sh|/etc/mlogind/xsetup.sh
+MLOGIND_ETC
+  # Session-script dirs mlogind scans (config.toml: scripts_path).
+  $SUDO install -d /etc/mlogind/wayland /etc/mlogind/wms
+  install_file 644 "${REPO_ROOT}/mlogind/extra/mlogind.service" \
+    "/usr/lib/systemd/system/mlogind.service"
+  install_file 644 "${REPO_ROOT}/mlogind/extra/mlogind.sysusers" \
+    "/usr/lib/sysusers.d/mlogind.conf"
+  install_file 644 "${REPO_ROOT}/mlogind/extra/60-mlogind-greeter.rules" \
+    "/usr/share/polkit-1/rules.d/60-mlogind-greeter.rules"
+  # pacman creates the greeter user through its systemd-sysusers hook;
+  # dpkg has no such hook, so run it here. mlogind survives the user being
+  # missing (it logs and runs the greeter as root), hence warn-and-continue.
+  $SUDO systemd-sysusers /usr/lib/sysusers.d/mlogind.conf 2>/dev/null || \
+    warn "systemd-sysusers failed — the greeter runs as root until 'mlogind-greeter' exists"
+
   # ── mshell runtime assets ──
   local snd
   for snd in "${REPO_ROOT}"/mshell-crates/mshell-sounds/assets/*.ogg; do

@@ -25,16 +25,15 @@ use log::{error, info, warn};
 use mlogind_proto::{Conn, Event, FdTransport, Request};
 use pam::Authenticator;
 
-use crate::auth::{self, utmpx::add_utmpx_entry, UserInfo};
+use crate::auth::{self, UserInfo, utmpx::add_utmpx_entry};
 use crate::config::{Config, PowerControl};
 use crate::info_caching::set_cache;
 use crate::post_login::{
-    self,
+    self, PostLoginEnvironment,
     env_variables::{
         remove_xdg, set_basic_variables, set_display, set_seat_vars, set_session_params,
         set_session_vars, set_xdg_common_paths,
     },
-    PostLoginEnvironment,
 };
 
 mod converse;
@@ -150,6 +149,66 @@ pub fn run(config: &Config, host: Host, rfd: OwnedFd, gfd: OwnedFd) -> ! {
     std::process::exit(code)
 }
 
+/// The body of the forked autologin child. Never returns.
+///
+/// No greeter, no socketpair: the PAM stack's auth phase is `pam_permit`
+/// (nobody is at the keyboard to answer anything), and the `PasswordConv`
+/// handler exists only to answer the `pam_get_user` prompt with the
+/// configured name. Everything from `open_session` on is the exact
+/// interactive path — an autologin session is a first-class logind session.
+pub fn run_autologin(config: &Config) -> ! {
+    // See `run`: the daemon's blocked mask must not reach the session.
+    crate::daemon::reset_signal_mask();
+    std::process::exit(autologin(config))
+}
+
+fn autologin(config: &Config) -> i32 {
+    let knob = &config.autologin;
+    let Some(post_login_env) = resolve_session(config, &knob.session) else {
+        error!(
+            "runner: autologin session '{}' does not exist",
+            knob.session
+        );
+        return EXIT_SESSION_FAILED;
+    };
+    let user_info = match auth::lookup(&knob.user) {
+        Ok(info) => info,
+        Err(err) => {
+            error!("runner: autologin: {err}");
+            return EXIT_SESSION_FAILED;
+        }
+    };
+    let mut auth = match Authenticator::with_password(&knob.pam_service) {
+        Ok(auth) => auth,
+        Err(err) => {
+            error!(
+                "runner: cannot open PAM service '{}': {err}",
+                knob.pam_service
+            );
+            return EXIT_SESSION_FAILED;
+        }
+    };
+    // The password is never read — the stack permits — but the handler still
+    // answers `pam_get_user` with this name.
+    auth.get_handler().set_credentials(knob.user.as_str(), "");
+    if let Err(err) = auth.authenticate() {
+        // A locked or expired account lands here too; the greeter takes over.
+        error!(
+            "runner: autologin authentication failed for '{}': {err}",
+            knob.user
+        );
+        return EXIT_SESSION_FAILED;
+    }
+    info!(
+        "runner: autologin as '{}' into '{}'",
+        knob.user, knob.session
+    );
+    // The last-login cache is deliberately not written: it pre-fills the
+    // *greeter*, whose next appearance means someone just logged out on
+    // purpose — config-driven logins are not "the last thing a person typed".
+    start_session(config, &mut auth, &post_login_env, &knob.user, &user_info)
+}
+
 /// The greeter-session process and where its host's output went.
 ///
 /// A forked pid rather than a `std::process::Child`: between the runner and
@@ -194,21 +253,14 @@ fn spawn_greeter(
             let margo = crate::which("margo").ok_or("`margo` not found in PATH")?;
             let mgreet = crate::which("mgreet").ok_or("`mgreet` not found in PATH")?;
             let mctl = crate::which("mctl").ok_or("`mctl` not found in PATH")?;
+            // The on-screen keyboard is a decoration, never a gate: a missing
+            // mkeys drops the OSK, not the host (preflight stays untouched).
+            let mkeys = config.display.osk.then(|| crate::which("mkeys")).flatten();
 
             let greeter_conf = runtime_dir.join("greeter.conf");
-            crate::write_greeter_conf(&greeter_conf)?;
+            let background = crate::write_greeter_conf(&greeter_conf, config)?;
 
-            // However mgreet exits, quit margo so this host returns. The `;`
-            // runs the quit even if mgreet crashed. mgreet's stderr used to be
-            // redirected to a file in this directory, which meant the greeter
-            // needed write access to it; it now flows through margo's stderr
-            // into the log the runner opens below, as root, and passes down as
-            // an inherited fd.
-            let startup = format!(
-                "{mgreet}; {mctl} dispatch quit",
-                mgreet = mgreet.display(),
-                mctl = mctl.display(),
-            );
+            let startup = greeter_startup(&mgreet, &mctl, mkeys.as_deref());
 
             let mut cmd = Command::new(&margo);
             cmd.arg("--config")
@@ -227,6 +279,21 @@ fn spawn_greeter(
                     "MLOGIND_BLANK_SECS",
                     config.display.blank_timeout.to_string(),
                 );
+            // The `background_dir` pick, so the login card paints the same
+            // image the compositor wallpaper shows behind it.
+            if let Some(background) = background {
+                cmd.env("MLOGIND_BACKGROUND", background);
+            }
+            // Admin CSS layered over the palette. Checked here, as root: the
+            // greeter should not learn a path it can never read.
+            let css = &config.display.greeter_css;
+            if !css.is_empty() {
+                if Path::new(css).is_file() {
+                    cmd.env("MLOGIND_CSS", css);
+                } else {
+                    warn!("runner: greeter_css '{css}' is not a readable file; skipping it");
+                }
+            }
             (cmd, runtime_dir.join("margo-greeter.log"))
         }
     } else {
@@ -259,10 +326,10 @@ fn spawn_greeter(
     }
     // Capture the host's own output — it inherits the greeter's VT otherwise,
     // where a later redraw wipes any error it printed.
-    if let Ok(out) = std::fs::File::create(&log) {
-        if let Ok(err) = out.try_clone() {
-            cmd.stdout(out).stderr(err);
-        }
+    if let Ok(out) = std::fs::File::create(&log)
+        && let Ok(err) = out.try_clone()
+    {
+        cmd.stdout(out).stderr(err);
     }
 
     info!("runner: launching the {host:?} greeter host");
@@ -285,6 +352,27 @@ fn spawn_greeter(
     drop(gfd);
 
     Ok(Some(Greeter { pid, log }))
+}
+
+/// The shell line the greeter compositor runs as its startup command.
+///
+/// However mgreet exits, quit margo so this host returns — the `;` runs the
+/// quit even if mgreet crashed. mgreet's output flows through margo's stderr
+/// into the log the runner opens, as root, and passes down as an inherited fd.
+///
+/// With an OSK, mkeys floats over the card for touch login and is killed the
+/// moment mgreet is done — margo's quit would reap it anyway, but not before
+/// it repainted over a session that is trying to start.
+fn greeter_startup(mgreet: &Path, mctl: &Path, mkeys: Option<&Path>) -> String {
+    let mgreet = mgreet.display();
+    let mctl = mctl.display();
+    match mkeys {
+        Some(mkeys) => format!(
+            "{mkeys} & OSK=$!; {mgreet}; kill $OSK 2>/dev/null; {mctl} dispatch quit",
+            mkeys = mkeys.display(),
+        ),
+        None => format!("{mgreet}; {mctl} dispatch quit"),
+    }
 }
 
 /// Every configured power action, base entries first.
@@ -565,9 +653,9 @@ fn refresh_greeter_theme(user_info: &UserInfo) {
     }
 }
 
-fn start_session(
+fn start_session<C: pam::Converse>(
     config: &Config,
-    auth: &mut Authenticator<'_, GreeterConv<'_, FdTransport>>,
+    auth: &mut Authenticator<'_, C>,
     post_login_env: &PostLoginEnvironment,
     username: &str,
     user_info: &UserInfo,
@@ -641,4 +729,33 @@ fn start_session(
     drop(utmpx_session);
     // `auth` drops in the caller → pam_close_session + setcred(DELETE) + pam_end.
     EXIT_SESSION_ENDED
+}
+
+#[cfg(test)]
+mod tests {
+    use super::greeter_startup;
+    use std::path::Path;
+
+    #[test]
+    fn the_startup_line_quits_margo_however_mgreet_ends() {
+        let line = greeter_startup(
+            Path::new("/usr/bin/mgreet"),
+            Path::new("/usr/bin/mctl"),
+            None,
+        );
+        assert_eq!(line, "/usr/bin/mgreet; /usr/bin/mctl dispatch quit");
+    }
+
+    #[test]
+    fn the_osk_floats_beside_the_greeter_and_dies_with_it() {
+        let line = greeter_startup(
+            Path::new("/usr/bin/mgreet"),
+            Path::new("/usr/bin/mctl"),
+            Some(Path::new("/usr/bin/mkeys")),
+        );
+        assert_eq!(
+            line,
+            "/usr/bin/mkeys & OSK=$!; /usr/bin/mgreet; kill $OSK 2>/dev/null; /usr/bin/mctl dispatch quit"
+        );
+    }
 }

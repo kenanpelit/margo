@@ -22,6 +22,7 @@
   --surface-container-lowest: #1e1f29;
   --surface-container: #313442;
   --surface-container-high: #3a3d4d;
+  --surface-container-highest: #444759;
   --on-surface: #f8f8f2;
   --on-surface-variant: #bcc0cc;
   --primary: #bd93f9;
@@ -210,6 +211,23 @@ window.mgreet-root {
   border: 1px solid var(--outline);
   border-radius: var(--radius-pill);
   padding: 1px 8px;
+
+  // With two or more layouts the badge is a GtkButton (the switcher). The
+  // theme's own button chrome must not leak through the chip; the states are
+  // the only tell that it became a control.
+  min-height: 0;
+  min-width: 0;
+  box-shadow: none;
+
+  &:hover {
+    background-color: var(--surface-container-highest);
+    color: var(--on-surface);
+  }
+
+  &:active {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+  }
 }
 
 .mgreet-greeting {

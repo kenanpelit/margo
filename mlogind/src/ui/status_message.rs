@@ -1,8 +1,8 @@
+use ratatui::Frame;
 use ratatui::backend::Backend;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::Paragraph;
-use ratatui::Frame;
 
 #[derive(Clone)]
 pub enum ErrorStatusMessage {

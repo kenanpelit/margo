@@ -8,7 +8,7 @@ use ratatui::{
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::config::{get_color, InputFieldStyle};
+use crate::config::{InputFieldStyle, get_color};
 
 /// The type of the input field display. How are the characters which are typed displayed?
 #[derive(Clone)]
@@ -30,6 +30,10 @@ pub struct InputFieldWidget {
     /// Width of the InputField in cells
     width: u16,
     display_type: InputFieldDisplayType,
+    /// The `Replace` mask this field was configured with, so an echo-on PAM
+    /// prompt can borrow the field and hand it back masked (`set_echo`).
+    /// `None` on a field that never masks (the username).
+    mask: Option<String>,
     style: InputFieldStyle,
 }
 
@@ -50,14 +54,37 @@ impl InputFieldWidget {
             .try_into() // Convert from usize to u16
             .unwrap_or(0u16);
 
+        let mask = match &display_type {
+            InputFieldDisplayType::Replace(mask) => Some(mask.clone()),
+            InputFieldDisplayType::Echo => None,
+        };
+
         Self {
             content: preset_content,
             cursor: initial_cursor_position,
             scroll: 0,
             width: 8, // Give it some initial width
             display_type,
+            mask,
             style,
         }
+    }
+
+    /// Show or mask what is typed. PAM prompts carry an `echo` flag — an OTP
+    /// code is not a secret, and masking it doubles the typo rate on a field
+    /// that cannot be re-read — and the password widget is the TUI's only
+    /// spare field, so it flips for the duration of such an answer. A field
+    /// configured to echo (the username) has no mask to restore and never
+    /// flips.
+    pub fn set_echo(&mut self, echo: bool) {
+        let Some(mask) = &self.mask else {
+            return;
+        };
+        self.display_type = if echo {
+            InputFieldDisplayType::Echo
+        } else {
+            InputFieldDisplayType::Replace(mask.clone())
+        };
     }
 
     #[inline]
@@ -265,13 +292,11 @@ impl InputFieldWidget {
             block
         };
 
-        let block = if self.style.show_border {
+        if self.style.show_border {
             block.borders(Borders::ALL).style(border_style)
         } else {
             block
-        };
-
-        block
+        }
     }
 
     /// Constraint the area to the given configuration
@@ -393,6 +418,38 @@ mod tests {
         assert_eq!(input_field.cursor, 1);
         input_field.backspace();
         assert_eq!(input_field.cursor, 0);
+    }
+
+    #[test]
+    fn an_echo_prompt_unmasks_and_the_reset_restores_the_mask() {
+        let mut field = InputFieldWidget::new(
+            Replace("*".to_string()),
+            Config::default().password_field.style,
+            String::default(),
+        );
+        field.insert('1');
+        field.insert('2');
+        assert_eq!(&field.show_string(), "**");
+        field.set_echo(true);
+        assert_eq!(&field.show_string(), "12");
+        field.set_echo(false);
+        assert_eq!(&field.show_string(), "**");
+    }
+
+    #[test]
+    fn a_field_without_a_mask_never_flips() {
+        // The username field is Echo-configured; set_echo must not invent a
+        // mask for it.
+        let mut field = InputFieldWidget::new(
+            Echo,
+            Config::default().username_field.style,
+            String::default(),
+        );
+        field.insert('a');
+        field.set_echo(false);
+        assert_eq!(&field.show_string(), "a");
+        field.set_echo(true);
+        assert_eq!(&field.show_string(), "a");
     }
 
     #[test]

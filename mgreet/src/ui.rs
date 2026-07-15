@@ -394,6 +394,7 @@ fn blank(state: &Rc<State>, windows: &Windows) {
     }
     state.blanked.set(true);
     state.password.set_text("");
+    mask_password(state);
     state.password_pending.set(false);
     broadcast(state, "", false);
     for window in windows.borrow().values() {
@@ -559,13 +560,7 @@ fn build_card(state: &Rc<State>) -> CardWidgets {
     caps.set_hexpand(true);
     caps.set_xalign(0.0);
     meta.append(&caps);
-    if let Some(layout) = state.layout.as_deref() {
-        let badge = gtk::Label::new(Some(&layout.to_uppercase()));
-        badge.add_css_class("mgreet-kbd");
-        badge.set_halign(gtk::Align::End);
-        badge.update_property(&[gtk::accessible::Property::Label(&format!(
-            "Keyboard layout {layout}"
-        ))]);
+    if let Some(badge) = build_layout_badge(state) {
         meta.append(&badge);
     }
     password_group.append(&meta);
@@ -666,6 +661,77 @@ fn build_card(state: &Rc<State>) -> CardWidgets {
         login_label,
         spinner,
     }
+}
+
+/// The keyboard-layout badge right of the Caps Lock line.
+///
+/// With one layout it *states* it — a login screen that will not take your
+/// password is a bad place to discover the machine booted `us`. With more
+/// than one it becomes a switcher: a click steps margo's `cyclekblayout`
+/// dispatch (mgreet inherits `MARGO_SOCKET` from the greeter compositor's
+/// startup shell — the same channel the existing `mctl dispatch quit` rides)
+/// and relabels itself. The badge and the compositor both start at group 0
+/// and both step +1, so they stay in lock step; a `grp:` XKBOPTIONS hotkey
+/// switching behind our back can stale the label until the next click, which
+/// is accepted.
+fn build_layout_badge(state: &Rc<State>) -> Option<gtk::Widget> {
+    let current = state.layouts.first()?.clone();
+    let a11y = |layout: &str, switchable: bool| {
+        if switchable {
+            format!("Keyboard layout {layout}; click to switch")
+        } else {
+            format!("Keyboard layout {layout}")
+        }
+    };
+
+    if state.layouts.len() == 1 {
+        let badge = gtk::Label::new(Some(&current.to_uppercase()));
+        badge.add_css_class("mgreet-kbd");
+        badge.set_halign(gtk::Align::End);
+        badge.update_property(&[gtk::accessible::Property::Label(&a11y(&current, false))]);
+        return Some(badge.upcast());
+    }
+
+    let badge = gtk::Button::with_label(&current.to_uppercase());
+    badge.add_css_class("mgreet-kbd");
+    badge.set_halign(gtk::Align::End);
+    // Tab stays inside the credential fields; the pointer is this control's
+    // gesture (a keyboard user is by definition already typing in a layout
+    // they can produce).
+    badge.set_focusable(false);
+    badge.update_property(&[gtk::accessible::Property::Label(&a11y(&current, true))]);
+
+    let state = state.clone();
+    badge.connect_clicked(move |button| {
+        let next = (state.layout_index.get() + 1) % state.layouts.len();
+        // In the real greeter the compositor's layout moves with the badge. A
+        // dry-run under a live session must NOT switch the user's desktop
+        // layout underneath them — the label alone demonstrates the control.
+        if state.real() {
+            match std::process::Command::new("mctl")
+                .args(["dispatch", "cyclekblayout"])
+                .spawn()
+            {
+                Ok(mut child) => {
+                    // Reap off-thread so a finished mctl never lingers as a
+                    // zombie for the greeter's lifetime.
+                    std::thread::spawn(move || {
+                        let _ = child.wait();
+                    });
+                }
+                Err(err) => {
+                    eprintln!("[mgreet] cannot switch the keyboard layout: {err}");
+                    return; // the label must not drift from the compositor
+                }
+            }
+        }
+        state.layout_index.set(next);
+        if let Some(layout) = state.layouts.get(next) {
+            button.set_label(&layout.to_uppercase());
+            button.update_property(&[gtk::accessible::Property::Label(&a11y(layout, true))]);
+        }
+    });
+    Some(badge.upcast())
 }
 
 /// The circle above the username field: the user's face, or their initial.
@@ -955,9 +1021,13 @@ pub fn on_runner_event(app: &gtk::Application, state: &Rc<State>) -> glib::Contr
             }
         }
         // A question the form cannot answer: an OTP, a new password after
-        // expiry, a second factor. The password field becomes its answer box.
-        crate::auth::Action::AskUser(text) => {
+        // expiry, a second factor. The password field becomes its answer box —
+        // readable while the prompt says its answer is not a secret.
+        crate::auth::Action::AskUser { text, echo } => {
             state.password.set_text("");
+            if let Some(card) = state.card.get() {
+                card.password.set_visibility(echo);
+            }
             state.awaiting_prompt.set(true);
             refresh_busy(state);
             focus_card(state);
@@ -973,6 +1043,7 @@ pub fn on_runner_event(app: &gtk::Application, state: &Rc<State>) -> glib::Contr
         }
         crate::auth::Action::Failed(reason) => {
             state.password.set_text("");
+            mask_password(state);
             state.awaiting_prompt.set(false);
             state.password_pending.set(false);
             state.conversing.set(false);
@@ -996,7 +1067,19 @@ fn take_secret(state: &Rc<State>) -> Zeroizing<Vec<u8>> {
     let secret = Zeroizing::new(state.password.text().as_bytes().to_vec());
     state.password.set_text("");
     state.password_pending.set(false);
+    // The echo flag belonged to exactly one prompt; the field is a password
+    // field again the moment its answer is taken.
+    mask_password(state);
     secret
+}
+
+/// Re-mask the password entry. Every path that clears the field also
+/// re-masks it: an `echo` flag belongs to exactly one prompt, and the next
+/// thing this field holds is someone's password.
+fn mask_password(state: &Rc<State>) {
+    if let Some(card) = state.card.get() {
+        card.password.set_visibility(false);
+    }
 }
 
 /// `false` if the socket broke. The caller tells the user.
@@ -1024,6 +1107,7 @@ fn broadcast(state: &Rc<State>, text: &str, error: bool) {
 /// happen; the orchestrator will notice its child died and start a fresh one.
 fn lost(state: &Rc<State>) {
     state.password.set_text("");
+    mask_password(state);
     state.awaiting_prompt.set(false);
     state.password_pending.set(false);
     state.conversing.set(false);

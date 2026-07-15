@@ -1,4 +1,4 @@
-use libc::{signal, SIGUSR1, SIG_DFL, SIG_IGN};
+use libc::{SIG_DFL, SIG_IGN, SIGUSR1, signal};
 use rand::Rng;
 
 use once_cell::sync::Lazy;
@@ -113,7 +113,9 @@ pub fn setup_x(user_info: &UserInfo, config: &Config) -> Result<SessionChild, XS
         })?;
 
     let xauth_path = xauth_path.to_str().ok_or(XSetupError::InvalidUTF8Path)?;
-    std::env::set_var("XAUTHORITY", xauth_path);
+    // SAFETY: mlogind is single-threaded, so no other thread can be reading
+    // the environment while this writes it.
+    unsafe { std::env::set_var("XAUTHORITY", xauth_path) };
 
     let doubledigit_vtnr = if vtnr_value.len() == 1 {
         format!("0{vtnr_value}")

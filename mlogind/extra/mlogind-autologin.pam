@@ -1,0 +1,26 @@
+#%PAM-1.0
+#
+# PAM stack for mlogind's autologin — installed as
+# /etc/pam.d/mlogind-autologin.
+#
+# The AUTH phase is `pam_permit`, deliberately: `[autologin]` in
+# /etc/mlogind/config.toml names the one account this stack will ever see, and
+# nobody is at the keyboard to answer a prompt. Do NOT add a module that asks
+# a question here — the autologin conversation can only answer
+# `pam_get_user()`, and refuses everything else.
+#
+# Everything else is the interactive stack. ACCOUNT still runs for real, so a
+# locked or expired account fails autologin (and the normal greeter takes
+# over) instead of being waved through. The SESSION phase is what makes an
+# autologin session a first-class logind session — seat, VT, loginuid,
+# limits — exactly like a typed login.
+
+auth        required   pam_env.so
+auth        required   pam_permit.so
+
+account     include    login
+
+# Nothing here should ever change a password.
+password    required   pam_deny.so
+
+session     include    login

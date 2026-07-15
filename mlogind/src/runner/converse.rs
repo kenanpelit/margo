@@ -199,7 +199,7 @@ impl<T: Transport> pam::Converse for GreeterConv<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mlogind_proto::{decode_event, encode_request, MemTransport};
+    use mlogind_proto::{MemTransport, decode_event, encode_request};
     use pam::Converse;
     use zeroize::Zeroizing;
 

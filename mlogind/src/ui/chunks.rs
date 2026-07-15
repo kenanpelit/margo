@@ -14,7 +14,7 @@
 //! Top → bottom: greeting · big clock · date · rounded credential card
 //! (session / user / password) · status · power-control chips.
 
-use ratatui::{backend::Backend, layout::Rect, Frame};
+use ratatui::{Frame, backend::Backend, layout::Rect};
 
 /// Cells reserved on the left of each card row for its label ("Password").
 const LABEL_W: u16 = 12;

@@ -1,7 +1,7 @@
 use crossterm::event::KeyCode;
 use log::error;
 use ratatui::style::{Color, Modifier};
-use serde::{de::Error, Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer, de::Error};
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
@@ -232,6 +232,8 @@ toml_config_struct! { Config, PartialConfig, RoughConfig,
     wayland => WaylandConfig [PartialWaylandConfig, RoughWaylandConfig],
 
     display => DisplayConfig [PartialDisplayConfig, RoughDisplayConfig],
+
+    autologin => AutologinConfig [PartialAutologinConfig, RoughAutologinConfig],
 }
 
 toml_config_struct! { BackgroundStyleConfig, PartialBackgroundStyleConfig, RoughBackgroundStyleConfig,
@@ -419,6 +421,38 @@ toml_config_struct! { DisplayConfig, PartialDisplayConfig, RoughDisplayConfig,
     // Off by default: a fixed, predictable VT is the right call on a machine
     // whose gettys are laid out around it.
     dynamic_vt => bool,
+    // A directory of images the "gui" greeter draws one of at random, per
+    // greeter start (atrium's idiom). The runner picks the file, so the
+    // compositor wallpaper and mgreet's backdrop always agree. Empty (the
+    // default), unreadable, or holding nothing decodable → the baked blurred
+    // copy of the last user's wallpaper, as before.
+    background_dir => String,
+    // Absolute path to a CSS file layered over the "gui" greeter's palette
+    // (baked Dracula, then matugen, then this). The natural content is
+    // `:root { --primary: …; }` token overrides. Empty (the default) → off.
+    greeter_css => String,
+    // Float the mkeys on-screen keyboard over the "gui" greeter for touch
+    // login. Needs `mkeys` installed; silently skipped when it is not.
+    osk => bool,
+}
+
+// Log in one user automatically, once per boot, before any greeter appears.
+// Both `user` and `session` non-empty → enabled. The session phase of
+// `pam_service` must be a real login stack (logind session, loginuid); its
+// auth phase is `pam_permit`, because nobody is at the keyboard to answer.
+// When the autologin session ends — or fails to start — the normal greeter
+// takes over, so logging out re-greets rather than looping straight back in.
+toml_config_struct! { AutologinConfig, PartialAutologinConfig, RoughAutologinConfig,
+    user => String,
+    session => String,
+    pam_service => String,
+}
+
+impl AutologinConfig {
+    /// Autologin is opt-in twice over: a user AND a session must be named.
+    pub fn enabled(&self) -> bool {
+        !self.user.is_empty() && !self.session.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

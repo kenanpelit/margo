@@ -27,8 +27,8 @@ use std::time::Duration;
 
 use log::{error, info, warn};
 use nix::errno::Errno;
-use nix::poll::{poll, PollFd, PollFlags};
-use nix::sys::signal::{sigprocmask, SigSet, SigmaskHow, Signal};
+use nix::poll::{PollFd, PollFlags, poll};
+use nix::sys::signal::{SigSet, SigmaskHow, Signal, sigprocmask};
 use nix::sys::signalfd::{SfdFlags, SignalFd};
 use nix::sys::time::TimeSpec;
 use nix::sys::timerfd::{ClockId, Expiration, TimerFd, TimerFlags, TimerSetTimeFlags};

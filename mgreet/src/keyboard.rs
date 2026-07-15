@@ -14,15 +14,35 @@
 
 const VCONSOLE: &str = "/etc/vconsole.conf";
 
-/// e.g. `"tr(f)"`, `"us"`. `None` when nothing configured a layout, in which
-/// case the card says nothing rather than asserting a default it did not verify.
-pub fn layout() -> Option<String> {
-    if let Some(layout) = env("XKB_DEFAULT_LAYOUT") {
-        return format(&layout, env("XKB_DEFAULT_VARIANT").as_deref());
-    }
-    let text = std::fs::read_to_string(VCONSOLE).ok()?;
-    let (layout, variant) = parse_vconsole(&text);
-    format(&layout?, variant.as_deref())
+/// Every configured layout group, formatted — e.g. `["tr(f)", "us"]` — in xkb
+/// group order, group 0 (the group the compositor starts in) first. Empty when
+/// nothing configured a layout, in which case the card says nothing rather
+/// than asserting a default it did not verify.
+///
+/// With more than one entry the badge becomes a switcher: margo's
+/// `cyclekblayout` dispatch steps through exactly this list in this order.
+pub fn layouts() -> Vec<String> {
+    let (layout, variant) = match env("XKB_DEFAULT_LAYOUT") {
+        Some(layout) => (layout, env("XKB_DEFAULT_VARIANT")),
+        None => {
+            let Ok(text) = std::fs::read_to_string(VCONSOLE) else {
+                return Vec::new();
+            };
+            let (layout, variant) = parse_vconsole(&text);
+            let Some(layout) = layout else {
+                return Vec::new();
+            };
+            (layout, variant)
+        }
+    };
+    all_groups(&layout, variant.as_deref())
+}
+
+/// Format every group of a layout/variant list pair, in order.
+fn all_groups(layout: &str, variant: Option<&str>) -> Vec<String> {
+    (0..layout.split(',').count())
+        .filter_map(|index| format_group(layout, variant, index))
+        .collect()
 }
 
 fn env(key: &str) -> Option<String> {
@@ -55,15 +75,14 @@ fn parse_vconsole(text: &str) -> (Option<String>, Option<String>) {
     (layout, variant)
 }
 
-/// The first group of an xkb layout/variant pair, rendered `layout(variant)`.
+/// One group of an xkb layout/variant pair, rendered `layout(variant)`.
 ///
 /// Both fields are comma-separated lists indexed in lock step: `us,tr` with
-/// `,f` means plain `us` and Turkish-F. Only group 0 is ever active in the
-/// greeter, so we take index 0 of each — never "the first non-empty variant",
-/// which would hang `f` off `us`.
-fn format(layout: &str, variant: Option<&str>) -> Option<String> {
-    let layout = group(layout, 0)?;
-    match variant.and_then(|v| group(v, 0)) {
+/// `,f` means plain `us` and Turkish-F. Index into each at the same position —
+/// never "the first non-empty variant", which would hang `f` off `us`.
+fn format_group(layout: &str, variant: Option<&str>, index: usize) -> Option<String> {
+    let layout = group(layout, index)?;
+    match variant.and_then(|v| group(v, index)) {
         Some(variant) => Some(format!("{layout}({variant})")),
         None => Some(layout.to_string()),
     }
@@ -78,31 +97,48 @@ fn group(list: &str, index: usize) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{format, group, parse_vconsole};
+    use super::{all_groups, format_group, group, parse_vconsole};
 
     #[test]
     fn a_layout_with_a_variant_reads_as_the_xkb_spelling() {
-        assert_eq!(format("tr", Some("f")).as_deref(), Some("tr(f)"));
+        assert_eq!(format_group("tr", Some("f"), 0).as_deref(), Some("tr(f)"));
     }
 
     #[test]
     fn a_layout_without_a_variant_is_bare() {
-        assert_eq!(format("us", None).as_deref(), Some("us"));
-        assert_eq!(format("us", Some("")).as_deref(), Some("us"));
+        assert_eq!(format_group("us", None, 0).as_deref(), Some("us"));
+        assert_eq!(format_group("us", Some(""), 0).as_deref(), Some("us"));
     }
 
     #[test]
-    fn only_the_first_group_of_each_list_is_read() {
+    fn variants_stay_in_lock_step_with_their_layouts() {
         // `us,tr` + `,f`: the `f` belongs to `tr`, and group 0 is `us`.
-        assert_eq!(format("us,tr", Some(",f")).as_deref(), Some("us"));
-        assert_eq!(format("tr,us", Some("f,")).as_deref(), Some("tr(f)"));
+        assert_eq!(format_group("us,tr", Some(",f"), 0).as_deref(), Some("us"));
+        assert_eq!(
+            format_group("us,tr", Some(",f"), 1).as_deref(),
+            Some("tr(f)")
+        );
+        assert_eq!(
+            format_group("tr,us", Some("f,"), 0).as_deref(),
+            Some("tr(f)")
+        );
+        assert_eq!(format_group("tr,us", Some("f,"), 1).as_deref(), Some("us"));
+    }
+
+    #[test]
+    fn every_group_is_listed_in_compositor_order() {
+        // This order IS the switcher contract: margo's cyclekblayout steps
+        // through the same list, so index i here is xkb group i there.
+        assert_eq!(all_groups("tr,us", Some("f,")), vec!["tr(f)", "us"]);
+        assert_eq!(all_groups("us", None), vec!["us"]);
     }
 
     #[test]
     fn a_list_that_starts_empty_names_no_layout() {
-        assert_eq!(format("", None), None);
-        assert_eq!(format(",tr", None), None);
+        assert_eq!(format_group("", None, 0), None);
+        assert_eq!(format_group(",tr", None, 0), None);
         assert_eq!(group("  ,f", 0), None);
+        assert!(all_groups("", None).is_empty());
     }
 
     #[test]

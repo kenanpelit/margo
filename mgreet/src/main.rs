@@ -88,8 +88,12 @@ pub struct State {
     /// Whose face that is. There is one avatar file — the last user to log in —
     /// so it is drawn only while the typed name still matches this.
     pub avatar_owner: Option<String>,
-    /// The keymap the greeter's compositor was started with, e.g. `tr(f)`.
-    pub layout: Option<String>,
+    /// Every keymap group the greeter's compositor was started with, e.g.
+    /// `["tr(f)", "us"]`. Group 0 — the group the compositor starts in — first.
+    pub layouts: Vec<String>,
+    /// Which of `layouts` the compositor is in. The badge steps it in lock
+    /// step with margo's `cyclekblayout` dispatch.
+    pub layout_index: Cell<usize>,
 
     /// Seconds of inactivity before the greeter blanks itself. `0` never blanks.
     pub blank_secs: u32,
@@ -189,7 +193,11 @@ fn main() -> glib::ExitCode {
         };
         let sock = sock.borrow_mut().take();
         let raw = sock.as_ref().map(|fd| fd.as_raw_fd());
-        style::install(&display, matugen_css(raw.is_some()).as_deref());
+        style::install(
+            &display,
+            matugen_css(raw.is_some()).as_deref(),
+            admin_css().as_deref(),
+        );
 
         // Whose avatar `/var/lib/mgreet/avatar` is. In the real greeter that is
         // the last user to log in, which is exactly the name the cache
@@ -208,7 +216,8 @@ fn main() -> glib::ExitCode {
             background: background::load(),
             avatar: avatar::load(raw.is_some()),
             avatar_owner,
-            layout: keyboard::layout(),
+            layouts: keyboard::layouts(),
+            layout_index: Cell::new(0),
             username,
             password: gtk::EntryBuffer::new(None::<&str>),
             sessions: sessions::list(),
@@ -333,6 +342,20 @@ fn sync_windows(app: &gtk::Application, state: &Rc<State>, windows: &ui::Windows
 /// launched from. Keying it on `--preview` meant a bare `mgreet` took the root
 /// branch, found nothing, and silently rendered the baked Dracula palette —
 /// which reads as "the greeter ignores my theme".
+/// The admin's theme CSS (`[display] greeter_css`), if the runner exported
+/// one. The runner already checked the file exists, as root; a read that
+/// fails here (permissions, a race) degrades to no theme, never to no login.
+fn admin_css() -> Option<String> {
+    let path = std::env::var_os("MLOGIND_CSS")?;
+    match std::fs::read_to_string(&path) {
+        Ok(css) => Some(css),
+        Err(err) => {
+            eprintln!("[mgreet] cannot read theme css {path:?}: {err}");
+            None
+        }
+    }
+}
+
 fn matugen_css(real_greeter: bool) -> Option<String> {
     if real_greeter {
         // Pre-session, and since A2 not even root: `$HOME` is 0710, so no user

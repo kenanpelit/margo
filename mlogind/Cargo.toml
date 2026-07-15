@@ -9,10 +9,8 @@ authors = [
 ]
 license = "MIT OR Apache-2.0"
 version.workspace = true
-# Kept on edition 2021 for the initial fork; migrate to the workspace
-# 2024 edition as a follow-up once it builds + the rename pass is done.
-edition = "2021"
-rust-version = "1.84.0"
+edition.workspace = true
+rust-version.workspace = true
 readme = "README.md"
 
 [dependencies]

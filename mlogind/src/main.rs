@@ -11,11 +11,11 @@ use mlogind_proto::{Conn, FdTransport};
 
 use crossterm::{
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use log::{error, info, warn};
-use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 
 mod auth;
 mod chvt;
@@ -370,6 +370,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         };
 
         if let Some(events) = events.as_mut() {
+            // Autologin: once per boot, before any greeter, host-independent
+            // (it needs no greeter at all). Whatever happens, the attempt is
+            // spent — when the session ends, or never starts, the normal
+            // greeter ladder below takes over, so logging out re-greets
+            // rather than looping straight back in.
+            if config.autologin.enabled() {
+                match autologin_once(&config, events) {
+                    Ok(Some(exit)) => {
+                        info!("mlogind is booting down ({exit:?})");
+                        return Ok(());
+                    }
+                    Ok(None) => {}
+                    Err(err) => {
+                        warn!("orchestrator: autologin could not run ({err}); showing the greeter")
+                    }
+                }
+            }
             if host == "gui" {
                 match run_hosted(&config, Host::Gui, events) {
                     Ok(exit) => {
@@ -565,18 +582,69 @@ fn greeter_conf_text(xkb: &[(&str, String)], backdrop: Option<&Path>) -> String 
     conf
 }
 
+/// Extensions the `background_dir` scan accepts: what GTK's stock loaders (the
+/// mgreet side) and margo's wallpaper decoder (the compositor side) both
+/// handle. Anything else in the directory is ignored rather than gambled on.
+const BACKGROUND_EXTS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp"];
+
+/// Every image candidate under `dir`, sorted so tests are deterministic. An
+/// unreadable directory is an empty list — the caller falls back to the baked
+/// backdrop, never to an error.
+fn background_candidates(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = entries
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file()
+                && path
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| BACKGROUND_EXTS.contains(&ext.to_ascii_lowercase().as_str()))
+                    .unwrap_or(false)
+        })
+        .collect();
+    files.sort();
+    files
+}
+
+/// One random background per greeter start, from `[display] background_dir`
+/// (atrium's idiom). `None` — knob off, directory unreadable, or nothing
+/// decodable in it — means the baked blurred wallpaper copy, as before.
+fn pick_background(dir: &str) -> Option<PathBuf> {
+    if dir.is_empty() {
+        return None;
+    }
+    use rand::seq::IndexedRandom;
+    background_candidates(Path::new(dir))
+        .choose(&mut rand::rng())
+        .cloned()
+}
+
 /// Rewritten on every host start. Because the file already exists when margo
 /// loads it, margo's first-run bootstrap leaves it untouched (it only writes a
 /// full default config for a *missing* path).
-pub(crate) fn write_greeter_conf(path: &Path) -> io::Result<()> {
-    let backdrop = crate::theme_sync::background_path();
-    let backdrop = backdrop.is_file().then_some(backdrop);
+///
+/// Returns the `background_dir` pick, if one was made, so the runner can hand
+/// the same file to mgreet — one pick, two consumers, no way to disagree.
+pub(crate) fn write_greeter_conf(path: &Path, config: &Config) -> io::Result<Option<PathBuf>> {
+    let picked = pick_background(&config.display.background_dir);
+    let backdrop = match picked.clone() {
+        Some(picked) => Some(picked),
+        None => {
+            let baked = crate::theme_sync::background_path();
+            baked.is_file().then_some(baked)
+        }
+    };
     let conf = greeter_conf_text(&vconsole_xkb_env(), backdrop.as_deref());
     std::fs::write(path, conf)?;
     // margo reads this as the unprivileged greeter user. It carries a keyboard
     // layout and the backdrop path, nothing else.
     use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644))
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644))?;
+    Ok(picked)
 }
 
 /// How many consecutive fast crashes of a session runner mean the host itself
@@ -607,6 +675,48 @@ pub(crate) enum HostExit {
     /// NOT fall down the host ladder — a stopping service does not respawn a
     /// greeter.
     Terminated,
+}
+
+/// Fork the autologin runner and see the one permitted attempt through.
+///
+/// `Ok(Some(HostExit::Terminated))` on a termination signal — main exits, as
+/// it would from any host. `Ok(None)` hands over to the greeter ladder: the
+/// autologin session ended, or the attempt failed and was spent. Autologin can
+/// therefore never lock the machine — the worst a broken `[autologin]` does is
+/// show the greeter it was meant to skip.
+fn autologin_once(
+    config: &Config,
+    events: &mut daemon::Events,
+) -> Result<Option<HostExit>, Box<dyn Error>> {
+    info!(
+        "orchestrator: autologin for '{}' into '{}'",
+        config.autologin.user, config.autologin.session
+    );
+    // SAFETY: mlogind is single-threaded, so the child inherits no locks it
+    // could deadlock on.
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    if pid == 0 {
+        runner::run_autologin(config);
+    }
+    match events.wait_child(pid) {
+        daemon::Wait::Terminated => {
+            info!("orchestrator: termination signal; stopping the autologin runner");
+            let code = events.terminate_child(pid);
+            info!("orchestrator: autologin runner stopped ({code})");
+            Ok(Some(HostExit::Terminated))
+        }
+        daemon::Wait::Exited(runner::EXIT_SESSION_ENDED) => {
+            info!("orchestrator: autologin session ended; showing the greeter");
+            Ok(None)
+        }
+        daemon::Wait::Exited(code) => {
+            error!("orchestrator: autologin runner exited with {code}; showing the greeter");
+            Ok(None)
+        }
+    }
 }
 
 /// Orchestrate a hosted greeter: fork a session runner, let it own the login
@@ -816,6 +926,59 @@ mod tests {
         // this test failing to construct the default at all is the loud
         // version of that mistake.
         assert!(!Config::default().display.dynamic_vt);
+    }
+
+    #[test]
+    fn the_background_dir_scan_takes_only_images_sorted() {
+        let dir = std::env::temp_dir().join(format!("mlogind-bg-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["b.png", "a.jpg", "c.WEBP", "notes.txt", "no-extension"] {
+            std::fs::write(dir.join(name), b"x").unwrap();
+        }
+        // A directory wearing an image name is not an image.
+        std::fs::create_dir_all(dir.join("dir.png")).unwrap();
+
+        let names: Vec<String> = background_candidates(&dir)
+            .iter()
+            .filter_map(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["a.jpg", "b.png", "c.WEBP"]);
+
+        // A pick comes from the candidates; an unset knob and a missing
+        // directory pick nothing — the baked backdrop stands.
+        assert!(pick_background(dir.to_str().unwrap()).is_some());
+        assert!(pick_background("").is_none());
+        assert!(pick_background("/nonexistent-mlogind-bg-test").is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn autologin_needs_both_a_user_and_a_session() {
+        let mut config = Config::default();
+        assert!(!config.autologin.enabled(), "must ship disabled");
+        config.autologin.user = "kenan".to_string();
+        assert!(!config.autologin.enabled(), "a user alone is not enough");
+        config.autologin.session = "Margo (UWSM)".to_string();
+        assert!(config.autologin.enabled());
+        config.autologin.user.clear();
+        assert!(!config.autologin.enabled(), "a session alone is not enough");
+        // The PAM stack ships named even while the feature is off, so turning
+        // it on is two config lines, not three.
+        assert_eq!(Config::default().autologin.pam_service, "mlogind-autologin");
+    }
+
+    #[test]
+    fn the_new_display_knobs_default_off_and_the_baked_config_carries_them() {
+        // Same contract as dynamic_vt: `Config` derives a non-optional
+        // Deserialize from the baked extra/config.toml, so constructing the
+        // default at all proves the baked file carries every new key.
+        let config = Config::default();
+        assert!(config.display.background_dir.is_empty());
+        assert!(config.display.greeter_css.is_empty());
+        assert!(!config.display.osk);
     }
 
     #[test]

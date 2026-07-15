@@ -9,10 +9,13 @@ const STYLE_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/style.css"));
 
 /// Install the greeter styling on `display`. The base sheet carries a complete
 /// default palette so the greeter always renders; if a matugen colours CSS is
-/// found it is layered on top at USER priority so the login tracks the theme.
+/// found it is layered on top at USER priority so the login tracks the theme;
+/// and an admin theme (`[display] greeter_css`, via `MLOGIND_CSS`) is layered
+/// over both, so it wins whatever the wallpaper sync last wrote.
 ///
-/// `matugen_css` is optional CSS text of the form `:root { --primary: #…; … }`.
-pub fn install(display: &Display, matugen_css: Option<&str>) {
+/// `matugen_css` and `admin_css` are optional CSS text, typically of the form
+/// `:root { --primary: #…; … }` — though the admin file may restyle anything.
+pub fn install(display: &Display, matugen_css: Option<&str>, admin_css: Option<&str>) {
     let base = CssProvider::new();
     base.load_from_string(STYLE_CSS);
     gtk4::style_context_add_provider_for_display(
@@ -28,6 +31,19 @@ pub fn install(display: &Display, matugen_css: Option<&str>) {
             display,
             &overlay,
             STYLE_PROVIDER_PRIORITY_USER,
+        );
+    }
+
+    if let Some(css) = admin_css {
+        let theme = CssProvider::new();
+        theme.load_from_string(css);
+        // One notch above the matugen overlay: equal-priority ordering is a
+        // GTK implementation detail, and "the admin file wins" should not
+        // rest on one.
+        gtk4::style_context_add_provider_for_display(
+            display,
+            &theme,
+            STYLE_PROVIDER_PRIORITY_USER + 1,
         );
     }
 }

@@ -70,8 +70,10 @@ pub fn decide_submit(
 pub enum Action {
     /// Answer this prompt with the password already typed. No user interaction.
     AnswerWithPassword,
-    /// A question the form cannot answer. Show `.0`, clear the field, focus it.
-    AskUser(String),
+    /// A question the form cannot answer. Show `text`, clear the field, focus
+    /// it — and unmask it while `echo` says the answer is not a secret (an
+    /// OTP code, a pam_exec question).
+    AskUser { text: String, echo: bool },
     /// `PAM_TEXT_INFO`: show it, keep waiting.
     Note(String),
     /// `PAM_ERROR_MSG`: show it as an error, keep waiting — PAM has not given up.
@@ -94,7 +96,7 @@ pub fn decide_event(event: Event, password_pending: bool) -> Action {
             if !echo && password_pending {
                 Action::AnswerWithPassword
             } else {
-                Action::AskUser(text)
+                Action::AskUser { text, echo }
             }
         }
         Event::Info { text } => Action::Note(text),
@@ -188,29 +190,37 @@ mod tests {
     }
 
     #[test]
-    fn a_second_blind_prompt_goes_back_to_the_user() {
+    fn a_second_blind_prompt_goes_back_to_the_user_masked() {
         // The password was spent on the first one. "New password:" is a real
-        // question — the whole reason A1 exists.
+        // question — the whole reason A1 exists — and it stays masked.
         let event = Event::Prompt {
             echo: false,
             text: "New password:".into(),
         };
         assert_eq!(
             decide_event(event, false),
-            Action::AskUser("New password:".into())
+            Action::AskUser {
+                text: "New password:".into(),
+                echo: false
+            }
         );
     }
 
     #[test]
-    fn an_echo_prompt_always_goes_back_to_the_user() {
-        // Even holding a password: an echo prompt is not asking for one.
+    fn an_echo_prompt_always_goes_back_to_the_user_readable() {
+        // Even holding a password: an echo prompt is not asking for one. And
+        // the answer renders readable — an OTP code is not a secret, and
+        // masking it doubles the typo rate on a field nobody can re-read.
         let event = Event::Prompt {
             echo: true,
             text: "OTP token:".into(),
         };
         assert_eq!(
             decide_event(event, true),
-            Action::AskUser("OTP token:".into())
+            Action::AskUser {
+                text: "OTP token:".into(),
+                echo: true
+            }
         );
     }
 

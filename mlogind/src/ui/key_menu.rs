@@ -1,13 +1,13 @@
 use crossterm::event::KeyCode;
+use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use ratatui::Frame;
 
 use crate::config::{
-    get_color, get_key, get_modifiers, PowerControl, PowerControlConfig, SwitcherConfig,
-    SwitcherVisibility,
+    PowerControl, PowerControlConfig, SwitcherConfig, SwitcherVisibility, get_color, get_key,
+    get_modifiers,
 };
 
 #[derive(Clone)]
@@ -103,18 +103,17 @@ impl KeyMenuWidget {
 
         // The session-switcher toggle hint (when bound to an F-key) reads as
         // one more chip on the row — only in the full form.
-        if !compact {
-            if let SwitcherVisibility::Keybind(KeyCode::F(n)) =
+        if !compact
+            && let SwitcherVisibility::Keybind(KeyCode::F(n)) =
                 self.switcher_config.switcher_visibility
-            {
-                items.push(Span::raw("    "));
-                items.push(Span::styled(
-                    self.switcher_config
-                        .toggle_hint
-                        .replace("%key%", &format!("F{n}")),
-                    self.switcher_toggle_style(),
-                ));
-            }
+        {
+            items.push(Span::raw("    "));
+            items.push(Span::styled(
+                self.switcher_config
+                    .toggle_hint
+                    .replace("%key%", &format!("F{n}")),
+                self.switcher_toggle_style(),
+            ));
         }
 
         let widget = Paragraph::new(Line::from(items)).alignment(Alignment::Center);

@@ -15,12 +15,12 @@ use zeroize::Zeroizing;
 use crossterm::cursor::MoveTo;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use crossterm::execute;
-use crossterm::terminal::{disable_raw_mode, Clear, ClearType, LeaveAlternateScreen};
+use crossterm::terminal::{Clear, ClearType, LeaveAlternateScreen, disable_raw_mode};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Alignment;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
-use ratatui::{backend::Backend, Frame, Terminal};
+use ratatui::{Frame, Terminal, backend::Backend};
 
 use chrono::{Local, Timelike};
 
@@ -244,6 +244,9 @@ impl Widgets {
     fn clear_password(&self) {
         self.password_guard().clear()
     }
+    fn set_password_echo(&self, echo: bool) {
+        self.password_guard().set_echo(echo)
+    }
 }
 
 /// App holds the state of the application
@@ -290,17 +293,13 @@ impl LoginForm {
 
         let cached = get_cached_information(&self.config);
 
-        if username_remember {
-            if let Some(username) = cached.username() {
-                info!("Loading username '{}' from cache", username);
-                self.widgets.set_username(username);
-            }
+        if username_remember && let Some(username) = cached.username() {
+            info!("Loading username '{}' from cache", username);
+            self.widgets.set_username(username);
         }
-        if env_remember {
-            if let Some(env) = cached.environment() {
-                info!("Loading environment '{}' from cache", env);
-                self.widgets.environment_try_select(env);
-            }
+        if env_remember && let Some(env) = cached.environment() {
+            info!("Loading environment '{}' from cache", env);
+            self.widgets.environment_try_select(env);
         }
     }
 
@@ -434,10 +433,12 @@ impl LoginForm {
         let tui_enabled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
         {
             let tick_sender = req_send_channel.clone();
-            std::thread::spawn(move || loop {
-                std::thread::sleep(Duration::from_secs(1));
-                if tick_sender.send(UIThreadRequest::Redraw).is_err() {
-                    break;
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(Duration::from_secs(1));
+                    if tick_sender.send(UIThreadRequest::Redraw).is_err() {
+                        break;
+                    }
                 }
             });
         }
@@ -493,6 +494,9 @@ impl LoginForm {
                                 // dumps and swap.
                                 let answer = Zeroizing::new(self.widgets.get_password());
                                 self.widgets.clear_password();
+                                // The echo flag belonged to exactly that
+                                // prompt; the field is a password field again.
+                                self.widgets.set_password_echo(false);
                                 let sent = conn.send_request(&Request::Response {
                                     secret: Zeroizing::new(answer.as_bytes().to_vec()),
                                 });
@@ -789,23 +793,22 @@ fn pump(
 
         match event {
             ProtoEvent::Prompt { echo, text } => {
-                if !echo {
-                    if let Some(secret) = password.take() {
-                        let sent = conn.send_request(&Request::Response {
-                            secret: Zeroizing::new(secret.as_bytes().to_vec()),
-                        });
-                        if sent.is_err() {
-                            return Pumped::Disconnected;
-                        }
-                        continue;
+                if !echo && let Some(secret) = password.take() {
+                    let sent = conn.send_request(&Request::Response {
+                        secret: Zeroizing::new(secret.as_bytes().to_vec()),
+                    });
+                    if sent.is_err() {
+                        return Pumped::Disconnected;
                     }
+                    continue;
                 }
-                // A question the form has no answer for. The reply is always
-                // masked, whatever `echo` asked for: A1's TUI has exactly one
-                // spare field and it is the password widget. Echoing an
-                // echo-on prompt is phase D.
-                let _ = echo;
+                // A question the form has no answer for. The password widget
+                // is the TUI's one spare field, so it takes the reply — but
+                // it obeys the prompt's `echo` flag now: an OTP code is not a
+                // secret, and masking it doubles the typo rate on a field
+                // that cannot be re-read. Every reset path re-masks.
                 widgets.clear_password();
+                widgets.set_password_echo(echo);
                 status_message.set(StatusMessage::FromRunner(text));
                 redraw();
                 return Pumped::NeedInput;
@@ -821,6 +824,10 @@ fn pump(
             ProtoEvent::Success => return Pumped::Success,
             ProtoEvent::Failure { reason } => {
                 widgets.clear_password();
+                // A failed attempt starts over at the password prompt; the
+                // field must be a password field again whatever the last
+                // prompt asked.
+                widgets.set_password_echo(false);
                 status_message.set(ErrorStatusMessage::FromRunner(reason));
                 redraw();
                 return Pumped::Failed;

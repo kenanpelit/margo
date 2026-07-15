@@ -175,3 +175,27 @@ blank_timeout = 300
 # default: a fixed, predictable VT is the right call on a machine whose gettys
 # are laid out around it.
 dynamic_vt = false
+# A directory of images the "gui" greeter draws one of at random per greeter
+# start. The same pick becomes the compositor wallpaper and the login card's
+# backdrop. Empty, unreadable, or holding nothing decodable (png/jpg/jpeg/
+# webp/bmp) → the blurred copy of the last user's wallpaper, as before.
+background_dir = ""
+# Absolute path to a CSS file layered over the "gui" greeter's palette (baked
+# default, then the synced matugen theme, then this — this wins). Typical
+# content: `:root { --primary: #ff5555; }` token overrides. Empty → off.
+greeter_css = ""
+# Float the mkeys on-screen keyboard over the "gui" greeter, for touch login.
+# Needs `mkeys` installed; silently skipped when it is not.
+osk = false
+
+# Log one user in automatically, once per boot, before any greeter appears.
+# Enabled when BOTH `user` and `session` are set. `session` must name an entry
+# from the session list (e.g. "Margo (UWSM)" — `mlogind envs` prints them).
+# When the session ends (or fails to start) the normal greeter takes over, so
+# logging out re-greets rather than looping straight back in. The PAM stack's
+# auth phase is pam_permit — nobody is at the keyboard — and its session phase
+# is the real login stack (/etc/pam.d/mlogind-autologin).
+[autologin]
+user = ""
+session = ""
+pam_service = "mlogind-autologin"

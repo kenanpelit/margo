@@ -351,14 +351,14 @@ pub fn get_envs(config: &Config) -> Vec<(String, PostLoginEnvironment)> {
                     let file_name = path.file_name().into_string();
 
                     if let Ok(file_name) = file_name {
-                        if let Ok(metadata) = path.metadata() {
-                            if std::os::unix::fs::MetadataExt::mode(&metadata) & 0o111 == 0 {
-                                warn!(
-                                    "'{file_name}' is not executable and therefore not added as an environment",
-                                );
+                        if let Ok(metadata) = path.metadata()
+                            && std::os::unix::fs::MetadataExt::mode(&metadata) & 0o111 == 0
+                        {
+                            warn!(
+                                "'{file_name}' is not executable and therefore not added as an environment",
+                            );
 
-                                continue;
-                            }
+                            continue;
                         }
 
                         info!("Added environment '{file_name}' from mlogind x11 scripts");
@@ -399,15 +399,15 @@ pub fn get_envs(config: &Config) -> Vec<(String, PostLoginEnvironment)> {
                     let file_name = path.file_name().into_string();
 
                     if let Ok(file_name) = file_name {
-                        if let Ok(metadata) = path.metadata() {
-                            if std::os::unix::fs::MetadataExt::mode(&metadata) & 0o111 == 0 {
-                                warn!(
-                                    "'{}' is not executable and therefore not added as an environment",
-                                    file_name
-                                );
+                        if let Ok(metadata) = path.metadata()
+                            && std::os::unix::fs::MetadataExt::mode(&metadata) & 0o111 == 0
+                        {
+                            warn!(
+                                "'{}' is not executable and therefore not added as an environment",
+                                file_name
+                            );
 
-                                continue;
-                            }
+                            continue;
                         }
 
                         info!("Added environment '{file_name}' from mlogind wayland scripts");
