@@ -154,19 +154,20 @@
   }
 
   &.selected {
-    // Soft tonal accent (primary-container) rather than a full --primary
-    // fill — keeps the margo purple identity but at chip-appropriate,
-    // lower contrast. No font-weight change (width stability, above).
-    background-color: var(--primary-container);
-    color: var(--on-primary-container);
+    // A controlled 32% tint of the dominant --primary rather than a full
+    // --primary flood — the accent hue reads on every theme at
+    // chip-appropriate contrast (unlike the theme-dependent
+    // --primary-container). No font-weight change (width stability, above).
+    background-color: unquote("color-mix(in srgb, var(--primary) 32%, transparent)");
+    color: var(--on-surface);
 
     .app-launcher-category-pill-icon,
     .app-launcher-category-pill-label {
-      color: var(--on-primary-container);
+      color: var(--on-surface);
     }
 
     &:hover {
-      background-color: var(--primary-container);
+      background-color: unquote("color-mix(in srgb, var(--primary) 32%, transparent)");
     }
   }
 }
@@ -205,9 +206,9 @@
 // Hover: surface-container-high (the same colour the calendar
 //        prev/next buttons use on hover, so the whole shell feels
 //        consistent under the pointer).
-// Selected (keyboard nav): the soft --primary-container accent (same
-//        as the clipboard panel) — drops the icon / label / pin marker /
-//        quick-key to the on-primary-container tone so contrast survives.
+// Selected (keyboard nav): a 32% tint of the dominant --primary
+//        (same as the clipboard panel) — drops the icon / label / pin
+//        marker / quick-key to the --on-surface tone so contrast survives.
 .app-launcher-item {
   background-color: transparent;
   border-radius: var(--radius-sm);
@@ -257,47 +258,48 @@
     background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
   }
 
-  // Selected row uses the soft --primary-container accent tier — the
-  // same calm selection fill the clipboard panel uses, so the active-row
-  // cue reads identically across both result lists (DESIGN.md §14
-  // restraint: a controlled accent, not a full --primary flood).
+  // Selected row uses a controlled 32% tint of the dominant --primary —
+  // the same calm selection fill the clipboard panel uses, so the
+  // active-row cue reads identically across both result lists and on every
+  // theme (DESIGN.md §14 restraint: a controlled accent, not a full
+  // --primary flood).
   &.selected {
-    background-color: var(--primary-container);
-    color: var(--on-primary-container);
+    background-color: unquote("color-mix(in srgb, var(--primary) 32%, transparent)");
+    color: var(--on-surface);
     // Tonal elevation: a soft primary-tinted shadow lifts the selected
     // row off the well so the keyboard cursor reads as "raised", not
     // just tinted (DESIGN.md §0 tonal elevation).
     box-shadow: 0 2px 8px unquote("color-mix(in srgb, var(--primary) 24%, transparent)");
 
     image {
-      color: var(--on-primary-container);
+      color: var(--on-surface);
     }
 
     .label-medium-bold,
     .label-small {
-      color: var(--on-primary-container);
+      color: var(--on-surface);
       opacity: 1;
     }
 
     // Quick-key digit on a selected row stays a dim hint rather than a
     // competing label.
     .app-launcher-quick-key {
-      color: var(--on-primary-container);
+      color: var(--on-surface);
       opacity: 0.7;
     }
 
     .app-launcher-pin-marker {
-      color: var(--on-primary-container);
+      color: var(--on-surface);
       opacity: 1;
     }
 
-    // Source chip on a selected row: recolour to the on-primary tone
+    // Source chip on a selected row: recolour to the --on-surface tone
     // with a translucent fill so it stays legible against the accent
-    // without shouting over the (now high-contrast) title.
+    // tint without shouting over the (now high-contrast) title.
     .app-launcher-source-badge {
-      color: var(--on-primary-container);
-      background-color: unquote("color-mix(in srgb, var(--on-primary-container) 12%, transparent)");
-      border-color: unquote("color-mix(in srgb, var(--on-primary-container) 24%, transparent)");
+      color: var(--on-surface);
+      background-color: unquote("color-mix(in srgb, var(--on-surface) 12%, transparent)");
+      border-color: unquote("color-mix(in srgb, var(--on-surface) 24%, transparent)");
       opacity: 0.9;
     }
   }
@@ -309,7 +311,7 @@
 // (even one step above, odd one step below the panel surface); parity is
 // stamped in Rust over the final visual order and restarts under each
 // section caption. `:not(.selected)` keeps the resting/hover tiers from
-// tying with the `--primary-container` selection fill, and the canonical
+// tying with the 32% --primary selection tint, and the canonical
 // state-layer mixin reproduces the row's primary-wash hover over each
 // zebra base instead of flattening it.
 .app-launcher-item.app-launcher-item-even:not(.selected) {
@@ -341,7 +343,7 @@
 // ── Pin marker ──────────────────────────────────────────────────
 //
 // ★ glyph at the end of pinned rows. Accent-coloured by default,
-// flips to on-primary-container when the row is the selection (see above).
+// flips to --on-surface when the row is the selection (see above).
 .app-launcher-pin-marker {
   color: var(--primary);
   font-size: var(--font-xs);

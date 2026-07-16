@@ -204,9 +204,12 @@
   }
 }
 
-// Selected / focused row: a --primary-container fill so the active
-// entry is unmistakable as you move with Ctrl+n / Ctrl+k. Suppress
-// GTK's default selection background so only the accent reads.
+// Selected / focused row: a controlled 32% tint of the dominant
+// --primary (so it reads on every theme, unlike the theme-dependent
+// --primary-container) marks the active entry as you move with
+// Ctrl+n / Ctrl+k. Same idiom as the launcher result list. Suppress
+// GTK's default
+// selection background so only the accent reads.
 .clipboard-list {
   background: transparent;
 
@@ -217,13 +220,13 @@
       background: transparent;
 
       .clipboard-item {
-        background-color: var(--primary-container);
-        color: var(--on-primary-container);
+        background-color: unquote("color-mix(in srgb, var(--primary) 32%, transparent)");
+        color: var(--on-surface);
 
         .clipboard-item-title {
-          // Timestamp inherits on-primary-container on selected rows
+          // Timestamp inherits --on-surface on selected rows
           // so it still recedes relative to the preview text.
-          color: unquote("color-mix(in srgb, var(--on-primary-container) 70%, transparent)");
+          color: unquote("color-mix(in srgb, var(--on-surface) 70%, transparent)");
         }
       }
     }
@@ -311,7 +314,7 @@
 // A small tinted pill after the type glyph carrying a short code
 // (URL / CODE / MAIL / COLOR) so the refined text categories are
 // distinguishable at a glance. Translucent neutral fill so it reads on
-// both the resting row and the selected `--primary-container` fill.
+// both the resting row and the selected 32% --primary tint fill.
 .clipboard-type-badge {
   padding: 1px var(--space-2);
   border-radius: var(--radius-xs);
@@ -334,8 +337,8 @@
   border: 1px solid var(--outline-variant);
 }
 
-// On the selected row the badge sits on `--primary-container`; lift its
-// text to the matching on-colour so it stays legible.
+// On the selected row the badge sits on the 32% --primary tint; lift
+// its text to --on-surface so it stays legible.
 .clipboard-list row:selected .clipboard-type-badge-label {
-  color: var(--on-primary-container);
+  color: var(--on-surface);
 }
