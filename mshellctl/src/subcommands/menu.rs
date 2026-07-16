@@ -43,8 +43,8 @@ pub enum MenuCommands {
     /// `--list-tabs` to discover valid tab names, `--tab <name>`
     /// to jump straight to a tab.
     AppLauncher {
-        /// Pre-select the named category tab (e.g. "Run",
-        /// "Insert"). Unknown names fall back to "All".
+        /// Pre-select the named category tab (e.g. "Apps",
+        /// "Actions"). Unknown names fall back to "All".
         #[arg(long)]
         tab: Option<String>,
         /// List the known category tab names and exit without

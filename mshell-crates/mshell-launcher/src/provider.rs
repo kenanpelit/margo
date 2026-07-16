@@ -70,11 +70,13 @@ pub trait Provider {
     /// provider's category and is browsing inside it. Defaults to
     /// `search(filter)` so providers that already serve raw
     /// queries (Apps, Calculator, Websearch, …) work unchanged.
-    /// Prefix-only providers (Symbols, Emoji, Clipboard, Scripts,
-    /// Bluetooth, ProviderList, …) override this to synthesise
-    /// the prefix internally — e.g. EmojiProvider's override does
-    /// `self.search(&format!(":{filter}"))` so typing "smile" on
-    /// the Insert tab returns the same rows as `:smile` would.
+    /// Prefix-only providers that DO own a category tab (Scripts,
+    /// Bluetooth, ProviderList, …) override this to synthesise the
+    /// prefix internally, so typing inside the tab returns the same
+    /// rows the prefix would. Prefix-only providers with no tab of
+    /// their own (Symbols `.`, Emoji `:`, Clipboard `>clip` — all in
+    /// the default "All" bucket) never reach this path: they are
+    /// served exclusively by the command branch in `query`.
     ///
     /// `filter` is the user's query, already trimmed by the
     /// runtime. Empty string means "show the full browse list".
@@ -105,10 +107,15 @@ pub trait Provider {
     /// Coarse category bucket the provider falls under. Drives the
     /// Tab/Shift+Tab provider-cycle and the visual category strip
     /// above the result list. Providers that share a category
-    /// (e.g. Symbols + Emoji both `"Insert"`) flow into the same
-    /// tab and the user cycles between buckets, not every individual
-    /// provider. Default: `"All"` (the catch-all bucket the runtime
-    /// uses for "no filter, mix everything").
+    /// (e.g. Compositor + Run + System all collapse into `"Actions"`)
+    /// flow into the same tab and the user cycles between buckets, not
+    /// every individual provider. Default: `"All"` (the catch-all
+    /// bucket the runtime uses for "no filter, mix everything") —
+    /// which also means **no tab of one's own**, since `categories()`
+    /// always prepends "All" and never duplicates it. Prefix-only
+    /// providers reachable purely by their trigger (Symbols `.`,
+    /// Emoji `:`, Clipboard `>clip`) deliberately stay on that
+    /// default so they cost nothing until the prefix is typed.
     fn category(&self) -> &str {
         "All"
     }

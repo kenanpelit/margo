@@ -805,10 +805,6 @@ impl Provider for SymbolsProvider {
         "Symbols"
     }
 
-    fn category(&self) -> &str {
-        "Insert"
-    }
-
     fn handles_search(&self) -> bool {
         // `.` triggers — never bleed symbols into the regular
         // app browse list.
@@ -839,14 +835,6 @@ impl Provider for SymbolsProvider {
             return Vec::new();
         }
         let filter = trimmed.trim_start_matches('.').trim();
-        self.build_items(filter)
-    }
-
-    /// Insert tab — show every symbol so the user can browse the
-    /// full catalogue without typing the `.` prefix. `filter` is
-    /// the user's query while on the tab; passed straight through
-    /// to the build path (substring match against name + char).
-    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
         self.build_items(filter)
     }
 }

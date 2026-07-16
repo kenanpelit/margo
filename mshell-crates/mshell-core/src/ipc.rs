@@ -617,7 +617,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
 /// If you add a new display category in `mshell-launcher::runtime`,
 /// append it here so `mshellctl menu app-launcher --list-tabs` stays
 /// accurate.
-pub const APP_LAUNCHER_TABS: &[&str] = &["All", "Apps", "Actions", "Insert", "Search", "Help"];
+pub const APP_LAUNCHER_TABS: &[&str] = &["All", "Apps", "Actions", "Search", "Help"];
 
 enum IPCCommand {
     Quit,

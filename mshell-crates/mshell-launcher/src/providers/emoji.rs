@@ -63,10 +63,6 @@ impl Provider for EmojiProvider {
         "Emoji"
     }
 
-    fn category(&self) -> &str {
-        "Insert"
-    }
-
     fn handles_search(&self) -> bool {
         false
     }
@@ -95,13 +91,6 @@ impl Provider for EmojiProvider {
             return Vec::new();
         }
         let filter = trimmed.trim_start_matches(':').trim();
-        self.build_items(filter)
-    }
-
-    /// Insert tab — surface emojis without the `:` prefix and
-    /// filter them by the user's query (matched as a substring
-    /// against the emoji name + shortcode).
-    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
         self.build_items(filter)
     }
 }

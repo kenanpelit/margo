@@ -176,8 +176,8 @@ pub(crate) enum AppLauncherInput {
     /// Alt+N — activate the row with quick_key = N. Carries the
     /// digit (1..=9) so the handler can find the matching row.
     QuickActivate(u8),
-    /// Tab — cycle to the next provider category (Apps → Insert →
-    /// Compositor → All → …). `delta` is +1 or -1.
+    /// Tab — cycle to the next provider category (Apps → Actions →
+    /// Search → Help → All → …). `delta` is +1 or -1.
     CycleCategory(i32),
     /// Direct-jump to a named category. Fired by mouse-click on a
     /// category pill in the tab strip.
@@ -1158,7 +1158,7 @@ impl AppLauncherModel {
         let mut results = self.runtime.borrow().query(&self.filter);
         // In the unfiltered "All" view the browse list is a recency/
         // frecency-mixed blend of every category. Regroup it into
-        // category blocks (Apps → Actions → Insert → …) so the
+        // category blocks (Apps → Actions → …) so the
         // in-list section headers have contiguous groups to caption.
         // `self.results` itself carries NO header rows — only real
         // items — so keyboard nav, quick-key numbering, activation and
@@ -1559,13 +1559,6 @@ fn category_icon(label: &str) -> &'static str {
         "All" => "view-grid-symbolic",
         "Apps" => "view-app-grid-symbolic",
         "Actions" => "preferences-system-symbolic",
-        // input-keyboard-symbolic is the cross-theme name that
-        // exists in MargoMaterial, kora, breeze, and Adwaita —
-        // semantically a good fit for "type a character to
-        // insert" (symbols / emoji / clipboard paste). The
-        // previously-used "format-text-symbolic" doesn't exist in
-        // MargoMaterial and rendered as a missing-icon glyph.
-        "Insert" => "input-keyboard-symbolic",
         "Search" => "system-search-symbolic",
         "Help" => "help-browser-symbolic",
         "Connect" => "network-server-symbolic",
@@ -1672,7 +1665,6 @@ fn clone_display_item(src: &DisplayItem) -> DisplayItem {
 fn section_for_provider(provider_name: &str) -> &'static str {
     match provider_name {
         "Apps" => "Apps",
-        "Clipboard" | "Symbols" | "Emoji" => "Insert",
         "Web search" | "Arch packages" => "Search",
         "Providers" => "Help",
         _ => "Actions",

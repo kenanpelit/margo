@@ -386,16 +386,16 @@ impl LauncherRuntime {
         // 1. **Specific category active** → call each in-category
         //    provider's `browse(filter)`, **bypassing**
         //    `handles_search`. This is what lets the prefix-only
-        //    providers (Symbols / Emoji / Clipboard / Scripts /
-        //    Bluetooth / ProviderList / …) fill their category
-        //    tabs with real content the moment the user picks
-        //    that tab AND lets the user filter inside the tab by
-        //    typing. Each prefix-only provider's `browse` impl
-        //    synthesises the prefix internally so typing "smile"
-        //    on the Insert tab is equivalent to ":smile". Without
-        //    bypass, every prefix-only provider would render an
-        //    empty tab — making the strip mostly useless beyond
-        //    the few `handles_search=true` providers.
+        //    providers that own a tab (Scripts / Bluetooth /
+        //    ProviderList / …) fill their category tabs with real
+        //    content the moment the user picks that tab AND lets
+        //    the user filter inside the tab by typing. Each such
+        //    provider's `browse` impl synthesises the prefix
+        //    internally. Without bypass, every prefix-only provider
+        //    would render an empty tab — making the strip mostly
+        //    useless beyond the few `handles_search=true` providers.
+        //    Symbols / Emoji / Clipboard sit in the default "All"
+        //    bucket (no tab), so they never reach this path.
         //
         // 2. **All-category** → standard search pipeline: only
         //    providers that opted into search via `handles_search`
@@ -832,10 +832,6 @@ mod tests {
             cat: "System".into(),
         }));
         rt.register(Box::new(CatProvider {
-            name: "e".into(),
-            cat: "Insert".into(),
-        }));
-        rt.register(Box::new(CatProvider {
             name: "f".into(),
             cat: "Search".into(),
         }));
@@ -852,12 +848,11 @@ mod tests {
         let cats = rt.categories();
         assert_eq!(
             cats.iter().map(|c| c.label.as_str()).collect::<Vec<_>>(),
-            vec!["All", "Apps", "Actions", "Insert", "Search", "Help"]
+            vec!["All", "Apps", "Actions", "Search", "Help"]
         );
-        // Cycle forward: All → Apps → Actions → Insert → Search → Help → All
+        // Cycle forward: All → Apps → Actions → Search → Help → All
         assert_eq!(rt.cycle_category(1), "Apps");
         assert_eq!(rt.cycle_category(1), "Actions");
-        assert_eq!(rt.cycle_category(1), "Insert");
         assert_eq!(rt.cycle_category(1), "Search");
         assert_eq!(rt.cycle_category(1), "Help");
         assert_eq!(rt.cycle_category(1), "All");
@@ -881,9 +876,9 @@ mod tests {
             }));
         }
         rt.register(Box::new(CategorizedProvider {
-            name: "insert".into(),
-            cat: "Insert".into(),
-            items: vec![("insert item".into(), 1.0)],
+            name: "search".into(),
+            cat: "Search".into(),
+            items: vec![("search item".into(), 1.0)],
         }));
 
         rt.select_category("Actions");
@@ -893,7 +888,7 @@ mod tests {
         assert!(names.contains(&"run item"));
         assert!(names.contains(&"system item"));
         assert!(names.contains(&"connect item"));
-        assert!(!names.contains(&"insert item"));
+        assert!(!names.contains(&"search item"));
     }
 
     #[test]

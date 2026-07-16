@@ -98,10 +98,6 @@ impl Provider for ClipboardProvider {
         }
     }
 
-    fn category(&self) -> &str {
-        "Insert"
-    }
-
     fn handles_search(&self) -> bool {
         // Only contributes through commands() / handles_command —
         // raw clipboard items would flood the empty-query browse
@@ -211,16 +207,6 @@ impl Provider for ClipboardProvider {
                 })
             })
             .collect()
-    }
-
-    /// Insert tab — surface clipboard history without the
-    /// `>clip` prefix and filter by the user's query.
-    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
-        if filter.is_empty() {
-            self.search(">clip")
-        } else {
-            self.search(&format!(">clip {filter}"))
-        }
     }
 }
 
