@@ -383,218 +383,6 @@ pub fn scroller(ctx: &ArrangeCtx) -> ArrangeResult {
     result
 }
 
-// ── Vertical tile ─────────────────────────────────────────────────────────────
-
-pub fn vertical_tile(ctx: &ArrangeCtx) -> ArrangeResult {
-    let n = ctx.tiled.len();
-    if n == 0 {
-        return vec![];
-    }
-
-    let wa = &ctx.work_area;
-    let g = ctx.gaps;
-    let oh = g.gappoh;
-    let ov = g.gappov;
-    // Vertical analogue of `tile()`: masters sit side-by-side in the top
-    // row, stack windows side-by-side in the bottom row. The gap *between*
-    // those side-by-side windows is the horizontal inner gap `ih` (gappih);
-    // `iv` (gappiv) is the vertical gap between the master and stack rows.
-    // The old code used the *outer* `oh` for the inter-window horizontal
-    // gap, so gappih had no effect and gappoh was double-counted.
-    let ih = g.gappih;
-    let iv = g.gappiv;
-
-    let nm = (ctx.nmaster as usize).min(n);
-    let stack_count = n.saturating_sub(nm);
-
-    let total_w = wa.width - 2 * oh;
-    let total_h = wa.height - 2 * ov;
-
-    let master_h = if stack_count > 0 {
-        (total_h as f32 * ctx.mfact) as i32
-    } else {
-        total_h
-    };
-    let stack_h = total_h - master_h - if stack_count > 0 { iv } else { 0 };
-
-    let mut result = Vec::with_capacity(n);
-    for (i, &idx) in ctx.tiled.iter().enumerate() {
-        let rect = if i < nm {
-            let w = (total_w - (nm - 1) as i32 * ih) / nm as i32;
-            let x = wa.x + oh + i as i32 * (w + ih);
-            Rect::new(x, wa.y + ov, w, master_h)
-        } else {
-            let si = i - nm;
-            let w = (total_w - (stack_count - 1) as i32 * ih) / stack_count as i32;
-            let x = wa.x + oh + si as i32 * (w + ih);
-            Rect::new(x, wa.y + ov + master_h + iv, w, stack_h)
-        };
-        result.push((idx, rect));
-    }
-    result
-}
-
-// ── Vertical grid ─────────────────────────────────────────────────────────────
-
-pub fn vertical_grid(ctx: &ArrangeCtx) -> ArrangeResult {
-    // Transpose the work area AND the gaps, run grid, then un-transpose.
-    // grid() treats gappih/gappoh as horizontal and gappiv/gappov as
-    // vertical; in the transposed space those axes are swapped, so the
-    // gaps must be swapped too — otherwise asymmetric inner/outer gaps
-    // land on the wrong axis once the rects are un-transposed.
-    let transposed_wa = Rect::new(
-        ctx.work_area.y,
-        ctx.work_area.x,
-        ctx.work_area.height,
-        ctx.work_area.width,
-    );
-    let transposed_gaps = crate::GapConfig {
-        gappih: ctx.gaps.gappiv,
-        gappiv: ctx.gaps.gappih,
-        gappoh: ctx.gaps.gappov,
-        gappov: ctx.gaps.gappoh,
-    };
-    let transposed_ctx = ArrangeCtx {
-        work_area: transposed_wa,
-        tiled: ctx.tiled,
-        nmaster: ctx.nmaster,
-        mfact: ctx.mfact,
-        gaps: &transposed_gaps,
-        scroller_proportions: ctx.scroller_proportions,
-        default_scroller_proportion: ctx.default_scroller_proportion,
-        focused_tiled_pos: ctx.focused_tiled_pos,
-        scroller_structs: ctx.scroller_structs,
-        scroller_focus_center: ctx.scroller_focus_center,
-        scroller_prefer_center: ctx.scroller_prefer_center,
-        scroller_prefer_overspread: ctx.scroller_prefer_overspread,
-        canvas_pan: ctx.canvas_pan,
-    };
-    let mut res = grid(&transposed_ctx);
-    for (_, r) in &mut res {
-        let (x, y, w, h) = (r.y, r.x, r.height, r.width);
-        r.x = x;
-        r.y = y;
-        r.width = w;
-        r.height = h;
-    }
-    res
-}
-
-// ── Vertical scroller ─────────────────────────────────────────────────────────
-
-pub fn vertical_scroller(ctx: &ArrangeCtx) -> ArrangeResult {
-    let n = ctx.tiled.len();
-    if n == 0 {
-        return vec![];
-    }
-
-    let wa = &ctx.work_area;
-    let g = ctx.gaps;
-    let oh = g.gappoh;
-    let ov = g.gappov;
-    let iv = g.gappiv;
-
-    let total_w = (wa.width - 2 * oh).max(1);
-    let default_prop = ctx.default_scroller_proportion;
-    let side_margin = ctx.scroller_structs.max(0);
-    let max_client_h = (wa.height - 2 * side_margin - iv).max(1);
-
-    let heights: Vec<i32> = (0..n)
-        .map(|i| {
-            let prop = ctx
-                .scroller_proportions
-                .get(i)
-                .copied()
-                .unwrap_or(default_prop)
-                .clamp(0.1, 1.0);
-            ((max_client_h as f32) * prop).round().max(1.0) as i32
-        })
-        .collect();
-
-    let mut y = wa.y + ov;
-    let mut raw_y = Vec::with_capacity(n);
-    for height in &heights {
-        raw_y.push(y);
-        y += *height + iv;
-    }
-
-    let focus_pos = ctx.focused_tiled_pos.filter(|&pos| pos < n).unwrap_or(0);
-    let focus_h = heights[focus_pos];
-    let focus_raw_y = raw_y[focus_pos];
-    let visible_top = wa.y + side_margin;
-    let visible_bottom = wa.y + wa.height - side_margin;
-    let center_focused =
-        n == 1 || ctx.scroller_focus_center || (ctx.scroller_prefer_center && n > 1);
-
-    let desired_focus_y = if center_focused {
-        wa.y + (wa.height - focus_h) / 2
-    } else if ctx.scroller_prefer_overspread && focus_pos == 0 && n > 1 {
-        visible_top
-    } else if ctx.scroller_prefer_overspread && focus_pos + 1 == n && n > 1 {
-        visible_bottom - focus_h
-    } else if focus_raw_y < visible_top {
-        visible_top
-    } else if focus_raw_y + focus_h > visible_bottom {
-        visible_bottom - focus_h
-    } else {
-        focus_raw_y
-    };
-    let shift = desired_focus_y - focus_raw_y;
-
-    let mut result = Vec::with_capacity(n);
-
-    for (i, &idx) in ctx.tiled.iter().enumerate() {
-        result.push((
-            idx,
-            Rect::new(wa.x + oh, raw_y[i] + shift, total_w, heights[i]),
-        ));
-    }
-    result
-}
-
-// ── Vertical deck ─────────────────────────────────────────────────────────────
-
-pub fn vertical_deck(ctx: &ArrangeCtx) -> ArrangeResult {
-    let n = ctx.tiled.len();
-    if n == 0 {
-        return vec![];
-    }
-
-    let wa = &ctx.work_area;
-    let g = ctx.gaps;
-    let oh = g.gappoh;
-    let ov = g.gappov;
-    let iv = g.gappiv;
-
-    let nm = (ctx.nmaster as usize).min(n);
-    let stack_count = n.saturating_sub(nm);
-
-    let total_w = wa.width - 2 * oh;
-    let total_h = wa.height - 2 * ov;
-
-    let mh = if stack_count > 0 {
-        (total_h as f32 * ctx.mfact) as i32
-    } else {
-        total_h
-    };
-    let sh = total_h - mh - if stack_count > 0 { iv } else { 0 };
-
-    let stack_rect = Rect::new(wa.x + oh, wa.y + ov + mh + iv, total_w, sh);
-
-    let mut result = Vec::with_capacity(n);
-    let mut mx = 0;
-    for (i, &idx) in ctx.tiled.iter().enumerate() {
-        if i < nm {
-            let w = (total_w - mx) / (nm - i) as i32;
-            result.push((idx, Rect::new(wa.x + oh + mx, wa.y + ov, w, mh)));
-            mx += w;
-        } else {
-            result.push((idx, stack_rect));
-        }
-    }
-    result
-}
-
 // ── TgMix (tile master, grid stack) ──────────────────────────────────────────
 
 pub fn tgmix(ctx: &ArrangeCtx) -> ArrangeResult {
@@ -740,10 +528,6 @@ pub fn arrange(layout: LayoutId, ctx: &ArrangeCtx) -> ArrangeResult {
         LayoutId::Deck => deck(ctx),
         LayoutId::CenterTile => center_tile(ctx),
         LayoutId::Scroller => scroller(ctx),
-        LayoutId::VerticalTile => vertical_tile(ctx),
-        LayoutId::VerticalGrid => vertical_grid(ctx),
-        LayoutId::VerticalScroller => vertical_scroller(ctx),
-        LayoutId::VerticalDeck => vertical_deck(ctx),
         LayoutId::TgMix => tgmix(ctx),
         LayoutId::Canvas => canvas(ctx),
         LayoutId::Dwindle => dwindle(ctx),
@@ -787,39 +571,6 @@ mod tests {
         assert!(focused.x >= 0);
         assert!(focused.x + focused.width <= 1000);
         assert!(((focused.x + focused.width / 2) - 500).abs() <= 1);
-    }
-
-    #[test]
-    fn vertical_scroller_centers_the_focused_client() {
-        let gaps = GapConfig {
-            gappih: 8,
-            gappiv: 8,
-            gappoh: 8,
-            gappov: 8,
-        };
-        let tiled = [10, 11, 12];
-        let proportions = [0.8, 0.8, 0.8];
-        let ctx = ArrangeCtx {
-            work_area: Rect::new(0, 0, 1000, 600),
-            tiled: &tiled,
-            nmaster: 1,
-            mfact: 0.55,
-            gaps: &gaps,
-            scroller_proportions: &proportions,
-            default_scroller_proportion: 0.8,
-            focused_tiled_pos: Some(1),
-            scroller_structs: 24,
-            scroller_focus_center: true,
-            scroller_prefer_center: true,
-            scroller_prefer_overspread: false,
-            canvas_pan: (0.0, 0.0),
-        };
-
-        let arranged = vertical_scroller(&ctx);
-        let focused = arranged.iter().find(|(idx, _)| *idx == 11).unwrap().1;
-        assert!(focused.y >= 0);
-        assert!(focused.y + focused.height <= 600);
-        assert!(((focused.y + focused.height / 2) - 300).abs() <= 1);
     }
 
     /// Asymmetric inner gaps: horizontal (`gappih`) separates the master
@@ -877,18 +628,6 @@ mod tests {
     }
 
     #[test]
-    fn vertical_grid_applies_the_vertical_gap_between_stacked_windows() {
-        // 2 windows stack top/bottom in a vertical grid; the gap between
-        // them is vertical → gappiv, regardless of the work-area
-        // transpose (the gaps must be transposed too).
-        let tiled = [0usize, 1];
-        let mut r = vertical_grid(&ctx(&tiled, &ASYM, 1));
-        r.sort_by_key(|(_, rect)| rect.y);
-        let gap = r[1].1.y - (r[0].1.y + r[0].1.height);
-        assert_eq!(gap, ASYM.gappiv);
-    }
-
-    #[test]
     fn right_tile_uses_horizontal_gap_between_columns_and_vertical_within_a_column() {
         // Regression: right_tile used gappih for the vertical stacking too
         // (and never read gappiv), so an asymmetric gappih≠gappiv tiled wrong.
@@ -903,18 +642,4 @@ mod tests {
         assert_eq!(stack1.y - (stack0.y + stack0.height), ASYM.gappiv);
     }
 
-    #[test]
-    fn vertical_tile_uses_horizontal_gap_within_a_row_and_vertical_between_rows() {
-        // Regression: vertical_tile used the *outer* gappoh for the gap
-        // between side-by-side windows, so gappih had no effect.
-        let tiled = [0usize, 1, 2]; // 1 master (top row) + 2 stack (bottom row).
-        let r = vertical_tile(&ctx(&tiled, &ASYM, 1));
-        let master = r[0].1;
-        let stack0 = r[1].1;
-        let stack1 = r[2].1;
-        // Master row ↔ stack row separation is vertical → gappiv.
-        assert_eq!(stack0.y - (master.y + master.height), ASYM.gappiv);
-        // Two stack windows side by side → horizontal gap = gappih.
-        assert_eq!(stack1.x - (stack0.x + stack0.width), ASYM.gappih);
-    }
 }

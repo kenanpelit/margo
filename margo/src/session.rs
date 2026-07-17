@@ -451,7 +451,7 @@ mod tests {
                             "center_tile".to_string(),
                             "dwindle".to_string(),
                             "canvas".to_string(),
-                            "vertical_grid".to_string(),
+                            "right_tile".to_string(),
                         ],
                         mfacts: vec![0.55, 0.50, 0.65, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55],
                         nmasters: vec![1, 1, 1, 2, 1, 1, 1, 1, 1],

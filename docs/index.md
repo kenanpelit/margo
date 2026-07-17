@@ -67,7 +67,7 @@ piece and themed as one piece.
 | Material You from wallpaper | ✅ matugen | BYO | BYO | BYO |
 | Blue-light filter (built-in) | ✅ twilight | — | hyprsunset | — |
 | Tags (not workspaces) | ✅ 9 multi-select | columns | workspaces | ✅ dwm tags |
-| Tiling layouts | 15 | scrollable + tabs | 4 + Lua layouts | 14 + overview |
+| Tiling layouts | 11 | scrollable + tabs | 4 + Lua layouts | 14 + overview |
 | Embedded scripting | ✅ Rhai | — | ✅ Lua | — |
 | Hot-reload everything | ✅ `mctl reload` | ✅ | ✅ | ✅ |
 | [Wayland protocols](protocol-comparison.md)² | 57 | 41 | 69 | ~55 |
@@ -86,7 +86,7 @@ and works out of the box.
 ## The compositor
 
 - **Tags, not workspaces.** Nine multi-select tags, dwm-style: press the same tag twice to bounce back, view a union of several at once, pin tags to a home monitor, or regex-match windows into tags at map time.
-- **Layouts that remember.** Tile, scroller, grid, monocle, deck, dwindle, plus center / right / vertical mirrors and a global overview. Each tag keeps its own layout; switch tags and the layout follows.
+- **Layouts that remember.** Tile, scroller, grid, monocle, deck, dwindle, plus center / right mirrors and a global overview. Each tag keeps its own layout; switch tags and the layout follows.
 - **Animations done right.** Niri-style spring physics with mid-flight retarget for window movement; tuned bezier curves for open / close / tag / focus / layer transitions. Drop shadows, rounded corners, focus-fade opacity, optional rounded screen corners.
 - **Modern protocol stack.** DMA-BUF screencopy, `pointer_constraints` + `relative_pointer` for FPS games, `xdg_activation` with anti-focus-steal, runtime `wlr_output_management` (mode + position apply live), VBlank-accurate `presentation-time`, `wp_color_management_v1` for HDR-aware clients. See the [protocol comparison](protocol-comparison.md).
 - **Window rules with PCRE2.** Float password prompts, pin apps to tags, blackout password managers from screencasts, swallow terminal children, force CSD per-app — all by `app_id` / `title` regex.

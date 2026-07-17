@@ -77,7 +77,7 @@ warmup_hidden_ms = 10000
 
 ## Layouts
 
-margo ships **15 tiling layouts**. Each tag remembers its own layout choice. Set one by name with the `setlayout` action, or cycle with `switch_layout`.
+margo ships **11 tiling layouts**. Each tag remembers its own layout choice. Set one by name with the `setlayout` action, or cycle with `switch_layout`.
 
 | `setlayout` name | Layout | Description |
 | --- | --- | --- |
@@ -88,10 +88,6 @@ margo ships **15 tiling layouts**. Each tag remembers its own layout choice. Set
 | `deck` | Deck | master + stacked tabs |
 | `center_tile` | Center tile | master centred, stacks to the left + right |
 | `right_tile` | Right tile | master pane on the right |
-| `vertical_tile` | Vertical tile | tile with the master on top |
-| `vertical_scroller` | Vertical scroller | column scroller stacked vertically |
-| `vertical_grid` | Vertical grid | grid laid out column-major |
-| `vertical_deck` | Vertical deck | deck stacked vertically |
 | `tgmix` | TG-mix | tile / grid hybrid |
 | `canvas` | Canvas | free-form pan/zoom canvas (PaperWM-meets-Excalidraw) |
 | `dwindle` | Dwindle | recursive split (Hyprland default) |
@@ -102,7 +98,7 @@ margo ships **15 tiling layouts**. Each tag remembers its own layout choice. Set
 ```ini
 default_layout = scroller          # any tag without a tagrule uses this
 # What `switch_layout` cycles through, in order:
-circle_layout  = scroller, tile, center_tile, grid, deck, monocle, vertical_grid
+circle_layout  = scroller, tile, center_tile, grid, deck, monocle, dwindle
 ```
 
 ```ini

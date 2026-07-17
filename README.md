@@ -109,7 +109,7 @@ Library-only crates (`margo-config`, `margo-layouts`, and the `mshell-crates/*` 
 ## Compositor highlights
 
 - **Tags, not workspaces.** Nine multi-select tags; press the same tag twice to bounce back, several together to view a union, pin tags to a home monitor, regex-match windows into tags at map time.
-- **Layouts that remember.** Tile, scroller, grid, monocle, deck, dwindle, center / right / vertical mirrors and an overview. Each tag holds its own layout choice.
+- **Layouts that remember.** Tile, scroller, grid, monocle, deck, dwindle, center / right mirrors and an overview. Each tag holds its own layout choice.
 - **Spring + bezier animations.** Niri-style spring physics with mid-flight retarget for window movement; bezier curves for open / close / tag / focus / layer transitions. SDF drop shadows, rounded corners, focus-fade opacity.
 - **Modern protocol stack.** `ext-session-lock-v1`, `ext-idle-notify-v1`, DMA-BUF screencopy, `pointer_constraints` + `relative_pointer`, `xdg_activation` with anti-focus-steal, runtime `wlr_output_management`, VBlank-accurate `presentation-time`, `wp_color_management_v1`.
 - **Window rules with PCRE2.** Float password prompts, pin apps to tags, screencast-blackout password managers, swallow terminal children, force CSD per-app — all by `app_id` / `title` regex. Accepts `width:50%` / `height:50%` monitor-relative fractions alongside absolute pixels (mango 0.13+ syntax).

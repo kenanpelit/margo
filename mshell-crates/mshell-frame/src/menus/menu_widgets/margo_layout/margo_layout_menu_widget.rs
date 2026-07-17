@@ -350,10 +350,6 @@ fn default_layout_names() -> Vec<String> {
         "deck",
         "center_tile",
         "right_tile",
-        "vertical_scroller",
-        "vertical_tile",
-        "vertical_grid",
-        "vertical_deck",
         "tgmix",
         "canvas",
         "dwindle",
@@ -364,9 +360,6 @@ fn default_layout_names() -> Vec<String> {
 }
 
 fn pretty_layout_name(id: &str) -> String {
-    if let Some(stem) = id.strip_prefix("vertical_") {
-        return format!("{} (Vertical)", title_case_snake(stem));
-    }
     title_case_snake(id)
 }
 
@@ -389,13 +382,12 @@ fn title_case_snake(s: &str) -> String {
 fn icon_for_layout(id: &str) -> &'static str {
     match id {
         "tile" => "layout-tile-symbolic",
-        "scroller" | "vertical_scroller" => "layout-scrolling-symbolic",
-        "grid" | "vertical_grid" => "layout-grid-symbolic",
+        "scroller" => "layout-scrolling-symbolic",
+        "grid" => "layout-grid-symbolic",
         "monocle" => "layout-monocle-symbolic",
-        "deck" | "vertical_deck" => "layout-deck-symbolic",
+        "deck" => "layout-deck-symbolic",
         "center_tile" => "layout-center-symbolic",
         "right_tile" => "layout-right-symbolic",
-        "vertical_tile" => "layout-tile-vertical-symbolic",
         "tgmix" => "layout-mix-symbolic",
         "canvas" => "layout-canvas-symbolic",
         "dwindle" => "layout-dwindle-symbolic",

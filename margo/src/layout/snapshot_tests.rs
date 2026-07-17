@@ -67,7 +67,6 @@ use super::*;
 /// scenario picks one based on what the test is exercising.
 const HD_1080P: (i32, i32) = (1920, 1080);
 const QHD: (i32, i32) = (2560, 1440);
-const PORTRAIT: (i32, i32) = (1200, 1920);
 
 /// Builder that holds the bits an `ArrangeCtx` needs alive
 /// (`tiled` slice, `scroller_proportions` slice). The slice fields
@@ -345,45 +344,6 @@ fn scroller_focus_center_off_anchors_to_left() {
     assert_snapshot!(format_arranged(&scroller(&ctx)));
 }
 
-// ── vertical_scroller ──────────────────────────────────────────────────────
-
-#[test]
-fn vertical_scroller_three_windows_focus_centered() {
-    let f = Fixture::with_windows(PORTRAIT, 3);
-    let ctx = f.ctx().focused(1).scroller_focus_center(true).build();
-    let arranged = vertical_scroller(&ctx);
-    let focused_rect = arranged.iter().find(|(i, _)| *i == 1).unwrap().1;
-    let focused_mid = focused_rect.y + focused_rect.height / 2;
-    let target_mid = ctx.work_area.y + ctx.work_area.height / 2;
-    assert!(
-        (focused_mid - target_mid).abs() <= 2,
-        "vertical scroller focus-centered: mid {focused_mid} vs target {target_mid}"
-    );
-}
-
-// ── vertical_tile / vertical_grid / vertical_deck ──────────────────────────
-
-#[test]
-fn vertical_tile_two_windows() {
-    let f = Fixture::with_windows(PORTRAIT, 2);
-    let ctx = f.ctx().build();
-    assert_snapshot!(format_arranged(&vertical_tile(&ctx)));
-}
-
-#[test]
-fn vertical_grid_four_windows() {
-    let f = Fixture::with_windows(PORTRAIT, 4);
-    let ctx = f.ctx().build();
-    assert_snapshot!(format_arranged(&vertical_grid(&ctx)));
-}
-
-#[test]
-fn vertical_deck_three_windows() {
-    let f = Fixture::with_windows(PORTRAIT, 3);
-    let ctx = f.ctx().build();
-    assert_snapshot!(format_arranged(&vertical_deck(&ctx)));
-}
-
 // ── right_tile ─────────────────────────────────────────────────────────────
 
 #[test]
@@ -438,8 +398,7 @@ fn canvas_does_not_arrange() {
 // ── Cross-cutting: every layout stays inside work area for SDR cases ──────
 //
 // Property test: across `tile`, `monocle`, `grid`, `deck`,
-// `center_tile`, `right_tile`, `vertical_tile`, `vertical_grid`,
-// `vertical_deck`, `tgmix`, `dwindle` — every output rect should
+// `center_tile`, `right_tile`, `tgmix`, `dwindle` — every output rect should
 // overlap the work area for any reasonable window count. (Scroller
 // variants intentionally exceed work_area for off-screen clients;
 // they're excluded.)
@@ -454,9 +413,6 @@ fn non_scroller_layouts_stay_inside_work_area() {
         Deck,
         CenterTile,
         RightTile,
-        VerticalTile,
-        VerticalGrid,
-        VerticalDeck,
         TgMix,
         Dwindle,
     ];
@@ -504,7 +460,7 @@ fn arrange_dispatcher_matches_direct_call() {
 
 // ── W1.2: extended property tests across the full layout catalogue ─────────
 //
-// Property tests for the full 14-layout catalogue × {1, 2, 3, 5} window
+// Property tests for the full 10-layout catalogue × {1, 2, 3, 5} window
 // counts × focus shift. Each `LayoutId` variant should satisfy the
 // invariants below. Canvas is the panless free-form layout — it
 // returns an empty vec by design and is excluded from cardinality /
@@ -520,10 +476,6 @@ const ALL_LAYOUTS_EXCEPT_CANVAS: &[LayoutId] = &[
     LayoutId::Deck,
     LayoutId::CenterTile,
     LayoutId::RightTile,
-    LayoutId::VerticalScroller,
-    LayoutId::VerticalTile,
-    LayoutId::VerticalGrid,
-    LayoutId::VerticalDeck,
     LayoutId::TgMix,
     LayoutId::Dwindle,
     LayoutId::Overview,
@@ -537,8 +489,6 @@ const TILE_CLASS_LAYOUTS: &[LayoutId] = &[
     LayoutId::RightTile,
     LayoutId::Grid,
     LayoutId::CenterTile,
-    LayoutId::VerticalTile,
-    LayoutId::VerticalGrid,
     LayoutId::TgMix,
     LayoutId::Dwindle,
 ];
@@ -548,7 +498,7 @@ fn arrange_dispatcher_matches_direct_call_all_layouts() {
     // Property test: the `arrange()` dispatcher must agree with the
     // direct function call for *every* `LayoutId` variant. The narrow
     // version of this test (above) only spot-checks 7; this one
-    // covers all 15 (Canvas + Overview included).
+    // covers all 11 (Canvas + Overview included).
     let f = Fixture::with_windows(HD_1080P, 4);
     let ctx = f.ctx().build();
     for &layout in ALL_LAYOUTS_EXCEPT_CANVAS {
@@ -560,10 +510,6 @@ fn arrange_dispatcher_matches_direct_call_all_layouts() {
             LayoutId::Deck => deck(&ctx),
             LayoutId::CenterTile => center_tile(&ctx),
             LayoutId::RightTile => right_tile(&ctx),
-            LayoutId::VerticalScroller => vertical_scroller(&ctx),
-            LayoutId::VerticalTile => vertical_tile(&ctx),
-            LayoutId::VerticalGrid => vertical_grid(&ctx),
-            LayoutId::VerticalDeck => vertical_deck(&ctx),
             LayoutId::TgMix => tgmix(&ctx),
             LayoutId::Dwindle => dwindle(&ctx),
             LayoutId::Overview => monocle(&ctx),
@@ -707,9 +653,6 @@ fn focus_position_does_not_shift_non_scroller_layouts() {
         LayoutId::Monocle,
         LayoutId::Deck,
         LayoutId::CenterTile,
-        LayoutId::VerticalTile,
-        LayoutId::VerticalGrid,
-        LayoutId::VerticalDeck,
         LayoutId::TgMix,
         LayoutId::Dwindle,
         LayoutId::Overview,
@@ -779,24 +722,6 @@ fn right_tile_master_strictly_right_of_stack() {
                 rect.x + rect.width,
             );
         }
-    }
-}
-
-#[test]
-fn vertical_tile_master_top_half_for_portrait_fixture() {
-    // Property: `vertical_tile` arranges top-master / bottom-stack on
-    // a portrait monitor. Master should lie in the top half.
-    for n in 2..=5 {
-        let f = Fixture::with_windows(PORTRAIT, n);
-        let ctx = f.ctx().build();
-        let arranged = vertical_tile(&ctx);
-        let master = arranged.iter().find(|(i, _)| *i == 0).unwrap().1;
-        let half_h = ctx.work_area.y + ctx.work_area.height / 2;
-        assert!(
-            master.y + master.height / 2 <= half_h + 1,
-            "vertical_tile n={n}: master center y={} should sit in top half (≤ {half_h})",
-            master.y + master.height / 2,
-        );
     }
 }
 

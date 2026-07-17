@@ -582,10 +582,9 @@ impl MargoState {
         //   1 client  → monocle    (no point splitting space for one)
         //   2 clients → tile        (master/stack ratio classic)
         //   3-5 wide  → scroller    (niri-style horizontal tracks)
-        //   3-5 portrait → vertical_scroller
-        //   6+  wide  → grid
-        //   6+  ultrawide → vertical_scroller (long horizontal track)
-        //   6+  portrait → vertical_grid
+        //   3-5 portrait → tile
+        //   6+  wide / ultrawide → grid / scroller (long horizontal track)
+        //   6+  portrait → grid
         //
         // The thresholds and choices are deliberately conservative —
         // adaptive should "feel right" 90% of the time, never wrong.
@@ -594,12 +593,11 @@ impl MargoState {
         let chosen = match (count, very_wide, wide, portrait) {
             (1, _, _, _) => crate::layout::LayoutId::Monocle,
             (2, _, _, _) => crate::layout::LayoutId::Tile,
-            (3..=5, _, _, true) => crate::layout::LayoutId::VerticalScroller,
             (3..=5, _, true, _) => crate::layout::LayoutId::Scroller,
             (3..=5, _, _, _) => crate::layout::LayoutId::Tile,
-            (_, _, _, true) => crate::layout::LayoutId::VerticalGrid,
-            (_, true, _, _) => crate::layout::LayoutId::VerticalScroller,
+            (_, true, _, _) => crate::layout::LayoutId::Scroller,
             (_, _, true, _) => crate::layout::LayoutId::Grid,
+            (_, _, _, true) => crate::layout::LayoutId::Grid,
             _ => crate::layout::LayoutId::Tile,
         };
 
@@ -1531,15 +1529,6 @@ pub fn edge_scroller_decision(
                 (0, false)
             }
         }
-        LayoutId::VerticalScroller => {
-            if py <= ay as f64 + MARGIN {
-                (-1, true)
-            } else if py >= (ay + ah) as f64 - MARGIN {
-                (1, true)
-            } else {
-                (0, false)
-            }
-        }
         _ => (0, false),
     };
     if !at_edge {
@@ -1718,52 +1707,6 @@ mod decision_tests {
         );
         assert_eq!(o.focus, None);
         assert!(!o.armed);
-    }
-
-    #[test]
-    fn vertical_scroller_uses_y_axis() {
-        // Top edge → previous.
-        let top = edge_scroller_decision(
-            LayoutId::VerticalScroller,
-            500.0,
-            4.0,
-            AX,
-            AY,
-            AW,
-            AH,
-            10.0,
-            40.0,
-            true,
-        );
-        assert_eq!(top.focus, Some(-1));
-        // Bottom edge → next.
-        let bot = edge_scroller_decision(
-            LayoutId::VerticalScroller,
-            500.0,
-            996.0,
-            AX,
-            AY,
-            AW,
-            AH,
-            10.0,
-            40.0,
-            true,
-        );
-        assert_eq!(bot.focus, Some(1));
-        // A horizontal-edge x position is irrelevant in vertical mode.
-        let mid = edge_scroller_decision(
-            LayoutId::VerticalScroller,
-            5.0,
-            500.0,
-            AX,
-            AY,
-            AW,
-            AH,
-            10.0,
-            40.0,
-            true,
-        );
-        assert_eq!(mid.focus, None);
     }
 
     #[test]

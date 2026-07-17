@@ -14,7 +14,7 @@ use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
 
-/// The 14 tiling layouts, in `LayoutId` order.
+/// The 10 tiling layouts, in `LayoutId` order.
 const LAYOUTS: &[&str] = &[
     "tile",
     "scroller",
@@ -23,10 +23,6 @@ const LAYOUTS: &[&str] = &[
     "deck",
     "center_tile",
     "right_tile",
-    "vertical_tile",
-    "vertical_scroller",
-    "vertical_grid",
-    "vertical_deck",
     "tgmix",
     "canvas",
     "dwindle",

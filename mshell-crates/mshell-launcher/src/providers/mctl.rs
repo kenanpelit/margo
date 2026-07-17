@@ -18,7 +18,7 @@
 //! |---|---|
 //! | Twilight | toggle · reset · day (6500K) · evening (4500K) · night (3500K) · midnight (2700K) |
 //! | Wallpaper | next · previous · random |
-//! | Layout | switch to each of the 14 named layouts (tile / scroller / grid / monocle / deck / center_tile / right_tile / vertical_scroller / vertical_tile / vertical_grid / vertical_deck / tgmix / canvas / dwindle) |
+//! | Layout | switch to each of the 10 named layouts (tile / scroller / grid / monocle / deck / center_tile / right_tile / tgmix / canvas / dwindle) |
 //! | Screenshot | region · full · window |
 //! | Compositor | reload config |
 
@@ -156,7 +156,7 @@ const ACTIONS: &[McAction] = &[
     },
 ];
 
-/// The 14 mango layouts, in registry-bind order so the index
+/// The 10 margo layouts, in registry-bind order so the index
 /// matches `mctl layout <N>`. Pulled from `mctl status` —
 /// hardcoded here so the launcher works even when state.json
 /// isn't readable (very early in the session).
@@ -168,13 +168,9 @@ const LAYOUTS: &[(usize, &str, &str)] = &[
     (4, "Deck", "Stacked deck of windows"),
     (5, "Center tile", "Master in centre, stacks left+right"),
     (6, "Right tile", "Master on right, stack left"),
-    (7, "Vertical scroller", "Scroller rotated 90°"),
-    (8, "Vertical tile", "Master on top, stack below"),
-    (9, "Vertical grid", "Grid with vertical bias"),
-    (10, "Vertical deck", "Deck rotated 90°"),
-    (11, "Tgmix", "Tile-grid hybrid"),
-    (12, "Canvas", "Free-form spatial canvas"),
-    (13, "Dwindle", "BSP-style recursive split"),
+    (7, "Tgmix", "Tile-grid hybrid"),
+    (8, "Canvas", "Free-form spatial canvas"),
+    (9, "Dwindle", "BSP-style recursive split"),
 ];
 
 pub struct MctlProvider;
@@ -330,13 +326,12 @@ impl Provider for MctlProvider {
 fn icon_for_layout(canonical: &str) -> &'static str {
     match canonical {
         "tile" => "layout-tile-symbolic",
-        "scroller" | "vertical_scroller" => "layout-scrolling-symbolic",
-        "grid" | "vertical_grid" => "layout-grid-symbolic",
+        "scroller" => "layout-scrolling-symbolic",
+        "grid" => "layout-grid-symbolic",
         "monocle" => "layout-monocle-symbolic",
-        "deck" | "vertical_deck" => "layout-deck-symbolic",
+        "deck" => "layout-deck-symbolic",
         "center_tile" => "layout-center-symbolic",
         "right_tile" => "layout-right-symbolic",
-        "vertical_tile" => "layout-tile-vertical-symbolic",
         "tgmix" => "layout-mix-symbolic",
         "canvas" => "layout-canvas-symbolic",
         "dwindle" => "layout-dwindle-symbolic",
