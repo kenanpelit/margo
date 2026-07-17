@@ -70,7 +70,7 @@ piece and themed as one piece.
 | Tiling layouts | 15 | scrollable + tabs | 4 + Lua layouts | 14 + overview |
 | Embedded scripting | ✅ Rhai | — | ✅ Lua | — |
 | Hot-reload everything | ✅ `mctl reload` | ✅ | ✅ | ✅ |
-| [Wayland protocols](protocol-comparison.md)² | 57 | 41 | 69 | ~53 |
+| [Wayland protocols](protocol-comparison.md)² | 57 | 41 | 69 | ~55 |
 | Automated tests² | 1.2k unit + snapshot | 216 + proptest fuzzer | 269 + integration rig | — |
 
 <small>¹ Hyprland's desktop is a family of separate `hypr*` projects you install and configure individually.</small>

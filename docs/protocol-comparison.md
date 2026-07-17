@@ -10,6 +10,21 @@
 > and commit-timing deadlines get an exact one-shot wake. The advertised
 > surface is back at **57**.
 
+> **mango column re-walk (2026-07-17, mango `0.15.2-10` / `242ffe8`):**
+> mango moved to **wlroots 0.20 + SceneFX** and its column below was stale
+> (carried from 0.13/0.14). Re-counted from source (hand-curated
+> `wlr_*_create` protocol globals): headline **~53 → ~55**. Cell flips:
+> `wp_color_management_v1` ❌→✅ (created whenever the FX renderer reports
+> colour-transform support — the per-monitor `hdr` knob gates HDR *output*,
+> not the global; mango also ships `wp_color_representation_v1`, which
+> margo does not advertise) and `xwayland_shell_v1` ❌→✅ (wlroots creates
+> it in XWayland builds). Newly counted since the old walk:
+> `ext_data_control_v1`, `ext_foreign_toplevel_list_v1` + per-window/output
+> image-capture-source managers (window-capture path), `wl_fixes`. The rest
+> of the modern set is still missing (content-type, fifo, commit-timing,
+> xdg-dialog, system-bell, pointer-warp, security-context). Only the mango
+> column was touched this pass.
+
 > **Last refreshed:** 2026-06-17 — **margo column re-counted directly from
 > source** at `v1.0.7` (`446f8597`): margo advertises **57 protocol-bearing
 > smithay `delegate_*` macros** (excluding the two framework-internal
@@ -24,7 +39,7 @@
 > - **margo** `v1.0.7` (`446f8597`) — this repo; **57** protocol `delegate_*` macros (+ overlapping hand-rolled `GlobalDispatch`).
 > - **niri** `v26.04-34` (`fdb6d85`) — same smithay method; **41** protocol delegates (unchanged from the 2026-05-28 walk).
 > - **Hyprland** `v0.55.0-189` (`2d190ba`) — `src/protocols/*.cpp` (**63**) + `src/protocols/core/` (**6**) = **69**.
-> - **mango** `0.14.4-7` (`892d127`) — wlroots `wlr_*_create()` globals + `protocols/*.xml`; **~53 carried from the 2026-05-28 walk, not re-counted this pass** (a clean count needs manual curation to exclude non-protocol `wlr_*_create` calls such as `wlr_scene_*` / `wlr_output_layout_*`).
+> - **mango** `0.15.2-10` (`242ffe8`) — wlroots `wlr_*_create()` protocol globals, hand-curated to exclude non-protocol calls (`wlr_scene_*`, `wlr_output_layout_*`, device/backend objects); **~55, re-counted 2026-07-17** (wlroots 0.20 + SceneFX).
 
 > **Companion:** [`protocol-matrix.md`](protocol-matrix.md) is the *internal*
 > view — for each protocol margo advertises, whether it's implemented and how
@@ -57,7 +72,7 @@ numbers are comparable.
 |---|---|---|---|
 | **Hyprland** `0.55.0` | **69** | C++ (hand-rolled) | Widest surface — 63 protocol modules + 6 core, plus Hyprland-only extensions (source-counted 2026-06-17) |
 | **margo** `main` | **57** | Rust / smithay | Modern surface; **ahead of niri and mango**; pursuing Hyprland. FIFO and commit-timing rejoined in 1.1.9, now backed by the `state/pacing.rs` barrier-release scheduler |
-| **mango** `0.13.1` | **~53** | C / wlroots | Broad-but-legacy: wlroots hands it everything for free (carried from 2026-05-28; not re-counted) |
+| **mango** `0.15.2` | **~55** | C / wlroots | Broad and modernizing: wlroots 0.20 + SceneFX hand it the surface for free — now incl. HDR colour-management (re-counted 2026-07-17) |
 | **niri** `26.04` | **41** | Rust / smithay | Tightest surface; deliberately minimal (source-counted 2026-06-17) |
 
 **This refresh (2026-06-17) re-counts the surface from source; the
@@ -78,14 +93,17 @@ manual curation to separate true protocol globals from scene/output
 > carry forward from the 2026-05-28 four-way walk and were **not**
 > re-walked protocol-by-protocol here.
 
-The current standing picture: **margo (~57) leads its own C ancestor mango
-(~53)** and niri (~41), having hand-rolled the three wlroots-freebies
-mango got for free — `zwlr_foreign_toplevel_manager_v1` (write-side, P2),
-`ext_workspace_v1` (P5), `zwlr_virtual_pointer_manager_v1` (P7) — on top
-of the *modern* surface (HDR colour-management, content-type,
-fifo/commit-timing, security-context, pointer-warp, xdg-dialog,
-system-bell, toplevel-icon, toplevel-tag, xwayland-keyboard-grab) that
-mango's wlroots base doesn't expose. `output_power` now ships (external
+The current standing picture: **margo (~57) narrowly leads its own C
+ancestor mango (~55)** and niri (~41), having hand-rolled the three
+wlroots-freebies mango got for free — `zwlr_foreign_toplevel_manager_v1`
+(write-side, P2), `ext_workspace_v1` (P5),
+`zwlr_virtual_pointer_manager_v1` (P7) — on top of the *modern* surface
+(content-type, fifo/commit-timing, security-context, pointer-warp,
+xdg-dialog, system-bell, toplevel-icon, toplevel-tag,
+xwayland-keyboard-grab) that mango's wlroots base doesn't expose. HDR
+colour-management left that list in mango 0.15: wlroots 0.20 ships it and
+mango wires it up (plus `wp_color_representation_v1`, which margo does
+not advertise). `output_power` now ships (external
 DPMS control), and `fifo`/`commit-timing` are driven by a real
 presentation scheduler since 1.1.9. The two margo still doesn't advertise
 (`tearing_control`, `drm_lease`) are blocked, not just deferred — see
@@ -127,10 +145,10 @@ niri and mango each miss large chunks.
 
 | Protocol | margo | niri | Hyprland | mango | Use case |
 |---|---|---|---|---|---|
-| `wp_color_management_v1` (HDR) | ✅ | ❌ | ✅ | ❌ | HDR / wide-gamut output |
+| `wp_color_management_v1` (HDR) | ✅ | ❌ | ✅ | ✅ | HDR / wide-gamut output (mango since 0.15 via wlroots 0.20; renderer-gated, per-monitor `hdr` knob) |
 | `linux_drm_syncobj_v1` (explicit sync) | ✅ | ❌ | ✅ | ✅ | Tear-free GPU sync, NVIDIA |
 | `ext_image_copy_capture_v1` + capture-source | ✅ | ❌ | ✅ | ✅ | Modern screencast (replaces screencopy) |
-| `xwayland_shell_v1` | ✅ | ⚠️ diff path | ✅ | ❌ | HiDPI XWayland scaling |
+| `xwayland_shell_v1` | ✅ | ⚠️ diff path | ✅ | ✅ | HiDPI XWayland scaling (mango: created by wlroots in XWayland builds) |
 | `wp_content_type_v1` | ✅ | ❌ | ✅ | ❌ | Game / video / photo hint |
 | `wp_fifo_v1` | ✅ | ❌ | ✅ | ❌ | FIFO commit ordering; barriers released by `state/pacing.rs` since 1.1.9 |
 | `wp_commit_timing_v1` | ✅ | ❌ | ✅ | ❌ | Explicit commit-time targets; deadline wake + present-pass release since 1.1.9 |
