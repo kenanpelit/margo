@@ -67,11 +67,14 @@ piece and themed as one piece.
 | Material You from wallpaper | ✅ matugen | BYO | BYO | BYO |
 | Blue-light filter (built-in) | ✅ twilight | — | hyprsunset | — |
 | Tags (not workspaces) | ✅ 9 multi-select | columns | workspaces | ✅ dwm tags |
-| Tiling layouts | 15 | scrollable | dynamic | dwl set |
-| Embedded scripting | ✅ Rhai | — | hyprlang | — |
+| Tiling layouts | 15 | scrollable + tabs | 4 + Lua layouts | 14 + overview |
+| Embedded scripting | ✅ Rhai | — | ✅ Lua | — |
 | Hot-reload everything | ✅ `mctl reload` | ✅ | ✅ | ✅ |
+| [Wayland protocols](protocol-comparison.md)² | 57 | 41 | 69 | ~53 |
+| Automated tests² | 1.2k unit + snapshot | 216 + proptest fuzzer | 269 + integration rig | — |
 
 <small>¹ Hyprland's desktop is a family of separate `hypr*` projects you install and configure individually.</small>
+<small>² Source-counted 2026-07-17 at margo 1.2.0, niri 26.04, Hyprland 0.55, mango 0.15.2.</small>
 
 The honest pitch: niri's scrollable tiling and Hyprland's ecosystem are great.
 margo's bet is **one integrated, modern, Rust stack** — compositor + shell +
