@@ -1,14 +1,21 @@
 //! Microbenchmarks for the tiling-arrange algorithms.
 //!
 //! These run on every layout recompute (window open/close, focus, gap or
-//! mfact change), so they're the compositor's hot pure-CPU path. Bench a
-//! realistic 12-window monitor across the representative layout families
-//! (master/stack, grid, deck, scroller) as a regression shield.
+//! mfact change), so they're the compositor's hot pure-CPU path. Two
+//! groups:
 //!
-//! Run with `cargo bench -p margo-layouts`.
+//! * `arrange-12-windows` — a realistic loaded monitor across the
+//!   representative layout families, as a regression shield.
+//! * `arrange-scaling` — every tileable algorithm at 1 / 16 / 64 windows,
+//!   the CPU-side half of the roadmap's "render-scene at 1/16/64 clients"
+//!   scaling story (the GPU half needs a live backend and lives in
+//!   `mctl perf` instead). 64 is deliberately past any sane daily count so
+//!   super-linear blowups surface here, not on a user's monitor.
+//!
+//! Run with `cargo bench -p margo-layouts --features bench`.
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use margo_layouts::{ArrangeCtx, GapConfig, Rect, deck, grid, scroller, tile};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use margo_layouts::{ArrangeCtx, GapConfig, LayoutId, Rect, arrange, deck, grid, scroller, tile};
 
 fn make_ctx<'a>(tiled: &'a [usize], proportions: &'a [f32], gaps: &'a GapConfig) -> ArrangeCtx<'a> {
     ArrangeCtx {
@@ -47,5 +54,27 @@ fn bench_arrange(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_arrange);
+fn bench_arrange_scaling(c: &mut Criterion) {
+    let gaps = GapConfig {
+        gappih: 8,
+        gappiv: 8,
+        gappoh: 12,
+        gappov: 12,
+    };
+
+    let mut group = c.benchmark_group("arrange-scaling");
+    for &n in &[1usize, 16, 64] {
+        let tiled: Vec<usize> = (0..n).collect();
+        let proportions = vec![0.5f32; n];
+        let ctx = make_ctx(&tiled, &proportions, &gaps);
+        for &layout in LayoutId::all_tileable() {
+            group.bench_with_input(BenchmarkId::new(layout.name(), n), &ctx, |b, ctx| {
+                b.iter(|| arrange(black_box(layout), black_box(ctx)))
+            });
+        }
+    }
+    group.finish();
+}
+
+criterion_group!(benches, bench_arrange, bench_arrange_scaling);
 criterion_main!(benches);

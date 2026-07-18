@@ -1129,10 +1129,16 @@ locked by `option_keys_match_parser_arms`,
   all ~250 unsafe blocks (`unsafe_op_in_unsafe_fn` already deny'd).
 - Panic-ratchet reduction target: drive the baseline 320 → 250 → 200,
   compositor event/render/IPC paths first.
-- Criterion benches beyond parser/layout: animation tick, render-scene at
-  1/16/64 clients, IPC snapshot build, layer commit hash.
-- `mctl perf`: add p50/p95 render time + damage area + direct-scanout
-  ratio (needs new per-frame timing instrumentation; the render/empty/
-  queued/queue-error counters ship today).
+- Criterion benches beyond parser/layout: `arrange-scaling` (every
+  tileable layout at 1/16/64 windows — the CPU half of the render-scene
+  scaling story) shipped 2026-07-19. The in-compositor targets
+  (animation tick, IPC snapshot build, layer commit hash) stay parked:
+  margo is a bin-only crate, and Criterion bench targets can only link
+  a lib — they're unblocked whenever a niri-style `lib.rs`+`main.rs`
+  split happens, not worth doing for benches alone.
+- ~~`mctl perf`: add p50/p95 render time + damage area + direct-scanout
+  ratio~~ — shipped: `FrameSample` carries render µs (p50/p95/p99,
+  earlier wave) + composited damage px² + primary-plane direct-scanout
+  flag; `mctl perf` shows SCAN% + DMG p50/p95 Mpx columns (2026-07-19).
 - Real nested smoke test on a weekly or self-hosted GPU runner
   (`smoke.yml` currently can't drive true nested winit).
