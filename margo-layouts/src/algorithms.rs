@@ -645,5 +645,4 @@ mod tests {
         // Two stack windows stacked vertically → gappiv.
         assert_eq!(stack1.y - (stack0.y + stack0.height), ASYM.gappiv);
     }
-
 }

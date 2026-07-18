@@ -55,7 +55,10 @@ pub(super) fn rescan_outputs(backend_data: &Rc<RefCell<BackendData>>, state: &mu
             .map(|c| c.state() == connector::State::Connected)
             .unwrap_or(false);
         if !connected {
-            tracing::info!(?conn, "non-desktop connector unplugged; withdrawing lease offer");
+            tracing::info!(
+                ?conn,
+                "non-desktop connector unplugged; withdrawing lease offer"
+            );
             if let Some(ls) = state.drm_lease_state.as_mut() {
                 ls.withdraw_connector(*conn);
             }

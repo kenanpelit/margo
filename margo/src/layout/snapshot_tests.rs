@@ -407,14 +407,7 @@ fn canvas_does_not_arrange() {
 fn non_scroller_layouts_stay_inside_work_area() {
     use LayoutId::*;
     let layouts = [
-        Tile,
-        Monocle,
-        Grid,
-        Deck,
-        CenterTile,
-        RightTile,
-        TgMix,
-        Dwindle,
+        Tile, Monocle, Grid, Deck, CenterTile, RightTile, TgMix, Dwindle,
     ];
     for &layout in &layouts {
         for n in 1..=6 {

@@ -89,14 +89,17 @@ fn adversarial_value() -> impl Strategy<Value = String> {
 }
 
 fn structured_line() -> impl Strategy<Value = String> {
-    (proptest::sample::select(KEYS), adversarial_value(), 0usize..4).prop_map(
-        |(key, value, decor)| match decor {
+    (
+        proptest::sample::select(KEYS),
+        adversarial_value(),
+        0usize..4,
+    )
+        .prop_map(|(key, value, decor)| match decor {
             0 => format!("{key}={value}"),
             1 => format!("  {key} = {value}  # trailing comment"),
             2 => format!("{key}={value}={value}"),
             _ => format!("{key} {value}"),
-        },
-    )
+        })
 }
 
 /// Parse + validate a config body; the property is simply "no panic".

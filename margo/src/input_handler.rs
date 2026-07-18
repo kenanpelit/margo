@@ -574,8 +574,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                 // GlobalShortcuts release: the press was swallowed, so the
                 // matching release must be too (a client seeing half a key
                 // thinks it's stuck). Fires the portal's Deactivated.
-                if key_state == KeyState::Released && state.global_shortcut_release(keycode.raw())
-                {
+                if key_state == KeyState::Released && state.global_shortcut_release(keycode.raw()) {
                     return FilterResult::Intercept(());
                 }
 

@@ -107,10 +107,7 @@ fn shortcuts_value(shortcuts: &[Shortcut]) -> Option<OwnedValue> {
         .map(|s| {
             let mut props: HashMap<String, Value<'_>> = HashMap::new();
             props.insert("description".into(), Value::from(s.description.clone()));
-            props.insert(
-                "trigger_description".into(),
-                Value::from(s.trigger.clone()),
-            );
+            props.insert("trigger_description".into(), Value::from(s.trigger.clone()));
             (s.id.clone(), props)
         })
         .collect();
@@ -122,7 +119,10 @@ fn parse_shortcuts(raw: Vec<(String, HashMap<String, OwnedValue>)>) -> Vec<Short
     raw.into_iter()
         .map(|(id, props)| Shortcut {
             id,
-            description: props.get("description").and_then(as_str).unwrap_or_default(),
+            description: props
+                .get("description")
+                .and_then(as_str)
+                .unwrap_or_default(),
             trigger: props
                 .get("preferred_trigger")
                 .and_then(as_str)
@@ -150,9 +150,7 @@ impl GlobalShortcutsBackend {
         // The spec allows binding at create time via options["shortcuts"].
         let initial: Vec<Shortcut> = options
             .get("shortcuts")
-            .and_then(|v| {
-                <Vec<(String, HashMap<String, OwnedValue>)>>::try_from(v.clone()).ok()
-            })
+            .and_then(|v| <Vec<(String, HashMap<String, OwnedValue>)>>::try_from(v.clone()).ok())
             .map(parse_shortcuts)
             .unwrap_or_default();
         if !initial.is_empty() {
