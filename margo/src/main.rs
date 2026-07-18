@@ -1157,6 +1157,60 @@ fn main() -> Result<()> {
             .ok();
     }
 
+    // ── Crash recovery + session autosave ─────────────────────────────────────
+    // An autosave file surviving to startup means the previous session
+    // died without the clean-shutdown cleanup below — load it now and
+    // let the timer apply it once outputs are mapped. While running,
+    // the same timer re-captures the session every 60 s, so after a
+    // compositor crash the desktop comes back at most a minute stale.
+    {
+        if let Ok(path) = session::autosave_path() {
+            if path.exists() {
+                match session::load_from(&path) {
+                    Ok(snap) => {
+                        warn!(
+                            "unclean shutdown detected — will restore session from {path:?} \
+                             once outputs are up"
+                        );
+                        margo.pending_crash_restore = Some(snap);
+                    }
+                    Err(e) => warn!("crash autosave unreadable, ignoring: {e:?}"),
+                }
+            }
+        }
+        let loop_handle = event_loop.handle();
+        let timer = calloop::timer::Timer::from_duration(std::time::Duration::from_secs(5));
+        loop_handle
+            .insert_source(timer, move |_, _, state: &mut MargoState| {
+                if let Some(snap) = state.pending_crash_restore.take() {
+                    if state.monitors.is_empty() {
+                        // Outputs not mapped yet — retry shortly. Do NOT
+                        // autosave in this window: it would clobber the
+                        // crash snapshot with an empty session.
+                        state.pending_crash_restore = Some(snap);
+                        return calloop::timer::TimeoutAction::ToDuration(
+                            std::time::Duration::from_secs(5),
+                        );
+                    }
+                    let n = session::apply_to_state(state, &snap);
+                    info!(target: "session", "crash recovery: restored {n} monitor snapshot(s)");
+                    state.arrange_all();
+                    state.request_repaint();
+                }
+                match session::autosave_path() {
+                    Ok(path) => {
+                        let snap = session::SessionSnapshot::capture(state);
+                        if let Err(e) = session::save_to(&path, &snap) {
+                            tracing::debug!("session autosave failed: {e:?}");
+                        }
+                    }
+                    Err(e) => tracing::debug!("session autosave path: {e:?}"),
+                }
+                calloop::timer::TimeoutAction::ToDuration(std::time::Duration::from_secs(60))
+            })
+            .map_err(|e| anyhow::anyhow!("insert autosave timer: {e}"))?;
+    }
+
     // ── Run the event loop ────────────────────────────────────────────────────
     event_loop.run(None, &mut margo, |state| {
         if state.should_quit {
@@ -1438,6 +1492,13 @@ fn main() -> Result<()> {
             }
         }
     })?;
+
+    // Clean shutdown: drop the crash autosave so the next start
+    // doesn't mistake this session for a crashed one. (A crash never
+    // reaches this line — that's the whole detection mechanism.)
+    if let Ok(path) = session::autosave_path() {
+        let _ = std::fs::remove_file(path);
+    }
 
     Ok(())
 }

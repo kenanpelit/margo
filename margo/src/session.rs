@@ -112,6 +112,13 @@ pub fn session_path() -> Result<PathBuf> {
     Ok(base.join("margo").join("session.json"))
 }
 
+/// Crash-recovery autosave. Written every ~60 s while running,
+/// deleted on clean shutdown — its existence at startup means the
+/// previous session died and its contents are the restore point.
+pub fn autosave_path() -> Result<PathBuf> {
+    session_path().map(|p| p.with_file_name("session-autosave.json"))
+}
+
 impl SessionSnapshot {
     pub fn capture(state: &MargoState) -> Self {
         let captured_at = chrono_like_now();

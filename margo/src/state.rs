@@ -325,6 +325,9 @@ pub struct MargoState {
     pub drm_lease_state: Option<smithay::wayland::drm_lease::DrmLeaseState>,
     /// Active leases; dropping one revokes it.
     pub drm_lease_active: Vec<smithay::wayland::drm_lease::DrmLease>,
+    /// Snapshot loaded from the crash autosave at startup — applied by
+    /// the autosave timer once outputs are mapped, then cleared.
+    pub pending_crash_restore: Option<crate::session::SessionSnapshot>,
     /// Handle into the udev backend's device data. The ONLY sanctioned
     /// State→backend reach — exists because `DrmLeaseHandler::lease_request`
     /// must build a `DrmLeaseBuilder` from the live `DrmDevice`
@@ -1188,6 +1191,7 @@ impl MargoState {
             color_representation_state,
             drm_lease_state: None,
             drm_lease_active: Vec::new(),
+            pending_crash_restore: None,
             udev_backend: None,
             scripting: None,
             #[cfg(feature = "xdp-gnome-screencast")]
