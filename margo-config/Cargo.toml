@@ -17,6 +17,11 @@ xkbcommon = { version = "0.8" }
 # with `cargo bench -p margo-config --features bench`.
 criterion = { version = "0.5", optional = true }
 
+[dev-dependencies]
+# Property-based parser fuzzing (tests/proptest_parser.rs).
+proptest = "1"
+tempfile = "3"
+
 [features]
 bench = ["dep:criterion"]
 
