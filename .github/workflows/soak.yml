@@ -11,7 +11,9 @@
 #
 # Only the two pure crates are soaked: margo-layouts (arrange algebra)
 # and margo-config (parser + validator). Neither needs the GTK stack,
-# so this runs on the plain Arch container with a minimal dep set.
+# so this runs on the plain Arch container with a minimal dep set —
+# margo-config still links libxkbcommon (keysym parsing for keybinds)
+# and pcre2 (window-rule regexes).
 
 name: soak
 
@@ -45,7 +47,7 @@ jobs:
       - name: System dependencies (pacman)
         run: |
           pacman -Syu --noconfirm --needed \
-            git rustup clang pkgconf pcre2
+            git rustup clang pkgconf pcre2 libxkbcommon
           rustup default stable
 
       - uses: actions/checkout@v5
