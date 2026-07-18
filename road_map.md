@@ -1068,23 +1068,28 @@ render-path items can't be verified headless.
 
 **Render-path refactors (need live GPU + on-hardware verify — Meteor
 Lake).** The keystone is *repaint scope*, and the rest chains off it:
-- **Output-scoped repaint.** `request_repaint` (`state.rs`,
-  `mark_all_clocks_dirty`) still dirties *every* output's clock because
-  it doesn't know which output a change touched. Add
-  `request_repaint(RepaintScope)` / `request_repaint_output(&Output)` so
-  pointer motion, a single window commit, an animation step, or a layer
-  commit only wakes the affected output. Enables the next two.
-- **Animation-tick damage set.** `state/animation_tick.rs` returns a bare
-  `bool`; the caller then re-scans every visible client, rebuilds a Vec,
-  and refreshes global z-order + all borders. Return
-  `AnimationDamage { clients, outputs, stacking_changed }` so only moving
-  windows re-map and only affected outputs/borders refresh.
-- **Blur damage cache.** `backend/udev/frame.rs` calls
-  `reset_buffers()` every rendered frame while blur is on, defeating
-  buffer-age damage. This is a *deliberate* flicker fix for Intel Arc
-  MTL (the dev's own GPU); the replacement is blur-region-expanded damage
-  + a per-output backdrop cache, keeping full-redraw as the safe
-  fallback. High regression risk → verify on hardware.
+- ~~**Output-scoped repaint.**~~ — shipped with the P15/pacing wave:
+  `request_repaint_output(&Output)` + `mark_output_clock_dirty`
+  coalescing exist, the commit path classifies via `CommitRepaint::
+  {Output,Outputs,None,All}`, and pointer motion goes through
+  `request_cursor_repaint` (old/new hotspot outputs only). The
+  remaining global `request_repaint()` callers are cold paths
+  (dispatch actions, hotplug, theme/twilight) where global is the
+  conservative-correct choice.
+- **Animation-tick damage set** — half shipped: the tick caller
+  (`main.rs`) already computes animated-client indices + touched
+  outputs and repaints per-output. Still global per tick: it re-maps
+  *every* visible client into the Space, then `enforce_z_order` +
+  full `border::refresh`. Remaining win = remap only animated clients
+  and scope the border refresh; modest, visual-regression-prone.
+- ~~**Blur damage cache.**~~ — shipped 2026-07-19 behind the (formerly
+  dead, now default-off) `blur_optimized` knob: per-surface clean-
+  backdrop cache (`render/blur.rs` `backdrop_cache`), damage-rect
+  ingest + scissored composite, and `frame.rs` keeps full
+  `reset_buffers()` as the default path — now also skipped whenever no
+  blur element is in the output's element list. HW-verify pending
+  (shimmer/ghosting check on Intel Arc MTL); flip `blur_optimized = 1`
+  to test, `mctl perf`'s new DMG p50/p95 column shows the win.
 - **Screencast cursor-only frame.** `screencasting/pw_utils.rs` re-renders
   a full video frame even when only the cursor moved (its own FIXME).
   Needs OBS-PipeWire compat verified first, alongside the DMABUF-render

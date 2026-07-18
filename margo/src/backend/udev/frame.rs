@@ -498,9 +498,20 @@ fn render_output(
     // which shimmers/flickers as the buffers rotate (seen on tab strips and
     // any translucent window). Forcing a full redraw on each rendered frame
     // while blur is on keeps the captured backdrop current. Gated on the
-    // opt-in, default-off blur flags; this only fires on frames that already
-    // render (an idle screen still renders nothing and idles).
-    if state.config.blur || state.config.blur_layer {
+    // opt-in, default-off blur flags AND on a blur element actually being
+    // in this output's element list: an output showing no blurred surface
+    // (fullscreen video, a monitor without the bar, no translucent window
+    // open) samples nothing, so it keeps full age-based damage tracking.
+    // This only fires on frames that already render (an idle screen still
+    // renders nothing and idles). With `blur_optimized` the blur element
+    // itself is damage-correct (persistent backdrop cache + scissored
+    // composite), so age-based damage tracking stays fully on.
+    if (state.config.blur || state.config.blur_layer)
+        && !state.config.blur_optimized
+        && elements
+            .iter()
+            .any(|e| matches!(e, MargoRenderElement::Blur(_)))
+    {
         od.compositor.reset_buffers();
     }
     let render_start = std::time::Instant::now();

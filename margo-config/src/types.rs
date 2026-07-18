@@ -902,6 +902,11 @@ pub struct Config {
     // blur / shadows / visual effects
     pub blur: bool,
     pub blur_layer: bool,
+    /// Damage-aware blur path: keep a per-surface backdrop cache so
+    /// partial damage doesn't force a full-output redraw every frame
+    /// while blur is on. Default **off** (the safe full-redraw path)
+    /// until verified on hardware — was a parsed-but-dead knob before
+    /// 2026-07-19.
     pub blur_optimized: bool,
     pub border_radius: i32,
     pub blur_params: BlurParams,
@@ -1256,7 +1261,7 @@ impl Default for Config {
 
             blur: false,
             blur_layer: false,
-            blur_optimized: true,
+            blur_optimized: false,
             border_radius: 0,
             blur_params: BlurParams::default(),
             shadows: false,
