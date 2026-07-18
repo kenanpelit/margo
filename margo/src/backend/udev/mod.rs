@@ -65,7 +65,7 @@ mod render_elements;
 // and the sibling `frame` module (`use super::build_render_elements`, a child
 // reaching an ancestor's private item) resolve unchanged.
 use frame::{flush_presentation_feedback, render_all_outputs, render_due_outputs};
-use helpers::{find_crtc, monotonic_now, smithay_transform};
+use helpers::{connector_is_non_desktop, find_crtc, monotonic_now, smithay_transform};
 use hotplug::rescan_outputs;
 use mode::{apply_pending_mode_changes, select_drm_mode};
 use render_elements::{
@@ -284,9 +284,12 @@ impl GammaProps {
     }
 }
 
-pub(super) struct BackendData {
+pub(crate) struct BackendData {
     pub(super) renderer: GlesRenderer,
     pub(super) outputs: HashMap<crtc::Handle, OutputDevice>,
+    /// Non-desktop connectors (VR headsets etc.). Never driven as
+    /// outputs; offered to clients through `wp_drm_lease_device_v1`.
+    pub(super) non_desktop_connectors: Vec<connector::Handle>,
     /// DRM device shared by all outputs on this card. Used for late-binding
     /// operations (gamma LUT updates, output power management) that need to
     /// poke properties outside the per-CRTC `DrmCompositor`.
@@ -443,6 +446,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
     let mut used_crtcs: std::collections::HashSet<crtc::Handle> = std::collections::HashSet::new();
 
     let mut backend_outputs: HashMap<crtc::Handle, OutputDevice> = HashMap::new();
+    let mut non_desktop_connectors: Vec<connector::Handle> = Vec::new();
 
     for conn_handle in resources.connectors() {
         let conn_info = match drm_fd.get_connector(*conn_handle, false) {
@@ -454,6 +458,18 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
         };
 
         if conn_info.state() != connector::State::Connected {
+            continue;
+        }
+
+        // Non-desktop connectors (VR headsets) are never driven as
+        // outputs — they get offered to clients via DRM lease below.
+        if connector_is_non_desktop(&drm_fd, *conn_handle) {
+            info!(
+                "connector {}-{} is non-desktop; offering for DRM lease",
+                conn_info.interface().as_str(),
+                conn_info.interface_id()
+            );
+            non_desktop_connectors.push(*conn_handle);
             continue;
         }
 
@@ -711,11 +727,40 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
     let backend_data = Rc::new(RefCell::new(BackendData {
         renderer,
         outputs: backend_outputs,
+        non_desktop_connectors,
         drm,
         gbm: gbm.clone(),
         primary_node,
         renderer_formats: renderer_formats.clone(),
     }));
+
+    // ── wp_drm_lease_device_v1 ────────────────────────────────────────────────
+    // The synchronous `lease_request` path reaches the live DrmDevice
+    // through this Rc handle — the "small backend-access change" from
+    // docs/protocol-comparison.md. Non-desktop connectors found above
+    // are offered; lease CRTC/plane selection happens at request time.
+    state.udev_backend = Some(backend_data.clone());
+    match smithay::wayland::drm_lease::DrmLeaseState::new::<MargoState>(
+        &state.display_handle,
+        &primary_node,
+    ) {
+        Ok(mut lease_state) => {
+            let bd = backend_data.borrow();
+            for conn in &bd.non_desktop_connectors {
+                if let Ok(info) = bd.drm.get_connector(*conn, false) {
+                    let name = format!("{}-{}", info.interface().as_str(), info.interface_id());
+                    lease_state.add_connector::<MargoState>(
+                        *conn,
+                        name,
+                        "non-desktop connector".to_string(),
+                    );
+                }
+            }
+            drop(bd);
+            state.drm_lease_state = Some(lease_state);
+        }
+        Err(e) => warn!("wp_drm_lease_device_v1 unavailable: {e}"),
+    }
     state.dmabuf_import_hook = Some(Rc::new(RefCell::new({
         let backend_data = backend_data.clone();
         move |dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf| {
@@ -932,6 +977,9 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                     if let Some(li) = state.libinput.as_mut() {
                         li.suspend();
                     }
+                    if let Some(ls) = state.drm_lease_state.as_mut() {
+                        ls.suspend();
+                    }
                     state.libinput_devices.clear();
                 }
                 SessionEvent::ActivateSession => {
@@ -940,6 +988,9 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                         if li.resume().is_err() {
                             warn!("libinput resume failed");
                         }
+                    }
+                    if let Some(ls) = state.drm_lease_state.as_mut() {
+                        ls.resume::<MargoState>();
                     }
                     state.arrange_all();
                     // Guaranteed DPMS recovery: a VT-switch back ALWAYS wakes
@@ -1679,3 +1730,79 @@ pub(super) fn serve_screencopies(
 }
 
 // ── CRTC helper ───────────────────────────────────────────────────────────────
+
+// ── wp_drm_lease_device_v1 handler ───────────────────────────────────────────
+//
+// Lives here (not in state/handlers/) because `lease_request` must
+// synchronously reach the live `DrmDevice` inside `BackendData` —
+// the one thing `MargoState` holds an `Rc` handle to precisely for
+// this protocol. Resources leased per requested connector: the
+// connector itself, a free compatible CRTC, and its primary plane.
+
+use smithay::wayland::drm_lease::{
+    DrmLease, DrmLeaseBuilder, DrmLeaseHandler, DrmLeaseRequest, DrmLeaseState, LeaseRejected,
+};
+
+impl DrmLeaseHandler for MargoState {
+    fn drm_lease_state(&mut self, _node: DrmNode) -> &mut DrmLeaseState {
+        self.drm_lease_state
+            .as_mut()
+            .expect("drm_lease global is only registered by the udev backend")
+    }
+
+    fn lease_request(
+        &mut self,
+        _node: DrmNode,
+        request: DrmLeaseRequest,
+    ) -> Result<DrmLeaseBuilder, LeaseRejected> {
+        let bd_rc = self
+            .udev_backend
+            .clone()
+            .ok_or_else(LeaseRejected::default)?;
+        let bd = bd_rc.borrow();
+        let resources = bd
+            .drm
+            .resource_handles()
+            .map_err(LeaseRejected::with_cause)?;
+        // CRTCs driving real outputs are off the table; each granted
+        // connector reserves one more within this request.
+        let mut used: std::collections::HashSet<crtc::Handle> =
+            bd.outputs.keys().copied().collect();
+        let mut builder = DrmLeaseBuilder::new(&bd.drm);
+        for conn in request.connectors {
+            if !bd.non_desktop_connectors.contains(&conn) {
+                warn!("lease request for a connector that is not non-desktop; rejecting");
+                return Err(LeaseRejected::default());
+            }
+            let conn_info = bd
+                .drm
+                .get_connector(conn, false)
+                .map_err(LeaseRejected::with_cause)?;
+            let crtc = find_crtc(bd.drm.device_fd(), &conn_info, &resources, &used)
+                .ok_or_else(LeaseRejected::default)?;
+            used.insert(crtc);
+            builder.add_connector(conn);
+            builder.add_crtc(crtc);
+            let planes = bd.drm.planes(&crtc).map_err(LeaseRejected::with_cause)?;
+            let (plane, claim) = planes
+                .primary
+                .iter()
+                .find_map(|p| bd.drm.claim_plane(p.handle, crtc).map(|c| (p, c)))
+                .ok_or_else(LeaseRejected::default)?;
+            builder.add_plane(plane.handle, claim);
+        }
+        Ok(builder)
+    }
+
+    fn new_active_lease(&mut self, _node: DrmNode, lease: DrmLease) {
+        info!(lease = lease.id(), "DRM lease activated");
+        self.drm_lease_active.push(lease);
+    }
+
+    fn lease_destroyed(&mut self, _node: DrmNode, lease_id: u32) {
+        info!(lease = lease_id, "DRM lease destroyed");
+        self.drm_lease_active.retain(|l| l.id() != lease_id);
+    }
+}
+// Dispatch wiring arrives through the blanket `delegate_dispatch2!`
+// in state.rs — this smithay revision has no per-protocol macro.

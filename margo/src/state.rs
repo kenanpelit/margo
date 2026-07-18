@@ -320,6 +320,17 @@ pub struct MargoState {
     pub color_management_state: crate::protocols::color_management::ColorManagementState,
     pub color_representation_state:
         crate::protocols::color_representation::ColorRepresentationState,
+    /// `wp_drm_lease_device_v1` — registered by the udev backend once
+    /// the primary DRM node is open; stays `None` under winit/headless.
+    pub drm_lease_state: Option<smithay::wayland::drm_lease::DrmLeaseState>,
+    /// Active leases; dropping one revokes it.
+    pub drm_lease_active: Vec<smithay::wayland::drm_lease::DrmLease>,
+    /// Handle into the udev backend's device data. The ONLY sanctioned
+    /// State→backend reach — exists because `DrmLeaseHandler::lease_request`
+    /// must build a `DrmLeaseBuilder` from the live `DrmDevice`
+    /// synchronously (the deferred-queue pattern can't help there).
+    pub(crate) udev_backend:
+        Option<std::rc::Rc<std::cell::RefCell<crate::backend::udev::BackendData>>>,
     /// User-script engine + compiled AST + registered event hooks.
     /// `None` if no `~/.config/margo/init.rhai` is present. Boxed so
     /// the field is small + we can `Option::take()` it during hook
@@ -1175,6 +1186,9 @@ impl MargoState {
             pending_output_mode_changes: Vec::new(),
             color_management_state,
             color_representation_state,
+            drm_lease_state: None,
+            drm_lease_active: Vec::new(),
+            udev_backend: None,
             scripting: None,
             #[cfg(feature = "xdp-gnome-screencast")]
             screencasting: None,

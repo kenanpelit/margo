@@ -48,6 +48,29 @@ pub(super) fn find_crtc(
     None
 }
 
+/// Whether a connector carries the DRM "non-desktop" property (VR
+/// headsets and similar) — margo never drives those as outputs and
+/// offers them for `wp_drm_lease_device_v1` instead.
+pub(super) fn connector_is_non_desktop(drm: &DrmDeviceFd, conn: connector::Handle) -> bool {
+    use smithay::reexports::drm::control::Device as _;
+    let Ok(props) = drm.get_properties(conn) else {
+        return false;
+    };
+    for (prop, value) in props.iter() {
+        let Ok(info) = drm.get_property(*prop) else {
+            continue;
+        };
+        if info.name().to_str() == Ok("non-desktop") {
+            return info
+                .value_type()
+                .convert_value(*value)
+                .as_boolean()
+                .unwrap_or(false);
+        }
+    }
+    false
+}
+
 /// Frame interval derived from the output's current mode. Falls
 /// back to 60 Hz when the mode is unset or reports a zero refresh
 /// rate (some virtual outputs).

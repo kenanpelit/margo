@@ -41,11 +41,27 @@ pub(super) fn rescan_outputs(backend_data: &Rc<RefCell<BackendData>>, state: &mu
     let BackendData {
         renderer: _,
         outputs,
+        non_desktop_connectors,
         drm,
         gbm: _,
         primary_node: _,
         renderer_formats: _,
     } = &mut *bd;
+
+    // Withdraw lease offers for unplugged non-desktop connectors.
+    non_desktop_connectors.retain(|conn| {
+        let connected = drm
+            .get_connector(*conn, false)
+            .map(|c| c.state() == connector::State::Connected)
+            .unwrap_or(false);
+        if !connected {
+            tracing::info!(?conn, "non-desktop connector unplugged; withdrawing lease offer");
+            if let Some(ls) = state.drm_lease_state.as_mut() {
+                ls.withdraw_connector(*conn);
+            }
+        }
+        connected
+    });
 
     let mut to_remove: Vec<crtc::Handle> = Vec::new();
     for (crtc_h, od) in outputs.iter() {
@@ -101,6 +117,27 @@ pub(super) fn rescan_outputs(backend_data: &Rc<RefCell<BackendData>>, state: &mu
             continue;
         };
         if conn_info.state() != connector::State::Connected {
+            continue;
+        }
+        // Freshly plugged non-desktop connector (VR headset): never
+        // drive it as an output — offer it for DRM lease instead.
+        if super::helpers::connector_is_non_desktop(bd.drm.device_fd(), *conn_handle) {
+            if !bd.non_desktop_connectors.contains(conn_handle) {
+                let name = format!(
+                    "{}-{}",
+                    conn_info.interface().as_str(),
+                    conn_info.interface_id()
+                );
+                tracing::info!(connector = %name, "non-desktop connector plugged; offering for DRM lease");
+                bd.non_desktop_connectors.push(*conn_handle);
+                if let Some(ls) = state.drm_lease_state.as_mut() {
+                    ls.add_connector::<MargoState>(
+                        *conn_handle,
+                        name,
+                        "non-desktop connector".to_string(),
+                    );
+                }
+            }
             continue;
         }
         let BackendData {

@@ -22,7 +22,13 @@
 > global until Phase 2 lands" — the mpv/Chromium probe crashes). The
 > delegate-macro count missed this; the *advertised* surface therefore
 > stays **57** (−1 gated colour-management, +1 new colour-representation).
-> When HDR Phase 2 flips the gate, both will be live and the count goes 58.
+> When HDR Phase 2 flips the gate, both will be live and the count rises
+> again. **Same-day addendum: `wp_drm_lease_device_v1` also shipped** —
+> the architecture blocker fell to the prescribed small backend-access
+> change (a `MargoState`-held `Rc` into the udev `BackendData`), so the
+> advertised surface is **58** (−1 gated colour-management,
+> +colour-representation, +drm-lease). Only `tearing_control` remains
+> unadvertised, and that one waits on upstream smithay.
 
 > **mango column re-walk (2026-07-17, mango `0.15.2-10` / `242ffe8`):**
 > mango moved to **wlroots 0.20 + SceneFX** and its column below was stale
@@ -85,7 +91,7 @@ numbers are comparable.
 | Compositor | Protocols (approx.) | Stack | Note |
 |---|---|---|---|
 | **Hyprland** `0.55.0` | **69** | C++ (hand-rolled) | Widest surface — 63 protocol modules + 6 core, plus Hyprland-only extensions (source-counted 2026-06-17) |
-| **margo** `main` | **57** | Rust / smithay | Modern surface; **ahead of niri and mango**; pursuing Hyprland. FIFO and commit-timing rejoined in 1.1.9, now backed by the `state/pacing.rs` barrier-release scheduler |
+| **margo** `main` | **58** | Rust / smithay | Modern surface; **ahead of niri and mango**; pursuing Hyprland. FIFO/commit-timing rejoined in 1.1.9 (`state/pacing.rs` scheduler); colour-representation + drm-lease landed 2026-07-18 |
 | **mango** `0.15.2` | **~55** | C / wlroots | Broad and modernizing: wlroots 0.20 + SceneFX hand it the surface for free — now incl. HDR colour-management (re-counted 2026-07-17) |
 | **niri** `26.04` | **41** | Rust / smithay | Tightest surface; deliberately minimal (source-counted 2026-06-17) |
 
@@ -216,11 +222,12 @@ upstream or architectural wall (re-confirmed by source audit 2026-05-28).
 |---|---|---|---|---|---|
 | `zwlr_output_power_management_v1` | ✅ | ❌ | ✅ | ✅ | **Shipped (1.0.2).** `set_mode` maps onto the recoverable `request_dpms` deferred-queue path (`DrmCompositor::clear()`); input-wake + VT-switch both guarantee recovery |
 | `wp_tearing_control_v1` | ❌ | ❌ | ✅ | ✅ | **Upstream-blocked**: smithay's `DrmCompositor` exposes no tearing / async page-flip (`FrameFlags` has no tearing variant) and the `wp_tearing_control` bindings aren't in the pinned wayland-protocols. Advertising it would be a no-op lie to clients |
-| `wp_drm_lease_device_v1` | ❌ | ✅ | ✅ | ✅ | **Architecture-blocked**: `lease_request` must synchronously build a `DrmLeaseBuilder` from the live `DrmDevice`, which lives in the udev `BackendData` that `MargoState` deliberately cannot reach (the deferred-queue pattern can't help — the return is synchronous) |
+| `wp_drm_lease_device_v1` | ✅ | ✅ | ✅ | ✅ | **Shipped (2026-07-18).** The blocker was resolved exactly as prescribed below: `MargoState` now holds an `Rc` handle into the udev `BackendData`, so `lease_request` reaches the live `DrmDevice` synchronously. Non-desktop connectors (VR headsets) are withheld from the output list and offered for lease; lease grants connector + free CRTC + primary plane; suspend/resume follows VT switches |
 
-margo now ships `output_power` (niri still lacks it); both margo and niri
-lack `tearing`; only `drm_lease` is something niri has that margo doesn't.
-None blocks daily-driver use.
+margo now ships `output_power` (niri still lacks it) and, since
+2026-07-18, `drm_lease` — niri no longer has any protocol margo lacks.
+The only gap left anywhere is `tearing` (upstream-blocked; Hyprland and
+mango have it). None of this blocks daily-driver use.
 
 ## Compositor-specific protocols (informational, not gaps)
 
