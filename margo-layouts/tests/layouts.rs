@@ -263,9 +263,9 @@ fn layout_symbols_round_trip() {
 }
 
 #[test]
-fn all_tileable_has_14_entries_and_excludes_overview() {
+fn all_tileable_has_10_entries_and_excludes_overview() {
     let tileable = LayoutId::all_tileable();
-    assert_eq!(tileable.len(), 14);
+    assert_eq!(tileable.len(), 10);
     assert!(!tileable.contains(&LayoutId::Overview));
 }
 

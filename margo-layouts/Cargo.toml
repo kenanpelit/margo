@@ -3,7 +3,7 @@ name = "margo-layouts"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Pure layout-arithmetic crate for margo's 14 tiling algorithms — usable by both the compositor binary and downstream tools (mvisual)."
+description = "Pure layout-arithmetic crate for margo's 11 tiling algorithms — usable by both the compositor binary and downstream tools (mvisual)."
 repository.workspace = true
 
 [dependencies]
@@ -12,6 +12,10 @@ repository.workspace = true
 # check` cold build doesn't drag in the criterion/plotters chain. Run benches
 # with `cargo bench -p margo-layouts --features bench`.
 criterion = { version = "0.5", optional = true }
+
+[dev-dependencies]
+# Property-based fuzzing of the arrange algebra (tests/proptest_arrange.rs).
+proptest = "1"
 
 [features]
 bench = ["dep:criterion"]

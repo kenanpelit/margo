@@ -93,7 +93,11 @@ pub fn right_tile(ctx: &ArrangeCtx) -> ArrangeResult {
         let rect = if i < master_count {
             let h = (total_h - (master_count - 1) as i32 * iv) / master_count as i32;
             let y = wa.y + ov + i as i32 * (h + iv);
-            Rect::new(wa.x + oh + stack_w + ih, y, master_w, h)
+            // No stack column → no inner gap to clear (caught by the
+            // proptest containment invariant: a lone master drifted
+            // `gappih` px past the work-area edge).
+            let x = wa.x + oh + stack_w + if stack_count > 0 { ih } else { 0 };
+            Rect::new(x, y, master_w, h)
         } else {
             let si = i - master_count;
             let h = (total_h - (stack_count - 1) as i32 * iv) / stack_count as i32;
