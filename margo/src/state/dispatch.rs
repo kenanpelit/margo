@@ -763,15 +763,15 @@ impl MargoState {
         ]);
     }
 
-    /// Fire an OSD-style notification telling the user the active
-    /// layout just changed. Called from `switch_layout` (cycle) and
-    /// from the `setlayout` dispatch handler (explicit pick) — not
-    /// from `set_layout` itself, because that's also called
-    /// internally for window-rule application and we don't want to
-    /// notify on every rule-driven re-arrangement.
+    /// Fire an OSD toast telling the user the active layout just
+    /// changed. Called from `switch_layout` (cycle) and from the
+    /// `setlayout` dispatch handler (explicit pick) — not from
+    /// `set_layout` itself, because that's also called internally
+    /// for window-rule application and we don't want to toast on
+    /// every rule-driven re-arrangement.
     pub fn notify_layout(&self, name: &str) {
         // W3.5: enrich the toast with position-in-cycle context so
-        // users navigating the 14-layout catalogue see where they
+        // users navigating the layout catalogue see where they
         // are. Format: `<name> (<pos>/<total>) → <next>`. Falls
         // back to bare name when not in `circle_layout`.
         let cycle: Vec<String> = if self.config.circle_layouts.is_empty() {
@@ -786,17 +786,7 @@ impl MargoState {
         } else {
             name.to_string()
         };
-        let _ = crate::utils::spawn([
-            "notify-send",
-            "-a",
-            "margo",
-            "-i",
-            "view-grid-symbolic",
-            "-t",
-            "1200",
-            "Margo Layout",
-            &body,
-        ]);
+        layout_toast(&body);
     }
 
     /// Toast for layout-adjacent actions (proportion preset,
@@ -804,18 +794,7 @@ impl MargoState {
     /// user can rely on the in-corner toast giving consistent
     /// state feedback for layout-cycle keybinds.
     pub fn notify_layout_state(&self, action: &str, value: &str) {
-        let body = format!("{action}: {value}");
-        let _ = crate::utils::spawn([
-            "notify-send",
-            "-a",
-            "margo",
-            "-i",
-            "view-grid-symbolic",
-            "-t",
-            "1000",
-            "Margo Layout",
-            &body,
-        ]);
+        layout_toast(&format!("{action}: {value}"));
     }
 
     pub fn toggle_floating(&mut self) {
@@ -1506,6 +1485,22 @@ pub struct EdgeOutcome {
 /// speed-gated debounce. `armed` in → `armed` out; fires `focus` once per
 /// edge dwell (only while armed and moving slower than `allow`).
 #[allow(clippy::too_many_arguments)]
+/// Deliver layout feedback as an mshell OSD toast — ephemeral, no
+/// notification-history pollution. Falls back to `notify-send` when
+/// mshell isn't up (standalone margo + external bar setups). The
+/// `$1`-style positional args keep arbitrary bodies quoting-safe.
+fn layout_toast(body: &str) {
+    let _ = crate::utils::spawn([
+        "sh",
+        "-c",
+        "mshellctl toast \"$1\" \"$2\" --icon view-grid-symbolic 2>/dev/null \
+         || notify-send -a margo -i view-grid-symbolic -t 1200 \"$1\" \"$2\"",
+        "sh",
+        "Margo Layout",
+        body,
+    ]);
+}
+
 pub fn edge_scroller_decision(
     layout: LayoutId,
     px: f64,
