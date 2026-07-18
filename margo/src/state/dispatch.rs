@@ -738,8 +738,6 @@ impl MargoState {
         self.request_repaint();
         crate::scripting::fire_focus_change(self);
 
-        // OSD-style notification — short timeout so it doesn't
-        // pile up if the user toggles a few windows in a row.
         let title = if was_sticky {
             "Sticky off"
         } else {
@@ -750,17 +748,7 @@ impl MargoState {
         } else {
             appid
         };
-        let _ = crate::utils::spawn([
-            "notify-send",
-            "-a",
-            "margo",
-            "-i",
-            "view-pin-symbolic",
-            "-t",
-            "1200",
-            title,
-            &body,
-        ]);
+        osd_toast(title, "view-pin-symbolic", &body);
     }
 
     /// Fire an OSD toast telling the user the active layout just
@@ -1485,20 +1473,25 @@ pub struct EdgeOutcome {
 /// speed-gated debounce. `armed` in → `armed` out; fires `focus` once per
 /// edge dwell (only while armed and moving slower than `allow`).
 #[allow(clippy::too_many_arguments)]
-/// Deliver layout feedback as an mshell OSD toast — ephemeral, no
+/// Deliver dispatch feedback as an mshell OSD toast — ephemeral, no
 /// notification-history pollution. Falls back to `notify-send` when
 /// mshell isn't up (standalone margo + external bar setups). The
 /// `$1`-style positional args keep arbitrary bodies quoting-safe.
-fn layout_toast(body: &str) {
+fn osd_toast(title: &str, icon: &str, body: &str) {
     let _ = crate::utils::spawn([
         "sh",
         "-c",
-        "mshellctl toast \"$1\" \"$2\" --icon view-grid-symbolic 2>/dev/null \
-         || notify-send -a margo -i view-grid-symbolic -t 1200 \"$1\" \"$2\"",
+        "mshellctl toast \"$1\" \"$2\" --icon \"$3\" 2>/dev/null \
+         || notify-send -a margo -i \"$3\" -t 1200 \"$1\" \"$2\"",
         "sh",
-        "Margo Layout",
+        title,
         body,
+        icon,
     ]);
+}
+
+fn layout_toast(body: &str) {
+    osd_toast("Margo Layout", "view-grid-symbolic", body);
 }
 
 pub fn edge_scroller_decision(
