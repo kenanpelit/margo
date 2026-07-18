@@ -156,10 +156,9 @@ impl GlobalShortcutsBackend {
         if !initial.is_empty() {
             margo_dispatch(bind_line(&key, &initial)).await;
         }
-        self.sessions
-            .lock()
-            .unwrap()
-            .insert(key.clone(), SessionState { shortcuts: initial });
+        if let Ok(mut sessions) = self.sessions.lock() {
+            sessions.insert(key.clone(), SessionState { shortcuts: initial });
+        }
 
         let session_obj = ShortcutsSession {
             handle: key.clone(),
@@ -167,7 +166,9 @@ impl GlobalShortcutsBackend {
         };
         if let Err(e) = server.at(session_handle.as_ref(), session_obj).await {
             warn!(error = %e, "create_session: failed to export Session object");
-            self.sessions.lock().unwrap().remove(&key);
+            if let Ok(mut sessions) = self.sessions.lock() {
+                sessions.remove(&key);
+            }
             return (RESPONSE_ERROR, HashMap::new());
         }
         info!(session = %key, app = %app_id, "global-shortcuts session created");
@@ -191,9 +192,12 @@ impl GlobalShortcutsBackend {
         if let Some(v) = shortcuts_value(&parsed) {
             results.insert("shortcuts".to_string(), v);
         }
-        match self.sessions.lock().unwrap().get_mut(&key) {
-            Some(sess) => sess.shortcuts = parsed,
-            None => return (RESPONSE_ERROR, HashMap::new()),
+        match self.sessions.lock() {
+            Ok(mut sessions) => match sessions.get_mut(&key) {
+                Some(sess) => sess.shortcuts = parsed,
+                None => return (RESPONSE_ERROR, HashMap::new()),
+            },
+            Err(_) => return (RESPONSE_ERROR, HashMap::new()),
         }
         (RESPONSE_SUCCESS, results)
     }
@@ -205,13 +209,11 @@ impl GlobalShortcutsBackend {
     ) -> (u32, HashMap<String, OwnedValue>) {
         let key = session_handle.to_string();
         let mut results = HashMap::new();
-        if let Some(v) = self
-            .sessions
-            .lock()
-            .unwrap()
-            .get(&key)
-            .and_then(|sess| shortcuts_value(&sess.shortcuts))
-        {
+        if let Some(v) = self.sessions.lock().ok().and_then(|sessions| {
+            sessions
+                .get(&key)
+                .and_then(|s| shortcuts_value(&s.shortcuts))
+        }) {
             results.insert("shortcuts".to_string(), v);
         }
         (RESPONSE_SUCCESS, results)
@@ -246,7 +248,9 @@ struct ShortcutsSession {
 #[interface(name = "org.freedesktop.impl.portal.Session")]
 impl ShortcutsSession {
     async fn close(&self) {
-        self.sessions.lock().unwrap().remove(&self.handle);
+        if let Ok(mut sessions) = self.sessions.lock() {
+            sessions.remove(&self.handle);
+        }
         margo_dispatch(format!(
             "dispatch global_shortcuts_unbind {}\n",
             enc(&self.handle)

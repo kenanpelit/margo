@@ -198,15 +198,13 @@ impl crate::state::MargoState {
     /// Called on every key release; fires `deactivated` when the held
     /// shortcut's keycode is let go. Returns true when swallowed.
     pub fn global_shortcut_release(&mut self, keycode: u32) -> bool {
-        let matches = self
-            .global_shortcuts
-            .active
-            .as_ref()
-            .is_some_and(|(_, _, kc)| *kc == keycode);
-        if !matches {
+        let Some((session, id, kc)) = self.global_shortcuts.active.take() else {
+            return false;
+        };
+        if kc != keycode {
+            self.global_shortcuts.active = Some((session, id, kc));
             return false;
         }
-        let (session, id, _) = self.global_shortcuts.active.take().expect("checked above");
         self.push_global_shortcut_event(&session, &id, false);
         true
     }
