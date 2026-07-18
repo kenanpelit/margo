@@ -10,6 +10,20 @@
 > and commit-timing deadlines get an exact one-shot wake. The advertised
 > surface is back at **57**.
 
+> **margo refresh (2026-07-18):** two corrections from a fresh source
+> audit. (1) **`wp_color_representation_v1` is now advertised** — a real
+> hand-rolled implementation (`margo/src/protocols/color_representation.rs`)
+> that only claims what the render path does: `premultiplied_electrical`
+> alpha + `identity`/`full` coefficients; YCbCr matrices are deliberately
+> not advertised while YUV conversion happens driver-side in EGL. Only
+> margo and mango ship this protocol. (2) **`wp_color_management_v1`
+> corrected ✅→⚠️**: the delegate + full Phase-1 plumbing are compiled, but
+> the *global* has been withheld since `28ad09bf` ("do not register the
+> global until Phase 2 lands" — the mpv/Chromium probe crashes). The
+> delegate-macro count missed this; the *advertised* surface therefore
+> stays **57** (−1 gated colour-management, +1 new colour-representation).
+> When HDR Phase 2 flips the gate, both will be live and the count goes 58.
+
 > **mango column re-walk (2026-07-17, mango `0.15.2-10` / `242ffe8`):**
 > mango moved to **wlroots 0.20 + SceneFX** and its column below was stale
 > (carried from 0.13/0.14). Re-counted from source (hand-curated
@@ -17,7 +31,7 @@
 > `wp_color_management_v1` ❌→✅ (created whenever the FX renderer reports
 > colour-transform support — the per-monitor `hdr` knob gates HDR *output*,
 > not the global; mango also ships `wp_color_representation_v1`, which
-> margo does not advertise) and `xwayland_shell_v1` ❌→✅ (wlroots creates
+> margo answered with its own on 2026-07-18) and `xwayland_shell_v1` ❌→✅ (wlroots creates
 > it in XWayland builds). Newly counted since the old walk:
 > `ext_data_control_v1`, `ext_foreign_toplevel_list_v1` + per-window/output
 > image-capture-source managers (window-capture path), `wl_fixes`. The rest
@@ -102,8 +116,9 @@ wlroots-freebies mango got for free — `zwlr_foreign_toplevel_manager_v1`
 xdg-dialog, system-bell, toplevel-icon, toplevel-tag,
 xwayland-keyboard-grab) that mango's wlroots base doesn't expose. HDR
 colour-management left that list in mango 0.15: wlroots 0.20 ships it and
-mango wires it up (plus `wp_color_representation_v1`, which margo does
-not advertise). `output_power` now ships (external
+mango wires it up, while margo's own manager global stays Phase-2-gated
+(see the 2026-07-18 note). mango's `wp_color_representation_v1` lead
+lasted a day — margo advertises its own since 2026-07-18. `output_power` now ships (external
 DPMS control), and `fifo`/`commit-timing` are driven by a real
 presentation scheduler since 1.1.9. The two margo still doesn't advertise
 (`tearing_control`, `drm_lease`) are blocked, not just deferred — see
@@ -145,7 +160,8 @@ niri and mango each miss large chunks.
 
 | Protocol | margo | niri | Hyprland | mango | Use case |
 |---|---|---|---|---|---|
-| `wp_color_management_v1` (HDR) | ✅ | ❌ | ✅ | ✅ | HDR / wide-gamut output (mango since 0.15 via wlroots 0.20; renderer-gated, per-monitor `hdr` knob) |
+| `wp_color_management_v1` (HDR) | ⚠️ gated | ❌ | ✅ | ✅ | HDR / wide-gamut output (margo: full Phase-1 plumbing compiled but the global is withheld until HDR Phase 2 — see 2026-07-18 note; mango since 0.15 via wlroots 0.20; renderer-gated, per-monitor `hdr` knob) |
+| `wp_color_representation_v1` | ✅ | ❌ | ❌ | ✅ | Alpha-mode / YCbCr-matrix buffer metadata (margo since 2026-07-18: honestly advertises exactly what the render path does — premultiplied alpha, identity/full) |
 | `linux_drm_syncobj_v1` (explicit sync) | ✅ | ❌ | ✅ | ✅ | Tear-free GPU sync, NVIDIA |
 | `ext_image_copy_capture_v1` + capture-source | ✅ | ❌ | ✅ | ✅ | Modern screencast (replaces screencopy) |
 | `xwayland_shell_v1` | ✅ | ⚠️ diff path | ✅ | ✅ | HiDPI XWayland scaling (mango: created by wlroots in XWayland builds) |

@@ -318,6 +318,8 @@ pub struct MargoState {
     /// are stored on the surface tracker, not yet read by render.
     /// Phase 2 (linear-light fp16 composite) consumes these.
     pub color_management_state: crate::protocols::color_management::ColorManagementState,
+    pub color_representation_state:
+        crate::protocols::color_representation::ColorRepresentationState,
     /// User-script engine + compiled AST + registered event hooks.
     /// `None` if no `~/.config/margo/init.rhai` is present. Boxed so
     /// the field is small + we can `Option::take()` it during hook
@@ -991,6 +993,15 @@ impl MargoState {
             Self,
             _,
         >(&dh, |_client| true);
+        // wp_color_representation_v1 (staging) — advertised for real
+        // (unlike the gated colour-management manager above): the
+        // supported set (premultiplied alpha, identity/full RGB) is
+        // exactly what the render path already does.
+        let color_representation_state =
+            crate::protocols::color_representation::ColorRepresentationState::new::<Self, _>(
+                &dh,
+                |_client| true,
+            );
         // ext-image-capture-source-v1 + ext-image-copy-capture-v1
         // — the modern Wayland screencast stack. Without these
         // globals, xdp-wlr 0.8+ can't expose per-window share
@@ -1163,6 +1174,7 @@ impl MargoState {
             output_management_state,
             pending_output_mode_changes: Vec::new(),
             color_management_state,
+            color_representation_state,
             scripting: None,
             #[cfg(feature = "xdp-gnome-screencast")]
             screencasting: None,

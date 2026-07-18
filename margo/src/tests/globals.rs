@@ -50,6 +50,7 @@ const REQUIRED_GLOBALS: &[&str] = &[
     "wl_data_device_manager",
     "xdg_wm_base",
     "wp_viewporter",
+    "wp_color_representation_manager_v1",
     "zxdg_decoration_manager_v1",
     "zwlr_layer_shell_v1",
     "zwp_primary_selection_device_manager_v1",

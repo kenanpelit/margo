@@ -14,6 +14,7 @@
 
 mod alpha_modifier;
 mod color_management;
+mod color_representation;
 mod compositor;
 mod content_type;
 mod dmabuf;
