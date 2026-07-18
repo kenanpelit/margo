@@ -1,0 +1,64 @@
+# Margo proptest soak — weekly deep fuzz of the pure algebra crates.
+#
+# The regular ci.yml runs the proptest suites at their default case
+# count (256) as a smoke gate. This job re-runs the same suites at
+# 200k cases (niri runs its layout-op fuzzer at the same depth in CI)
+# so the long tail — the right_tile lone-master class of bug that only
+# a deep run finds — surfaces on a schedule instead of on a user's
+# monitor. Failures persist their seed into the committed
+# *.proptest-regressions files, so a red run is reproducible locally
+# with a plain `cargo test`.
+#
+# Only the two pure crates are soaked: margo-layouts (arrange algebra)
+# and margo-config (parser + validator). Neither needs the GTK stack,
+# so this runs on the plain Arch container with a minimal dep set.
+
+name: soak
+
+on:
+  schedule:
+    # Mondays 03:17 UTC — off the busy top-of-hour cron window.
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: "Proptest cases per property"
+        required: false
+        default: "200000"
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  soak:
+    name: proptest soak (200k cases)
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    # 200k cases across ~10 properties is CPU-minutes, not hours — but
+    # give the shrinker room: a found failure at this depth can spend a
+    # long time minimizing.
+    timeout-minutes: 120
+
+    steps:
+      - name: System dependencies (pacman)
+        run: |
+          pacman -Syu --noconfirm --needed \
+            git rustup clang pkgconf pcre2
+          rustup default stable
+
+      - uses: actions/checkout@v5
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Soak margo-layouts (arrange algebra)
+        env:
+          PROPTEST_CASES: ${{ github.event.inputs.cases || '200000' }}
+        run: cargo test --locked -p margo-layouts --test proptest_arrange -- --nocapture
+
+      - name: Soak margo-config (parser + validator)
+        env:
+          PROPTEST_CASES: ${{ github.event.inputs.cases || '200000' }}
+        run: cargo test --locked -p margo-config --test proptest_parser -- --nocapture
