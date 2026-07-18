@@ -26,6 +26,7 @@ mod cursor;
 mod dbus;
 mod dispatch;
 mod frame_clock;
+mod global_shortcuts;
 mod input;
 mod input_handler;
 mod ipc;

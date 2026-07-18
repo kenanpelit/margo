@@ -328,6 +328,9 @@ pub struct MargoState {
     /// Snapshot loaded from the crash autosave at startup — applied by
     /// the autosave timer once outputs are mapped, then cleared.
     pub pending_crash_restore: Option<crate::session::SessionSnapshot>,
+    /// xdg-desktop-portal GlobalShortcuts registry (see
+    /// `global_shortcuts.rs`); fed by margo-portal over the socket.
+    pub global_shortcuts: crate::global_shortcuts::GlobalShortcutsRegistry,
     /// Handle into the udev backend's device data. The ONLY sanctioned
     /// State→backend reach — exists because `DrmLeaseHandler::lease_request`
     /// must build a `DrmLeaseBuilder` from the live `DrmDevice`
@@ -1192,6 +1195,7 @@ impl MargoState {
             drm_lease_state: None,
             drm_lease_active: Vec::new(),
             pending_crash_restore: None,
+            global_shortcuts: Default::default(),
             udev_backend: None,
             scripting: None,
             #[cfg(feature = "xdp-gnome-screencast")]

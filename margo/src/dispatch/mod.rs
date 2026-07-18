@@ -88,6 +88,18 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 _ => state.start_interactive_move(),
             }
         }
+        // xdg-desktop-portal GlobalShortcuts registration — sent by
+        // margo-portal over the control socket (see global_shortcuts.rs).
+        "global_shortcuts_bind" => {
+            if let Some(v) = arg.v.as_deref() {
+                state.global_shortcuts_bind(v);
+            }
+        }
+        "global_shortcuts_unbind" => {
+            if let Some(v) = arg.v.as_deref() {
+                state.global_shortcuts_unbind(v);
+            }
+        }
         "session_save" | "save_session" => {
             let path = match crate::session::session_path() {
                 Ok(p) => p,

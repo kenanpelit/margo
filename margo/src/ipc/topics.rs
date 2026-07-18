@@ -25,6 +25,12 @@ impl MargoState {
         // `perf` is not a projection of the snapshot: the per-output frame
         // counters live in `perf_counters`, mirrored from the udev backend,
         // and are deliberately kept out of the hot `state` document.
+        // Event-stream topic: the initial frame lists the currently
+        // bound portal shortcut sessions; live frames arrive from
+        // `push_global_shortcut_event`, not the state-dirty fan-out.
+        if topic == "shortcuts" {
+            return self.global_shortcuts.summary();
+        }
         if topic == "perf" {
             return build_perf_payload(&self.perf_counters, std::time::Instant::now());
         }

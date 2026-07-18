@@ -11,12 +11,14 @@
 //! session. Selected as the ScreenCast backend via
 //! `margo-portals.conf` (`org.freedesktop.impl.portal.ScreenCast=margo`).
 
+mod global_shortcuts;
 mod mutter;
 mod picker;
 mod screencast;
 mod screenshot;
 
 use anyhow::Result;
+use global_shortcuts::GlobalShortcutsBackend;
 use screencast::ScreenCastBackend;
 use screenshot::ScreenshotBackend;
 use tracing::info;
@@ -43,7 +45,17 @@ async fn main() -> Result<()> {
     conn.object_server()
         .at(OBJECT_PATH, ScreenshotBackend::new(conn.clone()))
         .await?;
+    conn.object_server()
+        .at(OBJECT_PATH, GlobalShortcutsBackend::new())
+        .await?;
     conn.request_name(BUS_NAME).await?;
+
+    // Persistent margo-socket listener re-emitting shortcut
+    // activations as portal Activated/Deactivated signals.
+    tokio::spawn(global_shortcuts::run_event_listener(
+        conn.clone(),
+        OBJECT_PATH,
+    ));
 
     info!("margo-portal: serving {BUS_NAME} at {OBJECT_PATH}");
     std::future::pending::<()>().await;

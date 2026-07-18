@@ -74,6 +74,12 @@ impl MargoState {
         let snap = self.build_state_snapshot();
         let mut state_line: Option<String> = None;
         for (token, topic, args) in subs {
+            // `shortcuts` is an event stream — frames come from
+            // `push_global_shortcut_event` on activation, never from
+            // the state-dirty fan-out.
+            if topic == "shortcuts" {
+                continue;
+            }
             if topic == "state" {
                 let line: &str = state_line.get_or_insert_with(|| {
                     let mut s = snap.to_string();

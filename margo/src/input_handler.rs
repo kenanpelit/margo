@@ -551,6 +551,13 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                         }
                     }
 
+                    // xdg-desktop-portal GlobalShortcuts: consulted only
+                    // after config binds and modal keys pass, so an app
+                    // can never shadow a user bind or a modal Esc.
+                    if state.global_shortcut_press(mods, keysym.raw(), keycode.raw()) {
+                        return FilterResult::Intercept(());
+                    }
+
                     // Reached here = a pressed key that no keybind or modal
                     // claimed, so it's forwarded to the focused client —
                     // i.e. the user is typing on the focused monitor. Make
@@ -562,6 +569,14 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                     if !is_modifier_keysym(keysym.raw()) {
                         state.active_output_source = crate::state::ActiveOutputSource::Focus;
                     }
+                }
+
+                // GlobalShortcuts release: the press was swallowed, so the
+                // matching release must be too (a client seeing half a key
+                // thinks it's stuck). Fires the portal's Deactivated.
+                if key_state == KeyState::Released && state.global_shortcut_release(keycode.raw())
+                {
+                    return FilterResult::Intercept(());
                 }
 
                 // Modifier-release auto-commit for alt+Tab cycle. We can't
