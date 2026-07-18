@@ -315,6 +315,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
 
         // focus / layout
         "new_is_master" => cfg.new_is_master = parse_bool(val),
+        "color_management" => cfg.color_management = parse_bool(val),
         "default_layout" => cfg.default_layout = val.to_string(),
         // `taglayout = <tag>, <layout>` — repeatable per-tag default layout.
         "taglayout" => {
@@ -1567,6 +1568,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "center_when_single_stack",
     "circle_layout",
     "click_method",
+    "color_management",
     "cursor_hide_timeout",
     "cursor_size",
     "cursor_theme",

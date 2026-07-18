@@ -655,6 +655,10 @@ pub struct Config {
 
     // layout / focus
     pub new_is_master: bool,
+    /// Advertise `wp_color_management_v1` (HDR). Opt-in while the
+    /// Phase-2 composite path stabilises against real client probes
+    /// (mpv / Chromium) — see `margo/src/protocols/color_management.rs`.
+    pub color_management: bool,
     pub default_layout: String,
     /// Per-tag default tiling layout: `(tag_number_1_based, layout_name)`.
     /// Seeds a tag's layout when the compositor sets up an output. Repeatable
@@ -1104,6 +1108,7 @@ impl Default for Config {
             circle_layouts: vec![],
 
             new_is_master: true,
+            color_management: false,
             default_layout: "tile".into(),
             taglayouts: Vec::new(),
             taglayout_force: false,

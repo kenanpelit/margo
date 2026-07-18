@@ -30,10 +30,9 @@ use super::fixture::Fixture;
 /// **Deliberately NOT in this list:**
 /// * `xwayland_shell_v1` — only stood up when XWayland actually
 ///   spawns; headless tests don't.
-/// * `wp_color_manager_v1` — HDR Phase 1 protocol module is
-///   compiled but the global is gated until Phase 2 (see
-///   `protocols/color_management.rs` line 141 comment). When the
-///   gate flips, add it here.
+/// * `wp_color_manager_v1` — opt-in behind the `color_management = 1`
+///   config knob (default off; headless tests run the default
+///   config). When the default flips on, add it here.
 /// * `ext_image_capture_source_manager_v1` — there's no top-level
 ///   manager global; only the per-source-type sub-managers
 ///   (output / foreign_toplevel) and the copy-capture manager are

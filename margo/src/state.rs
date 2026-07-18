@@ -994,16 +994,16 @@ impl MargoState {
                 &dh,
                 |_client| true,
             );
-        // wp_color_management_v1 (staging) — Phase 1 scaffolding.
-        // Standing the global up early lets HDR-aware clients
-        // (Chromium, mpv) detect "this compositor speaks colour
-        // management" and enable their decode paths even though
-        // composite is still SDR. See `protocols/color_management.rs`
-        // and `docs/hdr-design.md` for the four-phase rollout.
+        // wp_color_management_v1 (staging) — opt-in via the
+        // `color_management = 1` knob. Standing the global up lets
+        // HDR-aware clients (Chromium, mpv) detect "this compositor
+        // speaks colour management" and enable their decode paths.
+        // Default off until the probe path is hardware-verified; see
+        // `protocols/color_management.rs` and `docs/hdr-design.md`.
         let color_management_state = crate::protocols::color_management::ColorManagementState::new::<
             Self,
             _,
-        >(&dh, |_client| true);
+        >(&dh, config.color_management, |_client| true);
         // wp_color_representation_v1 (staging) — advertised for real
         // (unlike the gated colour-management manager above): the
         // supported set (premultiplied alpha, identity/full RGB) is

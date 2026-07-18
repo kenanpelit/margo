@@ -166,7 +166,7 @@ niri and mango each miss large chunks.
 
 | Protocol | margo | niri | Hyprland | mango | Use case |
 |---|---|---|---|---|---|
-| `wp_color_management_v1` (HDR) | ⚠️ gated | ❌ | ✅ | ✅ | HDR / wide-gamut output (margo: full Phase-1 plumbing compiled but the global is withheld until HDR Phase 2 — see 2026-07-18 note; mango since 0.15 via wlroots 0.20; renderer-gated, per-monitor `hdr` knob) |
+| `wp_color_management_v1` (HDR) | ⚠️ opt-in | ❌ | ✅ | ✅ | HDR / wide-gamut output (margo: full plumbing incl. the complete info-event chain; advertise with `color_management = 1` — default off until the mpv/Chromium probe path is hardware-verified; mango since 0.15 via wlroots 0.20, renderer-gated `hdr` knob) |
 | `wp_color_representation_v1` | ✅ | ❌ | ❌ | ✅ | Alpha-mode / YCbCr-matrix buffer metadata (margo since 2026-07-18: honestly advertises exactly what the render path does — premultiplied alpha, identity/full) |
 | `linux_drm_syncobj_v1` (explicit sync) | ✅ | ❌ | ✅ | ✅ | Tear-free GPU sync, NVIDIA |
 | `ext_image_copy_capture_v1` + capture-source | ✅ | ❌ | ✅ | ✅ | Modern screencast (replaces screencopy) |

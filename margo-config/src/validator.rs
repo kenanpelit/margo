@@ -499,6 +499,7 @@ const BOOL_KEYS: &[&str] = &[
     "capslock",
     "center_master_overspread",
     "center_when_single_stack",
+    "color_management",
     "disable_trackpad",
     "disable_while_typing",
     "drag_lock",
