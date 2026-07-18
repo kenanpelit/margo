@@ -17,7 +17,10 @@ use std::collections::HashMap;
 
 use smithay::{
     backend::{
-        drm::{DrmDevice, compositor::FrameFlags},
+        drm::{
+            DrmDevice,
+            compositor::{FrameFlags, PrimaryPlaneElement},
+        },
         renderer::gles::GlesRenderer,
     },
     output::Output,
@@ -506,14 +509,30 @@ fn render_output(
         .render_frame(renderer, &elements, clear_color, frame_flags)
     {
         Ok(result) => {
-            // Time-based `perf` metrics: fold this frame's render latency + its
-            // empty flag into the per-output rolling window. Reading
-            // `result.is_empty` into a local is `result`'s last use, so its
-            // borrow ends before we touch `state`.
+            // Time-based `perf` metrics: fold this frame's render latency,
+            // empty flag, composited damage area, and direct-scanout state
+            // into the per-output rolling window. All reads on `result` here
+            // are immutable and disjoint from the `state` borrow below.
             let render_us = render_start.elapsed().as_micros().min(u32::MAX as u128) as u32;
             let is_empty = result.is_empty;
+            // `DamageSnapshot::add` push_fronts per commit, so the first
+            // `raw()` group is this frame's damage. Rects may overlap —
+            // the sum is an upper bound, fine for a health signal.
+            let (damage_px, scanout) = match &result.primary_element {
+                PrimaryPlaneElement::Swapchain(el) => {
+                    let px: u64 = el
+                        .damage
+                        .raw()
+                        .next()
+                        .map(|rects| rects.map(|r| r.size.w as u64 * r.size.h as u64).sum())
+                        .unwrap_or(0);
+                    (px.min(u32::MAX as u64) as u32, false)
+                }
+                PrimaryPlaneElement::Element(_) => (0, true),
+            };
+            let damage_px = if is_empty { 0 } else { damage_px };
             od.render_count += 1;
-            state.record_frame_sample(&od.output_name, is_empty, render_us);
+            state.record_frame_sample(&od.output_name, is_empty, render_us, damage_px, scanout);
             if is_empty {
                 od.render_failure_streak = 0;
                 state.clear_output_render_retry(&od.output);

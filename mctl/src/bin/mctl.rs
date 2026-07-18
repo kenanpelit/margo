@@ -592,8 +592,12 @@ enum Command {
                       compositor (the `perf` IPC topic — kept out of the hot \
                       state stream). The table shows the last-60s rolling window: \
                       windowed frame rate (1s + 60s), the recent empty (no-damage) \
-                      ratio, and the render-latency tail (p50/p95/p99 ms) — the \
-                      last is where jank hides that a mean would average away. \
+                      ratio, the render-latency tail (p50/p95/p99 ms) — where \
+                      jank hides that a mean would average away — the direct-\
+                      scanout share of presented frames (SCAN%: fullscreen \
+                      video on the primary plane, zero composite cost), and \
+                      the composited damage area (DMG p50/p95, megapixels per \
+                      frame; large values mean full-screen redraws). \
                       A high empty ratio is healthy (the compositor skipping \
                       redundant work); rising queue errors point at a flaky \
                       modeset/plane. `--json` also carries the lifetime totals \
@@ -2703,11 +2707,19 @@ fn perf_print_once(json_out: bool) -> Result<()> {
     let reset = if tty { "\x1b[0m" } else { "" };
 
     // Live health first (windowed FPS + recent empty ratio + render-latency
-    // tail), then lifetime queue-error total. Cumulative renders/queued/empties
-    // stay available via `--json`.
+    // tail + direct-scanout share + composited damage area), then lifetime
+    // queue-error total. Cumulative renders/queued/empties stay available
+    // via `--json`.
     println!(
-        "{bold}{:<10}  {:>7}  {:>7}  {:>7}  {:>22}  {:>6}{reset}",
-        "OUTPUT", "FPS 1s", "FPS 60s", "EMPTY%", "RENDER p50/p95/p99 ms", "Q-ERR",
+        "{bold}{:<10}  {:>7}  {:>7}  {:>7}  {:>22}  {:>6}  {:>17}  {:>6}{reset}",
+        "OUTPUT",
+        "FPS 1s",
+        "FPS 60s",
+        "EMPTY%",
+        "RENDER p50/p95/p99 ms",
+        "SCAN%",
+        "DMG p50/p95 Mpx",
+        "Q-ERR",
     );
     for o in outputs {
         let name = o["name"].as_str().unwrap_or("");
@@ -2718,8 +2730,8 @@ fn perf_print_once(json_out: bool) -> Result<()> {
         if n == 0 {
             // Output present but no frames in the window yet — don't invent 0.0s.
             println!(
-                "{bold}{name:<10}{reset}  {dim}{:>7}  {:>7}  {:>7}  {:>22}{reset}  {err_col}{q_err:>6}{reset}",
-                "—", "—", "—", "—",
+                "{bold}{name:<10}{reset}  {dim}{:>7}  {:>7}  {:>7}  {:>22}  {:>6}  {:>17}{reset}  {err_col}{q_err:>6}{reset}",
+                "—", "—", "—", "—", "—", "—",
             );
             continue;
         }
@@ -2730,8 +2742,12 @@ fn perf_print_once(json_out: bool) -> Result<()> {
         let p95 = o["render_us_p95"].as_u64().unwrap_or(0) as f64 / 1000.0;
         let p99 = o["render_us_p99"].as_u64().unwrap_or(0) as f64 / 1000.0;
         let lat = format!("{p50:.2} / {p95:.2} / {p99:.2}");
+        let scan_pct = o["scanout_ratio_10s"].as_f64().unwrap_or(0.0) * 100.0;
+        let dmg50 = o["damage_px_p50"].as_u64().unwrap_or(0) as f64 / 1_000_000.0;
+        let dmg95 = o["damage_px_p95"].as_u64().unwrap_or(0) as f64 / 1_000_000.0;
+        let dmg = format!("{dmg50:.2} / {dmg95:.2}");
         println!(
-            "{bold}{name:<10}{reset}  {cyan}{fps1:>7.1}{reset}  {fps60:>7.1}  {cyan}{empty_pct:>6.1}%{reset}  {lat:>22}  {err_col}{q_err:>6}{reset}",
+            "{bold}{name:<10}{reset}  {cyan}{fps1:>7.1}{reset}  {fps60:>7.1}  {cyan}{empty_pct:>6.1}%{reset}  {lat:>22}  {cyan}{scan_pct:>5.1}%{reset}  {dmg:>17}  {err_col}{q_err:>6}{reset}",
         );
     }
 

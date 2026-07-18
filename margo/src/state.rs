@@ -227,6 +227,13 @@ pub struct FrameSample {
     /// Wall time spent in `render_frame` for this frame, in microseconds
     /// (saturated at `u32::MAX`).
     pub render_us: u32,
+    /// Area composited this frame — the primary plane's newest damage
+    /// group, summed rect areas in physical px² (saturated at
+    /// `u32::MAX`). 0 for empty and direct-scanout frames.
+    pub damage_px: u32,
+    /// The primary plane presented a client buffer directly this frame
+    /// (`PrimaryPlaneElement::Element`) — nothing was composited.
+    pub scanout: bool,
 }
 
 pub struct MargoState {
@@ -1587,7 +1594,14 @@ impl MargoState {
     /// allocation-free `get_mut` on the steady path (the entry exists after the
     /// first frame), a `push_back`, and a prune of samples older than the 60 s
     /// window (hard-capped so a high-refresh burst can't grow it unbounded).
-    pub fn record_frame_sample(&mut self, output_name: &str, empty: bool, render_us: u32) {
+    pub fn record_frame_sample(
+        &mut self,
+        output_name: &str,
+        empty: bool,
+        render_us: u32,
+        damage_px: u32,
+        scanout: bool,
+    ) {
         use std::time::{Duration, Instant};
         const WINDOW: Duration = Duration::from_secs(60);
         const CAP: usize = 16_384;
@@ -1604,6 +1618,8 @@ impl MargoState {
             at: now,
             empty,
             render_us,
+            damage_px,
+            scanout,
         });
         while perf
             .samples

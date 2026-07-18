@@ -92,6 +92,36 @@ pub fn build_perf_payload(
                 let idx = (((lat.len() - 1) as f64) * q).round() as usize;
                 lat[idx] as u64
             };
+            // Direct-scanout ratio over the recent window, measured against
+            // *presented* (non-empty) frames — "of the frames that hit KMS,
+            // how many bypassed compositing entirely".
+            let (presented_10s, scanout_10s) = p
+                .samples
+                .iter()
+                .filter(|s| secs_ago(s) <= 10.0 && !s.empty)
+                .fold((0u64, 0u64), |(t, sc), s| (t + 1, sc + s.scanout as u64));
+            let scanout_ratio_10s = if presented_10s > 0 {
+                scanout_10s as f64 / presented_10s as f64
+            } else {
+                0.0
+            };
+            // Composited-damage-area percentiles (px²) across the window,
+            // over frames that actually composited (non-empty, non-scanout)
+            // — otherwise idle zeros drown the signal.
+            let mut dmg: Vec<u32> = p
+                .samples
+                .iter()
+                .filter(|s| !s.empty && !s.scanout)
+                .map(|s| s.damage_px)
+                .collect();
+            dmg.sort_unstable();
+            let dmg_pct = |q: f64| -> u64 {
+                if dmg.is_empty() {
+                    return 0;
+                }
+                let idx = (((dmg.len() - 1) as f64) * q).round() as usize;
+                dmg[idx] as u64
+            };
 
             json!({
                 "name": name,
@@ -108,6 +138,9 @@ pub fn build_perf_payload(
                 "render_us_p50": pct(0.50),
                 "render_us_p95": pct(0.95),
                 "render_us_p99": pct(0.99),
+                "scanout_ratio_10s": scanout_ratio_10s,
+                "damage_px_p50": dmg_pct(0.50),
+                "damage_px_p95": dmg_pct(0.95),
                 "window_samples": p.samples.len(),
             })
         })
@@ -343,18 +376,26 @@ mod tests {
             at: now - Duration::from_secs(25),
             empty: true,
             render_us: 5000,
+            damage_px: 0,
+            scanout: false,
         });
-        // 5 s old — inside 10 s + 60 s. Non-empty, 3 ms.
+        // 5 s old — inside 10 s + 60 s. Non-empty composited frame, 3 ms,
+        // 200×100 px damaged.
         samples.push_back(FrameSample {
             at: now - Duration::from_secs(5),
             empty: false,
             render_us: 3000,
+            damage_px: 20_000,
+            scanout: false,
         });
-        // 0.5 s old — inside all three windows. Non-empty, 1 ms.
+        // 0.5 s old — inside all three windows. Non-empty direct-scanout
+        // frame (no composite → no damage), 1 ms.
         samples.push_back(FrameSample {
             at: now - Duration::from_millis(500),
             empty: false,
             render_us: 1000,
+            damage_px: 0,
+            scanout: true,
         });
 
         let mut counters = std::collections::HashMap::new();
@@ -385,7 +426,46 @@ mod tests {
         assert_eq!(o["render_us_p50"], json!(3000));
         assert_eq!(o["render_us_p95"], json!(5000));
         assert_eq!(o["render_us_p99"], json!(5000));
+        // 2 presented (non-empty) frames in the 10 s window, 1 on scanout.
+        assert!(approx(&o["scanout_ratio_10s"], 0.5));
+        // Damage percentiles only see the composited frame (empty and
+        // scanout samples excluded) → single-sample distribution.
+        assert_eq!(o["damage_px_p50"], json!(20_000));
+        assert_eq!(o["damage_px_p95"], json!(20_000));
         // Lifetime render-error total is surfaced (mctl perf --json).
         assert_eq!(o["render_errors"], json!(4));
+    }
+
+    #[test]
+    fn perf_payload_scanout_ratio_defaults_to_zero_without_presented_frames() {
+        use crate::state::{FrameSample, OutputPerf};
+        use std::time::{Duration, Instant};
+
+        let now = Instant::now() + Duration::from_secs(30);
+        let mut samples = std::collections::VecDeque::new();
+        // Only an empty frame in the window — nothing was presented, so
+        // the scanout ratio must not divide by zero and reads 0.
+        samples.push_back(FrameSample {
+            at: now - Duration::from_secs(2),
+            empty: true,
+            render_us: 100,
+            damage_px: 0,
+            scanout: false,
+        });
+        let mut counters = std::collections::HashMap::new();
+        counters.insert(
+            "DP-1".to_string(),
+            OutputPerf {
+                renders: 1,
+                empties: 1,
+                samples,
+                ..Default::default()
+            },
+        );
+        let out = super::build_perf_payload(&counters, now);
+        let o = &out["outputs"][0];
+        assert_eq!(o["scanout_ratio_10s"], json!(0.0));
+        assert_eq!(o["damage_px_p50"], json!(0));
+        assert_eq!(o["damage_px_p95"], json!(0));
     }
 }
