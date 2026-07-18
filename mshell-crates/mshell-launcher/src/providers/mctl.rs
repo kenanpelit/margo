@@ -377,14 +377,15 @@ mod tests {
     }
 
     #[test]
-    fn layout_keyword_lists_all_14() {
+    fn layout_keyword_lists_all_10() {
         let p = MctlProvider::new();
         let items = p.search("layout");
         let layout_count = items
             .iter()
             .filter(|i| i.id.starts_with("mctl:layout:"))
             .count();
-        assert_eq!(layout_count, 14);
+        assert_eq!(layout_count, LAYOUTS.len());
+        assert_eq!(layout_count, 10);
     }
 
     #[test]
