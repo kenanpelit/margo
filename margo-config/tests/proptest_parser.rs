@@ -150,14 +150,14 @@ proptest! {
         // Mid-byte truncation — must land on a char boundary to stay
         // a valid &str slice (parse only ever sees UTF-8 anyway:
         // read_to_string rejects invalid sequences before the parser).
-        if let Some(t) = truncate_at {
-            if t < body.len() {
-                let mut cut = t;
-                while !body.is_char_boundary(cut) {
-                    cut -= 1;
-                }
-                body.truncate(cut);
+        if let Some(t) = truncate_at
+            && t < body.len()
+        {
+            let mut cut = t;
+            while !body.is_char_boundary(cut) {
+                cut -= 1;
             }
+            body.truncate(cut);
         }
         for line in splice {
             body.push('\n');
