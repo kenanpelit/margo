@@ -902,11 +902,13 @@ pub struct Config {
     // blur / shadows / visual effects
     pub blur: bool,
     pub blur_layer: bool,
-    /// Damage-aware blur path: keep a per-surface backdrop cache so
-    /// partial damage doesn't force a full-output redraw every frame
-    /// while blur is on. Default **off** (the safe full-redraw path)
-    /// until verified on hardware — was a parsed-but-dead knob before
-    /// 2026-07-19.
+    /// Accepted for config compatibility but currently a **no-op**. A
+    /// damage-aware blur path (per-surface backdrop cache + scissored
+    /// composite) briefly lived behind this on 2026-07-19 and was
+    /// reverted the same week: smithay's element model can't expand
+    /// damage by the blur radius nor guarantee a clean full-region
+    /// cache prime on a mid-session reload, so it shimmered/ghosted on
+    /// hardware. Blur always uses the full-redraw path.
     pub blur_optimized: bool,
     pub border_radius: i32,
     pub blur_params: BlurParams,

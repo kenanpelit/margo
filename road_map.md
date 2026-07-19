@@ -1082,14 +1082,22 @@ Lake).** The keystone is *repaint scope*, and the rest chains off it:
   *every* visible client into the Space, then `enforce_z_order` +
   full `border::refresh`. Remaining win = remap only animated clients
   and scope the border refresh; modest, visual-regression-prone.
-- ~~**Blur damage cache.**~~ — shipped 2026-07-19 behind the (formerly
-  dead, now default-off) `blur_optimized` knob: per-surface clean-
-  backdrop cache (`render/blur.rs` `backdrop_cache`), damage-rect
-  ingest + scissored composite, and `frame.rs` keeps full
-  `reset_buffers()` as the default path — now also skipped whenever no
-  blur element is in the output's element list. HW-verify pending
-  (shimmer/ghosting check on Intel Arc MTL); flip `blur_optimized = 1`
-  to test, `mctl perf`'s new DMG p50/p95 column shows the win.
+- **Blur damage cache.** — attempted 2026-07-19 behind `blur_optimized`
+  (per-surface backdrop cache + damage-rect ingest + scissored
+  composite), **reverted same week after HW test**: bar invisible,
+  windows/notifications shimmering. Two architectural holes in
+  smithay's element model: (1) a changed pixel alters blurred output
+  up to the blur radius *outside* the damage rect, and an element
+  can't expand the damage of what's beneath it — scissoring the
+  composite to raw damage leaves permanent seams; (2) enabling via
+  mid-session `mctl reload` primes the cache from a framebuffer that
+  holds *post-composite* pixels (the tracker already knows the element
+  id, so no full damage fires) — the cache is poisoned with the bar's
+  own pixels and never heals. Fixing either needs damage-tracker-level
+  cooperation, not an element-local path. What survived: `frame.rs`
+  skips the per-frame `reset_buffers()` whenever no blur element is in
+  the output's element list (safe, unconditional); `blur_optimized`
+  stays parsed-but-inert for config compat.
 - **Screencast cursor-only frame.** `screencasting/pw_utils.rs` re-renders
   a full video frame even when only the cursor moved (its own FIXME).
   Needs OBS-PipeWire compat verified first, alongside the DMABUF-render

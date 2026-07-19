@@ -2032,7 +2032,6 @@ fn push_client_elements(
                                     radius,
                                     state.config.blur_params,
                                     scale,
-                                    state.config.blur_optimized,
                                 ),
                             ));
                         }
@@ -2233,7 +2232,6 @@ fn push_layer_elements(
                         0.0,
                         state.config.blur_params,
                         scale,
-                        state.config.blur_optimized,
                     ),
                 ));
             }

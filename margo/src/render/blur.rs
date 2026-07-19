@@ -115,14 +115,6 @@ struct BlurGl {
     pool: Vec<PoolTex>,
     /// Fullscreen-quad vertex buffer (two triangles, NDC).
     quad_vbo: ffi::types::GLuint,
-    /// `blur_optimized` path: per-surface clean-backdrop textures that
-    /// survive across frames so partial damage can update just the
-    /// touched rects. Keyed by (element id, dst origin, region size) —
-    /// any move/resize starts a fresh entry (the tracker full-damages
-    /// a geometry change, which primes it from clean backdrop).
-    backdrop_cache: std::collections::HashMap<CacheKey, CacheTex>,
-    /// Monotonic draw counter driving LRU eviction of dead cache keys.
-    draw_serial: u64,
 }
 
 struct PoolTex {
@@ -131,29 +123,6 @@ struct PoolTex {
     w: i32,
     h: i32,
 }
-
-#[derive(PartialEq, Eq, Hash, Clone)]
-struct CacheKey {
-    id: Id,
-    loc: (i32, i32),
-    size: (i32, i32),
-}
-
-struct CacheTex {
-    tex: ffi::types::GLuint,
-    /// FBO with `tex` attached, so the mip chain can be primed from the
-    /// cache via `CopyTexSubImage2D` (GLES2 has no direct tex→tex copy).
-    fbo: ffi::types::GLuint,
-    last_used: u64,
-}
-
-/// Soft cap on live backdrop-cache entries; beyond it, entries not
-/// touched for [`CACHE_EVICT_AGE`] draws are freed. Generous on purpose:
-/// evicting a *live* key would re-prime it from post-composite pixels on
-/// its next partial damage (a mild, self-healing ghost) — only clearly
-/// dead keys (moved/resized/closed surfaces) should ever go.
-const CACHE_MAX_ENTRIES: usize = 64;
-const CACHE_EVICT_AGE: u64 = 2048;
 
 thread_local! {
     static CACHED: RefCell<Option<BlurGl>> = const { RefCell::new(None) };
@@ -235,8 +204,6 @@ unsafe fn compile_blur_gl(gl: &ffi::Gles2) -> Result<BlurGl, GlesError> {
         composite_prog,
         pool: Vec::new(),
         quad_vbo,
-        backdrop_cache: std::collections::HashMap::new(),
-        draw_serial: 0,
     })
 }
 
@@ -326,10 +293,6 @@ pub struct BlurRenderElement {
     params: BlurParams,
     scale: Scale<f64>,
     commit: CommitCounter,
-    /// `blur_optimized`: damage-aware draw against the persistent
-    /// backdrop cache instead of a full-region capture (which is only
-    /// correct when the whole output redraws every frame).
-    use_cache: bool,
 }
 
 impl BlurRenderElement {
@@ -339,7 +302,6 @@ impl BlurRenderElement {
         corner_radius: f32,
         params: BlurParams,
         scale: Scale<f64>,
-        use_cache: bool,
     ) -> Self {
         Self {
             id,
@@ -348,7 +310,6 @@ impl BlurRenderElement {
             params,
             scale,
             commit: CommitCounter::default(),
-            use_cache,
         }
     }
 }
@@ -432,7 +393,7 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
         frame: &mut GlesFrame<'_, '_>,
         _src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
-        damage: &[Rectangle<i32, Physical>],
+        _damage: &[Rectangle<i32, Physical>],
         _opaque_regions: &[Rectangle<i32, Physical>],
         _cache: Option<&UserDataMap>,
     ) -> Result<(), GlesError> {
@@ -445,8 +406,6 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
         let region_h = dst.size.h.max(1);
         let corner_px = self.corner_radius * self.scale.x as f32;
         let params = self.params;
-        let id = self.id.clone();
-        let use_cache = self.use_cache;
 
         frame.with_context(|gl| unsafe {
             CACHED.with(|slot| {
@@ -454,10 +413,7 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
                 let Some(blur_gl) = borrow.as_mut() else {
                     return;
                 };
-                draw_blur(
-                    gl, blur_gl, &id, dst, region_w, region_h, corner_px, &params, damage,
-                    use_cache,
-                );
+                draw_blur(gl, blur_gl, dst, region_w, region_h, corner_px, &params);
             });
         })?;
         Ok(())
@@ -471,30 +427,17 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
 /// The actual dual-Kawase + composite pass. All GL state we touch is
 /// captured up front and restored at the end.
 ///
-/// With `use_cache` (the `blur_optimized` knob) the source is the
-/// persistent per-surface backdrop cache instead of a raw framebuffer
-/// grab, and the composite is scissored to `damage` — the two halves
-/// that make blur correct under partial (age-based) damage: outside
-/// this frame's damage the framebuffer holds *post-composite* pixels
-/// (window + previous blur already blended), so sampling it there
-/// feeds the blur its own output back. The cache only ever ingests
-/// rects that were freshly redrawn beneath us this frame, so it always
-/// holds clean backdrop.
-///
 /// # Safety
 /// Current GL context; `blur_gl` programs/VBO are valid.
 #[allow(clippy::too_many_arguments)]
 unsafe fn draw_blur(
     gl: &ffi::Gles2,
     blur_gl: &mut BlurGl,
-    element_id: &Id,
     dst: Rectangle<i32, Physical>,
     region_w: i32,
     region_h: i32,
     corner_px: f32,
     params: &BlurParams,
-    damage: &[Rectangle<i32, Physical>],
-    use_cache: bool,
 ) {
     let passes = effective_passes(params.num_passes, region_w, region_h);
     if passes == 0 {
@@ -522,6 +465,10 @@ unsafe fn draw_blur(
 
         // ── Capture the background slice behind `dst` ────────────────
         // Slot 0 is the captured background at full region resolution.
+        let (cap_tex, _cap_fbo) = blur_gl.pool_slot(gl, 0, region_w, region_h);
+        gl.ActiveTexture(ffi::TEXTURE0);
+        gl.BindTexture(ffi::TEXTURE_2D, cap_tex);
+        // Copy from the currently-bound (output) read framebuffer.
         // `CopyTexSubImage2D`'s source `(x, y)` is in GL window coords
         // (bottom-left origin), whereas `dst.loc` is top-left physical —
         // so we flip Y against the framebuffer height. The viewport
@@ -531,142 +478,18 @@ unsafe fn draw_blur(
         // composite step samples with V flipped so it re-emits the blur
         // in the same orientation as the background it replaces.
         let fb_h = prev_vp[3];
-        let (cap_tex, _cap_fbo) = blur_gl.pool_slot(gl, 0, region_w, region_h);
-        gl.ActiveTexture(ffi::TEXTURE0);
+        let src_y = fb_h - dst.loc.y - region_h;
         gl.BindFramebuffer(ffi::FRAMEBUFFER, output_fbo);
-        if use_cache {
-            blur_gl.draw_serial += 1;
-            let serial = blur_gl.draw_serial;
-            // Evict clearly dead keys (moved/resized/closed surfaces
-            // whose key can never be looked up again). Live-but-idle
-            // keys are deliberately kept — see CACHE_MAX_ENTRIES.
-            if blur_gl.backdrop_cache.len() > CACHE_MAX_ENTRIES {
-                let cutoff = serial.saturating_sub(CACHE_EVICT_AGE);
-                let dead: Vec<CacheKey> = blur_gl
-                    .backdrop_cache
-                    .iter()
-                    .filter(|(_, e)| e.last_used < cutoff)
-                    .map(|(k, _)| k.clone())
-                    .collect();
-                for k in dead {
-                    if let Some(e) = blur_gl.backdrop_cache.remove(&k) {
-                        gl.DeleteTextures(1, &e.tex);
-                        gl.DeleteFramebuffers(1, &e.fbo);
-                    }
-                }
-            }
-            let key = CacheKey {
-                id: element_id.clone(),
-                loc: (dst.loc.x, dst.loc.y),
-                size: (region_w, region_h),
-            };
-            let fresh = !blur_gl.backdrop_cache.contains_key(&key);
-            let entry = blur_gl.backdrop_cache.entry(key).or_insert_with(|| {
-                let mut tex = 0;
-                let mut fbo = 0;
-                gl.GenTextures(1, &mut tex);
-                gl.GenFramebuffers(1, &mut fbo);
-                gl.BindTexture(ffi::TEXTURE_2D, tex);
-                gl.TexParameteri(ffi::TEXTURE_2D, ffi::TEXTURE_MIN_FILTER, ffi::LINEAR as i32);
-                gl.TexParameteri(ffi::TEXTURE_2D, ffi::TEXTURE_MAG_FILTER, ffi::LINEAR as i32);
-                gl.TexParameteri(
-                    ffi::TEXTURE_2D,
-                    ffi::TEXTURE_WRAP_S,
-                    ffi::CLAMP_TO_EDGE as i32,
-                );
-                gl.TexParameteri(
-                    ffi::TEXTURE_2D,
-                    ffi::TEXTURE_WRAP_T,
-                    ffi::CLAMP_TO_EDGE as i32,
-                );
-                gl.TexImage2D(
-                    ffi::TEXTURE_2D,
-                    0,
-                    ffi::RGBA as i32,
-                    region_w,
-                    region_h,
-                    0,
-                    ffi::RGBA,
-                    ffi::UNSIGNED_BYTE,
-                    std::ptr::null(),
-                );
-                gl.BindFramebuffer(ffi::FRAMEBUFFER, fbo);
-                gl.FramebufferTexture2D(
-                    ffi::FRAMEBUFFER,
-                    ffi::COLOR_ATTACHMENT0,
-                    ffi::TEXTURE_2D,
-                    tex,
-                    0,
-                );
-                gl.BindFramebuffer(ffi::FRAMEBUFFER, output_fbo);
-                CacheTex {
-                    tex,
-                    fbo,
-                    last_used: serial,
-                }
-            });
-            entry.last_used = serial;
-
-            // 1. Fold this frame's freshly-drawn backdrop into the cache.
-            //    A fresh entry primes the whole region (a new/moved
-            //    surface is full-damaged by the tracker, so the copy
-            //    reads clean backdrop); a live entry copies only the
-            //    damage rects — the sole places where the framebuffer
-            //    currently holds pre-composite content.
-            gl.BindTexture(ffi::TEXTURE_2D, entry.tex);
-            if fresh {
-                let src_y = fb_h - dst.loc.y - region_h;
-                gl.CopyTexSubImage2D(
-                    ffi::TEXTURE_2D,
-                    0,
-                    0,
-                    0,
-                    dst.loc.x,
-                    src_y,
-                    region_w,
-                    region_h,
-                );
-            } else {
-                for d in damage {
-                    let dx = d.loc.x.max(0);
-                    let dy = d.loc.y.max(0);
-                    let dw = (d.size.w - (dx - d.loc.x)).min(region_w - dx);
-                    let dh = (d.size.h - (dy - d.loc.y)).min(region_h - dy);
-                    if dw <= 0 || dh <= 0 {
-                        continue;
-                    }
-                    // Same flipped-Y layout as the full prime, per rect.
-                    let yoff = region_h - dy - dh;
-                    let src_x = dst.loc.x + dx;
-                    let src_y = fb_h - (dst.loc.y + dy) - dh;
-                    gl.CopyTexSubImage2D(ffi::TEXTURE_2D, 0, dx, yoff, src_x, src_y, dw, dh);
-                }
-            }
-
-            // 2. Prime the mip chain's slot 0 from the cache (GLES2 has
-            //    no tex→tex copy; read through the cache's FBO). The
-            //    chain below then runs unchanged against pool slots.
-            gl.BindTexture(ffi::TEXTURE_2D, cap_tex);
-            gl.BindFramebuffer(ffi::FRAMEBUFFER, entry.fbo);
-            gl.CopyTexSubImage2D(ffi::TEXTURE_2D, 0, 0, 0, 0, 0, region_w, region_h);
-            gl.BindFramebuffer(ffi::FRAMEBUFFER, output_fbo);
-        } else {
-            // Full-redraw path: the whole output re-rendered beneath us
-            // this frame (frame.rs reset_buffers), so a raw grab of the
-            // framebuffer slice IS the clean backdrop.
-            gl.BindTexture(ffi::TEXTURE_2D, cap_tex);
-            let src_y = fb_h - dst.loc.y - region_h;
-            gl.CopyTexSubImage2D(
-                ffi::TEXTURE_2D,
-                0,
-                0,
-                0,
-                dst.loc.x,
-                src_y,
-                region_w,
-                region_h,
-            );
-        }
+        gl.CopyTexSubImage2D(
+            ffi::TEXTURE_2D,
+            0,
+            0,
+            0,
+            dst.loc.x,
+            src_y,
+            region_w,
+            region_h,
+        );
 
         // One-shot diagnostic (see BLUR_DIAG_DONE). Logs the first draw so
         // a "blur invisible" report can be triaged from the journal.
@@ -674,8 +497,8 @@ unsafe fn draw_blur(
             let err = gl.GetError();
             tracing::warn!(
                 target: "margo::render::blur",
-                "BLUR-DIAG first draw: dst.loc=({},{}) region={}x{} fb_h={} cache={} damage_rects={} passes={} capture_glerror=0x{:x}",
-                dst.loc.x, dst.loc.y, region_w, region_h, fb_h, use_cache, damage.len(), passes, err,
+                "BLUR-DIAG first draw: dst.loc=({},{}) region={}x{} fb_h={} src_y={} passes={} capture_glerror=0x{:x}",
+                dst.loc.x, dst.loc.y, region_w, region_h, fb_h, src_y, passes, err,
             );
         }
 
@@ -760,11 +583,6 @@ unsafe fn draw_blur(
         );
 
         // ── Composite onto the output, clipped to the rounded rect ───
-        // On the cache path the write is scissored to the damage rects:
-        // outside them this buffer already holds the final composited
-        // pixels (the translucent surface above us only redraws inside
-        // the damage), so an unscissored blur quad would overwrite
-        // final pixels with bare blur.
         gl.BindFramebuffer(ffi::FRAMEBUFFER, output_fbo);
         gl.Viewport(prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3]);
         gl.Enable(ffi::BLEND);
@@ -781,7 +599,6 @@ unsafe fn draw_blur(
             corner_px,
             params,
             prev_vp,
-            use_cache.then_some(damage),
         );
 
         // One-shot diagnostic: GL error after the composite (the capture
@@ -905,10 +722,6 @@ unsafe fn run_pass(
 /// Final composite: blurred texture → output, rounded-rect clipped,
 /// colour-adjusted, with a touch of noise.
 ///
-/// `damage_scissor: Some(rects)` (cache path) confines the write to the
-/// element-local damage rects via GL scissor — one draw per rect, same
-/// quad and uniforms. `None` draws the whole quad (full-redraw path).
-///
 /// # Safety
 /// Current GL context.
 #[allow(clippy::too_many_arguments)]
@@ -924,7 +737,6 @@ unsafe fn composite_pass(
     corner_px: f32,
     params: &BlurParams,
     viewport: [i32; 4],
-    damage_scissor: Option<&[Rectangle<i32, Physical>]>,
 ) {
     unsafe {
         gl.UseProgram(prog);
@@ -955,26 +767,7 @@ unsafe fn composite_pass(
             viewport[3] as f32,
         );
 
-        match damage_scissor {
-            Some(rects) => {
-                let fb_h = viewport[3];
-                gl.Enable(ffi::SCISSOR_TEST);
-                for d in rects {
-                    let dx = d.loc.x.max(0);
-                    let dy = d.loc.y.max(0);
-                    let dw = (d.size.w - (dx - d.loc.x)).min(region_w - dx);
-                    let dh = (d.size.h - (dy - d.loc.y)).min(region_h - dy);
-                    if dw <= 0 || dh <= 0 {
-                        continue;
-                    }
-                    // GL scissor is window coords, bottom-left origin.
-                    gl.Scissor(dst.loc.x + dx, fb_h - (dst.loc.y + dy) - dh, dw, dh);
-                    gl.DrawArrays(ffi::TRIANGLES, 0, 6);
-                }
-                gl.Disable(ffi::SCISSOR_TEST);
-            }
-            None => gl.DrawArrays(ffi::TRIANGLES, 0, 6),
-        }
+        gl.DrawArrays(ffi::TRIANGLES, 0, 6);
         disable_quad_attribs(gl, locs);
     }
 }

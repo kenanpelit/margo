@@ -503,11 +503,12 @@ fn render_output(
     // (fullscreen video, a monitor without the bar, no translucent window
     // open) samples nothing, so it keeps full age-based damage tracking.
     // This only fires on frames that already render (an idle screen still
-    // renders nothing and idles). With `blur_optimized` the blur element
-    // itself is damage-correct (persistent backdrop cache + scissored
-    // composite), so age-based damage tracking stays fully on.
+    // renders nothing and idles). A damage-aware alternative (persistent
+    // backdrop cache + scissored composite, 2026-07-19) was tried and
+    // reverted: smithay's element model can't expand damage by the blur
+    // radius nor guarantee a clean full-region prime on a mid-session
+    // reload, so it shimmered and ghosted on hardware.
     if (state.config.blur || state.config.blur_layer)
-        && !state.config.blur_optimized
         && elements
             .iter()
             .any(|e| matches!(e, MargoRenderElement::Blur(_)))
