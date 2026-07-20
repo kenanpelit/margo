@@ -35,13 +35,43 @@ cd "$(dirname "$0")/.."
 
 baseline_file="scripts/panic-baseline.txt"
 
-count=$(find . -name '*.rs' \
+# Whole-file test modules gated at their *declaration* site
+# (`#[cfg(test)] mod render_tests;`). The file itself carries no
+# `#[cfg(test)]`, so the per-file scan below can only recognise its `#[test]`
+# fns — the scaffolding around them (fixtures, render helpers) would count as
+# production code. Panicking is the correct behaviour in a test helper, so
+# exclude these files wholesale, the same as any other test tree.
+gated_test_files=$(find . -name '*.rs' \
+    -not -path './target/*' \
+    -not -path './.git/*' \
+    -print0 | xargs -0 awk '
+      /#\[cfg\(test\)\]/ { pending = 1; next }
+      pending && /^[[:space:]]*(pub[[:space:]]+)?mod[[:space:]]+[A-Za-z0-9_]+[[:space:]]*;/ {
+        name = $0
+        sub(/^[[:space:]]*(pub[[:space:]]+)?mod[[:space:]]+/, "", name)
+        sub(/[[:space:]]*;.*$/, "", name)
+        dir = FILENAME
+        sub(/\/[^\/]*$/, "", dir)
+        print dir "/" name ".rs"
+        pending = 0
+        next
+      }
+      { pending = 0 }
+    ')
+
+rs_files=$(find . -name '*.rs' \
     -not -path './target/*' \
     -not -path './.git/*' \
     -not -path '*/tests/*' \
     -not -path '*/benches/*' \
     -not -name 'build.rs' \
-    -print0 | sort -z | xargs -0 awk '
+    -print | sort)
+
+if [ -n "$gated_test_files" ]; then
+    rs_files=$(printf '%s\n' "$rs_files" | grep -vxF "$gated_test_files" || true)
+fi
+
+count=$(printf '%s\n' "$rs_files" | tr '\n' '\0' | xargs -0 awk '
       FNR == 1 { in_test = 0; depth = 0; arming = 0 }
       # Inside a #[cfg(test)] braced item: skip and track depth to its close.
       in_test {
