@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use crate::config::{Config, ConfigPaths};
 use crate::tui::layout::LayoutSnapshot;
+use crate::tui::palette::{PaletteCommand, PaletteEntry, PaletteState};
 use crate::tui::screens::Screen;
 
 /// Main TUI application state
@@ -37,6 +38,10 @@ pub struct App {
     /// when closed. Holds the checks gathered when it was opened plus the
     /// current scroll offset.
     pub doctor: Option<DoctorOverlay>,
+
+    /// The modal command palette (opened with `Ctrl+P`), or `None` when
+    /// closed.
+    pub palette: Option<PaletteState>,
 
     /// Global message/notification
     pub status_message: Option<StatusMessage>,
@@ -106,6 +111,9 @@ pub enum Action {
     /// Enable or disable a module — dispatches to
     /// `commands::module::{enable,disable}`.
     ToggleModule { name: String, enable: bool },
+    /// Enable or disable every module marked on the Modules screen, in one
+    /// confirmation. `names` is sorted so the confirm text is stable.
+    ToggleModules { names: Vec<String>, enable: bool },
     /// Run a full package sync — dispatches to `commands::sync::run` with
     /// the standard (no extra flags) options, exactly like `mdots sync`.
     /// The plan counts are carried here (not re-derived at dispatch time)
@@ -142,6 +150,7 @@ impl Action {
     pub fn confirm_text(&self) -> (String, String) {
         match self {
             Action::ToggleModule { name, enable } => toggle_module_confirm(name, *enable),
+            Action::ToggleModules { names, enable } => toggle_modules_confirm(names, *enable),
             Action::RunSync {
                 native_install,
                 flatpak_install,
@@ -188,6 +197,34 @@ pub fn toggle_module_confirm(name: &str, enable: bool) -> (String, String) {
             ),
         )
     }
+}
+
+/// Pure confirm-text builder for [`Action::ToggleModules`].
+///
+/// The names are listed in full up to a handful, then summarised — a
+/// confirmation you can't read is a confirmation you click through, and this
+/// one guards a system-mutating batch.
+pub fn toggle_modules_confirm(names: &[String], enable: bool) -> (String, String) {
+    const LIST_LIMIT: usize = 6;
+    let verb = if enable { "Enable" } else { "Disable" };
+    let listed = if names.len() <= LIST_LIMIT {
+        names.join(", ")
+    } else {
+        format!(
+            "{}, and {} more",
+            names[..LIST_LIMIT].join(", "),
+            names.len() - LIST_LIMIT
+        )
+    };
+    let tail = if enable {
+        "This may run a sync afterward to install their packages."
+    } else {
+        "Their packages stay installed until you run sync --prune."
+    };
+    (
+        format!("{verb} {} modules", names.len()),
+        format!("{verb} {}? {tail}", listed),
+    )
 }
 
 /// Pure confirm-text builder for [`Action::RunSync`], summarizing the
@@ -257,6 +294,7 @@ impl App {
             pending_action: None,
             help_visible: false,
             doctor: None,
+            palette: None,
             status_message: None,
             should_quit: false,
             needs_refresh: true,
@@ -296,8 +334,135 @@ impl App {
         });
     }
 
+    /// Every command the palette offers. Built from the live sidebar list so
+    /// a new screen shows up here without a second table to update.
+    fn palette_entries(&self) -> Vec<PaletteEntry> {
+        let mut entries: Vec<PaletteEntry> = self
+            .sidebar
+            .items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| PaletteEntry {
+                label: format!("Go to {}", item.name),
+                hint: "",
+                command: PaletteCommand::Navigate(index),
+            })
+            .collect();
+        entries.push(PaletteEntry {
+            label: "Run health check (doctor)".to_string(),
+            hint: "D",
+            command: PaletteCommand::Doctor,
+        });
+        entries.push(PaletteEntry {
+            label: "Refresh current screen".to_string(),
+            hint: "r",
+            command: PaletteCommand::RefreshScreen,
+        });
+        entries.push(PaletteEntry {
+            label: "Show keybindings".to_string(),
+            hint: "?",
+            command: PaletteCommand::Help,
+        });
+        entries.push(PaletteEntry {
+            label: "Quit mdots".to_string(),
+            hint: "q",
+            command: PaletteCommand::Quit,
+        });
+        entries
+    }
+
+    /// Run a palette entry. Every command is something `App` can already do
+    /// on its own — the palette is a second route to them, not new
+    /// behaviour, so nothing here needs the terminal.
+    pub fn activate_palette_command(&mut self, command: PaletteCommand) {
+        match command {
+            PaletteCommand::Navigate(index) => {
+                if let Some(screen) = screen_for_index(index) {
+                    self.sidebar.selected_index = index;
+                    self.navigate_to(screen);
+                }
+            }
+            PaletteCommand::Doctor => {
+                let checks = crate::commands::doctor::gather_checks(&self.paths);
+                self.doctor = Some(DoctorOverlay { checks, scroll: 0 });
+            }
+            PaletteCommand::Help => self.help_visible = true,
+            PaletteCommand::RefreshScreen => self.current_screen.refresh(),
+            PaletteCommand::Quit => self.should_quit = true,
+        }
+    }
+
+    /// Handle the palette's own keys while it is open. Returns true if the
+    /// palette consumed the event — which it does for everything, since it
+    /// is modal and its text field owns every printable character.
+    fn handle_palette_key(&mut self, key: KeyEvent) -> bool {
+        if self.palette.is_none() {
+            return false;
+        }
+        // The two arms that close the palette are handled first so they
+        // don't have to hold a borrow of it while reassigning the field.
+        match key.code {
+            KeyCode::Esc => {
+                self.palette = None;
+                return true;
+            }
+            KeyCode::Enter => {
+                let command = self
+                    .palette
+                    .as_ref()
+                    .and_then(|p| p.selected_entry())
+                    .map(|e| e.command);
+                self.palette = None;
+                if let Some(command) = command {
+                    self.activate_palette_command(command);
+                }
+                return true;
+            }
+            _ => {}
+        }
+
+        let Some(palette) = &mut self.palette else {
+            return true;
+        };
+        match key.code {
+            KeyCode::Backspace => palette.pop_char(),
+            KeyCode::Down => palette.select_next(),
+            KeyCode::Up => palette.select_prev(),
+            // Ctrl+N/Ctrl+P move the highlight without leaving the home row,
+            // and must not type "n"/"p" into the query.
+            KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                palette.select_next()
+            }
+            KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                palette.select_prev()
+            }
+            KeyCode::Char(c) => palette.push_char(c),
+            _ => {}
+        }
+        true
+    }
+
     /// Handle global keybindings (works across all screens)
-    pub fn handle_global_key(&mut self, key: KeyCode) -> Result<bool> {
+    pub fn handle_global_key(&mut self, key: KeyEvent) -> Result<bool> {
+        // The palette is modal and owns every keystroke while open — it has
+        // a text field, so no single-key shortcut may fire underneath it.
+        if self.palette.is_some() {
+            return Ok(self.handle_palette_key(key));
+        }
+
+        // Ctrl+P opens it from anywhere that isn't already modal. Checked
+        // before the code-only match below because it needs the modifier.
+        if key.code == KeyCode::Char('p')
+            && key.modifiers.contains(KeyModifiers::CONTROL)
+            && self.dialog.is_none()
+            && self.doctor.is_none()
+            && !self.help_visible
+        {
+            self.palette = Some(PaletteState::new(self.palette_entries()));
+            return Ok(true);
+        }
+
+        let key = key.code;
         // The doctor overlay is modal: while it's open it swallows every key
         // except scroll (j/k, ↑/↓) and the keys that close it. Checked before
         // help since the two are mutually exclusive but both fully modal.
@@ -576,6 +741,37 @@ mod tests {
             enable: true,
         };
         assert_eq!(action.confirm_text(), toggle_module_confirm("audio", true));
+    }
+
+    #[test]
+    fn toggle_modules_confirm_lists_every_name_when_there_are_few() {
+        let names = vec!["audio".to_string(), "desktop".to_string()];
+        let (title, message) = toggle_modules_confirm(&names, true);
+        assert_eq!(title, "Enable 2 modules");
+        assert!(message.contains("audio, desktop"));
+        assert!(message.contains("sync"));
+    }
+
+    /// A long batch must stay readable — a confirmation nobody reads is a
+    /// confirmation nobody honours.
+    #[test]
+    fn toggle_modules_confirm_summarises_a_long_batch() {
+        let names: Vec<String> = (0..10).map(|i| format!("mod{i}")).collect();
+        let (title, message) = toggle_modules_confirm(&names, false);
+        assert_eq!(title, "Disable 10 modules");
+        assert!(message.contains("and 4 more"));
+        assert!(!message.contains("mod9"));
+        assert!(message.contains("prune"));
+    }
+
+    #[test]
+    fn action_confirm_text_delegates_to_toggle_modules_confirm() {
+        let names = vec!["audio".to_string()];
+        let action = Action::ToggleModules {
+            names: names.clone(),
+            enable: false,
+        };
+        assert_eq!(action.confirm_text(), toggle_modules_confirm(&names, false));
     }
 
     #[test]

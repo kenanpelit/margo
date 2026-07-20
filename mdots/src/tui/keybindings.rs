@@ -49,7 +49,8 @@ const OVERVIEW_HINTS: &[KeyHint] = &[
 
 const MODULES_HINTS: &[KeyHint] = &[
     KeyHint::new("j/k, ↓/↑", "navigate"),
-    KeyHint::new("space/Enter", "toggle enable"),
+    KeyHint::new("space", "mark"),
+    KeyHint::new("Enter", "toggle (marked or one)"),
     KeyHint::new("/", "filter"),
     KeyHint::new("r", "refresh"),
 ];
@@ -59,6 +60,8 @@ const PACKAGES_HINTS: &[KeyHint] = &[
     KeyHint::new("/", "filter"),
     KeyHint::new("r", "refresh"),
 ];
+
+const PALETTE_HINT: KeyHint = KeyHint::new("Ctrl+P", "commands");
 
 const DIFF_HINTS: &[KeyHint] = &[
     KeyHint::new("j/k, ↓/↑", "navigate"),
@@ -119,6 +122,7 @@ pub fn footer_hints(screen: &Screen) -> Vec<KeyHint> {
         return FILTER_HINTS.to_vec();
     }
     let mut hints: Vec<KeyHint> = screen_hints(screen).to_vec();
+    hints.push(PALETTE_HINT);
     hints.push(KeyHint::new("?", "help"));
     hints.push(KeyHint::new("q", "quit"));
     hints

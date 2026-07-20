@@ -6,8 +6,8 @@ use ratatui::{
 
 use super::app::App;
 use super::components::{
-    render_dialog, render_doctor_overlay, render_help_overlay, render_sidebar, render_statusbar,
-    render_titlebar,
+    render_dialog, render_doctor_overlay, render_help_overlay, render_palette, render_sidebar,
+    render_statusbar, render_titlebar,
 };
 use super::layout::LayoutSnapshot;
 
@@ -77,6 +77,13 @@ pub fn render(app: &mut App, frame: &mut Frame) -> Result<()> {
     // Render the doctor health-check overlay (if open) - topmost of all.
     if let Some(doctor) = &app.doctor {
         render_doctor_overlay(&doctor.checks, doctor.scroll, frame, size)?;
+    }
+
+    // The palette can only be open when nothing else modal is, so its draw
+    // order relative to the overlays above never actually matters — it is
+    // last for the same defensive reason they are.
+    if let Some(palette) = &app.palette {
+        render_palette(palette, frame, size)?;
     }
 
     Ok(())

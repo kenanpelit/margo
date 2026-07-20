@@ -8,6 +8,7 @@ mod events;
 mod job;
 mod keybindings;
 mod layout;
+mod palette;
 mod screens;
 mod scroll;
 pub mod terminal;
@@ -81,7 +82,7 @@ pub fn run(paths: ConfigPaths, mut terminal: terminal::Tui) -> Result<()> {
                 }
 
                 // Handle global keys first
-                let handled = app.handle_global_key(key.code)?;
+                let handled = app.handle_global_key(key)?;
 
                 // If not handled globally, pass to current screen
                 if !handled {
@@ -175,6 +176,31 @@ fn dispatch_action(app: &mut App, terminal: &mut terminal::Tui, action: Action) 
                 }
             })
         }
+        Action::ToggleModules { names, enable } => {
+            let names = names.clone();
+            let enable = *enable;
+            terminal::with_suspended(terminal, move || {
+                if enable {
+                    // `module::enable` already takes a slice, so the whole
+                    // batch is one call (and one sync afterwards).
+                    crate::commands::module::enable(&paths, &names, false, false)
+                } else {
+                    // `module::disable` is single-module only. Keep going on
+                    // failure so one bad module doesn't strand the rest, and
+                    // report the first error at the end.
+                    let mut first_error = None;
+                    for name in &names {
+                        if let Err(e) = crate::commands::module::disable(&paths, name, false) {
+                            first_error.get_or_insert(e);
+                        }
+                    }
+                    match first_error {
+                        Some(e) => Err(e),
+                        None => Ok(()),
+                    }
+                }
+            })
+        }
         Action::RunSync { .. } => terminal::with_suspended(terminal, move || {
             crate::commands::sync::run(
                 &paths,
@@ -233,6 +259,11 @@ fn dispatch_action(app: &mut App, terminal: &mut terminal::Tui, action: Action) 
                     format!("Enabled module `{name}`.")
                 }
                 Action::ToggleModule { name, .. } => format!("Disabled module `{name}`."),
+                Action::ToggleModules { names, enable } => format!(
+                    "{} {} modules.",
+                    if *enable { "Enabled" } else { "Disabled" },
+                    names.len()
+                ),
                 Action::RunSync { .. } => "Sync complete.".to_string(),
                 Action::EnableService { name } => format!("Enabled service profile `{name}`."),
                 Action::DisableService { name } => format!("Disabled service profile `{name}`."),

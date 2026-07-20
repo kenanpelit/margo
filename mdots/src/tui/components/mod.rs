@@ -1,6 +1,7 @@
 pub mod dialog;
 pub mod doctor;
 pub mod help;
+pub mod palette;
 pub mod sidebar;
 pub mod statusbar;
 pub mod titlebar;
@@ -8,6 +9,7 @@ pub mod titlebar;
 pub use dialog::render_dialog;
 pub use doctor::render_doctor_overlay;
 pub use help::render_help_overlay;
+pub use palette::render_palette;
 pub use sidebar::render_sidebar;
 pub use statusbar::render_statusbar;
 pub use titlebar::render_titlebar;

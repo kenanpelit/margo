@@ -8,6 +8,8 @@ use ratatui::{
     Frame,
 };
 
+use std::collections::HashSet;
+
 use crate::config::{Config, ConfigPaths};
 use crate::module::ModuleManager;
 use crate::tui::app::{module_toggle_enable, Action};
@@ -39,7 +41,17 @@ fn filter_module_entries(entries: &[ModuleEntry], query: &str) -> Vec<usize> {
         .collect()
 }
 
-#[derive(Clone, Default)]
+/// Target enabled-state for a bulk toggle: enable everything unless the whole
+/// marked set is already enabled, in which case disable it.
+///
+/// This makes a mixed selection converge on "all enabled" with one keystroke
+/// (the common case — you mark the modules you want and press Enter) while
+/// still letting a fully-enabled selection be turned off.
+fn bulk_enable_target(marked_enabled_states: &[bool]) -> bool {
+    marked_enabled_states.iter().any(|&enabled| !enabled)
+}
+
+#[derive(Default)]
 pub struct ModulesScreenState {
     modules: Vec<ModuleEntry>,
     /// Indices into `modules` that are currently visible (after optional filter)
@@ -49,6 +61,9 @@ pub struct ModulesScreenState {
     filter_active: bool,
     loaded: bool,
     load_error: Option<String>,
+    /// Names of modules marked with `space` for a bulk toggle. Keyed by name
+    /// rather than index so marks survive a filter change or a reload.
+    marked: HashSet<String>,
 }
 
 impl ModulesScreenState {
@@ -118,6 +133,45 @@ impl ModulesScreenState {
         let module_idx = *self.visible.get(idx)?;
         self.modules.get(module_idx)
     }
+
+    /// Mark or unmark the highlighted module for a bulk toggle.
+    fn toggle_mark(&mut self) {
+        let Some(name) = self.selected_entry().map(|e| e.name.clone()) else {
+            return;
+        };
+        if !self.marked.remove(&name) {
+            self.marked.insert(name);
+        }
+    }
+
+    /// The bulk action for the current marks, or `None` when nothing is
+    /// marked (in which case the caller falls back to the single-row toggle).
+    ///
+    /// Marks for modules that have since disappeared from the list are
+    /// ignored rather than dispatched blind.
+    fn bulk_action(&self) -> Option<Action> {
+        if self.marked.is_empty() {
+            return None;
+        }
+        let mut names: Vec<String> = Vec::new();
+        let mut states: Vec<bool> = Vec::new();
+        for entry in self
+            .modules
+            .iter()
+            .filter(|m| self.marked.contains(&m.name))
+        {
+            names.push(entry.name.clone());
+            states.push(entry.enabled);
+        }
+        if names.is_empty() {
+            return None;
+        }
+        names.sort();
+        Some(Action::ToggleModules {
+            enable: bulk_enable_target(&states),
+            names,
+        })
+    }
 }
 
 impl ScreenTrait for ModulesScreenState {
@@ -144,7 +198,14 @@ impl ScreenTrait for ModulesScreenState {
         }
 
         match key.code {
-            KeyCode::Esc => return Ok(Some(ScreenAction::Back)),
+            // Esc clears a selection first — losing marks by accident is
+            // more annoying than needing a second Esc to leave.
+            KeyCode::Esc => {
+                if self.marked.is_empty() {
+                    return Ok(Some(ScreenAction::Back));
+                }
+                self.marked.clear();
+            }
             KeyCode::Char('r') => {
                 self.loaded = false;
                 self.load_error = None;
@@ -156,7 +217,18 @@ impl ScreenTrait for ModulesScreenState {
             }
             KeyCode::Down | KeyCode::Char('j') => self.select_next(),
             KeyCode::Up | KeyCode::Char('k') => self.select_prev(),
-            KeyCode::Char(' ') | KeyCode::Enter => {
+            // Space marks for a bulk toggle and steps down, so a run of
+            // modules can be selected by holding it.
+            KeyCode::Char(' ') => {
+                self.toggle_mark();
+                self.select_next();
+            }
+            // Enter applies to the whole marked set if there is one, else to
+            // the highlighted row alone.
+            KeyCode::Enter => {
+                if let Some(action) = self.bulk_action() {
+                    return Ok(Some(ScreenAction::Request(action)));
+                }
                 if let Some(entry) = self.selected_entry() {
                     let enable = module_toggle_enable(entry.enabled);
                     return Ok(Some(ScreenAction::Request(Action::ToggleModule {
@@ -177,6 +249,9 @@ impl ScreenTrait for ModulesScreenState {
     fn refresh(&mut self) {
         self.loaded = false;
         self.load_error = None;
+        // A dispatched bulk toggle consumed the marks; leaving them set
+        // would invite applying the same batch twice by accident.
+        self.marked.clear();
     }
 
     fn render(
@@ -245,11 +320,18 @@ impl ModulesScreenState {
             String::new()
         };
 
+        let marked_hint = if self.marked.is_empty() {
+            String::new()
+        } else {
+            format!(" [{} marked — Enter applies]", self.marked.len())
+        };
+
         let title = format!(
-            " Modules ({} enabled / {} total){} ",
+            " Modules ({} enabled / {} total){}{} ",
             enabled_count,
             self.modules.len(),
-            filter_hint
+            filter_hint,
+            marked_hint
         );
 
         let items: Vec<ListItem> = self
@@ -263,8 +345,13 @@ impl ModulesScreenState {
                 } else {
                     Color::DarkGray
                 };
+                let marked = self.marked.contains(&entry.name);
 
                 let line = Line::from(vec![
+                    Span::styled(
+                        if marked { "▸ " } else { "  " },
+                        Style::default().fg(crate::tui::theme::accent()),
+                    ),
                     Span::styled(
                         format!("{} ", status_char),
                         Style::default().fg(status_color),
@@ -438,5 +525,81 @@ mod tests {
         let entries = sample_entries();
         let result = filter_module_entries(&entries, "xyzzy");
         assert!(result.is_empty());
+    }
+
+    // ── bulk toggle ─────────────────────────────────────────────────────
+
+    #[test]
+    fn bulk_target_enables_when_any_marked_module_is_disabled() {
+        assert!(bulk_enable_target(&[true, false, true]));
+        assert!(bulk_enable_target(&[false]));
+    }
+
+    #[test]
+    fn bulk_target_disables_only_when_every_marked_module_is_enabled() {
+        assert!(!bulk_enable_target(&[true, true]));
+    }
+
+    /// A screen loaded with `sample_entries` and the given names marked.
+    fn marked_screen(names: &[&str]) -> ModulesScreenState {
+        let mut screen = ModulesScreenState {
+            modules: sample_entries(),
+            ..Default::default()
+        };
+        screen.rebuild_visible();
+        screen.list_state.select(Some(0));
+        screen.marked = names.iter().map(|n| n.to_string()).collect();
+        screen
+    }
+
+    #[test]
+    fn no_marks_means_no_bulk_action() {
+        assert!(marked_screen(&[]).bulk_action().is_none());
+    }
+
+    #[test]
+    fn bulk_action_lists_marked_names_sorted() {
+        let action = marked_screen(&["desktop", "audio"]).bulk_action().unwrap();
+        assert_eq!(
+            action,
+            Action::ToggleModules {
+                names: vec!["audio".to_string(), "desktop".to_string()],
+                // "desktop" is disabled in the fixture, so the batch enables.
+                enable: true,
+            }
+        );
+    }
+
+    /// Marks are keyed by name, so one left over from a module that has since
+    /// vanished must be ignored rather than dispatched at nothing.
+    #[test]
+    fn bulk_action_ignores_marks_for_modules_that_no_longer_exist() {
+        let screen = marked_screen(&["ghost-module"]);
+        assert!(screen.bulk_action().is_none());
+    }
+
+    #[test]
+    fn marking_toggles_and_survives_a_filter_change() {
+        let mut screen = marked_screen(&[]);
+        screen.toggle_mark(); // marks "base" (row 0)
+        assert!(screen.marked.contains("base"));
+
+        // Filtering to a disjoint set must not drop the mark.
+        screen.filter_query = "desktop".to_string();
+        screen.rebuild_visible();
+        assert!(screen.marked.contains("base"));
+
+        // Unmark by name via a fresh screen positioned on the same row.
+        let mut screen = marked_screen(&["base"]);
+        screen.toggle_mark();
+        assert!(!screen.marked.contains("base"));
+    }
+
+    #[test]
+    fn refresh_clears_marks_so_a_batch_is_not_applied_twice() {
+        let mut screen = marked_screen(&["base", "desktop"]);
+        screen.refresh();
+        assert!(screen.marked.is_empty());
+        assert!(screen.bulk_action().is_none());
     }
 }
