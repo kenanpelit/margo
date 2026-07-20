@@ -79,15 +79,30 @@ struct Params {
     structs: i32,
 }
 
+/// Percent-resolution factor in `[lo, hi]`, generated as an integer and
+/// divided down.
+///
+/// Deliberately *not* a float range strategy: proptest 1.11's uniform float
+/// sampler panics on its own internal invariant
+/// (`float_samplers.rs:466: self.low - result < self.intervals.step`) for a
+/// small fraction of inclusive-range draws. At the 256 cases the smoke gate
+/// runs it never showed; the 200k-case soak hit it on the first scheduled
+/// run (2026-07-20). Nothing upstream fixes it — 1.11.0 is the latest — so
+/// sample the integers instead, which also shrinks to round numbers and
+/// keeps every drawn value exactly representable.
+fn factor(lo: u32, hi: u32) -> impl Strategy<Value = f32> {
+    (lo..=hi).prop_map(|percent| percent as f32 / 100.0)
+}
+
 fn params() -> impl Strategy<Value = Params> {
     (
         0usize..=8,
         1u32..=3,
-        0.10f32..=0.90,
+        factor(10, 90),
         (0i32..=24, 0i32..=24, 0i32..=24, 0i32..=24),
         (0i32..=3000, 0i32..=2000, 800i32..=5120, 600i32..=2880),
         (
-            proptest::collection::vec(0.1f32..=1.0, 8),
+            proptest::collection::vec(factor(10, 100), 8),
             any::<bool>(),
             any::<bool>(),
             any::<bool>(),

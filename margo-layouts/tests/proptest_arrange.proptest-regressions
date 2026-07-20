@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 83a7a376c934826fda2fd5c09a5a1bae979bdb7dec72c681041769654c402b8b # shrinks to p = Params { n: 1, nmaster: 1, mfact: 0.1, gaps: GapConfig { gappih: 3, gappiv: 0, gappoh: 0, gappov: 0 }, wa: Rect { x: 0, y: 0, width: 800, height: 600 }, focused: None, proportions: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1], focus_center: false, prefer_center: false, prefer_overspread: false, structs: 0 }
+cc 6939cd3ece8489bdd45ac1a21e935a4b4910ce5543e9fe9c7fb0a7816f7265cc # shrinks to p = Params { n: 8, nmaster: 1, mfact: 0.89, gaps: GapConfig { gappih: 20, gappiv: 0, gappoh: 23, gappov: 0 }, wa: Rect { x: 0, y: 0, width: 800, height: 600 }, focused: None, proportions: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1], focus_center: false, prefer_center: false, prefer_overspread: false, structs: 0 }

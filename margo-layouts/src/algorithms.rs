@@ -138,12 +138,17 @@ pub fn grid(ctx: &ArrangeCtx) -> ArrangeResult {
     let ih = g.gappih;
     let iv = g.gappiv;
 
-    let total_w = wa.width - 2 * oh;
-    let total_h = wa.height - 2 * ov;
+    // Gaps are configured against a full monitor, but `grid` is also handed
+    // narrow sub-areas by composite layouts (`tgmix` gives it whatever the
+    // master column left over). Once the outer gaps exceed the area there is
+    // no honest arrangement left, so clamp: a 1px window is cramped, a 0px
+    // one is invisible and unclickable, and a negative one is nonsense.
+    let total_w = (wa.width - 2 * oh).max(1);
+    let total_h = (wa.height - 2 * ov).max(1);
 
     if n == 1 {
-        let cw = (total_w as f32 * 0.9) as i32;
-        let ch = (total_h as f32 * 0.9) as i32;
+        let cw = ((total_w as f32 * 0.9) as i32).max(1);
+        let ch = ((total_h as f32 * 0.9) as i32).max(1);
         return vec![(
             ctx.tiled[0],
             Rect::new(
@@ -166,8 +171,10 @@ pub fn grid(ctx: &ArrangeCtx) -> ArrangeResult {
         cols
     };
 
-    let cw = (total_w - (cols - 1) as i32 * ih) / cols as i32;
-    let ch = (total_h - (rows - 1) as i32 * iv) / rows as i32;
+    // Same clamp as above, now against the inner gaps: with enough columns
+    // the dividers alone can consume the whole width.
+    let cw = ((total_w - (cols - 1) as i32 * ih) / cols as i32).max(1);
+    let ch = ((total_h - (rows - 1) as i32 * iv) / rows as i32).max(1);
     let overcols = n % cols;
     let dx = if overcols > 0 {
         (total_w - overcols as i32 * cw - (overcols - 1) as i32 * ih) / 2
@@ -602,6 +609,65 @@ mod tests {
             scroller_prefer_center: false,
             scroller_prefer_overspread: false,
             canvas_pan: (0.0, 0.0),
+        }
+    }
+
+    /// Regression, found by the 200k-case proptest soak on 2026-07-20.
+    ///
+    /// `tgmix` hands `grid` whatever the master column leaves over. At
+    /// mfact 0.89 on an 800px-wide area that stack is 87px, and grid then
+    /// lays 7 clients out in 3 columns: the 23px outer gaps plus two 20px
+    /// inner gaps consume every pixel, so `(41 - 40) / 3` truncated the cell
+    /// width to **zero** and the windows became invisible and unclickable.
+    ///
+    /// Cells are now clamped to 1px — cramped, but real.
+    #[test]
+    fn grid_cells_stay_positive_when_gaps_exceed_a_narrow_area() {
+        let gaps = GapConfig {
+            gappih: 20,
+            gappiv: 0,
+            gappoh: 23,
+            gappov: 0,
+        };
+        let tiled: Vec<usize> = (0..8).collect();
+        let mut ctx = ctx(&tiled, &gaps, 1);
+        ctx.work_area = Rect::new(0, 0, 800, 600);
+        ctx.mfact = 0.89;
+
+        let arranged = tgmix(&ctx);
+        assert_eq!(arranged.len(), 8);
+        for (idx, rect) in &arranged {
+            assert!(
+                rect.width > 0 && rect.height > 0,
+                "idx {idx} got a degenerate {}x{} rect",
+                rect.width,
+                rect.height
+            );
+        }
+    }
+
+    /// The same squeeze applied directly to `grid`: an area narrower than
+    /// its own outer gaps must still produce usable rects rather than
+    /// negative ones.
+    #[test]
+    fn grid_survives_an_area_smaller_than_its_outer_gaps() {
+        let gaps = GapConfig {
+            gappih: 20,
+            gappiv: 20,
+            gappoh: 40,
+            gappov: 40,
+        };
+        let tiled: Vec<usize> = (0..5).collect();
+        let mut ctx = ctx(&tiled, &gaps, 1);
+        ctx.work_area = Rect::new(0, 0, 50, 50);
+
+        for (idx, rect) in grid(&ctx) {
+            assert!(
+                rect.width > 0 && rect.height > 0,
+                "idx {idx} got a degenerate {}x{} rect",
+                rect.width,
+                rect.height
+            );
         }
     }
 
