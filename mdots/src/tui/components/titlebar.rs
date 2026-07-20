@@ -21,7 +21,7 @@ pub fn render_titlebar(_app: &App, frame: &mut Frame, area: Rect) -> Result<()> 
         ),
         Span::styled(
             format!("v{} ", version),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(crate::tui::theme::dim()),
         ),
     ]);
 

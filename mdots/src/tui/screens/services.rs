@@ -182,13 +182,13 @@ impl ServicesScreenState {
                 let (status_char, status_color) = if entry.enabled {
                     ("●", Color::Green)
                 } else {
-                    ("○", Color::DarkGray)
+                    ("○", crate::tui::theme::dim())
                 };
                 let line = Line::from(vec![
                     Span::styled(format!("{status_char} "), Style::default().fg(status_color)),
                     Span::styled(
                         format!("{:<24}", &entry.name),
-                        Style::default().fg(Color::White),
+                        Style::default().fg(crate::tui::theme::text()),
                     ),
                     Span::styled(
                         format!(" ({} svc)", entry.enabled_count),
@@ -208,7 +208,7 @@ impl ServicesScreenState {
             )
             .highlight_style(
                 Style::default()
-                    .bg(Color::DarkGray)
+                    .bg(crate::tui::theme::dim())
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");
@@ -221,7 +221,7 @@ impl ServicesScreenState {
             let (status, status_color) = if entry.enabled {
                 ("Enabled", Color::Green)
             } else {
-                ("Disabled", Color::DarkGray)
+                ("Disabled", crate::tui::theme::dim())
             };
             vec![
                 Line::from(""),
@@ -261,16 +261,16 @@ impl ServicesScreenState {
                 Line::from(""),
                 Line::from(Span::styled(
                     "No service profiles found.",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
                 Line::from(""),
                 Line::from(Span::styled(
                     "Create profiles in the 'services/'",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
                 Line::from(Span::styled(
                     "directory of your config folder.",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
             ]
         } else {
@@ -278,7 +278,7 @@ impl ServicesScreenState {
                 Line::from(""),
                 Line::from(Span::styled(
                     "No profile selected.",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
             ]
         };

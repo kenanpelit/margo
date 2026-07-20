@@ -9,11 +9,13 @@ mod job;
 mod keybindings;
 mod layout;
 mod palette;
+#[cfg(test)]
+mod render_tests;
 mod screens;
 mod scroll;
 pub mod terminal;
 mod theme;
-mod ui;
+pub(crate) mod ui;
 
 use app::{Action, App, Dialog, MessageLevel};
 use events::{is_quit_key, EventHandler, TuiEvent};

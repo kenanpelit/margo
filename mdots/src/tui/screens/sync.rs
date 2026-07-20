@@ -308,7 +308,7 @@ impl SyncScreenState {
             Line::from(vec![Span::styled(
                 "[READ-ONLY PREVIEW — run 'mdots sync' to apply]",
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(crate::tui::theme::dim())
                     .add_modifier(Modifier::ITALIC),
             )]),
         ];
@@ -355,7 +355,7 @@ impl SyncScreenState {
                     "  {} nix package(s) managed by home-manager",
                     self.plan.nix_count
                 ),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(crate::tui::theme::dim()),
             )])));
         }
 

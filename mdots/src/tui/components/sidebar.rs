@@ -1,7 +1,7 @@
 use anyhow::Result;
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem},
     Frame,
@@ -26,7 +26,7 @@ pub fn render_sidebar(app: &App, frame: &mut Frame, area: Rect) -> Result<Rect> 
                     .bg(crate::tui::theme::accent())
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::White)
+                Style::default().fg(crate::tui::theme::text())
             };
 
             let content = format!(" {} {}", item.icon, item.name);

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
     Frame,
@@ -40,8 +40,8 @@ pub fn render_palette(palette: &PaletteState, frame: &mut Frame, area: Rect) -> 
     frame.render_widget(query, chunks[0]);
 
     if palette.matches.is_empty() {
-        let empty =
-            Paragraph::new("no matching command").style(Style::default().fg(Color::DarkGray));
+        let empty = Paragraph::new("no matching command")
+            .style(Style::default().fg(crate::tui::theme::dim()));
         frame.render_widget(empty, chunks[1]);
         return Ok(());
     }
@@ -58,7 +58,7 @@ pub fn render_palette(palette: &PaletteState, frame: &mut Frame, area: Rect) -> 
                         .add_modifier(Modifier::BOLD),
                 )
             } else {
-                ("  ", Style::default().fg(Color::White))
+                ("  ", Style::default().fg(crate::tui::theme::text()))
             };
             // Right-align the hint against the pane's inner width, clamping
             // so a narrow terminal degrades to "no padding" rather than
@@ -69,7 +69,7 @@ pub fn render_palette(palette: &PaletteState, frame: &mut Frame, area: Rect) -> 
                 Span::styled(marker, label_style),
                 Span::styled(entry.label.clone(), label_style),
                 Span::raw(" ".repeat(pad)),
-                Span::styled(entry.hint, Style::default().fg(Color::DarkGray)),
+                Span::styled(entry.hint, Style::default().fg(crate::tui::theme::dim())),
             ]))
         })
         .collect();

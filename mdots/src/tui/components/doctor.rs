@@ -64,7 +64,7 @@ pub fn render_doctor_overlay(
     if checks.is_empty() {
         lines.push(Line::from(Span::styled(
             "No checks ran.",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(crate::tui::theme::dim()),
         )));
     }
 

@@ -39,7 +39,7 @@ pub fn render_statusbar(app: &App, frame: &mut Frame, area: Rect) -> Result<()> 
             spans.push(Span::styled(
                 format!(" {}", hint.desc),
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(crate::tui::theme::dim())
                     .add_modifier(Modifier::DIM),
             ));
         }

@@ -219,7 +219,7 @@ impl SecretsScreenState {
                     Span::styled(format!("{mark} "), Style::default().fg(color)),
                     Span::styled(
                         format!("{:<20}", &entry.name),
-                        Style::default().fg(Color::White),
+                        Style::default().fg(crate::tui::theme::text()),
                     ),
                     Span::styled(
                         format!(" {}", &entry.label),
@@ -239,7 +239,7 @@ impl SecretsScreenState {
             )
             .highlight_style(
                 Style::default()
-                    .bg(Color::DarkGray)
+                    .bg(crate::tui::theme::dim())
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");
@@ -278,7 +278,7 @@ impl SecretsScreenState {
                 Line::from(""),
                 Line::from(Span::styled(
                     "[e/Enter] edit with sops   [s] sync secrets",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
             ]
         } else if self.secrets.is_empty() {
@@ -286,16 +286,16 @@ impl SecretsScreenState {
                 Line::from(""),
                 Line::from(Span::styled(
                     "No secrets declared.",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
                 Line::from(""),
                 Line::from(Span::styled(
                     "Declare secrets in your host config",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
                 Line::from(Span::styled(
                     "under the `secrets:` key.",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
             ]
         } else {
@@ -303,7 +303,7 @@ impl SecretsScreenState {
                 Line::from(""),
                 Line::from(Span::styled(
                     "No secret selected.",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
             ]
         };

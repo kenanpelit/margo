@@ -258,7 +258,7 @@ impl ScreenTrait for DiffScreenState {
         if !self.loaded && self.data.is_none() && self.load_error.is_none() {
             let para = Paragraph::new("Computing drift…")
                 .block(bordered(" Diff "))
-                .style(Style::default().fg(Color::DarkGray));
+                .style(Style::default().fg(crate::tui::theme::dim()));
             frame.render_widget(para, area);
             return Ok(());
         }
@@ -325,7 +325,7 @@ impl DiffScreenState {
                 Span::raw("   "),
                 Span::styled(
                     "[s] sync  [r] refresh",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 ),
             ])
         };
@@ -343,7 +343,7 @@ impl DiffScreenState {
             .block(bordered(" Changes "))
             .highlight_style(
                 Style::default()
-                    .bg(Color::DarkGray)
+                    .bg(crate::tui::theme::dim())
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");
@@ -364,13 +364,25 @@ fn render_row(row: &DiffRow) -> ListItem<'_> {
         ))),
         DiffRow::Install { name, kind } => ListItem::new(Line::from(vec![
             Span::styled("  + ", Style::default().fg(Color::Green)),
-            Span::styled(format!("{name:<38}"), Style::default().fg(Color::White)),
-            Span::styled(format!(" [{kind}]"), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{name:<38}"),
+                Style::default().fg(crate::tui::theme::text()),
+            ),
+            Span::styled(
+                format!(" [{kind}]"),
+                Style::default().fg(crate::tui::theme::dim()),
+            ),
         ])),
         DiffRow::Remove { name, kind } => ListItem::new(Line::from(vec![
             Span::styled("  − ", Style::default().fg(Color::Red)),
-            Span::styled(format!("{name:<38}"), Style::default().fg(Color::White)),
-            Span::styled(format!(" [{kind}]"), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{name:<38}"),
+                Style::default().fg(crate::tui::theme::text()),
+            ),
+            Span::styled(
+                format!(" [{kind}]"),
+                Style::default().fg(crate::tui::theme::dim()),
+            ),
         ])),
         DiffRow::Dotfile(d) => {
             let (marker, colour) = match d.action {
@@ -378,17 +390,17 @@ fn render_row(row: &DiffRow) -> ListItem<'_> {
                 DotfileAction::Relink { .. } => ("  ~ ", Color::Yellow),
                 DotfileAction::Replace { .. } => ("  ! ", Color::Yellow),
                 DotfileAction::MissingSource => ("  ✗ ", Color::Red),
-                DotfileAction::InSync => ("  = ", Color::DarkGray),
+                DotfileAction::InSync => ("  = ", crate::tui::theme::dim()),
             };
             ListItem::new(Line::from(vec![
                 Span::styled(marker, Style::default().fg(colour)),
                 Span::styled(
                     format!("{:<38}", d.target.display().to_string()),
-                    Style::default().fg(Color::White),
+                    Style::default().fg(crate::tui::theme::text()),
                 ),
                 Span::styled(
                     format!(" {} · {}", d.action.label(), d.module),
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 ),
             ]))
         }

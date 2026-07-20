@@ -39,7 +39,7 @@ pub fn render_help_overlay(screen: &Screen, frame: &mut Frame, area: Rect) -> Re
     lines.push(Line::from(Span::styled(
         "Press ? or Esc to close",
         Style::default()
-            .fg(Color::DarkGray)
+            .fg(crate::tui::theme::dim())
             .add_modifier(Modifier::ITALIC),
     )));
 

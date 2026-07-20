@@ -70,7 +70,7 @@ pub fn render_dialog(dialog: &Dialog, frame: &mut Frame, area: Rect) -> Result<(
                 Line::from(""),
                 Line::from(Span::styled(
                     "Press Esc to close",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
             ];
 
@@ -93,7 +93,7 @@ pub fn render_dialog(dialog: &Dialog, frame: &mut Frame, area: Rect) -> Result<(
                 Line::from(""),
                 Line::from(Span::styled(
                     "Press Esc to close",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
             ];
 

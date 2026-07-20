@@ -185,7 +185,7 @@ impl HooksScreenState {
                 let (mark, color) = match entry.status.as_str() {
                     "executed" => ("✓", Color::Green),
                     "skipped" => ("⊘", Color::Yellow),
-                    "not_run" => ("○", Color::DarkGray),
+                    "not_run" => ("○", crate::tui::theme::dim()),
                     _ => ("?", Color::Red),
                 };
                 let line = Line::from(vec![
@@ -194,7 +194,10 @@ impl HooksScreenState {
                         format!("{:<6}", short_type(&entry.hook_type)),
                         Style::default().fg(Color::Cyan),
                     ),
-                    Span::styled(entry.module.clone(), Style::default().fg(Color::White)),
+                    Span::styled(
+                        entry.module.clone(),
+                        Style::default().fg(crate::tui::theme::text()),
+                    ),
                 ]);
                 ListItem::new(line)
             })
@@ -209,7 +212,7 @@ impl HooksScreenState {
             )
             .highlight_style(
                 Style::default()
-                    .bg(Color::DarkGray)
+                    .bg(crate::tui::theme::dim())
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");
@@ -230,11 +233,17 @@ impl HooksScreenState {
                 ]),
                 Line::from(vec![
                     Span::styled("Type: ", Style::default().fg(Color::Cyan)),
-                    Span::styled(entry.hook_type.clone(), Style::default().fg(Color::White)),
+                    Span::styled(
+                        entry.hook_type.clone(),
+                        Style::default().fg(crate::tui::theme::text()),
+                    ),
                 ]),
                 Line::from(vec![
                     Span::styled("Status: ", Style::default().fg(Color::Cyan)),
-                    Span::styled(entry.status.clone(), Style::default().fg(Color::White)),
+                    Span::styled(
+                        entry.status.clone(),
+                        Style::default().fg(crate::tui::theme::text()),
+                    ),
                 ]),
             ];
             if let Some(script) = &entry.script {
@@ -254,7 +263,7 @@ impl HooksScreenState {
                 } else {
                     "(global update hook — run via `mdots update`)"
                 },
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(crate::tui::theme::dim()),
             )));
             lines
         } else if self.hooks.is_empty() {
@@ -262,7 +271,7 @@ impl HooksScreenState {
                 Line::from(""),
                 Line::from(Span::styled(
                     "No hooks found in enabled modules.",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
             ]
         } else {
@@ -270,7 +279,7 @@ impl HooksScreenState {
                 Line::from(""),
                 Line::from(Span::styled(
                     "No hook selected.",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
             ]
         };

@@ -21,14 +21,22 @@ pub struct Theme {
     pub accent: Color,
     /// Readable foreground for text drawn *on* an `accent` background.
     pub accent_fg: Color,
+    /// Body text. Was a hardcoded `White` at every call site, which is
+    /// simply wrong under a light palette.
+    pub text: Color,
+    /// De-emphasised text: hints, units, secondary columns.
+    pub dim: Color,
 }
 
 impl Theme {
-    /// The built-in palette used when no matugen file is available.
+    /// The built-in palette used when no matugen file is available. These
+    /// are the colours the TUI used before it read the palette at all.
     fn fallback() -> Self {
         Self {
             accent: Color::Blue,
             accent_fg: Color::Black,
+            text: Color::White,
+            dim: Color::DarkGray,
         }
     }
 }
@@ -48,6 +56,16 @@ pub fn accent() -> Color {
 /// Convenience accessor for the on-accent foreground colour.
 pub fn accent_fg() -> Color {
     current().accent_fg
+}
+
+/// Convenience accessor for the body-text colour.
+pub fn text() -> Color {
+    current().text
+}
+
+/// Convenience accessor for the de-emphasised text colour.
+pub fn dim() -> Color {
+    current().dim
 }
 
 fn load() -> Theme {
@@ -74,19 +92,34 @@ fn palette_path() -> Option<PathBuf> {
 /// [appearance]
 /// primary_color = { base = "#5ec8c5", text = "#10212a" }
 /// ```
+///
+/// Body text comes from `text_color`, and the de-emphasised tone from
+/// `background_color.neutral` — the palette's own "raised surface" colour,
+/// which is by construction visible against the background but quieter than
+/// the text. Both fall back to the fixed defaults when absent, so a partial
+/// palette degrades a shade at a time rather than all-or-nothing.
 fn parse_palette(content: &str) -> Option<Theme> {
+    let fallback = Theme::fallback();
     let mut accent = None;
     let mut accent_fg = None;
+    let mut text = None;
+    let mut dim = None;
     for line in content.lines() {
-        if line.trim_start().starts_with("primary_color") {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("primary_color") {
             accent = hex_after(line, "base");
             accent_fg = hex_after(line, "text");
-            break;
+        } else if trimmed.starts_with("text_color") {
+            text = hex_after(line, "text_color");
+        } else if trimmed.starts_with("background_color") {
+            dim = hex_after(line, "neutral");
         }
     }
     Some(Theme {
         accent: accent?,
-        accent_fg: accent_fg.unwrap_or(Color::Black),
+        accent_fg: accent_fg.unwrap_or(fallback.accent_fg),
+        text: text.unwrap_or(fallback.text),
+        dim: dim.unwrap_or(fallback.dim),
     })
 }
 
@@ -127,6 +160,32 @@ text_color       = \"#d9def0\"
         let theme = parse_palette(content).expect("accent present");
         assert_eq!(theme.accent, Color::Rgb(0x5e, 0xc8, 0xc5));
         assert_eq!(theme.accent_fg, Color::Rgb(0x10, 0x21, 0x2a));
+        assert_eq!(theme.text, Color::Rgb(0xd9, 0xde, 0xf0));
+        assert_eq!(theme.dim, Color::Rgb(0x2f, 0x33, 0x46));
+    }
+
+    /// A palette carrying only the accent must still produce a usable theme
+    /// — every other slot degrades to the built-in colour on its own.
+    #[test]
+    fn partial_palette_degrades_one_slot_at_a_time() {
+        let theme = parse_palette("primary_color = { base = \"#abcdef\" }\n").expect("accent");
+        let fallback = Theme::fallback();
+        assert_eq!(theme.accent, Color::Rgb(0xab, 0xcd, 0xef));
+        assert_eq!(theme.text, fallback.text);
+        assert_eq!(theme.dim, fallback.dim);
+    }
+
+    /// `text_color` sits on its own line, but `background_color` also has a
+    /// `text = ` key inside it — the scan must not pick that one up.
+    #[test]
+    fn body_text_comes_from_text_color_not_the_background_row() {
+        let content = "\
+background_color = { base = \"#1b1e2b\", neutral = \"#2f3346\", text = \"#ffffff\" }
+primary_color = { base = \"#5ec8c5\" }
+text_color = \"#111213\"
+";
+        let theme = parse_palette(content).expect("accent present");
+        assert_eq!(theme.text, Color::Rgb(0x11, 0x12, 0x13));
     }
 
     #[test]

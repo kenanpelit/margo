@@ -273,7 +273,7 @@ impl ScreenTrait for PackagesScreenState {
                         .border_style(Style::default().fg(crate::tui::theme::accent()))
                         .title(" Packages "),
                 )
-                .style(Style::default().fg(Color::DarkGray));
+                .style(Style::default().fg(crate::tui::theme::dim()));
             frame.render_widget(para, area);
             return Ok(());
         }
@@ -382,11 +382,11 @@ impl PackagesScreenState {
                     ),
                     Span::styled(
                         format!("{:<35}", &row.name),
-                        Style::default().fg(Color::White),
+                        Style::default().fg(crate::tui::theme::text()),
                     ),
                     Span::styled(
                         format!(" [{}]", row.type_label()),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(crate::tui::theme::dim()),
                     ),
                 ]);
                 ListItem::new(line)
@@ -402,7 +402,7 @@ impl PackagesScreenState {
             )
             .highlight_style(
                 Style::default()
-                    .bg(Color::DarkGray)
+                    .bg(crate::tui::theme::dim())
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");

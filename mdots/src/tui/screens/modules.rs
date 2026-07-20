@@ -343,7 +343,7 @@ impl ModulesScreenState {
                 let status_color = if entry.enabled {
                     Color::Green
                 } else {
-                    Color::DarkGray
+                    crate::tui::theme::dim()
                 };
                 let marked = self.marked.contains(&entry.name);
 
@@ -358,7 +358,7 @@ impl ModulesScreenState {
                     ),
                     Span::styled(
                         format!("{:<30}", &entry.name),
-                        Style::default().fg(Color::White),
+                        Style::default().fg(crate::tui::theme::text()),
                     ),
                     Span::styled(
                         format!(" ({} pkgs)", entry.package_count),
@@ -378,7 +378,7 @@ impl ModulesScreenState {
             )
             .highlight_style(
                 Style::default()
-                    .bg(Color::DarkGray)
+                    .bg(crate::tui::theme::dim())
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");
@@ -392,7 +392,7 @@ impl ModulesScreenState {
             let status_color = if entry.enabled {
                 Color::Green
             } else {
-                Color::DarkGray
+                crate::tui::theme::dim()
             };
 
             vec![
@@ -430,16 +430,16 @@ impl ModulesScreenState {
                 Line::from(""),
                 Line::from(Span::styled(
                     "No modules found.",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
                 Line::from(""),
                 Line::from(Span::styled(
                     "Create modules in the 'modules/'",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
                 Line::from(Span::styled(
                     "directory of your config folder.",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
             ]
         } else {
@@ -447,7 +447,7 @@ impl ModulesScreenState {
                 Line::from(""),
                 Line::from(Span::styled(
                     "No module selected.",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(crate::tui::theme::dim()),
                 )),
             ]
         };
