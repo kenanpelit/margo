@@ -11,6 +11,7 @@ use std::collections::HashMap;
 
 use crate::config::{Config, ConfigPaths, PackageType};
 use crate::package::PackageManager;
+use crate::tui::job::Job;
 use crate::tui::screens::{ScreenAction, ScreenTrait};
 
 /// A single row in the packages list.
@@ -62,7 +63,53 @@ fn filter_package_rows(packages: &[PackageRow], query: &str) -> Vec<usize> {
         .collect()
 }
 
-#[derive(Clone, Default)]
+/// Gather every declared package and mark which ones are actually installed.
+///
+/// Free function rather than a method because it runs on a worker thread
+/// (see [`Job`]): it shells out to `pacman` and `flatpak`, which on a large
+/// system takes long enough to be visible as a freeze if done inline.
+fn load_packages(paths: &ConfigPaths, config: &Config) -> Result<Vec<PackageRow>> {
+    let pm = PackageManager::new(paths.clone());
+    let declared = pm.get_declared_packages(config)?;
+
+    // Get installed native packages — tolerate failure (e.g. no pacman)
+    let installed_native: HashMap<String, String> =
+        pm.get_installed_native_packages(config).unwrap_or_default();
+
+    // Get installed flatpaks — tolerate failure
+    let installed_flatpak: std::collections::HashSet<String> = pm
+        .get_installed_flatpaks(config.flatpak_scope.as_arg())
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+
+    let mut rows: Vec<PackageRow> = declared
+        .into_iter()
+        .map(|pkg| {
+            let installed = match pkg.package_type {
+                PackageType::Native => installed_native.contains_key(&pkg.name),
+                PackageType::Flatpak => installed_flatpak.contains(&pkg.name),
+                PackageType::Nix => false, // nix managed externally
+            };
+            PackageRow {
+                name: pkg.name,
+                pkg_type: pkg.package_type,
+                installed,
+            }
+        })
+        .collect();
+
+    // Sort: uninstalled first (false < true), then by name
+    rows.sort_by(|a, b| {
+        a.installed
+            .cmp(&b.installed)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+
+    Ok(rows)
+}
+
+#[derive(Default)]
 pub struct PackagesScreenState {
     all_packages: Vec<PackageRow>,
     /// Indices into `all_packages` that are visible after the current filter.
@@ -72,56 +119,34 @@ pub struct PackagesScreenState {
     filter_active: bool,
     loaded: bool,
     load_error: Option<String>,
+    /// The off-thread `pacman`/`flatpak` probe backing this screen.
+    load_job: Job<Vec<PackageRow>>,
 }
 
 impl PackagesScreenState {
-    fn load_data(&mut self, paths: &ConfigPaths, config: &Config) -> Result<()> {
-        let pm = PackageManager::new(paths.clone());
-        let declared = pm.get_declared_packages(config)?;
-
-        // Get installed native packages — tolerate failure (e.g. no pacman)
-        let installed_native: HashMap<String, String> =
-            pm.get_installed_native_packages(config).unwrap_or_default();
-
-        // Get installed flatpaks — tolerate failure
-        let installed_flatpak: std::collections::HashSet<String> = pm
-            .get_installed_flatpaks(config.flatpak_scope.as_arg())
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
-
-        self.all_packages = declared
-            .into_iter()
-            .map(|pkg| {
-                let installed = match pkg.package_type {
-                    PackageType::Native => installed_native.contains_key(&pkg.name),
-                    PackageType::Flatpak => installed_flatpak.contains(&pkg.name),
-                    PackageType::Nix => false, // nix managed externally
-                };
-                PackageRow {
-                    name: pkg.name,
-                    pkg_type: pkg.package_type,
-                    installed,
-                }
-            })
-            .collect();
-
-        // Sort: uninstalled first (false < true), then by name
-        self.all_packages.sort_by(|a, b| {
-            a.installed
-                .cmp(&b.installed)
-                .then_with(|| a.name.cmp(&b.name))
-        });
-
-        self.rebuild_visible();
-
-        if !self.visible.is_empty() && self.list_state.selected().is_none() {
-            self.list_state.select(Some(0));
-        }
-
+    /// Kick off a fresh background load, discarding any in-flight one.
+    fn start_load(&mut self, paths: &ConfigPaths, config: &Config) {
+        let paths = paths.clone();
+        let config = config.clone();
+        self.load_job.spawn(move || load_packages(&paths, &config));
+        self.loaded = false;
         self.load_error = None;
+    }
+
+    /// Fold a finished background load into the screen's state.
+    fn apply_load(&mut self, result: Result<Vec<PackageRow>>) {
+        match result {
+            Ok(rows) => {
+                self.all_packages = rows;
+                self.rebuild_visible();
+                if !self.visible.is_empty() && self.list_state.selected().is_none() {
+                    self.list_state.select(Some(0));
+                }
+                self.load_error = None;
+            }
+            Err(e) => self.load_error = Some(format!("{e:#}")),
+        }
         self.loaded = true;
-        Ok(())
     }
 
     fn rebuild_visible(&mut self) {
@@ -190,7 +215,6 @@ impl ScreenTrait for PackagesScreenState {
             KeyCode::Esc => return Ok(Some(ScreenAction::Back)),
             KeyCode::Char('r') => {
                 self.loaded = false;
-                self.load_error = None;
             }
             KeyCode::Char('/') => {
                 self.filter_active = true;
@@ -208,6 +232,21 @@ impl ScreenTrait for PackagesScreenState {
         self.filter_active
     }
 
+    fn on_activate(&mut self, paths: &ConfigPaths, config: &Config) -> Result<()> {
+        self.start_load(paths, config);
+        Ok(())
+    }
+
+    fn refresh(&mut self) {
+        // Cleared here, restarted by the next `render` — which is the only
+        // place with the `paths`/`config` a load needs.
+        self.loaded = false;
+    }
+
+    fn is_busy(&self) -> bool {
+        self.load_job.is_running()
+    }
+
     fn render(
         &mut self,
         paths: &ConfigPaths,
@@ -215,11 +254,28 @@ impl ScreenTrait for PackagesScreenState {
         frame: &mut Frame,
         area: Rect,
     ) -> Result<()> {
-        if !self.loaded {
-            if let Err(e) = self.load_data(paths, config) {
-                self.load_error = Some(format!("{e:#}"));
-                self.loaded = true;
-            }
+        // Pick up a finished probe, or start one if the screen is stale and
+        // nothing is already in flight.
+        if let Some(result) = self.load_job.take() {
+            self.apply_load(result);
+        } else if !self.loaded && !self.load_job.is_running() {
+            self.start_load(paths, config);
+        }
+
+        // First load on this screen: nothing to show but the spinner text.
+        // A *re*-load keeps the previous rows on screen instead of blanking,
+        // so pressing `r` doesn't flash an empty list.
+        if !self.loaded && self.all_packages.is_empty() && self.load_error.is_none() {
+            let para = Paragraph::new("Loading packages…")
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(crate::tui::theme::accent()))
+                        .title(" Packages "),
+                )
+                .style(Style::default().fg(Color::DarkGray));
+            frame.render_widget(para, area);
+            return Ok(());
         }
 
         let has_error = self.load_error.is_some();

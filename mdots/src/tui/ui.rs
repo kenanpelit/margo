@@ -9,6 +9,7 @@ use super::components::{
     render_dialog, render_doctor_overlay, render_help_overlay, render_sidebar, render_statusbar,
     render_titlebar,
 };
+use super::layout::LayoutSnapshot;
 
 /// Main UI rendering function
 pub fn render(app: &mut App, frame: &mut Frame) -> Result<()> {
@@ -34,10 +35,12 @@ pub fn render(app: &mut App, frame: &mut Frame) -> Result<()> {
         .constraints([Constraint::Length(sidebar_width), Constraint::Min(0)])
         .split(chunks[1]);
 
-    // Render sidebar (if not collapsed)
-    if !app.sidebar.collapsed {
-        render_sidebar(app, frame, content_chunks[0])?;
-    }
+    // Render sidebar (if not collapsed), keeping the item rows it drew.
+    let sidebar_items = if app.sidebar.collapsed {
+        None
+    } else {
+        Some(render_sidebar(app, frame, content_chunks[0])?)
+    };
 
     // Render current screen
     let content_area = if app.sidebar.collapsed {
@@ -45,6 +48,10 @@ pub fn render(app: &mut App, frame: &mut Frame) -> Result<()> {
     } else {
         content_chunks[1]
     };
+
+    // Record the geometry we just drew so mouse handling hit-tests against
+    // it rather than against a duplicated copy of these constraints.
+    app.layout = LayoutSnapshot { sidebar_items };
 
     // Extract references before mutable borrow to avoid borrow checker issues
     let paths = &app.paths;

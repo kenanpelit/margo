@@ -5,7 +5,9 @@ use std::time::{Duration, Instant};
 mod app;
 mod components;
 mod events;
+mod job;
 mod keybindings;
+mod layout;
 mod screens;
 mod scroll;
 pub mod terminal;
@@ -30,16 +32,26 @@ pub fn run(paths: ConfigPaths, mut terminal: terminal::Tui) -> Result<()> {
 
     // Main event loop
     loop {
-        // Render UI
-        terminal.draw(|frame| {
-            if let Err(e) = ui::render(&mut app, frame) {
-                eprintln!("Render error: {}", e);
-            }
-        })?;
+        // Only repaint when something actually changed. Every input event
+        // sets the flag below, so this is invisible in use — but it takes an
+        // idle TUI from a full-screen redraw four times a second (the tick
+        // rate) down to zero work.
+        if app.needs_refresh {
+            terminal.draw(|frame| {
+                if let Err(e) = ui::render(&mut app, frame) {
+                    eprintln!("Render error: {}", e);
+                }
+            })?;
+            app.needs_refresh = false;
+        }
 
         // Handle events
         match events.next()? {
             TuiEvent::Key(key) => {
+                // Any keystroke can change what's on screen; the handlers
+                // below don't each have to remember to say so.
+                app.needs_refresh = true;
+
                 // Check for quit
                 if is_quit_key(&key) {
                     break;
@@ -93,6 +105,7 @@ pub fn run(paths: ConfigPaths, mut terminal: terminal::Tui) -> Result<()> {
             }
             TuiEvent::Mouse(mouse) => {
                 use crossterm::event::{MouseButton, MouseEventKind};
+                app.needs_refresh = true;
                 match mouse.kind {
                     MouseEventKind::ScrollDown => {
                         if let Err(e) = app.handle_scroll(true) {
@@ -111,14 +124,23 @@ pub fn run(paths: ConfigPaths, mut terminal: terminal::Tui) -> Result<()> {
                 }
             }
             TuiEvent::Resize(_, _) => {
-                // Terminal resized - ratatui handles this automatically
+                // ratatui re-derives the layout from the new size on the next
+                // draw; we just have to ask for one.
+                app.needs_refresh = true;
             }
             TuiEvent::Tick => {
                 // Check if status message expired
                 if let Some(msg) = &app.status_message {
                     if msg.expires_at < Instant::now() {
                         app.status_message = None;
+                        app.needs_refresh = true;
                     }
+                }
+                // A screen waiting on a background probe has no input event
+                // coming to wake it, so keep drawing while work is in flight
+                // — that's what polls the worker and picks up its result.
+                if app.current_screen.is_busy() {
+                    app.needs_refresh = true;
                 }
             }
         }
@@ -227,5 +249,8 @@ fn dispatch_action(app: &mut App, terminal: &mut terminal::Tui, action: Action) 
         }
     }
 
+    // `resume` cleared the terminal behind us, so the next iteration must
+    // draw whatever the flag would otherwise have let it skip.
     app.current_screen.refresh();
+    app.needs_refresh = true;
 }

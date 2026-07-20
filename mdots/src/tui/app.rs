@@ -3,6 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::Instant;
 
 use crate::config::{Config, ConfigPaths};
+use crate::tui::layout::LayoutSnapshot;
 use crate::tui::screens::Screen;
 
 /// Main TUI application state
@@ -43,8 +44,14 @@ pub struct App {
     /// Should the app quit?
     pub should_quit: bool,
 
-    /// Force UI refresh flag
+    /// Set whenever something that affects the display changed, cleared by
+    /// the main loop right after it draws. The loop only calls
+    /// `terminal.draw` when this is set, so an idle TUI costs nothing
+    /// instead of repainting the whole screen on every 250 ms tick.
     pub needs_refresh: bool,
+
+    /// Geometry recorded by the last render, used for mouse hit-testing.
+    pub layout: LayoutSnapshot,
 }
 
 pub struct SidebarState {
@@ -244,6 +251,7 @@ impl App {
             status_message: None,
             should_quit: false,
             needs_refresh: true,
+            layout: LayoutSnapshot::default(),
         })
     }
 
@@ -404,31 +412,24 @@ impl App {
         Ok(())
     }
 
-    /// Handle a left-click at terminal cell (`col`, `row`). Only meaningful
-    /// while the sidebar is expanded and no overlay is up: a click on a
+    /// Handle a left-click at terminal cell (`col`, `row`): a click on a
     /// sidebar row selects that item and navigates to it (same as Tab +
-    /// Enter). Clicks elsewhere are ignored. The geometry mirrors
-    /// `ui::render`'s fixed layout — titlebar height 3, sidebar width 20,
-    /// one-cell block border — so a change there must be reflected here.
+    /// Enter). Clicks elsewhere are ignored.
+    ///
+    /// Hit-testing goes through [`LayoutSnapshot`], which holds the rects the
+    /// last render actually drew — so a collapsed sidebar (no recorded rect)
+    /// and any future layout change are both handled without this function
+    /// knowing the constraints.
     pub fn handle_left_click(&mut self, col: u16, row: u16) {
-        if self.help_visible || self.doctor.is_some() || self.sidebar.collapsed {
+        if self.help_visible || self.doctor.is_some() {
             return;
         }
-        const SIDEBAR_WIDTH: u16 = 20;
-        const TITLEBAR_HEIGHT: u16 = 3;
-        if col >= SIDEBAR_WIDTH {
+        let Some(index) = self
+            .layout
+            .sidebar_index_at(col, row, self.sidebar.items.len())
+        else {
             return;
-        }
-        // The first item sits one row below the content top (the sidebar
-        // block's own top border).
-        let first_item_row = TITLEBAR_HEIGHT + 1;
-        if row < first_item_row {
-            return;
-        }
-        let index = (row - first_item_row) as usize;
-        if index >= self.sidebar.items.len() {
-            return;
-        }
+        };
         if let Some(new_screen) = screen_for_index(index) {
             self.sidebar.selected_index = index;
             self.navigate_to(new_screen);

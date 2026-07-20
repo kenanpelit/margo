@@ -38,6 +38,15 @@ pub trait ScreenTrait {
     /// plan). Defaults to no-op; screens with a `loaded` reload-gate
     /// override it (the same effect as their own `r` refresh key).
     fn refresh(&mut self) {}
+
+    /// Whether the screen is waiting on background work (see
+    /// [`crate::tui::job::Job`]). While this is true the main loop keeps
+    /// redrawing on every tick, which is what polls the worker — without it
+    /// a finished probe would sit unnoticed until the next keypress.
+    /// Defaults to false; screens that load off-thread override it.
+    fn is_busy(&self) -> bool {
+        false
+    }
 }
 
 /// Actions that screens can request
@@ -54,7 +63,6 @@ pub enum ScreenAction {
 }
 
 /// Enum of all possible screens
-#[derive(Clone)]
 pub enum Screen {
     Overview(OverviewScreenState),
     Modules(ModulesScreenState),
@@ -145,6 +153,19 @@ impl Screen {
             Screen::Services(s) => s.refresh(),
             Screen::Secrets(s) => s.refresh(),
             Screen::Hooks(s) => s.refresh(),
+        }
+    }
+
+    /// See [`ScreenTrait::is_busy`].
+    pub fn is_busy(&self) -> bool {
+        match self {
+            Screen::Overview(s) => s.is_busy(),
+            Screen::Modules(s) => s.is_busy(),
+            Screen::Packages(s) => s.is_busy(),
+            Screen::Sync(s) => s.is_busy(),
+            Screen::Services(s) => s.is_busy(),
+            Screen::Secrets(s) => s.is_busy(),
+            Screen::Hooks(s) => s.is_busy(),
         }
     }
 }
