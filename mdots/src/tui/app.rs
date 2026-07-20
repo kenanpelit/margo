@@ -192,17 +192,25 @@ pub fn toggle_module_confirm(name: &str, enable: bool) -> (String, String) {
 
 /// Pure confirm-text builder for [`Action::RunSync`], summarizing the
 /// previewed plan counts (matches the Sync screen's preview).
+///
+/// The dispatch path runs `sync` with `prune: false` (see
+/// `tui::dispatch_action`), so the message must not promise that prunable
+/// packages get removed — it previously said "−N to prune" for an operation
+/// that leaves them installed. They're reported as untouched instead, with
+/// the CLI flag that would actually remove them.
 pub fn run_sync_confirm(
     native_install: usize,
     flatpak_install: usize,
     prune: usize,
 ) -> (String, String) {
-    (
-        "Run sync".to_string(),
-        format!(
-            "Run sync? +{native_install} native, +{flatpak_install} flatpak to install, \u{2212}{prune} to prune."
-        ),
-    )
+    let mut message =
+        format!("Run sync? +{native_install} native, +{flatpak_install} flatpak to install.");
+    if prune > 0 {
+        message.push_str(&format!(
+            " {prune} prunable package(s) stay installed — run `mdots sync --prune` to remove them."
+        ));
+    }
+    ("Run sync".to_string(), message)
 }
 
 /// Decide the new `enable` flag for a module-toggle request: the opposite
@@ -219,10 +227,11 @@ fn screen_for_index(index: usize) -> Option<Screen> {
         0 => Screen::Overview(Default::default()),
         1 => Screen::Modules(Default::default()),
         2 => Screen::Packages(Default::default()),
-        3 => Screen::Sync(Default::default()),
-        4 => Screen::Services(Default::default()),
-        5 => Screen::Secrets(Default::default()),
-        6 => Screen::Hooks(Default::default()),
+        3 => Screen::Diff(Default::default()),
+        4 => Screen::Sync(Default::default()),
+        5 => Screen::Services(Default::default()),
+        6 => Screen::Secrets(Default::default()),
+        7 => Screen::Hooks(Default::default()),
         _ => return None,
     })
 }
@@ -456,6 +465,10 @@ impl SidebarState {
                     icon: "🔍",
                 },
                 SidebarItem {
+                    name: "Diff",
+                    icon: "±",
+                },
+                SidebarItem {
                     name: "Sync",
                     icon: "🔄",
                 },
@@ -528,7 +541,6 @@ mod tests {
         assert_eq!(title, "Run sync");
         assert!(message.contains("+3 native"));
         assert!(message.contains("+1 flatpak"));
-        assert!(message.contains('2'));
     }
 
     #[test]
@@ -536,6 +548,25 @@ mod tests {
         let (_, message) = run_sync_confirm(0, 0, 0);
         assert!(message.contains("+0 native"));
         assert!(message.contains("+0 flatpak"));
+    }
+
+    /// The dispatch path runs sync without `--prune`, so the confirm text
+    /// must say the prunable packages stay put rather than promising a
+    /// removal that never happens.
+    #[test]
+    fn run_sync_confirm_does_not_promise_a_prune_it_will_not_do() {
+        let (_, message) = run_sync_confirm(1, 0, 4);
+        assert!(message.contains("4 prunable"));
+        assert!(message.contains("stay installed"));
+        assert!(message.contains("--prune"));
+    }
+
+    /// ...and says nothing about pruning at all when there is none pending.
+    #[test]
+    fn run_sync_confirm_omits_the_prune_note_when_nothing_is_prunable() {
+        let (_, message) = run_sync_confirm(2, 0, 0);
+        assert!(!message.contains("prunable"));
+        assert!(!message.contains("--prune"));
     }
 
     #[test]

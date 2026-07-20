@@ -67,6 +67,7 @@ pub enum Screen {
     Overview(OverviewScreenState),
     Modules(ModulesScreenState),
     Packages(PackagesScreenState),
+    Diff(DiffScreenState),
     Sync(SyncScreenState),
     Services(ServicesScreenState),
     Secrets(SecretsScreenState),
@@ -80,6 +81,7 @@ impl Screen {
             Screen::Overview(s) => s.handle_key(key),
             Screen::Modules(s) => s.handle_key(key),
             Screen::Packages(s) => s.handle_key(key),
+            Screen::Diff(s) => s.handle_key(key),
             Screen::Sync(s) => s.handle_key(key),
             Screen::Services(s) => s.handle_key(key),
             Screen::Secrets(s) => s.handle_key(key),
@@ -98,6 +100,7 @@ impl Screen {
             Screen::Overview(s) => s.render(paths, config, frame, area),
             Screen::Modules(s) => s.render(paths, config, frame, area),
             Screen::Packages(s) => s.render(paths, config, frame, area),
+            Screen::Diff(s) => s.render(paths, config, frame, area),
             Screen::Sync(s) => s.render(paths, config, frame, area),
             Screen::Services(s) => s.render(paths, config, frame, area),
             Screen::Secrets(s) => s.render(paths, config, frame, area),
@@ -110,6 +113,7 @@ impl Screen {
             Screen::Overview(s) => s.on_activate(paths, config),
             Screen::Modules(s) => s.on_activate(paths, config),
             Screen::Packages(s) => s.on_activate(paths, config),
+            Screen::Diff(s) => s.on_activate(paths, config),
             Screen::Sync(s) => s.on_activate(paths, config),
             Screen::Services(s) => s.on_activate(paths, config),
             Screen::Secrets(s) => s.on_activate(paths, config),
@@ -123,6 +127,7 @@ impl Screen {
             Screen::Overview(_) => "Overview",
             Screen::Modules(_) => "Modules",
             Screen::Packages(_) => "Packages",
+            Screen::Diff(_) => "Diff",
             Screen::Sync(_) => "Sync",
             Screen::Services(_) => "Services",
             Screen::Secrets(_) => "Secrets",
@@ -136,6 +141,7 @@ impl Screen {
             Screen::Overview(s) => s.is_filtering(),
             Screen::Modules(s) => s.is_filtering(),
             Screen::Packages(s) => s.is_filtering(),
+            Screen::Diff(s) => s.is_filtering(),
             Screen::Sync(s) => s.is_filtering(),
             Screen::Services(s) => s.is_filtering(),
             Screen::Secrets(s) => s.is_filtering(),
@@ -149,6 +155,7 @@ impl Screen {
             Screen::Overview(s) => s.refresh(),
             Screen::Modules(s) => s.refresh(),
             Screen::Packages(s) => s.refresh(),
+            Screen::Diff(s) => s.refresh(),
             Screen::Sync(s) => s.refresh(),
             Screen::Services(s) => s.refresh(),
             Screen::Secrets(s) => s.refresh(),
@@ -162,6 +169,7 @@ impl Screen {
             Screen::Overview(s) => s.is_busy(),
             Screen::Modules(s) => s.is_busy(),
             Screen::Packages(s) => s.is_busy(),
+            Screen::Diff(s) => s.is_busy(),
             Screen::Sync(s) => s.is_busy(),
             Screen::Services(s) => s.is_busy(),
             Screen::Secrets(s) => s.is_busy(),
@@ -171,6 +179,7 @@ impl Screen {
 }
 
 // Re-export screen states
+pub use diff::DiffScreenState;
 pub use hooks::HooksScreenState;
 pub use modules::ModulesScreenState;
 pub use overview::OverviewScreenState;
@@ -179,6 +188,7 @@ pub use secrets::SecretsScreenState;
 pub use services::ServicesScreenState;
 pub use sync::SyncScreenState;
 
+mod diff;
 mod hooks;
 mod modules;
 mod overview;

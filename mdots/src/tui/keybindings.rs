@@ -60,6 +60,12 @@ const PACKAGES_HINTS: &[KeyHint] = &[
     KeyHint::new("r", "refresh"),
 ];
 
+const DIFF_HINTS: &[KeyHint] = &[
+    KeyHint::new("j/k, ↓/↑", "navigate"),
+    KeyHint::new("s", "run sync"),
+    KeyHint::new("r", "refresh"),
+];
+
 const SYNC_HINTS: &[KeyHint] = &[
     KeyHint::new("j/k, ↓/↑", "scroll plan"),
     KeyHint::new("s/Enter", "run sync"),
@@ -92,6 +98,7 @@ pub fn screen_hints(screen: &Screen) -> &'static [KeyHint] {
         Screen::Overview(_) => OVERVIEW_HINTS,
         Screen::Modules(_) => MODULES_HINTS,
         Screen::Packages(_) => PACKAGES_HINTS,
+        Screen::Diff(_) => DIFF_HINTS,
         Screen::Sync(_) => SYNC_HINTS,
         Screen::Services(_) => SERVICES_HINTS,
         Screen::Secrets(_) => SECRETS_HINTS,

@@ -537,6 +537,103 @@ fn collect_all_dotfiles(paths: &ConfigPaths, config: &Config) -> Result<Vec<Reso
     Ok(all_dotfiles)
 }
 
+/// What a sync would do to one declared dotfile, decided by probing the
+/// target path.
+///
+/// These branches mirror [`sync_single_dotfile`] exactly — it is the
+/// authority on the policy, this is a read-only preview of it. A change to
+/// that function's handling of an existing target must be reflected here or
+/// the preview starts lying.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum DotfileAction {
+    /// The target is already the symlink we would create; sync skips it.
+    InSync,
+    /// Nothing at the target; sync creates the symlink.
+    Create,
+    /// A symlink pointing somewhere else; sync removes and recreates it.
+    /// `current` is where it points, or `None` if the link is unreadable.
+    Relink { current: Option<PathBuf> },
+    /// A real file or directory; sync backs it up, then links.
+    Replace { is_dir: bool },
+    /// The declared source is missing from the module; sync would fail.
+    MissingSource,
+}
+
+impl DotfileAction {
+    /// Whether this dotfile needs no work at all.
+    pub fn is_in_sync(&self) -> bool {
+        matches!(self, DotfileAction::InSync)
+    }
+
+    /// Short label for list rendering.
+    pub fn label(&self) -> &'static str {
+        match self {
+            DotfileAction::InSync => "linked",
+            DotfileAction::Create => "create",
+            DotfileAction::Relink { .. } => "relink",
+            DotfileAction::Replace { .. } => "replace",
+            DotfileAction::MissingSource => "missing source",
+        }
+    }
+}
+
+/// One declared dotfile and what a sync would do to it.
+#[derive(Debug, Clone, Serialize)]
+pub struct DotfileDrift {
+    pub module: String,
+    pub source: PathBuf,
+    pub target: PathBuf,
+    pub action: DotfileAction,
+}
+
+/// Classify a single source→target pair. Split out from
+/// [`compute_dotfile_drift`] so it can be tested against a tempdir without
+/// building a whole module tree.
+fn classify_dotfile(source: &Path, target: &Path) -> DotfileAction {
+    if !source.exists() {
+        return DotfileAction::MissingSource;
+    }
+    // `exists()` follows symlinks and so returns false for a broken one —
+    // the symlink test must come first, same order as `sync_single_dotfile`.
+    if target.is_symlink() {
+        return match fs::read_link(target) {
+            Ok(current) if current == source => DotfileAction::InSync,
+            Ok(current) => DotfileAction::Relink {
+                current: Some(current),
+            },
+            Err(_) => DotfileAction::Relink { current: None },
+        };
+    }
+    if target.exists() {
+        return DotfileAction::Replace {
+            is_dir: target.is_dir(),
+        };
+    }
+    DotfileAction::Create
+}
+
+/// Read-only preview of what `mdots sync` would do to every declared
+/// dotfile of every enabled module. Touches nothing on disk.
+pub fn compute_dotfile_drift(paths: &ConfigPaths, config: &Config) -> Result<Vec<DotfileDrift>> {
+    let mut drift: Vec<DotfileDrift> = collect_all_dotfiles(paths, config)?
+        .into_iter()
+        .map(|df| DotfileDrift {
+            action: classify_dotfile(&df.source, &df.target),
+            module: df.module_name,
+            source: df.source,
+            target: df.target,
+        })
+        .collect();
+    // Group by module, then by target, so the list is stable across runs
+    // (module iteration order already is, but explicit beats implicit).
+    drift.sort_by(|a, b| {
+        a.module
+            .cmp(&b.module)
+            .then_with(|| a.target.cmp(&b.target))
+    });
+    Ok(drift)
+}
+
 /// Detect conflicts where multiple modules want to sync to the same target
 fn detect_conflicts(dotfiles: &[ResolvedDotfile]) -> Result<()> {
     use std::collections::HashMap;
@@ -822,5 +919,90 @@ mod tests {
         // ...and its record is kept so the original isn't orphaned/forgotten.
         let after = load_dotfiles_state(&paths).unwrap();
         assert_eq!(after.backed_up.len(), 1, "record must be kept, not dropped");
+    }
+
+    // ── classify_dotfile ────────────────────────────────────────────────
+    // Each case matches one branch of `sync_single_dotfile`, so these are
+    // the guard against the preview drifting away from the real policy.
+
+    /// A source file plus an unused target path inside a fresh tempdir.
+    fn drift_fixture() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.conf");
+        fs::write(&source, "declared\n").unwrap();
+        let target = dir.path().join("target.conf");
+        (dir, source, target)
+    }
+
+    #[test]
+    fn classify_reports_create_when_nothing_is_at_the_target() {
+        let (_dir, source, target) = drift_fixture();
+        assert_eq!(classify_dotfile(&source, &target), DotfileAction::Create);
+    }
+
+    #[test]
+    fn classify_reports_in_sync_for_our_own_symlink() {
+        let (_dir, source, target) = drift_fixture();
+        unix_fs::symlink(&source, &target).unwrap();
+        assert_eq!(classify_dotfile(&source, &target), DotfileAction::InSync);
+        assert!(classify_dotfile(&source, &target).is_in_sync());
+    }
+
+    #[test]
+    fn classify_reports_relink_for_a_symlink_pointing_elsewhere() {
+        let (dir, source, target) = drift_fixture();
+        let other = dir.path().join("other.conf");
+        fs::write(&other, "someone else\n").unwrap();
+        unix_fs::symlink(&other, &target).unwrap();
+        assert_eq!(
+            classify_dotfile(&source, &target),
+            DotfileAction::Relink {
+                current: Some(other)
+            }
+        );
+    }
+
+    /// A broken symlink must not read as "nothing there" — `exists()` says
+    /// false for it, which is exactly the trap `sync_single_dotfile` avoids
+    /// by testing `is_symlink()` first.
+    #[test]
+    fn classify_reports_relink_for_a_broken_symlink() {
+        let (dir, source, target) = drift_fixture();
+        unix_fs::symlink(dir.path().join("does-not-exist"), &target).unwrap();
+        assert!(matches!(
+            classify_dotfile(&source, &target),
+            DotfileAction::Relink { .. }
+        ));
+    }
+
+    #[test]
+    fn classify_reports_replace_for_a_real_file() {
+        let (_dir, source, target) = drift_fixture();
+        fs::write(&target, "hand-written\n").unwrap();
+        assert_eq!(
+            classify_dotfile(&source, &target),
+            DotfileAction::Replace { is_dir: false }
+        );
+    }
+
+    #[test]
+    fn classify_reports_replace_and_flags_directories() {
+        let (_dir, source, target) = drift_fixture();
+        fs::create_dir(&target).unwrap();
+        assert_eq!(
+            classify_dotfile(&source, &target),
+            DotfileAction::Replace { is_dir: true }
+        );
+    }
+
+    #[test]
+    fn classify_reports_missing_source_before_looking_at_the_target() {
+        let (dir, _source, target) = drift_fixture();
+        let absent = dir.path().join("never-created.conf");
+        fs::write(&target, "hand-written\n").unwrap();
+        assert_eq!(
+            classify_dotfile(&absent, &target),
+            DotfileAction::MissingSource
+        );
     }
 }
