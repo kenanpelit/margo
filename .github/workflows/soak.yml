@@ -14,6 +14,12 @@
 # so this runs on the plain Arch container with a minimal dep set —
 # margo-config still links libxkbcommon (keysym parsing for keybinds)
 # and pcre2 (window-rule regexes).
+#
+# Note on strategies: generate factors as integers and divide rather than
+# drawing from an inclusive float range. proptest 1.11's uniform float
+# sampler panics on its own invariant for a fraction of such draws, which
+# at this depth is a near-certainty — it took down the very first
+# scheduled run, masking a real layout bug underneath it.
 
 name: soak
 
@@ -35,13 +41,26 @@ env:
 
 jobs:
   soak:
-    name: proptest soak (200k cases)
+    # One job per crate, in parallel. They were steps of a single job until
+    # 2026-07-20, when the first real scheduled run failed in margo-layouts
+    # and the margo-config step never executed — a red week that told us
+    # nothing about the parser. Independent jobs also mean independent
+    # timeout budgets, which matters because the two are nowhere near the
+    # same cost: margo-layouts finishes 200k in well under a minute,
+    # margo-config takes over an hour (it parses a full config document per
+    # case).
+    name: soak ${{ matrix.crate }}
     runs-on: ubuntu-latest
     container: archlinux:base-devel
-    # 200k cases across ~10 properties is CPU-minutes, not hours — but
-    # give the shrinker room: a found failure at this depth can spend a
-    # long time minimizing.
-    timeout-minutes: 120
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - crate: margo-layouts
+            test: proptest_arrange
+          - crate: margo-config
+            test: proptest_parser
 
     steps:
       - name: System dependencies (pacman)
@@ -55,12 +74,9 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Soak margo-layouts (arrange algebra)
+      - name: Soak ${{ matrix.crate }}
         env:
           PROPTEST_CASES: ${{ github.event.inputs.cases || '200000' }}
-        run: cargo test --locked -p margo-layouts --test proptest_arrange -- --nocapture
-
-      - name: Soak margo-config (parser + validator)
-        env:
-          PROPTEST_CASES: ${{ github.event.inputs.cases || '200000' }}
-        run: cargo test --locked -p margo-config --test proptest_parser -- --nocapture
+        run: |
+          cargo test --locked -p ${{ matrix.crate }} \
+            --test ${{ matrix.test }} -- --nocapture
