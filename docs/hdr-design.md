@@ -69,7 +69,9 @@ What a "done" release looks like, user-side:
 
 ### Phase 2 — Linear-light composite path
 
-**Status: scaffolding shipped, swapchain integration upstream-gated.**
+**Status: scaffolding shipped; the upstream reformat gate lifted in the
+2026-07-02 smithay HEAD bump — margo wiring + HDR-hardware verification
+are what remain.**
 
 * `MARGO_COLOR_LINEAR=1` env gate is honored at startup
   (`render::linear_composite::is_linear_composite_enabled`). Toggling
@@ -91,22 +93,34 @@ What a "done" release looks like, user-side:
   HLG kink at encoded 0.5 ↔ 1/12 linear).
 * `is_linear_composite_active()` always returns `false` today —
   the actual swapchain switch from `Argb8888` to `Abgr16161616f`
-  needs an `OutputDevice`-aware reformat which smithay 0.7's
-  `DrmCompositor` doesn't expose at runtime. When that API lands
-  upstream, flip the body to gate on
-  `is_linear_composite_enabled()` and queue a single
-  `TextureRenderElement` wrapping the encoder onto the
-  compositor's frame.
+  needs a runtime reformat of the per-output `DrmCompositor`
+  swapchain. That API has landed: as of the 2026-07-02 smithay
+  HEAD bump `DrmCompositor::set_format(allocator, code, modifiers)`
+  (`src/backend/drm/compositor/mod.rs`) "resets the underlying
+  swapchain and assigns a new color format" at runtime — exactly
+  the format-swap this was gated on. Remaining margo work: call
+  `set_format` with the per-output gbm allocator + `Abgr16161616f`
+  on the linear path, flip the body to gate on
+  `is_linear_composite_enabled()`, and queue a single
+  `TextureRenderElement` wrapping the encoder onto the compositor's
+  frame. Must be verified on real display hardware before it ships.
 * Per-pass cost when active (still: bench data point pending
   upstream): one fragment-shader hop over the framebuffer rect.
   Acceptable on anything with hardware fp16 mixing
   (Intel/AMD/NV iGPUs from 2018+).
 
-  Shipped size: ~390 LOC inc. test matrix. Upstream-gated
-  swapchain integration: ~80 LOC remaining when smithay exposes
-  the format-swap API.
+  Shipped size: ~390 LOC inc. test matrix. The format-swap API
+  (`DrmCompositor::set_format`) landed in the 2026-07-02 smithay
+  bump, so the ~80 LOC of swapchain integration is now unblocked —
+  pending only the wiring above and HDR-hardware verification.
 
 ### Phase 3 — KMS HDR scan-out
+
+**Status: still upstream-gated. Unlike Phase 2's reformat, smithay's
+`DrmCompositor` exposes no `HDR_OUTPUT_METADATA` / atomic-commit
+HDR-metadata path as of the 2026-07-02 HEAD (verified: zero HDR-metadata
+surface under `src/backend/drm/compositor`). This stays blocked until
+that lands upstream.**
 
 * Negotiate the output's preferred HDR format via DRM
   `EDR_PROPERTIES` blob queries.
