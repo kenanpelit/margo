@@ -152,7 +152,8 @@ impl ScreenCast {
 
         let session_id = CastSessionId::next();
         let path = format!("/org/gnome/Mutter/ScreenCast/Session/u{}", session_id.get());
-        let path = OwnedObjectPath::try_from(path).unwrap();
+        let path = OwnedObjectPath::try_from(path)
+            .map_err(|err| fdo::Error::Failed(format!("invalid session path: {err}")))?;
 
         let session = Session::new(
             session_id,
@@ -260,7 +261,8 @@ impl Session {
 
         let stream_id = CastStreamId::next();
         let path = format!("/org/gnome/Mutter/ScreenCast/Stream/u{}", stream_id.get());
-        let path = OwnedObjectPath::try_from(path).unwrap();
+        let path = OwnedObjectPath::try_from(path)
+            .map_err(|err| fdo::Error::Failed(format!("invalid stream path: {err}")))?;
 
         let cursor_mode = properties.cursor_mode.unwrap_or_default();
 
@@ -274,7 +276,9 @@ impl Session {
         );
         match server.at(&path, stream.clone()).await {
             Ok(true) => {
-                let iface = server.interface(&path).await.unwrap();
+                let iface = server.interface(&path).await.map_err(|err| {
+                    fdo::Error::Failed(format!("error getting stream interface: {err}"))
+                })?;
                 self.streams.lock().unwrap().push((stream, iface));
             }
             Ok(false) => return Err(fdo::Error::Failed("stream path already exists".to_owned())),
@@ -297,7 +301,8 @@ impl Session {
 
         let stream_id = CastStreamId::next();
         let path = format!("/org/gnome/Mutter/ScreenCast/Stream/u{}", stream_id.get());
-        let path = OwnedObjectPath::try_from(path).unwrap();
+        let path = OwnedObjectPath::try_from(path)
+            .map_err(|err| fdo::Error::Failed(format!("invalid stream path: {err}")))?;
 
         let cursor_mode = properties.cursor_mode.unwrap_or_default();
 
@@ -313,7 +318,9 @@ impl Session {
         );
         match server.at(&path, stream.clone()).await {
             Ok(true) => {
-                let iface = server.interface(&path).await.unwrap();
+                let iface = server.interface(&path).await.map_err(|err| {
+                    fdo::Error::Failed(format!("error getting stream interface: {err}"))
+                })?;
                 self.streams.lock().unwrap().push((stream, iface));
             }
             Ok(false) => return Err(fdo::Error::Failed("stream path already exists".to_owned())),
@@ -341,10 +348,20 @@ impl Stream {
     async fn parameters(&self) -> StreamParameters {
         match &self.target {
             StreamTarget::Output(output) => {
-                let logical = output.logical.as_ref().unwrap();
-                StreamParameters {
-                    position: (logical.x, logical.y),
-                    size: (logical.width as i32, logical.height as i32),
+                // `logical` is Some for any output that passed record_monitor's
+                // enabled check, but this property getter is reachable at any
+                // time over D-Bus; fall back to a zero rect rather than
+                // panicking inside the zbus property handler if the snapshot
+                // ever lacks it.
+                match output.logical.as_ref() {
+                    Some(logical) => StreamParameters {
+                        position: (logical.x, logical.y),
+                        size: (logical.width as i32, logical.height as i32),
+                    },
+                    None => StreamParameters {
+                        position: (0, 0),
+                        size: (0, 0),
+                    },
                 }
             }
             StreamTarget::Window { .. } => {
