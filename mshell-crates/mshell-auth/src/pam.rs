@@ -198,4 +198,55 @@ mod tests {
         let err = authenticate("us\0er", "pw").unwrap_err();
         assert!(matches!(err, AuthError::BadInput), "got {err:?}");
     }
+
+    // The PAM conversation callback is invoked by libpam, driven by whatever
+    // PAM modules the service stacks. A broken or hostile module can hand it a
+    // non-positive message count or null arrays; the guard at the top must bail
+    // with -1 rather than `calloc(0)` / index into a null pointer. These call
+    // the callback directly with the malformed shapes — none reach a deref
+    // because the guard short-circuits first.
+
+    #[test]
+    fn conv_callback_rejects_non_positive_message_count() {
+        let rc = conv_callback(
+            0,
+            std::ptr::null(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+        assert_eq!(rc, -1, "num_msg == 0 must be rejected");
+
+        let rc = conv_callback(
+            -3,
+            std::ptr::null(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+        assert_eq!(rc, -1, "negative num_msg must be rejected");
+    }
+
+    #[test]
+    fn conv_callback_rejects_null_message_array() {
+        let rc = conv_callback(
+            1,
+            std::ptr::null(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+        assert_eq!(rc, -1, "null msg pointer must be rejected");
+    }
+
+    #[test]
+    fn conv_callback_rejects_null_response_slot() {
+        // Non-null msg array (never dereferenced — the null `resp` check
+        // short-circuits first), null `resp` out-pointer → -1.
+        let msg_arr: [*const PamMessage; 1] = [std::ptr::null()];
+        let rc = conv_callback(
+            1,
+            msg_arr.as_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+        assert_eq!(rc, -1, "null resp out-pointer must be rejected");
+    }
 }
