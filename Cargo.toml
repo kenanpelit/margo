@@ -283,13 +283,13 @@ mshell-wallpaper = { path = "mshell-crates/mshell-wallpaper" }
 
 [workspace.dependencies.smithay]
 git = "https://github.com/Smithay/smithay.git"
-# Master HEAD 2026-07-02 — already 337 commits AHEAD of the v0.7.0 tag
-# (a166cf4c), so the 0.7.0 "breaking changes" (Option<DrmSyncobjState>,
-# GbmFramebufferExporter import_node, DrmTimeline OwnedFd, eventfd Arc) are all
-# baked in here and handled in our code. Pinning the tag would be a 337-commit
-# downgrade; we track HEAD instead. This bump adds only non-breaking fixes
-# (FB_DAMAGE_CLIPS plane-damage transform, multigpu dmabuf re-import, gles).
-rev = "cb1eb2a3f48d95a7ea4b030159a2512ba667a2fb"
+# Master HEAD 2026-07-25 — well past the v0.7.0 tag (a166cf4c). The 0.7.0
+# "breaking changes" (Option<DrmSyncobjState>, GbmFramebufferExporter
+# import_node, DrmTimeline OwnedFd, eventfd Arc) are all baked in here and
+# handled in our code. Pinning the tag would be a large downgrade; we track
+# HEAD instead. This bump carries DrmCompositor::set_format (the runtime
+# swapchain reformat the HDR Phase 2 linear-composite path builds on).
+rev = "17457b99d48c0737fab8f45e683edf97095ee62a"
 default-features = false
 
 # Local dev + test builds default to full DWARF (`debug = 2`), which is the
