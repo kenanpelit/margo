@@ -162,6 +162,19 @@ pub const ACTIONS: &[Action] = &[
                  `left right up down prev next`.",
     },
     Action {
+        name: "focus_window_or_workspace",
+        aliases: &[],
+        args: "<DIRECTION>",
+        group: Group::Focus,
+        summary: "Focus the window in a direction, or switch to the adjacent workspace if there is none that way.",
+        detail: "Spatial directional focus with an edge fallback (mango \
+                 0.15.5): if a window lies `left`/`right`/`up`/`down` of the \
+                 focused one it gains focus; otherwise the compositor views \
+                 the previous tag (left/up) or next tag (right/down). Unlike \
+                 `focusdir` (which cycles the stack and never runs out), this \
+                 uses true geometry so it can fall through at a tag edge.",
+    },
+    Action {
         name: "exchange_client",
         aliases: &["smartmovewin"],
         args: "<DIRECTION>",

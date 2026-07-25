@@ -12,6 +12,7 @@ mod animation_tick;
 mod arrange;
 mod data;
 mod debug_dump;
+mod directional;
 mod dispatch;
 mod dpms;
 mod focus_methods;

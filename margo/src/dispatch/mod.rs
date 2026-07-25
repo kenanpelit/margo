@@ -491,6 +491,13 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             }
         }
         "focusstack" | "focusdir" => state.focus_stack(direction_arg(arg)),
+        // Spatial directional focus with a workspace-switch fallback (mango
+        // 0.15.5): focus the window left/right/up/down, or — if there's none
+        // that way — view the adjacent tag instead. Needs the true 4-way
+        // direction, not `direction_arg`'s collapsed -1/+1.
+        "focus_window_or_workspace" | "focuswindoworworkspace" => {
+            state.focus_window_or_workspace(direction4(arg))
+        }
         // niri-style MRU window switcher (Super+Tab). `arg.v` = scope
         // (all|output|workspace), `arg.v2` = filter (all|appid).
         "mru_next" | "mruwindow" => {
@@ -815,5 +822,25 @@ fn direction_arg(arg: &Arg) -> i32 {
         "left" | "up" | "prev" | "previous" | "-1" => -1,
         "right" | "down" | "next" | "1" => 1,
         _ => 1,
+    }
+}
+
+/// The full 4-way direction from a bind/IPC arg, for actions whose behaviour
+/// differs per axis (unlike `direction_arg`, which collapses to -1/+1).
+/// Anything unrecognised is `Direction::None` (the caller no-ops).
+fn direction4(arg: &Arg) -> margo_config::Direction {
+    use margo_config::Direction;
+    let value = arg
+        .v
+        .as_deref()
+        .or(arg.v2.as_deref())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match value.as_str() {
+        "left" | "l" => Direction::Left,
+        "right" | "r" => Direction::Right,
+        "up" | "u" => Direction::Up,
+        "down" | "d" => Direction::Down,
+        _ => Direction::None,
     }
 }
