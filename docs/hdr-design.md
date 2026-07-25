@@ -98,12 +98,24 @@ are what remain.**
   HEAD bump `DrmCompositor::set_format(allocator, code, modifiers)`
   (`src/backend/drm/compositor/mod.rs`) "resets the underlying
   swapchain and assigns a new color format" at runtime — exactly
-  the format-swap this was gated on. Remaining margo work: call
-  `set_format` with the per-output gbm allocator + `Abgr16161616f`
-  on the linear path, flip the body to gate on
-  `is_linear_composite_enabled()`, and queue a single
-  `TextureRenderElement` wrapping the encoder onto the compositor's
-  frame. Must be verified on real display hardware before it ships.
+  the format-swap this was gated on.
+
+  Remaining margo work is larger than a bool flip, and all-or-nothing.
+  `DrmCompositor::render_frame` (udev/frame.rs) composites an element
+  *slice* straight into the swapchain with no post-composite hook, so
+  you cannot just "add one encoder element": over-compositing
+  sRGB-encoded textures into an fp16 buffer and scanning it out as
+  linear is visibly wrong (washed out). A correct pipeline needs, in
+  order — (a) `set_format` → fp16 swapchain behind the env gate;
+  (b) an sRGB→linear decode when *sampling* every source element so
+  blending happens in linear light; (c) a linear→sRGB encode pass over
+  the whole framebuffer *after* compositing, which the element model
+  doesn't expose and so needs an offscreen render-to-texture + second
+  pass. `is_linear_composite_active()` must then track whether
+  `set_format` actually succeeded (fp16 can be refused per
+  GPU/modifier). This is HDR-hardware-iterative: it can't be written
+  correctly blind, and must be verified on a real fp16/HDR display
+  before it ships.
 * Per-pass cost when active (still: bench data point pending
   upstream): one fragment-shader hop over the framebuffer rect.
   Acceptable on anything with hardware fp16 mixing
@@ -111,8 +123,10 @@ are what remain.**
 
   Shipped size: ~390 LOC inc. test matrix. The format-swap API
   (`DrmCompositor::set_format`) landed in the 2026-07-02 smithay
-  bump, so the ~80 LOC of swapchain integration is now unblocked —
-  pending only the wiring above and HDR-hardware verification.
+  bump, so the swapchain-format blocker is gone. What remains is the
+  decode-on-sample + offscreen-encode pipeline above (materially more
+  than the old ~80 LOC estimate, which assumed a single post-element)
+  plus HDR-hardware verification.
 
 ### Phase 3 — KMS HDR scan-out
 
