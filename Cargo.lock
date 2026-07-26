@@ -5146,6 +5146,7 @@ dependencies = [
  "mshell-services",
  "mshell-style",
  "mshell-utils",
+ "notify-rust",
  "paste",
  "reactive_graph",
  "relm4",

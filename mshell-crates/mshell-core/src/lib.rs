@@ -323,6 +323,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // actually changed *and* the user has opted in by sourcing it.
     sync_plugin_keybinds();
 
+    // Surface keybind conflicts (a user bind shadowing a plugin shortcut, or
+    // two binds on one combo) as a startup toast — detection + notify both
+    // block, so run them off the main thread.
+    std::thread::spawn(mshell_settings::warn_conflicts_toast);
+
     // One-shot security migration: any `type = "secret"` plugin setting that
     // still lives in plaintext in plugins.toml (from before this feature
     // shipped) gets moved into the system keyring. Idempotent — costs a

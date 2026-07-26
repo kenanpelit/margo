@@ -345,6 +345,116 @@ pub(crate) fn load_binds() -> Vec<Bind> {
     binds
 }
 
+// ── Conflict detection (across ALL active bind sources) ─────────────────────
+
+/// A `(mods, key)` combo bound by more than one active bind. Unlike
+/// [`load_binds`] — which owns only the user's `binds.conf` and drops plugin
+/// keybinds — this scans **every** file the compositor actually reads (the
+/// managed main file plus each `binds.d/*.conf`), because a real conflict only
+/// exists across all of them. The compositor resolves a keypress
+/// first-match-wins (`input/mod.rs`), so a later-sourced bind is silently
+/// shadowed; surfacing that is the point.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BindConflict {
+    /// Canonical trigger, e.g. `super+alt , k`.
+    pub combo: String,
+    /// Each colliding bind: `(source label, action-with-args)`.
+    pub entries: Vec<(String, String)>,
+}
+
+/// `(label, file-text)` for every active bind source.
+fn active_bind_sources() -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let (main_label, main_path) = if is_migrated() {
+        ("binds.conf".to_string(), binds_path())
+    } else {
+        ("config.conf".to_string(), config_path())
+    };
+    out.push((
+        main_label,
+        std::fs::read_to_string(&main_path).unwrap_or_default(),
+    ));
+    let dir = config_dir().join("binds.d");
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        let mut files: Vec<PathBuf> = rd
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "conf"))
+            .collect();
+        files.sort();
+        for p in files {
+            let label = format!(
+                "binds.d/{}",
+                p.file_name().and_then(|n| n.to_str()).unwrap_or("?")
+            );
+            out.push((label, std::fs::read_to_string(&p).unwrap_or_default()));
+        }
+    }
+    out
+}
+
+/// Group binds from `sources` by canonical `(mods, key)` and return every combo
+/// used more than once. Pure over its input, so it's unit-testable.
+fn conflicts_in(sources: &[(String, String)]) -> Vec<BindConflict> {
+    use std::collections::BTreeMap;
+    let mut map: BTreeMap<(String, String), Vec<(String, String)>> = BTreeMap::new();
+    for (label, text) in sources {
+        for line in text.lines() {
+            let Some(b) = parse_bind_line(line) else {
+                continue;
+            };
+            let combo = (b.mods(), b.key_name().to_ascii_lowercase());
+            let action = if b.args.trim().is_empty() {
+                b.action.clone()
+            } else {
+                format!("{},{}", b.action, b.args)
+            };
+            map.entry(combo).or_default().push((label.clone(), action));
+        }
+    }
+    map.into_iter()
+        .filter(|(_, v)| v.len() > 1)
+        .map(|((mods, key), entries)| BindConflict {
+            combo: format!("{mods} , {key}"),
+            entries,
+        })
+        .collect()
+}
+
+/// Scan every active bind source and return each duplicate-combo conflict.
+pub(crate) fn detect_conflicts() -> Vec<BindConflict> {
+    conflicts_in(&active_bind_sources())
+}
+
+/// Fire a one-shot desktop toast if any keybind is bound twice across the
+/// active sources, naming the clashing combos. Called at shell start (after the
+/// plugin-keybind sync) so a conflict — e.g. a user bind shadowing a plugin
+/// shortcut — is surfaced instead of silently swallowed by first-match-wins.
+/// No-op when clean; errors are swallowed (a dead notification daemon must not
+/// break startup).
+pub fn warn_conflicts_toast() {
+    let conflicts = detect_conflicts();
+    if conflicts.is_empty() {
+        return;
+    }
+    let combos: Vec<&str> = conflicts.iter().map(|c| c.combo.as_str()).collect();
+    let n = conflicts.len();
+    let body = format!(
+        "{n} shortcut{} bound more than once: {}. Open Settings → Keybinds to resolve.",
+        if n == 1 { "" } else { "s" },
+        combos.join("  ·  "),
+    );
+    if let Err(err) = notify_rust::Notification::new()
+        .summary("Keybind conflict")
+        .body(&body)
+        .timeout(notify_rust::Timeout::Milliseconds(6000))
+        .hint(notify_rust::Hint::Category("im.received".into()))
+        .show()
+    {
+        tracing::warn!(?err, "keybind-conflict toast failed");
+    }
+}
+
 /// Is `key` a `bind` variant (`bind`, `binds`, `bindr`, `bindl`, `bindp`, …)?
 fn is_bind_key(k: &str) -> bool {
     k.starts_with("bind") && k[4..].chars().all(|c| matches!(c, 's' | 'l' | 'r' | 'p'))
@@ -1605,5 +1715,51 @@ env = FOO,bar
             1,
             "8 identical binds should collapse to one"
         );
+    }
+
+    #[test]
+    fn conflicts_in_reports_cross_source_duplicates() {
+        // The exact scenario the plugin/focus clash hit: a binds.conf bind and a
+        // binds.d plugin bind on the same super+alt+k.
+        let sources = vec![
+            (
+                "binds.conf".to_string(),
+                "bind = super+alt,k,focus_window_or_workspace,up\n\
+                 bind = super,h,focusdir,left\n"
+                    .to_string(),
+            ),
+            (
+                "binds.d/plugins".to_string(),
+                "bind = super+alt,k,spawn,mshellctl plugin show-keys\n".to_string(),
+            ),
+        ];
+        let c = conflicts_in(&sources);
+        assert_eq!(c.len(), 1, "one conflicting combo");
+        assert_eq!(c[0].combo, "super+alt , k");
+        assert_eq!(c[0].entries.len(), 2, "both binds listed");
+    }
+
+    #[test]
+    fn conflicts_in_ignores_distinct_combos() {
+        // super,h vs super+shift,h differ by the shift modifier — not a clash.
+        let sources = vec![(
+            "binds.conf".to_string(),
+            "bind = super,h,focusdir,left\n\
+             bind = super+shift,h,exchange_client,left\n"
+                .to_string(),
+        )];
+        assert!(conflicts_in(&sources).is_empty());
+    }
+
+    #[test]
+    fn conflicts_in_normalises_modifier_order() {
+        // `shift+super` and `super+shift` are the same trigger.
+        let sources = vec![(
+            "a".to_string(),
+            "bind = super+shift,m,spawn,x\n\
+             bind = shift+super,m,spawn,y\n"
+                .to_string(),
+        )];
+        assert_eq!(conflicts_in(&sources).len(), 1);
     }
 }
