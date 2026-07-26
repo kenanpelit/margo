@@ -455,6 +455,22 @@ pub fn warn_conflicts_toast() {
     }
 }
 
+/// One-line summary of the current conflicts for the Settings → Keybinds banner,
+/// or empty when clean. Reads the same sources as [`detect_conflicts`].
+fn conflict_summary_text() -> String {
+    let conflicts = detect_conflicts();
+    if conflicts.is_empty() {
+        return String::new();
+    }
+    let combos: Vec<&str> = conflicts.iter().map(|c| c.combo.as_str()).collect();
+    format!(
+        "{} shortcut{} bound more than once — {}. First match wins, so the others do nothing.",
+        conflicts.len(),
+        if conflicts.len() == 1 { "" } else { "s" },
+        combos.join("   ·   "),
+    )
+}
+
 /// Is `key` a `bind` variant (`bind`, `binds`, `bindr`, `bindl`, `bindp`, …)?
 fn is_bind_key(k: &str) -> bool {
     k.starts_with("bind") && k[4..].chars().all(|c| matches!(c, 's' | 'l' | 'r' | 'p'))
@@ -811,6 +827,10 @@ pub(crate) struct KeybindsSettingsModel {
     desc_entry: gtk::Entry,
     delete_btn: gtk::Button,
     edit_title: gtk::Label,
+
+    /// One-line summary of active keybind conflicts across all sources, empty
+    /// when clean — drives the warning banner. Recomputed on Save/Delete.
+    conflict_summary: String,
 }
 
 impl std::fmt::Debug for KeybindsSettingsModel {
@@ -901,6 +921,28 @@ impl Component for KeybindsSettingsModel {
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 10,
                     set_vexpand: true,
+
+                    // Conflict warning banner — visible only when a shortcut is
+                    // bound more than once across binds.conf + binds.d.
+                    gtk::Box {
+                        add_css_class: "keybinds-conflict-banner",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 8,
+                        #[watch]
+                        set_visible: !model.conflict_summary.is_empty(),
+                        gtk::Image {
+                            set_icon_name: Some("dialog-warning-symbolic"),
+                            set_valign: gtk::Align::Center,
+                        },
+                        gtk::Label {
+                            add_css_class: "keybinds-conflict-label",
+                            set_wrap: true,
+                            set_xalign: 0.0,
+                            set_hexpand: true,
+                            #[watch]
+                            set_label: model.conflict_summary.as_str(),
+                        },
+                    },
 
                     gtk::Box {
                         set_orientation: gtk::Orientation::Horizontal,
@@ -1108,6 +1150,7 @@ impl Component for KeybindsSettingsModel {
             desc_entry: gtk::Entry::new(),
             delete_btn: gtk::Button::new(),
             edit_title: gtk::Label::new(None),
+            conflict_summary: conflict_summary_text(),
         };
 
         let list_box = &model.list_box;
@@ -1255,6 +1298,7 @@ impl Component for KeybindsSettingsModel {
                 persist(&self.binds);
                 self.migrated = true;
                 self.subtitle = make_subtitle(true, self.binds.len());
+                self.conflict_summary = conflict_summary_text();
                 self.mode = Mode::List;
                 rebuild_list(self);
                 self.stack.set_visible_child_name("list");
@@ -1273,6 +1317,7 @@ impl Component for KeybindsSettingsModel {
                     persist(&self.binds);
                     self.migrated = true;
                     self.subtitle = make_subtitle(true, self.binds.len());
+                    self.conflict_summary = conflict_summary_text();
                 }
                 self.mode = Mode::List;
                 rebuild_list(self);

@@ -92,3 +92,21 @@
   background-color: var(--surface-container-highest);
   color: var(--on-surface);
 }
+
+// Conflict warning banner (Settings → Keybinds) — matugen --warning severity.
+// Shown only when a shortcut is bound more than once across all bind sources.
+.keybinds-conflict-banner {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background-color: unquote("color-mix(in srgb, var(--warning) 20%, var(--surface-container-high))");
+  border: 1px solid unquote("color-mix(in srgb, var(--warning) 45%, transparent)");
+
+  image {
+    color: var(--warning);
+  }
+
+  .keybinds-conflict-label {
+    color: var(--on-surface);
+    font-weight: 500;
+  }
+}
