@@ -1981,6 +1981,14 @@ impl MargoState {
         // old global), leaving per-window `windowrule` border overrides alone.
         let old_borderpx = self.config.borderpx;
         let new_borderpx = new_config.borderpx;
+        // `wp_color_management_v1` (HDR opt-in): flip the global live
+        // instead of requiring a re-login — see
+        // `ColorManagementState::set_enabled`.
+        if new_config.color_management != self.config.color_management {
+            let display_handle = self.display_handle.clone();
+            self.color_management_state
+                .set_enabled::<Self>(&display_handle, new_config.color_management);
+        }
         self.config = new_config;
         self.title_rules_exist = config_has_title_rules(&self.config);
 

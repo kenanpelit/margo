@@ -42,3 +42,84 @@ fn color_management_state_exists_for_phase_2_wireup() {
     let fx = Fixture::new();
     let _ = &fx.server.state.color_management_state;
 }
+
+#[test]
+fn color_management_set_enabled_toggles_the_global_live() {
+    // `set_enabled` is `reload_config`'s live-reload path for the
+    // `color_management` config knob — flipping it must not require a
+    // re-login. A client that connects *after* the toggle should see
+    // the change; that's the observable effect (an already-connected
+    // client's registry doesn't retroactively update mid-roundtrip).
+    use crate::state::MargoState;
+
+    let mut fx = Fixture::new();
+    let display_handle = fx.server.state.display_handle.clone();
+
+    // Off by default (see `color_management_global_not_advertised_until_phase_2`).
+    let before = fx.add_client();
+    fx.roundtrip(before);
+    assert!(
+        !fx.client(before)
+            .global_names()
+            .iter()
+            .any(|n| n.starts_with("wp_color_manager")),
+        "must stay off until enabled"
+    );
+
+    fx.server
+        .state
+        .color_management_state
+        .set_enabled::<MargoState>(&display_handle, true);
+    let enabled = fx.add_client();
+    fx.roundtrip(enabled);
+    assert!(
+        fx.client(enabled)
+            .global_names()
+            .iter()
+            .any(|n| n.starts_with("wp_color_manager")),
+        "a client connecting after set_enabled(true) must see the global"
+    );
+
+    fx.server
+        .state
+        .color_management_state
+        .set_enabled::<MargoState>(&display_handle, false);
+    let after = fx.add_client();
+    fx.roundtrip(after);
+    assert!(
+        !fx.client(after)
+            .global_names()
+            .iter()
+            .any(|n| n.starts_with("wp_color_manager")),
+        "a client connecting after set_enabled(false) must not see the global"
+    );
+}
+
+#[test]
+fn color_management_set_enabled_is_idempotent() {
+    // Calling with the already-current value must not panic or churn
+    // a fresh `GlobalId` on every no-op `mctl reload` (state.rs only
+    // calls this when the config value actually changed, but the
+    // method itself should be safe to call redundantly too).
+    use crate::state::MargoState;
+
+    let mut fx = Fixture::new();
+    let display_handle = fx.server.state.display_handle.clone();
+    fx.server
+        .state
+        .color_management_state
+        .set_enabled::<MargoState>(&display_handle, false);
+    fx.server
+        .state
+        .color_management_state
+        .set_enabled::<MargoState>(&display_handle, false);
+
+    let id = fx.add_client();
+    fx.roundtrip(id);
+    assert!(
+        !fx.client(id)
+            .global_names()
+            .iter()
+            .any(|n| n.starts_with("wp_color_manager"))
+    );
+}

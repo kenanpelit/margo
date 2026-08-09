@@ -49,7 +49,7 @@ use smithay::reexports::wayland_protocols::wp::color_management::v1::server::{
     wp_image_description_info_v1::WpImageDescriptionInfoV1,
     wp_image_description_v1::{self, WpImageDescriptionV1},
 };
-use smithay::reexports::wayland_server::backend::ClientId;
+use smithay::reexports::wayland_server::backend::{ClientId, GlobalId};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
@@ -91,6 +91,11 @@ pub struct ImageDescriptionParams {
 /// reach it via `ColorManagementHandler::color_management_state`.
 pub struct ColorManagementState {
     next_identity: AtomicU64,
+    /// `Some` while the `wp_color_manager_v1` global is standing —
+    /// `None` when the `color_management` config knob is off. Tracked
+    /// so [`Self::set_enabled`] can create/disable the global on a
+    /// live `mctl reload` instead of requiring a re-login.
+    global: Option<GlobalId>,
 }
 
 impl ColorManagementState {
@@ -119,25 +124,68 @@ impl ColorManagementState {
         // `color_management = 1` config knob**: default stays off
         // until the probe path is verified against mpv/Chromium on
         // real hardware, but HDR-curious users can flip it without a
-        // rebuild. Registration is startup-only (globals don't
-        // hot-reload) — toggling the knob needs a re-login.
-        if enabled {
-            display.create_global::<D, WpColorManagerV1, _>(
+        // rebuild. See [`Self::set_enabled`] for the live-reload path.
+        let global = if enabled {
+            Some(display.create_global::<D, WpColorManagerV1, _>(
                 VERSION,
                 ColorManagerGlobalData {
                     filter: Box::new(filter),
                 },
-            );
-        }
+            ))
+        } else {
+            None
+        };
         Self {
             // Start at 1 so 0 stays reserved for "no description".
             next_identity: AtomicU64::new(1),
+            global,
         }
     }
 
     /// Allocate a unique identity for a fresh image description.
     pub fn alloc_identity(&self) -> u64 {
         self.next_identity.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Runtime toggle: stand the `wp_color_manager_v1` global up or take
+    /// it down without restarting the compositor. Wired from
+    /// `reload_config()`, called only when the `color_management` config
+    /// value actually changed between reloads.
+    ///
+    /// Turning it off calls `disable_global` (stop advertising to new
+    /// clients) rather than `remove_global` — a client that already
+    /// bound the manager keeps working until it reconnects, and per
+    /// wayland-server's own docs a same-instant `remove_global` risks
+    /// killing a client that binds in the same tick the server decided
+    /// to tear it down. The bit of unfreed global state this leaves
+    /// behind is negligible for a knob users flip rarely, not every
+    /// frame.
+    pub fn set_enabled<D>(&mut self, display: &DisplayHandle, enabled: bool)
+    where
+        D: GlobalDispatch<WpColorManagerV1, ColorManagerGlobalData>,
+        D: Dispatch<WpColorManagerV1, ()>,
+        D: Dispatch<WpColorManagementOutputV1, ()>,
+        D: Dispatch<WpColorManagementSurfaceV1, SurfaceTrackerData>,
+        D: Dispatch<WpColorManagementSurfaceFeedbackV1, ()>,
+        D: Dispatch<WpImageDescriptionCreatorIccV1, ()>,
+        D: Dispatch<WpImageDescriptionCreatorParamsV1, CreatorParamsData>,
+        D: Dispatch<WpImageDescriptionV1, ImageDescription>,
+        D: ColorManagementHandler,
+        D: 'static,
+    {
+        if enabled == self.global.is_some() {
+            return;
+        }
+        if enabled {
+            self.global = Some(display.create_global::<D, WpColorManagerV1, _>(
+                VERSION,
+                ColorManagerGlobalData {
+                    filter: Box::new(|_client| true),
+                },
+            ));
+        } else if let Some(id) = self.global.take() {
+            display.disable_global::<D>(id);
+        }
     }
 }
 
