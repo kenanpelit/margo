@@ -135,6 +135,15 @@ fn apply(service: &MargoService, state: &StateJson) {
         service.keyboard_layout.set(state.keyboard_layout.clone());
     }
 
+    // Mirror config diagnostics (change-only). This only actually
+    // changes on a `mctl reload` — window/focus/tag activity leaves
+    // `last_reload_diagnostics` untouched compositor-side — so
+    // subscribers can treat a change here as "a reload just happened"
+    // without needing a separate reload-specific event.
+    if service.config_errors.get() != state.config_errors {
+        service.config_errors.set(state.config_errors.clone());
+    }
+
     let prev_focused_tag: Option<i64> = service
         .monitors
         .get()
@@ -736,6 +745,7 @@ mod tests {
             clients,
             tag_count: 9,
             keyboard_layout: String::new(),
+            config_errors: Vec::new(),
         }
     }
 

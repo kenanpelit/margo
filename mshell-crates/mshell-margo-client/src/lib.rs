@@ -41,7 +41,7 @@ mod sync;
 /// Re-export so callers that want to peek at the raw snapshot
 /// (debug tooling, integration tests) can do so without a
 /// second JSON round-trip.
-pub use state_json::{StateJson, read as read_state_json};
+pub use state_json::{RawConfigDiagnostic, StateJson, read as read_state_json};
 
 // ── Reactive property ────────────────────────────────────────────────────────
 
@@ -466,6 +466,12 @@ pub struct MargoService {
     /// compositor has observed a key event. The keyboard-layout bar
     /// pill reads this.
     pub keyboard_layout: Reactive<String>,
+    /// Diagnostics from the most recent config parse/reload, mirrored
+    /// from state.json's `config_errors` field. Empty when the config
+    /// is clean. Includes `W004` (duplicate keybind) warnings, which
+    /// is what lets the shell react to a keybind conflict introduced
+    /// by `mctl reload` — not just one present at shell startup.
+    pub config_errors: Reactive<Vec<RawConfigDiagnostic>>,
     /// Diff-driven typed-event channel for the OkShell widget
     /// pattern (`hyprland.events()` consumers). `sync::apply`
     /// computes the diff between two state.json snapshots and
@@ -498,6 +504,7 @@ impl MargoService {
             monitors: Reactive::new(Vec::new()),
             focused_client: Reactive::new(None),
             keyboard_layout: Reactive::new(String::new()),
+            config_errors: Reactive::new(Vec::new()),
             event_tx,
         });
         // Prime once over the socket (`get state`) so widgets see

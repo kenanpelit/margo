@@ -30,12 +30,34 @@
 //!     declared primitive (bool / int / uint / float). Tables are
 //!     derived from `parser::parse_option`; a drift-guard test keeps
 //!     them inside `OPTION_KEYS`.
+//!   * W004 — the same MODS+KEY combo bound more than once across the
+//!     config file tree (`config.conf` + every recursively `source`d/
+//!     `include`d file, so `binds.d/*.conf` and `binds.conf` are both
+//!     covered). margo's keypress lookup is `.iter().find()` — first
+//!     match wins (`margo/src/input/mod.rs`) — so every bind after the
+//!     first in a matching group is silently dead; only those are
+//!     flagged, not the live one.
 //!
 //! New rules slot into `validate_text` as more conditions show up.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::diagnostics::{ConfigDiagnostic, DiagnosticReport, Severity};
+
+/// A single parsed `bind*` line, collected while walking the file tree
+/// so W004 can compare across files after the walk finishes. Push
+/// order matches parse order (files are visited depth-first at their
+/// `source`/`include` point, same as `parser.rs`), which is exactly
+/// margo's first-match-wins order.
+struct BindEntry {
+    path: PathBuf,
+    line: usize,
+    col: usize,
+    end_col: usize,
+    line_text: String,
+    combo: String,
+}
 
 /// Resolve the config path the same way `parse_config` does, then
 /// validate it (plus any `include`/`source`-referenced files). Returns
@@ -44,8 +66,37 @@ pub fn validate_config(path: Option<&Path>) -> std::io::Result<DiagnosticReport>
     let resolved = resolve_config_path(path)?;
     let mut report = DiagnosticReport::default();
     let mut visited = Vec::new();
-    validate_file(&resolved, &mut report, &mut visited)?;
+    let mut binds = Vec::new();
+    validate_file(&resolved, &mut report, &mut visited, &mut binds)?;
+    check_bind_conflicts(&binds, &mut report);
     Ok(report)
+}
+
+/// W004: flag every bind entry that is shadowed by an earlier one with
+/// the same normalised MODS+KEY combo.
+fn check_bind_conflicts(binds: &[BindEntry], report: &mut DiagnosticReport) {
+    let mut first_seen: HashMap<&str, &BindEntry> = HashMap::new();
+    for entry in binds {
+        if let Some(winner) = first_seen.get(entry.combo.as_str()) {
+            report.push(ConfigDiagnostic {
+                path: entry.path.clone(),
+                line: entry.line,
+                col: entry.col,
+                end_col: entry.end_col,
+                severity: Severity::Warning,
+                code: "W004".into(),
+                message: format!(
+                    "keybind `{}` is shadowed by an earlier bind at {}:{} — margo's first match wins, this one never fires",
+                    entry.combo,
+                    winner.path.display(),
+                    winner.line
+                ),
+                line_text: entry.line_text.clone(),
+            });
+        } else {
+            first_seen.insert(&entry.combo, entry);
+        }
+    }
 }
 
 fn resolve_config_path(explicit: Option<&Path>) -> std::io::Result<PathBuf> {
@@ -61,6 +112,7 @@ fn validate_file(
     path: &Path,
     report: &mut DiagnosticReport,
     visited: &mut Vec<PathBuf>,
+    binds: &mut Vec<BindEntry>,
 ) -> std::io::Result<()> {
     let canon = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     if visited.contains(&canon) {
@@ -84,7 +136,7 @@ fn validate_file(
             return Ok(());
         }
     };
-    validate_text(path, &text, report, visited)
+    validate_text(path, &text, report, visited, binds)
 }
 
 fn validate_text(
@@ -92,6 +144,7 @@ fn validate_text(
     text: &str,
     report: &mut DiagnosticReport,
     visited: &mut Vec<PathBuf>,
+    binds: &mut Vec<BindEntry>,
 ) -> std::io::Result<()> {
     for (idx, raw) in text.lines().enumerate() {
         let lineno = idx + 1;
@@ -144,7 +197,7 @@ fn validate_text(
                     line_text: raw.to_string(),
                 });
             } else {
-                let _ = validate_file(&resolved, report, visited);
+                let _ = validate_file(&resolved, report, visited, binds);
             }
             continue;
         }
@@ -202,6 +255,36 @@ fn validate_text(
                     });
                 }
                 off += token.len() + 1; // +1 for the consumed '+'
+            }
+
+            // W004 input: only collect combos from arity-clean binds —
+            // an E004/E001 line's MODS/KEY fields aren't trustworthy.
+            if val.split(',').count() >= 3 {
+                let mut parts = val.splitn(3, ',');
+                let mods_part = parts.next().unwrap_or("").trim();
+                let key_part = parts.next().unwrap_or("").trim();
+                if !key_part.is_empty() {
+                    let mut mods: Vec<String> = mods_part
+                        .split('+')
+                        .map(|t| t.trim().to_ascii_lowercase())
+                        .filter(|t| !t.is_empty())
+                        .collect();
+                    mods.sort();
+                    let key_lower = key_part.to_ascii_lowercase();
+                    let combo = if mods.is_empty() {
+                        key_lower
+                    } else {
+                        format!("{}+{key_lower}", mods.join("+"))
+                    };
+                    binds.push(BindEntry {
+                        path: path.to_path_buf(),
+                        line: lineno,
+                        col: val_start,
+                        end_col: val_start + mods_part.len() + 1 + key_part.len(),
+                        line_text: raw.to_string(),
+                        combo,
+                    });
+                }
             }
         }
 
@@ -670,7 +753,9 @@ mod tests {
         let path = PathBuf::from("/tmp/test.conf");
         let mut report = DiagnosticReport::default();
         let mut visited = Vec::new();
-        validate_text(&path, text, &mut report, &mut visited).unwrap();
+        let mut binds = Vec::new();
+        validate_text(&path, text, &mut report, &mut visited, &mut binds).unwrap();
+        check_bind_conflicts(&binds, &mut report);
         report
     }
 
@@ -931,5 +1016,41 @@ mod tests {
     fn known_csv_key_passes_clean() {
         let r = validate_str("bind = alt,Tab,overview_focus_next\n");
         assert!(!r.has_errors() && !r.has_warnings());
+    }
+
+    #[test]
+    fn duplicate_bind_combo_is_a_warning() {
+        let r = validate_str("bind = super+alt,k,spawn,foo\nbind = super+alt,k,spawn,bar\n");
+        let w = r
+            .warnings()
+            .find(|w| w.code == "W004")
+            .expect("W004 expected");
+        // The second (shadowed) occurrence is flagged, on its own line.
+        assert_eq!(w.line, 2);
+        assert!(
+            w.message.contains("1"),
+            "should point back at line 1: {}",
+            w.message
+        );
+    }
+
+    #[test]
+    fn modifier_order_is_normalised_for_conflict_detection() {
+        // alt+super and super+alt are the same combo.
+        let r = validate_str("bind = alt+super,k,spawn,foo\nbind = super+alt,k,spawn,bar\n");
+        assert!(r.warnings().any(|w| w.code == "W004"));
+    }
+
+    #[test]
+    fn distinct_combos_do_not_conflict() {
+        let r = validate_str("bind = super,j,spawn,foo\nbind = super,k,spawn,bar\n");
+        assert!(!r.warnings().any(|w| w.code == "W004"));
+    }
+
+    #[test]
+    fn arity_broken_bind_is_not_fed_into_conflict_check() {
+        // Only 2 fields (E004) — must not spuriously conflict with anything.
+        let r = validate_str("bind = super,k\nbind = super,j,spawn,foo\n");
+        assert!(!r.warnings().any(|w| w.code == "W004"));
     }
 }

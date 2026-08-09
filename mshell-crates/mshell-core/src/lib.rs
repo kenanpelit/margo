@@ -328,6 +328,27 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // block, so run them off the main thread.
     std::thread::spawn(mshell_settings::warn_conflicts_toast);
 
+    // Re-surface the same toast whenever a *live* `mctl reload` introduces a
+    // conflict. The startup toast above only catches what's already wrong
+    // at shell launch; `config_errors` (mirrored from margo's own W004
+    // validator warning) only changes when the compositor actually
+    // re-parses its config, so each stream item past the first is exactly
+    // "a reload just happened, here's its diagnostics" — window/focus/tag
+    // churn never touches it.
+    tokio_rt().spawn(async {
+        use futures::StreamExt;
+        let mut errors = mshell_services::margo_service().config_errors.watch();
+        // Skip the snapshot-on-subscribe item: the startup toast above
+        // already covers "conflict present at launch" via its own
+        // independent file scan, so re-toasting it here would double up.
+        errors.next().await;
+        while let Some(diags) = errors.next().await {
+            if diags.iter().any(|d| d.code == "W004") {
+                let _ = tokio::task::spawn_blocking(mshell_settings::warn_conflicts_toast).await;
+            }
+        }
+    });
+
     // One-shot security migration: any `type = "secret"` plugin setting that
     // still lives in plaintext in plugins.toml (from before this feature
     // shipped) gets moved into the system keyring. Idempotent — costs a

@@ -35,6 +35,24 @@ pub struct StateJson {
     /// with older margo builds that don't emit the field.
     #[serde(default)]
     pub keyboard_layout: String,
+    /// Diagnostics from the most recent config parse/reload (`mctl
+    /// config-errors`'s source). `#[serde(default)]` for forward-compat
+    /// with older margo builds that don't emit the field.
+    #[serde(default)]
+    pub config_errors: Vec<RawConfigDiagnostic>,
+}
+
+/// Mirrors margo's `ConfigDiagnostic` wire shape. Kept as an
+/// independent struct (not a dependency on `margo-config`) — the
+/// shell only needs the fields it renders, same pattern as every
+/// other `Raw*` type in this file.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct RawConfigDiagnostic {
+    pub path: String,
+    pub line: usize,
+    pub severity: String,
+    pub code: String,
+    pub message: String,
 }
 
 /// Coerce `null` / missing / integer into `Option<i64>`. serde's
