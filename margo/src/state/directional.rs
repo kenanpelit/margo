@@ -6,6 +6,12 @@
 //! instead. margo's existing `focusdir` is stack-cycling (`focus_stack`), which
 //! wraps and so never "runs out" at an edge; this adds the true spatial-
 //! neighbour selection the workspace fallback needs.
+//!
+//! The workspace fallback itself ports mango 0.15.6's `focus_window_or_workspace
+//! re impl`: instead of blindly switching to the next/previous tag (which can
+//! land on an empty one), it first looks for the *nearest* tag in that
+//! direction that actually has clients, with `tag_carousel` wraparound, and
+//! only falls back to the blind next/prev switch if none are occupied.
 
 use super::*;
 use crate::layout::Rect;
@@ -52,10 +58,60 @@ pub(crate) fn spatial_neighbor(
         .map(|(idx, _)| idx)
 }
 
+/// Nearest tag number in `dir` from `current` (both 1-indexed) that
+/// `occupied` reports as non-empty, or `None` if none are. When nothing
+/// is found in `dir` but `carousel` is enabled, wraps to search from the
+/// far end back toward (but not including) `current`. The returned bool
+/// is `true` for a wrapped hit — the caller uses it to pick the carousel
+/// slide direction, same as mango 0.15.6's `view_shift_tag_have_client`.
+fn nearest_occupied_tag(
+    current: u32,
+    max: u32,
+    dir: Direction,
+    carousel: bool,
+    occupied: impl Fn(u32) -> bool,
+) -> Option<(u32, bool)> {
+    match dir {
+        Direction::Left | Direction::Up => {
+            for n in (1..current).rev() {
+                if occupied(n) {
+                    return Some((n, false));
+                }
+            }
+            if carousel {
+                for n in (current + 1..=max).rev() {
+                    if occupied(n) {
+                        return Some((n, true));
+                    }
+                }
+            }
+            None
+        }
+        Direction::Right | Direction::Down => {
+            for n in current + 1..=max {
+                if occupied(n) {
+                    return Some((n, false));
+                }
+            }
+            if carousel {
+                for n in 1..current {
+                    if occupied(n) {
+                        return Some((n, true));
+                    }
+                }
+            }
+            None
+        }
+        Direction::None => None,
+    }
+}
+
 impl MargoState {
-    /// Focus the window in `dir`; if none is there (edge of the tag), switch to
-    /// the adjacent workspace instead — Left/Up fall back to the previous tag,
-    /// Right/Down to the next. Ports mango 0.15.5's `focus_window_or_workspace`.
+    /// Focus the window in `dir`; if none is there (edge of the tag), jump to
+    /// the nearest tag in that direction that has clients, falling back to
+    /// the blind next/previous tag if none are occupied. Ports mango 0.15.5's
+    /// `focus_window_or_workspace`, updated with 0.15.6's re-implementation
+    /// of the workspace fallback (see module docs).
     pub fn focus_window_or_workspace(&mut self, dir: Direction) {
         let mon_idx = self.focused_monitor();
         if mon_idx >= self.monitors.len() {
@@ -86,7 +142,34 @@ impl MargoState {
             }
         }
 
-        // No neighbour that way (or nothing focused) — switch workspace.
+        // No neighbour that way (or nothing focused) — jump to the nearest
+        // occupied tag in that direction rather than blindly stepping one
+        // tag over, which can land on an empty one.
+        let max = crate::MAX_TAGS as u32;
+        let current_tag = if tagset.count_ones() == 1 {
+            tagset.trailing_zeros() + 1
+        } else {
+            1
+        };
+        let carousel = self.config.tag_carousel;
+        let found = nearest_occupied_tag(current_tag, max, dir, carousel, |n| {
+            self.clients
+                .iter()
+                .any(|c| c.is_visible_on(mon_idx, 1u32 << (n - 1)))
+        });
+        if let Some((target, wrapped)) = found {
+            if wrapped {
+                self.tag_carousel_dir = match dir {
+                    Direction::Left | Direction::Up => -1,
+                    Direction::Right | Direction::Down => 1,
+                    Direction::None => 0,
+                };
+            }
+            self.view_tag(1u32 << (target - 1));
+            return;
+        }
+
+        // Nothing occupied that way either — blind next/previous tag.
         match dir {
             Direction::Left | Direction::Up => self.view_relative(-1),
             Direction::Right | Direction::Down => self.view_relative(1),
@@ -202,5 +285,55 @@ mod tests {
         ] {
             assert_eq!(spatial_neighbor(focused, &cands, dir), None, "{dir:?}");
         }
+    }
+
+    fn occupied_set(tags: &[u32]) -> impl Fn(u32) -> bool + '_ {
+        move |n| tags.contains(&n)
+    }
+
+    #[test]
+    fn skips_empty_tags_to_the_nearest_occupied_one() {
+        // On tag 5, tags 6-9 empty, tag 8 occupied — Right should land on 8,
+        // not blindly step to the empty tag 6.
+        let occ = occupied_set(&[8]);
+        assert_eq!(
+            nearest_occupied_tag(5, 9, Direction::Right, false, occ),
+            Some((8, false))
+        );
+    }
+
+    #[test]
+    fn adjacent_occupied_tag_wins_over_a_farther_one() {
+        let occ = occupied_set(&[3, 7]);
+        assert_eq!(
+            nearest_occupied_tag(5, 9, Direction::Left, false, occ),
+            Some((3, false))
+        );
+    }
+
+    #[test]
+    fn no_occupied_tag_that_way_is_none_without_carousel() {
+        let occ = occupied_set(&[2]);
+        assert_eq!(
+            nearest_occupied_tag(5, 9, Direction::Right, false, occ),
+            None
+        );
+    }
+
+    #[test]
+    fn carousel_wraps_to_the_far_end_when_nothing_found_directly() {
+        // From tag 8 going Right, nothing occupied in 9; wraps to the
+        // nearest occupied tag counting in from tag 1 — tag 2.
+        let occ = occupied_set(&[2, 4]);
+        assert_eq!(
+            nearest_occupied_tag(8, 9, Direction::Right, true, occ),
+            Some((2, true))
+        );
+    }
+
+    #[test]
+    fn none_direction_finds_nothing() {
+        let occ = occupied_set(&[1, 2, 3]);
+        assert_eq!(nearest_occupied_tag(5, 9, Direction::None, true, occ), None);
     }
 }
