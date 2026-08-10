@@ -463,6 +463,11 @@ const PRESETS: &[Preset] = &[
 pub(crate) struct AnimationsSettingsModel {
     animations: bool,
     layer_animations: bool,
+    /// Tag-switch duration (ms) — the one duration exposed outside the
+    /// preset system. Applying a preset still overwrites it (presets stay
+    /// a coherent bundle); this just lets it be hand-tuned afterwards
+    /// without hand-editing `config.conf`.
+    animation_duration_tag: f64,
     selected: Option<u32>,
     /// Preset cards, kept so `.selected` can be flipped without a rebuild.
     cards: Vec<gtk::Button>,
@@ -481,8 +486,13 @@ impl std::fmt::Debug for AnimationsSettingsModel {
 pub(crate) enum AnimationsSettingsInput {
     SetAnimations(bool),
     SetLayerAnimations(bool),
+    SetTagDuration(i64),
     SelectPreset(u32),
     ApplyPreset,
+}
+
+fn adj(value: f64, lo: f64, hi: f64, step: f64) -> gtk::Adjustment {
+    gtk::Adjustment::new(value, lo, hi, step, step * 10.0, 0.0)
 }
 
 #[derive(Debug)]
@@ -616,6 +626,40 @@ impl Component for AnimationsSettingsModel {
                         sender.input(AnimationsSettingsInput::ApplyPreset);
                     },
                 },
+
+                // ── Advanced ──
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Advanced",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 12,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_label: "Hand-tune a single duration outside the preset system. Applying a preset overwrites it again.",
+                },
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Tag-switch duration" },
+                        #[template_child] desc { set_label: "How long a window fades/slides when it moves to another tag or monitor (ms)." },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(tag_dur_handler)]
+                            set_adjustment: &adj(model.animation_duration_tag, 0.0, 3000.0, 10.0),
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(AnimationsSettingsInput::SetTagDuration(s.value() as i64));
+                            } @tag_dur_handler,
+                        },
+                    },
+                },
             }
         }
     }
@@ -640,6 +684,7 @@ impl Component for AnimationsSettingsModel {
         let model = AnimationsSettingsModel {
             animations: cfg.animations,
             layer_animations: cfg.layer_animations,
+            animation_duration_tag: cfg.animation_duration_tag as f64,
             selected: active_preset(),
             cards,
         };
@@ -659,6 +704,11 @@ impl Component for AnimationsSettingsModel {
             AnimationsSettingsInput::SetLayerAnimations(v) => {
                 self.layer_animations = v;
                 let _ = patch_conf(&[("layer_animations", bit(v))]);
+                reload();
+            }
+            AnimationsSettingsInput::SetTagDuration(v) => {
+                self.animation_duration_tag = v as f64;
+                let _ = patch_conf(&[("animation_duration_tag", v.to_string())]);
                 reload();
             }
             AnimationsSettingsInput::SelectPreset(idx) => {
@@ -691,6 +741,18 @@ impl Component for AnimationsSettingsModel {
                         // Applying a preset implies animations on.
                         self.animations = true;
                         self.layer_animations = true;
+                        // Keep the Advanced spinbutton in sync — every
+                        // preset sets its own `animation_duration_tag`,
+                        // which would otherwise overwrite `config.conf`
+                        // out from under the displayed value.
+                        if let Some((_, v)) = preset
+                            .keys
+                            .iter()
+                            .find(|(k, _)| *k == "animation_duration_tag")
+                            && let Ok(ms) = v.parse::<f64>()
+                        {
+                            self.animation_duration_tag = ms;
+                        }
                         reload();
                     }
                 }
