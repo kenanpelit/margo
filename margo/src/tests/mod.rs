@@ -53,6 +53,7 @@ mod screencopy;
 mod selection;
 mod session_lock;
 mod tag_mon;
+mod tag_transition_anim;
 mod theme;
 mod window_rules;
 mod x11;

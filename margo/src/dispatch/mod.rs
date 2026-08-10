@@ -515,11 +515,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         // is the behaviour the user usually wants when they think
         // "send this window to tag N and take me there." Plain `tag`
         // stays dwm-/dwl-style: window goes, user stays put.
-        "tagview" | "tag_view" | "tag-view" | "movetagview" => {
-            let mask = tag_arg(arg);
-            state.tag_focused(mask);
-            state.view_tag(mask);
-        }
+        "tagview" | "tag_view" | "tag-view" | "movetagview" => state.tag_view(tag_arg(arg)),
         "toggletag" => state.toggle_client_tag(tag_arg(arg)),
         "tagall" => state.view_tag(u32::MAX),
         "viewtoleft" | "viewtoleft_have_client" => state.view_relative(-1),
@@ -564,6 +560,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 let current = state.clients[cidx].tags;
                 let new = (current & arg.i as u32) ^ arg.i2 as u32;
                 if new != 0 {
+                    state.animate_tag_departure(cidx);
                     state.clients[cidx].old_tags = state.clients[cidx].tags;
                     state.clients[cidx].is_tag_switching = true;
                     state.clients[cidx].animation.running = false;

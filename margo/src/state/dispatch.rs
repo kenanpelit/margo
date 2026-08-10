@@ -444,6 +444,54 @@ impl MargoState {
         }
     }
 
+    /// Snapshot `idx` into a fading-out [`ClosingClient`] before its own
+    /// `tags` change out from under it, so it fades cleanly instead of
+    /// winking out mid-frame. Called from every dispatch that reassigns
+    /// a window's tags/monitor (`tag`, `toggletag`, `setclienttags`,
+    /// `tagmon`) — `tagview`/`movetagview` call it too (via
+    /// `tag_focused`) but it self-filters out there: the snapshot is
+    /// tagged with the client's *current* (pre-mutation) tags, and
+    /// `push_closing_clients` only draws a snapshot while its tags still
+    /// overlap the monitor's *actively viewed* tagset. Plain `tag`
+    /// leaves the viewer's tagset untouched, so the overlap holds and
+    /// the fade plays; `tagview` changes the viewer's tagset in the same
+    /// breath, so the overlap breaks immediately and this is a no-op —
+    /// correct, since that path gets a real slide-in from `view_tag`
+    /// instead (see the `tagview` dispatch arm).
+    ///
+    /// No-op if animations are off, `animation_duration_tag` is `0`, or
+    /// the window wasn't visible to begin with (moving a background/
+    /// scratchpad window around shouldn't flash anything on screen).
+    pub(crate) fn animate_tag_departure(&mut self, idx: usize) {
+        if !self.config.animations || self.config.animation_duration_tag == 0 {
+            return;
+        }
+        let mon_idx = self.clients[idx].monitor;
+        if mon_idx >= self.monitors.len() {
+            return;
+        }
+        let c = &self.clients[idx];
+        if !c.is_visible_on(mon_idx, self.monitors[mon_idx].current_tagset()) {
+            return;
+        }
+        let surface = c.window.wl_surface().map(|s| (*s).clone());
+        self.closing_clients.push(ClosingClient {
+            id: smithay::backend::renderer::element::Id::new(),
+            texture: None,
+            capture_pending: surface.is_some(),
+            geom: c.geom,
+            monitor: mon_idx,
+            tags: c.tags,
+            time_started: crate::utils::now_ms(),
+            duration: self.config.animation_duration_tag,
+            progress: 0.0,
+            kind: crate::render::open_close::OpenCloseKind::Fade,
+            extreme_scale: 1.0,
+            border_radius: self.config.border_radius as f32,
+            source_surface: surface,
+        });
+    }
+
     pub fn tag_focused(&mut self, tagmask: u32) {
         if tagmask == 0 {
             return;
@@ -456,6 +504,7 @@ impl MargoState {
         if mon_idx >= self.monitors.len() {
             return;
         }
+        self.animate_tag_departure(idx);
         self.clients[idx].old_tags = self.clients[idx].tags;
         self.clients[idx].is_tag_switching = true;
         self.clients[idx].animation.running = false;
@@ -467,6 +516,25 @@ impl MargoState {
         }
 
         self.mark_state_dirty();
+    }
+
+    /// `tagview`/`movetagview`: move the focused window to `tagmask`
+    /// **and** follow it there. Reuses `tag_focused` for the move, then
+    /// clears the `is_tag_switching` guard it set before handing off to
+    /// `view_tag`: that guard exists to stop a window snapping into an
+    /// unrelated, unstaged position on plain `tag` (nobody's watching
+    /// the destination), but here `view_tag` is about to stage every
+    /// newly-visible client — this one included, now that its tags
+    /// point at `tagmask` — at a coherent off-screen start before
+    /// arranging. Leaving the guard set would make this one client
+    /// snap instead of riding the same slide-in as its neighbours.
+    pub fn tag_view(&mut self, tagmask: u32) {
+        let idx = self.focused_client_idx();
+        self.tag_focused(tagmask);
+        if let Some(idx) = idx {
+            self.clients[idx].is_tag_switching = false;
+        }
+        self.view_tag(tagmask);
     }
 
     pub fn tag_relative(&mut self, delta: i32) {
@@ -501,6 +569,7 @@ impl MargoState {
         }
         let new = self.clients[idx].tags ^ tagmask;
         if new != 0 {
+            self.animate_tag_departure(idx);
             self.clients[idx].old_tags = self.clients[idx].tags;
             self.clients[idx].is_tag_switching = true;
             self.clients[idx].animation.running = false;
@@ -1164,6 +1233,10 @@ impl MargoState {
             (current_mon + len - 1) % len
         };
         let tagset = self.monitors[target_mon].current_tagset();
+        // Source side never gets a normal arrange pass for this client
+        // again (its `.monitor` is about to point elsewhere), so without
+        // this it just vanishes off the source screen mid-frame.
+        self.animate_tag_departure(idx);
         self.clients[idx].monitor = target_mon;
         self.clients[idx].tags = tagset;
         self.arrange_monitor(current_mon);
