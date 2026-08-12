@@ -60,8 +60,8 @@ use mshell_config::schema::config::{
 use mshell_launcher::providers::{
     ArchLinuxPkgsProvider, BluetoothProvider, CalculatorProvider, CommandProvider, EmojiProvider,
     MctlProvider, PassProvider, PlayerctlProvider, ProviderListProvider, ScriptsProvider,
-    SessionProvider, SettingsProvider, SshProvider, SymbolsProvider, WebsearchProvider,
-    WireplumberProvider,
+    SessionProvider, SettingsProvider, SshProvider, SymbolsProvider, TmuxProvider,
+    WebsearchProvider, WireplumberProvider,
 };
 use mshell_launcher::{DisplayItem, FrecencyStore, LauncherItem, LauncherRuntime};
 use reactive_graph::traits::*;
@@ -524,6 +524,7 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(WireplumberProvider::new()));
         runtime.register(Box::new(BluetoothProvider::new()));
         runtime.register(Box::new(SshProvider::new()));
+        runtime.register(Box::new(TmuxProvider::new()));
         // pass: store path follows Settings → Launcher (else
         // $PASSWORD_STORE_DIR / ~/.password-store). Resolver re-reads on
         // each open, so the setting applies without a shell restart.

@@ -18,6 +18,7 @@ members = [
     "mplay",
     "mpower",
     "mscreenshot",
+    "mtm",
     "mvpn",
     "mvisual",
     "mwizard",

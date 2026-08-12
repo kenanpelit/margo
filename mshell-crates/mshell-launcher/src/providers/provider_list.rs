@@ -143,6 +143,12 @@ const ENTRIES: &[Entry] = &[
         icon: "network-server-symbolic",
     },
     Entry {
+        prefix: "mtm <session>",
+        example: "mtm work",
+        description: "Attach to a running tmux session",
+        icon: "utilities-terminal-symbolic",
+    },
+    Entry {
         prefix: "pass <query>",
         example: "pass github",
         description: "GNU pass — Enter copies, Ctrl+Enter types the password",

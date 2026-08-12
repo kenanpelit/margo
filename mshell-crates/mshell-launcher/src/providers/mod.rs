@@ -19,6 +19,7 @@ pub mod session;
 pub mod settings;
 pub mod ssh;
 pub mod symbols;
+pub mod tmux;
 pub mod websearch;
 pub mod wireplumber;
 
@@ -36,5 +37,6 @@ pub use session::{SessionAction, SessionActionId, SessionProvider};
 pub use settings::{SettingsProvider, SettingsSection};
 pub use ssh::SshProvider;
 pub use symbols::SymbolsProvider;
+pub use tmux::TmuxProvider;
 pub use websearch::WebsearchProvider;
 pub use wireplumber::WireplumberProvider;

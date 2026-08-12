@@ -1,0 +1,23 @@
+[package]
+name = "mtm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Native tmux session/layout/buffer/clipboard/plugin manager for margo — Rust port of tm.sh."
+repository.workspace = true
+
+[[bin]]
+name = "mtm"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+toml.workspace = true
+dirs.workspace = true
+tracing.workspace = true
+libc = "0.2"
+
+[lints]
+workspace = true
