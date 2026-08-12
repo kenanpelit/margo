@@ -119,6 +119,11 @@ impl Component for AudioOutMenuWidgetModel {
             device_name: String::new(),
         };
 
+        // The Audio Dashboard wants the device list visible on open, not
+        // behind an extra click — start expanded. The chevron still works
+        // to collapse it back for anyone who wants the compact view.
+        model.revealer_row.emit(RevealerRowInput::SetRevealed(true));
+
         let widgets = view_output!();
 
         ComponentParts { model, widgets }
@@ -153,9 +158,11 @@ impl Component for AudioOutMenuWidgetModel {
                     .emit(AudioOutRevealedContentInput::Hidden);
             }
             AudioOutMenuWidgetInput::ParentRevealChanged(revealed) => {
-                if !revealed {
-                    self.revealer_row.emit(RevealerRowInput::SetRevealed(false));
-                }
+                // Re-expand every time the dashboard opens, not just once at
+                // component creation — the device list should always start
+                // visible, not remember a collapsed state from last time.
+                self.revealer_row
+                    .emit(RevealerRowInput::SetRevealed(revealed));
             }
             AudioOutMenuWidgetInput::UpdateDevice(device) => {
                 let desc = device.description.get();

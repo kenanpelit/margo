@@ -79,23 +79,57 @@ impl Component for AudioDashboardMenuWidgetModel {
                 },
             },
 
-            gtk::Label {
-                add_css_class: "audio-dashboard-section-label",
-                set_label: "OUTPUT",
-                set_halign: gtk::Align::Start,
-            },
-            model.audio_out.widget().clone() {},
-            // Output route chips (Speakers ↔ Headphones …) — hidden
-            // unless the default sink exposes ≥2 ports.
-            model.out_ports.widget().clone() {},
+            gtk::Box {
+                add_css_class: "audio-dashboard-card",
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 4,
 
-            gtk::Label {
-                add_css_class: "audio-dashboard-section-label",
-                set_label: "INPUT",
-                set_halign: gtk::Align::Start,
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 6,
+
+                    gtk::Image {
+                        add_css_class: "audio-dashboard-card-icon",
+                        set_icon_name: Some("audio-volume-high-symbolic"),
+                        set_valign: gtk::Align::Center,
+                    },
+                    gtk::Label {
+                        add_css_class: "audio-dashboard-section-label",
+                        set_label: "OUTPUT",
+                        set_halign: gtk::Align::Start,
+                        set_valign: gtk::Align::Center,
+                    },
+                },
+                model.audio_out.widget().clone() {},
+                // Output route chips (Speakers ↔ Headphones …) — hidden
+                // unless the default sink exposes ≥2 ports.
+                model.out_ports.widget().clone() {},
             },
-            model.audio_in.widget().clone() {},
-            model.in_ports.widget().clone() {},
+
+            gtk::Box {
+                add_css_class: "audio-dashboard-card",
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 4,
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 6,
+
+                    gtk::Image {
+                        add_css_class: "audio-dashboard-card-icon",
+                        set_icon_name: Some("audio-input-microphone-symbolic"),
+                        set_valign: gtk::Align::Center,
+                    },
+                    gtk::Label {
+                        add_css_class: "audio-dashboard-section-label",
+                        set_label: "INPUT",
+                        set_halign: gtk::Align::Start,
+                        set_valign: gtk::Align::Center,
+                    },
+                },
+                model.audio_in.widget().clone() {},
+                model.in_ports.widget().clone() {},
+            },
 
             // Per-app mixers (QSAP-style). Each hides itself when no
             // stream is active, so they add no chrome when idle.

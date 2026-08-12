@@ -33,6 +33,24 @@
   > contents { padding: 0; }
 }
 
+// One elevated surface per OUTPUT/INPUT section — the boxed-list-style
+// card treatment (§5) instead of the section label floating directly on
+// the panel background, so each half of the dashboard reads as a
+// distinct, self-contained control group.
+.audio-dashboard-card {
+  // One tier above the panel's own --surface-container (§1 tonal
+  // layering) so the card actually reads as a distinct surface instead
+  // of blending into the popover background.
+  background-color: var(--surface-container-high);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.audio-dashboard-card-icon {
+  -gtk-icon-size: 14px;
+  color: var(--on-surface-variant);
+}
+
 .audio-dashboard-section-label {
   font-size: var(--font-xs);
   font-weight: 600;
