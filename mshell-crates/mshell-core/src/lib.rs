@@ -290,6 +290,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // confirmed death, offer a one-click shell restart via a notification.
     mshell_services::audio_watchdog::spawn_audio_health_watchdog();
 
+    // Native MPD backend: connects directly (not via an MPRIS bridge), so
+    // the media pill/menu follow MPD the same as any MPRIS player. No-op
+    // quietly if MPD isn't installed/running — reconnects in the background
+    // whenever it starts.
+    mshell_services::mpd::spawn_mpd_watcher();
+
     // Restore default audio levels: PipeWire doesn't persist sink/source volume
     // across reboots, so on opt-in (Settings → Sound) we pin the default output
     // + input to the user's chosen levels once WirePlumber has settled. Done

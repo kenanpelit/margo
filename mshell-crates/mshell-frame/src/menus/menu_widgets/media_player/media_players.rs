@@ -16,17 +16,31 @@
 use crate::menus::menu_widgets::media_player::media_player::{
     MediaPlayerInit, MediaPlayerInput, MediaPlayerModel,
 };
+use crate::menus::menu_widgets::media_player::mpd_player::{MpdPlayerInit, MpdPlayerModel};
 use mshell_common::{WatcherToken, watch_cancellable};
 use mshell_services::media_service;
+use mshell_services::mpd::mpd_service;
 use mshell_utils::media::spawn_media_players_watcher;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
-use std::sync::Arc;
-use wayle_media::core::player::Player;
 use wayle_media::types::PlaybackState;
+
+/// One switcher slot — either an MPRIS player (identified by wayle's
+/// player id) or the single native MPD player. MPD has no equivalent of
+/// MPRIS players coming and going with app lifecycle, so unlike
+/// `player_controllers` its `Controller` is created once in `init` and
+/// never added to / removed from the `Stack` — only whether it's
+/// *selected* (via [`visible_slots`]'s `Stopped` filter, same rule
+/// `visible_players` already applies to MPRIS) changes.
+#[derive(Clone, PartialEq, Eq)]
+enum DisplaySlot {
+    Mpris(wayle_media::types::PlayerId),
+    Mpd,
+}
 
 pub(crate) struct MediaPlayersModel {
     player_controllers: Vec<Controller<MediaPlayerModel>>,
+    mpd_controller: Controller<MpdPlayerModel>,
     watcher_token: WatcherToken,
     active_player_name: String,
     previous_button_sensitive: bool,
@@ -36,6 +50,12 @@ pub(crate) struct MediaPlayersModel {
     /// added while open inherit this so their marquees start straight
     /// away instead of waiting for the next reveal toggle.
     revealed: bool,
+    /// Explicit prev/next selection, overriding the "first Playing"
+    /// default. Mirrors wayle's `active_player`, but spans both
+    /// backends — wayle's own `active_player` only knows about MPRIS
+    /// players, so a manual selection landing on the MPD slot has
+    /// nowhere else to live.
+    manual_selection: Option<DisplaySlot>,
 }
 
 #[derive(Debug)]
@@ -167,20 +187,35 @@ impl Component for MediaPlayersModel {
         );
 
         let players = media_service().player_list.get();
+        let mpd_playing = mpd_service().player.playback_state.get() != PlaybackState::Stopped;
+
+        // Created once and never removed from the Stack — see the
+        // `DisplaySlot` doc comment above for why MPD doesn't need the
+        // MPRIS players' dynamic add/remove dance.
+        let mpd_controller = MpdPlayerModel::builder()
+            .launch(MpdPlayerInit {
+                player: mpd_service().player.clone(),
+            })
+            .detach();
 
         let mut model = MediaPlayersModel {
             player_controllers: Vec::new(),
+            mpd_controller,
             watcher_token: WatcherToken::new(),
             active_player_name: "".to_string(),
             previous_button_sensitive: false,
             next_button_sensitive: false,
-            players_visible: !players.is_empty(),
+            players_visible: !players.is_empty() || mpd_playing,
             revealed: false,
+            manual_selection: None,
         };
 
         subscribe_playback(&sender, &mut model.watcher_token);
 
         let widgets = view_output!();
+        widgets
+            .player_container
+            .add_child(model.mpd_controller.widget());
 
         ComponentParts { model, widgets }
     }
@@ -194,39 +229,40 @@ impl Component for MediaPlayersModel {
     ) {
         match message {
             MediaPlayersInput::PreviousClicked => {
-                let service = media_service();
-                let visible = visible_players();
-                if let Some(current) = display_player()
-                    && let Some(idx) = visible.iter().position(|p| p.id == current.id)
+                let visible = visible_slots();
+                if let Some(current) = display_slot(self)
+                    && let Some(idx) = visible.iter().position(|s| *s == current)
                     && idx > 0
                 {
-                    let prev_id = visible[idx - 1].id.clone();
-                    tokio::spawn(async move {
-                        let _ = service.set_active_player(Some(prev_id)).await;
-                    });
+                    select_slot(self, visible[idx - 1].clone());
                 }
             }
             MediaPlayersInput::NextClicked => {
-                let service = media_service();
-                let visible = visible_players();
-                if let Some(current) = display_player()
-                    && let Some(idx) = visible.iter().position(|p| p.id == current.id)
+                let visible = visible_slots();
+                if let Some(current) = display_slot(self)
+                    && let Some(idx) = visible.iter().position(|s| *s == current)
                     && idx + 1 < visible.len()
                 {
-                    let next_id = visible[idx + 1].id.clone();
-                    tokio::spawn(async move {
-                        let _ = service.set_active_player(Some(next_id)).await;
-                    });
+                    select_slot(self, visible[idx + 1].clone());
                 }
             }
             MediaPlayersInput::UpdateState => {
-                let visible = visible_players();
+                let visible = visible_slots();
                 self.players_visible = !visible.is_empty();
 
-                let display = display_player();
+                let display = display_slot(self);
                 if let Some(display) = &display {
-                    self.active_player_name = display.identity.get();
-                    if let Some(idx) = visible.iter().position(|p| p.id == display.id) {
+                    self.active_player_name = match display {
+                        DisplaySlot::Mpris(id) => media_service()
+                            .player_list
+                            .get()
+                            .iter()
+                            .find(|p| p.id == *id)
+                            .map(|p| p.identity.get())
+                            .unwrap_or_default(),
+                        DisplaySlot::Mpd => "MPD".to_string(),
+                    };
+                    if let Some(idx) = visible.iter().position(|s| s == display) {
                         self.previous_button_sensitive = idx > 0;
                         self.next_button_sensitive = idx + 1 < visible.len();
                     } else {
@@ -239,14 +275,23 @@ impl Component for MediaPlayersModel {
                     self.next_button_sensitive = false;
                 }
 
-                // Reveal the display player, hide the rest.
-                let display_id = display.as_ref().map(|p| &p.id);
-                for controller in &self.player_controllers {
-                    if Some(&controller.model().player.id) == display_id {
+                // Reveal the display slot, hide the rest.
+                match &display {
+                    Some(DisplaySlot::Mpris(id)) => {
+                        for controller in &self.player_controllers {
+                            if controller.model().player.id == *id {
+                                widgets
+                                    .player_container
+                                    .set_visible_child(controller.widget());
+                            }
+                        }
+                    }
+                    Some(DisplaySlot::Mpd) => {
                         widgets
                             .player_container
-                            .set_visible_child(controller.widget());
+                            .set_visible_child(self.mpd_controller.widget());
                     }
+                    None => {}
                 }
             }
             MediaPlayersInput::ParentRevealChanged(visible) => {
@@ -328,34 +373,63 @@ impl Component for MediaPlayersModel {
     }
 }
 
-/// Players worth showing — anything not `Stopped`. A browser that
-/// merely registered an MPRIS interface without playing reports
-/// `Stopped`, so this drops it from the switcher.
-fn visible_players() -> Vec<Arc<Player>> {
-    media_service()
+/// Slots worth showing — anything not `Stopped`. A browser that merely
+/// registered an MPRIS interface without playing reports `Stopped`, so
+/// this drops it from the switcher; the same rule applies to the MPD
+/// slot so an idle/disconnected MPD doesn't clutter the switcher either.
+fn visible_slots() -> Vec<DisplaySlot> {
+    let mut slots: Vec<DisplaySlot> = media_service()
         .player_list
         .get()
         .into_iter()
         .filter(|p| p.playback_state.get() != PlaybackState::Stopped)
-        .collect()
+        .map(|p| DisplaySlot::Mpris(p.id.clone()))
+        .collect();
+    if mpd_service().player.playback_state.get() != PlaybackState::Stopped {
+        slots.push(DisplaySlot::Mpd);
+    }
+    slots
 }
 
-/// The player to show by default: the first one actually playing,
-/// else wayle's `active_player` if it's still a visible player,
-/// else the first visible player.
-fn display_player() -> Option<Arc<Player>> {
-    let visible = visible_players();
-    visible
-        .iter()
+/// The slot to show by default: the first one actually playing (MPRIS
+/// checked before MPD — arbitrary but stable tie-break), else the
+/// model's own `manual_selection` if it's still visible, else the first
+/// visible slot.
+fn display_slot(model: &MediaPlayersModel) -> Option<DisplaySlot> {
+    let visible = visible_slots();
+    media_service()
+        .player_list
+        .get()
+        .into_iter()
         .find(|p| p.playback_state.get() == PlaybackState::Playing)
-        .cloned()
+        .map(|p| DisplaySlot::Mpris(p.id.clone()))
         .or_else(|| {
-            media_service()
-                .active_player
-                .get()
-                .filter(|ap| visible.iter().any(|p| p.id == ap.id))
+            (mpd_service().player.playback_state.get() == PlaybackState::Playing)
+                .then_some(DisplaySlot::Mpd)
+        })
+        .or_else(|| {
+            model
+                .manual_selection
+                .clone()
+                .filter(|sel| visible.contains(sel))
         })
         .or_else(|| visible.first().cloned())
+}
+
+/// Record an explicit prev/next selection (see `manual_selection`'s doc
+/// comment) and, for an MPRIS slot, also tell wayle — the bar pill's own
+/// `display_player` falls back to wayle's `active_player`, so without
+/// this a menu prev/next click would stop influencing what the pill
+/// shows once nothing is actively `Playing`.
+fn select_slot(model: &mut MediaPlayersModel, slot: DisplaySlot) {
+    if let DisplaySlot::Mpris(id) = &slot {
+        let service = media_service();
+        let id = id.clone();
+        tokio::spawn(async move {
+            let _ = service.set_active_player(Some(id)).await;
+        });
+    }
+    model.manual_selection = Some(slot);
 }
 
 /// Watch every player's `playback_state` under a fresh
@@ -373,4 +447,8 @@ fn subscribe_playback(
             let _ = out.send(MediaPlayersCommandOutput::PlaybackChanged);
         });
     }
+    let mpd_playback_state = mpd_service().player.playback_state.clone();
+    watch_cancellable!(sender, token, [mpd_playback_state.watch()], |out| {
+        let _ = out.send(MediaPlayersCommandOutput::PlaybackChanged);
+    });
 }

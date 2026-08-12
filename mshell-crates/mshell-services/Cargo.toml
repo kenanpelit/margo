@@ -10,6 +10,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 mshell-config.workspace = true
+mpd_client.workspace = true
 notify-rust.workspace = true
 reactive_graph.workspace = true
 tokio.workspace = true
@@ -20,6 +21,7 @@ wayle-battery.workspace = true
 wayle-bluetooth.workspace = true
 wayle-brightness.workspace = true
 mshell-margo-client.workspace = true
+wayle-core.workspace = true
 wayle-media.workspace = true
 wayle-network.workspace = true
 wayle-notification.workspace = true

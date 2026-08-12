@@ -21,6 +21,7 @@
 
 use mshell_common::{WatcherToken, watch_cancellable};
 use mshell_services::media_service;
+use mshell_services::mpd::{MpdPlayer, mpd_service};
 use mshell_utils::media::spawn_media_players_watcher;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
@@ -28,6 +29,16 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
 use wayle_media::core::player::Player;
 use wayle_media::types::PlaybackState;
+
+/// Whichever backend the pill is currently mirroring. The pill's own
+/// model fields (`title`/`artist`/`cover_art`/…) are already plain,
+/// backend-agnostic values snapshotted from whichever of these is
+/// picked — see `read_display` — so only the *selection* needs to know
+/// about both backends, not the rest of the widget.
+enum PillSource {
+    Mpris(Arc<Player>),
+    Mpd(Arc<MpdPlayer>),
+}
 
 pub(crate) struct MediaPlayerModel {
     watcher_token: WatcherToken,
@@ -154,13 +165,19 @@ impl Component for MediaPlayerModel {
             MediaPlayerInput::Clicked => {
                 let _ = sender.output(MediaPlayerOutput::Clicked);
             }
-            MediaPlayerInput::PlayPauseClicked => {
-                if let Some(player) = display_player() {
+            MediaPlayerInput::PlayPauseClicked => match display_player() {
+                Some(PillSource::Mpris(player)) => {
                     tokio::spawn(async move {
                         let _ = player.play_pause().await;
                     });
                 }
-            }
+                Some(PillSource::Mpd(player)) => {
+                    tokio::spawn(async move {
+                        let _ = player.play_pause().await;
+                    });
+                }
+                None => {}
+            },
         }
     }
 
@@ -184,22 +201,34 @@ impl Component for MediaPlayerModel {
     }
 }
 
-/// The player to mirror: the first one actually *playing*, else
-/// wayle's `active_player`, else the first in the list.
-fn display_player() -> Option<Arc<Player>> {
+/// The player to mirror: the first one actually *playing* (MPRIS
+/// checked before MPD — arbitrary but stable tie-break), else wayle's
+/// `active_player`, else the first MPRIS player, else MPD regardless of
+/// state (so a paused-but-connected MPD still shows instead of an empty
+/// pill when nothing else is around).
+fn display_player() -> Option<PillSource> {
     let svc = media_service();
     let players = svc.player_list.get();
     players
         .iter()
         .find(|p| p.playback_state.get() == PlaybackState::Playing)
         .cloned()
-        .or_else(|| svc.active_player.get())
-        .or_else(|| players.first().cloned())
+        .map(PillSource::Mpris)
+        .or_else(|| {
+            let mpd = mpd_service().player.clone();
+            (mpd.playback_state.get() == PlaybackState::Playing).then(|| PillSource::Mpd(mpd))
+        })
+        .or_else(|| svc.active_player.get().map(PillSource::Mpris))
+        .or_else(|| players.first().cloned().map(PillSource::Mpris))
+        .or_else(|| {
+            let mpd = mpd_service().player.clone();
+            mpd.connected.get().then(|| PillSource::Mpd(mpd))
+        })
 }
 
-/// Watch *every* player's title / artist / cover / playback
-/// state under a fresh `WatcherToken` — so the pill reacts the
-/// instant any player starts, stops, or changes track.
+/// Watch *every* player's title / artist / cover / playback state
+/// (MPRIS and MPD alike) under a fresh `WatcherToken` — so the pill
+/// reacts the instant any player starts, stops, or changes track.
 fn subscribe_players(sender: &ComponentSender<MediaPlayerModel>, watcher_token: &mut WatcherToken) {
     let token = watcher_token.reset();
     for player in media_service().player_list.get() {
@@ -222,17 +251,44 @@ fn subscribe_players(sender: &ComponentSender<MediaPlayerModel>, watcher_token: 
             }
         );
     }
+    let mpd = mpd_service().player.clone();
+    let (title, artist, cover, playback_state) = (
+        mpd.title.clone(),
+        mpd.artist.clone(),
+        mpd.cover_art.clone(),
+        mpd.playback_state.clone(),
+    );
+    watch_cancellable!(
+        sender,
+        token,
+        [
+            title.watch(),
+            artist.watch(),
+            cover.watch(),
+            playback_state.watch(),
+        ],
+        |out| {
+            let _ = out.send(MediaPlayerCommandOutput::TrackChanged);
+        }
+    );
 }
 
 /// Refresh the model from whichever player is currently displayed.
 fn read_display(model: &mut MediaPlayerModel) {
     match display_player() {
-        Some(player) => {
+        Some(PillSource::Mpris(player)) => {
             model.has_player = true;
             model.playing = player.playback_state.get() == PlaybackState::Playing;
             model.title = player.metadata.title.get();
             model.artist = player.metadata.artist.get();
             model.cover_art = player.metadata.cover_art.get();
+        }
+        Some(PillSource::Mpd(player)) => {
+            model.has_player = true;
+            model.playing = player.playback_state.get() == PlaybackState::Playing;
+            model.title = player.title.get();
+            model.artist = player.artist.get();
+            model.cover_art = player.cover_art.get();
         }
         None => {
             model.has_player = false;

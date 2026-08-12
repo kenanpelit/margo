@@ -40,6 +40,7 @@ where
 pub mod audio_watchdog;
 pub mod bluetooth;
 pub mod login_net;
+pub mod mpd;
 
 use mshell_margo_client::MargoService;
 use wayle_audio::AudioService;
