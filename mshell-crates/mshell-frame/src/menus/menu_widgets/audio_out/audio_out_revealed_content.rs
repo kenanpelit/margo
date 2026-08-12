@@ -17,6 +17,7 @@ use mshell_utils::audio::{is_hdmi_output, spawn_output_devices_watcher};
 use mshell_utils::audio_prefs::{display_alias, is_hidden};
 use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::RevealerTransitionType;
+use relm4::gtk::pango;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::cell::RefCell;
@@ -93,6 +94,11 @@ impl Component for AudioOutRevealedContentModel {
                             gtk::Box {
                                 set_orientation: gtk::Orientation::Vertical,
                                 set_spacing: 2,
+                                // Fixed width so a long device description
+                                // can't balloon the popover past the panel
+                                // edge — device labels ellipsize inside it
+                                // instead (see connect_show below).
+                                set_width_request: 260,
                             },
 
                             #[name = "create_group_button"]
@@ -188,7 +194,12 @@ impl Component for AudioOutRevealedContentModel {
                 for device in candidates {
                     let name = device.name.get();
                     let label = display_alias(&name, &device.description.get());
-                    let check = gtk::CheckButton::with_label(&label);
+                    let check = gtk::CheckButton::new();
+                    let check_label = gtk::Label::new(Some(&label));
+                    check_label.set_halign(gtk::Align::Start);
+                    check_label.set_ellipsize(pango::EllipsizeMode::End);
+                    check_label.set_max_width_chars(26);
+                    check.set_child(Some(&check_label));
                     checklist_box.append(&check);
                     checked_rows_show.borrow_mut().push((check.clone(), name));
 
