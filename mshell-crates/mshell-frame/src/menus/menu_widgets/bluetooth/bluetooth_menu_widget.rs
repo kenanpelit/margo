@@ -279,8 +279,18 @@ impl Component for BluetoothMenuWidgetModel {
                             let _ = device.disconnect().await;
                         });
                     } else {
+                        // First successful connect claims a quick-connect
+                        // number automatically, same as pairing a device
+                        // gives it a name — the user can clear/reassign it
+                        // afterwards from the badge next to the row.
                         tokio::spawn(async move {
-                            let _ = device.connect().await;
+                            if device.connect().await.is_ok() {
+                                let mut prefs = lock_prefs();
+                                if prefs.bt_number(&address).is_none() {
+                                    let next = prefs.next_free_bt_number();
+                                    prefs.set_bt_number(&address, Some(next));
+                                }
+                            }
                         });
                     }
                 }
@@ -514,6 +524,24 @@ impl BluetoothMenuWidgetModel {
         name_label.set_max_width_chars(20);
         row.append(&name_label);
 
+        // Quick-connect number badge — only once a device has one (assigned
+        // automatically on its first successful connect); a quiet chip next
+        // to the name, not a separate action button competing with Pin/
+        // Forget/Trust. Still clickable, to clear/reassign it.
+        if let Some(number) = lock_prefs().bt_number(&address) {
+            let number_badge = gtk::Button::with_label(&format!("#{number}"));
+            number_badge.add_css_class("bluetooth-dashboard-number-badge");
+            number_badge.set_valign(gtk::Align::Center);
+            number_badge
+                .set_tooltip_text(Some(&format!("Quick-connect #{number} — click to remove")));
+            let addr_n = address.clone();
+            let sender_n = sender.clone();
+            number_badge.connect_clicked(move |_| {
+                sender_n.input(BluetoothMenuWidgetInput::ToggleNumber(addr_n.clone()));
+            });
+            row.append(&number_badge);
+        }
+
         // Battery % (if available)
         if let Some(pct) = battery {
             let bat_label = gtk::Label::new(Some(&format!("{}%", pct)));
@@ -572,31 +600,6 @@ impl BluetoothMenuWidgetModel {
                 });
             }
             actions.append(&pin_btn);
-
-            // Quick-connect number — assign/clear a persistent slot
-            // (1, 2, 3, …) so a keybind (`mshellctl bluetooth
-            // connect-number N`) can always reach this device regardless
-            // of where it sits in the config's device list.
-            let number = lock_prefs().bt_number(&address);
-            let number_label = number.map(|n| n.to_string()).unwrap_or_else(|| "#".into());
-            let number_btn = gtk::Button::with_label(&number_label);
-            number_btn.add_css_class("bluetooth-dashboard-number-button");
-            if number.is_some() {
-                number_btn.add_css_class("assigned");
-            }
-            let number_tooltip = match number {
-                Some(n) => format!("Quick-connect #{n} — click to unassign"),
-                None => "Assign a quick-connect number".to_string(),
-            };
-            number_btn.set_tooltip_text(Some(&number_tooltip));
-            {
-                let addr_n = address.clone();
-                let sender_n = sender.clone();
-                number_btn.connect_clicked(move |_| {
-                    sender_n.input(BluetoothMenuWidgetInput::ToggleNumber(addr_n.clone()));
-                });
-            }
-            actions.append(&number_btn);
 
             // Forget
             let addr_f = address.clone();

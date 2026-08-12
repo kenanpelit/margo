@@ -139,6 +139,7 @@ impl Component for NetworkRevealedContentModel {
                 label: "Not Connected".to_string(),
                 icon_name: "network-wireless-disabled-symbolic".to_string(),
                 secondary_icon_name: "".to_string(),
+                subtitle: "".to_string(),
             })
             .detach();
 
@@ -159,6 +160,7 @@ impl Component for NetworkRevealedContentModel {
                         label: item.ssid.get().to_string(),
                         icon_name: get_wifi_icon_for_strength(item.strength.get()).to_string(),
                         secondary_icon_name: "".to_string(),
+                        subtitle: "".to_string(),
                     })
                     .detach();
 

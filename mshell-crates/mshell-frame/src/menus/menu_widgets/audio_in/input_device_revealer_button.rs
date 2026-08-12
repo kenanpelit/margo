@@ -14,6 +14,7 @@ pub(crate) struct InputDeviceRevealerButtonModel {
     input_device: Arc<InputDevice>,
     content: Controller<RevealerButtonIconLabelModel>,
     watcher_token: WatcherToken,
+    hidden: bool,
 }
 
 #[derive(Debug)]
@@ -22,8 +23,10 @@ pub(crate) enum InputDeviceRevealerButtonInput {
     DefaultDeviceChanged,
     Revealed,
     Hidden,
-    /// The edit popover closed — read its entry/switch and persist.
-    EditCommitted(String, bool),
+    /// The rename popover closed — read its entry and persist.
+    EditCommitted(String),
+    /// Hide-from-cycling eye toggled — immediate, no popover.
+    ToggleHidden,
 }
 
 #[derive(Debug)]
@@ -50,6 +53,7 @@ impl Component for InputDeviceRevealerButtonModel {
         gtk::Box {
             set_spacing: 4,
 
+            #[name = "content_button"]
             gtk::Button {
                 add_css_class: "ok-button-surface",
                 set_hexpand: true,
@@ -61,12 +65,27 @@ impl Component for InputDeviceRevealerButtonModel {
                 model.content.widget().clone() {},
             },
 
+            #[name = "hide_button"]
+            gtk::Button {
+                add_css_class: "ok-button-surface",
+                add_css_class: "audio-dashboard-icon-button",
+                set_valign: gtk::Align::Center,
+                #[watch]
+                set_icon_name: if model.hidden { "view-conceal-symbolic" } else { "view-reveal-symbolic" },
+                #[watch]
+                set_tooltip_text: Some(if model.hidden { "Hidden — click to show in cycling" } else { "Visible — click to hide from cycling" }),
+                connect_clicked[sender] => move |_| {
+                    sender.input(InputDeviceRevealerButtonInput::ToggleHidden);
+                },
+            },
+
             #[name = "edit_button"]
             gtk::MenuButton {
                 add_css_class: "ok-button-surface",
+                add_css_class: "audio-dashboard-icon-button",
                 set_icon_name: "document-edit-symbolic",
                 set_valign: gtk::Align::Center,
-                set_tooltip_text: Some("Rename or hide this device"),
+                set_tooltip_text: Some("Rename this device"),
 
                 #[wrap(Some)]
                 set_popover = &gtk::Popover {
@@ -78,23 +97,15 @@ impl Component for InputDeviceRevealerButtonModel {
                         set_margin_top: 8,
                         set_margin_bottom: 8,
 
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Display name",
+                            set_halign: gtk::Align::Start,
+                        },
+
                         #[name = "alias_entry"]
                         gtk::Entry {
                             set_width_chars: 20,
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 8,
-                            gtk::Label {
-                                set_label: "Hide from cycling",
-                                set_hexpand: true,
-                                set_xalign: 0.0,
-                            },
-                            #[name = "hidden_switch"]
-                            gtk::Switch {
-                                set_valign: gtk::Align::Center,
-                            },
                         },
                     },
                 },
@@ -116,11 +127,14 @@ impl Component for InputDeviceRevealerButtonModel {
         });
 
         let device_name = params.input_device.name.get();
+        let raw_description = params.input_device.description.get();
+        let prefs = lock_prefs().get(&device_name);
         let button_content = RevealerButtonIconLabelModel::builder()
             .launch(RevealerButtonIconLabelInit {
-                label: display_alias(&device_name, &params.input_device.description.get()),
+                label: display_alias(&device_name, &raw_description),
                 icon_name: "".to_string(),
                 secondary_icon_name: "".to_string(),
+                subtitle: compute_subtitle(prefs.alias.is_some(), &raw_description),
             })
             .detach();
 
@@ -128,30 +142,30 @@ impl Component for InputDeviceRevealerButtonModel {
             input_device: params.input_device,
             content: button_content,
             watcher_token,
+            hidden: prefs.hidden,
         };
+
+        model
+            .content
+            .emit(RevealerButtonIconLabelInput::SetActive(is_current_default(
+                &model.input_device,
+            )));
 
         let widgets = view_output!();
 
-        widgets
-            .alias_entry
-            .set_placeholder_text(Some(&model.input_device.description.get()));
         if let Some(popover) = widgets.edit_button.popover() {
             let entry = widgets.alias_entry.clone();
-            let switch = widgets.hidden_switch.clone();
             let show_device_name = device_name.clone();
             popover.connect_show(move |_| {
                 let prefs = lock_prefs().get(&show_device_name);
                 entry.set_text(prefs.alias.as_deref().unwrap_or(""));
-                switch.set_active(prefs.hidden);
             });
 
             let entry = widgets.alias_entry.clone();
-            let switch = widgets.hidden_switch.clone();
             let sender = sender.clone();
             popover.connect_closed(move |_| {
                 sender.input(InputDeviceRevealerButtonInput::EditCommitted(
                     entry.text().to_string(),
-                    switch.is_active(),
                 ));
             });
         }
@@ -161,7 +175,7 @@ impl Component for InputDeviceRevealerButtonModel {
 
     fn update_with_view(
         &mut self,
-        _widgets: &mut Self::Widgets,
+        widgets: &mut Self::Widgets,
         message: Self::Input,
         sender: ComponentSender<Self>,
         _root: &Self::Root,
@@ -173,41 +187,40 @@ impl Component for InputDeviceRevealerButtonModel {
                     let _ = device.set_as_default().await;
                 });
             }
-            InputDeviceRevealerButtonInput::EditCommitted(alias, hidden) => {
+            InputDeviceRevealerButtonInput::EditCommitted(alias) => {
                 let device_name = self.input_device.name.get();
                 let alias = alias.trim();
                 let alias = (!alias.is_empty()).then(|| alias.to_string());
-                let mut prefs = lock_prefs();
-                prefs.set_alias(&device_name, alias);
-                prefs.set_hidden(&device_name, hidden);
-                drop(prefs);
+                let has_alias = alias.is_some();
+                lock_prefs().set_alias(&device_name, alias);
                 self.content
                     .emit(RevealerButtonIconLabelInput::SetLabel(display_alias(
                         &device_name,
                         &self.input_device.description.get(),
                     )));
+                self.content
+                    .emit(RevealerButtonIconLabelInput::SetSubtitle(compute_subtitle(
+                        has_alias,
+                        &self.input_device.description.get(),
+                    )));
+            }
+            InputDeviceRevealerButtonInput::ToggleHidden => {
+                self.hidden = !self.hidden;
+                let device_name = self.input_device.name.get();
+                lock_prefs().set_hidden(&device_name, self.hidden);
             }
             InputDeviceRevealerButtonInput::DefaultDeviceChanged => {
-                let default_device = audio_service().default_input.get();
-
-                if let Some(default_device) = default_device {
-                    if default_device.eq(&self.input_device) {
-                        self.content
-                            .emit(RevealerButtonIconLabelInput::SetPrimaryIconName(
-                                "check-circle-symbolic".to_string(),
-                            ))
-                    } else {
-                        self.content
-                            .emit(RevealerButtonIconLabelInput::SetPrimaryIconName(
-                                "".to_string(),
-                            ))
-                    }
-                } else {
-                    self.content
-                        .emit(RevealerButtonIconLabelInput::SetPrimaryIconName(
-                            "".to_string(),
-                        ))
-                }
+                let is_default = is_current_default(&self.input_device);
+                self.content
+                    .emit(RevealerButtonIconLabelInput::SetActive(is_default));
+                self.content
+                    .emit(RevealerButtonIconLabelInput::SetPrimaryIconName(
+                        if is_default {
+                            "check-circle-symbolic".to_string()
+                        } else {
+                            "".to_string()
+                        },
+                    ));
             }
             InputDeviceRevealerButtonInput::Revealed => {
                 let token = self.watcher_token.reset();
@@ -220,6 +233,7 @@ impl Component for InputDeviceRevealerButtonModel {
                 self.watcher_token.reset();
             }
         }
+        self.update_view(widgets, sender);
     }
 
     fn update_cmd(
@@ -233,5 +247,24 @@ impl Component for InputDeviceRevealerButtonModel {
                 sender.input(InputDeviceRevealerButtonInput::DefaultDeviceChanged);
             }
         }
+    }
+}
+
+fn is_current_default(device: &Arc<InputDevice>) -> bool {
+    audio_service()
+        .default_input
+        .get()
+        .map(|d| d.eq(device))
+        .unwrap_or(false)
+}
+
+/// An un-renamed device already shows its real name as the title, so the
+/// subtitle stays empty; a renamed one shows the real name underneath so
+/// the alias doesn't hide what it actually is.
+fn compute_subtitle(has_alias: bool, raw_description: &str) -> String {
+    if has_alias {
+        raw_description.to_string()
+    } else {
+        String::new()
     }
 }

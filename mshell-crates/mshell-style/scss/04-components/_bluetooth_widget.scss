@@ -178,21 +178,18 @@ label.bt-connected {
   }
 }
 
-// Quick-connect number (#, 1, 2, …): calm when unassigned, primary-container
-// pill once a slot is assigned — mirrors `.bluetooth-dashboard-action-button`
-// sizing but tonal like a chip so the assigned digit reads at a glance.
-.bluetooth-dashboard-number-button {
+// Quick-connect number badge (#2, #3, …) — shown only once a device has
+// been assigned one (automatic on its first successful connect), so it's
+// always the "assigned" tonal chip, never the calm/unset state a button
+// needs. Sits right next to the device name, not in the Pin/Forget/Trust
+// action row — it's identity, not an action.
+.bluetooth-dashboard-number-badge {
   all: unset;
-  font-size: var(--font-xs);
+  font-size: var(--font-2xs);
   font-weight: 600;
-  min-width: 20px;
-  padding: var(--space-1) var(--space-2);
+  padding: 2px var(--space-1);
   border-radius: var(--radius-sm);
-  color: var(--on-surface-variant);
-  @include state-layer();
-
-  &.assigned {
-    background-color: var(--primary-container);
-    color: var(--on-primary-container);
-  }
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
+  @include state-layer(var(--primary-container));
 }

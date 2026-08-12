@@ -64,14 +64,25 @@
   @include state-layer();
 }
 
-// "Group outputs" trigger (§) — flat icon button, same treatment as the
-// mute toggle above it.
+// "Group outputs" trigger — a real text button (not icon+tooltip) so the
+// feature is discoverable at a glance instead of requiring a hover to
+// find out what the icon meant.
 .audio-dashboard-group-trigger {
   all: unset;
+  font-size: var(--font-xs);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
+  background-color: var(--surface-container-high);
   color: var(--on-surface-variant);
-  @include state-layer();
+  @include state-layer(var(--surface-container-high));
+}
+
+// Small icon-only row action (hide/show, rename) — same treatment as the
+// Bluetooth pin button, so every "…-icon-button" in the audio dashboard
+// reads consistently regardless of which row it sits on.
+.audio-dashboard-icon-button {
+  padding: var(--space-1);
+  color: var(--on-surface-variant);
 
   image {
     -gtk-icon-size: 14px;

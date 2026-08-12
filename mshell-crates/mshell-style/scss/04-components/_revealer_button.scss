@@ -3,6 +3,23 @@
   -gtk-icon-size: 16px;
 }
 
+// Second line under the title — device port, group member summary, etc.
+// Empty string hides the row entirely (see revealer_button_icon_label.rs),
+// so this only ever paints when there's something worth saying.
+.revealer-button-subtitle {
+  font-size: var(--font-2xs);
+  color: var(--on-surface-variant);
+}
+
+// DESIGN.md §3: active = primary tint on the name, never a separate
+// badge or background fill — matches the Bluetooth menu's `.bt-connected`
+// precedent. The check-symbolic icon (already primary-tinted) is the
+// row's only other active signal; this just reinforces it on the title.
+.revealer-button-title.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
 .revealer-button-content {
   // Surfaces over borders: recessed tonal well + faint inset shadow
   // instead of a hard 2px outline box (DESIGN.md §0/§1).

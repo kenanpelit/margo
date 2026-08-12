@@ -8,6 +8,15 @@ pub struct RevealerButtonIconLabelModel {
     pub label: String,
     pub icon_name: String,
     pub secondary_icon_name: String,
+    /// Small dim line under the label — device port, group member
+    /// summary, etc. Empty hides the line entirely, so callers that
+    /// don't need it (network rows) render exactly as before.
+    pub subtitle: String,
+    /// DESIGN.md §3: active = primary tint on icon *and name*, never a
+    /// separate badge. Defaults false; callers that don't track an
+    /// active state (network rows) never emit `SetActive` and the label
+    /// just never tints.
+    pub active: bool,
 }
 
 #[derive(Debug)]
@@ -17,12 +26,17 @@ pub enum RevealerButtonIconLabelInput {
     SetSecondaryIconName(String),
     #[allow(dead_code)]
     SetLabel(String),
+    #[allow(dead_code)]
+    SetSubtitle(String),
+    #[allow(dead_code)]
+    SetActive(bool),
 }
 
 pub struct RevealerButtonIconLabelInit {
     pub label: String,
     pub icon_name: String,
     pub secondary_icon_name: String,
+    pub subtitle: String,
 }
 
 #[relm4::component(pub)]
@@ -41,14 +55,36 @@ impl SimpleComponent for RevealerButtonIconLabelModel {
                 set_icon_name: Some(model.icon_name.as_str()),
             },
 
-            #[name = "label"]
-            gtk::Label {
-                add_css_class: "label-small",
-                set_halign: gtk::Align::Start,
+            gtk::Box {
+                set_orientation: gtk::Orientation::Vertical,
                 set_hexpand: true,
-                set_ellipsize: pango::EllipsizeMode::End,
-                #[watch]
-                set_label: model.label.as_str(),
+                set_valign: gtk::Align::Center,
+                set_spacing: 0,
+
+                #[name = "label"]
+                gtk::Label {
+                    add_css_class: "label-small",
+                    add_css_class: "revealer-button-title",
+                    set_halign: gtk::Align::Start,
+                    set_hexpand: true,
+                    set_ellipsize: pango::EllipsizeMode::End,
+                    #[watch]
+                    set_label: model.label.as_str(),
+                    #[watch]
+                    set_class_active: ("active", model.active),
+                },
+
+                #[name = "subtitle_label"]
+                gtk::Label {
+                    add_css_class: "revealer-button-subtitle",
+                    set_halign: gtk::Align::Start,
+                    set_hexpand: true,
+                    set_ellipsize: pango::EllipsizeMode::End,
+                    #[watch]
+                    set_visible: !model.subtitle.is_empty(),
+                    #[watch]
+                    set_label: model.subtitle.as_str(),
+                },
             },
 
             #[name = "secondary_image"]
@@ -72,6 +108,8 @@ impl SimpleComponent for RevealerButtonIconLabelModel {
             label: params.label,
             icon_name: params.icon_name,
             secondary_icon_name: params.secondary_icon_name,
+            subtitle: params.subtitle,
+            active: false,
         };
         let widgets = view_output!();
         ComponentParts { model, widgets }
@@ -87,6 +125,12 @@ impl SimpleComponent for RevealerButtonIconLabelModel {
             }
             RevealerButtonIconLabelInput::SetLabel(label) => {
                 self.label = label;
+            }
+            RevealerButtonIconLabelInput::SetSubtitle(subtitle) => {
+                self.subtitle = subtitle;
+            }
+            RevealerButtonIconLabelInput::SetActive(active) => {
+                self.active = active;
             }
         }
     }

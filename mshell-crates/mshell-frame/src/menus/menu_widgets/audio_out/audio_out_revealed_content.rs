@@ -68,8 +68,8 @@ impl Component for AudioOutRevealedContentModel {
                 #[name = "group_button"]
                 gtk::MenuButton {
                     add_css_class: "audio-dashboard-group-trigger",
-                    set_icon_name: "list-add-symbolic",
-                    set_tooltip_text: Some("Group outputs for simultaneous playback"),
+                    set_label: "Group outputs",
+                    set_tooltip_text: Some("Play through two or more outputs at once"),
 
                     #[wrap(Some)]
                     set_popover = &gtk::Popover {
