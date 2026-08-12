@@ -101,7 +101,9 @@ impl Component for OutputDeviceRevealerButtonModel {
             OutputDeviceRevealerButtonInput::Clicked => {
                 let device = self.output_device.clone();
                 tokio::spawn(async move {
-                    let _ = device.set_as_default().await;
+                    if device.set_as_default().await.is_ok() {
+                        mshell_utils::audio::migrate_playback_streams_to(&device).await;
+                    }
                 });
             }
             OutputDeviceRevealerButtonInput::DefaultDeviceChanged => {

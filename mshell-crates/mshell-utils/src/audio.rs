@@ -460,6 +460,20 @@ pub fn mic_follow_target(to_headset: bool) -> Option<Arc<InputDevice>> {
     }
 }
 
+/// Move every currently-active playback stream onto `device`. PipeWire's own
+/// "set default sink" only affects streams that open *after* the switch —
+/// anything already playing stays bound to the old sink, silently, until it
+/// stops and restarts. Called after a successful output switch (`mshellctl
+/// audio switch` / `output` / `route-next`, and the dashboard's device
+/// picker) so the currently-playing app actually follows, matching what a
+/// user switching outputs almost always wants. Best-effort per stream — one
+/// failing (e.g. it closed mid-migration) doesn't stop the rest.
+pub async fn migrate_playback_streams_to(device: &OutputDevice) {
+    for stream in audio_service().playback_streams.get() {
+        let _ = stream.move_to_device(device.key).await;
+    }
+}
+
 #[cfg(test)]
 mod route_tests {
     use super::*;

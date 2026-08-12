@@ -662,7 +662,9 @@ impl Component for SoundSettingsModel {
             SoundSettingsInput::SetOutputDevice(idx) => {
                 if let Some(d) = self.out_devices.get(idx as usize).cloned() {
                     tokio::spawn(async move {
-                        let _ = d.set_as_default().await;
+                        if d.set_as_default().await.is_ok() {
+                            mshell_utils::audio::migrate_playback_streams_to(&d).await;
+                        }
                     });
                 }
             }

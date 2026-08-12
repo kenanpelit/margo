@@ -373,6 +373,10 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                             let v = (audio_cfg.default_output_volume.clamp(0, 100) as f64) / 100.0;
                             let _ = devs[i].set_volume(Volume::stereo(v, v)).await;
                         }
+                        // Follow whatever's currently playing to the new
+                        // device — PipeWire's own default-sink change only
+                        // affects streams opened afterwards.
+                        mshell_utils::audio::migrate_playback_streams_to(&devs[i]).await;
                         // No notify-send here: the OSD toast producer already
                         // toasts "Audio output" on the default-device change.
                     }
@@ -399,6 +403,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                                     (audio_cfg.default_output_volume.clamp(0, 100) as f64) / 100.0;
                                 let _ = target.set_volume(Volume::stereo(v, v)).await;
                             }
+                            mshell_utils::audio::migrate_playback_streams_to(&target).await;
                             if audio_cfg.route_switch_microphone
                                 && let Some(mic) =
                                     mshell_utils::audio::mic_follow_target(to_headset)
