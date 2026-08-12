@@ -177,3 +177,22 @@ label.bt-connected {
     color: var(--primary);
   }
 }
+
+// Quick-connect number (#, 1, 2, …): calm when unassigned, primary-container
+// pill once a slot is assigned — mirrors `.bluetooth-dashboard-action-button`
+// sizing but tonal like a chip so the assigned digit reads at a glance.
+.bluetooth-dashboard-number-button {
+  all: unset;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  min-width: 20px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--on-surface-variant);
+  @include state-layer();
+
+  &.assigned {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+  }
+}

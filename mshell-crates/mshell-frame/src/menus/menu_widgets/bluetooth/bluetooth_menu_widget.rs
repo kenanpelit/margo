@@ -16,6 +16,7 @@ use mshell_common::WatcherToken;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{BluetoothDevice, ConfigStoreFields};
 use mshell_services::bluetooth_service;
+use mshell_utils::audio_prefs::lock_prefs;
 use mshell_utils::bluetooth::{
     get_bluetooth_device_icon, spawn_bluetooth_device_battery_watcher,
     spawn_bluetooth_device_watcher, spawn_bluetooth_devices_watcher,
@@ -69,6 +70,9 @@ pub(crate) enum BluetoothMenuWidgetInput {
     /// Internal: add/remove a device from the login auto-connect list
     /// (MAC, friendly name).
     TogglePin(String, String),
+    /// Internal: assign the next free quick-connect number to a device, or
+    /// clear its number if it already has one (MAC).
+    ToggleNumber(String),
     /// Internal: re-read service state + rebuild list.
     RefreshState,
 }
@@ -331,6 +335,17 @@ impl Component for BluetoothMenuWidgetModel {
                 self.autoconnect_macs = read_autoconnect_macs();
             }
 
+            // ── Quick-connect number ─────────────────────────────
+            BluetoothMenuWidgetInput::ToggleNumber(mac) => {
+                let mut prefs = lock_prefs();
+                if prefs.bt_number(&mac).is_some() {
+                    prefs.set_bt_number(&mac, None);
+                } else {
+                    let next = prefs.next_free_bt_number();
+                    prefs.set_bt_number(&mac, Some(next));
+                }
+            }
+
             // ── State refresh (fired by update_cmd) ──────────────
             BluetoothMenuWidgetInput::RefreshState => {
                 // Clear the spinner for any device that has reached the
@@ -557,6 +572,31 @@ impl BluetoothMenuWidgetModel {
                 });
             }
             actions.append(&pin_btn);
+
+            // Quick-connect number — assign/clear a persistent slot
+            // (1, 2, 3, …) so a keybind (`mshellctl bluetooth
+            // connect-number N`) can always reach this device regardless
+            // of where it sits in the config's device list.
+            let number = lock_prefs().bt_number(&address);
+            let number_label = number.map(|n| n.to_string()).unwrap_or_else(|| "#".into());
+            let number_btn = gtk::Button::with_label(&number_label);
+            number_btn.add_css_class("bluetooth-dashboard-number-button");
+            if number.is_some() {
+                number_btn.add_css_class("assigned");
+            }
+            let number_tooltip = match number {
+                Some(n) => format!("Quick-connect #{n} — click to unassign"),
+                None => "Assign a quick-connect number".to_string(),
+            };
+            number_btn.set_tooltip_text(Some(&number_tooltip));
+            {
+                let addr_n = address.clone();
+                let sender_n = sender.clone();
+                number_btn.connect_clicked(move |_| {
+                    sender_n.input(BluetoothMenuWidgetInput::ToggleNumber(addr_n.clone()));
+                });
+            }
+            actions.append(&number_btn);
 
             // Forget
             let addr_f = address.clone();

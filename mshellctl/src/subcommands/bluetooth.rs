@@ -10,14 +10,19 @@ pub enum BluetoothCommands {
     Connect,
     /// Disconnect any connected configured device
     Disconnect,
+    /// Connect the device assigned this quick-connect number (set from the
+    /// Bluetooth menu) — for a stable keybind that doesn't care which slot
+    /// in the config's device list this happens to be
+    ConnectNumber { number: u8 },
 }
 
 pub async fn execute(command: BluetoothCommands) -> anyhow::Result<()> {
     let action = match command {
-        BluetoothCommands::Toggle => "toggle",
-        BluetoothCommands::Connect => "connect",
-        BluetoothCommands::Disconnect => "disconnect",
+        BluetoothCommands::Toggle => "toggle".to_string(),
+        BluetoothCommands::Connect => "connect".to_string(),
+        BluetoothCommands::Disconnect => "disconnect".to_string(),
+        BluetoothCommands::ConnectNumber { number } => format!("connect:{number}"),
     };
-    bus_command_with_arg("BluetoothCtl", &action.to_string()).await?;
+    bus_command_with_arg("BluetoothCtl", &action).await?;
     Ok(())
 }

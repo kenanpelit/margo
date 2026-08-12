@@ -151,7 +151,13 @@ async fn route_audio(cfg: &BluetoothConfig, mac: &str) {
         {
             // The default-output change is announced by the audio-device toast
             // (Settings → Toasts), so no separate notification here.
-            let _ = dev.set_as_default().await;
+            if dev.set_as_default().await.is_ok() {
+                // Move already-playing streams over too — PipeWire's own
+                // default-sink change doesn't migrate them.
+                for stream in audio_service().playback_streams.get() {
+                    let _ = stream.move_to_device(dev.key).await;
+                }
+            }
         }
     }
 
@@ -205,6 +211,27 @@ pub async fn connect_configured() -> bool {
         }
     }
     false
+}
+
+/// Connect a specific device by MAC and route audio to it. Used by the
+/// quick-connect-number keybind path (`mshellctl bluetooth
+/// connect-number`) — the caller resolves number → MAC (that mapping
+/// lives in mshell-utils, which this crate can't depend on without a
+/// cycle) and hands us the MAC. Powers the adapter on first if needed.
+pub async fn connect_by_mac(mac: &str) -> bool {
+    if !ensure_adapter_on().await {
+        return false;
+    }
+    let Some(dev) = find_device(mac) else {
+        return false;
+    };
+    if !connect_device(&dev).await {
+        return false;
+    }
+    // Connect is announced by the Bluetooth toast (Settings → Toasts);
+    // just route audio to the device here.
+    route_audio(&config(), mac).await;
+    true
 }
 
 /// Disconnect every currently-connected configured device.

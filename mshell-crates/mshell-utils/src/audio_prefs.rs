@@ -1,12 +1,16 @@
-//! Persistent per-device audio preferences: display alias, hidden-from-
-//! cycling flag, and a Bluetooth keybind number.
+//! Persistent per-device audio preferences: display alias and
+//! hidden-from-cycling flag (keyed by audio device name), plus a
+//! Bluetooth quick-connect number (keyed by MAC address — a disconnected
+//! BT device has no audio device name at all, so it needs its own
+//! identifier space).
 //!
-//! Small JSON file at `$XDG_CACHE_HOME/margo/audio_device_prefs.json`,
-//! keyed by device *name* (the same stable string identifier
-//! `pick_device`/`next_index`/`routable_outputs` already key by — wayle-
-//! audio's `DeviceKey` is a WirePlumber object id that changes across
-//! reconnects, `name` is what survives). Mirrors mshell-launcher's
-//! `HiddenStore`: atomic temp+rename JSON writes, best-effort.
+//! Small JSON file at `$XDG_CACHE_HOME/margo/audio_device_prefs.json`.
+//! `devices` is keyed by device *name* (the same stable string
+//! identifier `pick_device`/`next_index`/`routable_outputs` already key
+//! by — wayle-audio's `DeviceKey` is a WirePlumber object id that
+//! changes across reconnects, `name` is what survives). Mirrors
+//! mshell-launcher's `HiddenStore`: atomic temp+rename JSON writes,
+//! best-effort.
 //!
 //! A device with every field at its default is pruned from the map on
 //! write, so the file only ever grows with devices someone actually
@@ -23,8 +27,6 @@ pub struct DevicePrefs {
     pub alias: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hidden: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bt_number: Option<u8>,
 }
 
 impl DevicePrefs {
@@ -37,11 +39,15 @@ impl DevicePrefs {
 struct Disk {
     #[serde(default)]
     devices: BTreeMap<String, DevicePrefs>,
+    #[serde(default)]
+    bt_numbers: BTreeMap<String, u8>,
 }
 
 pub struct AudioPrefsStore {
     path: PathBuf,
     map: BTreeMap<String, DevicePrefs>,
+    /// MAC address -> quick-connect number.
+    bt_numbers: BTreeMap<String, u8>,
 }
 
 impl AudioPrefsStore {
@@ -50,12 +56,15 @@ impl AudioPrefsStore {
     }
 
     pub fn load_from(path: PathBuf) -> Self {
-        let map = std::fs::read_to_string(&path)
+        let disk = std::fs::read_to_string(&path)
             .ok()
             .and_then(|raw| serde_json::from_str::<Disk>(&raw).ok())
-            .map(|d| d.devices)
             .unwrap_or_default();
-        Self { path, map }
+        Self {
+            path,
+            map: disk.devices,
+            bt_numbers: disk.bt_numbers,
+        }
     }
 
     /// Preferences for `device_name`, or the all-defaults value if it's
@@ -72,23 +81,36 @@ impl AudioPrefsStore {
         self.update(device_name, |p| p.hidden = hidden);
     }
 
-    pub fn set_bt_number(&mut self, device_name: &str, number: Option<u8>) {
-        self.update(device_name, |p| p.bt_number = number);
+    /// Quick-connect number assigned to `mac`, if any.
+    pub fn bt_number(&self, mac: &str) -> Option<u8> {
+        self.bt_numbers.get(&mac.to_ascii_uppercase()).copied()
     }
 
-    /// The device name assigned to `number`, if any.
-    pub fn device_for_bt_number(&self, number: u8) -> Option<String> {
-        self.map
+    pub fn set_bt_number(&mut self, mac: &str, number: Option<u8>) {
+        let mac = mac.to_ascii_uppercase();
+        match number {
+            Some(n) => {
+                self.bt_numbers.insert(mac, n);
+            }
+            None => {
+                self.bt_numbers.remove(&mac);
+            }
+        }
+        self.flush();
+    }
+
+    /// The MAC address assigned to `number`, if any.
+    pub fn mac_for_bt_number(&self, number: u8) -> Option<String> {
+        self.bt_numbers
             .iter()
-            .find(|(_, p)| p.bt_number == Some(number))
-            .map(|(name, _)| name.clone())
+            .find(|&(_, &n)| n == number)
+            .map(|(mac, _)| mac.clone())
     }
 
     /// Smallest positive number not already assigned to another device —
     /// what a device gets auto-assigned on its first successful connect.
     pub fn next_free_bt_number(&self) -> u8 {
-        let used: std::collections::BTreeSet<u8> =
-            self.map.values().filter_map(|p| p.bt_number).collect();
+        let used: std::collections::BTreeSet<u8> = self.bt_numbers.values().copied().collect();
         (1..=u8::MAX).find(|n| !used.contains(n)).unwrap_or(1)
     }
 
@@ -112,6 +134,7 @@ impl AudioPrefsStore {
         }
         let disk = Disk {
             devices: self.map.clone(),
+            bt_numbers: self.bt_numbers.clone(),
         };
         let json = match serde_json::to_string_pretty(&disk) {
             Ok(s) => s,
@@ -233,20 +256,20 @@ mod tests {
     #[test]
     fn bt_number_lookup_is_bidirectional() {
         let mut s = ephemeral();
-        s.set_bt_number("headphones-mac", Some(3));
-        assert_eq!(s.get("headphones-mac").bt_number, Some(3));
-        assert_eq!(s.device_for_bt_number(3).as_deref(), Some("headphones-mac"));
-        assert_eq!(s.device_for_bt_number(4), None);
+        s.set_bt_number("aa:bb:cc:dd:ee:ff", Some(3));
+        assert_eq!(s.bt_number("aa:bb:cc:dd:ee:ff"), Some(3));
+        assert_eq!(s.mac_for_bt_number(3).as_deref(), Some("AA:BB:CC:DD:EE:FF"));
+        assert_eq!(s.mac_for_bt_number(4), None);
     }
 
     #[test]
     fn next_free_bt_number_skips_taken_slots() {
         let mut s = ephemeral();
-        s.set_bt_number("a", Some(1));
-        s.set_bt_number("b", Some(2));
+        s.set_bt_number("aa:aa:aa:aa:aa:aa", Some(1));
+        s.set_bt_number("bb:bb:bb:bb:bb:bb", Some(2));
         assert_eq!(s.next_free_bt_number(), 3);
-        s.set_bt_number("c", Some(3));
-        s.set_bt_number("b", None); // free up 2
+        s.set_bt_number("cc:cc:cc:cc:cc:cc", Some(3));
+        s.set_bt_number("bb:bb:bb:bb:bb:bb", None); // free up 2
         assert_eq!(s.next_free_bt_number(), 2);
     }
 
@@ -264,9 +287,11 @@ mod tests {
         let mut s = AudioPrefsStore::load_from(path.clone());
         s.set_alias("dev", Some("Speakers".to_string()));
         s.set_hidden("other", true);
+        s.set_bt_number("aa:bb:cc:dd:ee:ff", Some(5));
         drop(s);
         let s2 = AudioPrefsStore::load_from(path);
         assert_eq!(s2.get("dev").alias.as_deref(), Some("Speakers"));
         assert!(s2.get("other").hidden);
+        assert_eq!(s2.bt_number("aa:bb:cc:dd:ee:ff"), Some(5));
     }
 }

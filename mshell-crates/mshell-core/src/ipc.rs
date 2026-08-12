@@ -159,6 +159,24 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     if usable {
                         // Spawn so a 10–12s connect wait never blocks the IPC loop.
                         tokio_rt().spawn(async move {
+                            if let Some(number) = action
+                                .strip_prefix("connect:")
+                                .and_then(|n| n.parse::<u8>().ok())
+                            {
+                                let mac = mshell_utils::audio_prefs::lock_prefs()
+                                    .mac_for_bt_number(number);
+                                if let Some(mac) = mac {
+                                    mshell_services::bluetooth::connect_by_mac(&mac).await;
+                                } else {
+                                    push_toast(ToastEvent {
+                                        icon: "bluetooth-disabled-symbolic".to_string(),
+                                        title: "Bluetooth".to_string(),
+                                        body: Some(format!("No device assigned to #{number}")),
+                                        severity: ToastSeverity::Warn,
+                                    });
+                                }
+                                return;
+                            }
                             match action.as_str() {
                                 "connect" => {
                                     mshell_services::bluetooth::connect_configured().await;
