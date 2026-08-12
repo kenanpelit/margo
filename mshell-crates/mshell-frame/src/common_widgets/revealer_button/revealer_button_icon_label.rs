@@ -15,6 +15,8 @@ pub enum RevealerButtonIconLabelInput {
     SetPrimaryIconName(String),
     #[allow(dead_code)]
     SetSecondaryIconName(String),
+    #[allow(dead_code)]
+    SetLabel(String),
 }
 
 pub struct RevealerButtonIconLabelInit {
@@ -82,6 +84,9 @@ impl SimpleComponent for RevealerButtonIconLabelModel {
             }
             RevealerButtonIconLabelInput::SetSecondaryIconName(icon_name) => {
                 self.secondary_icon_name = icon_name;
+            }
+            RevealerButtonIconLabelInput::SetLabel(label) => {
+                self.label = label;
             }
         }
     }

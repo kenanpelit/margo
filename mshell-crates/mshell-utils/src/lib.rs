@@ -1,6 +1,7 @@
 pub mod app_icon;
 pub mod app_info;
 pub mod audio;
+pub mod audio_prefs;
 pub mod battery;
 pub mod bluetooth;
 pub mod brightness;

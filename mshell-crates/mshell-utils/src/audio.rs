@@ -420,6 +420,7 @@ pub fn routable_outputs() -> Vec<Arc<OutputDevice>> {
         .get()
         .into_iter()
         .filter(|d| !is_hdmi_output(d))
+        .filter(|d| !crate::audio_prefs::is_hidden(&d.name.get()))
         .collect();
     outs.sort_by_key(|d| d.name.get());
     outs

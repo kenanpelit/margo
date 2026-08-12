@@ -799,6 +799,7 @@ fn usable_outputs() -> Vec<Arc<OutputDevice>> {
         .into_iter()
         .filter(|d| output_connected(d))
         .filter(|d| !(hide_hdmi && mshell_utils::audio::is_hdmi_output(d)))
+        .filter(|d| !mshell_utils::audio_prefs::is_hidden(&d.name.get()))
         .collect();
     v.sort_by_key(|d| d.key.index);
     v
@@ -812,6 +813,7 @@ fn usable_inputs() -> Vec<Arc<InputDevice>> {
         .get()
         .into_iter()
         .filter(|d| !d.is_monitor.get())
+        .filter(|d| !mshell_utils::audio_prefs::is_hidden(&d.name.get()))
         .collect();
     v.sort_by_key(|d| d.key.index);
     v
