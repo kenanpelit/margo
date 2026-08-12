@@ -288,7 +288,6 @@ impl Component for MpdPlayerModel {
     ) {
         match message {
             MpdPlayerCommandOutput::Changed => {
-                subscribe(&sender, self);
                 read_display(self);
                 apply_scale(widgets, self);
             }
@@ -297,10 +296,13 @@ impl Component for MpdPlayerModel {
     }
 }
 
-/// Watch every field this card renders under a fresh `WatcherToken` —
-/// `.reset()` cancels whatever watchers the previous call armed, so
-/// re-subscribing on every change (matching `MediaPlayerModel`'s pattern)
-/// never accumulates duplicates.
+/// Watch every field this card renders — called once from `init` only.
+/// `wayle_core::Property::watch()` replays the current value immediately
+/// on subscribe, so calling this again from the `Changed` handler (as a
+/// naive "re-arm on change" pattern would) re-triggers `Changed`
+/// synchronously on every one of the 6 streams and spins the executor at
+/// 100% CPU — this bit us once already, see
+/// `reference_watch_resubscribe_loop` in project memory.
 fn subscribe(sender: &ComponentSender<MpdPlayerModel>, model: &mut MpdPlayerModel) {
     let token = model._watcher_token.reset();
     let player = &model.player;
