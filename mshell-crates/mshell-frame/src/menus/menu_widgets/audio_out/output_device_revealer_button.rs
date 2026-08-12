@@ -2,6 +2,7 @@ use crate::common_widgets::revealer_button::revealer_button_icon_label::{
     RevealerButtonIconLabelInit, RevealerButtonIconLabelInput, RevealerButtonIconLabelModel,
 };
 use mshell_common::WatcherToken;
+use mshell_services::audio_groups::is_group;
 use mshell_services::audio_service;
 use mshell_utils::audio::spawn_default_output_watcher;
 use mshell_utils::audio_prefs::{display_alias, lock_prefs};
@@ -14,6 +15,9 @@ pub(crate) struct OutputDeviceRevealerButtonModel {
     output_device: Arc<OutputDevice>,
     content: Controller<RevealerButtonIconLabelModel>,
     watcher_token: WatcherToken,
+    /// True for a margo-created `module-combine-sink` row — shows
+    /// "Disband group" in the edit popover instead of just rename/hide.
+    is_group: bool,
 }
 
 #[derive(Debug)]
@@ -24,6 +28,8 @@ pub(crate) enum OutputDeviceRevealerButtonInput {
     Hidden,
     /// The edit popover closed — read its entry/switch and persist.
     EditCommitted(String, bool),
+    /// "Disband group" clicked — remove this combine-sink.
+    Disband,
 }
 
 #[derive(Debug)]
@@ -96,6 +102,15 @@ impl Component for OutputDeviceRevealerButtonModel {
                                 set_valign: gtk::Align::Center,
                             },
                         },
+
+                        gtk::Button {
+                            add_css_class: "audio-dashboard-action-button",
+                            set_label: "Disband group",
+                            set_visible: model.is_group,
+                            connect_clicked[sender] => move |_| {
+                                sender.input(OutputDeviceRevealerButtonInput::Disband);
+                            },
+                        },
                     },
                 },
             },
@@ -128,6 +143,7 @@ impl Component for OutputDeviceRevealerButtonModel {
             output_device: params.output_device,
             content: button_content,
             watcher_token,
+            is_group: is_group(&device_name),
         };
 
         let widgets = view_output!();
@@ -191,6 +207,18 @@ impl Component for OutputDeviceRevealerButtonModel {
                         &device_name,
                         &self.output_device.description.get(),
                     )));
+            }
+            OutputDeviceRevealerButtonInput::Disband => {
+                let device_name = self.output_device.name.get();
+                tokio::spawn(async move {
+                    if let Some(group) = mshell_services::audio_groups::list_groups()
+                        .await
+                        .into_iter()
+                        .find(|g| g.sink_name == device_name)
+                    {
+                        mshell_services::audio_groups::disband_group(&group).await;
+                    }
+                });
             }
             OutputDeviceRevealerButtonInput::DefaultDeviceChanged => {
                 let default_device = audio_service().default_output.get();

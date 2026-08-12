@@ -11,11 +11,16 @@ use mshell_common::dynamic_box::generic_widget_controller::{
 };
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{AudioConfigStoreFields, ConfigStoreFields};
+use mshell_services::audio_groups::{create_group, is_group};
 use mshell_services::audio_service;
 use mshell_utils::audio::{is_hdmi_output, spawn_output_devices_watcher};
+use mshell_utils::audio_prefs::{display_alias, is_hidden};
 use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::RevealerTransitionType;
+use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 use wayle_audio::core::device::output::OutputDevice;
 
@@ -29,6 +34,8 @@ pub(crate) enum AudioOutRevealedContentInput {
     UpdateDevices,
     Revealed,
     Hidden,
+    /// "Create group" clicked with the checked device names.
+    CreateGroup(Vec<String>),
 }
 
 #[derive(Debug)]
@@ -51,6 +58,54 @@ impl Component for AudioOutRevealedContentModel {
     view! {
         #[root]
         gtk::Box {
+            set_orientation: gtk::Orientation::Vertical,
+            set_spacing: 4,
+
+            gtk::Box {
+                set_orientation: gtk::Orientation::Horizontal,
+                set_halign: gtk::Align::End,
+
+                #[name = "group_button"]
+                gtk::MenuButton {
+                    add_css_class: "audio-dashboard-group-trigger",
+                    set_icon_name: "list-add-symbolic",
+                    set_tooltip_text: Some("Group outputs for simultaneous playback"),
+
+                    #[wrap(Some)]
+                    set_popover = &gtk::Popover {
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 8,
+                            set_margin_start: 8,
+                            set_margin_end: 8,
+                            set_margin_top: 8,
+                            set_margin_bottom: 8,
+
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Select at least two outputs to play through both at once",
+                                set_halign: gtk::Align::Start,
+                                set_max_width_chars: 28,
+                                set_wrap: true,
+                            },
+
+                            #[name = "group_checklist_box"]
+                            gtk::Box {
+                                set_orientation: gtk::Orientation::Vertical,
+                                set_spacing: 2,
+                            },
+
+                            #[name = "create_group_button"]
+                            gtk::Button {
+                                add_css_class: "audio-dashboard-action-button",
+                                set_label: "Create group",
+                                set_sensitive: false,
+                            },
+                        },
+                    },
+                },
+            },
+
             model.devices_dynamic_box_controller.widget().clone() {},
         }
     }
@@ -103,6 +158,66 @@ impl Component for AudioOutRevealedContentModel {
         };
 
         let widgets = view_output!();
+
+        // Checkbox rows are rebuilt fresh each time the popover opens (the
+        // output list can change between opens); `checked_rows` is the
+        // shared read side the Create button consults, avoiding a
+        // GTK-widget-tree downcast walk.
+        let checked_rows: Rc<RefCell<Vec<(gtk::CheckButton, String)>>> =
+            Rc::new(RefCell::new(Vec::new()));
+
+        if let Some(popover) = widgets.group_button.popover() {
+            let checklist_box = widgets.group_checklist_box.clone();
+            let create_button = widgets.create_group_button.clone();
+            let checked_rows_show = checked_rows.clone();
+            popover.connect_show(move |_| {
+                while let Some(child) = checklist_box.first_child() {
+                    checklist_box.remove(&child);
+                }
+                checked_rows_show.borrow_mut().clear();
+                create_button.set_sensitive(false);
+
+                let candidates: Vec<Arc<OutputDevice>> = audio_service()
+                    .output_devices
+                    .get()
+                    .into_iter()
+                    .filter(|d| !is_group(&d.name.get()))
+                    .filter(|d| !is_hidden(&d.name.get()))
+                    .collect();
+
+                for device in candidates {
+                    let name = device.name.get();
+                    let label = display_alias(&name, &device.description.get());
+                    let check = gtk::CheckButton::with_label(&label);
+                    checklist_box.append(&check);
+                    checked_rows_show.borrow_mut().push((check.clone(), name));
+
+                    let create_button = create_button.clone();
+                    let checked_rows = checked_rows_show.clone();
+                    check.connect_toggled(move |_| {
+                        let checked = checked_rows
+                            .borrow()
+                            .iter()
+                            .filter(|(c, _)| c.is_active())
+                            .count();
+                        create_button.set_sensitive(checked >= 2);
+                    });
+                }
+            });
+
+            let sender_create = sender.clone();
+            let checked_rows_create = checked_rows;
+            widgets.create_group_button.connect_clicked(move |_| {
+                let names: Vec<String> = checked_rows_create
+                    .borrow()
+                    .iter()
+                    .filter(|(c, _)| c.is_active())
+                    .map(|(_, name)| name.clone())
+                    .collect();
+                sender_create.input(AudioOutRevealedContentInput::CreateGroup(names));
+                popover.popdown();
+            });
+        }
 
         ComponentParts { model, widgets }
     }
@@ -164,6 +279,11 @@ impl Component for AudioOutRevealedContentModel {
                             ctrl.emit(OutputDeviceRevealerButtonInput::Hidden);
                         }
                     });
+            }
+            AudioOutRevealedContentInput::CreateGroup(names) => {
+                tokio::spawn(async move {
+                    create_group(&names).await;
+                });
             }
         }
 

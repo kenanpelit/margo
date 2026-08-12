@@ -64,6 +64,36 @@
   @include state-layer();
 }
 
+// "Group outputs" trigger (§) — flat icon button, same treatment as the
+// mute toggle above it.
+.audio-dashboard-group-trigger {
+  all: unset;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--on-surface-variant);
+  @include state-layer();
+
+  image {
+    -gtk-icon-size: 14px;
+  }
+}
+
+// Small secondary action button — "Create group" / "Disband group",
+// mirrors the Bluetooth dashboard's Forget/Trust chip styling.
+.audio-dashboard-action-button {
+  all: unset;
+  font-size: var(--font-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  @include state-layer(var(--surface-container-high));
+
+  &:disabled {
+    opacity: 0.5;
+  }
+}
+
 // Slim GTK4 scale matching the CompactAudio menu widget.
 .audio-dashboard-slider {
   trough {
