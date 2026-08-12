@@ -780,23 +780,6 @@ enum IPCCommand {
     BarHideAll(bool),
 }
 
-/// A sink whose active port is actually connected — drops e.g. an HDMI /
-/// DisplayPort output with nothing plugged in (its active port reports
-/// `available = false`), so cycling never lands on a dead sink. Devices with
-/// no port concept (virtual sinks) are kept.
-fn output_connected(d: &OutputDevice) -> bool {
-    match d.active_port.get() {
-        None => true,
-        Some(active) => d
-            .ports
-            .get()
-            .iter()
-            .find(|p| p.name == active)
-            .map(|p| p.available)
-            .unwrap_or(true),
-    }
-}
-
 /// Real, switchable output sinks (skips unplugged HDMI/DP ports). Sorted by
 /// the stable PipeWire device index so `list`, `status` and `next`/`prev` all
 /// see the SAME order — `input_devices.get()` / `output_devices.get()` don't
@@ -815,7 +798,7 @@ fn usable_outputs() -> Vec<Arc<OutputDevice>> {
         .output_devices
         .get()
         .into_iter()
-        .filter(|d| output_connected(d))
+        .filter(|d| mshell_utils::audio::output_connected(d))
         .filter(|d| !(hide_hdmi && mshell_utils::audio::is_hdmi_output(d)))
         .filter(|d| !mshell_utils::audio_prefs::is_hidden(&d.name.get()))
         .collect();

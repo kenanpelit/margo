@@ -14,6 +14,24 @@ use wayle_audio::core::stream::AudioStream;
 /// `audio.hide_hdmi_outputs` config toggle — must never be called unless the
 /// toggle is on, so a slightly broad match (any sink whose name/desc contains
 /// "hdmi", "displayport", or "display port") is acceptable.
+/// A sink whose active port is actually connected — drops e.g. an HDMI /
+/// DisplayPort output with nothing plugged in (its active port reports
+/// `available = false`). Devices with no port concept (virtual sinks,
+/// combine-sink groups) are kept. Shared between the CLI's `usable_outputs`
+/// and the Audio Dashboard's device picker so both show the same list.
+pub fn output_connected(d: &OutputDevice) -> bool {
+    match d.active_port.get() {
+        None => true,
+        Some(active) => d
+            .ports
+            .get()
+            .iter()
+            .find(|p| p.name == active)
+            .map(|p| p.available)
+            .unwrap_or(true),
+    }
+}
+
 pub fn is_hdmi_output(d: &OutputDevice) -> bool {
     let name = d.name.get().to_lowercase();
     let desc = d.description.get().to_lowercase();

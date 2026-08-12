@@ -187,6 +187,7 @@ impl Component for AudioOutRevealedContentModel {
                     .output_devices
                     .get()
                     .into_iter()
+                    .filter(|d| mshell_utils::audio::output_connected(d))
                     .filter(|d| !is_group(&d.name.get()))
                     .filter(|d| !is_hidden(&d.name.get()))
                     .collect();
@@ -252,6 +253,7 @@ impl Component for AudioOutRevealedContentModel {
                     .output_devices
                     .get()
                     .into_iter()
+                    .filter(|d| mshell_utils::audio::output_connected(d))
                     .filter(|d| !(hide_hdmi && is_hdmi_output(d)))
                     .collect();
                 self.devices_dynamic_box_controller

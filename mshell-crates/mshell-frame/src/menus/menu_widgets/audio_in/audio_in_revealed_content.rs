@@ -113,7 +113,16 @@ impl Component for AudioInRevealedContentModel {
         match message {
             AudioInRevealedContentInput::UpdateDevices => {
                 let audio = audio_service();
-                let devices = audio.input_devices.get();
+                // Drop PulseAudio monitor sources (the loopback "Monitor of
+                // <sink>" entries every output implicitly creates) — they
+                // aren't microphones, and `mshellctl audio list` already
+                // excludes them; the picker should show the same devices.
+                let devices: Vec<_> = audio
+                    .input_devices
+                    .get()
+                    .into_iter()
+                    .filter(|d| !d.is_monitor.get())
+                    .collect();
                 self.devices_dynamic_box_controller
                     .emit(DynamicBoxInput::SetItems(devices))
             }
