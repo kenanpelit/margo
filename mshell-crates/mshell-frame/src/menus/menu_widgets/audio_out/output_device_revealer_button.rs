@@ -4,10 +4,12 @@ use crate::common_widgets::revealer_button::revealer_button_icon_label::{
 use mshell_common::WatcherToken;
 use mshell_services::audio_groups::is_group;
 use mshell_services::audio_service;
-use mshell_utils::audio::spawn_default_output_watcher;
+use mshell_utils::audio::{get_audio_out_icon_device_aware, spawn_default_output_watcher};
 use mshell_utils::audio_prefs::{display_alias, lock_prefs};
 use relm4::gtk::prelude::*;
-use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
+use relm4::{
+    Component, ComponentController, ComponentParts, ComponentSender, Controller, RelmWidgetExt, gtk,
+};
 use std::sync::Arc;
 use wayle_audio::core::device::output::OutputDevice;
 
@@ -19,6 +21,7 @@ pub(crate) struct OutputDeviceRevealerButtonModel {
     /// "Disband group" in the edit popover instead of just rename.
     is_group: bool,
     hidden: bool,
+    is_default: bool,
 }
 
 #[derive(Debug)]
@@ -61,7 +64,7 @@ impl Component for OutputDeviceRevealerButtonModel {
 
             #[name = "content_button"]
             gtk::Button {
-                add_css_class: "ok-button-surface",
+                add_css_class: "audio-dashboard-device-row",
                 set_hexpand: true,
                 set_vexpand: false,
                 connect_clicked[sender] => move |_| {
@@ -69,6 +72,18 @@ impl Component for OutputDeviceRevealerButtonModel {
                 },
 
                 model.content.widget().clone() {},
+            },
+
+            #[name = "use_button"]
+            gtk::Button {
+                add_css_class: "audio-dashboard-use-button",
+                set_label: "Use",
+                set_valign: gtk::Align::Center,
+                #[watch]
+                set_visible: !model.is_default,
+                connect_clicked[sender] => move |_| {
+                    sender.input(OutputDeviceRevealerButtonInput::Clicked);
+                },
             },
 
             #[name = "hide_button"]
@@ -145,18 +160,21 @@ impl Component for OutputDeviceRevealerButtonModel {
         let device_is_group = is_group(&device_name);
         let raw_description = params.output_device.description.get();
         let prefs = lock_prefs().get(&device_name);
+        let is_default = is_current_default(&params.output_device);
         let button_content = RevealerButtonIconLabelModel::builder()
             .launch(RevealerButtonIconLabelInit {
                 label: display_alias(&device_name, &raw_description),
-                icon_name: "".to_string(),
+                icon_name: get_audio_out_icon_device_aware(&params.output_device).to_string(),
                 secondary_icon_name: "".to_string(),
                 subtitle: compute_subtitle(
+                    is_default,
                     device_is_group,
                     prefs.alias.is_some(),
                     &raw_description,
                 ),
             })
             .detach();
+        button_content.emit(RevealerButtonIconLabelInput::SetActive(is_default));
 
         let model = OutputDeviceRevealerButtonModel {
             output_device: params.output_device,
@@ -164,15 +182,14 @@ impl Component for OutputDeviceRevealerButtonModel {
             watcher_token,
             is_group: device_is_group,
             hidden: prefs.hidden,
+            is_default,
         };
 
-        model
-            .content
-            .emit(RevealerButtonIconLabelInput::SetActive(is_current_default(
-                &model.output_device,
-            )));
-
         let widgets = view_output!();
+
+        widgets
+            .content_button
+            .set_class_active("active", model.is_default);
 
         // Pre-fill the popover from stored prefs each time it opens — it
         // isn't reactive (relm4 doesn't watch a plain gtk::Popover), so
@@ -226,6 +243,7 @@ impl Component for OutputDeviceRevealerButtonModel {
                     )));
                 self.content
                     .emit(RevealerButtonIconLabelInput::SetSubtitle(compute_subtitle(
+                        self.is_default,
                         self.is_group,
                         has_alias,
                         &self.output_device.description.get(),
@@ -249,17 +267,21 @@ impl Component for OutputDeviceRevealerButtonModel {
                 });
             }
             OutputDeviceRevealerButtonInput::DefaultDeviceChanged => {
-                let is_default = is_current_default(&self.output_device);
+                self.is_default = is_current_default(&self.output_device);
+                widgets
+                    .content_button
+                    .set_class_active("active", self.is_default);
+                let device_name = self.output_device.name.get();
+                let has_alias = lock_prefs().get(&device_name).alias.is_some();
                 self.content
-                    .emit(RevealerButtonIconLabelInput::SetActive(is_default));
+                    .emit(RevealerButtonIconLabelInput::SetSubtitle(compute_subtitle(
+                        self.is_default,
+                        self.is_group,
+                        has_alias,
+                        &self.output_device.description.get(),
+                    )));
                 self.content
-                    .emit(RevealerButtonIconLabelInput::SetPrimaryIconName(
-                        if is_default {
-                            "check-circle-symbolic".to_string()
-                        } else {
-                            "".to_string()
-                        },
-                    ));
+                    .emit(RevealerButtonIconLabelInput::SetActive(self.is_default));
             }
             OutputDeviceRevealerButtonInput::Revealed => {
                 let token = self.watcher_token.reset();
@@ -297,12 +319,22 @@ fn is_current_default(device: &Arc<OutputDevice>) -> bool {
         .unwrap_or(false)
 }
 
-/// A group row is always labelled as such; a renamed hardware device shows
-/// its real name underneath so the alias doesn't hide what it actually is.
-/// An un-renamed hardware device already shows that name as the title, so
-/// the subtitle stays empty rather than repeating it.
-fn compute_subtitle(is_group: bool, has_alias: bool, raw_description: &str) -> String {
-    if is_group {
+/// The active device's subtitle is always "Active" (matches the reference
+/// design's status line) regardless of alias/group — that's the single most
+/// useful thing to say about the row you're currently listening through. A
+/// group row is labelled as such; a renamed hardware device shows its real
+/// name underneath so the alias doesn't hide what it actually is; an
+/// un-renamed hardware device already shows that name as the title, so the
+/// subtitle stays empty rather than repeating it.
+fn compute_subtitle(
+    is_default: bool,
+    is_group: bool,
+    has_alias: bool,
+    raw_description: &str,
+) -> String {
+    if is_default {
+        "Active".to_string()
+    } else if is_group {
         "Combined output".to_string()
     } else if has_alias {
         raw_description.to_string()

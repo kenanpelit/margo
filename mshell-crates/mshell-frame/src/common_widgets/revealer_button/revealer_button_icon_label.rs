@@ -12,16 +12,16 @@ pub struct RevealerButtonIconLabelModel {
     /// summary, etc. Empty hides the line entirely, so callers that
     /// don't need it (network rows) render exactly as before.
     pub subtitle: String,
-    /// DESIGN.md §3: active = primary tint on icon *and name*, never a
-    /// separate badge. Defaults false; callers that don't track an
-    /// active state (network rows) never emit `SetActive` and the label
-    /// just never tints.
+    /// Tints the subtitle line primary + bold (used for an "Active"
+    /// status line, matching the row's own tinted background — see
+    /// `output_device_revealer_button.rs`). Defaults false; callers that
+    /// don't track an active state (network rows) never emit `SetActive`
+    /// and the subtitle just never tints.
     pub active: bool,
 }
 
 #[derive(Debug)]
 pub enum RevealerButtonIconLabelInput {
-    SetPrimaryIconName(String),
     #[allow(dead_code)]
     SetSecondaryIconName(String),
     #[allow(dead_code)]
@@ -70,8 +70,6 @@ impl SimpleComponent for RevealerButtonIconLabelModel {
                     set_ellipsize: pango::EllipsizeMode::End,
                     #[watch]
                     set_label: model.label.as_str(),
-                    #[watch]
-                    set_class_active: ("active", model.active),
                 },
 
                 #[name = "subtitle_label"]
@@ -84,6 +82,8 @@ impl SimpleComponent for RevealerButtonIconLabelModel {
                     set_visible: !model.subtitle.is_empty(),
                     #[watch]
                     set_label: model.subtitle.as_str(),
+                    #[watch]
+                    set_class_active: ("active", model.active),
                 },
             },
 
@@ -117,9 +117,6 @@ impl SimpleComponent for RevealerButtonIconLabelModel {
 
     fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
         match msg {
-            RevealerButtonIconLabelInput::SetPrimaryIconName(icon_name) => {
-                self.icon_name = icon_name;
-            }
             RevealerButtonIconLabelInput::SetSecondaryIconName(icon_name) => {
                 self.secondary_icon_name = icon_name;
             }

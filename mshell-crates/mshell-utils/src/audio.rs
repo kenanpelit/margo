@@ -73,6 +73,20 @@ pub fn get_audio_in_icon(device: &Arc<InputDevice>) -> &'static str {
     }
 }
 
+/// Input icon that reflects the *device type* on top of the volume level —
+/// the per-row equivalent of [`get_audio_out_icon_device_aware`], used by the
+/// Audio Dashboard's device picker rows so each row carries a real device
+/// glyph instead of sitting blank.
+pub fn get_audio_in_icon_device_aware(device: &Arc<InputDevice>) -> &'static str {
+    if device.muted.get() {
+        return "microphone-sensitivity-muted-symbolic";
+    }
+    if in_is_headset(device) {
+        return "audio-headset-symbolic";
+    }
+    get_audio_in_icon(device)
+}
+
 pub fn spawn_default_output_watcher<C>(
     sender: &ComponentSender<C>,
     cancellation_token: Option<CancellationToken>,

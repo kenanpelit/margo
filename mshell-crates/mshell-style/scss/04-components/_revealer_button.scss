@@ -11,11 +11,11 @@
   color: var(--on-surface-variant);
 }
 
-// DESIGN.md §3: active = primary tint on the name, never a separate
-// badge or background fill — matches the Bluetooth menu's `.bt-connected`
-// precedent. The check-symbolic icon (already primary-tinted) is the
-// row's only other active signal; this just reinforces it on the title.
-.revealer-button-title.active {
+// The active device's status line ("Active") tints primary + bold,
+// alongside the row's own soft primary-container background
+// (`.audio-dashboard-device-row.active` in _audio_dashboard.scss) — the
+// two together are the row's active signal, no separate check icon.
+.revealer-button-subtitle.active {
   color: var(--primary);
   font-weight: 600;
 }
