@@ -106,12 +106,13 @@ pub fn default_session(name: Option<&str>, cfg: &Config) -> Result<()> {
     // 5) A freshly anka-restored pane should never have unsent text in it;
     // if it does, log it (forensics) and clear the line before attaching,
     // without the user ever seeing it.
-    if let Ok(stray) = tmux::run(&["capture-pane", "-p", "-t", name])
+    let target = tmux::target(name);
+    if let Ok(stray) = tmux::run(&["capture-pane", "-p", "-t", &target])
         && !stray.trim().is_empty()
     {
         log_stray_pane(name, &stray);
     }
-    let _ = tmux::ok(&["send-keys", "-t", name, "C-u"]);
+    let _ = tmux::ok(&["send-keys", "-t", &target, "C-u"]);
 
     tmux::attach_or_switch(name)
 }

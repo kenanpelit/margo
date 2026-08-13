@@ -60,31 +60,40 @@ pub fn run_interactive(args: &[&str]) -> Result<bool> {
     Ok(status.success())
 }
 
-/// Exact-match session lookup (`tmux has-session -t "=<name>"`) — `=name`
-/// anchors to an exact match so `KENP` doesn't also match `KENP-old`.
+/// `-t` value for an exact-match session target — `=name` tells tmux to
+/// treat the whole string as a literal session name instead of parsing it
+/// for `session:window.pane` component separators. Real session names
+/// (the user's own: "Margo Kod 󰣇", "SSH Hub 󰢹", spaces and Nerd Font
+/// icons included) are otherwise ambiguous against that separator syntax
+/// — `=`-anchoring every `-t <session>` we pass sidesteps it entirely,
+/// so `validate_session_name` below only needs to guard against things
+/// that break tmux regardless of target parsing (empty / too long /
+/// control characters), not reject ordinary printable characters.
+pub fn target(name: &str) -> String {
+    format!("={name}")
+}
+
+/// Exact-match session lookup (`tmux has-session -t "=<name>"`).
 pub fn has_session_exact(name: &str) -> bool {
     if name.is_empty() {
         return false;
     }
-    ok(&["has-session", "-t", &format!("={name}")])
+    ok(&["has-session", "-t", &target(name)])
 }
 
-/// Session name rule from `tm.sh`: non-empty, ≤ 50 chars, and only
-/// `[a-zA-Z0-9_.-]` (tmux's own `-t` target syntax reserves `:` `.` `$`
-/// for session/window/pane addressing, so anything else risks a target
-/// that doesn't mean what the user typed).
+/// Session name rule: non-empty, ≤ 50 chars, no control characters (they'd
+/// corrupt tmux's line-based status/option output). Everything else —
+/// spaces, Unicode, `.`/`:` — is fine once callers target it via
+/// [`target`]'s `=name` exact-match form.
 pub fn validate_session_name(name: &str) -> Result<()> {
     if name.is_empty() {
         bail!("session name cannot be empty");
     }
-    if name.len() > 50 {
+    if name.chars().count() > 50 {
         bail!("session name too long (max 50 characters)");
     }
-    if !name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
-    {
-        bail!("invalid session name: '{name}' — only letters, digits, '-', '_', '.' are allowed");
+    if name.chars().any(|c| c.is_control()) {
+        bail!("invalid session name: '{name}' — control characters are not allowed");
     }
     Ok(())
 }
@@ -121,8 +130,47 @@ pub fn attach_or_switch(name: &str) -> Result<()> {
     } else {
         "attach-session"
     };
-    if !run_interactive(&[verb, "-t", name])? {
+    if !run_interactive(&[verb, "-t", &target(name)])? {
         bail!("failed to {verb} to '{name}'");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_spaces_and_unicode_icons() {
+        // Real session names from the field: spaces + Nerd Font glyphs.
+        // These used to fail validation and kill the spawned terminal
+        // instantly (the whole point of this test).
+        assert!(validate_session_name("Margo Kod 󰣇").is_ok());
+        assert!(validate_session_name("SSH Hub 󰢹").is_ok());
+        assert!(validate_session_name("CMS Podman 󰗀").is_ok());
+    }
+
+    #[test]
+    fn accepts_dots_and_colons() {
+        assert!(validate_session_name("my.session").is_ok());
+        assert!(validate_session_name("my:session").is_ok());
+    }
+
+    #[test]
+    fn rejects_empty_and_too_long() {
+        assert!(validate_session_name("").is_err());
+        assert!(validate_session_name(&"a".repeat(51)).is_err());
+        assert!(validate_session_name(&"a".repeat(50)).is_ok());
+    }
+
+    #[test]
+    fn rejects_control_characters() {
+        assert!(validate_session_name("bad\nname").is_err());
+        assert!(validate_session_name("bad\tname").is_err());
+    }
+
+    #[test]
+    fn target_anchors_with_equals() {
+        assert_eq!(target("Margo Kod 󰣇"), "=Margo Kod 󰣇");
+    }
 }

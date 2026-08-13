@@ -112,7 +112,7 @@ fn kill_session(name: &str) -> Result<()> {
         }
     }
 
-    if tmux::ok(&["kill-session", "-t", name]) {
+    if tmux::ok(&["kill-session", "-t", &tmux::target(name)]) {
         println!("Session '{name}' killed");
         return Ok(());
     }
@@ -120,7 +120,7 @@ fn kill_session(name: &str) -> Result<()> {
     // First attempt failed — try a socket cleanup + retry, matching
     // tm.sh's fallback.
     clean_sockets();
-    if tmux::ok(&["kill-session", "-t", name]) {
+    if tmux::ok(&["kill-session", "-t", &tmux::target(name)]) {
         println!("Session '{name}' killed (after socket cleanup)");
         Ok(())
     } else {
@@ -144,7 +144,7 @@ fn create_session(name: &str, layout: Option<u8>, cfg: &Config) -> Result<()> {
                 .any(|l| l.starts_with(&format!("{name}: ")) && l.contains("(attached)"));
             if attached {
                 println!("Session is attached elsewhere, opening a new window...");
-                let _ = tmux::ok(&["new-window", "-t", name]);
+                let _ = tmux::ok(&["new-window", "-t", &tmux::target(name)]);
             }
         }
         return tmux::attach_or_switch(name);
@@ -182,7 +182,8 @@ fn create_layout(name: &str, number: u8, cfg: &Config) -> Result<()> {
     };
 
     println!("Building layout {number} for session '{name}'...");
-    let win = |c: &str| tmux::ok(&["new-window", "-t", name, "-n", "kenp", "-c", c]);
+    let target = tmux::target(name);
+    let win = |c: &str| tmux::ok(&["new-window", "-t", &target, "-n", "kenp", "-c", c]);
     let split =
         |axis: &str, pct: &str, c: &str| tmux::ok(&["split-window", axis, "-l", pct, "-c", c]);
     let select = |pane: &str| tmux::ok(&["select-pane", "-t", pane]);
