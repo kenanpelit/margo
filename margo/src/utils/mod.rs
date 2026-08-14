@@ -179,10 +179,21 @@ pub fn import_session_environment(extra: &[&str]) {
 }
 
 /// Returns the current time in milliseconds (monotonic-ish via UNIX epoch).
+///
+/// Deliberately a wrapping 32-bit ms counter (u32::MAX ≈ 49.7 days) — same
+/// convention as GTK/X11 event timestamps. Every caller only ever compares
+/// two nearby `now_ms()` values (double-click windows, debounce, animation
+/// deltas), so wraparound is fine as long as the truncation itself can't
+/// panic. `Duration::as_millis()` is `u128`; the `as u32` cast truncates
+/// (never overflow-panics, unlike `+`/`*`) — this used to compute
+/// `subsec_millis() + (secs as u32).wrapping_mul(1000)`, where the `+`
+/// wasn't wrapping and did panic once the wrapped product landed within
+/// 999 of u32::MAX (rare, hence surviving ~a day of uptime before crashing
+/// the whole compositor).
 pub fn now_ms() -> u32 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.subsec_millis() + (d.as_secs() as u32).wrapping_mul(1000))
+        .map(|d| d.as_millis() as u32)
         .unwrap_or(0)
 }
 
