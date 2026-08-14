@@ -25,7 +25,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 thiserror.workspace = true
 calloop.workspace = true
-wayland-server.workspace = true
+wayland-server = { workspace = true, features = ["libwayland_1_23"] }
 wayland-client.workspace = true
 wayland-backend.workspace = true
 wayland-scanner.workspace = true

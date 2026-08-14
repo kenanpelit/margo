@@ -488,6 +488,12 @@ fn main() -> Result<()> {
     let loop_handle = event_loop.handle();
 
     let mut display: Display<MargoState> = Display::new()?;
+    // libwayland's per-client buffer default is 4 KiB — plenty for normal
+    // traffic, but a single oversized batch (e.g. a very large surface
+    // damage/selection-mime-list request) overflows it and libwayland
+    // disconnects the client outright. 1 MiB matches mango's fix for the
+    // same crash (upstream commit e9298829).
+    display.handle().set_default_max_buffer_size(1024 * 1024);
 
     // ── Create compositor state ───────────────────────────────────────────────
     let loop_signal = event_loop.get_signal();
