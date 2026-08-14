@@ -36,7 +36,9 @@
 //!     covered). margo's keypress lookup is `.iter().find()` — first
 //!     match wins (`margo/src/input/mod.rs`) — so every bind after the
 //!     first in a matching group is silently dead; only those are
-//!     flagged, not the live one.
+//!     flagged, not the live one. Suppressed when BOTH the earlier and
+//!     later bind use the `c` suffix (`bindc`) — an explicit "I know
+//!     these share a combo" opt-in, e.g. submap/mode disambiguation.
 //!
 //! New rules slot into `validate_text` as more conditions show up.
 
@@ -57,6 +59,8 @@ struct BindEntry {
     end_col: usize,
     line_text: String,
     combo: String,
+    /// `bindc` — see the W004 note above.
+    allow_conflict: bool,
 }
 
 /// Resolve the config path the same way `parse_config` does, then
@@ -78,6 +82,13 @@ fn check_bind_conflicts(binds: &[BindEntry], report: &mut DiagnosticReport) {
     let mut first_seen: HashMap<&str, &BindEntry> = HashMap::new();
     for entry in binds {
         if let Some(winner) = first_seen.get(entry.combo.as_str()) {
+            if entry.allow_conflict && winner.allow_conflict {
+                // Both sides opted in via `bindc` — intentional, don't warn.
+                // Doesn't overwrite `first_seen`: a later non-`c` bind on
+                // the same combo still compares against the ORIGINAL
+                // winner, not this one.
+                continue;
+            }
             report.push(ConfigDiagnostic {
                 path: entry.path.clone(),
                 line: entry.line,
@@ -283,6 +294,7 @@ fn validate_text(
                         end_col: val_start + mods_part.len() + 1 + key_part.len(),
                         line_text: raw.to_string(),
                         combo,
+                        allow_conflict: key[4..].contains('c'),
                     });
                 }
             }
@@ -474,7 +486,9 @@ fn is_bind_key(k: &str) -> bool {
     if !k.starts_with("bind") {
         return false;
     }
-    k[4..].chars().all(|c| matches!(c, 's' | 'l' | 'r' | 'p'))
+    k[4..]
+        .chars()
+        .all(|c| matches!(c, 's' | 'l' | 'r' | 'p' | 'c'))
 }
 
 /// CSV-shaped value keys (comma-separated fields). Kept as a slice so
@@ -1052,5 +1066,36 @@ mod tests {
         // Only 2 fields (E004) — must not spuriously conflict with anything.
         let r = validate_str("bind = super,k\nbind = super,j,spawn,foo\n");
         assert!(!r.warnings().any(|w| w.code == "W004"));
+    }
+
+    #[test]
+    fn bindc_on_both_sides_suppresses_the_warning() {
+        let r = validate_str("bindc = super+alt,k,spawn,foo\nbindc = super+alt,k,spawn,bar\n");
+        assert!(!r.warnings().any(|w| w.code == "W004"));
+    }
+
+    #[test]
+    fn bindc_on_only_one_side_still_warns() {
+        let r = validate_str("bindc = super+alt,k,spawn,foo\nbind = super+alt,k,spawn,bar\n");
+        assert!(r.warnings().any(|w| w.code == "W004"));
+    }
+
+    #[test]
+    fn plain_bind_after_a_bindc_pair_still_warns() {
+        // Third bind on the same combo didn't opt in — still flagged,
+        // and still points back at the original (first) winner.
+        let r = validate_str(
+            "bindc = super+alt,k,spawn,foo\nbindc = super+alt,k,spawn,bar\nbind = super+alt,k,spawn,baz\n",
+        );
+        let w = r
+            .warnings()
+            .find(|w| w.code == "W004")
+            .expect("W004 expected");
+        assert_eq!(w.line, 3);
+        assert!(
+            w.message.contains("1"),
+            "should point at line 1: {}",
+            w.message
+        );
     }
 }

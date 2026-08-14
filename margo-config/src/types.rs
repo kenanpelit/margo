@@ -294,6 +294,12 @@ pub struct KeyBinding {
     pub lock_apply: bool,
     pub release_apply: bool,
     pub pass_apply: bool,
+    /// `c` suffix (`bindc`) — this bind knowingly shares its MODS+KEY combo
+    /// with another bind (submap/mode disambiguation) and should not trip
+    /// the validator's W004 "shadowed bind" warning. Only suppresses the
+    /// warning when set on BOTH sides of the pair; runtime dispatch is
+    /// unaffected (still first-match-wins via `find_keybinding`).
+    pub allow_conflict: bool,
 }
 
 // ── Mouse / axis / switch / gesture bindings ────────────────────────────────

@@ -225,7 +225,9 @@ fn is_bind_key(k: &str) -> bool {
     if !k.starts_with("bind") {
         return false;
     }
-    k[4..].chars().all(|c| matches!(c, 's' | 'l' | 'r' | 'p'))
+    k[4..]
+        .chars()
+        .all(|c| matches!(c, 's' | 'l' | 'r' | 'p' | 'c'))
 }
 
 fn split_kv(line: &str) -> Option<(&str, &str)> {
@@ -698,6 +700,7 @@ fn parse_bind(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
     let release_apply = suffix.contains('r');
     let lock_apply = suffix.contains('l');
     let pass_apply = suffix.contains('p');
+    let allow_conflict = suffix.contains('c');
     let key_type = if suffix.contains('s') {
         KeyType::Sym
     } else {
@@ -729,6 +732,7 @@ fn parse_bind(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         lock_apply,
         release_apply,
         pass_apply,
+        allow_conflict,
     });
     Ok(())
 }
@@ -1062,6 +1066,7 @@ fn inject_default_chvt_bindings(cfg: &mut Config) {
             lock_apply: true,
             release_apply: false,
             pass_apply: false,
+            allow_conflict: false,
         });
     }
 }
