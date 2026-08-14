@@ -10,7 +10,9 @@ use smithay::{
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{Logical, Point},
     wayland::{
-        pointer_constraints::{PointerConstraintsHandler, with_pointer_constraint},
+        pointer_constraints::{
+            PointerConstraint, PointerConstraintsHandler, with_pointer_constraint,
+        },
         seat::WaylandFocus,
     },
 };
@@ -36,7 +38,12 @@ impl PointerConstraintsHandler for MargoState {
         }
     }
 
-    fn remove_constraint(&mut self, _surface: &WlSurface, _pointer: &PointerHandle<Self>) {
+    fn remove_constraint(
+        &mut self,
+        _surface: &WlSurface,
+        _pointer: &PointerHandle<Self>,
+        _constraint: Option<&PointerConstraint>,
+    ) {
         // Nothing to tear down: enforcement in `handle_pointer_motion`
         // reads the live constraint via `with_pointer_constraint` every
         // event, so once the constraint object is gone the lock/confine
