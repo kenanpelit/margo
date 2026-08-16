@@ -23,6 +23,14 @@ mshell-plugins.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 zbus.workspace = true
+# Video-wallpaper engine (mshellctl::mpv::paper) — same set mplay's own
+# wallpaper engine uses; libmpv itself is linked via build.rs.
+wayland-client.workspace = true
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+khronos-egl = { version = "6", features = ["dynamic"] }
+wayland-egl = "0.32"
+
 [lints]
 workspace = true

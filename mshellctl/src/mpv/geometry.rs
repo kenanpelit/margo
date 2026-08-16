@@ -80,6 +80,37 @@ pub fn nearest_corner(wx: i32, wy: i32, w: i32, h: i32, area: Rect, mx: i32, my:
     }
 }
 
+/// How a wallpaper video fills its output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScaleMode {
+    /// Whole frame visible, letterboxed (keep aspect, no pan).
+    Fit,
+    /// Cover the output, cropping overflow (keep aspect, full panscan).
+    Fill,
+    /// Distort to exactly fill (ignore aspect).
+    Stretch,
+}
+
+impl ScaleMode {
+    pub fn parse(s: &str) -> Option<ScaleMode> {
+        match s {
+            "fit" => Some(ScaleMode::Fit),
+            "fill" => Some(ScaleMode::Fill),
+            "stretch" => Some(ScaleMode::Stretch),
+            _ => None,
+        }
+    }
+
+    /// libmpv option string pairs that realise this scale mode.
+    pub fn mpv_opts(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            ScaleMode::Fit => &[("keepaspect", "yes"), ("panscan", "0.0")],
+            ScaleMode::Fill => &[("keepaspect", "yes"), ("panscan", "1.0")],
+            ScaleMode::Stretch => &[("keepaspect", "no"), ("panscan", "0.0")],
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,5 +164,13 @@ mod tests {
             nearest_corner(32, 800, 200, 100, AREA, 32, 96),
             Corner::BottomLeft
         );
+    }
+
+    #[test]
+    fn scale_mode_parse() {
+        assert_eq!(ScaleMode::parse("fill"), Some(ScaleMode::Fill));
+        assert_eq!(ScaleMode::parse("fit"), Some(ScaleMode::Fit));
+        assert_eq!(ScaleMode::parse("stretch"), Some(ScaleMode::Stretch));
+        assert_eq!(ScaleMode::parse("xyz"), None);
     }
 }

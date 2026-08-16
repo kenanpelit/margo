@@ -898,6 +898,12 @@ _mshellctl() {
             mshellctl__subcmd__help__subcmd__play,wallpaper)
                 cmd="mshellctl__subcmd__help__subcmd__play__subcmd__wallpaper"
                 ;;
+            mshellctl__subcmd__help__subcmd__play__subcmd__wallpaper,start)
+                cmd="mshellctl__subcmd__help__subcmd__play__subcmd__wallpaper__subcmd__start"
+                ;;
+            mshellctl__subcmd__help__subcmd__play__subcmd__wallpaper,stop)
+                cmd="mshellctl__subcmd__help__subcmd__play__subcmd__wallpaper__subcmd__stop"
+                ;;
             mshellctl__subcmd__help__subcmd__plugin,keybind)
                 cmd="mshellctl__subcmd__help__subcmd__plugin__subcmd__keybind"
                 ;;
@@ -1593,6 +1599,30 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__play__subcmd__help,wallpaper)
                 cmd="mshellctl__subcmd__play__subcmd__help__subcmd__wallpaper"
+                ;;
+            mshellctl__subcmd__play__subcmd__help__subcmd__wallpaper,start)
+                cmd="mshellctl__subcmd__play__subcmd__help__subcmd__wallpaper__subcmd__start"
+                ;;
+            mshellctl__subcmd__play__subcmd__help__subcmd__wallpaper,stop)
+                cmd="mshellctl__subcmd__play__subcmd__help__subcmd__wallpaper__subcmd__stop"
+                ;;
+            mshellctl__subcmd__play__subcmd__wallpaper,help)
+                cmd="mshellctl__subcmd__play__subcmd__wallpaper__subcmd__help"
+                ;;
+            mshellctl__subcmd__play__subcmd__wallpaper,start)
+                cmd="mshellctl__subcmd__play__subcmd__wallpaper__subcmd__start"
+                ;;
+            mshellctl__subcmd__play__subcmd__wallpaper,stop)
+                cmd="mshellctl__subcmd__play__subcmd__wallpaper__subcmd__stop"
+                ;;
+            mshellctl__subcmd__play__subcmd__wallpaper__subcmd__help,help)
+                cmd="mshellctl__subcmd__play__subcmd__wallpaper__subcmd__help__subcmd__help"
+                ;;
+            mshellctl__subcmd__play__subcmd__wallpaper__subcmd__help,start)
+                cmd="mshellctl__subcmd__play__subcmd__wallpaper__subcmd__help__subcmd__start"
+                ;;
+            mshellctl__subcmd__play__subcmd__wallpaper__subcmd__help,stop)
+                cmd="mshellctl__subcmd__play__subcmd__wallpaper__subcmd__help__subcmd__stop"
                 ;;
             mshellctl__subcmd__plugin,help)
                 cmd="mshellctl__subcmd__plugin__subcmd__help"
@@ -5435,8 +5465,36 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__play__subcmd__wallpaper)
-            opts=""
+            opts="start stop"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__play__subcmd__wallpaper__subcmd__start)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__play__subcmd__wallpaper__subcmd__stop)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -8911,8 +8969,36 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__play__subcmd__help__subcmd__wallpaper)
-            opts=""
+            opts="start stop"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__play__subcmd__help__subcmd__wallpaper__subcmd__start)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__play__subcmd__help__subcmd__wallpaper__subcmd__stop)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -9009,12 +9095,108 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__play__subcmd__wallpaper)
-            opts="-h --help [ARGS]..."
+            opts="-h --help start stop help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__play__subcmd__wallpaper__subcmd__help)
+            opts="start stop help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__play__subcmd__wallpaper__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__play__subcmd__wallpaper__subcmd__help__subcmd__start)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__play__subcmd__wallpaper__subcmd__help__subcmd__stop)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__play__subcmd__wallpaper__subcmd__start)
+            opts="-h --output --mute --no-loop --scale --daemon --help [SRC]"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --output)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --scale)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__play__subcmd__wallpaper__subcmd__stop)
+            opts="-h --output --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --output)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 *)
                     COMPREPLY=()
                     ;;

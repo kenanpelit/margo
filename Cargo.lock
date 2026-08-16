@@ -5286,6 +5286,7 @@ dependencies = [
  "anyhow",
  "clap",
  "clap_complete",
+ "khronos-egl",
  "libc",
  "margo-logging",
  "mctl",
@@ -5294,6 +5295,10 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
+ "wayland-client",
+ "wayland-egl",
+ "wayland-protocols-wlr",
  "zbus",
 ]
 
