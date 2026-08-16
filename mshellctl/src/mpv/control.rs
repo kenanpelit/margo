@@ -1,7 +1,8 @@
 //! mpv companion window control: orchestrates margo (via `mctl::ipc_client`)
-//! + mpv's JSON IPC. Ported from `mplay`'s `control.rs` — `start`/`toggle`/
-//! `stop`/`snap`/`pin`/`focus` only; `play`/`download`/the video-wallpaper
-//! engine stay on `mplay` for now (a separate yt-dlp-adjacent scope).
+//! + mpv's JSON IPC. Ported from `mplay`'s `control.rs` — everything except
+//! the video-wallpaper engine (`mplay`'s embedded-libmpv `paper` module —
+//! its own raw EGL/Wayland renderer — stays on `mplay` pending a decision
+//! on whether/how to embed that inside mshell's own GTK4/EGL stack).
 //!
 //! The decision math lives in `geometry`; this module is the
 //! side-effecting glue (verified manually against a live compositor).
@@ -14,6 +15,7 @@ use std::time::Duration;
 use super::geometry::{Corner, Rect, nearest_corner};
 use super::ipc as mpv_ipc;
 use super::margo_client as margo;
+use super::ytdl;
 
 const APP_ID: &str = "mpv";
 
@@ -65,34 +67,96 @@ fn mpv_running() -> bool {
         .unwrap_or(false)
 }
 
-/// Launch mpv (pseudo-gui + IPC socket), idle (no source loaded yet).
-fn spawn_mpv() -> Result<()> {
+fn read_clipboard() -> String {
+    if !have("wl-paste") {
+        return String::new();
+    }
+    Command::new("wl-paste")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default()
+}
+
+/// Resolve a source from an explicit argument, else the clipboard.
+pub fn resolve_source(arg: Option<&str>) -> String {
+    let raw = match arg {
+        Some(a) if !a.trim().is_empty() => a.to_string(),
+        _ => read_clipboard(),
+    };
+    ytdl::normalize_source(&raw)
+}
+
+fn home() -> String {
+    std::env::var("HOME").unwrap_or_default()
+}
+
+fn runtime_dir() -> std::path::PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(format!("/run/user/{}", unsafe { libc::getuid() }))
+        })
+        .join("mshellctl-mpv")
+}
+
+/// Single-quote a path for safe embedding in a `/bin/sh` script.
+fn sh_quote(p: &std::path::Path) -> String {
+    format!("'{}'", p.to_string_lossy().replace('\'', "'\\''"))
+}
+
+/// Materialize a tiny wrapper that hands mpv's `ytdl_hook` back to our own
+/// hidden `mshellctl play __ytdlp` subcommand. The wrapper lives in the
+/// runtime dir and points at the *current* mshellctl binary — no
+/// hard-coded dotfiles path.
+fn ensure_ytdl_shim() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = runtime_dir();
+    std::fs::create_dir_all(&dir).ok()?;
+    let path = dir.join("ytdl-shim");
+    let script = format!("#!/bin/sh\nexec {} play __ytdlp \"$@\"\n", sh_quote(&exe));
+    std::fs::write(&path, script).ok()?;
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).ok()?;
+    Some(path.to_string_lossy().into_owned())
+}
+
+/// Launch mpv (pseudo-gui + IPC socket), optionally loading `source`.
+fn spawn_mpv(source: Option<&str>) -> Result<()> {
     if !have("mpv") {
         bail!("mpv bulunamadı");
     }
     let sock = mpv_ipc::socket_path();
     let _ = std::fs::remove_file(&sock);
     let autofit = format!("{}x{}", default_w(), default_h());
-    let args = [
-        "--player-operation-mode=pseudo-gui".to_string(),
+    let mut args: Vec<String> = vec![
+        "--player-operation-mode=pseudo-gui".into(),
         format!("--input-ipc-server={}", sock.display()),
-        "--idle".to_string(),
+        "--idle".into(),
         format!("--autofit={autofit}"),
         format!("--autofit-larger={autofit}"),
     ];
+    if source.is_some() {
+        args.push("--no-audio-display".into());
+        if let Some(shim) = ensure_ytdl_shim() {
+            args.push(format!("--script-opts-append=ytdl_hook-ytdl_path={shim}"));
+        }
+    }
 
-    let (program, lead): (&str, Vec<&str>) = if have("mullvad-exclude") {
-        ("mullvad-exclude", vec!["mpv"])
+    let (program, lead): (&str, Vec<String>) = if have("mullvad-exclude") {
+        ("mullvad-exclude", vec!["mpv".into()])
     } else {
         ("mpv", vec![])
     };
-    Command::new(program)
-        .args(lead)
-        .args(&args)
-        .stdin(Stdio::null())
+    let mut cmd = Command::new(program);
+    cmd.args(lead).args(&args);
+    if let Some(src) = source {
+        cmd.arg(src);
+    }
+    cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
+        .stderr(Stdio::null());
+    cmd.spawn()?;
     Ok(())
 }
 
@@ -103,9 +167,59 @@ pub fn start() -> Result<()> {
         notify("MPV zaten çalışıyor");
         return Ok(());
     }
-    spawn_mpv()?;
+    spawn_mpv(None)?;
     notify(&format!("MPV başlatıldı ({}x{})", default_w(), default_h()));
     Ok(())
+}
+
+pub fn play(arg: Option<&str>) -> Result<()> {
+    let src = resolve_source(arg);
+    if src.is_empty() {
+        bail!("Oynatılacak kaynak yok (argüman/pano boş)");
+    }
+    let target = if ytdl::is_youtube_url(&src) {
+        format!("ytdl://{src}")
+    } else {
+        src.clone()
+    };
+    if mpv_running() && mpv_ipc::socket_ready() {
+        mpv_ipc::loadfile(&target, "replace")?;
+        notify("Yüklendi (replace)");
+    } else {
+        spawn_mpv(Some(&target))?;
+        notify("Oynatılıyor");
+    }
+    Ok(())
+}
+
+pub fn download(arg: Option<&str>) -> Result<()> {
+    if !have("yt-dlp") {
+        bail!("yt-dlp bulunamadı");
+    }
+    let src = resolve_source(arg);
+    if !ytdl::is_youtube_url(&src) {
+        bail!("Argümandaki/panodaki URL YouTube değil");
+    }
+    let dir = format!("{}/Downloads", home());
+    std::fs::create_dir_all(&dir).ok();
+    let status = Command::new("yt-dlp")
+        .current_dir(&dir)
+        .args([
+            "-f",
+            "bestvideo+bestaudio/best",
+            "--merge-output-format",
+            "mp4",
+            "--embed-thumbnail",
+            "--add-metadata",
+            &src,
+        ])
+        .status()?;
+    if status.success() {
+        notify(&format!("İndirildi: {dir}"));
+        Ok(())
+    } else {
+        bail!("yt-dlp başarısız")
+    }
 }
 
 /// Rich play/pause notification: ▶/⏸ icon + the media title, coalesced
