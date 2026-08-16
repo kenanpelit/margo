@@ -3,18 +3,20 @@ use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
 pub enum MediaCommands {
-    /// Play/pause — optionally a player name fragment (spotify, browser, vlc…)
+    /// Play/pause — optionally a target: a player name fragment (spotify,
+    /// browser, vlc…) or `mpd`/`mpc` for native MPD. Omit for the
+    /// best-scoring active player across every backend.
     Toggle { player: Option<String> },
-    /// Next track on the player (or the active one)
+    /// Next track on the target player (or the best-scoring active one)
     Next { player: Option<String> },
-    /// Previous track on the player (or the active one)
+    /// Previous track on the target player (or the best-scoring active one)
     Prev { player: Option<String> },
-    /// The active player: name, state, current track
+    /// The player a target-less command would act on: name, state, track
     Status {
         #[arg(long)]
         json: bool,
     },
-    /// Every MPRIS player, with state + which one is active
+    /// Every player — MPRIS + native MPD — with state + which one is active
     List {
         #[arg(long)]
         json: bool,

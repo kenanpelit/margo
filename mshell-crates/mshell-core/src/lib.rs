@@ -1,6 +1,7 @@
 mod game_mode;
 mod ipc;
 mod lock_info;
+mod media_picker;
 mod monitors;
 mod relm_app;
 mod sleep_lock;

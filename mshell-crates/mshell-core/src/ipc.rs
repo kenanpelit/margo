@@ -1,3 +1,4 @@
+use crate::media_picker;
 use crate::relm_app::{Shell, ShellInput};
 use mshell_cache::wallpaper::set_wallpaper;
 use mshell_config::config_manager::config_manager;
@@ -5,6 +6,7 @@ use mshell_config::schema::config::{
     AlarmConfigStoreFields, AudioConfigStoreFields, ConfigStoreFields, WallpaperStoreFields,
 };
 use mshell_osd::toast::{ToastEvent, ToastSeverity, push_toast};
+use mshell_services::mpd::mpd_service;
 use mshell_services::{
     audio_service, brightness_service, margo_service, media_service, notification_service, tokio_rt,
 };
@@ -24,8 +26,6 @@ use wayle_audio::core::device::input::InputDevice;
 use wayle_audio::core::device::output::OutputDevice;
 use wayle_audio::volume::types::Volume;
 use wayle_brightness::Percentage;
-use wayle_media::core::player::Player;
-use wayle_media::types::PlaybackState;
 use zbus::connection;
 use zbus::interface;
 
@@ -462,25 +462,22 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 // is dropped, which is fine for fire-and-forget media keys.
                 IPCCommand::MediaToggle(target) => {
                     glib::spawn_future_local(async move {
-                        if let Some(p) = pick_player(&target) {
-                            let _ = p.play_pause().await;
-                            notify_media(p);
+                        if let Some(p) = media_picker::pick_active(&target) {
+                            media_picker::toggle(p).await;
                         }
                     });
                 }
                 IPCCommand::MediaNext(target) => {
                     glib::spawn_future_local(async move {
-                        if let Some(p) = pick_player(&target) {
-                            let _ = p.next().await;
-                            notify_media(p);
+                        if let Some(p) = media_picker::pick_active(&target) {
+                            media_picker::next(p).await;
                         }
                     });
                 }
                 IPCCommand::MediaPrev(target) => {
                     glib::spawn_future_local(async move {
-                        if let Some(p) = pick_player(&target) {
-                            let _ = p.previous().await;
-                            notify_media(p);
+                        if let Some(p) = media_picker::pick_active(&target) {
+                            media_picker::previous(p).await;
                         }
                     });
                 }
@@ -820,53 +817,6 @@ fn usable_inputs() -> Vec<Arc<InputDevice>> {
     v
 }
 
-/// Fire-and-forget desktop notification (replaces the previous one via the
-/// synchronous hint so rapid switches don't stack), mirroring osc-soundctl.
-/// Toast the player + current track after a media action (osc-media style).
-/// Spawned with a short settle delay because MPRIS pushes the new track /
-/// playback state asynchronously after `next` / `play_pause` returns — reading
-/// immediately would name the *previous* track.
-fn notify_media(player: Arc<Player>) {
-    relm4::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(350)).await;
-        let glyph = match player.playback_state.get() {
-            PlaybackState::Playing => "▶",
-            PlaybackState::Paused => "⏸",
-            PlaybackState::Stopped => "⏹",
-        };
-        let title = player.metadata.title.get();
-        let artist = player.metadata.artist.get();
-        let body = match (title.trim(), artist.trim()) {
-            ("", "") => format!("{glyph} {}", playback_label(player.playback_state.get())),
-            (t, "") => format!("{glyph} {t}"),
-            (t, a) => format!("{glyph} {t} · {a}"),
-        };
-        // Album art from the MediaService's art cache when available, else a
-        // generic player glyph.
-        let icon = player
-            .metadata
-            .cover_art
-            .get()
-            .or_else(|| player.metadata.art_url.get())
-            .map(|p| p.trim_start_matches("file://").to_string())
-            .filter(|p| std::path::Path::new(p).is_file())
-            .unwrap_or_else(|| "multimedia-player-symbolic".to_string());
-        let _ = tokio::process::Command::new("notify-send")
-            .args([
-                "-a",
-                "mshell",
-                "-i",
-                &icon,
-                "-h",
-                "string:x-canonical-private-synchronous:mshell-media",
-                &player.identity.get(),
-                &body,
-            ])
-            .status()
-            .await;
-    });
-}
-
 /// Resolve a switch target against a device list. `names` is `(node_name,
 /// description)` per device, `current` the default's node name. Accepts
 /// `next` / `prev` / `switch`, a numeric index, or a case-insensitive
@@ -1070,86 +1020,8 @@ fn render_audio_status(as_json: bool) -> String {
     )
 }
 
-// ── Media players (MPRIS, via the shell's MediaService) ─────────────────────
-fn playback_label(s: PlaybackState) -> &'static str {
-    match s {
-        PlaybackState::Playing => "Playing",
-        PlaybackState::Paused => "Paused",
-        PlaybackState::Stopped => "Stopped",
-    }
-}
-
-/// Resolve a media target to a player. Empty = the active player (else the
-/// first one); otherwise a case-insensitive match on the player identity,
-/// with a `browser` alias and `mpd`/`mpc` → "Music Player Daemon".
-///
-/// When a fragment matches several players — e.g. `browser` with three
-/// Chromium instances — prefer the one that's actually **Playing** (then
-/// Paused, then Stopped), tie-breaking toward the active player. The MPRIS
-/// player list is built from a `HashMap`, so its order isn't stable; a plain
-/// "first match" would toggle an arbitrary (often silent) instance.
-fn pick_player(target: &str) -> Option<Arc<Player>> {
-    let svc = media_service();
-    let t = target.trim().to_lowercase();
-    if t.is_empty() {
-        return svc
-            .active_player()
-            .or_else(|| svc.players().into_iter().next());
-    }
-    // Match the fragment against the identity, the D-Bus bus name, AND the
-    // desktop entry. The bus name is the robust signal: a Chromium/Firefox
-    // fork inherits the engine's MPRIS service name even when it rebrands
-    // its Identity — e.g. Helium reports identity "Helium" but registers as
-    // `org.mpris.MediaPlayer2.chromium.instance…`. So the `chrome` / `chromium`
-    // / `firefox` tokens below catch essentially every mainstream browser and
-    // fork via the bus prefix; the rest are branded-identity fallbacks. (A
-    // browser that rebrands all three fields with no engine token won't hit
-    // the `browser` alias — use its explicit name, e.g. `media toggle helium`.)
-    // osc-media keys on `playerctl -l` bus names for the same reason.
-    let matches = |p: &Arc<Player>| -> bool {
-        let bus = p.id.bus_name();
-        let bus = bus.strip_prefix("org.mpris.MediaPlayer2.").unwrap_or(bus);
-        let desktop = p.desktop_entry.get().unwrap_or_default();
-        let hay = format!("{} {} {}", p.identity.get(), bus, desktop).to_lowercase();
-        hay.contains(&t)
-            || (t == "browser"
-                && [
-                    "firefox",
-                    "chrome",
-                    "chromium",
-                    "brave",
-                    "edge",
-                    "vivaldi",
-                    "opera",
-                    "webcord",
-                    "zen",
-                    "librewolf",
-                    "waterfox",
-                    "floorp",
-                    "helium",
-                    "thorium",
-                    "ungoogled",
-                    "palemoon",
-                    "midori",
-                    "epiphany",
-                    "falkon",
-                    "qutebrowser",
-                ]
-                .iter()
-                .any(|b| hay.contains(b)))
-            || ((t == "mpd" || t == "mpc") && hay.contains("music player daemon"))
-    };
-    let active = svc.active_player();
-    svc.players().into_iter().filter(matches).max_by_key(|p| {
-        let state = match p.playback_state.get() {
-            PlaybackState::Playing => 2,
-            PlaybackState::Paused => 1,
-            PlaybackState::Stopped => 0,
-        };
-        let is_active = active.as_ref().map(|a| Arc::ptr_eq(a, p)).unwrap_or(false);
-        (state, is_active)
-    })
-}
+// ── Media players (MPRIS + native MPD, picked/driven via `media_picker`) ────
+use crate::media_picker::playback_label;
 
 #[derive(serde::Serialize)]
 struct PlayerSnapshot {
@@ -1160,19 +1032,37 @@ struct PlayerSnapshot {
     active: bool,
 }
 
+/// Every known player (every MPRIS player + native MPD when connected),
+/// with `active` marking whichever `media_picker::pick_active("")` would
+/// act on next — the same one `mshellctl media toggle`/`next`/`prev` (no
+/// explicit target) drives.
 fn media_snapshot() -> Vec<PlayerSnapshot> {
     let svc = media_service();
-    let active = svc.active_player();
-    svc.players()
+    let active_id = media_picker::pick_active("").map(|p| p.id());
+
+    let mut snaps: Vec<PlayerSnapshot> = svc
+        .players()
         .into_iter()
         .map(|p| PlayerSnapshot {
-            active: active.as_ref().map(|a| Arc::ptr_eq(a, &p)).unwrap_or(false),
+            active: active_id.as_deref() == Some(&format!("mpris:{}", p.id.bus_name())),
             identity: p.identity.get(),
             state: playback_label(p.playback_state.get()).to_string(),
             title: p.metadata.title.get(),
             artist: p.metadata.artist.get(),
         })
-        .collect()
+        .collect();
+
+    let mpd = mpd_service().player.clone();
+    if mpd.connected.get() {
+        snaps.push(PlayerSnapshot {
+            active: active_id.as_deref() == Some("mpd"),
+            identity: "MPD".to_string(),
+            state: playback_label(mpd.playback_state.get()).to_string(),
+            title: mpd.title.get(),
+            artist: mpd.artist.get(),
+        });
+    }
+    snaps
 }
 
 /// `mshellctl media list` body.

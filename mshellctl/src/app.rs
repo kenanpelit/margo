@@ -55,7 +55,7 @@ SURFACES
 
 AUDIO & MEDIA
   audio           Output / input volume, mute, device switching
-  media           MPRIS play-pause, next, previous
+  media           Play-pause, next, previous — MPRIS + native MPD
   brightness      Backlight — up / down / set
 
 APPEARANCE
@@ -160,7 +160,11 @@ pub enum Commands {
         #[command(subcommand)]
         command: BluetoothCommands,
     },
-    /// Control the active MPRIS media player — play/pause, next, previous.
+    /// Control the active media player — play/pause, next, previous.
+    /// Auto-picks across every MPRIS player and native MPD by a weighted
+    /// score (playing beats paused, app/backend bonuses, last-used
+    /// tie-break); an explicit target (`spotify`, `browser`, `mpd`) skips
+    /// scoring and goes straight to that backend.
     Media {
         #[command(subcommand)]
         command: MediaCommands,
