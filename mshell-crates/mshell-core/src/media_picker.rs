@@ -192,7 +192,13 @@ fn best_mpris(filter: impl Fn(&str) -> bool, last_id: &str) -> Option<PlayerHand
 
 /// Resolve an explicit target fragment: `mpd`/`mpc` route straight to the
 /// native MPD backend (only when actually connected), `browser` uses the
-/// alias list, anything else is a case-insensitive substring match against
+/// alias list, `spotify` also falls back to the best browser player when no
+/// native Spotify MPRIS player exists (the Spotify *web* player, opened in
+/// its own browser instance, registers under that instance's generic
+/// bus/identity — "Brave", not "Spotify" — so a plain substring match on
+/// "spotify" would otherwise miss it entirely; ported from the user's
+/// `spotify-media.sh` wrapper, which did the same native-then-browser probe
+/// by hand), anything else is a case-insensitive substring match against
 /// every MPRIS player's identity/bus-name/desktop-entry.
 fn resolve_explicit(target: &str, last_id: &str) -> Option<PlayerHandle> {
     match target {
@@ -201,6 +207,8 @@ fn resolve_explicit(target: &str, last_id: &str) -> Option<PlayerHandle> {
             mpd.connected.get().then(|| PlayerHandle::Mpd(mpd))
         }
         "browser" => best_mpris(is_browser, last_id),
+        "spotify" => best_mpris(|hay| hay.contains("spotify"), last_id)
+            .or_else(|| best_mpris(is_browser, last_id)),
         other => {
             let needle = other.to_string();
             best_mpris(move |hay| hay.contains(&needle), last_id)
