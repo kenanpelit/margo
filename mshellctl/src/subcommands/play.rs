@@ -1,6 +1,9 @@
-//! `mshellctl play …` — native mpv companion, proxied to `mplay`
-//! (window control + video-wallpaper engine + yt-dlp shim).
+//! `mshellctl play …` — native mpv companion window control
+//! (`crate::mpv::control`); `play <target>`/the video-wallpaper engine/
+//! yt-dlp downloads stay proxied to `mplay` for now (a separate
+//! yt-dlp-adjacent scope not yet natively ported).
 
+use crate::mpv::control;
 use crate::subcommands::proxy;
 use clap::Subcommand;
 
@@ -8,7 +11,7 @@ use clap::Subcommand;
 pub enum PlayCommands {
     /// Start the mpv companion window.
     Start,
-    /// Toggle the mpv window (show/hide).
+    /// Toggle play/pause on the running mpv companion.
     Toggle,
     /// Play a target (URL / path / clipboard, per mplay's rules).
     Play {
@@ -17,11 +20,11 @@ pub enum PlayCommands {
     },
     /// Stop playback / close the window.
     Stop,
-    /// Snapshot the current frame.
+    /// Cycle the floating window to the next screen corner.
     Snap,
-    /// Pin the window on top.
+    /// Pin the window on top (toggle sticky).
     Pin,
-    /// Focus the mpv window.
+    /// Focus the mpv window (hop monitor + tag + focus stack).
     Focus,
     /// Video-wallpaper engine — `wallpaper start [PATH]` / `wallpaper stop`.
     Wallpaper {
@@ -37,8 +40,8 @@ pub enum PlayCommands {
 
 pub async fn execute(command: PlayCommands) -> anyhow::Result<()> {
     match command {
-        PlayCommands::Start => proxy::run("mplay", ["start"]),
-        PlayCommands::Toggle => proxy::run("mplay", ["toggle"]),
+        PlayCommands::Start => control::start(),
+        PlayCommands::Toggle => control::toggle(),
         PlayCommands::Play { target } => {
             let mut args = vec!["play".to_string()];
             if let Some(target) = target {
@@ -46,10 +49,10 @@ pub async fn execute(command: PlayCommands) -> anyhow::Result<()> {
             }
             proxy::run("mplay", &args)
         }
-        PlayCommands::Stop => proxy::run("mplay", ["stop"]),
-        PlayCommands::Snap => proxy::run("mplay", ["snap"]),
-        PlayCommands::Pin => proxy::run("mplay", ["pin"]),
-        PlayCommands::Focus => proxy::run("mplay", ["focus"]),
+        PlayCommands::Stop => control::stop(),
+        PlayCommands::Snap => control::snap(),
+        PlayCommands::Pin => control::pin(),
+        PlayCommands::Focus => control::focus(),
         PlayCommands::Wallpaper { args } => {
             let mut argv = vec!["wallpaper".to_string()];
             argv.extend(args);

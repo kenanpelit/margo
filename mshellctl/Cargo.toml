@@ -15,10 +15,13 @@ path = "src/main.rs"
 anyhow.workspace = true
 clap.workspace = true
 clap_complete = "4"
+libc.workspace = true
 margo-logging = { path = "../margo-logging" }
+mctl = { path = "../mctl" }
 mshell-cli-style.workspace = true
 mshell-plugins.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
 zbus.workspace = true
 [lints]

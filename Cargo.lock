@@ -5286,10 +5286,13 @@ dependencies = [
  "anyhow",
  "clap",
  "clap_complete",
+ "libc",
  "margo-logging",
+ "mctl",
  "mshell-cli-style",
  "mshell-plugins",
  "serde",
+ "serde_json",
  "tokio",
  "zbus",
 ]
