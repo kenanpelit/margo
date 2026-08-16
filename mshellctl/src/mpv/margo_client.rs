@@ -106,17 +106,34 @@ fn margo_get(topic: &str) -> Result<Value> {
         .map_err(|e| anyhow::anyhow!("querying margo for `{topic}`: {e}"))
 }
 
-/// `dispatch <action> [args…]` over margo's IPC socket.
-pub fn dispatch(action: &str, args: &[&str]) -> Result<()> {
+/// Build the `dispatch <action> [args…]` wire line margo's socket parser
+/// expects (a plain `split_whitespace()` grammar — see
+/// `margo/src/ipc/protocol.rs`).
+///
+/// A bare `--` is silently dropped: it's only meaningful as a clap
+/// flags-vs-positionals separator when going through the `mctl` CLI's own
+/// argument parser (needed there so e.g. `-100` isn't mistaken for an
+/// unknown flag) — this talks to the socket directly, so there's no clap
+/// layer to strip it, and sending it verbatim becomes the action's first
+/// (bogus) argument, silently corrupting it. Guards any caller that still
+/// passes it out of `mctl`-CLI habit rather than requiring every call site
+/// to remember not to.
+fn build_dispatch_request(action: &str, args: &[&str]) -> String {
     let mut req = String::from("dispatch ");
     req.push_str(action);
     for a in args {
-        if a.is_empty() {
+        if a.is_empty() || *a == "--" {
             continue;
         }
         req.push(' ');
         req.push_str(a);
     }
+    req
+}
+
+/// `dispatch <action> [args…]` over margo's IPC socket.
+pub fn dispatch(action: &str, args: &[&str]) -> Result<()> {
+    let req = build_dispatch_request(action, args);
     let reply = mctl::ipc_client::request_once(&req)
         .map_err(|e| anyhow::anyhow!("dispatching `{action}`: {e}"))?;
     if reply.get("ok").and_then(Value::as_bool) != Some(true)
@@ -183,5 +200,20 @@ mod tests {
         let c = parse_focused(&j).unwrap();
         assert_eq!(c.idx, 2);
         assert_eq!(c.app_id, "mpv");
+    }
+
+    #[test]
+    fn dispatch_request_drops_bare_double_dash() {
+        // Regression: a literal "--" (needed only when going through the
+        // `mctl` CLI's clap parser) used to land in the wire request as
+        // the action's first argument, since margo's socket grammar is a
+        // plain whitespace split with no flag semantics — `movewin`/
+        // `resizewin` silently received "--" as their x/y-offset instead
+        // of the real value, and the mpv companion window never moved.
+        assert_eq!(
+            build_dispatch_request("movewin", &["--", "-100", "50"]),
+            "dispatch movewin -100 50"
+        );
+        assert_eq!(build_dispatch_request("view", &["4"]), "dispatch view 4");
     }
 }

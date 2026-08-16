@@ -324,7 +324,7 @@ pub fn snap() -> Result<()> {
     if f.width > 700 || f.height > 500 {
         let dw = default_w() - f.width;
         let dh = default_h() - f.height;
-        let _ = margo::dispatch("resizewin", &["--", &dw.to_string(), &dh.to_string()]);
+        let _ = margo::dispatch("resizewin", &[&dw.to_string(), &dh.to_string()]);
         sleep(Duration::from_millis(50));
         f = margo::parse_focused(&margo::focused()?)
             .ok_or_else(|| anyhow::anyhow!("Odaktaki pencere okunamadı"))?;
@@ -344,7 +344,7 @@ pub fn snap() -> Result<()> {
     let (tx, ty) = next.position(area, f.width, f.height, margin_x(), margin_y());
     let dx = tx - f.x;
     let dy = ty - f.y;
-    margo::dispatch("movewin", &["--", &dx.to_string(), &dy.to_string()])?;
+    margo::dispatch("movewin", &[&dx.to_string(), &dy.to_string()])?;
     notify(&format!("{current:?} → {next:?}"));
     Ok(())
 }
