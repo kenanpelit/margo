@@ -581,14 +581,22 @@ fn config_arg(args: &[OsString]) -> Option<OsString> {
     None
 }
 
-fn run_preflight(args: &Args) -> Result<Option<i32>> {
-    if args.no_preflight {
+/// Validate `spawn_args` (whatever margo is about to be invoked with — the
+/// user's own `margo_args`, or the swapped-in `-c <safe-config>` once the
+/// crash budget forces a safe-mode fallback) via `mctl check-config`. Takes
+/// the args to check explicitly, rather than always reading `Args::margo_args`,
+/// so the same preflight also covers the safe-config path — a broken
+/// `--safe-config` should fail fast and clearly here, not get spawned blind
+/// and burn through a whole fresh crash budget (with backoff delays)
+/// rediscovering the same problem one doomed restart at a time.
+fn run_preflight(no_preflight: bool, spawn_args: &[OsString]) -> Result<Option<i32>> {
+    if no_preflight {
         return Ok(None);
     }
 
     let mut cmd = Command::new("mctl");
     cmd.arg("check-config");
-    if let Some(path) = config_arg(&args.margo_args) {
+    if let Some(path) = config_arg(spawn_args) {
         cmd.arg("--config").arg(path);
     }
 
@@ -829,7 +837,7 @@ fn next_timeout_ms(
 fn run_loop(args: &Args, signalfd: RawFd) -> Result<i32> {
     let margo_path = args.path.clone().unwrap_or_else(|| PathBuf::from("margo"));
 
-    if let Some(code) = run_preflight(args)? {
+    if let Some(code) = run_preflight(args.no_preflight, &args.margo_args)? {
         return Ok(code);
     }
 
@@ -922,6 +930,16 @@ fn run_loop(args: &Args, signalfd: RawFd) -> Result<i32> {
                 sd_notify("STATUS=safe mode (fallback config)\n", args.no_notify);
                 safe_mode = true;
                 active_args = vec![OsString::from("-c"), safe.clone().into_os_string()];
+
+                if let Some(code) = run_preflight(args.no_preflight, &active_args)? {
+                    error!("safe-config preflight failed; giving up");
+                    sd_notify(
+                        "STOPPING=1\nSTATUS=safe-config preflight failed\n",
+                        args.no_notify,
+                    );
+                    return Ok(code);
+                }
+
                 crashes.clear();
                 continue;
             }

@@ -144,6 +144,65 @@ fn safe_config_makes_a_final_attempt() {
 }
 
 #[test]
+fn broken_safe_config_fails_preflight_instead_of_burning_a_second_budget() {
+    let scratch = Scratch::new();
+    let fake_margo = scratch.script("margo", "#!/bin/sh\nexit 1\n");
+    let safe_conf = scratch.path("safe.conf");
+
+    // A fake `mctl` on PATH: rejects check-config specifically for the
+    // safe-config path (simulating a broken/missing --safe-config), passes
+    // for everything else (the primary run has no -c arg at all here).
+    let bin_dir = scratch.dir.join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    let fake_mctl = bin_dir.join("mctl");
+    fs::write(
+        &fake_mctl,
+        format!(
+            "#!/bin/sh\nfor a in \"$@\"; do\n  if [ \"$a\" = \"{}\" ]; then\n    exit 1\n  fi\ndone\nexit 0\n",
+            safe_conf.display()
+        ),
+    )
+    .unwrap();
+    let mut perms = fs::metadata(&fake_mctl).unwrap().permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(&fake_mctl, perms).unwrap();
+    let path_env = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    // Built directly (not via `supervisor()`, which always passes
+    // --no-preflight) — this test needs preflight ON, for both the primary
+    // run and the safe-config swap.
+    let status = Command::new(env!("CARGO_BIN_EXE_start-margo"))
+        .arg("--path")
+        .arg(&fake_margo)
+        .arg("--no-notify")
+        .arg("--ready-timeout-secs")
+        .arg("0")
+        .arg("--max-crashes")
+        .arg("2")
+        .arg("--restart-window-secs")
+        .arg("60")
+        .arg("--safe-config")
+        .arg(&safe_conf)
+        .env("PATH", path_env)
+        .env("XDG_STATE_HOME", scratch.dir.join("state"))
+        .env_remove("NOTIFY_SOCKET")
+        .env_remove("WATCHDOG_USEC")
+        .status()
+        .unwrap();
+
+    assert_eq!(
+        status.code(),
+        Some(78),
+        "a broken safe-config should fail preflight (EX_CONFIG=78) immediately, \
+         not exhaust a second crash budget before giving up"
+    );
+}
+
+#[test]
 fn sigterm_is_forwarded_for_graceful_teardown() {
     let scratch = Scratch::new();
     let marker = scratch.path("term-received");
