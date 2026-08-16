@@ -66,7 +66,7 @@ removes exactly what was added.
 git clone https://github.com/kenanpelit/margo
 cd margo && cargo build --release --workspace
 for bin in margo start-margo mctl mshell mshellctl mshellshare mlock mlogind mgreet \
-           mpower mlayout mscreenshot mplay mkeys mvpn mcal mpicker mdots mvisual mwizard; do
+           mpower mlayout mscreenshot mkeys mvpn mcal mpicker mdots mvisual mwizard; do
   sudo install -Dm755 target/release/$bin /usr/bin/$bin
 done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop

@@ -10,7 +10,6 @@ Margo ships several binaries that share its workspace:
 | **`mscreenshot`** | screen / region / window capture |
 | **`mvpn`** | native Mullvad VPN control (CLI + the DNS/VPN bar menu) |
 | **`mcal`** | calendar — local + remote ICS (read-only), CLI + Settings → Calendar |
-| **`mplay`** | mpv companion — window control, video wallpaper, media keys |
 | **`mpower`** | automatic power-profile daemon + manual `cycle` / `set` |
 | **`mkeys`** | on-screen keyboard (layer-shell, virtual-keyboard protocol) |
 | **`mlogind`** | login / display manager (matugen-themed) — TUI or GTK4 greeter |
@@ -134,34 +133,43 @@ mscreenshot dir       # print the screenshot dir
 
 Editor preference: `swappy` if installed, else `satty`, else skip the editor pass and just save+copy. Files land at `~/Pictures/Screenshots/screenshot-YYYYMMDD-HHMMSS.png`. For region capture it reuses the shell's selector via `mshellctl screenshot select-region` (falling back to `slurp`).
 
-## `mplay`
+## Media & mpv companion — `mshellctl media` / `play`
 
-margo's native mpv companion — replaces the old `margo-mpv.sh` / `osc-media.sh`
-scripts. Three jobs:
+Another single front door: the mpv companion (window control + playback +
+yt-dlp downloads + a native video-wallpaper engine) and smart cross-player
+media control both live natively in `mshellctl` — no separate binary, no
+`playerctl`/`mpc` subprocess shellouts. Media picking talks to MPRIS players
+and native MPD directly; the mpv companion talks to margo via `mctl`'s IPC
+library and to mpv's own JSON IPC socket.
 
 ```sh
-# Window control (talks to the mpv JSON IPC socket + mctl)
-mplay start            # launch mpv (pseudo-gui) with an IPC socket
-mplay toggle           # play / pause
-mplay play [URL]       # play a file/URL (or the clipboard; ytdl auto)
-mplay download [URL]   # yt-dlp → ~/Downloads
-mplay snap             # cycle the floating mpv window across corners
-mplay pin              # pin to all tags (sticky)
-mplay focus            # focus the mpv window (hops monitor/tag)
-mplay stop             # quit mpv
+# Smart media control — scores every active player (MPRIS + native MPD),
+# picks the best one (playing beats paused, app/backend bonuses, last-used
+# tie-break), and remembers it. An explicit target skips scoring.
+mshellctl media toggle              # auto-detect the best active player
+mshellctl media next|prev [TARGET]  # TARGET: spotify | vlc | browser | mpd | mpc | …
+mshellctl media status [--json]     # the player a target-less command would act on
+mshellctl media list [--json]       # every player, MPRIS + MPD, with state
 
-# Smart media control across players (MPRIS via playerctl, MPD via mpc, mpv)
-mplay media toggle           # auto-detect the best active player
-mplay media next|prev [PLAYER]   # PLAYER: spotify|vlc|mpv|mpd|browser
+# mpv companion window control (talks to mpv's JSON IPC socket + mctl)
+mshellctl play start            # launch mpv (pseudo-gui) with an IPC socket
+mshellctl play toggle           # play / pause
+mshellctl play play [URL]       # play a file/URL (or the clipboard; ytdl auto)
+mshellctl play download [URL]   # yt-dlp → ~/Downloads
+mshellctl play snap             # cycle the floating mpv window across corners
+mshellctl play pin              # pin to all tags (sticky)
+mshellctl play focus            # focus the mpv window (hops monitor/tag)
+mshellctl play stop             # quit mpv
 
-# Native video wallpaper (in-tree mpvpaper port: wlr-layer-shell + EGL + libmpv)
-mplay wallpaper start <SRC> [--output N] [--mute] [--no-loop] [--scale fit|fill|stretch]
-mplay wallpaper stop [--output N]
+# Native video wallpaper (wlr-layer-shell + EGL + direct libmpv render-API FFI)
+mshellctl play wallpaper start <SRC> [--output N] [--mute] [--no-loop] [--scale fit|fill|stretch]
+mshellctl play wallpaper stop [--output N]
 ```
 
 The embedded yt-dlp shim (anti-bot client fallback + cookie file + browser
-user-agent) is built in — no external `yt-dlp-mpv` script. Optional deps:
-`yt-dlp`, `playerctl`, `mpc`.
+user-agent) is built in — no external `yt-dlp-mpv` script. Optional dep:
+`yt-dlp`, for `play`/`download`'s YouTube handling. `mpv` (libmpv) is
+required, build- and runtime-side, for the companion + wallpaper commands.
 
 ## `mlogind`
 

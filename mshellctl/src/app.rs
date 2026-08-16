@@ -82,7 +82,7 @@ COMPANION TOOLS
   layout          Saved tiling-layout snapshots          (mlayout)
   osk             On-screen keyboard — show/hide/toggle  (mkeys)
   color           Pick a screen colour                   (mpicker)
-  play            mpv companion + video wallpaper        (mplay)
+  play            mpv companion + video wallpaper
 
 SYSTEM & DIAGNOSTICS
   bluetooth       Auto-connect engine — toggle/connect/disconnect
@@ -302,8 +302,8 @@ pub enum Commands {
     /// Pick a screen colour (proxied to `mpicker`) — prints the colour;
     /// use `--copy` / `--notify` / `--format`.
     Color(ColorArgs),
-    /// mpv companion — play / toggle / stop / snapshot / video wallpaper
-    /// (proxied to `mplay`).
+    /// mpv companion — window control, playback, yt-dlp downloads, and the
+    /// native video-wallpaper engine.
     Play {
         #[command(subcommand)]
         command: PlayCommands,

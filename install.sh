@@ -259,7 +259,7 @@ debian_build() {
   # faster, smaller installed binary. `just` / CI stay on `release`.
   log "building compositor group (dist)"
   cargo build --profile dist -p margo -p start-margo \
-    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mplay -p mdots \
+    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mdots \
     -p mlogind -p mpower -p mcal
   log "building shell group (dist)"
   cargo build --profile dist -p mshell -p mshellctl -p mshellshare \
@@ -297,7 +297,7 @@ debian_install_files() {
 
   # ── binaries ──
   local bin
-  for bin in margo start-margo mctl mlock mlayout mscreenshot mvisual mplay mdots \
+  for bin in margo start-margo mctl mlock mlayout mscreenshot mvisual mdots \
              mlogind mgreet mpower mshell mshellctl mshellshare mpicker mwizard mkeys mvpn mcal; do
     install_file 755 "${tgt}/${bin}" "/usr/bin/${bin}"
   done

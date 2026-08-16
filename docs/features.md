@@ -64,10 +64,9 @@ Standalone tools that ship with margo. Full guide:
 | Tool | Role |
 | --- | --- |
 | `mctl` | Compositor IPC client — control + introspect margo. |
-| `mshellctl` | Shell IPC client — toggle menus, query state. |
+| `mshellctl` | Shell IPC client — toggle menus, query state, media control, mpv companion + video wallpaper. |
 | `mvpn` | Mullvad VPN control (CLI + GTK panel). |
 | `mcal` | Calendar — local + remote ICS (read-only), CLI + Settings → Calendar. |
-| `mplay` | mpv companion: window control + video-wallpaper engine. |
 | `mkeys` | On-screen keyboard. |
 | `mpicker` | Screen colour picker. |
 | `mscreenshot` | Screenshot CLI (region / window / output). |

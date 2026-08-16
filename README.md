@@ -86,14 +86,13 @@ Each binary lives in its own top-level directory — the name links to it.
 | [`start-margo`](start-margo/) | Watchdog supervisor — restart-on-crash, sd_notify, signal forwarding |
 | [`mctl`](mctl/) | Compositor IPC + control CLI |
 | [`mshell`](mshell/) | GTK4 desktop shell — bar, menus, OSD, in-app Settings |
-| [`mshellctl`](mshellctl/) | Shell IPC CLI — menus, audio, wallpaper, lock |
+| [`mshellctl`](mshellctl/) | Shell IPC CLI — menus, audio, media, mpv companion + video wallpaper, lock |
 | [`mlock`](mlock/) | Screen locker — `ext-session-lock-v1` + PAM |
 | [`mlogind`](mlogind/) | Login / display manager — PAM, matugen-themed, TUI or GTK4 greeter |
 | [`mgreet`](mgreet/) | Optional GTK4 graphical greeter for `mlogind` — per-output layer-shell |
 | [`mpower`](mpower/) | Automatic power-profile manager — CPU + AC/battery aware |
 | [`mlayout`](mlayout/) | Named monitor profiles |
 | [`mscreenshot`](mscreenshot/) | Screen / region / window capture |
-| [`mplay`](mplay/) | mpv companion — window control, video wallpaper, media keys |
 | [`mkeys`](mkeys/) | On-screen keyboard — `zwp_virtual_keyboard`, layer-shell, en/tr |
 | [`mvpn`](mvpn/) | Mullvad VPN control — CLI + GTK4 layer-shell panel |
 | [`mcal`](mcal/) | Calendar — local + remote ICS, CLI + in-shell UI |
@@ -230,13 +229,13 @@ path is recorded in `/usr/local/share/margo/install-manifest.txt`, so
 ```bash
 cargo build --release --workspace
 for bin in margo start-margo mctl mshell mshellctl mshellshare mlock mlogind mgreet \
-           mpower mlayout mscreenshot mplay mkeys mvpn mcal mpicker mdots mvisual mwizard; do
+           mpower mlayout mscreenshot mkeys mvpn mcal mpicker mdots mvisual mwizard; do
   sudo install -Dm755 target/release/$bin /usr/bin/$bin
 done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop
 ```
 
-System dependencies: `wayland`, `libinput`, `libxkbcommon`, `seatd`, `mesa`, `libdrm`, `pixman`, `pcre2`, `cairo`, `pango`, `pam`, `gtk4` (≥ 4.20), `gtk4-layer-shell`, `xorg-xwayland` (optional). Runtime: `grim`, `slurp`, `wl-clipboard` for screenshots; `wlr-randr` for live monitor re-layout; `notify-send` (libnotify) for `mscreenshot`'s notification action buttons; `mpv` (libmpv) for `mplay` window control + video wallpaper, with optional `yt-dlp` / `playerctl` / `mpc` for its `play` / `media` commands.
+System dependencies: `wayland`, `libinput`, `libxkbcommon`, `seatd`, `mesa`, `libdrm`, `pixman`, `pcre2`, `cairo`, `pango`, `pam`, `gtk4` (≥ 4.20), `gtk4-layer-shell`, `xorg-xwayland` (optional). Runtime: `grim`, `slurp`, `wl-clipboard` for screenshots; `wlr-randr` for live monitor re-layout; `notify-send` (libnotify) for `mscreenshot`'s notification action buttons and media notifications; `mpv` (libmpv, build- and runtime-required) for `mshellctl play`'s mpv companion window control + video wallpaper, with optional `yt-dlp` for its `play`/`download` commands.
 
 ### Nix flake
 

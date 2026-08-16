@@ -683,6 +683,14 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help (see more with '\''--help'\'')]' \
 && ret=0
 ;;
+(perf)
+_arguments "${_arguments_options[@]}" : \
+'--json[]' \
+'--watch[Refresh the table once a second until interrupted (ignored with --json)]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
 (focused)
 _arguments "${_arguments_options[@]}" : \
 '--json[]' \
@@ -950,6 +958,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(perf)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (focused)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -995,6 +1007,7 @@ _mctl_commands() {
 'doctor:Health check — config, socket, version sync, GPU, services in one pass' \
 'clients:List every open window with tag, monitor, app_id, title' \
 'outputs:List every connected output with mode, position, scale, layout' \
+'perf:Per-output frame counters\: renders, empties, empty ratio, queue errors' \
 'focused:Print the focused window'\''s app_id + title (terse, scriptable)' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -1078,6 +1091,7 @@ _mctl__subcmd__help_commands() {
 'doctor:Health check — config, socket, version sync, GPU, services in one pass' \
 'clients:List every open window with tag, monitor, app_id, title' \
 'outputs:List every connected output with mode, position, scale, layout' \
+'perf:Per-output frame counters\: renders, empties, empty ratio, queue errors' \
 'focused:Print the focused window'\''s app_id + title (terse, scriptable)' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -1188,6 +1202,11 @@ _mctl__subcmd__help__subcmd__migrate_commands() {
 _mctl__subcmd__help__subcmd__outputs_commands() {
     local commands; commands=()
     _describe -t commands 'mctl help outputs commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__help__subcmd__perf_commands] )) ||
+_mctl__subcmd__help__subcmd__perf_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl help perf commands' commands "$@"
 }
 (( $+functions[_mctl__subcmd__help__subcmd__plugin_commands] )) ||
 _mctl__subcmd__help__subcmd__plugin_commands() {
@@ -1448,6 +1467,11 @@ _mctl__subcmd__migrate_commands() {
 _mctl__subcmd__outputs_commands() {
     local commands; commands=()
     _describe -t commands 'mctl outputs commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__perf_commands] )) ||
+_mctl__subcmd__perf_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl perf commands' commands "$@"
 }
 (( $+functions[_mctl__subcmd__plugin_commands] )) ||
 _mctl__subcmd__plugin_commands() {

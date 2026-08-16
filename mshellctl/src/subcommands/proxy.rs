@@ -1,5 +1,5 @@
 //! Shared helper for `mshellctl` subcommands that shell out to a sibling margo
-//! binary (mcal, mvpn, mkeys, mplay, mpower, mlayout, mpicker, mscreenshot).
+//! binary (mcal, mvpn, mkeys, mpower, mlayout, mpicker, mscreenshot).
 //!
 //! These tools own their own control surfaces; mshellctl re-exposes the common
 //! verbs so the shell has one control CLI. Stdio is inherited (so interactive

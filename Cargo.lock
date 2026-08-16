@@ -4671,22 +4671,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mplay"
-version = "2.1.0"
-dependencies = [
- "anyhow",
- "calloop",
- "clap",
- "khronos-egl",
- "libc",
- "serde_json",
- "tracing",
- "wayland-client",
- "wayland-egl",
- "wayland-protocols-wlr",
-]
-
-[[package]]
 name = "mpower"
 version = "2.1.0"
 dependencies = [

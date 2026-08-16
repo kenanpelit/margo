@@ -61,6 +61,9 @@ _mctl() {
             mctl,outputs)
                 cmd="mctl__subcmd__outputs"
                 ;;
+            mctl,perf)
+                cmd="mctl__subcmd__perf"
+                ;;
             mctl,plugin)
                 cmd="mctl__subcmd__plugin"
                 ;;
@@ -141,6 +144,9 @@ _mctl() {
                 ;;
             mctl__subcmd__help,outputs)
                 cmd="mctl__subcmd__help__subcmd__outputs"
+                ;;
+            mctl__subcmd__help,perf)
+                cmd="mctl__subcmd__help__subcmd__perf"
                 ;;
             mctl__subcmd__help,plugin)
                 cmd="mctl__subcmd__help__subcmd__plugin"
@@ -440,7 +446,7 @@ _mctl() {
 
     case "${cmd}" in
         mctl)
-            opts="-o -h -V --output --help --version dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help"
+            opts="-o -h -V --output --help --version dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs perf focused help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -626,7 +632,7 @@ _mctl() {
             return 0
             ;;
         mctl__subcmd__help)
-            opts="dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs focused help"
+            opts="dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs perf focused help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -906,6 +912,20 @@ _mctl() {
             return 0
             ;;
         mctl__subcmd__help__subcmd__outputs)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mctl__subcmd__help__subcmd__perf)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -1549,6 +1569,20 @@ _mctl() {
             ;;
         mctl__subcmd__outputs)
             opts="-h --json --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mctl__subcmd__perf)
+            opts="-h --json --watch --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

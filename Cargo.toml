@@ -15,7 +15,6 @@ members = [
     "mlogind-proto",
     "mgreet",
     "mpicker",
-    "mplay",
     "mpower",
     "mscreenshot",
     "mtm",

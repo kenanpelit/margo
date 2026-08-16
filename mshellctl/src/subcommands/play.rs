@@ -1,10 +1,8 @@
-//! `mshellctl play …` — native mpv companion window control + playback +
-//! yt-dlp downloads (`crate::mpv`). Only the video-wallpaper engine stays
-//! proxied to `mplay` (its own embedded-libmpv EGL/Wayland renderer, a
-//! separate scope not yet natively ported).
+//! `mshellctl play …` — native mpv companion: window control, playback,
+//! yt-dlp downloads, and the video-wallpaper engine (`crate::mpv`).
 
-use crate::mpv::{control, ytdl_shim};
-use crate::subcommands::proxy;
+use crate::mpv::geometry::ScaleMode;
+use crate::mpv::{control, paper, ytdl_shim};
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
@@ -13,7 +11,7 @@ pub enum PlayCommands {
     Start,
     /// Toggle play/pause on the running mpv companion.
     Toggle,
-    /// Play a target (URL / path / clipboard, per mplay's rules).
+    /// Play a target (URL / path / clipboard; YouTube URLs auto-detected).
     Play {
         /// What to play (omit to resume).
         target: Option<String>,
@@ -31,19 +29,45 @@ pub enum PlayCommands {
     Pin,
     /// Focus the mpv window (hop monitor + tag + focus stack).
     Focus,
-    /// Video-wallpaper engine — `wallpaper start [PATH]` / `wallpaper stop`.
+    /// Video-wallpaper engine — background layer surface, EGL + libmpv.
     Wallpaper {
-        /// `start [PATH]` or `stop`.
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
+        #[command(subcommand)]
+        command: WallpaperCommands,
     },
     /// Hidden: mpv's `ytdl_hook` invokes this as its `ytdl_path` (wired up
     /// by `control::ensure_ytdl_shim`) — not meant to be run by hand.
     #[command(name = "__ytdlp", hide = true, trailing_var_arg = true)]
     Ytdlp { args: Vec<String> },
-    /// Any other `mplay` subcommand passes through — e.g. `play media next`.
-    #[command(external_subcommand)]
-    Exec(Vec<String>),
+}
+
+#[derive(Subcommand, Debug)]
+pub enum WallpaperCommands {
+    /// Play a video wallpaper on the background layer.
+    Start {
+        /// Video file or URL (defaults to clipboard contents).
+        src: Option<String>,
+        /// Target output name (default: all outputs).
+        #[arg(long)]
+        output: Option<String>,
+        /// Mute audio.
+        #[arg(long)]
+        mute: bool,
+        /// Play once instead of looping.
+        #[arg(long = "no-loop")]
+        no_loop: bool,
+        /// Scale mode: fit | fill | stretch.
+        #[arg(long, default_value = "fill")]
+        scale: String,
+        /// Fork into the background.
+        #[arg(long)]
+        daemon: bool,
+    },
+    /// Stop the video wallpaper.
+    Stop {
+        /// Target output name (default: all).
+        #[arg(long)]
+        output: Option<String>,
+    },
 }
 
 pub async fn execute(command: PlayCommands) -> anyhow::Result<()> {
@@ -56,12 +80,33 @@ pub async fn execute(command: PlayCommands) -> anyhow::Result<()> {
         PlayCommands::Snap => control::snap(),
         PlayCommands::Pin => control::pin(),
         PlayCommands::Focus => control::focus(),
-        PlayCommands::Wallpaper { args } => {
-            let mut argv = vec!["wallpaper".to_string()];
-            argv.extend(args);
-            proxy::run("mplay", &argv)
-        }
+        PlayCommands::Wallpaper { command } => match command {
+            WallpaperCommands::Start {
+                src,
+                output,
+                mute,
+                no_loop,
+                scale,
+                daemon,
+            } => {
+                let scale = ScaleMode::parse(&scale).ok_or_else(|| {
+                    anyhow::anyhow!("geçersiz --scale: {scale} (fit|fill|stretch)")
+                })?;
+                let src = control::resolve_source(src.as_deref());
+                if src.is_empty() {
+                    anyhow::bail!(
+                        "wallpaper: kaynak yok (argüman ver veya panoya bir yol/URL koy)"
+                    );
+                }
+                let opts = paper::PaperOpts {
+                    mute,
+                    looping: !no_loop,
+                    scale,
+                };
+                paper::run(&src, output.as_deref(), opts, daemon)
+            }
+            WallpaperCommands::Stop { output } => paper::stop(output.as_deref()),
+        },
         PlayCommands::Ytdlp { args } => std::process::exit(ytdl_shim::run(&args)),
-        PlayCommands::Exec(args) => proxy::run("mplay", &args),
     }
 }
