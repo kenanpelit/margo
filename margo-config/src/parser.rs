@@ -493,6 +493,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "canvas_pan_on_kill" => cfg.canvas_pan_on_kill = parse_bool(val),
         "canvas_anchor_animate" => cfg.canvas_anchor_animate = parse_bool(val),
         "tag_carousel" => cfg.tag_carousel = parse_bool(val),
+        "tag_gather" => cfg.tag_gather = parse_bool(val),
 
         // scratchpad
         "scratchpad_width_ratio" => cfg.scratchpad_width_ratio = parse_f32(val),
@@ -1717,6 +1718,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "tablet_map_to_mon",
     "tag_animation_direction",
     "tag_carousel",
+    "tag_gather",
     "tap_and_drag",
     "tap_to_click",
     "touch_degrees_leniency",
@@ -1989,6 +1991,17 @@ mod tests {
         let cfg = parse_config(Some(&main)).unwrap();
         assert!(cfg.tag_carousel);
         assert_eq!(cfg.edge_scroller_focus_allow_speed, 40.0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parses_tag_gather() {
+        let dir = std::env::temp_dir().join(format!("margo-tag-gather-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("config.conf");
+        std::fs::write(&main, "tag_gather = 1\n").unwrap();
+        let cfg = parse_config(Some(&main)).unwrap();
+        assert!(cfg.tag_gather);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

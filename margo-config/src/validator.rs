@@ -639,6 +639,7 @@ const BOOL_KEYS: &[&str] = &[
     "monly",
     "syncobj_enable",
     "tag_carousel",
+    "tag_gather",
     "taglayout_force",
     "tap_and_drag",
     "tap_to_click",

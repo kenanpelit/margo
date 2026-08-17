@@ -798,6 +798,13 @@ fn main() -> Result<()> {
             c.repeat_rate,
         )
     };
+    // A typo'd/invalid xkb_layout in config.conf used to take the whole
+    // compositor down at boot (the `?` below propagated straight to
+    // `main`'s exit). mango 0.16.1 hit the same failure mode and now
+    // falls back to xkbcommon's default layout with a warning instead of
+    // refusing to start; do the same here. `reload_config` already
+    // handles a bad layout gracefully on *reload* (the old keymap just
+    // stays live) — this closes the matching gap at startup.
     let keyboard = margo
         .seat
         .add_keyboard(
@@ -811,6 +818,18 @@ fn main() -> Result<()> {
             repeat_delay,
             repeat_rate,
         )
+        .or_else(|e| {
+            warn!(
+                "keyboard init failed with configured xkb layout \
+                 (rules=\"{xkb_rules}\" model=\"{xkb_model}\" layout=\"{xkb_layout}\" \
+                 variant=\"{xkb_variant}\"): {e}; falling back to the default layout"
+            );
+            margo.seat.add_keyboard(
+                smithay::input::keyboard::XkbConfig::default(),
+                repeat_delay,
+                repeat_rate,
+            )
+        })
         .map_err(|e| anyhow::anyhow!("keyboard init: {e}"))?;
     let _ = keyboard;
 

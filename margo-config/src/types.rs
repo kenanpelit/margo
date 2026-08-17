@@ -869,6 +869,10 @@ pub struct Config {
 
     // tags
     pub tag_carousel: bool,
+    /// Compact this monitor's occupied tags to consecutive numbers
+    /// starting at 1 on every arrange (e.g. windows on tags 1, 3, 9 move
+    /// to 1, 2, 3; the current view follows). mango 0.16.1 `tag_gather`.
+    pub tag_gather: bool,
 
     // scratchpad
     pub scratchpad_width_ratio: f32,
@@ -1212,6 +1216,7 @@ impl Default for Config {
             canvas_anchor_animate: false,
 
             tag_carousel: false,
+            tag_gather: false,
 
             scratchpad_width_ratio: 0.8,
             scratchpad_height_ratio: 0.9,

@@ -666,6 +666,16 @@ impl MargoState {
         for output in repaint_outputs {
             self.request_repaint_output(&output);
         }
+        // mango 0.16.1 `tag_gather`: compact this monitor's occupied tags
+        // to consecutive numbers after every arrange, closing gaps left by
+        // closed/moved windows. Remapping only relabels tag numbers — the
+        // set of clients visible right now is unchanged (the current
+        // view's tag moves with its content), so the geometry just
+        // computed above stays valid and this can't feed back into
+        // another arrange.
+        if self.config.tag_gather {
+            self.tag_gather_apply(mon_idx);
+        }
         // Refresh the IPC channels so `mctl clients`/`focused`/`status`
         // and any IPC `watch state` subscriber sees the new
         // windows the moment they're laid out. arrange_all already

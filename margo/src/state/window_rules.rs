@@ -136,6 +136,146 @@ impl MargoState {
         };
     }
 
+    /// Reset one tag slot on `mon_idx` back to "fresh, unused tag": the
+    /// global layout/mfact/nmaster defaults, no gap override, no
+    /// user-picked-layout sticky bit, no canvas pan, no wallpaper — then
+    /// re-seeds it from `taglayout`/`tagrule` config so it immediately
+    /// picks up whatever's configured for its (possibly new) tag number,
+    /// matching the precedence `reload_config` uses (taglayout > tagrule >
+    /// default). Called on tags freed by [`Self::remap_monitor_tags`].
+    fn reset_pertag_slot(&mut self, mon_idx: usize, tag: usize) {
+        let default_layout = self.default_layout();
+        let default_mfact = self.config.default_mfact;
+        let default_nmaster = self.config.default_nmaster;
+        if let Some(mon) = self.monitors.get_mut(mon_idx) {
+            mon.pertag.ltidxs[tag] = default_layout;
+            mon.pertag.mfacts[tag] = default_mfact;
+            mon.pertag.nmasters[tag] = default_nmaster;
+            mon.pertag.gaps[tag] = crate::layout::GapConfig::default();
+            mon.pertag.user_picked_layout[tag] = false;
+            mon.pertag.canvas_pan_x[tag] = 0.0;
+            mon.pertag.canvas_pan_y[tag] = 0.0;
+            mon.pertag.wallpapers[tag].clear();
+        }
+        let taglayouts = self.config.taglayouts.clone();
+        if !taglayouts.is_empty()
+            && let Some(mon) = self.monitors.get_mut(mon_idx)
+        {
+            mon.pertag.seed_taglayouts(&taglayouts);
+        }
+        self.apply_tag_rules_to_monitor(mon_idx);
+    }
+
+    /// Renumber tags on `mon_idx` through `map`: `map[old_tag] = new_tag`
+    /// (1-based), or `0` if `old_tag`'s content isn't being carried
+    /// anywhere — that tag is left to [`Self::reset_pertag_slot`].
+    /// Remaps every client's tag bits, the monitor's tagset slots +
+    /// overview-backup mask, and `pertag.curtag`/`prevtag`; then moves
+    /// the per-tag layout/mfact/nmaster/gap/wallpaper state from each old
+    /// slot to its new one (via a full pre-remap snapshot, so a chain of
+    /// moves — however they overlap — can never read an already-
+    /// overwritten slot) and resets whichever tags end up with nothing
+    /// pointing at them.
+    ///
+    /// Shared by `tag_gather` (compact-to-consecutive) and `view_insert`
+    /// (shift-to-make-room) — both are "renumber tag N as tag map[N]"
+    /// operations on the same monitor. Ports mango 0.16.1's
+    /// `tag_remap_mask` / `tag_gather_move_pertag` / `tag_gather_reset_slot`.
+    pub(crate) fn remap_monitor_tags(
+        &mut self,
+        mon_idx: usize,
+        map: &[usize; crate::MAX_TAGS + 1],
+    ) {
+        let remap_mask = |mask: u32| -> u32 {
+            let mut out = 0u32;
+            for (i, &m) in map.iter().enumerate().skip(1) {
+                if mask & (1 << (i - 1)) != 0 {
+                    let dst = if m != 0 { m } else { i };
+                    out |= 1 << (dst - 1);
+                }
+            }
+            out
+        };
+
+        for c in self.clients.iter_mut() {
+            if c.monitor == mon_idx {
+                c.tags = remap_mask(c.tags);
+            }
+        }
+
+        let Some(mon) = self.monitors.get(mon_idx) else {
+            return;
+        };
+        let old_pertag = mon.pertag.clone();
+        let reached: std::collections::HashSet<usize> = (1..=crate::MAX_TAGS)
+            .filter(|&i| map[i] != 0)
+            .map(|i| map[i])
+            .collect();
+
+        let mon = &mut self.monitors[mon_idx];
+        mon.tagset[0] = remap_mask(mon.tagset[0]);
+        mon.tagset[1] = remap_mask(mon.tagset[1]);
+        mon.overview_backup_tagset = remap_mask(mon.overview_backup_tagset);
+        if mon.pertag.curtag <= crate::MAX_TAGS && map[mon.pertag.curtag] != 0 {
+            mon.pertag.curtag = map[mon.pertag.curtag];
+        }
+        if mon.pertag.prevtag <= crate::MAX_TAGS && map[mon.pertag.prevtag] != 0 {
+            mon.pertag.prevtag = map[mon.pertag.prevtag];
+        }
+
+        for (i, &dst) in map.iter().enumerate().skip(1) {
+            if dst == 0 || dst == i {
+                continue;
+            }
+            mon.pertag.ltidxs[dst] = old_pertag.ltidxs[i];
+            mon.pertag.mfacts[dst] = old_pertag.mfacts[i];
+            mon.pertag.nmasters[dst] = old_pertag.nmasters[i];
+            mon.pertag.gaps[dst] = old_pertag.gaps[i];
+            mon.pertag.user_picked_layout[dst] = old_pertag.user_picked_layout[i];
+            mon.pertag.canvas_pan_x[dst] = old_pertag.canvas_pan_x[i];
+            mon.pertag.canvas_pan_y[dst] = old_pertag.canvas_pan_y[i];
+            mon.pertag.wallpapers[dst] = old_pertag.wallpapers[i].clone();
+        }
+
+        for tag in (1..=crate::MAX_TAGS).filter(|i| !reached.contains(i)) {
+            self.reset_pertag_slot(mon_idx, tag);
+        }
+    }
+
+    /// mango 0.16.1's `tag_gather`: compact this monitor's occupied tags
+    /// to consecutive numbers starting at 1 (e.g. windows on tags 1, 3, 9
+    /// move to 1, 2, 3). The current view always counts as "occupied"
+    /// even with zero clients, so switching to an empty tag doesn't get
+    /// compacted away out from under you. No-op if nothing would move.
+    pub(crate) fn tag_gather_apply(&mut self, mon_idx: usize) {
+        let Some(mon) = self.monitors.get(mon_idx) else {
+            return;
+        };
+        let mut occupied_mask = mon.tagset[mon.seltags];
+        for c in &self.clients {
+            if c.monitor == mon_idx {
+                occupied_mask |= c.tags;
+            }
+        }
+
+        let mut map = [0usize; crate::MAX_TAGS + 1];
+        let mut next = 1usize;
+        let mut changed = false;
+        for (i, m) in map.iter_mut().enumerate().skip(1) {
+            if occupied_mask & (1 << (i - 1)) != 0 {
+                *m = next;
+                if next != i {
+                    changed = true;
+                }
+                next += 1;
+            }
+        }
+        if !changed {
+            return;
+        }
+        self.remap_monitor_tags(mon_idx, &map);
+    }
+
     /// Why a window-rule reapply is happening. Lets the single
     /// reapply path log meaningfully and (in future) skip rule subsets
     /// that don't make sense for a given trigger (e.g. `tags:`

@@ -47,6 +47,10 @@ const ACTIONS: &[(&str, &str)] = &[
     ("tagall", "no arguments"),
     ("viewtoleft", "no arguments"),
     ("viewtoright", "no arguments"),
+    (
+        "view_insert",
+        "prev | next — view the adjacent tag if empty, else insert one",
+    ),
     ("tagtoleft", "no arguments"),
     ("tagtoright", "no arguments"),
     ("focusmon", "Direction — left | right | up | down"),
@@ -615,6 +619,7 @@ fn categorise(action: &str, args: &str) -> &'static str {
         | "tagall"
         | "viewtoleft"
         | "viewtoright"
+        | "view_insert"
         | "tagtoleft"
         | "tagtoright"
         | "focusmon"

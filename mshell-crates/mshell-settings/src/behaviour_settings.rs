@@ -28,6 +28,7 @@ pub(crate) struct BehaviourModel {
     exchange_cross_monitor: bool,
     focus_cross_tag: bool,
     view_current_to_back: bool,
+    tag_gather: bool,
     sloppyfocus: bool,
     warpcursor: bool,
     cursor_hide_timeout: f64,
@@ -182,6 +183,10 @@ impl Component for BehaviourModel {
                         #[template_child] title { set_label: "Super+N on the same tag returns to previous" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.view_current_to_back,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("view_current_to_back", s.is_active())) } },
+                    #[template] Row {
+                        #[template_child] title { set_label: "Compact tags to close gaps (renumber on every arrange)" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.tag_gather,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("tag_gather", s.is_active())) } },
                     #[template] Row {
                         #[template_child] title { set_label: "Hide cursor after inactivity (seconds, 0 = never)" },
                         gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.cursor_hide_timeout, 0.0, 30.0, 1.0),
@@ -355,6 +360,7 @@ impl Component for BehaviourModel {
             exchange_cross_monitor: read_bool("exchange_cross_monitor", false),
             focus_cross_tag: read_bool("focus_cross_tag", false),
             view_current_to_back: read_bool("view_current_to_back", true),
+            tag_gather: read_bool("tag_gather", false),
             sloppyfocus: read_bool("sloppyfocus", true),
             warpcursor: read_bool("warpcursor", false),
             cursor_hide_timeout: read_int("cursor_hide_timeout", 3) as f64,

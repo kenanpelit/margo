@@ -135,6 +135,19 @@ pub const ACTIONS: &[Action] = &[
         detail: "",
     },
     Action {
+        name: "view_insert",
+        aliases: &[],
+        args: "<prev|next>",
+        group: Group::Tag,
+        summary: "View the adjacent tag if empty, else insert a fresh empty tag and switch to it.",
+        detail: "Ported from mango 0.16.1. If the neighbouring tag already has \
+                 windows, a new empty tag is inserted before (`prev`) or after \
+                 (`next`) the current one — every later tag's clients and \
+                 per-tag layout state shift up by one — and you land on it. \
+                 No-op if the current view isn't a single tag, or there's no \
+                 room to shift into (the last tag is already occupied).",
+    },
+    Action {
         name: "tagtoleft",
         aliases: &[],
         args: "",

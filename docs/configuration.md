@@ -386,6 +386,7 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | `toggletag` | `<MASK>` | Add or remove a tag from the focused window's mask. |
 | `tagall` | | Show every tag at once. |
 | `viewtoleft` / `viewtoright` | | Cycle the view to the previous / next occupied tag. |
+| `view_insert` | `prev` / `next` | View the adjacent tag if it's empty; otherwise insert a fresh empty tag before/after the current one (shifting later tags up by one) and switch to it. |
 | `tagtoleft` / `tagtoright` | | Move the focused window to the previous / next tag. |
 
 ### Focus

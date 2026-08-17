@@ -520,6 +520,11 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "tagall" => state.view_tag(u32::MAX),
         "viewtoleft" | "viewtoleft_have_client" => state.view_relative(-1),
         "viewtoright" | "viewtoright_have_client" => state.view_relative(1),
+        // mango 0.16.1: view the adjacent tag if empty, else insert a
+        // fresh empty tag before/after the current one and switch to it.
+        // `arg.v` = "prev" | "next" (anything else defaults to "prev",
+        // matching mango's own `strcmp(..., "next") == 0 ? NEXT : PREV`).
+        "view_insert" => state.view_insert(arg.v.as_deref() == Some("next")),
         "tagtoleft" => state.tag_relative(-1),
         "tagtoright" => state.tag_relative(1),
         "setlayout" => {

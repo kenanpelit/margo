@@ -405,6 +405,76 @@ impl MargoState {
         self.view_tag(1u32 << next);
     }
 
+    /// mango 0.16.1's `view_insert`: view the adjacent tag (`next` =
+    /// false → left, true → right) if it's empty; otherwise make room by
+    /// inserting a fresh empty tag before/after the current one — shifting
+    /// every later tag's clients + pertag state up by one — and switch to
+    /// it. No-op when the current view isn't a single tag, or there's no
+    /// room to shift into (the last tag is already occupied).
+    pub fn view_insert(&mut self, next: bool) {
+        let mon_idx = self.focused_monitor();
+        if mon_idx >= self.monitors.len() || self.monitors[mon_idx].is_overview {
+            return;
+        }
+        let seltags = self.monitors[mon_idx].seltags;
+        let curmask = self.monitors[mon_idx].tagset[seltags];
+        if curmask == 0 || !curmask.is_power_of_two() {
+            return;
+        }
+        let cur = curmask.trailing_zeros() as usize + 1;
+        let max = crate::MAX_TAGS;
+
+        let occupied = |n: usize, state: &Self| -> bool {
+            state
+                .clients
+                .iter()
+                .any(|c| c.is_visible_on(mon_idx, 1u32 << (n - 1)))
+        };
+
+        let target = if next {
+            if cur >= max {
+                return;
+            }
+            cur + 1
+        } else if cur == 1 {
+            cur
+        } else if !occupied(cur - 1, self) {
+            cur - 1
+        } else {
+            cur
+        };
+
+        if !occupied(target, self) {
+            self.view_tag(1u32 << (target - 1));
+            return;
+        }
+
+        if target >= max || occupied(max, self) {
+            return;
+        }
+
+        let mut map = [0usize; crate::MAX_TAGS + 1];
+        for (i, m) in map.iter_mut().enumerate().take(target).skip(1) {
+            *m = i;
+        }
+        for (i, m) in map.iter_mut().enumerate().take(max).skip(target) {
+            *m = i + 1;
+        }
+        map[max] = max;
+        self.remap_monitor_tags(mon_idx, &map);
+
+        // Suppress tag_gather across the view switch below: the newly
+        // freed `target` slot is empty by construction, and without this
+        // guard a live tag_gather would immediately compact it away
+        // again before the user ever sees it (view_tag's own arrange
+        // pass already treats the *new* current view as occupied, but
+        // this belt-and-suspenders matches mango's own view_insert).
+        let saved_gather = self.config.tag_gather;
+        self.config.tag_gather = false;
+        self.view_tag(1u32 << (target - 1));
+        self.config.tag_gather = saved_gather;
+    }
+
     /// Edge-scroller pointer focus: when the pointer rests at the
     /// leading / trailing edge of a scroller layout and is moving
     /// slowly (per-event magnitude `speed` below
