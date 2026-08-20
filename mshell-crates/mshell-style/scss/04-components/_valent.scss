@@ -58,3 +58,25 @@
   font-variant-numeric: tabular-nums;
   color: var(--on-surface);
 }
+
+// Per-device avatar (generic phone icon, or a user-picked image once
+// one is set) — a small round portrait, not a card thumbnail.
+.valent-avatar-button {
+  padding: 0;
+  min-width: 32px;
+  min-height: 32px;
+}
+
+.valent-avatar {
+  border-radius: var(--radius-pill);
+}
+
+// Inline "share text" row revealed under the connected card's
+// sharing actions.
+.valent-share-text-row {
+  margin-top: var(--space-1);
+}
+
+.valent-settings-popover {
+  min-width: 220px;
+}

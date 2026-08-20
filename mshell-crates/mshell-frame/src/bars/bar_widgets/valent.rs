@@ -15,10 +15,10 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 use tokio::sync::Notify;
 
-/// First probe lands shortly after launch.
+/// First probe lands shortly after launch, regardless of the
+/// configured poll interval — otherwise a large interval would leave
+/// the pill blank for a long time after login.
 const STARTUP_DELAY: Duration = Duration::from_secs(4);
-/// Poll cadence — matches the plugin's 5 s timer.
-const INTERVAL: Duration = Duration::from_secs(5);
 
 pub(crate) struct ValentModel {
     report: Option<ValentReport>,
@@ -116,7 +116,18 @@ impl Component for ValentModel {
                 tokio::pin!(shutdown_fut);
                 let mut first = true;
                 loop {
-                    let delay = if first { STARTUP_DELAY } else { INTERVAL };
+                    let delay = if first {
+                        STARTUP_DELAY
+                    } else {
+                        Duration::from_secs(
+                            config_manager()
+                                .config()
+                                .valent()
+                                .poll_interval_secs()
+                                .get_untracked()
+                                .max(1) as u64,
+                        )
+                    };
                     first = false;
                     tokio::select! {
                         () = &mut shutdown_fut => break,
@@ -130,10 +141,16 @@ impl Component for ValentModel {
         });
 
         // Repaint the icon/label when the sticky device id changes
-        // (the panel's device switcher writes it).
+        // (the panel's device switcher writes it) or the battery-label
+        // visibility is flipped from the panel's settings popover.
         let mut effects = EffectScope::new();
         effects.push(|_| {
             let _ = config_manager().config().valent().main_device_id().get();
+            let _ = config_manager()
+                .config()
+                .valent()
+                .show_battery_percent()
+                .get();
         });
 
         let model = ValentModel {
@@ -202,6 +219,14 @@ fn icon_for(report: Option<&ValentReport>) -> &'static str {
 }
 
 fn battery_label(report: Option<&ValentReport>) -> String {
+    if !config_manager()
+        .config()
+        .valent()
+        .show_battery_percent()
+        .get_untracked()
+    {
+        return String::new();
+    }
     let Some(r) = report else {
         return String::new();
     };

@@ -3,7 +3,7 @@
 //! `valent-connect` plugin: it talks to the `ca.andyholmes.Valent`
 //! session-bus service through `gdbus` and exposes device discovery,
 //! battery / connectivity stats, and the find / ping / browse /
-//! share / pair / unpair actions.
+//! share (file / text) / clipboard push-pull / pair / unpair actions.
 //!
 //! We shell out to `gdbus` (rather than wiring a zbus proxy) for the
 //! same reason the plugin does: Valent's per-device API is a
@@ -343,9 +343,29 @@ pub(crate) async fn share_file(device_id: String, path: String) {
     } else {
         format!("file://{path}")
     };
-    let escaped = uri.replace('\\', "\\\\").replace('"', "\\\"");
-    let param = format!("[<\"{escaped}\">]");
-    activate_param(&device_id, "share.uri", &param).await;
+    activate_param(&device_id, "share.uri", &quoted_string_param(&uri)).await;
+}
+
+/// Share arbitrary text with the device (`share.text` GAction).
+pub(crate) async fn share_text(device_id: String, text: String) {
+    activate_param(&device_id, "share.text", &quoted_string_param(&text)).await;
+}
+
+/// Push the local clipboard to the device.
+pub(crate) async fn clipboard_push(device_id: String) {
+    activate(&device_id, "clipboard.push").await;
+}
+
+/// Pull the device's clipboard into the local one.
+pub(crate) async fn clipboard_pull(device_id: String) {
+    activate(&device_id, "clipboard.pull").await;
+}
+
+/// Build a GVariant `av` param holding one double-quoted string,
+/// escaped so embedded backslashes/quotes are safe.
+fn quoted_string_param(s: &str) -> String {
+    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("[<\"{escaped}\">]")
 }
 
 /// Kick Valent's discovery by clearing then re-clearing its
