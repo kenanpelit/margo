@@ -37,7 +37,16 @@ pub enum PlayCommands {
     /// Hidden: mpv's `ytdl_hook` invokes this as its `ytdl_path` (wired up
     /// by `control::ensure_ytdl_shim`) — not meant to be run by hand.
     #[command(name = "__ytdlp", hide = true, trailing_var_arg = true)]
-    Ytdlp { args: Vec<String> },
+    Ytdlp {
+        /// `trailing_var_arg` alone only stops swallowing hyphenated
+        /// tokens as options once a prior positional value has already
+        /// flipped clap into "trailing" mode — but `ytdl_hook` always
+        /// passes `--no-warnings` as the very first argument, so without
+        /// `allow_hyphen_values` clap rejects it as an unknown option
+        /// before any value is ever consumed.
+        #[arg(allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -108,5 +117,33 @@ pub async fn execute(command: PlayCommands) -> anyhow::Result<()> {
             WallpaperCommands::Stop { output } => paper::stop(output.as_deref()),
         },
         PlayCommands::Ytdlp { args } => std::process::exit(ytdl_shim::run(&args)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::app::Cli;
+    use clap::Parser;
+
+    /// mpv's `ytdl_hook` invokes the shim with yt-dlp-style flags as the
+    /// very first argument (e.g. `--no-warnings`), before any non-hyphen
+    /// value has been seen. `trailing_var_arg` alone only starts absorbing
+    /// hyphenated tokens once a prior positional value flips clap into
+    /// "trailing" mode — the first token still gets matched against known
+    /// long options and rejected. Regression for the real invocation
+    /// `ytdl_hook` makes against `mshellctl play __ytdlp`.
+    #[test]
+    fn ytdlp_shim_accepts_leading_hyphen_args() {
+        let cli = Cli::try_parse_from([
+            "mshellctl",
+            "play",
+            "__ytdlp",
+            "--no-warnings",
+            "-J",
+            "--flat-playlist",
+            "--",
+            "some-target",
+        ]);
+        assert!(cli.is_ok(), "{:?}", cli.err());
     }
 }
