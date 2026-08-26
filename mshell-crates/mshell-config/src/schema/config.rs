@@ -1885,9 +1885,18 @@ pub struct ValentDeviceOverride {
 /// Valent (KDE Connect) integration settings. `main_device_id` is the
 /// sticky device the bar pill + panel default to when several phones
 /// are paired; empty means "auto-pick the first reachable one".
-#[derive(
-    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
-)]
+///
+/// Deliberately a hand-written `impl Default` rather than
+/// `#[derive(Default)]`: a profile baked before this section existed
+/// (or one that never touched Valent settings) has no top-level
+/// `valent:` key at all, so `Config`'s own `#[serde(default)]` falls
+/// back to `Valent::default()` for the *whole struct* — the per-field
+/// `#[serde(default = "…")]` attributes below only apply when the
+/// `valent:` block is present but an individual field is missing.
+/// A derived `Default` would silently give `poll_interval_secs: 0` and
+/// `show_battery_percent: false` in that whole-block-missing case
+/// (see the mdash/lyrics precedent in git history for the same trap).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct Valent {
     pub main_device_id: String,
@@ -1901,6 +1910,17 @@ pub struct Valent {
     pub show_battery_percent: bool,
     /// Per-device alias/avatar overrides, keyed by matching `device_id`.
     pub devices: Vec<ValentDeviceOverride>,
+}
+
+impl Default for Valent {
+    fn default() -> Self {
+        Self {
+            main_device_id: String::new(),
+            poll_interval_secs: default_valent_poll_interval_secs(),
+            show_battery_percent: true,
+            devices: Vec::new(),
+        }
+    }
 }
 
 fn default_valent_poll_interval_secs() -> u32 {
