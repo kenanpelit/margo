@@ -852,8 +852,8 @@ Insert the save call between those two statements — the parse has just succeed
 Run: `cargo check -p margo`
 Expected: clean.
 
-Run: `cargo test -p margo --lib`
-Expected: PASS — includes `boot_fallback_tests` from Step 1/2 and every pre-existing unit test in the crate (not the heavier `margo/src/tests/` integration harness, which needs `--test` target selection and isn't required for this change).
+Run: `cargo test -p margo`
+Expected: PASS (baseline is 372 passed, 0 failed — confirmed on this workspace before Task 3 starts). `margo` is a bin-only crate (no `--lib` target — that flag errors with "no library targets found"), so this one invocation already covers both the new `boot_fallback_tests` and the `margo/src/tests/` integration harness (`#[cfg(test)] mod tests;` in `main.rs` is an ordinary module compiled into the same `--bin margo` test binary, not a separate target) — nothing extra to run.
 
 Run: `cargo clippy -p margo --all-targets -- -D warnings`
 Expected: clean.
@@ -1192,8 +1192,8 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Run the full test suite for every touched crate**
 
-Run: `cargo test -p margo-config -p margo --lib -p mctl`
-Expected: PASS, no regressions anywhere.
+Run: `cargo test -p margo-config -p margo -p mctl`
+Expected: PASS, no regressions anywhere. (No `--lib` — `margo` is a bin-only crate; see Task 3 Step 6.)
 
 - [ ] **Step 2: Run clippy across the touched crates**
 
