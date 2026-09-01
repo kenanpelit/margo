@@ -27,6 +27,36 @@ pub fn parse_config_with_defaults(path: Option<&Path>) -> Result<Config> {
     Ok(cfg)
 }
 
+/// Like [`parse_config`] but the top-level content comes from `content`
+/// instead of reading `path` (or the default config location) from
+/// disk — `path` is still used as the *origin* for resolving relative
+/// `source`/`include` directives found inside `content`, which are read
+/// from disk exactly as they are for the path-based parser. Used to
+/// validate config content that isn't (yet, or any longer) the live
+/// file on disk — a saved generation being considered for the boot
+/// fallback, or a rollback candidate being checked before it's written.
+pub fn parse_config_str(content: &str, path: Option<&Path>) -> Result<Config> {
+    let origin = resolve_config_path(path)?;
+    let mut cfg = Config::default();
+    let mut visited = HashSet::new();
+    // Pre-mark `origin` visited so a pathological self-referential
+    // `source = <origin's own filename>` line is treated as a cycle
+    // (matching parse_file's own guard) instead of re-reading whatever
+    // is currently on disk at `origin`, which may not match `content`.
+    visited.insert(std::fs::canonicalize(&origin).unwrap_or_else(|_| origin.clone()));
+    parse_lines(&mut cfg, content, &origin, &mut visited);
+    inject_default_chvt_bindings(&mut cfg);
+    Ok(cfg)
+}
+
+/// [`parse_config_str`] plus margo's first-party defaults — the
+/// string-content counterpart to [`parse_config_with_defaults`].
+pub fn parse_config_str_with_defaults(content: &str, path: Option<&Path>) -> Result<Config> {
+    let mut cfg = parse_config_str(content, path)?;
+    apply_first_party_defaults(&mut cfg);
+    Ok(cfg)
+}
+
 /// Defaults that are part of the margo suite itself rather than the
 /// user's file. Currently none: the setup wizard used to be floated +
 /// `exec-once`'d here, but it is now an in-shell layer-shell menu
@@ -104,17 +134,27 @@ fn parse_file(
             return Ok(());
         }
     };
+    parse_lines(cfg, &text, path, visited);
+    Ok(())
+}
 
+/// Walk `text` line by line, dispatching each non-empty/non-comment line
+/// to [`parse_line`]. `origin` is the path `source`/`include` directives
+/// in `text` resolve relative to (and, for the path-based caller, is
+/// `text`'s own real location; for [`parse_config_str`] it's the
+/// location `content` is *pretending* to be). Parse errors on individual
+/// lines are logged and skipped, never propagated — matches the
+/// permissive-parser contract the rest of the crate already documents.
+fn parse_lines(cfg: &mut Config, text: &str, origin: &Path, visited: &mut HashSet<PathBuf>) {
     for (lineno, raw) in text.lines().enumerate() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        if let Err(e) = parse_line(cfg, line, path, visited) {
-            error!("{}:{}: {} — {:?}", path.display(), lineno + 1, e, line);
+        if let Err(e) = parse_line(cfg, line, origin, visited) {
+            error!("{}:{}: {} — {:?}", origin.display(), lineno + 1, e, line);
         }
     }
-    Ok(())
 }
 
 /// Strip an inline `#`-comment that begins at a whitespace boundary
@@ -1760,7 +1800,10 @@ pub const OPTION_KEYS: &[&str] = &[
 
 #[cfg(test)]
 mod tests {
-    use super::{clamp_keyword, parse_config, parse_key, strip_inline_comment};
+    use super::{
+        clamp_keyword, parse_config, parse_config_str, parse_config_str_with_defaults, parse_key,
+        strip_inline_comment,
+    };
 
     #[test]
     fn clamp_keyword_is_char_safe() {
@@ -2252,5 +2295,49 @@ mod tests {
         assert_eq!(cfg.window_rules.len(), 2);
         assert_eq!(cfg.window_rules[0].group, Some(true));
         assert_eq!(cfg.window_rules[1].group, Some(true));
+    }
+
+    #[test]
+    fn parse_config_str_parses_scalar_keys() {
+        let cfg = parse_config_str("borderpx = 7\n", None).unwrap();
+        assert_eq!(cfg.borderpx, 7);
+    }
+
+    #[test]
+    fn parse_config_str_with_defaults_matches_plain_variant() {
+        // apply_first_party_defaults is currently a no-op, but the
+        // `_with_defaults` entry point must still exist and behave
+        // identically to plain parse_config_str until that changes.
+        let plain = parse_config_str("borderpx = 7\n", None).unwrap();
+        let defaulted = parse_config_str_with_defaults("borderpx = 7\n", None).unwrap();
+        assert_eq!(plain.borderpx, defaulted.borderpx);
+    }
+
+    #[test]
+    fn parse_config_str_resolves_relative_source_against_given_origin() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("conf.d")).unwrap();
+        std::fs::write(dir.path().join("conf.d/frag.conf"), "borderpx = 9\n").unwrap();
+        // `origin` doesn't need to exist on disk itself — only its
+        // parent directory is used to resolve the relative `source =`.
+        let origin = dir.path().join("config.conf");
+        let cfg = parse_config_str("source = conf.d/frag.conf\n", Some(&origin)).unwrap();
+        assert_eq!(
+            cfg.borderpx, 9,
+            "relative source= must resolve against `origin`'s directory"
+        );
+    }
+
+    #[test]
+    fn parse_config_str_self_referential_source_does_not_recurse_forever() {
+        // A pathological `source = config.conf` line pointing back at
+        // `origin` itself must not infinite-loop or double-parse.
+        let dir = tempfile::tempdir().unwrap();
+        let origin = dir.path().join("config.conf");
+        std::fs::write(&origin, "borderpx = 1\n").unwrap(); // real file, so the cycle path is exercised
+        let cfg = parse_config_str("source = config.conf\nborderpx = 5\n", Some(&origin)).unwrap();
+        // The self-source is skipped as an already-visited origin; the
+        // second line still applies normally.
+        assert_eq!(cfg.borderpx, 5);
     }
 }

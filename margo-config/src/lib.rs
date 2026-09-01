@@ -5,5 +5,8 @@ pub mod diagnostics;
 pub mod generations;
 pub mod validator;
 
-pub use parser::{apply_first_party_defaults, parse_config, parse_config_with_defaults};
+pub use parser::{
+    apply_first_party_defaults, parse_config, parse_config_str, parse_config_str_with_defaults,
+    parse_config_with_defaults,
+};
 pub use types::*;
