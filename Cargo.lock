@@ -4358,6 +4358,7 @@ name = "mctl"
 version = "2.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "clap_complete",
  "libc",
@@ -4366,6 +4367,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "similar",
  "thiserror 2.0.18",
  "wayland-backend",
  "wayland-client",

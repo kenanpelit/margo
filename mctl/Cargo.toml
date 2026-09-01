@@ -26,6 +26,11 @@ regex = "1"
 # `mctl clients`/`outputs` use libc::getuid for the
 # /run/user/$UID fallback when XDG_RUNTIME_DIR isn't set.
 libc = "0.2"
+# `mctl config diff` renders a unified diff between a saved generation
+# and the live file.
+similar = "2.7"
+# `mctl config list` renders each generation's saved timestamp.
+chrono.workspace = true
 
 [lints]
 workspace = true

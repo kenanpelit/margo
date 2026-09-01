@@ -402,6 +402,19 @@ enum Command {
         action: TwilightCmd,
     },
 
+    /// Config generation history — list, diff, or roll back
+    /// `~/.config/margo/config.conf`
+    ///
+    /// A copy of config.conf is saved every time it successfully takes
+    /// effect (compositor boot, or a successful `mctl reload`). `list`
+    /// shows the saved history, `diff` compares one against the live
+    /// file, `rollback` restores one and reloads.
+    #[command(display_order = 43)]
+    Config {
+        #[command(subcommand)]
+        action: ConfigCmd,
+    },
+
     /// Show config diagnostics from the last reload (niri-style)
     ///
     /// Hyprland's `hyprctl configerrors` analogue. Empty when the
@@ -670,6 +683,25 @@ enum PluginCmd {
 }
 
 #[derive(Subcommand, Debug)]
+enum ConfigCmd {
+    /// List saved config.conf generations, newest first (index 0 = most recent).
+    List,
+    /// Show a unified diff between a saved generation and the live file.
+    Diff {
+        /// Generation index (0 = most recent). Default: 0.
+        n: Option<usize>,
+    },
+    /// Restore a saved generation to config.conf and reload.
+    Rollback {
+        /// Generation index (0 = most recent). Default: 1 (one before the current file).
+        n: Option<usize>,
+        /// Skip the symlink/overwrite confirmation prompt.
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum TwilightCmd {
     /// Print the current twilight state (temperature, gamma, phase,
     /// source). Reads `state snapshot` — works even when the compositor
@@ -853,6 +885,16 @@ fn main() -> Result<()> {
         }
         Command::ConfigErrors => {
             return cmd_config_errors();
+        }
+        Command::Config {
+            action: ConfigCmd::List,
+        } => {
+            return cmd_config_list();
+        }
+        Command::Config {
+            action: ConfigCmd::Diff { n },
+        } => {
+            return cmd_config_diff(*n);
         }
         Command::Twilight {
             action: TwilightCmd::Status { json },
@@ -1090,6 +1132,14 @@ fn main() -> Result<()> {
                 }
             }
         }
+        Command::Config { action } => match action {
+            ConfigCmd::List | ConfigCmd::Diff { .. } => {
+                unreachable!("List/Diff return early in main's first match block")
+            }
+            ConfigCmd::Rollback { n, yes } => {
+                cmd_config_rollback(n, yes)?;
+            }
+        },
         Command::Theme { preset } => {
             // Single non-numeric arg lands in `arg.v` (the preset name),
             // which the `theme` action reads.
@@ -2032,6 +2082,105 @@ fn cmd_config_errors() -> Result<()> {
     Ok(())
 }
 
+fn cmd_config_list() -> Result<()> {
+    let gens = margo_config::generations::list()?;
+    if gens.is_empty() {
+        println!(
+            "no saved generations yet — one is created on the next successful boot or `mctl reload`"
+        );
+        return Ok(());
+    }
+    for (idx, r#gen) in gens.iter().enumerate() {
+        let when: chrono::DateTime<chrono::Local> = r#gen.timestamp.into();
+        println!(
+            "{idx:>3}  {}  {}",
+            when.format("%Y-%m-%d %H:%M:%S"),
+            r#gen.id
+        );
+    }
+    Ok(())
+}
+
+fn resolve_live_config_path() -> std::path::PathBuf {
+    std::path::PathBuf::from(format!(
+        "{}/.config/margo/config.conf",
+        std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
+    ))
+}
+
+fn cmd_config_diff(n: Option<usize>) -> Result<()> {
+    let gens = margo_config::generations::list()?;
+    let idx = n.unwrap_or(0);
+    let r#gen = gens
+        .get(idx)
+        .ok_or_else(|| anyhow::anyhow!("no generation at index {idx} (have {})", gens.len()))?;
+    let old = margo_config::generations::read(&r#gen.id)?;
+    let live_path = resolve_live_config_path();
+    let new = std::fs::read_to_string(&live_path)
+        .with_context(|| format!("reading {}", live_path.display()))?;
+    let diff = similar::TextDiff::from_lines(&old, &new);
+    print!(
+        "{}",
+        diff.unified_diff().header(
+            &format!("generation {}", r#gen.id),
+            &live_path.display().to_string()
+        )
+    );
+    Ok(())
+}
+
+fn cmd_config_rollback(n: Option<usize>, yes: bool) -> Result<()> {
+    let gens = margo_config::generations::list()?;
+    let idx = n.unwrap_or(1);
+    let r#gen = gens
+        .get(idx)
+        .ok_or_else(|| anyhow::anyhow!("no generation at index {idx} (have {})", gens.len()))?;
+    let content = margo_config::generations::read(&r#gen.id)?;
+
+    // Safety check: never write a candidate that doesn't itself parse
+    // (should be unreachable — generations are only ever saved after a
+    // successful parse — but cheap insurance against a corrupted file).
+    margo_config::parse_config_str(&content, None).with_context(|| {
+        format!(
+            "generation {} does not parse; refusing to roll back to it",
+            r#gen.id
+        )
+    })?;
+
+    let live_path = resolve_live_config_path();
+    let is_symlink = std::fs::symlink_metadata(&live_path)
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false);
+    if is_symlink && !yes {
+        let target = std::fs::read_link(&live_path).unwrap_or_default();
+        eprintln!(
+            "{} is a symlink to {} — rollback writes through it, changing that file.",
+            live_path.display(),
+            target.display()
+        );
+        eprint!("Continue? [y/N] ");
+        use std::io::Write;
+        std::io::stdout().flush().ok();
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer)?;
+        if !answer.trim().eq_ignore_ascii_case("y") {
+            println!("rollback cancelled");
+            return Ok(());
+        }
+    }
+
+    std::fs::write(&live_path, &content)
+        .with_context(|| format!("writing {}", live_path.display()))?;
+    println!(
+        "restored generation {} to {}",
+        r#gen.id,
+        live_path.display()
+    );
+    send_dispatch("reload", &[])?;
+    println!("reloaded");
+    Ok(())
+}
+
 fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
     use margo_config::diagnostics::{ConfigDiagnostic, Severity};
     use std::collections::HashMap;
@@ -2778,4 +2927,71 @@ fn cmd_focused(json_out: bool) -> Result<()> {
     let title = focused["title"].as_str().unwrap_or("");
     println!("{app} · {title}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Args, Command, ConfigCmd};
+    use clap::Parser;
+
+    #[test]
+    fn config_list_parses() {
+        let args = Args::try_parse_from(["mctl", "config", "list"]).unwrap();
+        assert!(matches!(
+            args.command,
+            Command::Config {
+                action: ConfigCmd::List
+            }
+        ));
+    }
+
+    #[test]
+    fn config_diff_defaults_n_to_none() {
+        let args = Args::try_parse_from(["mctl", "config", "diff"]).unwrap();
+        let Command::Config {
+            action: ConfigCmd::Diff { n },
+        } = args.command
+        else {
+            panic!("expected ConfigCmd::Diff");
+        };
+        assert_eq!(n, None);
+    }
+
+    #[test]
+    fn config_diff_accepts_explicit_n() {
+        let args = Args::try_parse_from(["mctl", "config", "diff", "2"]).unwrap();
+        let Command::Config {
+            action: ConfigCmd::Diff { n },
+        } = args.command
+        else {
+            panic!("expected ConfigCmd::Diff");
+        };
+        assert_eq!(n, Some(2));
+    }
+
+    #[test]
+    fn config_rollback_defaults_n_and_yes() {
+        let args = Args::try_parse_from(["mctl", "config", "rollback"]).unwrap();
+        let Command::Config {
+            action: ConfigCmd::Rollback { n, yes },
+        } = args.command
+        else {
+            panic!("expected ConfigCmd::Rollback");
+        };
+        assert_eq!(n, None);
+        assert!(!yes);
+    }
+
+    #[test]
+    fn config_rollback_accepts_n_and_yes_flag() {
+        let args = Args::try_parse_from(["mctl", "config", "rollback", "3", "--yes"]).unwrap();
+        let Command::Config {
+            action: ConfigCmd::Rollback { n, yes },
+        } = args.command
+        else {
+            panic!("expected ConfigCmd::Rollback");
+        };
+        assert_eq!(n, Some(3));
+        assert!(yes);
+    }
 }
