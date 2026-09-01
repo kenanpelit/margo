@@ -99,7 +99,7 @@ use smithay::{
     xwayland::{X11Surface, X11Wm},
 };
 
-use margo_config::{Config, WindowRule, parse_config_with_defaults};
+use margo_config::{Config, WindowRule, generations, parse_config_with_defaults};
 
 use crate::{
     animation::{AnimationCurves, AnimationType, ClientAnimation, OpacityAnimation},
@@ -1919,6 +1919,24 @@ impl MargoState {
 
         let new_config = parse_config_with_defaults(self.config_path.as_deref())
             .with_context(|| "reload margo config")?;
+
+        // Save this generation now that it's confirmed to parse (the
+        // validator above already confirmed it has no errors). Mirrors
+        // the boot-path save in main.rs — see
+        // docs/superpowers/specs/2026-09-01-config-generations-rollback-design.md.
+        if let Some(path) = self
+            .config_path
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var("HOME")
+                    .ok()
+                    .map(|h| std::path::PathBuf::from(h).join(".config/margo/config.conf"))
+            })
+            && let Ok(raw) = std::fs::read_to_string(&path)
+        {
+            let _ = generations::save(&raw, 20);
+        }
 
         // Successful reload — clear any stale diagnostics + overlay
         // (warnings from the validation pass above are still in

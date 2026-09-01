@@ -454,11 +454,17 @@ fn main() -> Result<()> {
     // here (not start-margo) because margo is the one universal entry point.
     ensure_default_config(args.config.as_deref());
 
-    let (config, config_err) =
-        match margo_config::parse_config_with_defaults(args.config.as_deref()) {
-            Ok(c) => (c, None),
-            Err(e) => (margo_config::Config::default(), Some(e.to_string())),
-        };
+    let parse_result = margo_config::parse_config_with_defaults(args.config.as_deref());
+    let fallback = if parse_result.is_err() {
+        margo_config::generations::latest()
+    } else {
+        None
+    };
+    let BootConfigResolution {
+        config,
+        parse_error: config_err,
+        restored_generation,
+    } = resolve_boot_config(parse_result, fallback, args.config.as_deref());
 
     // Stand up logging now that the knobs are known. Keeps the last
     // `log_keep_sessions` files in ~/.local/state/margo/logs (margo-*.log).
@@ -472,8 +478,27 @@ fn main() -> Result<()> {
         env_override: Some("MARGO_LOG".to_string()),
     }));
 
-    if let Some(e) = config_err {
-        error!("config error: {e}, using defaults");
+    if let Some(e) = &config_err {
+        if let Some(gen_id) = &restored_generation {
+            error!("config error: {e} — restored last-good generation {gen_id}");
+        } else {
+            error!("config error: {e}, using defaults");
+        }
+    }
+
+    if config_err.is_none()
+        && let Some(path) = args
+            .config
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var("HOME")
+                    .ok()
+                    .map(|h| std::path::PathBuf::from(h).join(".config/margo/config.conf"))
+            })
+        && let Ok(raw) = std::fs::read_to_string(&path)
+    {
+        let _ = margo_config::generations::save(&raw, 20);
     }
 
     for (name, value) in &config.envs {
@@ -504,6 +529,13 @@ fn main() -> Result<()> {
         loop_signal,
         args.config.clone(),
     );
+    if restored_generation.is_some() {
+        // Same 10s window `reload_config` uses for a live-reload
+        // failure — the first rendered frame should carry the warning,
+        // not just a log line nobody's watching at boot.
+        margo.config_error_overlay_until =
+            Some(std::time::Instant::now() + std::time::Duration::from_secs(10));
+    }
 
     // Hidden workspaces do not participate in an output's normal vblank walk,
     // but frame-throttled clients still need callback-only liveness. This one
@@ -1527,4 +1559,159 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Pure decision logic for what `MargoState` should boot with when the
+/// primary parse of `config.conf` fails: prefer the last-good saved
+/// generation over a bare `Config::default()`, if one exists and still
+/// parses. Kept free of filesystem I/O (the caller passes in whatever
+/// `generations::latest()` returned) so it's unit-testable without a
+/// tempdir or a real compositor.
+struct BootConfigResolution {
+    config: margo_config::Config,
+    /// The primary parse's error message, set whenever it failed —
+    /// regardless of whether a fallback generation was available.
+    parse_error: Option<String>,
+    /// The generation id that was restored, if the primary parse failed
+    /// and a saved generation both existed and itself parsed. `None`
+    /// means either the primary parse succeeded, or no usable
+    /// generation was available (bare `Config::default()` fallback).
+    restored_generation: Option<String>,
+}
+
+fn resolve_boot_config(
+    parse_result: anyhow::Result<margo_config::Config>,
+    fallback: Option<(margo_config::generations::Generation, String)>,
+    config_path: Option<&std::path::Path>,
+) -> BootConfigResolution {
+    match parse_result {
+        Ok(config) => BootConfigResolution {
+            config,
+            parse_error: None,
+            restored_generation: None,
+        },
+        Err(e) => {
+            let parse_error = Some(e.to_string());
+            let restored = fallback.and_then(|(r#gen, content)| {
+                margo_config::parse_config_str_with_defaults(&content, config_path)
+                    .ok()
+                    .map(|cfg| (r#gen.id, cfg))
+            });
+            match restored {
+                Some((id, cfg)) => BootConfigResolution {
+                    config: cfg,
+                    parse_error,
+                    restored_generation: Some(id),
+                },
+                None => BootConfigResolution {
+                    config: margo_config::Config::default(),
+                    parse_error,
+                    restored_generation: None,
+                },
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod boot_fallback_tests {
+    use super::*;
+
+    /// `err_with_fallback_content_that_fails_to_resolve_falls_back_to_default`
+    /// below temporarily unsets the process-global `HOME` var;
+    /// `err_with_parseable_generation_restores_it` depends on `HOME`
+    /// staying set for its own real `resolve_config_path` call to
+    /// succeed. `cargo test -p margo` (no `--test-threads=1`, e.g. CI's
+    /// `cargo test --workspace --locked`) runs both concurrently by
+    /// default, so without serializing on this lock the two race and
+    /// the latter fails intermittently — not a `resolve_boot_config`
+    /// bug, purely test-process isolation.
+    static HOME_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn ok_parse_is_used_as_is_no_fallback_consulted() {
+        let cfg = margo_config::Config::default();
+        let resolution = resolve_boot_config(Ok(cfg), None, None);
+        assert!(resolution.parse_error.is_none());
+        assert!(resolution.restored_generation.is_none());
+    }
+
+    #[test]
+    fn err_with_parseable_generation_restores_it() {
+        let _guard = HOME_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let fallback = Some((
+            margo_config::generations::Generation {
+                id: "20260901T000000Z".to_string(),
+                timestamp: std::time::SystemTime::now(),
+                path: std::path::PathBuf::from("/tmp/irrelevant.conf"),
+            },
+            "borderpx = 9\n".to_string(),
+        ));
+        let resolution = resolve_boot_config(
+            Err(anyhow::anyhow!(
+                "cannot open config file: permission denied"
+            )),
+            fallback,
+            None,
+        );
+        assert_eq!(resolution.config.borderpx, 9);
+        assert_eq!(
+            resolution.parse_error.as_deref(),
+            Some("cannot open config file: permission denied")
+        );
+        assert_eq!(
+            resolution.restored_generation.as_deref(),
+            Some("20260901T000000Z")
+        );
+    }
+
+    #[test]
+    fn err_with_no_fallback_falls_back_to_default() {
+        let resolution = resolve_boot_config(Err(anyhow::anyhow!("boom")), None, None);
+        assert_eq!(
+            resolution.config.borderpx,
+            margo_config::Config::default().borderpx
+        );
+        assert!(resolution.restored_generation.is_none());
+        assert_eq!(resolution.parse_error.as_deref(), Some("boom"));
+    }
+
+    #[test]
+    fn err_with_fallback_content_that_fails_to_resolve_falls_back_to_default() {
+        // `resolve_boot_config` never touches the filesystem itself — the
+        // one way to make the composed `parse_config_str_with_defaults`
+        // call fail without a real file is to make `resolve_config_path`
+        // fail, which only happens when `path` is `None` and `HOME` is
+        // unset. The line-level parser is otherwise permissive (bad
+        // `key = value` lines are logged and skipped, never bail), so
+        // there is no in-memory content that makes it return `Err` —
+        // this is the one genuine way to exercise the
+        // fallback-generation-exists-but-still-degrades-to-default
+        // branch. `--test-threads=1` is required for this test file
+        // because it mutates the process-global `HOME` var; the
+        // `HOME_ENV_LOCK` guard below is what keeps it safe under the
+        // default multi-threaded runner too (see the lock's doc comment).
+        // SAFETY: test-local mutation, restored before the function returns.
+        let _guard = HOME_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var_os("HOME");
+        unsafe { std::env::remove_var("HOME") };
+        let fallback = Some((
+            margo_config::generations::Generation {
+                id: "20260901T000000Z".to_string(),
+                timestamp: std::time::SystemTime::now(),
+                path: std::path::PathBuf::from("/tmp/irrelevant.conf"),
+            },
+            "borderpx = 9\n".to_string(),
+        ));
+        let resolution = resolve_boot_config(Err(anyhow::anyhow!("boom")), fallback, None);
+        if let Some(home) = prev {
+            unsafe { std::env::set_var("HOME", home) };
+        }
+        assert!(resolution.restored_generation.is_none());
+        assert_eq!(
+            resolution.config.borderpx,
+            margo_config::Config::default().borderpx
+        );
+        assert_eq!(resolution.parse_error.as_deref(), Some("boom"));
+    }
 }
