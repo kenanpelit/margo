@@ -529,10 +529,15 @@ fn main() -> Result<()> {
         loop_signal,
         args.config.clone(),
     );
-    if restored_generation.is_some() {
+    if config_err.is_some() {
         // Same 10s window `reload_config` uses for a live-reload
         // failure — the first rendered frame should carry the warning,
-        // not just a log line nobody's watching at boot.
+        // not just a log line nobody's watching at boot. Armed whenever
+        // the primary parse failed at all, not only when a saved
+        // generation was recovered — falling all the way to
+        // Config::default() (no usable generation) is the more
+        // alarming case, not the milder one, and must not be the
+        // quiet branch.
         margo.config_error_overlay_until =
             Some(std::time::Instant::now() + std::time::Duration::from_secs(10));
     }
