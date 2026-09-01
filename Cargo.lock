@@ -4262,6 +4262,7 @@ version = "2.1.0"
 dependencies = [
  "anyhow",
  "bitflags 2.11.1",
+ "chrono",
  "criterion",
  "proptest",
  "serde",
