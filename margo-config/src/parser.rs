@@ -2335,9 +2335,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let origin = dir.path().join("config.conf");
         std::fs::write(&origin, "borderpx = 1\n").unwrap(); // real file, so the cycle path is exercised
-        let cfg = parse_config_str("source = config.conf\nborderpx = 5\n", Some(&origin)).unwrap();
-        // The self-source is skipped as an already-visited origin; the
-        // second line still applies normally.
+        let cfg = parse_config_str("borderpx = 5\nsource = config.conf\n", Some(&origin)).unwrap();
+        // `borderpx = 5` applies first; the trailing self-source is then
+        // skipped as an already-visited origin, so the on-disk fragment's
+        // `borderpx = 1` never overwrites it. Without the pre-seeded
+        // `visited` guard, the source line would successfully re-read the
+        // fragment and this would fail with borderpx == 1.
         assert_eq!(cfg.borderpx, 5);
     }
 }
