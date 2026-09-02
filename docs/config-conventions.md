@@ -42,6 +42,15 @@ binary and several are **machine-written**. Do not move or merge across owners.
 | `binds.d/*.conf` | margo (sourced) | **plugin manager** (plugin keybinds) | tolerated |
 | `layouts/layout_*.conf` | `mlayout` | `mlayout` (+ user-saved) | yes |
 
+`config.conf` also has one machine-writer of its own: `mctl config
+rollback` (`$XDG_STATE_HOME/margo/config-generations/` holds the
+history it restores from — see the config-generations-rollback spec).
+Unlike the fragments above, it overwrites `config.conf` itself — a
+rollback can clobber hand-edits made since the last successful boot or
+`mctl reload` — and, per §2, it writes through the symlink when
+`config.conf` is one, landing the change in whatever file the symlink
+points at.
+
 Margo's own `source`d fragments are grouped under `conf.d/` (matugen
 colors, mshell taglayouts, the mlayout active-layout symlink); plugin
 keybinds keep their own `binds.d/`; monitor-arrangement snapshots live in

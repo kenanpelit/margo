@@ -120,6 +120,31 @@ Dry-run window rules against an app_id / title pair.
 .B check-config " " [\fIFILE\fR]
 Validate a config file (niri-style diagnostics) without applying it.
 .TP
+.B config " " { list " | " diff " " [\fIN\fR] " | " rollback " " [\fIN\fR] [\fB\-\-yes\fR] }
+Config generation history. A timestamped copy of
+.I config.conf
+is saved on every successful boot or
+.BR reload .
+.B list
+shows the saved history (index, timestamp, id, diff-stat vs the live
+file);
+.B diff
+compares generation
+.I N
+(default: most recent) against the live file;
+.B rollback
+restores generation
+.I N
+(default depends on whether the live file has unsaved changes) to
+.I config.conf
+and reloads. All three accept
+.B \-\-config \fIPATH\fR
+to target a config file other than the default. See
+.B mctl config \-\-help
+and
+.B mctl config rollback \-\-help
+for the full flag surface.
+.TP
 .B migrate \fIFILE\fR
 Translate a Hyprland or Sway/i3 config to margo.
 .TP

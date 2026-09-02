@@ -685,19 +685,33 @@ enum PluginCmd {
 #[derive(Subcommand, Debug)]
 enum ConfigCmd {
     /// List saved config.conf generations, newest first (index 0 = most recent).
-    List,
+    List {
+        /// Path to the live config to compare each generation against.
+        /// Defaults to `~/.config/margo/config.conf`.
+        #[arg(long)]
+        config: Option<std::path::PathBuf>,
+    },
     /// Show a unified diff between a saved generation and the live file.
     Diff {
         /// Generation index (0 = most recent). Default: 0.
         n: Option<usize>,
+        /// Path to the live config. Defaults to `~/.config/margo/config.conf`.
+        #[arg(long)]
+        config: Option<std::path::PathBuf>,
     },
     /// Restore a saved generation to config.conf and reload.
     Rollback {
-        /// Generation index (0 = most recent). Default: 1 (one before the current file).
+        /// Generation index (0 = most recent). Default: index 0 (the
+        /// last known-good) if the live file has unsaved changes
+        /// (e.g. after a failed reload), else 1 (one before the
+        /// current file).
         n: Option<usize>,
         /// Skip the symlink/overwrite confirmation prompt.
         #[arg(long)]
         yes: bool,
+        /// Path to the live config. Defaults to `~/.config/margo/config.conf`.
+        #[arg(long)]
+        config: Option<std::path::PathBuf>,
     },
 }
 
@@ -887,14 +901,14 @@ fn main() -> Result<()> {
             return cmd_config_errors();
         }
         Command::Config {
-            action: ConfigCmd::List,
+            action: ConfigCmd::List { config },
         } => {
-            return cmd_config_list();
+            return cmd_config_list(config.as_deref());
         }
         Command::Config {
-            action: ConfigCmd::Diff { n },
+            action: ConfigCmd::Diff { n, config },
         } => {
-            return cmd_config_diff(*n);
+            return cmd_config_diff(*n, config.as_deref());
         }
         Command::Twilight {
             action: TwilightCmd::Status { json },
@@ -1133,11 +1147,11 @@ fn main() -> Result<()> {
             }
         }
         Command::Config { action } => match action {
-            ConfigCmd::List | ConfigCmd::Diff { .. } => {
+            ConfigCmd::List { .. } | ConfigCmd::Diff { .. } => {
                 unreachable!("List/Diff return early in main's first match block")
             }
-            ConfigCmd::Rollback { n, yes } => {
-                cmd_config_rollback(n, yes)?;
+            ConfigCmd::Rollback { n, yes, config } => {
+                cmd_config_rollback(n, yes, config.as_deref())?;
             }
         },
         Command::Theme { preset } => {
@@ -2082,7 +2096,7 @@ fn cmd_config_errors() -> Result<()> {
     Ok(())
 }
 
-fn cmd_config_list() -> Result<()> {
+fn cmd_config_list(config_override: Option<&std::path::Path>) -> Result<()> {
     let gens = margo_config::generations::list()?;
     if gens.is_empty() {
         println!(
@@ -2090,10 +2104,22 @@ fn cmd_config_list() -> Result<()> {
         );
         return Ok(());
     }
+    // Best-effort: an unreadable live file just means the "vs current"
+    // column is blank for this run, not a hard error for the whole
+    // command.
+    let live_content = std::fs::read_to_string(resolve_live_config_path(config_override)).ok();
     for (idx, r#gen) in gens.iter().enumerate() {
         let when: chrono::DateTime<chrono::Local> = r#gen.timestamp.into();
+        let vs_current = live_content
+            .as_deref()
+            .and_then(|live| {
+                margo_config::generations::read(&r#gen.id)
+                    .ok()
+                    .map(|gen_content| diff_stat_vs_current(&gen_content, live))
+            })
+            .unwrap_or_default();
         println!(
-            "{idx:>3}  {}  {}",
+            "{idx:>3}  {}  {}  {vs_current}",
             when.format("%Y-%m-%d %H:%M:%S"),
             r#gen.id
         );
@@ -2101,21 +2127,44 @@ fn cmd_config_list() -> Result<()> {
     Ok(())
 }
 
-fn resolve_live_config_path() -> std::path::PathBuf {
-    std::path::PathBuf::from(format!(
-        "{}/.config/margo/config.conf",
-        std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
-    ))
+/// Short "vs current file" marker for one `mctl config list` row:
+/// `(current)` on an exact match, else a `+added/-removed` line-count
+/// diff-stat (relative to `gen_content`, matching `cmd_config_diff`'s
+/// old=generation / new=live direction).
+fn diff_stat_vs_current(gen_content: &str, live_content: &str) -> String {
+    if gen_content == live_content {
+        return "(current)".to_string();
+    }
+    let diff = similar::TextDiff::from_lines(gen_content, live_content);
+    let mut added = 0usize;
+    let mut removed = 0usize;
+    for change in diff.iter_all_changes() {
+        match change.tag() {
+            similar::ChangeTag::Insert => added += 1,
+            similar::ChangeTag::Delete => removed += 1,
+            similar::ChangeTag::Equal => {}
+        }
+    }
+    format!("+{added}/-{removed}")
 }
 
-fn cmd_config_diff(n: Option<usize>) -> Result<()> {
+fn resolve_live_config_path(config_override: Option<&std::path::Path>) -> std::path::PathBuf {
+    config_override.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+        std::path::PathBuf::from(format!(
+            "{}/.config/margo/config.conf",
+            std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
+        ))
+    })
+}
+
+fn cmd_config_diff(n: Option<usize>, config_override: Option<&std::path::Path>) -> Result<()> {
     let gens = margo_config::generations::list()?;
     let idx = n.unwrap_or(0);
     let r#gen = gens
         .get(idx)
         .ok_or_else(|| anyhow::anyhow!("no generation at index {idx} (have {})", gens.len()))?;
     let old = margo_config::generations::read(&r#gen.id)?;
-    let live_path = resolve_live_config_path();
+    let live_path = resolve_live_config_path(config_override);
     let new = std::fs::read_to_string(&live_path)
         .with_context(|| format!("reading {}", live_path.display()))?;
     let diff = similar::TextDiff::from_lines(&old, &new);
@@ -2129,25 +2178,77 @@ fn cmd_config_diff(n: Option<usize>) -> Result<()> {
     Ok(())
 }
 
-fn cmd_config_rollback(n: Option<usize>, yes: bool) -> Result<()> {
+/// Default rollback index when the user didn't pass `N` explicitly.
+///
+/// `0` (the last known-good generation) if the live file's content
+/// differs from the newest saved generation's — i.e. the live file
+/// carries an edit that was never itself successfully saved as a
+/// generation (a failed reload, or a boot-time parse failure): that
+/// newest generation IS the last-known-good state, so the default
+/// must not skip past it. `1` (one generation before the newest) if
+/// they match — the classic "reloaded fine, now I dislike it" case.
+/// Falls back to `1` (today's pre-fix behavior) whenever there isn't
+/// enough information to compare — `get(1)` errors clearly if that's
+/// out of range, same as before this fix.
+fn default_rollback_index(
+    live_content: Option<&str>,
+    newest_generation_content: Option<&str>,
+) -> usize {
+    match (live_content, newest_generation_content) {
+        (Some(live), Some(newest)) if live != newest => 0,
+        _ => 1,
+    }
+}
+
+fn cmd_config_rollback(
+    n: Option<usize>,
+    yes: bool,
+    config_override: Option<&std::path::Path>,
+) -> Result<()> {
     let gens = margo_config::generations::list()?;
-    let idx = n.unwrap_or(1);
+    let live_path = resolve_live_config_path(config_override);
+
+    let idx = match n {
+        Some(n) => n,
+        None => {
+            let live_content = std::fs::read_to_string(&live_path).ok();
+            let newest_content = gens
+                .first()
+                .and_then(|g| margo_config::generations::read(&g.id).ok());
+            default_rollback_index(live_content.as_deref(), newest_content.as_deref())
+        }
+    };
     let r#gen = gens
         .get(idx)
         .ok_or_else(|| anyhow::anyhow!("no generation at index {idx} (have {})", gens.len()))?;
     let content = margo_config::generations::read(&r#gen.id)?;
 
-    // Safety check: never write a candidate that doesn't itself parse
-    // (should be unreachable — generations are only ever saved after a
-    // successful parse — but cheap insurance against a corrupted file).
-    margo_config::parse_config_str(&content, None).with_context(|| {
-        format!(
-            "generation {} does not parse; refusing to roll back to it",
-            r#gen.id
-        )
-    })?;
+    // Safety check: run the real validator (not the permissive parser)
+    // against the candidate content before writing it — a generation
+    // can be parseable-but-validator-rejected (the boot-path save
+    // never runs the validator, only the parser). Written to a temp
+    // file *in the same directory* as the live path so relative
+    // `source = ...` lines resolve exactly as they would for the live
+    // file itself.
+    let tmp_path = live_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join(format!(".mctl-rollback-check-{}.conf", std::process::id()));
+    std::fs::write(&tmp_path, &content)
+        .with_context(|| format!("writing temp file {}", tmp_path.display()))?;
+    let validated = margo_config::validator::validate_config(Some(&tmp_path));
+    let _ = std::fs::remove_file(&tmp_path);
+    let report =
+        validated.with_context(|| format!("validating generation {} before rollback", r#gen.id))?;
+    if report.has_errors() {
+        let err_count = report.errors().count();
+        bail!(
+            "generation {} fails validation ({err_count} error{}); refusing to roll back to it.",
+            r#gen.id,
+            if err_count == 1 { "" } else { "s" },
+        );
+    }
 
-    let live_path = resolve_live_config_path();
     let is_symlink = std::fs::symlink_metadata(&live_path)
         .map(|m| m.file_type().is_symlink())
         .unwrap_or(false);
@@ -2167,6 +2268,23 @@ fn cmd_config_rollback(n: Option<usize>, yes: bool) -> Result<()> {
             println!("rollback cancelled");
             return Ok(());
         }
+    }
+
+    // Back up whatever's currently on disk before overwriting it. This
+    // is the one write path that can destroy content that was never
+    // itself saved as a generation (a failed reload, or a boot-time
+    // fallback edit) — deliberately NOT via `generations::save()`:
+    // that store is the boot-fallback's trusted "known-good" source,
+    // and this content is exactly what's about to be replaced
+    // (possibly for being broken); seeding it here would poison the
+    // next fallback.
+    if let Ok(current) = std::fs::read_to_string(&live_path) {
+        let mut backup_name = live_path.as_os_str().to_owned();
+        backup_name.push(".bak");
+        let backup_path = std::path::PathBuf::from(backup_name);
+        std::fs::write(&backup_path, &current)
+            .with_context(|| format!("writing backup {}", backup_path.display()))?;
+        println!("backed up current config to {}", backup_path.display());
     }
 
     std::fs::write(&live_path, &content)
@@ -2931,67 +3049,161 @@ fn cmd_focused(json_out: bool) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Args, Command, ConfigCmd};
+    use super::{Args, Command, ConfigCmd, default_rollback_index, diff_stat_vs_current};
     use clap::Parser;
 
     #[test]
     fn config_list_parses() {
         let args = Args::try_parse_from(["mctl", "config", "list"]).unwrap();
-        assert!(matches!(
-            args.command,
-            Command::Config {
-                action: ConfigCmd::List
-            }
-        ));
+        let Command::Config {
+            action: ConfigCmd::List { config },
+        } = args.command
+        else {
+            panic!("expected ConfigCmd::List");
+        };
+        assert_eq!(config, None);
+    }
+
+    #[test]
+    fn config_list_accepts_config_override() {
+        let args =
+            Args::try_parse_from(["mctl", "config", "list", "--config", "/tmp/x.conf"]).unwrap();
+        let Command::Config {
+            action: ConfigCmd::List { config },
+        } = args.command
+        else {
+            panic!("expected ConfigCmd::List");
+        };
+        assert_eq!(config, Some(std::path::PathBuf::from("/tmp/x.conf")));
     }
 
     #[test]
     fn config_diff_defaults_n_to_none() {
         let args = Args::try_parse_from(["mctl", "config", "diff"]).unwrap();
         let Command::Config {
-            action: ConfigCmd::Diff { n },
+            action: ConfigCmd::Diff { n, config },
         } = args.command
         else {
             panic!("expected ConfigCmd::Diff");
         };
         assert_eq!(n, None);
+        assert_eq!(config, None);
     }
 
     #[test]
     fn config_diff_accepts_explicit_n() {
         let args = Args::try_parse_from(["mctl", "config", "diff", "2"]).unwrap();
         let Command::Config {
-            action: ConfigCmd::Diff { n },
+            action: ConfigCmd::Diff { n, config },
         } = args.command
         else {
             panic!("expected ConfigCmd::Diff");
         };
         assert_eq!(n, Some(2));
+        assert_eq!(config, None);
+    }
+
+    #[test]
+    fn config_diff_accepts_config_override() {
+        let args = Args::try_parse_from(["mctl", "config", "diff", "2", "--config", "/tmp/x.conf"])
+            .unwrap();
+        let Command::Config {
+            action: ConfigCmd::Diff { n, config },
+        } = args.command
+        else {
+            panic!("expected ConfigCmd::Diff");
+        };
+        assert_eq!(n, Some(2));
+        assert_eq!(config, Some(std::path::PathBuf::from("/tmp/x.conf")));
     }
 
     #[test]
     fn config_rollback_defaults_n_and_yes() {
         let args = Args::try_parse_from(["mctl", "config", "rollback"]).unwrap();
         let Command::Config {
-            action: ConfigCmd::Rollback { n, yes },
+            action: ConfigCmd::Rollback { n, yes, config },
         } = args.command
         else {
             panic!("expected ConfigCmd::Rollback");
         };
         assert_eq!(n, None);
         assert!(!yes);
+        assert_eq!(config, None);
     }
 
     #[test]
     fn config_rollback_accepts_n_and_yes_flag() {
         let args = Args::try_parse_from(["mctl", "config", "rollback", "3", "--yes"]).unwrap();
         let Command::Config {
-            action: ConfigCmd::Rollback { n, yes },
+            action: ConfigCmd::Rollback { n, yes, config },
         } = args.command
         else {
             panic!("expected ConfigCmd::Rollback");
         };
         assert_eq!(n, Some(3));
         assert!(yes);
+        assert_eq!(config, None);
+    }
+
+    #[test]
+    fn config_rollback_accepts_config_override() {
+        let args = Args::try_parse_from([
+            "mctl",
+            "config",
+            "rollback",
+            "--yes",
+            "--config",
+            "/tmp/x.conf",
+        ])
+        .unwrap();
+        let Command::Config {
+            action: ConfigCmd::Rollback { n, yes, config },
+        } = args.command
+        else {
+            panic!("expected ConfigCmd::Rollback");
+        };
+        assert_eq!(n, None);
+        assert!(yes);
+        assert_eq!(config, Some(std::path::PathBuf::from("/tmp/x.conf")));
+    }
+
+    // ── default_rollback_index (Fix 1) ──────────────────────────────
+
+    #[test]
+    fn default_rollback_index_is_zero_when_live_differs_from_newest() {
+        // The live file carries an unsaved edit (failed reload, or
+        // boot fallback) — the newest generation IS the last
+        // known-good state, so the default must not skip past it.
+        assert_eq!(default_rollback_index(Some("a"), Some("b")), 0);
+    }
+
+    #[test]
+    fn default_rollback_index_is_one_when_live_matches_newest() {
+        // Nothing's changed since the last successful save — go back
+        // one further, past the state the user says they dislike.
+        assert_eq!(default_rollback_index(Some("a"), Some("a")), 1);
+    }
+
+    #[test]
+    fn default_rollback_index_falls_back_to_one_when_live_unreadable() {
+        assert_eq!(default_rollback_index(None, Some("a")), 1);
+    }
+
+    #[test]
+    fn default_rollback_index_falls_back_to_one_when_no_generations() {
+        assert_eq!(default_rollback_index(Some("a"), None), 1);
+    }
+
+    // ── diff_stat_vs_current (Fix 6) ────────────────────────────────
+
+    #[test]
+    fn diff_stat_vs_current_marks_exact_match() {
+        assert_eq!(diff_stat_vs_current("a\nb\n", "a\nb\n"), "(current)");
+    }
+
+    #[test]
+    fn diff_stat_vs_current_counts_added_and_removed_lines() {
+        let stat = diff_stat_vs_current("a\nb\n", "a\nc\n");
+        assert_eq!(stat, "+1/-1");
     }
 }

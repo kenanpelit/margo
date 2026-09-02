@@ -172,6 +172,7 @@ ENVIRONMENT:
 FILES:
   ~/.config/margo/config.conf   compositor configuration (hot-reloadable)
   $XDG_RUNTIME_DIR/margo/margo-ipc.sock   IPC socket (get / watch / dispatch)
+  $XDG_STATE_HOME/margo/config-generations/   config.conf history (mctl config)
 
 DOCUMENTATION:
   man margo, man mctl, man mshellctl
@@ -529,7 +530,7 @@ fn main() -> Result<()> {
         loop_signal,
         args.config.clone(),
     );
-    if config_err.is_some() {
+    if let Some(e) = &config_err {
         // Same 10s window `reload_config` uses for a live-reload
         // failure — the first rendered frame should carry the warning,
         // not just a log line nobody's watching at boot. Armed whenever
@@ -540,6 +541,39 @@ fn main() -> Result<()> {
         // quiet branch.
         margo.config_error_overlay_until =
             Some(std::time::Instant::now() + std::time::Duration::from_secs(10));
+
+        // The banner itself is deliberately text-free (see
+        // render/config_error_overlay.rs) — the message is meant to
+        // come from `mctl config-errors`, which reads
+        // last_reload_diagnostics. That field is normally only
+        // populated by reload_config's live-reload path (state.rs), so
+        // a boot-time failure would otherwise arm a banner with no
+        // discovery channel behind it. Populate one synthetic
+        // diagnostic here, mirroring the log line above.
+        let resolved_path = args
+            .config
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var("HOME")
+                    .ok()
+                    .map(|h| std::path::PathBuf::from(h).join(".config/margo/config.conf"))
+            })
+            .unwrap_or_else(|| std::path::PathBuf::from(".config/margo/config.conf"));
+        let message = match &restored_generation {
+            Some(gen_id) => format!("{e} — restored last-good generation {gen_id}"),
+            None => format!("{e}, using defaults"),
+        };
+        margo.last_reload_diagnostics = vec![margo_config::diagnostics::ConfigDiagnostic {
+            path: resolved_path,
+            line: 0,
+            col: 0,
+            end_col: 0,
+            severity: margo_config::diagnostics::Severity::Error,
+            code: "E-BOOT".to_string(),
+            message,
+            line_text: String::new(),
+        }];
     }
 
     // Hidden workspaces do not participate in an output's normal vblank walk,

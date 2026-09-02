@@ -153,6 +153,13 @@ Control IPC socket (also exported as \fBMARGO_SOCKET\fR).
 Saved per-monitor tag/layout state
 .RB ( "mctl session\-save" " / " session\-load ).
 .TP
+.I $XDG_STATE_HOME/margo/config\-generations/
+Timestamped copies of
+.IR config.conf ,
+saved on every successful boot or
+.BR reload .
+Managed via \fBmctl config\fR (list / diff / rollback).
+.TP
 .I /usr/share/doc/margo/config.example.conf
 Annotated example configuration.
 .SH ENVIRONMENT
