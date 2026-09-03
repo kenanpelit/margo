@@ -1,46 +1,49 @@
 @use "../02-functions/index" as *;
 
 // Tune — the dedicated bar pill + menu for the `mtune` folder-first
-// music player. Shares the media-player card vocabulary; the menu adds
-// a library section (folder picker + scan status).
+// music player. Follows DESIGN.md + the menu-professionalization recipe:
+// tonal section labels, real-looking action buttons, `--primary-container`
+// wash for the active/selected state.
 
 .mtune-menu-widget {
   border-radius: var(--radius-md);
   background-color: var(--surface-container-high);
-  padding: var(--space-2);
+  padding: var(--space-3);
 }
 
+// ── Now playing ──────────────────────────────────────────────
 .mtune-menu-cover {
   border-radius: var(--radius-sm);
   background-color: var(--surface-container-highest);
-  min-width: 64px;
-  min-height: 64px;
+  min-width: 60px;
+  min-height: 60px;
 }
 
 .mtune-menu-title {
   font-size: var(--font-md);
-  font-weight: 600;
+  font-weight: 700;
   color: var(--on-surface);
 }
 
-.mtune-menu-artist,
-.mtune-menu-album {
+.mtune-menu-artist {
   font-size: var(--font-sm);
   color: var(--on-surface-variant);
 }
 
-.mtune-menu-library {
-  border-radius: var(--radius-md);
-  background-color: var(--surface-container);
-  padding: var(--space-2);
+.mtune-menu-meta {
+  font-size: var(--font-xs);
+  color: var(--on-surface-variant);
+  opacity: 0.85;
 }
 
+// ── Section labels ───────────────────────────────────────────
 .mtune-menu-section-label {
   font-size: var(--font-xs);
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--on-surface-variant);
+  margin-top: var(--space-1);
 }
 
 .mtune-menu-status {
@@ -48,10 +51,99 @@
   color: var(--on-surface-variant);
 }
 
-// ── Bar pill ───────────────────────────────────────────────
+// ── Transport (round buttons) ────────────────────────────────
+.mtune-round {
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 999px;
+  background-color: var(--surface-container-highest);
+  color: var(--on-surface);
+  @include state-layer(var(--surface-container-highest));
+
+  &:disabled {
+    opacity: 0.4;
+  }
+}
+
+.mtune-round-primary {
+  min-width: 46px;
+  min-height: 46px;
+  background-color: var(--primary);
+  color: var(--on-primary);
+  @include state-layer(var(--primary));
+}
+
+// ── Shuffle / repeat toggles ─────────────────────────────────
+.mtune-toggle {
+  min-width: 40px;
+  min-height: 34px;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container-highest);
+  color: var(--on-surface-variant);
+  @include state-layer(var(--surface-container-highest));
+
+  &:checked,
+  &.selected {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+    @include state-layer(var(--primary-container));
+  }
+}
+
+// ── Speed presets ────────────────────────────────────────────
+.mtune-menu-speed {
+  // linked-ish equal segments
+  .mtune-speed-preset {
+    min-height: 30px;
+    padding: 0 var(--space-2);
+    font-size: var(--font-sm);
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    background-color: var(--surface-container-highest);
+    color: var(--on-surface-variant);
+    @include state-layer(var(--surface-container-highest));
+
+    &.selected {
+      background-color: var(--primary-container);
+      color: var(--on-primary-container);
+      @include state-layer(var(--primary-container));
+    }
+  }
+}
+
+// ── Action buttons (Choose folder / Rescan / Open playlist / …) ──
+.mtune-menu-action {
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container-highest);
+  color: var(--on-surface);
+  @include state-layer(var(--surface-container-highest));
+
+  &:disabled {
+    opacity: 0.4;
+  }
+}
+
+// ── Saved-playlist rows ──────────────────────────────────────
+.mtune-menu-playlists {
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container);
+  padding: var(--space-1);
+}
+
+.mtune-playlist-row {
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-xs);
+  background-color: transparent;
+  color: var(--on-surface);
+  @include state-layer(var(--surface-container));
+}
+
+// ── Bar pill ─────────────────────────────────────────────────
 .mtune-bar-cover {
-  // Smallest shape token (--radius-xs, 8px) — matches the generic
-  // media-player pill; tidies album art and the folder glyph alike.
   border-radius: var(--radius-xs);
   background-color: var(--surface-container-high);
 }

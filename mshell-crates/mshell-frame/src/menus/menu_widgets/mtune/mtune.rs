@@ -1,7 +1,7 @@
 //! Tune menu — the dedicated panel for the `mtune` folder-first music
-//! player. Now-playing + transport + the library controls (folder picker,
-//! scan status, rescan) that the generic MPRIS media menu can't offer.
-//! Talks only to `mtune_service()` (→ `org.margo.Tune`).
+//! player: now-playing, transport, speed, and the library / playlist
+//! controls the generic MPRIS media menu can't offer. Talks only to
+//! `mtune_service()` (→ `org.margo.Tune`).
 
 use futures::StreamExt;
 use mshell_services::mtune::{mtune_service, spawn_mtune};
@@ -9,6 +9,14 @@ use mshell_services::tokio_rt_spawn;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+
+const RATE_PRESETS: [(f64, &str); 5] = [
+    (0.75, "0.75×"),
+    (1.0, "1×"),
+    (1.25, "1.25×"),
+    (1.5, "1.5×"),
+    (2.0, "2×"),
+];
 
 pub(crate) struct MtuneMenuWidgetModel {
     running: bool,
@@ -19,9 +27,11 @@ pub(crate) struct MtuneMenuWidgetModel {
     album: String,
     cover_art: Option<String>,
     shuffle: bool,
+    /// `"consecutive"` / `"repeat-all"` / `"repeat-one"`.
     repeat: String,
     rate: f64,
     queue_len: u32,
+    current_index: i64,
     roots: Vec<String>,
     playlists: Vec<String>,
     scanning: bool,
@@ -66,21 +76,19 @@ impl Component for MtuneMenuWidgetModel {
         gtk::Box {
             add_css_class: "mtune-menu-widget",
             set_orientation: gtk::Orientation::Vertical,
-            set_spacing: 12,
+            set_spacing: 14,
             set_hexpand: true,
 
             // ── Now playing ────────────────────────────────────
             gtk::Box {
                 add_css_class: "mtune-menu-hero",
                 set_spacing: 12,
-                #[watch]
-                set_visible: model.running,
 
                 #[name = "cover"]
                 gtk::Image {
                     add_css_class: "mtune-menu-cover",
-                    set_pixel_size: 64,
-                    set_valign: gtk::Align::Center,
+                    set_pixel_size: 60,
+                    set_valign: gtk::Align::Start,
                 },
                 gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
@@ -92,7 +100,13 @@ impl Component for MtuneMenuWidgetModel {
                         set_xalign: 0.0,
                         set_ellipsize: pango::EllipsizeMode::End,
                         #[watch]
-                        set_label: if model.has_song { model.title.as_str() } else { "Nothing playing" },
+                        set_label: if model.has_song {
+                            model.title.as_str()
+                        } else if model.running {
+                            "Nothing playing"
+                        } else {
+                            "Tune"
+                        },
                     },
                     gtk::Label {
                         add_css_class: "mtune-menu-artist",
@@ -104,13 +118,13 @@ impl Component for MtuneMenuWidgetModel {
                         set_label: &model.artist,
                     },
                     gtk::Label {
-                        add_css_class: "mtune-menu-album",
+                        add_css_class: "mtune-menu-meta",
                         set_xalign: 0.0,
                         set_ellipsize: pango::EllipsizeMode::End,
                         #[watch]
-                        set_visible: !model.album.is_empty(),
+                        set_label: &model.now_playing_meta(),
                         #[watch]
-                        set_label: &model.album,
+                        set_visible: model.running && (model.has_song || model.queue_len > 0),
                     },
                 },
             },
@@ -119,35 +133,38 @@ impl Component for MtuneMenuWidgetModel {
             gtk::Box {
                 add_css_class: "mtune-menu-transport",
                 set_halign: gtk::Align::Center,
-                set_spacing: 8,
+                set_spacing: 10,
                 #[watch]
-                set_visible: model.running,
+                set_sensitive: model.running,
 
                 gtk::Button {
-                    set_css_classes: &["ok-button-flat", "circular"],
+                    set_css_classes: &["mtune-round"],
                     set_icon_name: "media-skip-backward-symbolic",
+                    set_tooltip_text: Some("Previous"),
                     #[watch]
-                    set_sensitive: model.queue_len > 1,
+                    set_sensitive: model.running && model.queue_len > 1,
                     connect_clicked => MtuneMenuInput::Previous,
                 },
                 #[name = "play_btn"]
                 gtk::Button {
-                    set_css_classes: &["ok-button-primary", "circular"],
+                    set_css_classes: &["mtune-round", "mtune-round-primary"],
                     #[watch]
                     set_icon_name: if model.playing {
                         "media-playback-pause-symbolic"
                     } else {
                         "media-playback-start-symbolic"
                     },
+                    set_tooltip_text: Some("Play / Pause"),
                     #[watch]
-                    set_sensitive: model.has_song,
+                    set_sensitive: model.running && (model.has_song || model.queue_len > 0),
                     connect_clicked => MtuneMenuInput::PlayPause,
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-flat", "circular"],
+                    set_css_classes: &["mtune-round"],
                     set_icon_name: "media-skip-forward-symbolic",
+                    set_tooltip_text: Some("Next"),
                     #[watch]
-                    set_sensitive: model.queue_len > 1,
+                    set_sensitive: model.running && model.queue_len > 1,
                     connect_clicked => MtuneMenuInput::Next,
                 },
             },
@@ -158,11 +175,11 @@ impl Component for MtuneMenuWidgetModel {
                 set_halign: gtk::Align::Center,
                 set_spacing: 8,
                 #[watch]
-                set_visible: model.running,
+                set_sensitive: model.running,
 
                 #[name = "shuffle_btn"]
                 gtk::ToggleButton {
-                    set_css_classes: &["ok-button-flat"],
+                    set_css_classes: &["mtune-toggle"],
                     set_icon_name: "media-playlist-shuffle-symbolic",
                     set_tooltip_text: Some("Shuffle"),
                     #[watch]
@@ -172,65 +189,49 @@ impl Component for MtuneMenuWidgetModel {
                         sender.input(MtuneMenuInput::ToggleShuffle);
                     } @shuffle_toggled,
                 },
+                #[name = "repeat_btn"]
                 gtk::Button {
-                    set_css_classes: &["ok-button-flat"],
+                    set_css_classes: &["mtune-toggle"],
                     #[watch]
                     set_icon_name: match model.repeat.as_str() {
                         "repeat-one" => "media-playlist-repeat-song-symbolic",
                         "repeat-all" => "media-playlist-repeat-symbolic",
                         _ => "media-playlist-consecutive-symbolic",
                     },
-                    set_tooltip_text: Some("Repeat: off / all / one"),
+                    #[watch]
+                    set_tooltip_text: Some(match model.repeat.as_str() {
+                        "repeat-one" => "Repeat: one",
+                        "repeat-all" => "Repeat: all",
+                        _ => "Repeat: off",
+                    }),
                     connect_clicked => MtuneMenuInput::CycleRepeat,
                 },
             },
 
             // ── Speed ──────────────────────────────────────────
             gtk::Box {
-                add_css_class: "mtune-menu-speed",
-                set_halign: gtk::Align::Center,
-                set_spacing: 4,
-                add_css_class: "linked",
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 5,
                 #[watch]
-                set_visible: model.running,
+                set_sensitive: model.running,
 
-                #[name = "rate_075"]
-                gtk::Button {
-                    set_label: "0.75×",
-                    set_css_classes: &["ok-button-flat"],
-                    connect_clicked => MtuneMenuInput::SetRate(0.75),
+                gtk::Label {
+                    add_css_class: "mtune-menu-section-label",
+                    set_xalign: 0.0,
+                    set_label: "Speed",
                 },
-                #[name = "rate_1"]
-                gtk::Button {
-                    set_label: "1×",
-                    set_css_classes: &["ok-button-flat"],
-                    connect_clicked => MtuneMenuInput::SetRate(1.0),
-                },
-                #[name = "rate_125"]
-                gtk::Button {
-                    set_label: "1.25×",
-                    set_css_classes: &["ok-button-flat"],
-                    connect_clicked => MtuneMenuInput::SetRate(1.25),
-                },
-                #[name = "rate_15"]
-                gtk::Button {
-                    set_label: "1.5×",
-                    set_css_classes: &["ok-button-flat"],
-                    connect_clicked => MtuneMenuInput::SetRate(1.5),
-                },
-                #[name = "rate_2"]
-                gtk::Button {
-                    set_label: "2×",
-                    set_css_classes: &["ok-button-flat"],
-                    connect_clicked => MtuneMenuInput::SetRate(2.0),
+                #[name = "speed_row"]
+                gtk::Box {
+                    add_css_class: "mtune-menu-speed",
+                    set_homogeneous: true,
+                    set_spacing: 4,
                 },
             },
 
             // ── Library ────────────────────────────────────────
             gtk::Box {
-                add_css_class: "mtune-menu-library",
                 set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 6,
+                set_spacing: 5,
 
                 gtk::Label {
                     add_css_class: "mtune-menu-section-label",
@@ -245,15 +246,15 @@ impl Component for MtuneMenuWidgetModel {
                     set_label: &model.library_status(),
                 },
                 gtk::Box {
-                    set_spacing: 8,
+                    set_spacing: 6,
                     gtk::Button {
-                        set_css_classes: &["ok-button-surface"],
+                        set_css_classes: &["mtune-menu-action"],
                         set_hexpand: true,
                         set_label: "Choose folder…",
                         connect_clicked => MtuneMenuInput::ChooseFolder,
                     },
                     gtk::Button {
-                        set_css_classes: &["ok-button-surface"],
+                        set_css_classes: &["mtune-menu-action"],
                         set_icon_name: "view-refresh-symbolic",
                         set_tooltip_text: Some("Rescan the library"),
                         #[watch]
@@ -265,9 +266,8 @@ impl Component for MtuneMenuWidgetModel {
 
             // ── Playlists ──────────────────────────────────────
             gtk::Box {
-                add_css_class: "mtune-menu-library",
                 set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 6,
+                set_spacing: 5,
 
                 gtk::Label {
                     add_css_class: "mtune-menu-section-label",
@@ -276,13 +276,14 @@ impl Component for MtuneMenuWidgetModel {
                 },
                 #[name = "playlists_list"]
                 gtk::Box {
+                    add_css_class: "mtune-menu-playlists",
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 2,
                     #[watch]
                     set_visible: !model.playlists.is_empty(),
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface"],
+                    set_css_classes: &["mtune-menu-action"],
                     set_hexpand: true,
                     set_label: "Open playlist file…",
                     connect_clicked => MtuneMenuInput::OpenPlaylist,
@@ -291,9 +292,9 @@ impl Component for MtuneMenuWidgetModel {
 
             // ── Footer ─────────────────────────────────────────
             gtk::Button {
-                set_css_classes: &["ok-button-surface"],
+                set_css_classes: &["mtune-menu-action"],
                 #[watch]
-                set_label: if model.running { "Open Tune" } else { "Launch Tune" },
+                set_label: if model.running { "Open Tune window" } else { "Launch Tune" },
                 connect_clicked[sender] => move |_| {
                     sender.input(if mtune_service().player.running.get() {
                         MtuneMenuInput::OpenTune
@@ -310,46 +311,40 @@ impl Component for MtuneMenuWidgetModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        // One command watching every `org.margo.Tune` property the menu
+        // renders; each wake re-reads the lot and re-renders.
         sender.command(|out, shutdown| async move {
             let shutdown_fut = shutdown.wait();
             tokio::pin!(shutdown_fut);
             let p = mtune_service().player.clone();
-            let mut running = p.running.watch();
-            let mut playing = p.playing.watch();
-            let mut has_song = p.has_song.watch();
-            let mut title = p.title.watch();
-            let mut artist = p.artist.watch();
-            let mut album = p.album.watch();
-            let mut cover = p.cover_art.watch();
-            let mut shuffle = p.shuffle.watch();
-            let mut repeat = p.repeat_mode.watch();
-            let mut rate = p.rate.watch();
-            let mut qlen = p.queue_len.watch();
-            let mut roots = p.library_roots.watch();
-            let mut playlists = p.playlists.watch();
-            let mut scanning = p.scanning.watch();
-            let mut progress = p.scan_progress.watch();
+            let mut streams: Vec<std::pin::Pin<Box<dyn futures::Stream<Item = ()> + Send>>> = vec![
+                Box::pin(p.running.watch().map(|_| ())),
+                Box::pin(p.playing.watch().map(|_| ())),
+                Box::pin(p.has_song.watch().map(|_| ())),
+                Box::pin(p.title.watch().map(|_| ())),
+                Box::pin(p.artist.watch().map(|_| ())),
+                Box::pin(p.album.watch().map(|_| ())),
+                Box::pin(p.cover_art.watch().map(|_| ())),
+                Box::pin(p.shuffle.watch().map(|_| ())),
+                Box::pin(p.repeat_mode.watch().map(|_| ())),
+                Box::pin(p.rate.watch().map(|_| ())),
+                Box::pin(p.queue_len.watch().map(|_| ())),
+                Box::pin(p.current_index.watch().map(|_| ())),
+                Box::pin(p.library_roots.watch().map(|_| ())),
+                Box::pin(p.playlists.watch().map(|_| ())),
+                Box::pin(p.scanning.watch().map(|_| ())),
+                Box::pin(p.scan_progress.watch().map(|_| ())),
+            ];
+            let mut merged = futures::stream::select_all(streams.drain(..));
             loop {
-                let woke = tokio::select! {
+                tokio::select! {
                     () = &mut shutdown_fut => break,
-                    _ = running.next() => true,
-                    _ = playing.next() => true,
-                    _ = has_song.next() => true,
-                    _ = title.next() => true,
-                    _ = artist.next() => true,
-                    _ = album.next() => true,
-                    _ = cover.next() => true,
-                    _ = shuffle.next() => true,
-                    _ = repeat.next() => true,
-                    _ = rate.next() => true,
-                    _ = qlen.next() => true,
-                    _ = roots.next() => true,
-                    _ = playlists.next() => true,
-                    _ = scanning.next() => true,
-                    _ = progress.next() => true,
-                };
-                if woke {
-                    let _ = out.send(MtuneMenuCmd::Refresh);
+                    next = merged.next() => {
+                        if next.is_none() {
+                            break;
+                        }
+                        let _ = out.send(MtuneMenuCmd::Refresh);
+                    }
                 }
             }
         });
@@ -366,6 +361,7 @@ impl Component for MtuneMenuWidgetModel {
             repeat: "consecutive".into(),
             rate: 1.0,
             queue_len: 0,
+            current_index: -1,
             roots: Vec::new(),
             playlists: Vec::new(),
             scanning: false,
@@ -374,9 +370,20 @@ impl Component for MtuneMenuWidgetModel {
         read(&mut model);
 
         let widgets = view_output!();
-        apply_cover(&widgets, &model);
-        rebuild_playlists(&widgets, &model, &sender);
-        apply_rate(&widgets, &model);
+
+        // Build the speed-preset row once; state (highlight) is applied
+        // on every refresh.
+        for (rate, label) in RATE_PRESETS {
+            let btn = gtk::Button::builder()
+                .label(label)
+                .css_classes(["mtune-speed-preset"])
+                .build();
+            let s = sender.clone();
+            btn.connect_clicked(move |_| s.input(MtuneMenuInput::SetRate(rate)));
+            widgets.speed_row.append(&btn);
+        }
+
+        apply_dynamic(&widgets, &model, &sender);
         ComponentParts { model, widgets }
     }
 
@@ -410,6 +417,9 @@ impl Component for MtuneMenuWidgetModel {
                 tokio_rt_spawn(async move { mtune_service().player.load_playlist(&name).await });
             }
             MtuneMenuInput::OpenPlaylist => {
+                // Parent must be `None`: a layer-shell menu surface has no
+                // xdg_toplevel, so handing it to the file-chooser as a
+                // parent aborts GTK (crashing the shell).
                 let dialog = gtk::FileDialog::builder()
                     .title("Open a playlist")
                     .modal(true)
@@ -437,10 +447,6 @@ impl Component for MtuneMenuWidgetModel {
             }
             MtuneMenuInput::Launch => spawn_mtune(),
             MtuneMenuInput::ChooseFolder => {
-                // Parent must be `None`: a layer-shell menu surface has no
-                // xdg_toplevel, so handing it to the file-chooser as a
-                // parent aborts GTK (crashing the shell). The wallpaper
-                // and Valent menus pick folders the same way.
                 let dialog = gtk::FileDialog::builder()
                     .title("Choose a music folder")
                     .modal(true)
@@ -474,9 +480,11 @@ impl Component for MtuneMenuWidgetModel {
         match message {
             MtuneMenuCmd::Refresh => read(self),
         }
-        apply_cover(widgets, self);
-        rebuild_playlists(widgets, self, &sender);
-        apply_rate(widgets, self);
+        apply_dynamic(widgets, self, &sender);
+        // CRITICAL: re-run the `#[watch]` bindings (title, icons,
+        // sensitivity, …). relm4 does *not* do this automatically after
+        // `update_cmd_with_view` — every other menu widget calls it too.
+        self.update_view(widgets, sender);
     }
 }
 
@@ -493,67 +501,85 @@ fn read(m: &mut MtuneMenuWidgetModel) {
     m.repeat = p.repeat_mode.get();
     m.rate = p.rate.get();
     m.queue_len = p.queue_len.get();
+    m.current_index = p.current_index.get();
     m.roots = p.library_roots.get();
     m.playlists = p.playlists.get();
     m.scanning = p.scanning.get();
     m.scan_progress = p.scan_progress.get();
 }
 
-fn apply_cover(widgets: &MtuneMenuWidgetModelWidgets, m: &MtuneMenuWidgetModel) {
-    match m.cover_art.as_deref() {
-        Some(path) if !path.trim().is_empty() => widgets.cover.set_from_file(Some(path)),
-        _ => widgets.cover.set_icon_name(Some("org.margo.Tune-symbolic")),
-    }
-}
-
-/// Highlight the speed preset that matches the current rate.
-fn apply_rate(widgets: &MtuneMenuWidgetModelWidgets, m: &MtuneMenuWidgetModel) {
-    for (btn, preset) in [
-        (&widgets.rate_075, 0.75),
-        (&widgets.rate_1, 1.0),
-        (&widgets.rate_125, 1.25),
-        (&widgets.rate_15, 1.5),
-        (&widgets.rate_2, 2.0),
-    ] {
-        if (m.rate - preset).abs() < 0.01 {
-            btn.set_css_classes(&["ok-button-flat", "suggested-action"]);
-        } else {
-            btn.set_css_classes(&["ok-button-flat"]);
-        }
-    }
-}
-
-/// Rebuild the saved-playlist rows from the model.
-fn rebuild_playlists(
+/// Widget updates the `#[watch]` macro can't express: the cover image,
+/// the repeat/speed highlight, and the saved-playlist rows.
+fn apply_dynamic(
     widgets: &MtuneMenuWidgetModelWidgets,
     m: &MtuneMenuWidgetModel,
     sender: &ComponentSender<MtuneMenuWidgetModel>,
 ) {
-    while let Some(child) = widgets.playlists_list.first_child() {
-        widgets.playlists_list.remove(&child);
+    // Cover
+    match m.cover_art.as_deref() {
+        Some(path) if !path.trim().is_empty() => widgets.cover.set_from_file(Some(path)),
+        _ => widgets.cover.set_icon_name(Some("org.margo.Tune-symbolic")),
+    }
+
+    // Repeat active state
+    if m.repeat == "consecutive" {
+        widgets.repeat_btn.remove_css_class("selected");
+    } else {
+        widgets.repeat_btn.add_css_class("selected");
+    }
+
+    // Speed preset highlight
+    let mut child = widgets.speed_row.first_child();
+    let mut i = 0;
+    while let Some(w) = child {
+        child = w.next_sibling();
+        if let Some((rate, _)) = RATE_PRESETS.get(i) {
+            if (m.rate - rate).abs() < 0.01 {
+                w.add_css_class("selected");
+            } else {
+                w.remove_css_class("selected");
+            }
+        }
+        i += 1;
+    }
+
+    // Saved-playlist rows
+    while let Some(c) = widgets.playlists_list.first_child() {
+        widgets.playlists_list.remove(&c);
     }
     for name in &m.playlists {
+        let label = gtk::Label::new(Some(name));
+        label.set_xalign(0.0);
+        label.set_ellipsize(pango::EllipsizeMode::End);
         let row = gtk::Button::builder()
-            .label(name)
-            .css_classes(["ok-button-flat"])
-            .halign(gtk::Align::Fill)
+            .child(&label)
+            .css_classes(["mtune-playlist-row"])
             .build();
-        row.set_child(Some(&{
-            let l = gtk::Label::new(Some(name));
-            l.set_xalign(0.0);
-            l.set_ellipsize(pango::EllipsizeMode::End);
-            l
-        }));
         let name = name.clone();
-        let sender = sender.clone();
-        row.connect_clicked(move |_| {
-            sender.input(MtuneMenuInput::LoadPlaylist(name.clone()));
-        });
+        let s = sender.clone();
+        row.connect_clicked(move |_| s.input(MtuneMenuInput::LoadPlaylist(name.clone())));
         widgets.playlists_list.append(&row);
     }
 }
 
 impl MtuneMenuWidgetModel {
+    /// "3 of 240 · 1.5×" — position in the queue plus a non-default speed.
+    fn now_playing_meta(&self) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        if self.queue_len > 0 {
+            let n = if self.current_index >= 0 {
+                self.current_index as u32 + 1
+            } else {
+                0
+            };
+            parts.push(format!("{n} of {}", self.queue_len));
+        }
+        if (self.rate - 1.0).abs() >= 0.01 {
+            parts.push(format!("{:.2}×", self.rate));
+        }
+        parts.join("  ·  ")
+    }
+
     fn library_status(&self) -> String {
         if !self.running {
             return "Tune isn't running.".into();
