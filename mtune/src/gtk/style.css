@@ -209,3 +209,37 @@ dragoverlay {
 volume:hover > scale { color: inherit; }
 volume > scale trough highlight { min-height: 10px; min-width: 10px; border-radius: 999px; }
 volume > scale trough slider { opacity: 0; }
+
+/* ── Compact skin (mini / strip) ───────────────────────────── */
+.compact-view {
+  padding: 12px 14px;
+}
+.compact-view.strip {
+  padding: 8px 12px;
+}
+.compact-view .mini-cover {
+  border-radius: 10px;
+  background-color: var(--tune-surface);
+}
+.compact-view .mini-title {
+  font-weight: 700;
+}
+.compact-view .mini-artist,
+.compact-view .mini-album {
+  font-size: 0.9em;
+}
+.compact-view .mini-queue {
+  border-radius: 8px;
+  background-color: color-mix(in srgb, var(--tune-surface) 60%, transparent);
+}
+.compact-view .mini-queue-row {
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+.compact-view .mini-queue-row.current {
+  font-weight: 700;
+  color: var(--tune-primary);
+}
+.compact-view scale trough highlight {
+  background: var(--tune-primary);
+}

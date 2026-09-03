@@ -12,7 +12,7 @@ use std::{
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use glib::{clone, closure_local};
-use gtk::{CompositeTemplate, gdk, gio, glib};
+use gtk::{CompositeTemplate, gdk, gio, glib, pango};
 use log::debug;
 
 use crate::{
@@ -35,6 +35,40 @@ use crate::{
 pub enum WindowMode {
     InitialView,
     MainView,
+}
+
+/// The window skin. Cycled full → mini → strip → full (Ctrl+M), stored
+/// in GSettings `view-mode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ViewMode {
+    #[default]
+    Full,
+    Mini,
+    Strip,
+}
+
+impl ViewMode {
+    fn next(self) -> Self {
+        match self {
+            Self::Full => Self::Mini,
+            Self::Mini => Self::Strip,
+            Self::Strip => Self::Full,
+        }
+    }
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Mini => "mini",
+            Self::Strip => "strip",
+        }
+    }
+    fn from_str(s: &str) -> Self {
+        match s {
+            "mini" => Self::Mini,
+            "strip" => Self::Strip,
+            _ => Self::Full,
+        }
+    }
 }
 
 /// Where playback should land after the folder library finishes loading
@@ -98,6 +132,37 @@ mod imp {
         pub speed_adjustment: TemplateChild<gtk::Adjustment>,
         #[template_child]
         pub speed_presets: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub compact_box: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub mini_cover: TemplateChild<gtk::Image>,
+        #[template_child]
+        pub mini_title: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub mini_artist: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub mini_album: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub mini_queue_scroll: TemplateChild<gtk::ScrolledWindow>,
+        #[template_child]
+        pub mini_queue: TemplateChild<gtk::ListView>,
+        #[template_child]
+        pub mini_play_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub mini_seek: TemplateChild<gtk::Scale>,
+        #[template_child]
+        pub mini_seek_adjustment: TemplateChild<gtk::Adjustment>,
+        #[template_child]
+        pub mini_time: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub mini_volume: TemplateChild<gtk::ScaleButton>,
+        #[template_child]
+        pub mini_volume_adjustment: TemplateChild<gtk::Adjustment>,
+
+        /// `full` / `mini` / `strip` — the current window skin.
+        pub view_mode: Cell<super::ViewMode>,
+        /// Guards the mini seek scale against feedback while syncing.
+        pub mini_seek_guard: Cell<bool>,
 
         pub provider: gtk::CssProvider,
         pub settings: gio::Settings,
@@ -309,6 +374,9 @@ mod imp {
                     }
                 },
             );
+            klass.install_action("win.cycle-view", None, move |win, _, _| {
+                win.set_view_mode(win.imp().view_mode.get().next());
+            });
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -334,6 +402,21 @@ mod imp {
                 speed_scale: TemplateChild::default(),
                 speed_adjustment: TemplateChild::default(),
                 speed_presets: TemplateChild::default(),
+                compact_box: TemplateChild::default(),
+                mini_cover: TemplateChild::default(),
+                mini_title: TemplateChild::default(),
+                mini_artist: TemplateChild::default(),
+                mini_album: TemplateChild::default(),
+                mini_queue_scroll: TemplateChild::default(),
+                mini_queue: TemplateChild::default(),
+                mini_play_button: TemplateChild::default(),
+                mini_seek: TemplateChild::default(),
+                mini_seek_adjustment: TemplateChild::default(),
+                mini_time: TemplateChild::default(),
+                mini_volume: TemplateChild::default(),
+                mini_volume_adjustment: TemplateChild::default(),
+                view_mode: Cell::new(super::ViewMode::Full),
+                mini_seek_guard: Cell::new(false),
                 playlist_view: TemplateChild::default(),
                 playlist_shuffled: Cell::new(false),
                 playlist_visible: Cell::new(true),
@@ -425,6 +508,7 @@ impl Window {
         win.setup_actions();
         win.setup_playlist();
         win.setup_speed();
+        win.setup_compact();
         win.setup_drop_target();
         win.setup_provider();
         win.bind_state();
@@ -432,6 +516,9 @@ impl Window {
         win.connect_signals();
         win.restore_window_state();
         win.set_initial_state();
+
+        // After the saved full-view size is restored: apply the saved skin.
+        win.apply_view_mode(ViewMode::from_str(&win.imp().settings.string("view-mode")));
 
         win
     }
@@ -522,6 +609,234 @@ impl Window {
         player
             .state()
             .connect_notify_local(Some("playback-rate"), move |s, _| sync(s));
+    }
+
+    /// Wire the compact (mini / strip) skin: bind the now-playing widgets,
+    /// the seek + volume scales, and the queue peek list to the shared
+    /// player, then restore the saved view mode.
+    fn setup_compact(&self) {
+        let imp = self.imp();
+        let Some(player) = self.player() else { return };
+        let state = player.state();
+
+        // ── now-playing labels + cover ──
+        let refresh_meta = clone!(
+            #[weak(rename_to = win)]
+            self,
+            move |st: &crate::audio::PlayerState| {
+                let imp = win.imp();
+                let song = st.current_song();
+                let title = song
+                    .as_ref()
+                    .map(|s| s.title())
+                    .unwrap_or_else(|| i18n("Nothing playing"));
+                imp.mini_title.set_label(&title);
+                imp.mini_artist.set_label(&st.artist().unwrap_or_default());
+                imp.mini_album.set_label(&st.album().unwrap_or_default());
+                match st.cover() {
+                    Some(tex) => imp.mini_cover.set_paintable(Some(&tex)),
+                    None => imp
+                        .mini_cover
+                        .set_icon_name(Some("org.margo.Tune-symbolic")),
+                }
+            }
+        );
+        refresh_meta(state);
+        state.connect_notify_local(
+            Some("song"),
+            clone!(
+                #[strong]
+                refresh_meta,
+                move |st, _| refresh_meta(st)
+            ),
+        );
+
+        // ── play/pause icon ──
+        let sync_play = clone!(
+            #[weak(rename_to = win)]
+            self,
+            move |st: &crate::audio::PlayerState| {
+                win.imp().mini_play_button.set_icon_name(if st.playing() {
+                    "media-playback-pause-symbolic"
+                } else {
+                    "media-playback-start-symbolic"
+                });
+            }
+        );
+        sync_play(state);
+        state.connect_notify_local(
+            Some("playing"),
+            clone!(
+                #[strong]
+                sync_play,
+                move |st, _| sync_play(st)
+            ),
+        );
+
+        // ── seek scale ↔ position/duration ──
+        imp.mini_seek.connect_change_value(clone!(
+            #[weak(rename_to = win)]
+            self,
+            #[upgrade_or]
+            glib::Propagation::Proceed,
+            move |_, _, value| {
+                if !win.imp().mini_seek_guard.get()
+                    && let Some(p) = win.player()
+                {
+                    p.seek_position_rel(value.clamp(0.0, 1.0));
+                }
+                glib::Propagation::Proceed
+            }
+        ));
+        let sync_pos = clone!(
+            #[weak(rename_to = win)]
+            self,
+            move |st: &crate::audio::PlayerState| {
+                let imp = win.imp();
+                let pos = st.position();
+                let dur = st.duration().max(1);
+                imp.mini_seek_guard.set(true);
+                imp.mini_seek_adjustment
+                    .set_value((pos as f64 / dur as f64).clamp(0.0, 1.0));
+                imp.mini_seek_guard.set(false);
+                imp.mini_time.set_label(&utils::format_time(pos as i64));
+            }
+        );
+        sync_pos(state);
+        state.connect_notify_local(
+            Some("position"),
+            clone!(
+                #[strong]
+                sync_pos,
+                move |st, _| sync_pos(st)
+            ),
+        );
+
+        // ── volume ↔ ScaleButton ──
+        imp.mini_volume_adjustment.set_value(state.volume());
+        imp.mini_volume.connect_value_changed(clone!(
+            #[weak(rename_to = win)]
+            self,
+            move |_, v| {
+                if let Some(p) = win.player() {
+                    p.set_volume(v);
+                }
+            }
+        ));
+        state.connect_notify_local(
+            Some("volume"),
+            clone!(
+                #[weak(rename_to = win)]
+                self,
+                move |st, _| {
+                    let adj = &win.imp().mini_volume_adjustment;
+                    if (adj.value() - st.volume()).abs() > 0.01 {
+                        adj.set_value(st.volume());
+                    }
+                }
+            ),
+        );
+
+        // ── queue peek list ──
+        let factory = gtk::SignalListItemFactory::new();
+        factory.connect_setup(|_, item| {
+            let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+                return;
+            };
+            let label = gtk::Label::builder()
+                .xalign(0.0)
+                .ellipsize(pango::EllipsizeMode::End)
+                .css_classes(["mini-queue-row"])
+                .build();
+            item.set_child(Some(&label));
+        });
+        factory.connect_bind(|_, item| {
+            let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+                return;
+            };
+            let Some(label) = item.child().and_downcast::<gtk::Label>() else {
+                return;
+            };
+            let Some(song) = item.item().and_downcast::<Song>() else {
+                return;
+            };
+            label.set_label(&format!("{}.  {}", item.position() + 1, song.title()));
+            if song.playing() {
+                label.add_css_class("current");
+            } else {
+                label.remove_css_class("current");
+            }
+        });
+        imp.mini_queue.set_factory(Some(&factory));
+        let selection = gtk::NoSelection::new(Some(player.queue().model().clone()));
+        imp.mini_queue.set_model(Some(&selection));
+        imp.mini_queue.connect_activate(clone!(
+            #[weak(rename_to = win)]
+            self,
+            move |_, pos| {
+                if let Some(p) = win.player() {
+                    p.skip_to(pos);
+                    p.play();
+                }
+            }
+        ));
+    }
+
+    fn set_view_mode(&self, mode: ViewMode) {
+        let _ = self.imp().settings.set_string("view-mode", mode.as_str());
+        self.apply_view_mode(mode);
+    }
+
+    fn apply_view_mode(&self, mode: ViewMode) {
+        let imp = self.imp();
+        imp.view_mode.set(mode);
+
+        // Only switch away from the initial/main split view once there is
+        // actually a queue — the empty state stays full.
+        let has_queue = self
+            .player()
+            .map(|p| !p.queue().is_empty())
+            .unwrap_or(false);
+        let target = match mode {
+            _ if !has_queue => "main-view",
+            ViewMode::Full => "main-view",
+            ViewMode::Mini | ViewMode::Strip => "compact-view",
+        };
+        // Preserve the "no library yet" screen.
+        if imp.main_stack.visible_child_name().as_deref() != Some("initial-view") || has_queue {
+            imp.main_stack.set_visible_child_name(target);
+        }
+
+        let strip = mode == ViewMode::Strip;
+        if imp.compact_box.get().parent().is_some() {
+            imp.compact_box.set_css_classes(if strip {
+                &["compact-view", "strip"]
+            } else {
+                &["compact-view"]
+            });
+            imp.mini_cover.set_pixel_size(if strip { 40 } else { 64 });
+            imp.mini_album.set_visible(!strip);
+            imp.mini_queue_scroll.set_visible(!strip);
+        }
+
+        match mode {
+            ViewMode::Full => {
+                let (w, h) = (
+                    imp.settings.int("window-width").max(360),
+                    imp.settings.int("window-height").max(480),
+                );
+                self.set_resizable(true);
+                self.set_default_size(w, h);
+            }
+            ViewMode::Mini => {
+                self.set_resizable(true);
+                self.set_default_size(640, 210);
+            }
+            ViewMode::Strip => {
+                self.set_default_size(460, 96);
+                self.set_resizable(false);
+            }
+        }
     }
 
     fn setup_actions(&self) {
@@ -1221,16 +1536,18 @@ impl Window {
 
         self.connect_close_request(move |window| {
             debug!("Saving window state");
-            let width = window.default_size().0;
-            let height = window.default_size().1;
-
             let settings = utils::settings_manager();
-            settings
-                .set_int("window-width", width)
-                .expect("Unable to store window-width");
-            settings
-                .set_int("window-height", height)
-                .expect("Unable to stop window-height");
+            // Only the full skin's size is worth remembering; the mini /
+            // strip sizes are fixed.
+            if window.imp().view_mode.get() == ViewMode::Full {
+                let (width, height) = window.default_size();
+                settings
+                    .set_int("window-width", width)
+                    .expect("Unable to store window-width");
+                settings
+                    .set_int("window-height", height)
+                    .expect("Unable to stop window-height");
+            }
 
             // Remember where we were so `[playback] on_start = "resume"`
             // can pick the queue back up next launch.
