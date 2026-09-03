@@ -160,6 +160,13 @@ impl AudioPlayer {
         self.app_sender.clone()
     }
 
+    /// The MPRIS server's zbus connection, once it is up — the
+    /// supplementary `org.margo.Tune` interface rides on it (see
+    /// [`MprisController::connection`]).
+    pub(crate) fn mpris_connection(&self) -> Option<zbus::Connection> {
+        self.mpris.connection()
+    }
+
     fn setup_channel(self: Rc<Self>) {
         let receiver = self.receiver.borrow_mut().take().unwrap();
 

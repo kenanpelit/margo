@@ -18,7 +18,10 @@ use zbus::names::BusName;
 
 use crate::tokio_rt;
 
-const BUS_NAME: &str = "org.margo.Tune";
+// mtune serves this interface on its MPRIS server connection — the
+// GApplication owns the bare `org.margo.Tune` name, so the supplementary
+// interface is reached via the MPRIS well-known name instead.
+const BUS_NAME: &str = "org.mpris.MediaPlayer2.org.margo.Tune";
 const OBJECT_PATH: &str = "/org/margo/Tune";
 const IFACE: &str = "org.margo.Tune";
 

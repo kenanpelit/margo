@@ -395,13 +395,31 @@ impl Application {
             });
         }
 
-        // 2. Claim org.margo.Tune.
+        // 2. Serve the supplementary org.margo.Tune interface. It rides
+        //    on the MPRIS server's connection (the GApplication owns the
+        //    bare `org.margo.Tune` name, so a fresh zbus connection can't
+        //    claim it) — wait for that connection to come up first.
         {
             let this = self.clone();
             let snap = imp.snap.clone();
             let tx = imp.cmd_tx.clone();
+            let player = imp.player.clone();
             glib::spawn_future_local(async move {
-                if let Some(conn) = dbus::serve(snap, tx).await {
+                let mut conn = None;
+                for _ in 0..60 {
+                    if let Some(c) = player.mpris_connection() {
+                        conn = Some(c);
+                        break;
+                    }
+                    glib::timeout_future(std::time::Duration::from_millis(50)).await;
+                }
+                let Some(conn) = conn else {
+                    log::warn!(
+                        "mtune: MPRIS connection never came up — org.margo.Tune interface unavailable"
+                    );
+                    return;
+                };
+                if let Some(conn) = dbus::serve_on(&conn, snap, tx).await {
                     this.imp().dbus_conn.replace(Some(conn));
                     this.refresh_bridge();
                 }

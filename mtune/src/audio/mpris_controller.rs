@@ -414,6 +414,18 @@ impl MprisController {
         });
     }
 
+    /// The MPRIS server's D-Bus connection, once it is up. mtune's
+    /// supplementary `org.margo.Tune` interface is served on this same
+    /// connection: the GApplication owns the bare `org.margo.Tune` bus
+    /// name outright, so a second zbus connection could never claim it.
+    pub fn connection(&self) -> Option<zbus::Connection> {
+        self.0
+            .server
+            .borrow()
+            .as_ref()
+            .map(|s| s.connection().clone())
+    }
+
     fn with_server(&self, f: impl FnOnce(Rc<LocalServer<TuneMpris>>) + 'static) {
         if let Some(server) = self.0.server.borrow().clone() {
             f(server);

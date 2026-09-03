@@ -8,9 +8,9 @@ use crate::audio::RepeatMode;
 use crate::bridge::{AppCommand, CommandSender, SharedSnapshot};
 use std::path::PathBuf;
 use zbus::object_server::SignalEmitter;
-use zbus::{Connection, connection, interface};
+use zbus::{Connection, interface};
 
-pub const BUS_NAME: &str = "org.margo.Tune";
+pub const IFACE_NAME: &str = "org.margo.Tune";
 pub const OBJECT_PATH: &str = "/org/margo/Tune";
 
 struct TuneService {
@@ -244,25 +244,29 @@ impl TuneService {
     async fn changed(emitter: &SignalEmitter<'_>) -> zbus::Result<()>;
 }
 
-/// Claim `org.margo.Tune` on the session bus. `None` if the bus is
-/// unavailable — mtune still runs; only the shell's dedicated pill loses
-/// its live feed. The returned [`Connection`] must be kept alive.
-pub async fn serve(snap: SharedSnapshot, tx: CommandSender) -> Option<Connection> {
-    let build = || -> zbus::Result<connection::Builder<'static>> {
-        connection::Builder::session()?
-            .name(BUS_NAME)?
-            .serve_at(OBJECT_PATH, TuneService { snap, tx })
-    };
-    match build() {
-        Ok(builder) => match builder.build().await {
-            Ok(conn) => Some(conn),
-            Err(e) => {
-                log::warn!("mtune: could not claim {BUS_NAME}: {e}");
-                None
-            }
-        },
+/// Register the supplementary `org.margo.Tune` interface on `conn` —
+/// mtune's MPRIS server connection. It is served there rather than on a
+/// connection of its own because the GApplication already owns the bare
+/// `org.margo.Tune` bus name, so a fresh zbus connection could never
+/// claim it; the shell reaches this interface via the MPRIS well-known
+/// name (`org.mpris.MediaPlayer2.org.margo.Tune`).
+///
+/// Returns the connection (to keep alive and emit `Changed` on), or
+/// `None` if registration failed — mtune still runs; only the shell's
+/// dedicated pill loses its live feed.
+pub async fn serve_on(
+    conn: &Connection,
+    snap: SharedSnapshot,
+    tx: CommandSender,
+) -> Option<Connection> {
+    match conn
+        .object_server()
+        .at(OBJECT_PATH, TuneService { snap, tx })
+        .await
+    {
+        Ok(_) => Some(conn.clone()),
         Err(e) => {
-            log::warn!("mtune: could not build the {BUS_NAME} service: {e}");
+            log::warn!("mtune: could not serve {IFACE_NAME} at {OBJECT_PATH}: {e}");
             None
         }
     }
