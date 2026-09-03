@@ -1,12 +1,12 @@
-# Burmese translation for amberol.
-# Copyright (C) 2024 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Burmese translation for mtune.
+# Copyright (C) 2024 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # zayar lwin <zyl.pol.mm@zohomail.com>, 2024.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2025-09-25 04:41+0000\n"
 "PO-Revision-Date: 2025-09-26 09:59+0630\n"
 "Last-Translator: Zayar Lwin <zyl.pol.mm@zohomail.com>\n"
@@ -19,55 +19,55 @@ msgstr ""
 "X-Generator: Poedit 3.7\n"
 "X-Poedit-SourceCharset: UTF-8\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2 data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2 data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
 msgstr "အန်ဘာရော"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "သီချင်းဖွင့်ကိရိယာ"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr "သီချင်း;သီချင်းဖွင့်ကိရိယာ;မီဒီယာ;အော်ဒီယို;အသံ;သီချင်းစာရင်း;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "သီချင်းဖွင့်ပေးယုံကလွဲပြီး ကျန်တာလုပ်မရပါ"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to play music available on your "
-"local system then Amberol is the music player you are looking for."
+"Tune is a music player with no delusions of grandeur. If you just want to play music available on your "
+"local system then Tune is the music player you are looking for."
 msgstr ""
 "အန်ဘာရောသည် ဟိတ်ကြီးဟန်ကြီးမရှိသော သီချင်းဖွင့်ကိရိယာတစ်ခုဖြစ်သည်။ သင့်စက်တွင်းမှာရှိသော တေးသီးချင်းများကိုသာ နားဆင်လိုပါက အန်ဘာရောကိုသာ အသုံးပြုလိုက်ပါ။"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "လက်ရှိစွမ်းရည်များ-"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "ပြောင်းလွယ်ပြင်လွယ်ရှိသောUI"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "အယ်ဘမ်ပုံရိပ်ကိုအသုံးပြု၍ UI အရောင် ပြန်ချယ်နိုင်ခြင်း"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "သီချင်းအသစ်ထည့်ရန် ဆွဲ၍ပစ်ထည့်ခြင်း လုပ်ဆောင်နိုင်မှုကို ထည့်ပေးထားသည်"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "ကျပမ်းနှင့် ထပ်တလဲလဲ ဖွင့်ပေးခြင်း"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "MPRISပေါင်းစည်းမှု"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "အန်မန်နွန်ဘက်စီ"
 
@@ -186,7 +186,7 @@ msgid "_Keyboard Shortcuts"
 msgstr "ကီး_ဘုတ်ဖြတ်လမ်းခလုတ်များ"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
+msgid "_About Tune"
 msgstr "အန်ဘာရော_အကြောင်း"
 
 #: src/gtk/playback-control.blp:227
@@ -365,7 +365,7 @@ msgid "translator-credits"
 msgstr "ဇေယျာလွင်"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
+msgid "Tune needs to run in the background to play music"
 msgstr "နောက်ကွယ်တွင် သီချင်းဖွင့်နိုင်ရန် အန်ဘာရောကို နောက်ကွယ်တွင် မောင်းနှင်နေဖို့ လိုအပ်သည်"
 
 #: src/audio/inhibit_controller.rs:40

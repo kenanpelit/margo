@@ -10,7 +10,7 @@ mod imp {
     use super::*;
 
     #[derive(Debug, Default, CompositeTemplate)]
-    #[template(resource = "/io/bassi/Amberol/playback-control.ui")]
+    #[template(resource = "/org/margo/Tune/playback-control.ui")]
     pub struct PlaybackControl {
         // Template widgets
         #[template_child]
@@ -42,7 +42,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for PlaybackControl {
-        const NAME: &'static str = "AmberolPlaybackControl";
+        const NAME: &'static str = "TunePlaybackControl";
         type Type = super::PlaybackControl;
         type ParentType = gtk::Widget;
 

@@ -1,12 +1,12 @@
-# Hindi translation for amberol.
-# Copyright (C) 2024 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Hindi translation for mtune.
+# Copyright (C) 2024 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # Scrambled777 <weblate.scrambled777@simplelogin.com>, 2024.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2024-03-25 22:32+0000\n"
 "PO-Revision-Date: 2024-03-29 12:37+0530\n"
 "Last-Translator: Scrambled777 <weblate.scrambled777@simplelogin.com>\n"
@@ -18,58 +18,58 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 "X-Generator: Gtranslator 46.0\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
-#: data/io.bassi.Amberol.appdata.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberol"
+#: data/org.margo.Tune.desktop.in.in:3
+#: data/org.margo.Tune.appdata.xml.in.in:6
+msgid "Tune"
+msgstr "Tune"
 
-#: data/io.bassi.Amberol.desktop.in.in:4
+#: data/org.margo.Tune.desktop.in.in:4
 msgid "Music Player"
 msgstr "म्यूजिक प्लेयर"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:12
+#: data/org.margo.Tune.desktop.in.in:12
 msgid "music;player;media;audio;playlist;"
 msgstr "music;player;media;audio;playlist;संगीत;प्लेयर;मीडिया;ऑडियो;प्लेलिस्ट;"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:7
+#: data/org.margo.Tune.appdata.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "संगीत बजाता है और कुछ नहीं"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:9
+#: data/org.margo.Tune.appdata.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
-"Amberol एक म्यूजिक प्लेयर है जिसे भव्यता का कोई भ्रम नहीं है। यदि आप केवल अपने स्थानीय "
-"सिस्टम पर उपलब्ध संगीत चलाना चाहते हैं तो Amberol वह म्यूजिक प्लेयर है जिसे आप तलाश रहे हैं।"
+"Tune एक म्यूजिक प्लेयर है जिसे भव्यता का कोई भ्रम नहीं है। यदि आप केवल अपने स्थानीय "
+"सिस्टम पर उपलब्ध संगीत चलाना चाहते हैं तो Tune वह म्यूजिक प्लेयर है जिसे आप तलाश रहे हैं।"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:14
+#: data/org.margo.Tune.appdata.xml.in.in:14
 msgid "Current features:"
 msgstr "वर्तमान विशेषताएं:"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:16
+#: data/org.margo.Tune.appdata.xml.in.in:16
 msgid "adaptive UI"
 msgstr "अनुकूली UI"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:17
+#: data/org.margo.Tune.appdata.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "एल्बम कला का उपयोग करके UI को फिर से रंगना"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:18
+#: data/org.margo.Tune.appdata.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "गानों को कतारबद्ध करने के लिए खींचें और छोड़ें"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:19
+#: data/org.margo.Tune.appdata.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "फेरबदल करें और दोहराएं"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:20
+#: data/org.margo.Tune.appdata.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "MPRIS एकीकरण"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:44
+#: data/org.margo.Tune.appdata.xml.in.in:44
 msgid "Emmanuele Bassi"
 msgstr "इमैनुएल बस्सी"
 
@@ -285,8 +285,8 @@ msgid "_Keyboard Shortcuts"
 msgstr "कीबोर्ड शॉर्टकट (_K)"
 
 #: src/gtk/playback-control.ui:205
-msgid "_About Amberol"
-msgstr "Amberol के बारे में (_A)"
+msgid "_About Tune"
+msgstr "Tune के बारे में (_A)"
 
 #: src/gtk/playback-control.ui:209
 msgid "_Quit"
@@ -356,8 +356,8 @@ msgid "translator-credits"
 msgstr "Scrambled777 <weblate.scrambled777@simplelogin.com>"
 
 #: src/application.rs:241
-msgid "Amberol needs to run in the background to play music"
-msgstr "संगीत बजाने के लिए Amberol को पृष्ठभूमि में चलाने की आवश्यकता है"
+msgid "Tune needs to run in the background to play music"
+msgstr "संगीत बजाने के लिए Tune को पृष्ठभूमि में चलाने की आवश्यकता है"
 
 #: src/playback_control.rs:118
 msgid "Repeat All Songs"

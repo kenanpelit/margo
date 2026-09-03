@@ -1,13 +1,13 @@
-# Swedish translation for amberol.
-# Copyright © 2022-2026 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Swedish translation for mtune.
+# Copyright © 2022-2026 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # Anders Jonsson <anders.jonsson@norsjovallen.se>, 2022, 2023, 2024, 2025, 2026.
 # Luna Jernberg <droidbittin@gmail.com>, 2022, 2023.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2026-03-29 14:16+0000\n"
 "PO-Revision-Date: 2026-03-29 21:32+0200\n"
 "Last-Translator: Anders Jonsson <anders.jonsson@norsjovallen.se>\n"
@@ -19,58 +19,58 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Generator: Poedit 3.8\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2
-#: data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2
+#: data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
+msgstr "Tune"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "Musikspelare"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr "musik;spelare;media;audio;spellista;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "Spelar upp musik helt enkelt"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
-"Amberol är en musikspelare utan storhetsvansinne. Om du helt enkelt vill "
-"spela upp musik på ditt system så är Amberol musikspelaren för dig."
+"Tune är en musikspelare utan storhetsvansinne. Om du helt enkelt vill "
+"spela upp musik på ditt system så är Tune musikspelaren för dig."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "Funktioner:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "adaptivt användargränssnitt"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "färgändring av användargränssnittet enligt albumgrafiken"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "stöd för att dra och släppa för att lägga låtar i kö"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "blanda och upprepa"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "MPRIS-integration"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele Bassi"
 
@@ -189,8 +189,8 @@ msgid "_Keyboard Shortcuts"
 msgstr "_Tangentbordsgenvägar"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
-msgstr "_Om Amberol"
+msgid "_About Tune"
+msgstr "_Om Tune"
 
 #: src/gtk/playback-control.blp:227
 msgid "_Quit"
@@ -379,8 +379,8 @@ msgstr ""
 "<tp-sv@listor.tp-sv.se>."
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
-msgstr "Amberol behöver köras i bakgrunden för att spela upp musik"
+msgid "Tune needs to run in the background to play music"
+msgstr "Tune behöver köras i bakgrunden för att spela upp musik"
 
 #: src/audio/inhibit_controller.rs:40
 msgid "Playback in progress"
@@ -529,8 +529,8 @@ msgstr "Kunde inte öppna mapp"
 #~ msgid "Plays music and nothing else"
 #~ msgstr "Spelar upp musik helt enkelt"
 
-#~ msgid "Amberol cannot run in the background"
-#~ msgstr "Amberol kan inte köras i bakgrunden"
+#~ msgid "Tune cannot run in the background"
+#~ msgstr "Tune kan inte köras i bakgrunden"
 
 #~ msgid "{} hour"
 #~ msgid_plural "{} hours"
@@ -543,8 +543,8 @@ msgstr "Kunde inte öppna mapp"
 #~ msgid "Unrecognized file type for “{}”"
 #~ msgstr "Okänd filtyp för ”{}”"
 
-#~ msgid "Amberol is running in the background"
-#~ msgstr "Amberol körs i bakgrunden"
+#~ msgid "Tune is running in the background"
+#~ msgstr "Tune körs i bakgrunden"
 
 #~ msgid "Playing next"
 #~ msgstr "Spelar härnäst"

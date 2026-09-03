@@ -1,14 +1,14 @@
-# Amberol.
-# Copyright (C) 2022 Amberol COPYRIGHT HOLDER
-# This file is distributed under the same license as the Amberol package.
+# Tune.
+# Copyright (C) 2022 Tune COPYRIGHT HOLDER
+# This file is distributed under the same license as the Tune package.
 # Seyed Eshag Moghim Shahidani <eshag094@gmail.com>, 2022.
 # Seyed Hosein Mousavi Fard <shmf.mosuavi1385@gmail.com>, 2022.
 # Danial Behzadi <dani.behzi@ubuntu.com>, 2022-2026.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2026-07-08 19:26+0000\n"
 "PO-Revision-Date: 2026-08-08 02:08+0330\n"
 "Last-Translator: Danial Behzadi <dani.behzi@ubuntu.com>\n"
@@ -20,58 +20,58 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 "X-Generator: Poedit 3.9\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2 data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2 data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
 msgstr "امبرول"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "پخش‌کنندهٔ آهنگ"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr "music;player:media;موزیک;آهنگ;موسیقی;صدا;صوت;آوا;پخش‌کننده;رسانه;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "پخش آهنگ و هیچ چیز دیگر"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player you "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player you "
 "are looking for."
 msgstr ""
 "امبرول پخش‌کنندهٔ آهنگی بدون توهّم بزرگی است. اگر فقط می‌خواهید آهنگ‌های روی سامانهٔ "
 "محلیتان را پخش کنید، امبرول پخش‌کنندهٔ آهنگیست که دنبالش می‌گردید."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "ویژگی‌های کنونی:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "رابط کاربری تطبیقی"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "تغییر رنگ رابط کاربری با استفاده از تصویر آلبوم"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "پشتیبانی از کشیدن و انداختن برای صف کردن آهنگ‌ها"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "بُر زدن و تکرار"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "یکپارچگی MPRIS"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
-#: data/io.bassi.Amberol.metainfo.xml.in.in:50
+#: data/org.margo.Tune.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:50
 msgid "Emmanuele Bassi"
 msgstr "امانوئل باسی"
 
@@ -191,7 +191,7 @@ msgid "_Keyboard Shortcuts"
 msgstr "_میان‌برهای صفحه‌کلید"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
+msgid "_About Tune"
 msgstr "_دربارهٔ امبرول"
 
 #: src/gtk/playback-control.blp:227
@@ -379,7 +379,7 @@ msgstr ""
 "سید اسحاق مقیم شهیدانی <eshagh094@gmail.com>"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
+msgid "Tune needs to run in the background to play music"
 msgstr "لازم است امبرول برای پخش آهنگ در پس‌زمینه اجرا شود"
 
 #: src/audio/inhibit_controller.rs:40
@@ -535,7 +535,7 @@ msgstr "ناتوان در گشودن شاخه"
 #~ msgid "Plays music and nothing else"
 #~ msgstr "پخش آهنگ، و دیگر هیچ"
 
-#~ msgid "Amberol cannot run in the background"
+#~ msgid "Tune cannot run in the background"
 #~ msgstr "امبرول نتوانست در پس‌زمینه اجرا شود"
 
 #~ msgid "{} hour"
@@ -549,7 +549,7 @@ msgstr "ناتوان در گشودن شاخه"
 #~ msgid "Unrecognized file type for “{}”"
 #~ msgstr "گونهٔ پروندهٔ «{}» شناسایی نشده"
 
-#~ msgid "Amberol is running in the background"
+#~ msgid "Tune is running in the background"
 #~ msgstr "امبرول دارد در پس‌زمینه اجرا می‌شود"
 
 #~ msgctxt "shortcut window"
@@ -604,7 +604,7 @@ msgstr "ناتوان در گشودن شاخه"
 #~ msgid "Improve extraction of the song metadata"
 #~ msgstr "بهبود استخراج ابرداده آهنگ"
 
-#~ msgid "Thanks to everyone who tried Amberol and filed issues!"
+#~ msgid "Thanks to everyone who tried Tune and filed issues!"
 #~ msgstr "تشکر از همه کسانی که آمبرول را امتحان کردند و مشکل‌ها را پر!"
 
 #~ msgid "Bugs never end, and so does bug squashing."
@@ -630,10 +630,10 @@ msgstr "ناتوان در گشودن شاخه"
 #~ msgid "A brown paper bag release fixing an embarrassing bug."
 #~ msgstr "رها کردن کیسه کاغذی قهوه‌ای برای رفع یک اشکال شرم‌آور."
 
-#~ msgid "The first beta release for Amberol! Isn't this exciting?"
+#~ msgid "The first beta release for Tune! Isn't this exciting?"
 #~ msgstr "اولین نگارش بتا برای آمبرول! آیا این هیجان انگیز نیست؟"
 
-#~ msgid "Show an initial page when launching Amberol"
+#~ msgid "Show an initial page when launching Tune"
 #~ msgstr "هنگام راه‌اندازی آمبرول یک صفحهٔ اولیه را نشان می‌دهد"
 
 #~ msgid "Make the layout more mobile friendly without impacting desktop users"

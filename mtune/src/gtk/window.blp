@@ -4,7 +4,7 @@
 using Gtk 4.0;
 using Adw 1;
 
-template $AmberolWindow: Adw.ApplicationWindow {
+template $TuneWindow: Adw.ApplicationWindow {
   handle-menubar-accel: true;
   width-request: 360;
   height-request: 660;
@@ -35,7 +35,7 @@ template $AmberolWindow: Adw.ApplicationWindow {
                 child: Adw.StatusPage status_page {
                   margin-start: 12;
                   margin-end: 12;
-                  title: "Amberol";
+                  title: "Tune";
                   description: _("Select a file or a folder, or drag files from your file manager to the application window to add songs to the playlist");
 
                   child: Box {
@@ -100,7 +100,7 @@ template $AmberolWindow: Adw.ApplicationWindow {
                     "main-box",
                   ]
 
-                  $AmberolSongCover song_cover {}
+                  $TuneSongCover song_cover {}
 
                   Box {
                     orientation: vertical;
@@ -110,7 +110,7 @@ template $AmberolWindow: Adw.ApplicationWindow {
                     Box {
                       halign: center;
 
-                      $AmberolWaveformView waveform_view {
+                      $TuneWaveformView waveform_view {
                         can-focus: "true";
                       }
                     }
@@ -150,9 +150,9 @@ template $AmberolWindow: Adw.ApplicationWindow {
                     }
                   }
 
-                  $AmberolSongDetails song_details {}
+                  $TuneSongDetails song_details {}
 
-                  $AmberolPlaybackControl playback_control {
+                  $TunePlaybackControl playback_control {
                     halign: "center";
                     margin-top: "0";
                     margin-bottom: "24";
@@ -160,7 +160,7 @@ template $AmberolWindow: Adw.ApplicationWindow {
                 };
               };
 
-              sidebar: $AmberolPlaylistView playlist_view {};
+              sidebar: $TunePlaylistView playlist_view {};
             };
           }
         };

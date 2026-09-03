@@ -117,6 +117,11 @@ jobs:
         # in by lowering the baseline).
         run: ./scripts/panic-ratchet.sh
 
+      - name: mtune de-brand (gate)
+        # The mtune/ tree is a fork of an upstream GPL-3.0 GTK player; the
+        # upstream project name and app-id namespace must not survive it.
+        run: ./scripts/mtune-debrand-gate.sh
+
       - name: mctl check-config (bundled example)
         # Validates that an example user config parses without unknown
         # fields, regex compile errors, or duplicate binds. Falls back to

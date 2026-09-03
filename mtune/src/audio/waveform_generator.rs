@@ -99,7 +99,7 @@ impl WaveformGenerator {
 
             if let Some(uuid) = song.uuid() {
                 let mut cache = glib::user_cache_dir();
-                cache.push("amberol");
+                cache.push("mtune");
                 cache.push("waveforms");
                 glib::mkdir_with_parents(&cache, 0o755);
 
@@ -151,7 +151,7 @@ impl WaveformGenerator {
 
         if let Some(uuid) = song.uuid() {
             let mut cache = glib::user_cache_dir();
-            cache.push("amberol");
+            cache.push("mtune");
             cache.push("waveforms");
             cache.push(format!("{}.json", uuid));
 

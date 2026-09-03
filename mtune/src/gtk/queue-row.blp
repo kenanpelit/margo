@@ -3,7 +3,7 @@
 
 using Gtk 4.0;
 
-template $AmberolQueueRow: Widget {
+template $TuneQueueRow: Widget {
   Stack row_stack {
     StackPage {
       name: "song-details";
@@ -32,7 +32,7 @@ template $AmberolQueueRow: Widget {
           StackPage {
             name: "cover";
 
-            child: $AmberolCoverPicture song_cover_image {
+            child: $TuneCoverPicture song_cover_image {
               cover-size: "1";
               halign: "center";
               valign: "center";

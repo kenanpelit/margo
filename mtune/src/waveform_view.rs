@@ -57,7 +57,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for WaveformView {
-        const NAME: &'static str = "AmberolWaveformView";
+        const NAME: &'static str = "TuneWaveformView";
         type Type = super::WaveformView;
         type ParentType = gtk::Widget;
 

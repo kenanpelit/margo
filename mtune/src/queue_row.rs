@@ -16,7 +16,7 @@ mod imp {
     use super::*;
 
     #[derive(Debug, Default, CompositeTemplate)]
-    #[template(resource = "/io/bassi/Amberol/queue-row.ui")]
+    #[template(resource = "/org/margo/Tune/queue-row.ui")]
     pub struct QueueRow {
         // Template widgets
         #[template_child]
@@ -47,7 +47,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for QueueRow {
-        const NAME: &'static str = "AmberolQueueRow";
+        const NAME: &'static str = "TuneQueueRow";
         type Type = super::QueueRow;
         type ParentType = gtk::Widget;
 

@@ -1,14 +1,14 @@
-# Indonesian translation for amberol.
-# Copyright (C) 2022 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Indonesian translation for mtune.
+# Copyright (C) 2022 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # Kukuh Syafaat <kukuhsyafaat@gnome.org>, 2022-2023.
 # Andika Triwidada <andika@gmail.com>, 2022
 # Ega Natha <ega8642@gmail.com>, 2025.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2024-09-24 12:08+0000\n"
 "PO-Revision-Date: 2025-03-15 17:21+0700\n"
 "Last-Translator: Ega Natha <ega8642@gmail.com>\n"
@@ -20,59 +20,59 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 "X-Generator: Gtranslator 47.1\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
-#: data/io.bassi.Amberol.appdata.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberol"
+#: data/org.margo.Tune.desktop.in.in:3
+#: data/org.margo.Tune.appdata.xml.in.in:6
+msgid "Tune"
+msgstr "Tune"
 
-#: data/io.bassi.Amberol.desktop.in.in:4
+#: data/org.margo.Tune.desktop.in.in:4
 msgid "Music Player"
 msgstr "Pemutar Musik"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:12
+#: data/org.margo.Tune.desktop.in.in:12
 msgid "music;player;media;audio;playlist;"
 msgstr "musik;pemutar;media;audio;daftar putar;"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:7
+#: data/org.margo.Tune.appdata.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "Putar musik, dan tidak ada yang lain"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:9
+#: data/org.margo.Tune.appdata.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
-"Amberol adalah pemutar musik tanpa delusi keagungan. Jika Anda hanya ingin "
-"memutar musik yang tersedia di sistem lokal Anda maka Amberol adalah pemutar "
+"Tune adalah pemutar musik tanpa delusi keagungan. Jika Anda hanya ingin "
+"memutar musik yang tersedia di sistem lokal Anda maka Tune adalah pemutar "
 "musik yang Anda cari."
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:14
+#: data/org.margo.Tune.appdata.xml.in.in:14
 msgid "Current features:"
 msgstr "Fitur saat ini:"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:16
+#: data/org.margo.Tune.appdata.xml.in.in:16
 msgid "adaptive UI"
 msgstr "antarmuka adaptif"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:17
+#: data/org.margo.Tune.appdata.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "Pewarnaan ulang antar muka menggunakan sampul album"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:18
+#: data/org.margo.Tune.appdata.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "seret dan lepas dukungan untuk mengantrekan lagu"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:19
+#: data/org.margo.Tune.appdata.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "acak dan ulangi"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:20
+#: data/org.margo.Tune.appdata.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "Integrasi MPRIS"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:48
+#: data/org.margo.Tune.appdata.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele Bassi"
 
@@ -288,8 +288,8 @@ msgid "_Keyboard Shortcuts"
 msgstr "Pintasan Papan Ti_k"
 
 #: src/gtk/playback-control.ui:205
-msgid "_About Amberol"
-msgstr "Tent_ang Amberol"
+msgid "_About Tune"
+msgstr "Tent_ang Tune"
 
 #: src/gtk/playback-control.ui:209
 msgid "_Quit"
@@ -385,8 +385,8 @@ msgstr ""
 "Andika Triwidada <andika@gmail.com>, 2022."
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
-msgstr "Amberol perlu berjalan di latar belakang untuk memutar musik"
+msgid "Tune needs to run in the background to play music"
+msgstr "Tune perlu berjalan di latar belakang untuk memutar musik"
 
 #: src/cover_picture.rs:75
 msgid "Cover image"
@@ -509,8 +509,8 @@ msgstr "Sedang memutar \"{title}\" oleh \"{artist}\""
 #~ msgid "Plays music and nothing else"
 #~ msgstr "Putar musik dan tak ada yang lain"
 
-#~ msgid "Amberol cannot run in the background"
-#~ msgstr "Amberol tidak dapat berjalan di latar belakang"
+#~ msgid "Tune cannot run in the background"
+#~ msgstr "Tune tidak dapat berjalan di latar belakang"
 
 #~ msgid "{} hour"
 #~ msgid_plural "{} hours"

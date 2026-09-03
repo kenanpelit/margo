@@ -5,8 +5,8 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2026-03-29 14:16+0000\n"
 "PO-Revision-Date: 2026-03-30 19:02+0300\n"
 "Last-Translator: Artur S0 <arturios2005@mail.ru>\n"
@@ -19,62 +19,62 @@ msgstr ""
 "n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\n"
 "X-Generator: Poedit 3.9\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2
-#: data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2
+#: data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
+msgstr "Tune"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "Музыкальный проигрыватель"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr ""
 "music;player;media;audio;playlist;музыка;проигрыватель;медиа;аудио;список "
 "воспроизведения;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "Воспроизводит музыку и ничего больше"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
-"Amberol - это музыкальный проигрыватель без мании величия. Если вы просто "
+"Tune - это музыкальный проигрыватель без мании величия. Если вы просто "
 "хотите воспроизводить музыку, доступную в вашей локальной системе, то "
-"Amberol - это тот музыкальный проигрыватель, который вы ищете."
+"Tune - это тот музыкальный проигрыватель, который вы ищете."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "Текущие функции:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "адаптивный пользовательский интерфейс"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr ""
 "перекрашивание пользовательского интерфейса с использованием обложки альбома"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "поддержка перетаскивания для создания очереди песен"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "перемешивание и повторение"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "интеграция с MPRIS"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele Bassi"
 
@@ -193,7 +193,7 @@ msgid "_Keyboard Shortcuts"
 msgstr "_Комбинации клавиш"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
+msgid "_About Tune"
 msgstr "_О приложении"
 
 #: src/gtk/playback-control.blp:227
@@ -378,8 +378,8 @@ msgid "translator-credits"
 msgstr "Aleksandr Melman <alexmelman88@gmail.com>, 2022-2023"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
-msgstr "Amberol должен работать в фоновом режиме для воспроизведения музыки"
+msgid "Tune needs to run in the background to play music"
+msgstr "Tune должен работать в фоновом режиме для воспроизведения музыки"
 
 #: src/audio/inhibit_controller.rs:40
 msgid "Playback in progress"
@@ -539,8 +539,8 @@ msgstr "Невозможно открыть папку"
 #~ msgid "Plays music and nothing else"
 #~ msgstr "Воспроизводит музыку и ничего больше"
 
-#~ msgid "Amberol cannot run in the background"
-#~ msgstr "Amberol не может работать в фоновом режиме"
+#~ msgid "Tune cannot run in the background"
+#~ msgstr "Tune не может работать в фоновом режиме"
 
 #~ msgid "{} hour"
 #~ msgid_plural "{} hours"
@@ -554,8 +554,8 @@ msgstr "Невозможно открыть папку"
 #~ msgid "Unrecognized file type for “{}”"
 #~ msgstr "Нераспознанный тип файла для \"{}\""
 
-#~ msgid "Amberol is running in the background"
-#~ msgstr "Amberol работает в фоновом режиме"
+#~ msgid "Tune is running in the background"
+#~ msgstr "Tune работает в фоновом режиме"
 
 #~ msgid "Playing next"
 #~ msgstr "Играет следующим"

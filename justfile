@@ -76,6 +76,7 @@ check:
     cargo clippy --workspace --all-targets -- -D warnings
     ./scripts/panic-ratchet.sh
     ./scripts/design-lint.sh
+    ./scripts/mtune-debrand-gate.sh
     cargo run -q -p mctl -- check-config --config margo/src/config.example.conf
     cargo test --workspace
 

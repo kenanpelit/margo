@@ -6,7 +6,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Nepali Gnome Translation\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/issues\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/issues\n"
 "POT-Creation-Date: 2022-06-13 17:32+0000\n"
 "PO-Revision-Date: 2022-06-15 16:18+0545\n"
 "Last-Translator: \n"
@@ -18,61 +18,61 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Generator: Poedit 3.1\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
-#: data/io.bassi.Amberol.appdata.xml.in.in:6
-msgid "Amberol"
+#: data/org.margo.Tune.desktop.in.in:3
+#: data/org.margo.Tune.appdata.xml.in.in:6
+msgid "Tune"
 msgstr ""
 
-#: data/io.bassi.Amberol.desktop.in.in:4
+#: data/org.margo.Tune.desktop.in.in:4
 msgid "Music Player"
 msgstr "सङ्गीत बजाउने"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:12
+#: data/org.margo.Tune.desktop.in.in:12
 msgid "music;sound;player;media;audio;playlist;"
 msgstr ""
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:7
+#: data/org.margo.Tune.appdata.xml.in.in:7
 #, fuzzy
 msgid "Plays music, and nothing else"
 msgstr "यहाँ अरु केही गर्न सकिदैन"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:9
+#: data/org.margo.Tune.appdata.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:14
+#: data/org.margo.Tune.appdata.xml.in.in:14
 #, fuzzy
 msgid "Current features:"
 msgstr "विशेषता:"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:16
+#: data/org.margo.Tune.appdata.xml.in.in:16
 #, fuzzy
 msgid "adaptive UI"
 msgstr "अनुकूल गर्नुहोस्"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:17
+#: data/org.margo.Tune.appdata.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr ""
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:18
+#: data/org.margo.Tune.appdata.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr ""
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:19
+#: data/org.margo.Tune.appdata.xml.in.in:19
 #, fuzzy
 msgid "shuffle and repeat"
 msgstr "फिट्नुहोस्/दोहोर्याउनुस् बन्द"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:20
+#: data/org.margo.Tune.appdata.xml.in.in:20
 #, fuzzy
 msgid "MPRIS integration"
 msgstr "प्रणाली एकीकरण"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:41
+#: data/org.margo.Tune.appdata.xml.in.in:41
 msgid "Emmanuele Bassi"
 msgstr ""
 
@@ -294,7 +294,7 @@ msgstr "कुञ्जीपाटी सटकर्ट"
 
 #: src/gtk/playback-control.ui:222
 #, fuzzy
-msgid "_About Amberol"
+msgid "_About Tune"
 msgstr "बारेमा"
 
 #: src/gtk/playlist-view.ui:19
@@ -464,15 +464,15 @@ msgid "Currently playing “{title}” by “{artist}”"
 msgstr ""
 
 #: src/window.rs:1185
-msgid "Amberol needs to run in the background to play music"
+msgid "Tune needs to run in the background to play music"
 msgstr ""
 
 #: src/window.rs:1194
 #, fuzzy
-msgid "Amberol is running in the background"
+msgid "Tune is running in the background"
 msgstr "\"%s\" पृष्ठभूमिमा चलिरहेको छ"
 
 #: src/window.rs:1198
 #, fuzzy
-msgid "Amberol cannot run in the background"
+msgid "Tune cannot run in the background"
 msgstr "पृष्ठभूमि मा चलाउनुहोस्"

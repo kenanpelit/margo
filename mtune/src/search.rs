@@ -24,7 +24,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for FuzzyFilter {
-        const NAME: &'static str = "AmberolFuzzyFilter";
+        const NAME: &'static str = "TuneFuzzyFilter";
         type Type = super::FuzzyFilter;
         type ParentType = gtk::Filter;
     }

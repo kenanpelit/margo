@@ -3,7 +3,7 @@
 
 using Gtk 4.0;
 
-template $AmberolSongCover: Widget {
+template $TuneSongCover: Widget {
   Box {
     halign: center;
     valign: center;
@@ -27,7 +27,7 @@ template $AmberolSongCover: Widget {
       StackPage {
         name: "cover-image";
 
-        child: $AmberolCoverPicture album_image {};
+        child: $TuneCoverPicture album_image {};
       }
     }
   }

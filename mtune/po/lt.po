@@ -1,14 +1,14 @@
-# Lithuanian translation for amberol.
-# Copyright (C) 2022 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Lithuanian translation for mtune.
+# Copyright (C) 2022 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 # mprogramavimai <mprogramavimai@gmail.com>, 2022.
 # Aurimas Černius <aurisc4@gmail.com>, 2022-2023.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2026-07-08 19:26+0000\n"
 "PO-Revision-Date: 2026-07-29 23:20+0300\n"
 "Last-Translator: Aurimas Černius <aurimas.cernius@mailo.com>\n"
@@ -20,66 +20,66 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "(n%100<10 || n%100>=20) ? 1 : 2);\n"
 "X-DL-Team: lt\n"
-"X-DL-Module: amberol\n"
+"X-DL-Module: mtune\n"
 "X-DL-Branch: main\n"
 "X-DL-Domain: po\n"
 "X-DL-State: Translating\n"
 "X-Generator: Poedit 3.9\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2
-#: data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2
+#: data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
+msgstr "Tune"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "Muzikos grotuvas"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr "muzika;grotuvas;medija;garsas;grojaraštis;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "Groja muziką ir nieko daugiau"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
-"Amberol yra muzikos grotuvas be jokių didybės kliedesių. Jeigu tiesiog nori "
-"groti muziką, pasiekiamą savo sistemoje, tai Amberol yra muzikos grotuvas, "
+"Tune yra muzikos grotuvas be jokių didybės kliedesių. Jeigu tiesiog nori "
+"groti muziką, pasiekiamą savo sistemoje, tai Tune yra muzikos grotuvas, "
 "kurio tu ieškai."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "Dabartinės savybės:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "adaptyvi sąsaja"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "spalvų pakeitimas pagal albumo išvaizdą"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "nutempimo palaikymas dainų pridėjimui į eilę"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "maišymas ir kartojimas"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "MPRIS integracija"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
-#: data/io.bassi.Amberol.metainfo.xml.in.in:50
+#: data/org.margo.Tune.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:50
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele Bassi"
 
@@ -198,8 +198,8 @@ msgid "_Keyboard Shortcuts"
 msgstr "_Klaviatūros trumpiniai"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
-msgstr "_Apie Amberol"
+msgid "_About Tune"
+msgstr "_Apie Tune"
 
 #: src/gtk/playback-control.blp:227
 msgid "_Quit"
@@ -385,8 +385,8 @@ msgstr ""
 "Mprogramavimai"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
-msgstr "Amberol turi veikti fone, kad grotų muziką"
+msgid "Tune needs to run in the background to play music"
+msgstr "Tune turi veikti fone, kad grotų muziką"
 
 #: src/audio/inhibit_controller.rs:40
 msgid "Playback in progress"
@@ -546,5 +546,5 @@ msgstr "Nepavyksta atverti aplanko"
 #~ msgid "Plays music and nothing else"
 #~ msgstr "Groja muziką ir nieko daugiau"
 
-#~ msgid "Amberol cannot run in the background"
-#~ msgstr "Amberol negali veikti fone"
+#~ msgid "Tune cannot run in the background"
+#~ msgstr "Tune negali veikti fone"

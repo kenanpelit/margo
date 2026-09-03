@@ -1,12 +1,12 @@
-# Esperanto translation for amberol.
-# Copyright (C) 2025 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Esperanto translation for mtune.
+# Copyright (C) 2025 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # Kristjan SCHMIDT <kristjan.schmidt@googlemail.com>, 2025.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2025-12-10 11:05+0000\n"
 "PO-Revision-Date: 2025-12-25 00:11+0100\n"
 "Last-Translator: Kristjan SCHMIDT <kristjan.schmidt@googlemail.com>\n"
@@ -18,59 +18,59 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Generator: Gtranslator 49.0\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2
-#: data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberolo"
+#: data/org.margo.Tune.desktop.in.in:2
+#: data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
+msgstr "Tuneo"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "Muzikilo"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr "muziko;ludilo;medio;sono;kantolisto;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "Ludas muzikon, kaj nenion alian"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
-"Amberolo estas muzikludilo sen grandiozaj ambicioj. Se vi simple volas ludi "
-"muzikon haveblan en via loka sistemo, tiam Amberolo estas la muzikludilo, "
+"Tuneo estas muzikludilo sen grandiozaj ambicioj. Se vi simple volas ludi "
+"muzikon haveblan en via loka sistemo, tiam Tuneo estas la muzikludilo, "
 "kiun vi serĉas."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "Nunaj funkcioj:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "adaptema interfaco"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "Interfaca rekulorigado laŭ la kovrila arto"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "Treni kaj faligi subteno por vici kantojn"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "Hazarda ordo kaj ripeto"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "MPRIS integriĝo"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele BASSI"
 
@@ -189,8 +189,8 @@ msgid "_Keyboard Shortcuts"
 msgstr "_Klavaraj ŝparvojoj"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
-msgstr "_Pri Amberolo"
+msgid "_About Tune"
+msgstr "_Pri Tuneo"
 
 #: src/gtk/playback-control.blp:227
 msgid "_Quit"
@@ -369,8 +369,8 @@ msgid "translator-credits"
 msgstr "Kristjan SCHMIDT"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
-msgstr "Amberolo devas funkcii en la fono por ludi muzikon"
+msgid "Tune needs to run in the background to play music"
+msgstr "Tuneo devas funkcii en la fono por ludi muzikon"
 
 #: src/audio/inhibit_controller.rs:40
 msgid "Playback in progress"

@@ -1,12 +1,12 @@
-# Korean translation for amberol.
-# Copyright (C) 2022-2026 amberol's all of contributors.
-# This file is distributed under the same license as the amberol package.
+# Korean translation for mtune.
+# Copyright (C) 2022-2026 mtune's all of contributors.
+# This file is distributed under the same license as the mtune package.
 # Seong-ho Cho <shcho@gnome.org>, 2022-2026.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2025-10-02 15:14+0000\n"
 "PO-Revision-Date: 2026-02-23 22:42+0900\n"
 "Last-Translator: Seong-ho Cho <shcho@gnome.org>\n"
@@ -18,61 +18,61 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 "X-Generator: Poedit 3.7\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2
-#: data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2
+#: data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
 msgstr "앰버롤"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "음악 재생기"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr ""
 "music;음악;곡;player;재생;재생기;media;매체;미디어;audio;오디오;소리;음"
 "성;playlist;재생목록;목록;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "음악을 재생하며, 다른 동작은 하지 않습니다"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
 "앰버롤은 장엄한 착각을 주지 않는 음악 재생 프로그램입니다. 로컬 시스템에 있"
 "는 음악을 재생하려 한다면 앰버롤은 여러분이 찾던 음악 재생 프로그램으로 안성"
 "맞춤입니다."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "현재 기능:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "적응형 UI"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "앨범 표지에 맞춰 인터페이스 색상 변경"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "재생 대기열로 곡 끌어다 놓기 기능"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "뒤섞고 반복 재생"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "MPRIS 통합"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele Bassi"
 
@@ -191,7 +191,7 @@ msgid "_Keyboard Shortcuts"
 msgstr "키보드 바로 가기 키(_K)"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
+msgid "_About Tune"
 msgstr "앰버롤 정보(_A)"
 
 #: src/gtk/playback-control.blp:227
@@ -371,7 +371,7 @@ msgid "translator-credits"
 msgstr "조성호 <shcho@gnome.org>"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
+msgid "Tune needs to run in the background to play music"
 msgstr "앰버롤은 음악을 재생할 때 백그라운드에서 실행해야 합니다"
 
 #: src/audio/inhibit_controller.rs:40

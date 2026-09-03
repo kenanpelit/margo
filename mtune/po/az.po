@@ -1,12 +1,12 @@
-# Azerbaijani translation for amberol.
-# Copyright (C) 2025 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Azerbaijani translation for mtune.
+# Copyright (C) 2025 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # Ramal Rəhimov <jhonaluman@gmail.com>, 2025.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2025-08-09 05:48+0000\n"
 "PO-Revision-Date: 2025-08-09 15:17+0300\n"
 "Last-Translator: Ramal Rəhimov <jhonaluman@gmail.com>\n"
@@ -18,59 +18,59 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Generator: Gtranslator 48.0\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2
-#: data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2
+#: data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
+msgstr "Tune"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "Musiqi Pleyeri"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr "musiqi;pleyer;media;audio;pleylist;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "Musiqi çalır, başqa heç nə"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
-"Amberol, böyük iddiaları olmayan bir musiqi pleyeridir. Əgər sadəcə yerli "
-"sisteminizdəki musiqiləri çalmaq istəyirsinizsə, Amberol axtardığınız musiqi "
+"Tune, böyük iddiaları olmayan bir musiqi pleyeridir. Əgər sadəcə yerli "
+"sisteminizdəki musiqiləri çalmaq istəyirsinizsə, Tune axtardığınız musiqi "
 "pleyeridir."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "Cari xüsusiyyətlər:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "adaptiv istifadəçi interfeysi"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "Albom şəkli ilə interfeysin rənglərinin dəyişdirilməsi"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "musiqiləri növbəyə əlavə etmək üçün sürüklə və burax dəstəyi"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "qarışdırma və təkrarlama"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "MPRIS inteqrasiyası"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele Bassi"
 
@@ -290,8 +290,8 @@ msgid "_Keyboard Shortcuts"
 msgstr "_Klaviatura Qısayolları"
 
 #: src/gtk/playback-control.ui:209
-msgid "_About Amberol"
-msgstr "Amberol _Haqqında"
+msgid "_About Tune"
+msgstr "Tune _Haqqında"
 
 #: src/gtk/playback-control.ui:213
 msgid "_Quit"
@@ -385,8 +385,8 @@ msgid "translator-credits"
 msgstr "Ramal Rəhimov <jhonaluman@gmail.com>"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
-msgstr "Musiqi çalmaq üçün Amberol arxa planda işləməlidir"
+msgid "Tune needs to run in the background to play music"
+msgstr "Musiqi çalmaq üçün Tune arxa planda işləməlidir"
 
 #: src/cover_picture.rs:75
 msgid "Cover image"

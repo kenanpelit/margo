@@ -1,12 +1,12 @@
-# Malayalam translation for amberol.
-# Copyright (C) 2025 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Malayalam translation for mtune.
+# Copyright (C) 2025 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # Murukesh S Kumar<muruwithcapitalm@gmail.com>,  2025.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2025-02-02 20:04+0000\n"
 "PO-Revision-Date: 2025-02-16 21:46+0530\n"
 "Last-Translator: \n"
@@ -18,56 +18,56 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Generator: Poedit 3.5\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:3 data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
+#: data/org.margo.Tune.desktop.in.in:3 data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
 msgstr "ആംബറോൾ"
 
-#: data/io.bassi.Amberol.desktop.in.in:4
+#: data/org.margo.Tune.desktop.in.in:4
 msgid "Music Player"
 msgstr "മ്യൂസിക് പ്ലെയർ"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:12
+#: data/org.margo.Tune.desktop.in.in:12
 msgid "music;player;media;audio;playlist;"
 msgstr "സംഗീതം; പ്ലെയർ; മീഡിയ; ഓഡിയോ; പ്ലേലിസ്റ്റ്;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "സംഗീതം പ്ലേ ചെയ്യുന്നു, മറിച്ചൊന്നുമില്ല"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
 "ആംബെറോൾ ഒരു മ്യൂസിക് പ്ലെയറാണ്, ഗാംഭീര്യത്തിന്റെ ഭ്രമങ്ങളൊന്നുമില്ല. നിങ്ങളുടെ പ്രാദേശിക സിസ്റ്റത്തിൽ ലഭ്യമായ സംഗീതം മാത്രം പ്ലേ ചെയ്യാൻ നിങ്ങൾ ആഗ്രഹിക്കുന്നുവെങ്കിൽ, നിങ്ങൾ തിരയുന്ന "
 "മ്യൂസിക് പ്ലെയറാണ് ആംബെറോൾ."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "നിലവിലെ സവിശേഷതകൾ:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "അഡാപ്റ്റീവ് UI"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "ആൽബം ആർട്ട് ഉപയോഗിച്ച് UI റീകളറിംഗ്"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "പാട്ടുകൾ ക്യൂവിൽ ഇടാൻ ഡ്രാഗ് ആൻഡ് ഡ്രോപ്പ് പിന്തുണ"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "ഷഫിൾ ചെയ്ത് ആവർത്തിക്കുക"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr ""
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "ഇമ്മാനുവൽ ബാസി"
 
@@ -283,7 +283,7 @@ msgid "_Keyboard Shortcuts"
 msgstr "_കീബോർഡ് കുറുക്കുവഴികൾ"
 
 #: src/gtk/playback-control.ui:205
-msgid "_About Amberol"
+msgid "_About Tune"
 msgstr "_ആംബെറോളിനെക്കുറിച്ച്"
 
 #: src/gtk/playback-control.ui:209
@@ -374,7 +374,7 @@ msgid "translator-credits"
 msgstr "Murukesh S Kumar<muruwithcapitalm@gmail.com>"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
+msgid "Tune needs to run in the background to play music"
 msgstr "സംഗീതം പ്ലേ ചെയ്യാൻ ആംബെറോളിന് പശ്ചാത്തലത്തിൽ ഓടേണ്ടതുണ്ട്"
 
 #: src/cover_picture.rs:75

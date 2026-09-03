@@ -3,7 +3,7 @@
 
 using Gtk 4.0;
 
-template $AmberolPlaybackControl: Widget {
+template $TunePlaybackControl: Widget {
   Box center_box {
     orientation: vertical;
     spacing: 6;
@@ -61,7 +61,7 @@ template $AmberolPlaybackControl: Widget {
       }
     }
 
-    $AmberolVolumeControl volume_control {
+    $TuneVolumeControl volume_control {
       hexpand: "true";
     }
 
@@ -219,7 +219,7 @@ menu primary_menu {
     }
 
     item {
-      label: _("_About Amberol");
+      label: _("_About Tune");
       action: "app.about";
     }
 

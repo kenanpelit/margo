@@ -1,12 +1,12 @@
-# Hungarian translation for amberol.
+# Hungarian translation for mtune.
 # Copyright (C) 2022, 2023, 2025, 2026 Free Software Foundation, Inc.
-# This file is distributed under the same license as the amberol package.
+# This file is distributed under the same license as the mtune package.
 #
 # Balázs Úr <ur.balazs at fsf dot hu>, 2022, 2023, 2025, 2026.
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2026-07-08 19:26+0000\n"
 "PO-Revision-Date: 2026-09-01 09:09+0200\n"
 "Last-Translator: Balázs Úr <ur.balazs at fsf dot hu>\n"
@@ -18,60 +18,60 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Generator: Lokalize 25.12.3\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2
-#: data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2
+#: data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
+msgstr "Tune"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "Zenelejátszó"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr "zene;lejátszó;média;hang;lejátszási lista;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "Zenét játszik, és semmi több"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
-"Az Amberol egy nagyzási képzelgések nélküli zenelejátszó. Ha csak a helyi "
-"rendszerén elérhető zenéket szeretné lejátszani, akkor az Amberol lesz az a "
+"Az Tune egy nagyzási képzelgések nélküli zenelejátszó. Ha csak a helyi "
+"rendszerén elérhető zenéket szeretné lejátszani, akkor az Tune lesz az a "
 "zenelejátszó, amelyet keres."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "Jelenlegi funkciók:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "alkalmazkodó felhasználói felület"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "felhasználói felület átszínezése az album borítójának használatával"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "fogd és vidd támogatás a dalok sorba állításához"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "megkeverés és ismétlés"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "MPRIS integráció"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
-#: data/io.bassi.Amberol.metainfo.xml.in.in:50
+#: data/org.margo.Tune.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:50
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele Bassi"
 
@@ -190,8 +190,8 @@ msgid "_Keyboard Shortcuts"
 msgstr "_Gyorsbillentyűk"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
-msgstr "Az Amberol _névjegye"
+msgid "_About Tune"
+msgstr "Az Tune _névjegye"
 
 #: src/gtk/playback-control.blp:227
 msgid "_Quit"
@@ -377,8 +377,8 @@ msgid "translator-credits"
 msgstr "Úr Balázs <ur dot balazs at fsf dot hu>, 2022."
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
-msgstr "Az Amberolnak a háttérben kell futnia a zene lejátszásához"
+msgid "Tune needs to run in the background to play music"
+msgstr "Az Tunenak a háttérben kell futnia a zene lejátszásához"
 
 #: src/audio/inhibit_controller.rs:40
 msgid "Playback in progress"

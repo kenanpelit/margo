@@ -1,12 +1,12 @@
-# Uzbek (Latin) translation for amberol.
-# Copyright (C) 2025 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Uzbek (Latin) translation for mtune.
+# Copyright (C) 2025 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # kHamidulloh <toxtayevhamidulloh6997@gmail.com>,  2025.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2025-09-26 03:40+0000\n"
 "PO-Revision-Date: 2025-10-03 18:14+0500\n"
 "Last-Translator: Baxrom Raxmatov <https://t.me/bahrom04>\n"
@@ -18,61 +18,61 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 "X-Generator: Poedit 3.5\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2
-#: data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2
+#: data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
+msgstr "Tune"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "Musiqiy pleyer"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr "musiqa;pleyer;media;audio;pleylist;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "Musiqa yangraydi, boshqa hech narsa yo‘q"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
-"Amberol - buyuklik vasvasalariga ega bo‘lmagan musiqa ijrochisi. Agar faqat "
-"mahalliy tizimingizda mavjud musiqani tinglamoqchi bo‘lsangiz, Amberol aynan "
+"Tune - buyuklik vasvasalariga ega bo‘lmagan musiqa ijrochisi. Agar faqat "
+"mahalliy tizimingizda mavjud musiqani tinglamoqchi bo‘lsangiz, Tune aynan "
 "siz qidirayotgan musiqa pleyeridir."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "Joriy funksiyalar:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "moslashuvchan UI"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "Albom rasmidan foydalangan holda UI rangini o'zgartirish"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr ""
 "qo‘shiqlarni navbatga qo‘shish uchun sichqoncha bilan sudrab tashlash "
 "imkoniyati"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "aralashtirish va takrorlash"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "MPRIS integratsiyasi"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "Emmanuel Bassi"
 
@@ -191,8 +191,8 @@ msgid "_Keyboard Shortcuts"
 msgstr "Klaviatura tezkor tugmalari"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
-msgstr "Amberol  haqida"
+msgid "_About Tune"
+msgstr "Tune  haqida"
 
 #: src/gtk/playback-control.blp:227
 msgid "_Quit"
@@ -371,9 +371,9 @@ msgid "translator-credits"
 msgstr "tarjimon-kreditlar"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
+msgid "Tune needs to run in the background to play music"
 msgstr ""
-"Musiqa ijro etish uchun Amberol dasturi orqa fonda ishlab turishi kerak"
+"Musiqa ijro etish uchun Tune dasturi orqa fonda ishlab turishi kerak"
 
 #: src/audio/inhibit_controller.rs:40
 msgid "Playback in progress"

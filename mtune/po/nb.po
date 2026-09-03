@@ -1,13 +1,13 @@
-# Norwegian Bokmål translation for amberol.
-# Copyright (C) 2024 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Norwegian Bokmål translation for mtune.
+# Copyright (C) 2024 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # Brage Fuglseth <bragefuglseth@gnome.org>, 2024.
 # Kjartan Maraas <kmaraas@gnome.org>, 2026
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2026-07-08 19:26+0000\n"
 "PO-Revision-Date: 2026-07-10 12:24+0200\n"
 "Last-Translator: Kjartan Maraas <kmaraas@gnome.org> \n"
@@ -19,61 +19,61 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Generator: Poedit 3.4.4\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2
-#: data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2
+#: data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
+msgstr "Tune"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "Musikkspiller"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr "GNOME;GTK;musikkspiller;musikkavspiller;musikk;lyd;spillelister;musikkavspilling;lytting;høre;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "Hør på favorittmusikken din"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
-"Amberol er en vakker musikkspiller uten unødvendige distraksjoner. Hvis du "
-"bare ønsker å spille av musikken som finnes på systemet ditt, er Amberol "
+"Tune er en vakker musikkspiller uten unødvendige distraksjoner. Hvis du "
+"bare ønsker å spille av musikken som finnes på systemet ditt, er Tune "
 "appen du ser etter."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
-msgstr "Flere grunner til å elske Amberol:"
+msgstr "Flere grunner til å elske Tune:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "Lytt hjemme eller på farten; appen tilpasser seg skjermstørrelsen din"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "Se appen endre farger ut fra omslagsbildet som vises"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "Dra og slipp låter for å legge dem til i spillelisten"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "Miks og gjenta spillelister"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr ""
 "Se og styr avspillingen fra andre steder, takket være appens integrering med "
 "systemet"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele Bassi"
 
@@ -192,8 +192,8 @@ msgid "_Keyboard Shortcuts"
 msgstr "_Tastatursnarveier"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
-msgstr "_Om Amberol"
+msgid "_About Tune"
+msgstr "_Om Tune"
 
 #: src/gtk/playback-control.blp:227
 msgid "_Quit"
@@ -377,8 +377,8 @@ msgid "translator-credits"
 msgstr "Brage Fuglseth https://bragefuglseth.dev"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
-msgstr "Amberol trenger å kjøre i bakgrunnen for å spille musikk"
+msgid "Tune needs to run in the background to play music"
+msgstr "Tune trenger å kjøre i bakgrunnen for å spille musikk"
 
 #: src/audio/inhibit_controller.rs:40
 msgid "Playback in progress"

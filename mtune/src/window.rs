@@ -45,7 +45,7 @@ mod imp {
     use super::*;
 
     #[derive(CompositeTemplate)]
-    #[template(resource = "/io/bassi/Amberol/window.ui")]
+    #[template(resource = "/org/margo/Tune/window.ui")]
     pub struct Window {
         // Template widgets
         #[template_child]
@@ -99,7 +99,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for Window {
-        const NAME: &'static str = "AmberolWindow";
+        const NAME: &'static str = "TuneWindow";
         type Type = super::Window;
         type ParentType = adw::ApplicationWindow;
 
@@ -1453,7 +1453,7 @@ impl Window {
         if let Some(song) = song {
             self.set_title(Some(&format!("{} - {}", song.artist(), song.title())));
         } else {
-            self.set_title(Some("Amberol"));
+            self.set_title(Some("Tune"));
         }
     }
 

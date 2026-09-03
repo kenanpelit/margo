@@ -66,7 +66,8 @@ pub fn load_cover_texture(buffer: &glib::Bytes) -> Option<gdk_pixbuf::Pixbuf> {
 
 pub fn cache_cover_art(uuid: &str, pixbuf: &gdk_pixbuf::Pixbuf) -> Option<PathBuf> {
     let mut cache_dir = glib::user_cache_dir();
-    cache_dir.push("amberol");
+    cache_dir.push("margo");
+    cache_dir.push("mtune");
     cache_dir.push("covers");
     glib::mkdir_with_parents(&cache_dir, 0o755);
 
@@ -78,7 +79,7 @@ pub fn cache_cover_art(uuid: &str, pixbuf: &gdk_pixbuf::Pixbuf) -> Option<PathBu
             pixbuf.save_to_streamv_async(
                 &stream,
                 "png",
-                &[("tEXt::Software", "amberol")],
+                &[("tEXt::Software", "mtune")],
                 gio::Cancellable::NONE,
                 move |res| {
                     if let Err(e) = res {
@@ -245,7 +246,7 @@ pub fn load_files_from_folder(folder: &gio::File, recursive: bool) -> Vec<gio::F
 
 pub fn store_playlist(queue: &Queue) {
     let pls = glib::KeyFile::new();
-    pls.set_string("playlist", "X-GNOME-Title", "Amberol's current playlist");
+    pls.set_string("playlist", "X-GNOME-Title", "Tune's current playlist");
 
     pls.set_int64("playlist", "NumberOfEntries", queue.n_songs() as i64);
 
@@ -259,7 +260,8 @@ pub fn store_playlist(queue: &Queue) {
     }
 
     let mut pls_cache = glib::user_cache_dir();
-    pls_cache.push("amberol");
+    pls_cache.push("margo");
+    pls_cache.push("mtune");
     pls_cache.push("playlists");
     glib::mkdir_with_parents(&pls_cache, 0o755);
 
@@ -272,7 +274,8 @@ pub fn store_playlist(queue: &Queue) {
 
 pub fn load_cached_songs() -> Option<Vec<gio::File>> {
     let mut pls_cache = glib::user_cache_dir();
-    pls_cache.push("amberol");
+    pls_cache.push("margo");
+    pls_cache.push("mtune");
     pls_cache.push("playlists");
     pls_cache.push("current.pls");
 
@@ -301,7 +304,8 @@ pub fn load_cached_songs() -> Option<Vec<gio::File>> {
 
 pub fn has_cached_playlist() -> bool {
     let mut pls_cache = glib::user_cache_dir();
-    pls_cache.push("amberol");
+    pls_cache.push("margo");
+    pls_cache.push("mtune");
     pls_cache.push("playlists");
     pls_cache.push("current.pls");
 

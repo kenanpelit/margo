@@ -1,12 +1,12 @@
-# Croatian translation for amberol.
-# Copyright (C) 2022 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Croatian translation for mtune.
+# Copyright (C) 2022 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/issues\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/issues\n"
 "POT-Creation-Date: 2023-01-05 10:55+0000\n"
 "PO-Revision-Date: 2023-01-13 11:36+0100\n"
 "Last-Translator: gogo <trebelnik2@gmail.com>\n"
@@ -19,59 +19,59 @@ msgstr ""
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 "X-Generator: Poedit 3.2.2\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
-#: data/io.bassi.Amberol.appdata.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberol"
+#: data/org.margo.Tune.desktop.in.in:3
+#: data/org.margo.Tune.appdata.xml.in.in:6
+msgid "Tune"
+msgstr "Tune"
 
-#: data/io.bassi.Amberol.desktop.in.in:4
+#: data/org.margo.Tune.desktop.in.in:4
 msgid "Music Player"
 msgstr "Glazbeni reproduktor"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:12
+#: data/org.margo.Tune.desktop.in.in:12
 msgid "music;player;media;audio;playlist;"
 msgstr "glazba;reproduktor;medij;zvuk;popis izvođenja;"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:7
+#: data/org.margo.Tune.appdata.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "Slušajte glazbu i ništa više od toga"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:9
+#: data/org.margo.Tune.appdata.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
-"Amberol je glazbeni reproduktor bez obzira na njegovu jednostavnost. Ako "
+"Tune je glazbeni reproduktor bez obzira na njegovu jednostavnost. Ako "
 "samo želite slušati glazbu dostupnu na vašem lokalnom sustavu, tada je "
-"Amberol glazbeni reproduktro koji tražite."
+"Tune glazbeni reproduktro koji tražite."
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:14
+#: data/org.margo.Tune.appdata.xml.in.in:14
 msgid "Current features:"
 msgstr "Trenutne značajke:"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:16
+#: data/org.margo.Tune.appdata.xml.in.in:16
 msgid "adaptive UI"
 msgstr "prilagodljivo grafičko sučelje"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:17
+#: data/org.margo.Tune.appdata.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "grafičko sučelje mijenja boju prema omotu albuma"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:18
+#: data/org.margo.Tune.appdata.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "podrška za povlačenje i ispuštanje pjesme u red reprodukcije"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:19
+#: data/org.margo.Tune.appdata.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "ponavljanje i naizmjenična repodukcija"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:20
+#: data/org.margo.Tune.appdata.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "MPRIS integracija"
 
-#: data/io.bassi.Amberol.appdata.xml.in.in:41
+#: data/org.margo.Tune.appdata.xml.in.in:41
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele Bassi"
 
@@ -290,8 +290,8 @@ msgid "_Keyboard Shortcuts"
 msgstr "_Prečaci tipkovnice"
 
 #: src/gtk/playback-control.ui:244
-msgid "_About Amberol"
-msgstr "_O Amberolu"
+msgid "_About Tune"
+msgstr "_O Tuneu"
 
 #: src/gtk/playback-control.ui:248
 msgid "_Quit"
@@ -465,9 +465,9 @@ msgid "Currently playing “{title}” by “{artist}”"
 msgstr "Trenutno slušate “{title}” od “{artist}”"
 
 #: src/window.rs:1377
-msgid "Amberol needs to run in the background to play music"
+msgid "Tune needs to run in the background to play music"
 msgstr ""
-"Amberol treba biti pokrenut u pozadini kako bi mogao reproducirati glazbu"
+"Tune treba biti pokrenut u pozadini kako bi mogao reproducirati glazbu"
 
 #~ msgid "Add File"
 #~ msgstr "Dodaj datoteku"
@@ -475,8 +475,8 @@ msgstr ""
 #~ msgid "Plays music and nothing else"
 #~ msgstr "Slušajte glazbu i ništa više od toga"
 
-#~ msgid "Amberol cannot run in the background"
-#~ msgstr "Amberol se nemože pokrenuti u pozadini"
+#~ msgid "Tune cannot run in the background"
+#~ msgstr "Tune se nemože pokrenuti u pozadini"
 
 #~ msgid "{} hour"
 #~ msgid_plural "{} hours"

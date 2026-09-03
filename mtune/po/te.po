@@ -1,12 +1,12 @@
-# Telugu translation for amberol.
-# Copyright (C) 2026 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Telugu translation for mtune.
+# Copyright (C) 2026 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # Aryan Karamtoth <spaciouskarter78@disroot.org>, 2026.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2026-04-05 16:57+0000\n"
 "PO-Revision-Date: 2026-05-19 07:45+0530\n"
 "Last-Translator: Aryan Karamtoth <spaciouskarter78@disroot.org>\n"
@@ -18,58 +18,58 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Generator: Gtranslator 50.0\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2
-#: data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2
+#: data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
+msgstr "Tune"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "మ్యూజిక్ ప్లేయర్"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr "music;player;media;audio;playlist;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "సంగీతం మాత్రమే ప్లే చేస్తుంది, మరేమీ కాదు."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
 "ఆంబరోల్ అనేది ఆడంబరమైన భ్రమలు లేని ఒక మ్యూజిక్ ప్లేయర్. మీరు మీ స్థానిక సిస్టమ్‌లో అందుబాటులో ఉన్న "
 "సంగీతాన్ని మాత్రమే ప్లే చేయాలనుకుంటే, మీరు వెతుకుతున్న మ్యూజిక్ ప్లేయర్ ఆంబరోల్ మాత్రమే."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "ప్రస్తుత ఫీచర్లు:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "అనుకూల UI"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "ఆల్బమ్ ఆర్ట్‌ను ఉపయోగించి UIకి రంగులు మార్చడం"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "పాటలను క్యూలో పెట్టడానికి డ్రాగ్ అండ్ డ్రాప్ సదుపాయం"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "షఫుల్ మరియు మళ్ళీ ప్లే చేయు"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "MPRIS ఇంటిగ్రేషన్"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele Bassi"
 
@@ -188,8 +188,8 @@ msgid "_Keyboard Shortcuts"
 msgstr "కీబోర్డ్ షార్ట్‌కట్‌లు (_K)"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
-msgstr "Amberol గురించి (_A)"
+msgid "_About Tune"
+msgstr "Tune గురించి (_A)"
 
 #: src/gtk/playback-control.blp:227
 msgid "_Quit"
@@ -373,7 +373,7 @@ msgid "translator-credits"
 msgstr "Aryan Karamtoth"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
+msgid "Tune needs to run in the background to play music"
 msgstr "సంగీతాన్ని ప్లే చేయడానికి అంబెరోల్ బాక్గ్రౌండ్లో నడవాలి"
 
 #: src/audio/inhibit_controller.rs:40

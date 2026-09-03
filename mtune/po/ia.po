@@ -1,13 +1,13 @@
-# Interlingua translation for amberol.
-# Copyright (C) 2024 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Interlingua translation for mtune.
+# Copyright (C) 2024 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 # Emilio Sepúlveda <emism.translations@gmail.com>, 2024-2025.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2025-09-13 17:32+0000\n"
 "PO-Revision-Date: 2025-09-13 16:35-0300\n"
 "Last-Translator: Emilio Sepúlveda <emism.translations@gmail.com>\n"
@@ -18,65 +18,65 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 "X-DL-Lang: ia\n"
-"X-DL-Module: amberol\n"
+"X-DL-Module: mtune\n"
 "X-DL-Branch: main\n"
 "X-DL-Domain: po\n"
 "X-DL-State: Translating\n"
 "X-Generator: Gtranslator 48.0\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2
-#: data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2
+#: data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
+msgstr "Tune"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "Reproductor de musica"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr "musica;reproductor;medios;audio;lista de reproduction;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "Reproduce musica e nihil plus"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
-"Amberol es un reproductor de musica sin delusion de grandiositate. Si tu "
+"Tune es un reproductor de musica sin delusion de grandiositate. Si tu "
 "solmente vole reproducer musica disponibile in tu systema local, alora "
-"Amberol es le reproductor que tu sta cercante."
+"Tune es le reproductor que tu sta cercante."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "Functionalitates actual:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "IU adaptative"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "Recoloration de IU usante le copertura de album"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "supporto de traher e deponer pro adder cantos al cauda"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "miscer e repeter"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "Integration de MPRIS"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele Bassi"
 
@@ -195,8 +195,8 @@ msgid "_Keyboard Shortcuts"
 msgstr "Vias breve de claviero"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
-msgstr "_A proposito de Amberol"
+msgid "_About Tune"
+msgstr "_A proposito de Tune"
 
 #: src/gtk/playback-control.blp:227
 msgid "_Quit"
@@ -375,8 +375,8 @@ msgid "translator-credits"
 msgstr "Emilio Sepúlveda <emism.translations@gmail.com>"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
-msgstr "Amberol necessita executar se in le fundo pro reproducer musica"
+msgid "Tune needs to run in the background to play music"
+msgstr "Tune necessita executar se in le fundo pro reproducer musica"
 
 #: src/audio/inhibit_controller.rs:40
 msgid "Playback in progress"

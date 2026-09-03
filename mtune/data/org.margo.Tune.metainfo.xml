@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fork modifications Copyright 2026 Kenan Pelit -->
+<component type="desktop-application">
+  <id>org.margo.Tune</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Tune</name>
+  <summary>Folder-first music player for the margo desktop</summary>
+
+  <description>
+    <p>
+      Tune plays everything in a folder. Point it at your music directory and
+      it scans it recursively, loads every track, and keeps the queue in sync
+      as the folder changes. It integrates with the margo shell: a bar pill, a
+      bar menu, and a system-tray icon with transport controls, plus standard
+      MPRIS2 so other players and remotes can drive it.
+    </p>
+    <p>
+      Tune is a fork of a GPL-3.0-or-later GTK music player, re-themed and
+      extended for margo.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">org.margo.Tune.desktop</launchable>
+
+  <url type="homepage">https://github.com/kenanpelit/margo</url>
+  <url type="bugtracker">https://github.com/kenanpelit/margo/issues</url>
+  <url type="vcs-browser">https://github.com/kenanpelit/margo</url>
+
+  <developer id="org.margo">
+    <name>the margo project</name>
+  </developer>
+
+  <translation type="gettext">mtune</translation>
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="3.0.0" date="2026-09-03">
+      <description>
+        <p>Initial fork: re-branded as Tune, moved into the margo workspace.</p>
+      </description>
+    </release>
+  </releases>
+</component>

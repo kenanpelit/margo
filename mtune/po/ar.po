@@ -1,6 +1,6 @@
-# Arabic translation for amberol.
-# Copyright (C) 2024 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Arabic translation for mtune.
+# Copyright (C) 2024 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 # Khalid Abu Shawarib <khalid.shawarib@gmail.com>, 2024.
 # Bandar al-Khulayfi, 2024.
@@ -8,8 +8,8 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2024-10-25 17:17+0000\n"
 "PO-Revision-Date: 2025-05-03 21:23+0300\n"
 "Last-Translator: Ahmed Najmawi <iramosu@protonmail.com>\n"
@@ -21,65 +21,65 @@ msgstr ""
 "Plural-Forms: nplurals=6; plural= n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && "
 "n%100<=10 ? 3 : n%100>=11 && n%100<=99 ? 4 : 5;\n"
 "X-DL-Lang: ar\n"
-"X-DL-Module: amberol\n"
+"X-DL-Module: mtune\n"
 "X-DL-Branch: main\n"
 "X-DL-Domain: po\n"
 "X-DL-State: Translating\n"
 "X-Generator: Poedit 3.4.4\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:3 data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
+#: data/org.margo.Tune.desktop.in.in:3 data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
 msgstr "أمبرول"
 
-#: data/io.bassi.Amberol.desktop.in.in:4
+#: data/org.margo.Tune.desktop.in.in:4
 msgid "Music Player"
 msgstr "مُشَغِّل موسيقى"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:12
+#: data/org.margo.Tune.desktop.in.in:12
 msgid "music;player;media;audio;playlist;"
 msgstr ""
 "موسيقى;مشغل;وسائط;صوتيات;سمعيات;قائمة تشغيل;music;player;media;audio;playlist;"
-"amberol;"
+"mtune;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "شَغِّل الموسيقى، ولا شيء آخر"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to play "
-"music available on your local system then Amberol is the music player you are "
+"Tune is a music player with no delusions of grandeur. If you just want to play "
+"music available on your local system then Tune is the music player you are "
 "looking for."
 msgstr ""
 "أمبِرول هو مُشغِّل موسيقى خالٍ من وهم العظمة. إذا كنتَ ترغبُ فقط في تشغيل الموسيقى "
 "المتوفرة على نظامك المحلي، فإنَّ أمبِرول هو مُشغِّل الموسيقى الذي تبحث عنه."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "الميزات الحالية:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "واجهة متكيفة"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "تلوين الواجهة من صور الألبوم"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "دعم صفِّ الأغاني بالسحب والإفلات"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "الإعادة والخلط"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "إِدْمَاج MPRIS"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "إمانويل باسّي"
 
@@ -295,7 +295,7 @@ msgid "_Keyboard Shortcuts"
 msgstr "اخت_صارت لوحة المفاتيح"
 
 #: src/gtk/playback-control.ui:205
-msgid "_About Amberol"
+msgid "_About Tune"
 msgstr "_عَنْ أمبِرول"
 
 #: src/gtk/playback-control.ui:209
@@ -393,7 +393,7 @@ msgstr ""
 "أحمد النجماوي <iramosu@protonmail.com>"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
+msgid "Tune needs to run in the background to play music"
 msgstr "يتطلب أمبِرول العمل في الخلفية لتشغيل الموسيقى"
 
 #: src/cover_picture.rs:75

@@ -46,7 +46,7 @@ pub enum PlaybackState {
 }
 
 #[derive(Clone, Copy, Debug, glib::Enum, PartialEq, Default)]
-#[enum_type(name = "AmberolRepeatMode")]
+#[enum_type(name = "TuneRepeatMode")]
 pub enum RepeatMode {
     #[default]
     Consecutive,
@@ -65,7 +65,7 @@ impl Display for RepeatMode {
 }
 
 #[derive(Clone, Copy, Debug, glib::Enum, PartialEq)]
-#[enum_type(name = "AmberolReplayGainMode")]
+#[enum_type(name = "TuneReplayGainMode")]
 pub enum ReplayGainMode {
     #[enum_value(name = "album")]
     Album,
@@ -246,6 +246,14 @@ impl AudioPlayer {
                 }
             }
         }
+
+        // Keep the app alive with no window while something is loaded and not
+        // fully stopped (see `Application::set_background_hold`).
+        let active =
+            self.state.current_song().is_some() && !matches!(state, PlaybackState::Stopped);
+        let _ = self
+            .app_sender
+            .send_blocking(ApplicationAction::BackgroundHold(active));
     }
 
     fn play_next(&self) {

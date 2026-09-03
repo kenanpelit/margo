@@ -1,12 +1,12 @@
-# Hebrew translation for amberol.
-# Copyright (C) 2022 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Hebrew translation for mtune.
+# Copyright (C) 2022 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # Yosef Or Boczko <yoseforb@gmail.com>, 2022-2026.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2026-07-08 19:26+0000\n"
 "PO-Revision-Date: 2026-08-23 09:33+0300\n"
 "Last-Translator: Yosef Or Boczko <yoseforb@gmail.com>\n"
@@ -19,60 +19,60 @@ msgstr ""
 "2 : 3)\n"
 "X-Generator: Gtranslator 50.0\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2
-#: data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2
+#: data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
 msgstr "אמברול"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "נגן מוזיקה"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr ""
 "מוזיקה;מוסיקה;שמע;צליל;נגן;מדיה;אודיו;רשימת השמעה;רשימות השמעה;פליליסט;"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "ניגון מוזיקה, ושום דבר מעבר לכך"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
 msgstr ""
 "אמברול הוא נגן מוזיקה ללא שגעון גדלות. אם ברצונך רק להשמיע מוזיקה הזמינה "
 "במערכת המקומית שלך, אמברול הוא נגן המוזיקה בשבילך."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "תכונות נוכחיות:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "ממשק משתמש משתנה ומותאם"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "צביעת ממשק המשתמש בהתאם לכיסוי האלבום"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "תמיכה בגרירה ושחרור להכנסת שירים לתור"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "ערבוב וחזרה"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "שילוב MPRIS"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
-#: data/io.bassi.Amberol.metainfo.xml.in.in:50
+#: data/org.margo.Tune.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:50
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele Bassi"
 
@@ -191,7 +191,7 @@ msgid "_Keyboard Shortcuts"
 msgstr "_צירופי מקשים"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
+msgid "_About Tune"
 msgstr "_על אמברול"
 
 #: src/gtk/playback-control.blp:227
@@ -379,7 +379,7 @@ msgstr ""
 "מיזם תרגום GNOME לעברית https://l10n.gnome.org/teams/he/"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
+msgid "Tune needs to run in the background to play music"
 msgstr "אמברול צריך לפעול ברקע על מנת לנגן מוזיקה"
 
 #: src/audio/inhibit_controller.rs:40
@@ -542,7 +542,7 @@ msgstr "לא ניתן לפתוח תיקייה"
 #~ msgid "Add File"
 #~ msgstr "הוספת קובץ"
 
-#~ msgid "Amberol cannot run in the background"
+#~ msgid "Tune cannot run in the background"
 #~ msgstr "אמברול לא יכול לפעול ברקע"
 
 #~ msgid "Plays music and nothing else"
@@ -561,7 +561,7 @@ msgstr "לא ניתן לפתוח תיקייה"
 #~ msgid "Unrecognized file type for “{}”"
 #~ msgstr "סוג קובץ לא מזוהה עבור „{}”"
 
-#~ msgid "Amberol is running in the background"
+#~ msgid "Tune is running in the background"
 #~ msgstr "אמברול פועל ברקע"
 
 #~ msgid "Playing next"

@@ -9,7 +9,7 @@ use gtk::{gdk, gio, glib, graphene, gsk, prelude::*, subclass::prelude::*};
 use crate::i18n::i18n;
 
 #[derive(Clone, Copy, Debug, glib::Enum, PartialEq, Default)]
-#[enum_type(name = "AmberolCoverSize")]
+#[enum_type(name = "TuneCoverSize")]
 pub enum CoverSize {
     #[default]
     Large = 0,
@@ -42,7 +42,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for CoverPicture {
-        const NAME: &'static str = "AmberolCoverPicture";
+        const NAME: &'static str = "TuneCoverPicture";
         type Type = super::CoverPicture;
         type ParentType = gtk::Widget;
 

@@ -5,12 +5,10 @@ use std::{cell::RefCell, rc::Rc};
 
 use adw::prelude::AdwDialogExt;
 use adw::subclass::prelude::*;
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
-use ashpd::{desktop::background::Background, WindowIdentifier};
 use async_channel::Receiver;
 use glib::clone;
 use gtk::{gio, glib, prelude::*};
-use log::{debug, warn};
+use log::debug;
 
 use crate::{
     audio::AudioPlayer,
@@ -22,6 +20,10 @@ use crate::{
 
 pub enum ApplicationAction {
     Present,
+    /// Hold the GApplication alive with no window (background playback, and —
+    /// a later phase — while the tray item is registered), or release it.
+    /// Sent by the player on every playback-state transition.
+    BackgroundHold(bool),
 }
 
 mod imp {
@@ -37,7 +39,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for Application {
-        const NAME: &'static str = "AmberolApplication";
+        const NAME: &'static str = "TuneApplication";
         type Type = super::Application;
         type ParentType = adw::Application;
 
@@ -120,7 +122,7 @@ impl Default for Application {
         glib::Object::builder::<Application>()
             .property("application-id", APPLICATION_ID)
             .property("flags", gio::ApplicationFlags::HANDLES_OPEN)
-            .property("resource-base-path", "/io/bassi/Amberol")
+            .property("resource-base-path", "/org/margo/Tune")
             .build()
     }
 }
@@ -134,6 +136,21 @@ impl Application {
         self.imp().player.clone()
     }
 
+    /// Hold the GApplication alive with no visible window while playback is
+    /// active (and `background-play` is enabled), release it otherwise. This
+    /// replaces the upstream `ashpd` Background-portal request — margo does
+    /// not service that portal; the `gio` hold guard is the real mechanism.
+    pub fn set_background_hold(&self, active: bool) {
+        let imp = self.imp();
+        let want = active && imp.settings.boolean("background-play");
+        let held = imp.background_hold.borrow().is_some();
+        if want && !held {
+            imp.background_hold.replace(Some(self.hold()));
+        } else if !want && held {
+            imp.background_hold.replace(None);
+        }
+    }
+
     fn setup_settings(&self) {
         self.imp().settings.connect_changed(
             Some("background-play"),
@@ -143,9 +160,7 @@ impl Application {
                 move |settings, _| {
                     let background_play = settings.boolean("background-play");
                     debug!("GSettings:background-play: {background_play}");
-                    if background_play {
-                        this.request_background();
-                    } else {
+                    if !background_play {
                         debug!("Dropping background hold");
                         this.imp().background_hold.replace(None);
                     }
@@ -176,7 +191,7 @@ impl Application {
     fn process_action(&self, action: ApplicationAction) -> glib::ControlFlow {
         match action {
             ApplicationAction::Present => self.present_main_window(),
-            // _ => debug!("Received action {:?}", action),
+            ApplicationAction::BackgroundHold(active) => self.set_background_hold(active),
         }
 
         glib::ControlFlow::Continue
@@ -189,9 +204,6 @@ impl Application {
             let window = Window::new(self);
             window.upcast()
         };
-
-        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-        self.request_background();
 
         window.present();
     }
@@ -231,13 +243,13 @@ impl Application {
         let window = self.active_window().unwrap();
         let dialog = adw::AboutDialog::builder()
             .application_icon(APPLICATION_ID)
-            .application_name("Amberol")
-            .developer_name("Emmanuele Bassi")
+            .application_name("Tune")
+            .developer_name("the margo project")
             .version(VERSION)
-            .developers(vec!["Emmanuele Bassi"])
-            .copyright("© 2022 Emmanuele Bassi")
-            .website("https://apps.gnome.org/Amberol/")
-            .issue_url("https://gitlab.gnome.org/World/amberol/-/issues/new")
+            .developers(vec!["Kenan Pelit", "Emmanuele Bassi (original work)"])
+            .copyright("© 2026 Kenan Pelit · original work © 2022–2025 Emmanuele Bassi")
+            .website("https://github.com/kenanpelit/margo")
+            .issue_url("https://github.com/kenanpelit/margo/issues/new")
             .license_type(gtk::License::Gpl30)
             // Translators: Replace "translator-credits" with your names, one name per line
             .translator_credits(i18n("translator-credits"))
@@ -245,47 +257,4 @@ impl Application {
 
         dialog.present(Some(&window));
     }
-
-    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    async fn portal_request_background(&self) {
-        if let Some(window) = self.active_window() {
-            let root = window.native().unwrap();
-            let identifier = WindowIdentifier::from_native(&root).await;
-            let request = Background::request().identifier(identifier).reason(&*i18n(
-                "Amberol needs to run in the background to play music",
-            ));
-
-            match request.send().await.and_then(
-                |r: ashpd::desktop::Request<ashpd::desktop::background::Background>| r.response(),
-            ) {
-                Ok(response) => {
-                    debug!("Background request successful: {:?}", response);
-                    self.imp().background_hold.replace(Some(self.hold()));
-                }
-                Err(err) => {
-                    warn!("Background request denied: {}", err);
-                    self.imp()
-                        .settings
-                        .set_boolean("background-play", false)
-                        .expect("Unable to set background-play settings key");
-                }
-            }
-        }
-    }
-
-    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    fn request_background(&self) {
-        let background_play = self.imp().settings.boolean("background-play");
-        if background_play {
-            let ctx = glib::MainContext::default();
-            ctx.spawn_local(clone!(
-                #[weak(rename_to = app)]
-                self,
-                async move { app.portal_request_background().await }
-            ));
-        }
-    }
-
-    #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
-    fn request_background(&self) {}
 }

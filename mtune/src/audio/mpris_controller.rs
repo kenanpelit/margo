@@ -26,7 +26,7 @@ pub struct MprisController {
 impl MprisController {
     pub fn new(sender: Sender<PlaybackAction>) -> Self {
         let builder = Player::builder(APPLICATION_ID)
-            .identity("Amberol")
+            .identity("Tune")
             .desktop_entry(APPLICATION_ID)
             .can_raise(true)
             .can_play(false)

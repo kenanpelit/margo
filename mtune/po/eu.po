@@ -1,11 +1,11 @@
-# Basque translation for amberol.
-# Copyright (C) 2022 amberol's COPYRIGHT HOLDER
-# This file is distributed under the same license as the amberol package.
+# Basque translation for mtune.
+# Copyright (C) 2022 mtune's COPYRIGHT HOLDER
+# This file is distributed under the same license as the mtune package.
 # Asier Saratsua Garmendia <asiersarasua@ni.eus>, 2022, 2023, 2025.
 #
 msgid ""
-msgstr "Project-Id-Version: amberol main\n"
-"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+msgstr "Project-Id-Version: mtune main\n"
+"Report-Msgid-Bugs-To: https://github.com/kenanpelit/margo/-/issues/\n"
 "POT-Creation-Date: 2025-10-10 16:26+0000\n"
 "PO-Revision-Date: 2025-10-12 20:28+0000\n"
 "Last-Translator: Asier Saratsua Garmendia <asiersarasua@ni.eus>\n"
@@ -16,56 +16,56 @@ msgstr "Project-Id-Version: amberol main\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: data/io.bassi.Amberol.desktop.in.in:2
-#: data/io.bassi.Amberol.metainfo.xml.in.in:6
-msgid "Amberol"
-msgstr "Amberol"
+#: data/org.margo.Tune.desktop.in.in:2
+#: data/org.margo.Tune.metainfo.xml.in.in:6
+msgid "Tune"
+msgstr "Tune"
 
-#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/org.margo.Tune.desktop.in.in:3
 msgid "Music Player"
 msgstr "Musika-erreproduzigailua"
 
 #. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
-#: data/io.bassi.Amberol.desktop.in.in:11
+#: data/org.margo.Tune.desktop.in.in:11
 msgid "music;player;media;audio;playlist;"
 msgstr "musika;erreproduzigailua;multimedia;audioa;erreprodukzio-zerrenda"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+#: data/org.margo.Tune.metainfo.xml.in.in:7
 msgid "Plays music, and nothing else"
 msgstr "Musika erreproduzitzen du, besterik ez"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+#: data/org.margo.Tune.metainfo.xml.in.in:9
 msgid ""
-"Amberol is a music player with no delusions of grandeur. If you just want to "
-"play music available on your local system then Amberol is the music player "
+"Tune is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Tune is the music player "
 "you are looking for."
-msgstr "Amberol handinahirik gabeko musika-erreproduzigailu bat da. Zure sistema lokalean duzun musika entzun nahi baduzu, Amberol da behar duzun erreproduzigailua."
+msgstr "Tune handinahirik gabeko musika-erreproduzigailu bat da. Zure sistema lokalean duzun musika entzun nahi baduzu, Tune da behar duzun erreproduzigailua."
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+#: data/org.margo.Tune.metainfo.xml.in.in:14
 msgid "Current features:"
 msgstr "Uneko eginbideak:"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+#: data/org.margo.Tune.metainfo.xml.in.in:16
 msgid "adaptive UI"
 msgstr "interfaze moldakorra"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+#: data/org.margo.Tune.metainfo.xml.in.in:17
 msgid "UI recoloring using the album art"
 msgstr "interfazearen kolorea aldatzen da albumaren itxura erabilita"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+#: data/org.margo.Tune.metainfo.xml.in.in:18
 msgid "drag and drop support to queue songs"
 msgstr "arrastatu eta jaregiteko euskarria abestiak ilaran jartzeko"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+#: data/org.margo.Tune.metainfo.xml.in.in:19
 msgid "shuffle and repeat"
 msgstr "ausaz erreproduzitu eta errepikatu"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+#: data/org.margo.Tune.metainfo.xml.in.in:20
 msgid "MPRIS integration"
 msgstr "MPRIS integrazioa"
 
-#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/org.margo.Tune.metainfo.xml.in.in:48
 msgid "Emmanuele Bassi"
 msgstr "Emmanuele Bassi"
 
@@ -184,8 +184,8 @@ msgid "_Keyboard Shortcuts"
 msgstr "La_sterbideak"
 
 #: src/gtk/playback-control.blp:222
-msgid "_About Amberol"
-msgstr "Amberol aplikazioari _buruz"
+msgid "_About Tune"
+msgstr "Tune aplikazioari _buruz"
 
 #: src/gtk/playback-control.blp:227
 msgid "_Quit"
@@ -362,8 +362,8 @@ msgid "translator-credits"
 msgstr "translator-credits"
 
 #: src/application.rs:255
-msgid "Amberol needs to run in the background to play music"
-msgstr "Amberol atzeko planoan exekutatu behar da musika erreproduzitu ahal izateko"
+msgid "Tune needs to run in the background to play music"
+msgstr "Tune atzeko planoan exekutatu behar da musika erreproduzitu ahal izateko"
 
 #: src/audio/inhibit_controller.rs:40
 msgid "Playback in progress"
@@ -505,8 +505,8 @@ msgstr "Ezin da karpeta ireki"
 #~ msgid "Add File"
 #~ msgstr "Gehitu fitxategia"
 
-#~ msgid "Amberol cannot run in the background"
-#~ msgstr "Amberol ezin da atzeko planoan exekutatu"
+#~ msgid "Tune cannot run in the background"
+#~ msgstr "Tune ezin da atzeko planoan exekutatu"
 
 #~ msgid "Plays music and nothing else"
 #~ msgstr "Musika erreproduzitzen du, besterik ez"
@@ -517,8 +517,8 @@ msgstr "Ezin da karpeta ireki"
 #~ msgid "Unrecognized file type for “{}”"
 #~ msgstr "Fitxategi-mota ezezaguna honetarako: “{}”"
 
-#~ msgid "Amberol is running in the background"
-#~ msgstr "Amberol atzeko planoan exekutatzen ari da"
+#~ msgid "Tune is running in the background"
+#~ msgstr "Tune atzeko planoan exekutatzen ari da"
 
 #~ msgctxt "shortcut window"
 #~ msgid "Songs Queue"
