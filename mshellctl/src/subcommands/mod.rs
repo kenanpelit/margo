@@ -12,6 +12,7 @@ pub mod lock;
 pub mod log;
 pub mod media;
 pub mod menu;
+pub mod mtune;
 pub mod notification;
 pub mod osk;
 pub mod play;

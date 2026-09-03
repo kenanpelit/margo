@@ -73,6 +73,9 @@ _mshellctl() {
             mshellctl,menu)
                 cmd="mshellctl__subcmd__menu"
                 ;;
+            mshellctl,mtune)
+                cmd="mshellctl__subcmd__mtune"
+                ;;
             mshellctl,notification)
                 cmd="mshellctl__subcmd__notification"
                 ;;
@@ -481,6 +484,9 @@ _mshellctl() {
             mshellctl__subcmd__help,menu)
                 cmd="mshellctl__subcmd__help__subcmd__menu"
                 ;;
+            mshellctl__subcmd__help,mtune)
+                cmd="mshellctl__subcmd__help__subcmd__mtune"
+                ;;
             mshellctl__subcmd__help,notification)
                 cmd="mshellctl__subcmd__help__subcmd__notification"
                 ;;
@@ -763,6 +769,9 @@ _mshellctl() {
             mshellctl__subcmd__help__subcmd__menu,media-player)
                 cmd="mshellctl__subcmd__help__subcmd__menu__subcmd__media__subcmd__player"
                 ;;
+            mshellctl__subcmd__help__subcmd__menu,mtune)
+                cmd="mshellctl__subcmd__help__subcmd__menu__subcmd__mtune"
+                ;;
             mshellctl__subcmd__help__subcmd__menu,network)
                 cmd="mshellctl__subcmd__help__subcmd__menu__subcmd__network"
                 ;;
@@ -843,6 +852,75 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__help__subcmd__menu__subcmd__session,suspend)
                 cmd="mshellctl__subcmd__help__subcmd__menu__subcmd__session__subcmd__suspend"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,jump)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__jump"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,library)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__library"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,menu)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__menu"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,metadata)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__metadata"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,next)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__next"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,open)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__open"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,pause)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__pause"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,play)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__play"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,play-pause)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__play__subcmd__pause"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,playlist-load)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__playlist__subcmd__load"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,playlist-save)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__playlist__subcmd__save"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,playlists)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__playlists"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,previous)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__previous"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,quit)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__quit"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,raise)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__raise"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,rate)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__rate"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,repeat)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__repeat"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,rescan)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__rescan"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,seek)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__seek"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,shuffle)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__shuffle"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,status)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__status"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,stop)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__stop"
+                ;;
+            mshellctl__subcmd__help__subcmd__mtune,volume)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__volume"
                 ;;
             mshellctl__subcmd__help__subcmd__notification,clear)
                 cmd="mshellctl__subcmd__help__subcmd__notification__subcmd__clear"
@@ -1216,6 +1294,9 @@ _mshellctl() {
             mshellctl__subcmd__menu,media-player)
                 cmd="mshellctl__subcmd__menu__subcmd__media__subcmd__player"
                 ;;
+            mshellctl__subcmd__menu,mtune)
+                cmd="mshellctl__subcmd__menu__subcmd__mtune"
+                ;;
             mshellctl__subcmd__menu,network)
                 cmd="mshellctl__subcmd__menu__subcmd__network"
                 ;;
@@ -1326,6 +1407,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__menu__subcmd__help,media-player)
                 cmd="mshellctl__subcmd__menu__subcmd__help__subcmd__media__subcmd__player"
+                ;;
+            mshellctl__subcmd__menu__subcmd__help,mtune)
+                cmd="mshellctl__subcmd__menu__subcmd__help__subcmd__mtune"
                 ;;
             mshellctl__subcmd__menu__subcmd__help,network)
                 cmd="mshellctl__subcmd__menu__subcmd__help__subcmd__network"
@@ -1473,6 +1557,150 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__menu__subcmd__session__subcmd__help,suspend)
                 cmd="mshellctl__subcmd__menu__subcmd__session__subcmd__help__subcmd__suspend"
+                ;;
+            mshellctl__subcmd__mtune,help)
+                cmd="mshellctl__subcmd__mtune__subcmd__help"
+                ;;
+            mshellctl__subcmd__mtune,jump)
+                cmd="mshellctl__subcmd__mtune__subcmd__jump"
+                ;;
+            mshellctl__subcmd__mtune,library)
+                cmd="mshellctl__subcmd__mtune__subcmd__library"
+                ;;
+            mshellctl__subcmd__mtune,menu)
+                cmd="mshellctl__subcmd__mtune__subcmd__menu"
+                ;;
+            mshellctl__subcmd__mtune,metadata)
+                cmd="mshellctl__subcmd__mtune__subcmd__metadata"
+                ;;
+            mshellctl__subcmd__mtune,next)
+                cmd="mshellctl__subcmd__mtune__subcmd__next"
+                ;;
+            mshellctl__subcmd__mtune,open)
+                cmd="mshellctl__subcmd__mtune__subcmd__open"
+                ;;
+            mshellctl__subcmd__mtune,pause)
+                cmd="mshellctl__subcmd__mtune__subcmd__pause"
+                ;;
+            mshellctl__subcmd__mtune,play)
+                cmd="mshellctl__subcmd__mtune__subcmd__play"
+                ;;
+            mshellctl__subcmd__mtune,play-pause)
+                cmd="mshellctl__subcmd__mtune__subcmd__play__subcmd__pause"
+                ;;
+            mshellctl__subcmd__mtune,playlist-load)
+                cmd="mshellctl__subcmd__mtune__subcmd__playlist__subcmd__load"
+                ;;
+            mshellctl__subcmd__mtune,playlist-save)
+                cmd="mshellctl__subcmd__mtune__subcmd__playlist__subcmd__save"
+                ;;
+            mshellctl__subcmd__mtune,playlists)
+                cmd="mshellctl__subcmd__mtune__subcmd__playlists"
+                ;;
+            mshellctl__subcmd__mtune,previous)
+                cmd="mshellctl__subcmd__mtune__subcmd__previous"
+                ;;
+            mshellctl__subcmd__mtune,quit)
+                cmd="mshellctl__subcmd__mtune__subcmd__quit"
+                ;;
+            mshellctl__subcmd__mtune,raise)
+                cmd="mshellctl__subcmd__mtune__subcmd__raise"
+                ;;
+            mshellctl__subcmd__mtune,rate)
+                cmd="mshellctl__subcmd__mtune__subcmd__rate"
+                ;;
+            mshellctl__subcmd__mtune,repeat)
+                cmd="mshellctl__subcmd__mtune__subcmd__repeat"
+                ;;
+            mshellctl__subcmd__mtune,rescan)
+                cmd="mshellctl__subcmd__mtune__subcmd__rescan"
+                ;;
+            mshellctl__subcmd__mtune,seek)
+                cmd="mshellctl__subcmd__mtune__subcmd__seek"
+                ;;
+            mshellctl__subcmd__mtune,shuffle)
+                cmd="mshellctl__subcmd__mtune__subcmd__shuffle"
+                ;;
+            mshellctl__subcmd__mtune,status)
+                cmd="mshellctl__subcmd__mtune__subcmd__status"
+                ;;
+            mshellctl__subcmd__mtune,stop)
+                cmd="mshellctl__subcmd__mtune__subcmd__stop"
+                ;;
+            mshellctl__subcmd__mtune,volume)
+                cmd="mshellctl__subcmd__mtune__subcmd__volume"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,help)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__help"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,jump)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__jump"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,library)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__library"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,menu)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__menu"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,metadata)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__metadata"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,next)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__next"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,open)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__open"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,pause)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__pause"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,play)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__play"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,play-pause)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__play__subcmd__pause"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,playlist-load)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__playlist__subcmd__load"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,playlist-save)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__playlist__subcmd__save"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,playlists)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__playlists"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,previous)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__previous"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,quit)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__quit"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,raise)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__raise"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,rate)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__rate"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,repeat)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__repeat"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,rescan)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__rescan"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,seek)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__seek"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,shuffle)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__shuffle"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,status)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__status"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,stop)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__stop"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,volume)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__volume"
                 ;;
             mshellctl__subcmd__notification,clear)
                 cmd="mshellctl__subcmd__notification__subcmd__clear"
@@ -1919,7 +2147,7 @@ _mshellctl() {
 
     case "${cmd}" in
         mshellctl)
-            opts="-h -V --help --version quit inspect set-wallpaper menu bar hidden-bar audio bluetooth media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard toast gamemode calendar vpn power layout osk color play doctor completions help"
+            opts="-h -V --help --version quit inspect set-wallpaper menu bar hidden-bar audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard toast gamemode calendar vpn power layout osk color play doctor completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -3435,7 +3663,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help)
-            opts="quit inspect set-wallpaper menu bar hidden-bar audio bluetooth media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard toast gamemode calendar vpn power layout osk color play doctor completions help"
+            opts="quit inspect set-wallpaper menu bar hidden-bar audio bluetooth mtune media brightness log dock lock session notification settings wizard wallpaper theme plugin screenshot screenrecord clipboard toast gamemode calendar vpn power layout osk color play doctor completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -4541,7 +4769,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__menu)
-            opts="app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions vpn dns ai podman notes ip vpn-indicator network power media-player lyrics session mdash plugin close-all"
+            opts="app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions vpn dns ai podman notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin close-all"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -4793,6 +5021,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__menu__subcmd__media__subcmd__player)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__menu__subcmd__mtune)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -5171,6 +5413,342 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__menu__subcmd__weather)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune)
+            opts="play-pause play pause stop next previous seek volume rate repeat shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise quit menu"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__jump)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__library)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__menu)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__metadata)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__next)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__open)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__pause)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__play)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__play__subcmd__pause)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__playlist__subcmd__load)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__playlist__subcmd__save)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__playlists)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__previous)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__quit)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__raise)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__rate)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__repeat)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__rescan)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__seek)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__shuffle)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__status)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__stop)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__volume)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -6963,7 +7541,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__menu)
-            opts="-h --help app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions vpn dns ai podman notes ip vpn-indicator network power media-player lyrics session mdash plugin close-all help"
+            opts="-h --help app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions vpn dns ai podman notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin close-all help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -7135,7 +7713,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__menu__subcmd__help)
-            opts="app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions vpn dns ai podman notes ip vpn-indicator network power media-player lyrics session mdash plugin close-all help"
+            opts="app-launcher clipboard clock notifications screenshot wallpaper ufw privacy bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight margo-layout weather keybinds alarm-clock control-center ssh-sessions vpn dns ai podman notes ip vpn-indicator network power media-player mtune lyrics session mdash plugin close-all help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -7401,6 +7979,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__menu__subcmd__help__subcmd__media__subcmd__player)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__menu__subcmd__help__subcmd__mtune)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -7877,6 +8469,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__menu__subcmd__media__subcmd__player)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__menu__subcmd__mtune)
             opts="-h --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -8438,6 +9044,692 @@ _mshellctl() {
             ;;
         mshellctl__subcmd__menu__subcmd__weather)
             opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune)
+            opts="-h --help play-pause play pause stop next previous seek volume rate repeat shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise quit menu help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help)
+            opts="play-pause play pause stop next previous seek volume rate repeat shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise quit menu help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__jump)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__library)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__menu)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__metadata)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__next)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__open)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__pause)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__play)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__play__subcmd__pause)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__playlist__subcmd__load)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__playlist__subcmd__save)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__playlists)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__previous)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__quit)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__raise)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__rate)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__repeat)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__rescan)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__seek)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__shuffle)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__status)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__stop)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__volume)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__jump)
+            opts="-h --help <INDEX>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__library)
+            opts="-h --help <PATH>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__menu)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__metadata)
+            opts="-h --json --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__next)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__open)
+            opts="-h --help <PATH>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__pause)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__play)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__play__subcmd__pause)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__playlist__subcmd__load)
+            opts="-h --help <NAME>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__playlist__subcmd__save)
+            opts="-h --help <NAME>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__playlists)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__previous)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__quit)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__raise)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__rate)
+            opts="-h --help [VALUE]"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__repeat)
+            opts="-h --help [MODE]"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__rescan)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__seek)
+            opts="-h --help <POS>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__shuffle)
+            opts="-h --help [STATE]"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__status)
+            opts="-h --json --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__stop)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__volume)
+            opts="-h --help [VALUE]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

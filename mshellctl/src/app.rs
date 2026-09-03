@@ -12,6 +12,7 @@ use crate::subcommands::layout::LayoutCommands;
 use crate::subcommands::lock::LockCommands;
 use crate::subcommands::media::MediaCommands;
 use crate::subcommands::menu::MenuCommands;
+use crate::subcommands::mtune::MtuneCommands;
 use crate::subcommands::notification::NotificationCommands;
 use crate::subcommands::osk::OskCommands;
 use crate::subcommands::play::PlayCommands;
@@ -159,6 +160,12 @@ pub enum Commands {
     Bluetooth {
         #[command(subcommand)]
         command: BluetoothCommands,
+    },
+    /// Control the native `mtune` music player — playback, speed, queue,
+    /// library + playlists. Talks straight to mtune (no shell needed).
+    Mtune {
+        #[command(subcommand)]
+        command: MtuneCommands,
     },
     /// Control the active media player — play/pause, next, previous.
     /// Auto-picks across every MPRIS player and native MPD by a weighted

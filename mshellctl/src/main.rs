@@ -22,6 +22,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Bluetooth { command } => {
             mshellctl::subcommands::bluetooth::execute(command).await?
         }
+        Commands::Mtune { command } => mshellctl::subcommands::mtune::execute(command).await?,
         Commands::Media { command } => mshellctl::subcommands::media::execute(command).await?,
         Commands::Brightness { command } => {
             mshellctl::subcommands::brightness::execute(command).await?
