@@ -10,7 +10,7 @@ use std::{
 use async_channel::{Receiver, Sender};
 use glib::clone;
 use gtk::glib;
-use log::{debug, error};
+use log::debug;
 
 use crate::{
     application::ApplicationAction,
@@ -20,21 +20,14 @@ use crate::{
     },
 };
 
+/// Messages the GStreamer backend pushes back to the player on its own
+/// thread. User- and MPRIS-driven commands call `AudioPlayer` methods
+/// directly, so this channel only carries backend-originated events.
 #[derive(Clone, Debug)]
 pub enum PlaybackAction {
-    Play,
-    Pause,
-    Stop,
-    SkipPrevious,
-    SkipNext,
-
     UpdatePosition(u64, bool),
     VolumeChanged(f64),
-    Repeat(RepeatMode),
-    Seek(i64),
     PlayNext,
-
-    Raise,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
@@ -108,6 +101,7 @@ pub struct AudioPlayer {
     receiver: RefCell<Option<Receiver<PlaybackAction>>>,
     backend: GstBackend,
     controllers: Vec<Box<dyn Controller>>,
+    mpris: MprisController,
     queue: Queue,
     state: PlayerState,
     waveform_generator: WaveformGenerator,
@@ -126,8 +120,12 @@ impl AudioPlayer {
 
         let mut controllers: Vec<Box<dyn Controller>> = Vec::new();
 
-        let mpris_controller = MprisController::new(sender.clone());
-        controllers.push(Box::new(mpris_controller));
+        // The MPRIS + TrackList server. Held as a field *and* in the
+        // controllers list (a cheap `Rc` clone) — the list drives its
+        // `set_*` push notifications, the field lets `new` `attach` it to
+        // the finished `AudioPlayer` below.
+        let mpris = MprisController::new();
+        controllers.push(Box::new(mpris.clone()));
 
         let inhibit_controller = InhibitController::new();
         controllers.push(Box::new(inhibit_controller));
@@ -145,14 +143,21 @@ impl AudioPlayer {
             receiver,
             backend,
             controllers,
+            mpris,
             queue,
             state,
             waveform_generator,
         });
 
         res.clone().setup_channel();
+        res.mpris.attach(&res);
 
         res
+    }
+
+    /// A clone of the sender the player uses to talk back to `Application`.
+    pub(crate) fn app_sender(&self) -> Sender<ApplicationAction> {
+        self.app_sender.clone()
     }
 
     fn setup_channel(self: Rc<Self>) {
@@ -174,18 +179,9 @@ impl AudioPlayer {
 
     fn process_action(&self, action: PlaybackAction) -> glib::ControlFlow {
         match action {
-            PlaybackAction::Play => self.set_playback_state(PlaybackState::Playing),
-            PlaybackAction::Pause => self.set_playback_state(PlaybackState::Paused),
-            PlaybackAction::Stop => self.set_playback_state(PlaybackState::Stopped),
-            PlaybackAction::SkipPrevious => self.skip_previous(),
-            PlaybackAction::SkipNext => self.skip_next(),
             PlaybackAction::UpdatePosition(pos, notify) => self.update_position(pos, notify),
             PlaybackAction::VolumeChanged(vol) => self.update_volume(vol),
             PlaybackAction::PlayNext => self.play_next(),
-            PlaybackAction::Raise => self.present(),
-            PlaybackAction::Repeat(mode) => self.update_repeat_mode(mode),
-            PlaybackAction::Seek(offset) => self.seek_offset(offset),
-            // _ => debug!("Received action {:?}", action),
         }
 
         glib::ControlFlow::Continue
@@ -503,19 +499,15 @@ impl AudioPlayer {
         }
     }
 
-    fn update_repeat_mode(&self, repeat: RepeatMode) {
+    /// Set an explicit repeat mode (MPRIS `LoopStatus`, `AppCommand`)
+    /// and propagate it to every controller + the UI.
+    pub fn update_repeat_mode(&self, repeat: RepeatMode) {
         if repeat != self.queue.repeat_mode() {
             self.queue.set_repeat_mode(repeat);
 
             for c in &self.controllers {
                 c.set_repeat_mode(repeat);
             }
-        }
-    }
-
-    fn present(&self) {
-        if let Err(e) = self.app_sender.send_blocking(ApplicationAction::Present) {
-            error!("Unable to send Present: {e}");
         }
     }
 

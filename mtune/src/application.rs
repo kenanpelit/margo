@@ -28,6 +28,8 @@ use crate::{
 
 pub enum ApplicationAction {
     Present,
+    /// MPRIS `Quit` — shut the app down.
+    Quit,
     /// Hold the GApplication alive with no window (background playback, and —
     /// a later phase — while the tray item is registered), or release it.
     /// Sent by the player on every playback-state transition.
@@ -525,7 +527,7 @@ impl Application {
             AppCommand::Previous => player.skip_previous(),
             AppCommand::Stop => player.stop(),
             AppCommand::SetShuffle(b) => player.queue().set_shuffled(b),
-            AppCommand::SetRepeat(m) => player.queue().set_repeat_mode(m),
+            AppCommand::SetRepeat(m) => player.update_repeat_mode(m),
             AppCommand::SeekAbs(s) => player.seek_position_abs(s),
             AppCommand::SetVolume(v) => player.set_volume(v),
             AppCommand::PlayIndex(i) => player.skip_to(i),
@@ -637,6 +639,7 @@ impl Application {
     fn process_action(&self, action: ApplicationAction) -> glib::ControlFlow {
         match action {
             ApplicationAction::Present => self.present_main_window(),
+            ApplicationAction::Quit => self.quit(),
             ApplicationAction::BackgroundHold(active) => self.set_background_hold(active),
         }
 
