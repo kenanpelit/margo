@@ -1,0 +1,14 @@
+mtune is a fork of a GPL-3.0-or-later GTK music player.
+
+Original work Copyright (C) 2022-2025 Emmanuele Bassi and contributors.
+Fork modifications Copyright (C) 2026 Kenan Pelit.
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version. See GPL-3.0-or-later.txt.
+
+Per GPL-3.0 section 5, the original author copyright notices in the
+per-file SPDX headers are retained for license compliance. The upstream
+project name, application id, D-Bus names, icon set, and infrastructure
+files are not part of this fork.

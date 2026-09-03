@@ -1,0 +1,501 @@
+# Vietnamese translation for amberol.
+# Copyright (C) 2025 amberol's COPYRIGHT HOLDER
+# This file is distributed under the same license as the amberol package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+# Nguyễn Tri Phương <triphuong@falcolabs.org>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: amberol main\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"POT-Creation-Date: 2025-08-10 13:18+0000\n"
+"PO-Revision-Date: 2025-08-10 22:55+0700\n"
+"Last-Translator: Nguyễn Tri Phương <triphuong@falcolabs.org>\n"
+"Language-Team: Vietnamese <gnome-vi-list@gnome.org>\n"
+"Language: vi\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-DL-Lang: vi\n"
+"X-DL-Module: amberol\n"
+"X-DL-Branch: main\n"
+"X-DL-Domain: po\n"
+"X-DL-State: None\n"
+"X-Generator: Gtranslator 48.0\n"
+
+#: data/io.bassi.Amberol.desktop.in.in:2
+#: data/io.bassi.Amberol.metainfo.xml.in.in:6
+msgid "Amberol"
+msgstr "Amberol"
+
+#: data/io.bassi.Amberol.desktop.in.in:3
+msgid "Music Player"
+msgstr "Trình phát nhạc"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/io.bassi.Amberol.desktop.in.in:11
+msgid "music;player;media;audio;playlist;"
+msgstr ""
+"music;player;media;audio;playlist;nhạc;phát;chơi;chạy;âm thanh;danh sách "
+"phát;nghe;"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+msgid "Plays music, and nothing else"
+msgstr "Một phần mềm không làm gì khác ngoài chơi nhạc"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+msgid ""
+"Amberol is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Amberol is the music player "
+"you are looking for."
+msgstr ""
+"Amberol là một trình phát nhạc không khoe vẽ lung tung. Nếu như bạn cần một "
+"trình phát nhạc chạy cục bộ trên máy bạn, thì Amberol chính là thứ bạn đang "
+"cần tìm."
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+msgid "Current features:"
+msgstr "Tính năng:"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+msgid "adaptive UI"
+msgstr "giao diện người dùng thích ứng"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+msgid "UI recoloring using the album art"
+msgstr "giao diện đổi màu theo ảnh bìa album"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+msgid "drag and drop support to queue songs"
+msgstr "kéo-thả để thêm bài hát vào danh sách chờ"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+msgid "shuffle and repeat"
+msgstr "đảo, trộn, và lặp bài"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+msgid "MPRIS integration"
+msgstr "tích hợp MPRIS"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+msgid "Emmanuele Bassi"
+msgstr "Emmanuele Bassi"
+
+#: src/audio/inhibit_controller.rs:40
+msgid "Playback in progress"
+msgstr "Đang phát"
+
+#: src/audio/song.rs:317
+msgid "Unknown artist"
+msgstr "Khuyết danh"
+
+#: src/audio/song.rs:324
+msgid "Unknown title"
+msgstr "Không có tiêu đề"
+
+#: src/audio/song.rs:331
+msgid "Unknown album"
+msgstr "Album chưa đặt tên"
+
+#: src/gtk/help-overlay.ui:11
+msgctxt "shortcut window"
+msgid "General"
+msgstr "Chung"
+
+#: src/gtk/help-overlay.ui:14
+msgctxt "shortcut window"
+msgid "Toggle primary menu"
+msgstr "Ẩn/hiện menu chính"
+
+#: src/gtk/help-overlay.ui:20
+msgctxt "shortcut window"
+msgid "Copy song details to the clipboard"
+msgstr "Sao chép thông tin bài hát vào bảng nhớ tạm"
+
+#: src/gtk/help-overlay.ui:26
+msgctxt "shortcut window"
+msgid "Show shortcuts"
+msgstr "Hiện phím tắt"
+
+#: src/gtk/help-overlay.ui:32
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "Thoát"
+
+#: src/gtk/help-overlay.ui:40
+msgctxt "shortcut window"
+msgid "Playlist"
+msgstr "Danh sách phát"
+
+#: src/gtk/help-overlay.ui:43
+msgctxt "shortcut window"
+msgid "Add a song to the playlist"
+msgstr "Thêm bài vào danh sách phát"
+
+#: src/gtk/help-overlay.ui:49
+msgctxt "shortcut window"
+msgid "Add a folder to the playlist"
+msgstr "Thêm thư mục vào danh sách phát"
+
+#: src/gtk/help-overlay.ui:55
+msgctxt "shortcut window"
+msgid "Clear the playlist"
+msgstr "Làm trống danh sách phát"
+
+#: src/gtk/help-overlay.ui:61
+msgctxt "shortcut window"
+msgid "Toggle the playlist pane"
+msgstr "Ẩn/hiện danh sách phát"
+
+#: src/gtk/help-overlay.ui:67
+msgctxt "shortcut window"
+msgid "Toggle shuffling songs"
+msgstr "Bật/tắt trộn bài hát"
+
+#: src/gtk/help-overlay.ui:75
+msgctxt "shortcut window"
+msgid "Playback"
+msgstr "Chơi nhạc"
+
+#: src/gtk/help-overlay.ui:78
+msgctxt "shortcut window"
+msgid "Toggle play/pause"
+msgstr "Phát/dừng"
+
+#: src/gtk/help-overlay.ui:84
+msgctxt "shortcut window"
+msgid "Previous song"
+msgstr "Bài trước"
+
+#: src/gtk/help-overlay.ui:90
+msgctxt "shortcut window"
+msgid "Next song"
+msgstr "Bài kế tiếp"
+
+#: src/gtk/help-overlay.ui:96
+msgctxt "shortcut window"
+msgid "Seek backwards in the current song"
+msgstr "Tua ngược lại bài hiện tại"
+
+#: src/gtk/help-overlay.ui:102
+msgctxt "shortcut window"
+msgid "Seek forward in the current song"
+msgstr "Tua tiến tới trong bài hiện tại"
+
+#: src/gtk/playback-control.ui:21
+msgid "Play the Previous Song"
+msgstr "Chơi bài trước đó"
+
+#: src/gtk/playback-control.ui:26
+msgctxt "a11y"
+msgid "Skip backwards"
+msgstr "Nhảy ngược lại"
+
+#: src/gtk/playback-control.ui:35
+msgid "Toggle Play"
+msgstr "Chơi/dừng"
+
+#: src/gtk/playback-control.ui:41
+msgctxt "a11y"
+msgid "Toggle play"
+msgstr "Chơi/dừng"
+
+#: src/gtk/playback-control.ui:50
+msgid "Play the Next Song"
+msgstr "Chơi bài kế tiếp"
+
+#: src/gtk/playback-control.ui:55
+msgctxt "a11y"
+msgid "Skip forward"
+msgstr "Nhảy kế tiếp"
+
+#: src/gtk/playback-control.ui:78
+msgid "Toggle Playlist"
+msgstr "Ẩn/hiện Danh sách phát"
+
+#: src/gtk/playback-control.ui:83
+msgctxt "a11y"
+msgid "Toggle playlist"
+msgstr "Ẩn/hiện Danh sách phát"
+
+#: src/gtk/playback-control.ui:92
+msgid "Shuffle the Playlist"
+msgstr "Trộn Danh sách phát"
+
+#: src/gtk/playback-control.ui:94
+msgctxt "a11y"
+msgid "Shuffle"
+msgstr "Trộn"
+
+#: src/gtk/playback-control.ui:113 src/playback_control.rs:114
+msgid "Enable Repeat"
+msgstr "Bật lặp bài"
+
+#: src/gtk/playback-control.ui:118
+msgctxt "a11y"
+msgid "Repeat"
+msgstr "Lặp bài"
+
+#: src/gtk/playback-control.ui:129
+msgid "Main Menu"
+msgstr "Menu Chính"
+
+#: src/gtk/playback-control.ui:135
+msgctxt "a11y"
+msgid "Primary menu"
+msgstr "Menu Chính"
+
+#: src/gtk/playback-control.ui:151
+msgid "Copy"
+msgstr "Sao chép"
+
+#: src/gtk/playback-control.ui:155
+msgid "Open Directory"
+msgstr "Mở thư mụ"
+
+#: src/gtk/playback-control.ui:161
+msgid "Add _Song"
+msgstr "Thêm _Bài hát"
+
+#: src/gtk/playback-control.ui:165
+msgid "Add _Folder"
+msgstr "Thêm _Thư mục"
+
+#: src/gtk/playback-control.ui:169
+msgid "Clear"
+msgstr "Dọn sạch"
+
+#: src/gtk/playback-control.ui:175
+msgid "_Match Cover Art"
+msgstr "_Đổi màu theo bìa album"
+
+#: src/gtk/playback-control.ui:179
+msgid "_Background Playback"
+msgstr "_Chơi trong nền"
+
+#: src/gtk/playback-control.ui:185
+msgid "_ReplayGain"
+msgstr "_ReplayGain"
+
+#: src/gtk/playback-control.ui:187
+msgctxt "replaygain-menu"
+msgid "_Album"
+msgstr "_Album"
+
+#: src/gtk/playback-control.ui:192
+msgctxt "replaygain-menu"
+msgid "_Song"
+msgstr "_Bài hát"
+
+#: src/gtk/playback-control.ui:197
+msgctxt "replaygain-menu"
+msgid "_Disabled"
+msgstr "_Bị vô hiệu hóa"
+
+#: src/gtk/playback-control.ui:205
+msgid "_Keyboard Shortcuts"
+msgstr "_Phím tắt"
+
+#: src/gtk/playback-control.ui:209
+msgid "_About Amberol"
+msgstr "_Về Amberol"
+
+#: src/gtk/playback-control.ui:213
+msgid "_Quit"
+msgstr "_Thoát"
+
+#: src/gtk/playlist-view.ui:14
+msgid "Search Songs in the Playlist"
+msgstr "Tìm Bài hát trong Danh sách phát"
+
+#: src/gtk/playlist-view.ui:24
+msgid "Playlist"
+msgstr "Danh sách phát"
+
+#: src/gtk/playlist-view.ui:46
+msgid "Close the Playlist"
+msgstr "Đóng danh sách phát"
+
+#: src/gtk/playlist-view.ui:54
+msgid "Select Songs in the Playlist"
+msgstr "Chọn bài hát trong Danh sách phát"
+
+#: src/gtk/playlist-view.ui:63
+msgid "Search songs"
+msgstr "Tìm bài"
+
+#: src/gtk/playlist-view.ui:66
+msgctxt "a11y"
+msgid "Search"
+msgstr "Tìm kiếm"
+
+#: src/gtk/playlist-view.ui:67
+msgctxt "a11y"
+msgid "Type to search songs"
+msgstr "Nhập để tìm bài"
+
+#: src/gtk/playlist-view.ui:113
+msgid "Select All Songs"
+msgstr "Chọn tất cả bài hát"
+
+#: src/gtk/playlist-view.ui:126
+msgid "Remove Selected Songs"
+msgstr "Loại bỏ bài hát đã được chọn"
+
+#: src/gtk/queue-row.ui:27
+msgctxt "a11y"
+msgid "No cover available"
+msgstr "Không có bìa"
+
+#: src/gtk/queue-row.ui:84
+msgctxt "a11y"
+msgid "Currently playing"
+msgstr "Hiện đang phát"
+
+#: src/gtk/window.ui:13
+msgid "Drop a song to add it to the playlist"
+msgstr "Kéo thả vào đây để thêm vào danh sách phát"
+
+#: src/gtk/window.ui:43
+msgid ""
+"Select a file or a folder, or drag files from your file manager to the "
+"application window to add songs to the playlist"
+msgstr ""
+"Chọn một tệp hay thư mục, hoặc kéo thả tệp từ trong máy tính của bạn vào cửa "
+"sổ này để thêm bài hát vào danh sách phát "
+
+#: src/gtk/window.ui:52
+msgid "Restore Playlist"
+msgstr "Khôi phục Danh sách phát"
+
+#: src/gtk/window.ui:62
+msgid "Add Folder"
+msgstr "Thêm Thư mục"
+
+#: src/gtk/window.ui:71
+msgid "Add Song"
+msgstr "Thêm Bài hát"
+
+#: src/gtk/window.ui:148
+msgctxt "a11y"
+msgid "Elapsed time"
+msgstr "Đã trôi qua"
+
+#: src/gtk/window.ui:160
+msgctxt "a11y"
+msgid "Remaining time"
+msgstr "Còn lại"
+
+#. Translators: Replace "translator-credits" with your names, one name per line
+#: src/application.rs:243
+msgid "translator-credits"
+msgstr "Nguyễn Tri Phương <triphuong@falcolabs.org>"
+
+#: src/application.rs:255
+msgid "Amberol needs to run in the background to play music"
+msgstr "Amberol cần quyền chạy trong nền để chơi nhạc"
+
+#: src/cover_picture.rs:75
+msgid "Cover image"
+msgstr "Ảnh bài"
+
+#: src/playback_control.rs:118
+msgid "Repeat All Songs"
+msgstr "Lặp Tất Cả"
+
+#: src/playback_control.rs:122
+msgid "Repeat the Current Song"
+msgstr "Lặp Bài Hiện Tại"
+
+#: src/window.rs:149
+msgid "Audio files"
+msgstr "Tệp âm thanh"
+
+#: src/window.rs:159
+msgid "_Add Song"
+msgstr "_Thêm bài"
+
+#: src/window.rs:163
+msgid "Open File"
+msgstr "Mở tệp"
+
+#: src/window.rs:168 src/window.rs:190 src/window.rs:1482
+msgid "Unable to access files"
+msgstr "Không thể truy cập vào tệp"
+
+#: src/window.rs:182
+msgid "_Add Folder"
+msgstr "_Thêm thư mục"
+
+#: src/window.rs:185
+msgid "Open Folder"
+msgstr "Mở thư mục"
+
+#: src/window.rs:508
+msgid "No available song found"
+msgstr "Không tìm thấy bài nào có thể truy cập được"
+
+#: src/window.rs:569
+msgid "No songs found"
+msgstr "Không tìm thấy bài nào"
+
+#: src/window.rs:602
+msgid "Added a new song"
+msgstr "Đã thêm bài hát mới"
+
+#: src/window.rs:603
+msgid "Play"
+msgstr "Chơi"
+
+#. Translators: the `{}` must be left unmodified;
+#. it will be expanded to the number of songs added
+#. to the playlist
+#: src/window.rs:612
+msgid "Added one song"
+msgid_plural "Added {} songs"
+msgstr[0] "Đã thêm {} bài"
+
+#: src/window.rs:1242
+msgid "Unable to access dropped files"
+msgstr "Không thể truy cập được vào tệp đã kéo thả"
+
+#: src/window.rs:1336
+msgid "{} minute"
+msgid_plural "{} minutes"
+msgstr[0] "{} phút"
+
+#: src/window.rs:1347
+msgid "{hours} hour {minutes} remaining"
+msgid_plural "{hours} hours {minutes} remaining"
+msgstr[0] "còn {} giờ {} phút nữa"
+
+#. Translators: the '{}' must be left unmodified, and
+#. it will be replaced by the number of minutes remaining
+#. in the playlist
+#: src/window.rs:1357
+msgid "{} minute remaining"
+msgid_plural "{} minutes remaining"
+msgstr[0] "còn {} phút nữa"
+
+#: src/window.rs:1461
+msgid "No song selected"
+msgstr "Không chọn bài nào"
+
+#. Translators: The '{}' must be left unmodified, and
+#. it is expanded to the number of songs selected
+#: src/window.rs:1466
+msgid "{} song selected"
+msgid_plural "{} songs selected"
+msgstr[0] "Đã chọn {} bài"
+
+#. Translators: `{title}` and `{artist}` must be left
+#. untranslated; they will expand to the title and
+#. artist of the currently playing song, respectively
+#: src/window.rs:1522
+msgid "Currently playing “{title}” by “{artist}”"
+msgstr "Hiện đang chơi “{}” bởi “{}”"
+
+#: src/window.rs:1559
+msgid "Unable to open folder"
+msgstr "Không thể mở thư mục"

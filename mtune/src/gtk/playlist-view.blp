@@ -1,0 +1,131 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025 Emmanuele Bassi
+
+using Gtk 4.0;
+using Adw 1;
+
+template $AmberolPlaylistView: Widget {
+  Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      [start]
+      ToggleButton search_button {
+        icon-name: "system-search-symbolic";
+        action-name: "queue.search";
+        valign: center;
+        tooltip-text: _("Search Songs in the Playlist");
+      }
+
+      title-widget: Box queue_length_box {
+        orientation: vertical;
+        valign: center;
+
+        Label {
+          ellipsize: end;
+          label: _("Playlist");
+
+          styles [
+            "heading",
+          ]
+        }
+
+        Label queue_length_label {
+          ellipsize: end;
+
+          styles [
+            "caption",
+          ]
+        }
+      };
+
+      [end]
+      Button back_button {
+        visible: false;
+        icon-name: "go-previous-symbolic";
+        action-name: "queue.toggle";
+        valign: center;
+        tooltip-text: _("Close the Playlist");
+      }
+
+      [end]
+      ToggleButton select_button {
+        icon-name: "selection-mode-symbolic";
+        action-name: "queue.select";
+        valign: center;
+        tooltip-text: _("Select Songs in the Playlist");
+      }
+    }
+
+    [top]
+    SearchBar playlist_searchbar {
+      child: SearchEntry playlist_searchentry {
+        placeholder-text: _("Search songs");
+        hexpand: true;
+
+        accessibility {
+          label: C_("a11y", "Search");
+          description: C_("a11y", "Type to search songs");
+        }
+      };
+    }
+
+    content: Overlay playlist_overlay {
+      [overlay]
+      ProgressBar playlist_progress {
+        valign: start;
+        hexpand: true;
+        visible: false;
+
+        styles [
+          "osd",
+        ]
+      }
+
+      ScrolledWindow {
+        hscrollbar-policy: never;
+        vscrollbar-policy: automatic;
+        propagate-natural-height: true;
+        vexpand: true;
+
+        child: ListView queue_view {
+          single-click-activate: true;
+
+          styles [
+            "navigation-sidebar",
+          ]
+        };
+      }
+    };
+
+    [bottom]
+    ActionBar queue_actionbar {
+      revealed: false;
+
+      styles [
+        "flat",
+      ]
+
+      Button queue_select_all_button {
+        icon-name: "edit-select-all-symbolic";
+        tooltip-text: _("Select All Songs");
+      }
+
+      [center]
+      Label queue_selected_label {
+        styles [
+          "caption",
+        ]
+      }
+
+      [end]
+      Button queue_remove_button {
+        icon-name: "app-remove-symbolic";
+        tooltip-text: _("Remove Selected Songs");
+      }
+    }
+
+    styles [
+      "playlist-background",
+    ]
+  }
+}

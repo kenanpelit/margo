@@ -1,0 +1,508 @@
+# Thai translation for amberol.
+# Copyright (C) 2026 amberol's COPYRIGHT HOLDER
+# This file is distributed under the same license as the amberol package.
+# Aefgh Threenine <aefgh39622@gmail.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: amberol main\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"POT-Creation-Date: 2026-07-08 19:26+0000\n"
+"PO-Revision-Date: 2026-07-31 20:29+0700\n"
+"Last-Translator: \n"
+"Language-Team: Thai <th@li.org>\n"
+"Language: th\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 3.9\n"
+
+#: data/io.bassi.Amberol.desktop.in.in:2
+#: data/io.bassi.Amberol.metainfo.xml.in.in:6
+msgid "Amberol"
+msgstr "Amberol"
+
+#: data/io.bassi.Amberol.desktop.in.in:3
+msgid "Music Player"
+msgstr "โปรแกรมเล่นเพลง"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/io.bassi.Amberol.desktop.in.in:11
+msgid "music;player;media;audio;playlist;"
+msgstr "เพลง;โปรแกรมเล่น;สื่อ;เสียง;รายการเล่น"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+msgid "Plays music, and nothing else"
+msgstr "เล่นเพลง และไม่ทำอะไรอย่างอื่น"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+msgid ""
+"Amberol is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Amberol is the music player "
+"you are looking for."
+msgstr ""
+"Amberol คือโปรแกรมเล่นเพลงที่ไม่พยายามทำตัวให้ยิ่งใหญ่เกินความจำเป็น "
+"หากคุณแค่อยากฟังเพลงที่อยู่ในเครื่องของคุณ Amberol ก็คือโปรแกรมเล่นเพลงที่คุณกำลังมองหา"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+msgid "Current features:"
+msgstr "คุณลักษณะปัจจุบัน:"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+msgid "adaptive UI"
+msgstr "ส่วนติดต่อผู้ใช้ที่ปรับตัวได้"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+msgid "UI recoloring using the album art"
+msgstr "ปรับสีของส่วนติดต่อผู้ใช้ตามภาพปกอัลบั้ม"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+msgid "drag and drop support to queue songs"
+msgstr "รองรับการลากและปล่อยเพื่อเพิ่มเพลงในคิว"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+msgid "shuffle and repeat"
+msgstr "สุ่มเพลงและเล่นซ้ำ"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+msgid "MPRIS integration"
+msgstr "การเชื่อมรวมกับ MPRIS"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+#: data/io.bassi.Amberol.metainfo.xml.in.in:50
+msgid "Emmanuele Bassi"
+msgstr "Emmanuele Bassi"
+
+#: src/gtk/playback-control.blp:21
+msgid "Play the Previous Song"
+msgstr "เล่นเพลงที่แล้ว"
+
+#: src/gtk/playback-control.blp:28
+msgctxt "a11y"
+msgid "Skip backwards"
+msgstr "ข้ามถอยหลัง"
+
+#: src/gtk/playback-control.blp:36
+msgid "Toggle Play"
+msgstr "เล่น/หยุด"
+
+#: src/gtk/playback-control.blp:44
+msgctxt "a11y"
+msgid "Toggle play"
+msgstr "เล่น/หยุด"
+
+#: src/gtk/playback-control.blp:52
+msgid "Play the Next Song"
+msgstr "เล่นเพลงถัดไป"
+
+#: src/gtk/playback-control.blp:59
+msgctxt "a11y"
+msgid "Skip forward"
+msgstr "ข้ามไปข้างหน้า"
+
+#: src/gtk/playback-control.blp:79
+msgid "Toggle Playlist"
+msgstr "แสดง/ซ่อนรายการเล่น"
+
+#: src/gtk/playback-control.blp:86
+msgctxt "a11y"
+msgid "Toggle playlist"
+msgstr "แสดง/ซ่อนรายการเล่น"
+
+#: src/gtk/playback-control.blp:94
+msgid "Shuffle the Playlist"
+msgstr "สุ่มเพลงในรายการเล่น"
+
+#: src/gtk/playback-control.blp:97
+msgctxt "a11y"
+msgid "Shuffle"
+msgstr "สุ่มเพลง"
+
+#: src/gtk/playback-control.blp:116
+msgid "Enable Repeat"
+msgstr "เปิดใช้งานการเล่นซ้ำ"
+
+#: src/gtk/playback-control.blp:123
+msgctxt "a11y"
+msgid "Repeat"
+msgstr "เล่นซ้ำ"
+
+#: src/gtk/playback-control.blp:133
+msgid "Main Menu"
+msgstr "เมนูหลัก"
+
+#: src/gtk/playback-control.blp:141
+msgctxt "a11y"
+msgid "Primary menu"
+msgstr "เมนูหลัก"
+
+#: src/gtk/playback-control.blp:152
+msgid "Copy"
+msgstr "คัดลอก"
+
+#: src/gtk/playback-control.blp:157
+msgid "Open Directory"
+msgstr "เปิดไดเรกทอรี"
+
+#: src/gtk/playback-control.blp:164
+msgid "Add _Song"
+msgstr "เพิ่มเ_พลง"
+
+#: src/gtk/playback-control.blp:169
+msgid "Add _Folder"
+msgstr "เพิ่มโ_ฟลเดอร์"
+
+#: src/gtk/playback-control.blp:174
+msgid "Clear"
+msgstr "ล้าง"
+
+#: src/gtk/playback-control.blp:181
+msgid "_Match Cover Art"
+msgstr "_จับคู่ปกอัลบั้ม"
+
+#: src/gtk/playback-control.blp:186
+msgid "_Background Playback"
+msgstr "เล่นในเ_บื้องหลัง"
+
+#: src/gtk/playback-control.blp:193
+msgid "_ReplayGain"
+msgstr "_ReplayGain"
+
+#: src/gtk/playback-control.blp:196
+msgctxt "replaygain-menu"
+msgid "_Album"
+msgstr "_อัลบั้ม"
+
+#: src/gtk/playback-control.blp:202
+msgctxt "replaygain-menu"
+msgid "_Song"
+msgstr "เ_พลง"
+
+#: src/gtk/playback-control.blp:208
+msgctxt "replaygain-menu"
+msgid "_Disabled"
+msgstr "_ปิดใช้งาน"
+
+#: src/gtk/playback-control.blp:217
+msgid "_Keyboard Shortcuts"
+msgstr "_ปุ่มลัดแป้นพิมพ์"
+
+#: src/gtk/playback-control.blp:222
+msgid "_About Amberol"
+msgstr "เ_กี่ยวกับ Amberol"
+
+#: src/gtk/playback-control.blp:227
+msgid "_Quit"
+msgstr "_ออก"
+
+#: src/gtk/playlist-view.blp:16
+msgid "Search Songs in the Playlist"
+msgstr "ค้นหาเพลงในรายการเล่น"
+
+#: src/gtk/playlist-view.blp:25
+msgid "Playlist"
+msgstr "รายการเล่น"
+
+#: src/gtk/playlist-view.blp:47
+msgid "Close the Playlist"
+msgstr "ปิดรายการเล่น"
+
+#: src/gtk/playlist-view.blp:55
+msgid "Select Songs in the Playlist"
+msgstr "เลือกเพลงในรายการเล่น"
+
+#: src/gtk/playlist-view.blp:62
+msgid "Search songs"
+msgstr "ค้นหาเพลง"
+
+#: src/gtk/playlist-view.blp:66
+msgctxt "a11y"
+msgid "Search"
+msgstr "ค้นหา"
+
+#: src/gtk/playlist-view.blp:67
+msgctxt "a11y"
+msgid "Type to search songs"
+msgstr "พิมพ์เพื่อค้นหาเพลง"
+
+#: src/gtk/playlist-view.blp:110
+msgid "Select All Songs"
+msgstr "เลือกเพลงทั้งหมด"
+
+#: src/gtk/playlist-view.blp:123
+msgid "Remove Selected Songs"
+msgstr "ลบเพลงที่เลือก"
+
+#: src/gtk/queue-row.blp:27
+msgctxt "a11y"
+msgid "No cover available"
+msgstr "ไม่มีปก"
+
+#: src/gtk/queue-row.blp:81
+msgctxt "a11y"
+msgid "Currently playing"
+msgstr "กำลังเล่นอยู่ขณะนี้"
+
+#: src/gtk/shortcuts-dialog.blp:10
+msgctxt "shortcut window"
+msgid "General"
+msgstr "ทั่วไป"
+
+#: src/gtk/shortcuts-dialog.blp:13
+msgctxt "shortcut window"
+msgid "Toggle primary menu"
+msgstr "แสดง/ซ่อนเมนูหลัก"
+
+#: src/gtk/shortcuts-dialog.blp:18
+msgctxt "shortcut window"
+msgid "Copy song details to the clipboard"
+msgstr "คัดลอกรายละเอียดเพลงไปยังคลิปบอร์ด"
+
+#: src/gtk/shortcuts-dialog.blp:23
+msgctxt "shortcut window"
+msgid "Show shortcuts"
+msgstr "แสดงปุ่มลัด"
+
+#: src/gtk/shortcuts-dialog.blp:28
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "ออก"
+
+#: src/gtk/shortcuts-dialog.blp:34
+msgctxt "shortcut window"
+msgid "Playlist"
+msgstr "รายการเล่น"
+
+#: src/gtk/shortcuts-dialog.blp:37
+msgctxt "shortcut window"
+msgid "Add a song to the playlist"
+msgstr "เพิ่มเพลงในรายการเล่น"
+
+#: src/gtk/shortcuts-dialog.blp:42
+msgctxt "shortcut window"
+msgid "Add a folder to the playlist"
+msgstr "เพิ่มโฟลเดอร์ในรายการเล่น"
+
+#: src/gtk/shortcuts-dialog.blp:47
+msgctxt "shortcut window"
+msgid "Clear the playlist"
+msgstr "ล้างรายการเล่น"
+
+#: src/gtk/shortcuts-dialog.blp:52
+msgctxt "shortcut window"
+msgid "Toggle the playlist pane"
+msgstr "แสดง/ซ่อนช่องรายการเล่น"
+
+#: src/gtk/shortcuts-dialog.blp:57
+msgctxt "shortcut window"
+msgid "Search the playlist"
+msgstr "ค้นหาในรายการเล่น"
+
+#: src/gtk/shortcuts-dialog.blp:62
+msgctxt "shortcut window"
+msgid "Toggle shuffling songs"
+msgstr "เปิด/ปิดการสุ่มเพลง"
+
+#: src/gtk/shortcuts-dialog.blp:68
+msgctxt "shortcut window"
+msgid "Playback"
+msgstr "การเล่น"
+
+#: src/gtk/shortcuts-dialog.blp:71
+msgctxt "shortcut window"
+msgid "Toggle play/pause"
+msgstr "สลับการเล่น/หยุด"
+
+#: src/gtk/shortcuts-dialog.blp:76
+msgctxt "shortcut window"
+msgid "Previous song"
+msgstr "เพลงที่แล้ว"
+
+#: src/gtk/shortcuts-dialog.blp:81
+msgctxt "shortcut window"
+msgid "Next song"
+msgstr "เพลงถัดไป"
+
+#: src/gtk/shortcuts-dialog.blp:86
+msgctxt "shortcut window"
+msgid "Seek backwards in the current song"
+msgstr "กรอถอยหลังในเพลงปัจจุบัน"
+
+#: src/gtk/shortcuts-dialog.blp:91
+msgctxt "shortcut window"
+msgid "Seek forward in the current song"
+msgstr "กรอไปข้างหน้าในเพลงปัจจุบัน"
+
+#: src/gtk/window.blp:15
+msgid "Drop a song to add it to the playlist"
+msgstr "ปล่อยเพลงเพื่อเพิ่มในรายการเล่น"
+
+#: src/gtk/window.blp:39
+msgid ""
+"Select a file or a folder, or drag files from your file manager to the "
+"application window to add songs to the playlist"
+msgstr ""
+"เลือกไฟล์หรือโฟลเดอร์ "
+"หรือลากไฟล์จากเครื่องมือจัดการไฟล์ของคุณมายังหน้าต่างแอปพลิเคชันเพื่อเพิ่มเพลงในรายการเล่น"
+
+#: src/gtk/window.blp:48
+msgid "Restore Playlist"
+msgstr "เรียกคืนรายการเล่น"
+
+#: src/gtk/window.blp:58
+msgid "Add Folder"
+msgstr "เพิ่มโฟลเดอร์"
+
+#: src/gtk/window.blp:67
+msgid "Add Song"
+msgstr "เพิ่มเพลง"
+
+#: src/gtk/window.blp:128
+msgctxt "a11y"
+msgid "Elapsed time"
+msgstr "เวลาที่ผ่านไป"
+
+#: src/gtk/window.blp:142
+msgctxt "a11y"
+msgid "Remaining time"
+msgstr "เวลาที่เหลือ"
+
+#. Translators: Replace "translator-credits" with your names, one name per line
+#: src/application.rs:243
+msgid "translator-credits"
+msgstr "Aefgh Threenine <aefgh39622@gmail.com>"
+
+#: src/application.rs:255
+msgid "Amberol needs to run in the background to play music"
+msgstr "Amberol ต้องทำงานในเบื้องหลังเพื่อเล่นเพลง"
+
+#: src/audio/inhibit_controller.rs:40
+msgid "Playback in progress"
+msgstr "กำลังเล่นอยู่"
+
+#: src/audio/song.rs:341
+msgid "Unknown artist"
+msgstr "ไม่ทราบศิลปิน"
+
+#: src/audio/song.rs:348
+msgid "Unknown title"
+msgstr "ไม่ทราบชื่อ"
+
+#: src/audio/song.rs:355
+msgid "Unknown album"
+msgstr "ไม่ทราบอัลบั้ม"
+
+#: src/cover_picture.rs:75
+msgid "Cover image"
+msgstr "ภาพปก"
+
+#: src/playback_control.rs:115
+msgid "Do Not Repeat"
+msgstr "ไม่ต้องเล่นซ้ำ"
+
+#: src/playback_control.rs:119
+msgid "Repeat All Songs"
+msgstr "เล่นเพลงทั้งหมดซ้ำ"
+
+#: src/playback_control.rs:123
+msgid "Repeat the Current Song"
+msgstr "เล่นเพลงปัจจุบันซ้ำ"
+
+#: src/window.rs:149
+msgid "Audio files"
+msgstr "ไฟล์เสียง"
+
+#: src/window.rs:159
+msgid "_Add Song"
+msgstr "เ_พิ่มเพลง"
+
+#: src/window.rs:163
+msgid "Open File"
+msgstr "เปิดไฟล์"
+
+#: src/window.rs:168 src/window.rs:190 src/window.rs:1487
+msgid "Unable to access files"
+msgstr "ไม่สามารถเข้าถึงไฟล์ได้"
+
+#: src/window.rs:182
+msgid "_Add Folder"
+msgstr "เ_พิ่มโฟลเดอร์"
+
+#: src/window.rs:185
+msgid "Open Folder"
+msgstr "เปิดโฟลเดอร์"
+
+#: src/window.rs:512
+msgid "No available song found"
+msgstr "ไม่พบเพลงที่ใช้ได้"
+
+#: src/window.rs:574
+msgid "No songs found"
+msgstr "ไม่พบเพลง"
+
+#: src/window.rs:607
+msgid "Added a new song"
+msgstr "เพิ่มเพลงใหม่แล้ว"
+
+#: src/window.rs:608
+msgid "Play"
+msgstr "เล่น"
+
+#. Translators: the `{}` must be left unmodified;
+#. it will be expanded to the number of songs added
+#. to the playlist
+#: src/window.rs:617
+#, rust-format
+msgid "Added one song"
+msgid_plural "Added {} songs"
+msgstr[0] "เพิ่ม {} เพลงแล้ว"
+
+#: src/window.rs:1247
+msgid "Unable to access dropped files"
+msgstr "ไม่สามารถเข้าถึงไฟล์ที่ปล่อยได้"
+
+#: src/window.rs:1341
+#, rust-format
+msgid "{} minute"
+msgid_plural "{} minutes"
+msgstr[0] "{} นาที"
+
+#: src/window.rs:1352
+#, rust-format
+msgid "{hours} hour {minutes} remaining"
+msgid_plural "{hours} hours {minutes} remaining"
+msgstr[0] "เหลืออีก {hours} ชั่วโมง {minutes}"
+
+#. Translators: the '{}' must be left unmodified, and
+#. it will be replaced by the number of minutes remaining
+#. in the playlist
+#: src/window.rs:1362
+#, rust-format
+msgid "{} minute remaining"
+msgid_plural "{} minutes remaining"
+msgstr[0] "เหลืออีก {} นาที"
+
+#: src/window.rs:1466
+msgid "No song selected"
+msgstr "ไม่ได้เลือกเพลงใด"
+
+#. Translators: The '{}' must be left unmodified, and
+#. it is expanded to the number of songs selected
+#: src/window.rs:1471
+#, rust-format
+msgid "{} song selected"
+msgid_plural "{} songs selected"
+msgstr[0] "เลือกอยู่ {} เพลง"
+
+#. Translators: `{title}` and `{artist}` must be left
+#. untranslated; they will expand to the title and
+#. artist of the currently playing song, respectively
+#: src/window.rs:1527
+#, rust-format
+msgid "Currently playing “{title}” by “{artist}”"
+msgstr "ขณะนี้กำลังเล่น “{title}” โดย “{artist}”"
+
+#: src/window.rs:1564
+msgid "Unable to open folder"
+msgstr "ไม่สามารถเปิดโฟลเดอร์ได้"

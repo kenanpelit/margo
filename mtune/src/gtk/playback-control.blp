@@ -1,0 +1,231 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025 Emmanuele Bassi
+
+using Gtk 4.0;
+
+template $AmberolPlaybackControl: Widget {
+  Box center_box {
+    orientation: vertical;
+    spacing: 6;
+    width-request: 256;
+
+    Box controls_box {
+      spacing: 24;
+      halign: center;
+      hexpand: true;
+
+      Button previous_button {
+        icon-name: "media-skip-backward-symbolic";
+        action-name: "win.previous";
+        valign: center;
+        tooltip-text: _("Play the Previous Song");
+
+        styles [
+          "circular",
+        ]
+
+        accessibility {
+          label: C_("a11y", "Skip backwards");
+        }
+      }
+
+      Button play_button {
+        icon-name: "media-playback-start-symbolic";
+        action-name: "win.play";
+        valign: center;
+        tooltip-text: _("Toggle Play");
+
+        styles [
+          "circular",
+          "large",
+        ]
+
+        accessibility {
+          label: C_("a11y", "Toggle play");
+        }
+      }
+
+      Button next_button {
+        icon-name: "media-skip-forward-symbolic";
+        action-name: "win.next";
+        valign: center;
+        tooltip-text: _("Play the Next Song");
+
+        styles [
+          "circular",
+        ]
+
+        accessibility {
+          label: C_("a11y", "Skip forward");
+        }
+      }
+    }
+
+    $AmberolVolumeControl volume_control {
+      hexpand: "true";
+    }
+
+    CenterBox {
+      [start]
+      Box start_box {
+        halign: start;
+        spacing: 12;
+        margin-end: 18;
+
+        ToggleButton playlist_button {
+          icon-name: "view-queue-symbolic";
+          action-name: "queue.toggle";
+          valign: center;
+          tooltip-text: _("Toggle Playlist");
+
+          styles [
+            "circular",
+          ]
+
+          accessibility {
+            label: C_("a11y", "Toggle playlist");
+          }
+        }
+
+        ToggleButton shuffle_button {
+          icon-name: "media-playlist-shuffle-symbolic";
+          action-name: "queue.shuffle";
+          valign: center;
+          tooltip-text: _("Shuffle the Playlist");
+
+          accessibility {
+            label: C_("a11y", "Shuffle");
+          }
+
+          styles [
+            "circular",
+          ]
+        }
+      }
+
+      [end]
+      Box end_box {
+        halign: end;
+        spacing: 12;
+        margin-start: 18;
+
+        Button repeat_button {
+          icon-name: "media-playlist-consecutive-symbolic";
+          action-name: "queue.repeat-mode";
+          valign: center;
+          tooltip-text: _("Enable Repeat");
+
+          styles [
+            "circular",
+          ]
+
+          accessibility {
+            label: C_("a11y", "Repeat");
+          }
+        }
+
+        MenuButton menu_button {
+          menu-model: primary_menu;
+          icon-name: "open-menu-symbolic";
+          primary: true;
+          halign: end;
+          valign: center;
+          tooltip-text: _("Main Menu");
+          direction: up;
+
+          styles [
+            "circular",
+          ]
+
+          accessibility {
+            label: C_("a11y", "Primary menu");
+          }
+        }
+      }
+    }
+  }
+}
+
+menu primary_menu {
+  section {
+    item {
+      label: _("Copy");
+      action: "win.copy";
+    }
+
+    item {
+      label: _("Open Directory");
+      action: "win.open-directory";
+    }
+  }
+
+  section {
+    item {
+      label: _("Add _Song");
+      action: "queue.add-song";
+    }
+
+    item {
+      label: _("Add _Folder");
+      action: "queue.add-folder";
+    }
+
+    item {
+      label: _("Clear");
+      action: "queue.clear";
+    }
+  }
+
+  section {
+    item {
+      label: _("_Match Cover Art");
+      action: "win.enable-recoloring";
+    }
+
+    item {
+      label: _("_Background Playback");
+      action: "app.background-play";
+    }
+  }
+
+  section {
+    submenu {
+      label: _("_ReplayGain");
+
+      item {
+        label: C_("replaygain-menu", "_Album");
+        action: "win.replaygain";
+        target: "album";
+      }
+
+      item {
+        label: C_("replaygain-menu", "_Song");
+        action: "win.replaygain";
+        target: "track";
+      }
+
+      item {
+        label: C_("replaygain-menu", "_Disabled");
+        action: "win.replaygain";
+        target: "off";
+      }
+    }
+  }
+
+  section {
+    item {
+      label: _("_Keyboard Shortcuts");
+      action: "app.shortcuts";
+    }
+
+    item {
+      label: _("_About Amberol");
+      action: "app.about";
+    }
+
+    item {
+      label: _("_Quit");
+      action: "app.quit";
+    }
+  }
+}

@@ -1,0 +1,511 @@
+# Bulgarian translation of amberol po-file.
+# Copyright (C) 2024 twlvnn kraftwerk
+# This file is distributed under the same license as the amberol package.
+# twlvnn kraftwerk <kraft_werk@tutanota.com>, 2024.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: amberol main\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"POT-Creation-Date: 2025-10-02 15:14+0000\n"
+"PO-Revision-Date: 2026-03-01 09:10+0100\n"
+"Last-Translator: twlvnn kraftwerk <kraft_werk@tutanota.com>\n"
+"Language-Team: Bulgarian <dict-notifications@fsa-bg.org>\n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.8\n"
+
+#: data/io.bassi.Amberol.desktop.in.in:2
+#: data/io.bassi.Amberol.metainfo.xml.in.in:6
+msgid "Amberol"
+msgstr "Amberol"
+
+#: data/io.bassi.Amberol.desktop.in.in:3
+msgid "Music Player"
+msgstr "Плеър за музика"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/io.bassi.Amberol.desktop.in.in:11
+msgid "music;player;media;audio;playlist;"
+msgstr "музика;устройство;медия;звук;аудио;списък;песни;изпълнение;music;player;media;audio;playlist;"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+msgid "Plays music, and nothing else"
+msgstr "Просто слушане на музика"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+msgid ""
+"Amberol is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Amberol is the music player "
+"you are looking for."
+msgstr ""
+"„Amberol“ е музикален плеър, което не се преструва на велик. Ако просто "
+"искате да слушате музика от локалната ви система, тогава „Amberol“ е "
+"музикалното програма, която търсите."
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+msgid "Current features:"
+msgstr "Функции:"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+msgid "adaptive UI"
+msgstr "адаптивен потребителски интерфейс"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+msgid "UI recoloring using the album art"
+msgstr ""
+"преоцветяване на потребителския интерфейс с помощта на обложката на албума"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+msgid "drag and drop support to queue songs"
+msgstr "изтегляне и пускане в опашката с песни"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+msgid "shuffle and repeat"
+msgstr "разбъркване и повтаряне"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+msgid "MPRIS integration"
+msgstr "Интеграция с MPRIS"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+msgid "Emmanuele Bassi"
+msgstr "Emmanuele Bassi"
+
+#: src/gtk/playback-control.blp:21
+msgid "Play the Previous Song"
+msgstr "Изпълняване на предишната песен"
+
+#: src/gtk/playback-control.blp:28
+msgctxt "a11y"
+msgid "Skip backwards"
+msgstr "Прескачане назад"
+
+#: src/gtk/playback-control.blp:36
+msgid "Toggle Play"
+msgstr "Превключване на изпълняване"
+
+#: src/gtk/playback-control.blp:44
+msgctxt "a11y"
+msgid "Toggle play"
+msgstr "Превключване на изпълняване"
+
+#: src/gtk/playback-control.blp:52
+msgid "Play the Next Song"
+msgstr "Изпълняване на следващата песен"
+
+#: src/gtk/playback-control.blp:59
+msgctxt "a11y"
+msgid "Skip forward"
+msgstr "Прескачане напред"
+
+#: src/gtk/playback-control.blp:79
+msgid "Toggle Playlist"
+msgstr "Превключване на списъка с песни"
+
+#: src/gtk/playback-control.blp:86
+msgctxt "a11y"
+msgid "Toggle playlist"
+msgstr "Превключване на списъка с песни"
+
+#: src/gtk/playback-control.blp:94
+msgid "Shuffle the Playlist"
+msgstr "Разбъркване на списъка с песни"
+
+#: src/gtk/playback-control.blp:97
+msgctxt "a11y"
+msgid "Shuffle"
+msgstr "Разбъркано"
+
+#: src/gtk/playback-control.blp:116 src/playback_control.rs:115
+msgid "Enable Repeat"
+msgstr "Включване на повтарянето"
+
+#: src/gtk/playback-control.blp:123
+msgctxt "a11y"
+msgid "Repeat"
+msgstr "Повтаряне"
+
+#: src/gtk/playback-control.blp:133
+msgid "Main Menu"
+msgstr "Основно меню"
+
+#: src/gtk/playback-control.blp:141
+msgctxt "a11y"
+msgid "Primary menu"
+msgstr "Основно меню"
+
+#: src/gtk/playback-control.blp:152
+msgid "Copy"
+msgstr "Копиране"
+
+#: src/gtk/playback-control.blp:157
+msgid "Open Directory"
+msgstr "Отваряне на папката"
+
+#: src/gtk/playback-control.blp:164
+msgid "Add _Song"
+msgstr "Добавяне на _песен"
+
+#: src/gtk/playback-control.blp:169
+msgid "Add _Folder"
+msgstr "Добавяне на _папка"
+
+#: src/gtk/playback-control.blp:174
+msgid "Clear"
+msgstr "Изчистване"
+
+#: src/gtk/playback-control.blp:181
+msgid "_Match Cover Art"
+msgstr "_Преоцветяване спрямо обложката"
+
+#: src/gtk/playback-control.blp:186
+msgid "_Background Playback"
+msgstr "_Възпроизвеждане във фонов режим"
+
+#: src/gtk/playback-control.blp:193
+msgid "_ReplayGain"
+msgstr "_Изравняване на усилването"
+
+#: src/gtk/playback-control.blp:196
+msgctxt "replaygain-menu"
+msgid "_Album"
+msgstr "_Албум"
+
+#: src/gtk/playback-control.blp:202
+msgctxt "replaygain-menu"
+msgid "_Song"
+msgstr "_Песен"
+
+#: src/gtk/playback-control.blp:208
+msgctxt "replaygain-menu"
+msgid "_Disabled"
+msgstr "_Изключено"
+
+#: src/gtk/playback-control.blp:217
+msgid "_Keyboard Shortcuts"
+msgstr "_Клавишни комбинации"
+
+#: src/gtk/playback-control.blp:222
+msgid "_About Amberol"
+msgstr "_Относно „Amberol“"
+
+#: src/gtk/playback-control.blp:227
+msgid "_Quit"
+msgstr "_Спиране на програмата"
+
+#: src/gtk/playlist-view.blp:16
+msgid "Search Songs in the Playlist"
+msgstr "Търсене на песни в списъка с песни"
+
+#: src/gtk/playlist-view.blp:25
+msgid "Playlist"
+msgstr "Списък с песни"
+
+#: src/gtk/playlist-view.blp:47
+msgid "Close the Playlist"
+msgstr "Затваряне на списъка с песни"
+
+#: src/gtk/playlist-view.blp:55
+msgid "Select Songs in the Playlist"
+msgstr "Избиране на песни в списъка с песни"
+
+#: src/gtk/playlist-view.blp:62
+msgid "Search songs"
+msgstr "Търсене на песни"
+
+#: src/gtk/playlist-view.blp:66
+msgctxt "a11y"
+msgid "Search"
+msgstr "Търсене"
+
+#: src/gtk/playlist-view.blp:67
+msgctxt "a11y"
+msgid "Type to search songs"
+msgstr "Въведете, за да търсите песни"
+
+#: src/gtk/playlist-view.blp:110
+msgid "Select All Songs"
+msgstr "Избиране на всички песни"
+
+#: src/gtk/playlist-view.blp:123
+msgid "Remove Selected Songs"
+msgstr "Премахване на избраните песни"
+
+#: src/gtk/queue-row.blp:27
+msgctxt "a11y"
+msgid "No cover available"
+msgstr "Няма налична обложка"
+
+#: src/gtk/queue-row.blp:81
+msgctxt "a11y"
+msgid "Currently playing"
+msgstr "В момента слушате"
+
+#: src/gtk/shortcuts-dialog.blp:10
+msgctxt "shortcut window"
+msgid "General"
+msgstr "Общи"
+
+#: src/gtk/shortcuts-dialog.blp:13
+msgctxt "shortcut window"
+msgid "Toggle primary menu"
+msgstr "Превключване на основното меню"
+
+#: src/gtk/shortcuts-dialog.blp:18
+msgctxt "shortcut window"
+msgid "Copy song details to the clipboard"
+msgstr "Копиране на подробностите на песента в буфера за обмен"
+
+#: src/gtk/shortcuts-dialog.blp:23
+msgctxt "shortcut window"
+msgid "Show shortcuts"
+msgstr "Показване на клавишните комбинации"
+
+#: src/gtk/shortcuts-dialog.blp:28
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "Спиране на програмата"
+
+#: src/gtk/shortcuts-dialog.blp:34
+msgctxt "shortcut window"
+msgid "Playlist"
+msgstr "Списък с песни"
+
+#: src/gtk/shortcuts-dialog.blp:37
+msgctxt "shortcut window"
+msgid "Add a song to the playlist"
+msgstr "Добавяне на песен в списъка"
+
+#: src/gtk/shortcuts-dialog.blp:42
+msgctxt "shortcut window"
+msgid "Add a folder to the playlist"
+msgstr "Добавяне на папка в списъка с песни"
+
+#: src/gtk/shortcuts-dialog.blp:47
+msgctxt "shortcut window"
+msgid "Clear the playlist"
+msgstr "Изчистване на списъка с песни"
+
+#: src/gtk/shortcuts-dialog.blp:52
+msgctxt "shortcut window"
+msgid "Toggle the playlist pane"
+msgstr "Превключване на панела за списъка с песни"
+
+#: src/gtk/shortcuts-dialog.blp:57
+msgctxt "shortcut window"
+msgid "Toggle shuffling songs"
+msgstr "Превключване на разбъркване на песните"
+
+#: src/gtk/shortcuts-dialog.blp:63
+msgctxt "shortcut window"
+msgid "Playback"
+msgstr "Възпроизвеждане"
+
+#: src/gtk/shortcuts-dialog.blp:66
+msgctxt "shortcut window"
+msgid "Toggle play/pause"
+msgstr "Превключване на изпълняване/пауза"
+
+#: src/gtk/shortcuts-dialog.blp:71
+msgctxt "shortcut window"
+msgid "Previous song"
+msgstr "Предишна песен"
+
+#: src/gtk/shortcuts-dialog.blp:76
+msgctxt "shortcut window"
+msgid "Next song"
+msgstr "Следваща песен"
+
+#: src/gtk/shortcuts-dialog.blp:81
+msgctxt "shortcut window"
+msgid "Seek backwards in the current song"
+msgstr "Търсене назад в текущата песен"
+
+#: src/gtk/shortcuts-dialog.blp:86
+msgctxt "shortcut window"
+msgid "Seek forward in the current song"
+msgstr "Търсене напред в текущата песен"
+
+#: src/gtk/window.blp:15
+msgid "Drop a song to add it to the playlist"
+msgstr "Добавете песен като я пуснете в списъка"
+
+#: src/gtk/window.blp:39
+msgid ""
+"Select a file or a folder, or drag files from your file manager to the "
+"application window to add songs to the playlist"
+msgstr ""
+"Изберете файл или папка, или изтеглете файлове от файловия мениджър в "
+"прозореца на приложението, за да добавите песни в списъка"
+
+#: src/gtk/window.blp:48
+msgid "Restore Playlist"
+msgstr "Възстановяване на списъка с песни"
+
+#: src/gtk/window.blp:58
+msgid "Add Folder"
+msgstr "Добавяне на папка"
+
+#: src/gtk/window.blp:67
+msgid "Add Song"
+msgstr "Добавяне на песен"
+
+#: src/gtk/window.blp:128
+msgctxt "a11y"
+msgid "Elapsed time"
+msgstr "Изминало време"
+
+#: src/gtk/window.blp:142
+msgctxt "a11y"
+msgid "Remaining time"
+msgstr "Оставащо време"
+
+#. Translators: Replace "translator-credits" with your names, one name per line
+#: src/application.rs:243
+msgid "translator-credits"
+msgstr ""
+"twlvnn kraftwerk &lt;<a href='mailto:kraft_werk@tutanota.com'>kraft_werk@tutanota.com</a>&gt;\n"
+"\n"
+"\n"
+"Проектът за превод на GNOME има нужда от подкрепа.\n"
+"Научете повече за нас на <a href='https://fsa-bg.org/project/gtp'>уеб сайта</a> ни.\n"
+"Докладвайте за грешки в превода в <a href='https://fsa-bg.org/project/gtp/newticket'>съответния раздел</a>."
+
+#: src/application.rs:255
+msgid "Amberol needs to run in the background to play music"
+msgstr "„Amberol“ трябва да работи във фонов режим, за да възпроизвежда музика"
+
+#: src/audio/inhibit_controller.rs:40
+msgid "Playback in progress"
+msgstr "В момента се изпълнява музика"
+
+#: src/audio/song.rs:317
+msgid "Unknown artist"
+msgstr "Неизвестен изпълнител"
+
+#: src/audio/song.rs:324
+msgid "Unknown title"
+msgstr "Неизвестно заглавие"
+
+#: src/audio/song.rs:331
+msgid "Unknown album"
+msgstr "Неизвестен албум"
+
+#: src/cover_picture.rs:75
+msgid "Cover image"
+msgstr "Обложка"
+
+#: src/playback_control.rs:119
+msgid "Repeat All Songs"
+msgstr "Повтаряне на всички песни"
+
+#: src/playback_control.rs:123
+msgid "Repeat the Current Song"
+msgstr "Повтаряне на текущата песен"
+
+#: src/window.rs:149
+msgid "Audio files"
+msgstr "Песни"
+
+#: src/window.rs:159
+msgid "_Add Song"
+msgstr "_Добавяне на песен"
+
+#: src/window.rs:163
+msgid "Open File"
+msgstr "Отваряне на файл"
+
+#: src/window.rs:168 src/window.rs:190 src/window.rs:1483
+msgid "Unable to access files"
+msgstr "Не може да се достъпят файлове"
+
+#: src/window.rs:182
+msgid "_Add Folder"
+msgstr "_Добавяне на папка"
+
+#: src/window.rs:185
+msgid "Open Folder"
+msgstr "Отваряне на папка"
+
+#: src/window.rs:509
+msgid "No available song found"
+msgstr "Не е намерена налична песен"
+
+#: src/window.rs:570
+msgid "No songs found"
+msgstr "Няма намерени песни"
+
+#: src/window.rs:603
+msgid "Added a new song"
+msgstr "Добавена е нова песен"
+
+#: src/window.rs:604
+msgid "Play"
+msgstr "Изпълнение"
+
+#. Translators: the `{}` must be left unmodified;
+#. it will be expanded to the number of songs added
+#. to the playlist
+#: src/window.rs:613
+#, rust-format
+msgid "Added one song"
+msgid_plural "Added {} songs"
+msgstr[0] "Добавена е една песен"
+msgstr[1] "Добавени са {} песни"
+
+#: src/window.rs:1243
+msgid "Unable to access dropped files"
+msgstr "Пуснатите файлове не може да се достъпят"
+
+#: src/window.rs:1337
+#, rust-format
+msgid "{} minute"
+msgid_plural "{} minutes"
+msgstr[0] "{} минута"
+msgstr[1] "{} минути"
+
+#: src/window.rs:1348
+#, rust-format
+msgid "{hours} hour {minutes} remaining"
+msgid_plural "{hours} hours {minutes} remaining"
+msgstr[0] "остават {hours} час {minutes} минути"
+msgstr[1] "остават {hours} часа {minutes} минути"
+
+#. Translators: the '{}' must be left unmodified, and
+#. it will be replaced by the number of minutes remaining
+#. in the playlist
+#: src/window.rs:1358
+#, rust-format
+msgid "{} minute remaining"
+msgid_plural "{} minutes remaining"
+msgstr[0] "остава {} минута"
+msgstr[1] "остават {} минути"
+
+#: src/window.rs:1462
+msgid "No song selected"
+msgstr "Няма избрана песен"
+
+#. Translators: The '{}' must be left unmodified, and
+#. it is expanded to the number of songs selected
+#: src/window.rs:1467
+#, rust-format
+msgid "{} song selected"
+msgid_plural "{} songs selected"
+msgstr[0] "{} избрана песен"
+msgstr[1] "{} избрани песни"
+
+#. Translators: `{title}` and `{artist}` must be left
+#. untranslated; they will expand to the title and
+#. artist of the currently playing song, respectively
+#: src/window.rs:1523
+#, rust-format
+msgid "Currently playing “{title}” by “{artist}”"
+msgstr "В момента слушате „{title}“ от {artist}"
+
+#: src/window.rs:1560
+msgid "Unable to open folder"
+msgstr "Папката не може да се отвори"

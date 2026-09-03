@@ -1,0 +1,178 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025 Emmanuele Bassi
+
+using Gtk 4.0;
+using Adw 1;
+
+template $AmberolWindow: Adw.ApplicationWindow {
+  handle-menubar-accel: true;
+  width-request: 360;
+  height-request: 660;
+  default-width: 800;
+
+  content: WindowHandle {
+    $DragOverlay drag_overlay {
+      title: _("Drop a song to add it to the playlist");
+
+      child: Adw.ToastOverlay toast_overlay {
+        child: Stack main_stack {
+          transition-type: crossfade;
+
+          StackPage {
+            name: "initial-view";
+
+            child: Adw.ToolbarView {
+              [top]
+              Adw.HeaderBar {
+                show-title: false;
+              }
+
+              content: Adw.Clamp {
+                maximum-size: 450;
+                vexpand: true;
+                valign: fill;
+
+                child: Adw.StatusPage status_page {
+                  margin-start: 12;
+                  margin-end: 12;
+                  title: "Amberol";
+                  description: _("Select a file or a folder, or drag files from your file manager to the application window to add songs to the playlist");
+
+                  child: Box {
+                    orientation: vertical;
+                    halign: center;
+                    homogeneous: true;
+                    spacing: 12;
+
+                    Button restore_playlist_button {
+                      label: _("Restore Playlist");
+                      action-name: "queue.restore-playlist";
+
+                      styles [
+                        "suggested-action",
+                        "pill",
+                      ]
+                    }
+
+                    Button add_folder_button {
+                      label: _("Add Folder");
+                      action-name: "queue.add-folder";
+
+                      styles [
+                        "pill",
+                      ]
+                    }
+
+                    Button {
+                      label: _("Add Song");
+                      action-name: "queue.add-song";
+
+                      styles [
+                        "pill",
+                      ]
+                    }
+                  };
+                };
+              };
+            };
+          }
+
+          StackPage {
+            name: "main-view";
+
+            child: Adw.OverlaySplitView split_view {
+              max-sidebar-width: 330;
+              sidebar-width-fraction: 0.4;
+
+              content: Adw.ToolbarView {
+                [top]
+                Adw.HeaderBar {
+                  show-title: false;
+                }
+
+                content: Box main_box {
+                  orientation: vertical;
+                  valign: center;
+                  vexpand: true;
+                  spacing: 6;
+
+                  styles [
+                    "main-box",
+                  ]
+
+                  $AmberolSongCover song_cover {}
+
+                  Box {
+                    orientation: vertical;
+                    spacing: 2;
+                    width-request: 256;
+
+                    Box {
+                      halign: center;
+
+                      $AmberolWaveformView waveform_view {
+                        can-focus: "true";
+                      }
+                    }
+
+                    CenterBox {
+                      orientation: horizontal;
+                      width-request: 256;
+                      halign: center;
+
+                      [start]
+                      Label elapsed_label {
+                        label: "0:00";
+
+                        accessibility {
+                          label: C_("a11y", "Elapsed time");
+                        }
+
+                        styles [
+                          "caption",
+                          "numeric",
+                        ]
+                      }
+
+                      [end]
+                      Label remaining_label {
+                        label: "0:00";
+
+                        accessibility {
+                          label: C_("a11y", "Remaining time");
+                        }
+
+                        styles [
+                          "caption",
+                          "numeric",
+                        ]
+                      }
+                    }
+                  }
+
+                  $AmberolSongDetails song_details {}
+
+                  $AmberolPlaybackControl playback_control {
+                    halign: "center";
+                    margin-top: "0";
+                    margin-bottom: "24";
+                  }
+                };
+              };
+
+              sidebar: $AmberolPlaylistView playlist_view {};
+            };
+          }
+        };
+      };
+    }
+  };
+
+  Adw.Breakpoint {
+    condition ("max-width: 560sp")
+
+    setters {
+      split_view.collapsed: true;
+    }
+  }
+}

@@ -1,0 +1,158 @@
+button.large {
+  min-width: 48px;
+  min-height: 48px;
+}
+
+.main-box {
+  padding: 6px;
+  margin-left: 12px;
+  margin-right: 12px;
+}
+
+songcover {
+  padding-bottom: 24px;
+}
+
+songcover picture.cover,
+songcover image.card {
+  box-shadow: 0px 1px 6px rgba(0,0,0,0.3),
+              0px 2px 12px rgba(0,0,0,0.15),
+              0px 6px 32px rgba(0,0,0,0.1);
+  border-radius: 12px;
+  margin: 6px;
+}
+
+image.card.small {
+  border: 1px solid rgb(0 0 0 / 15%);
+  background-clip: padding-box;
+}
+
+.main-window songcover picture.cover {
+  background: linear-gradient(to bottom, var(--background-color-0), var(--background-color-1));
+}
+
+songdetails {
+  padding-top: 12px;
+  padding-bottom: 24px;
+}
+
+songdetails label.song-title {
+  /* match title-1 */
+  font-size: 15pt;
+  font-weight: 800;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+songdetails label.song-title,
+songdetails label.song-artist,
+songdetails label.song-album {
+  min-height: 1.5em;
+}
+
+waveformview {
+  padding-bottom: 6px;
+}
+
+playbackcontrol {
+  padding-bottom: 12px;
+}
+
+queuerow .currently-playing {
+  padding-left: 6px;
+  font-weight: 700;
+}
+
+queuerow box.song-details {
+  padding: 6px 0;
+  border-spacing: 12px;
+}
+
+queuerow label.song-title {
+  font-weight: 700;
+  font-size: 85%;
+}
+
+queuerow label.song-artist {
+  font-size: 85%;
+}
+
+queuerow picture.cover,
+queuerow image.card {
+  box-shadow: none;
+  border-radius: 4px;
+  margin: 0px;
+}
+
+queuerow checkbutton.selection-mode {
+  padding-right: 12px;
+  padding-left: 8px;
+}
+
+dragoverlay {
+  box-shadow: none;
+}
+
+.drag-overlay-status-page {
+  background-color: color-mix(in srgb, var(--accent-bg-color) 50%, transparent);
+  color: var(--accent-fg-color);
+  padding: 32px;
+}
+
+.blurred {
+  filter: blur(6px);
+}
+
+.main-window {
+  --sidebar-bg-color: rgb(0 0 0 / 6%);
+  --sidebar-backdrop-color: rgb(0 0 0 / 3%);
+  --sidebar-shade-color: rgb(0 0 0 / 10%);
+  --sidebar-border-color: rgb(0 0 0 / 10%);
+
+  --accent-bg-color: rgb(0 0 0 / 75%);
+  --accent-fg-color: white;
+  --accent-color: oklab(from var(--accent-bg-color) var(--standalone-color-oklab));
+
+  --scrollbar-outline-color: rgb(255 255 255 / 25%);
+
+  background: linear-gradient(127deg, color-mix(in srgb, var(--background-color-0) 55%, transparent), color-mix(in srgb, var(--background-color-0) 0%, transparent) 70.71%),
+              linear-gradient(217deg, color-mix(in srgb, var(--background-color-1) 55%, transparent), color-mix(in srgb, var(--background-color-1) 0%, transparent) 70.71%),
+              linear-gradient(336deg, color-mix(in srgb, var(--background-color-2) 55%, transparent), color-mix(in srgb, var(--background-color-2) 0%, transparent) 70.71%);
+  transition-property: background;
+  transition-duration: 250ms;
+  transition-timing-function: ease;
+}
+
+.main-window > overlay-split-view > widget.background > playlistview {
+  background: linear-gradient(127deg, color-mix(in srgb, var(--background-color-0) 55%, transparent), color-mix(in srgb, var(--background-color-0) 0%, transparent) 70.71%),
+              linear-gradient(217deg, color-mix(in srgb, var(--background-color-1) 55%, transparent), color-mix(in srgb, var(--background-color-1) 0%, transparent) 70.71%),
+              linear-gradient(336deg, color-mix(in srgb, var(--background-color-2) 55%, transparent), color-mix(in srgb, var(--background-color-2) 0%, transparent) 70.71%),
+              var(--window-bg-color);
+  transition-property: background;
+  transition-duration: 250ms;
+  transition-timing-function: ease;
+}
+
+.main-window volume > scale trough highlight {
+  background: color-mix(in srgb, var(--accent-bg-color) var(--dim-opacity), transparent);
+}
+
+volume:hover > scale { color: inherit; }
+
+volume > scale trough highlight { min-height: 12px; min-width: 12px; }
+
+volume > scale trough slider { opacity: 0; }
+
+@media (prefers-color-scheme: dark) {
+  .main-window {
+    --sidebar-bg-color: rgb(255 255 255 / 5.5%);
+    --sidebar-backdrop-color: rgb(255 255 255 / 2.75%);
+    --sidebar-shade-color: rgb(0 0 0 / 20%);
+    --sidebar-border-color: rgb(0 0 0 / 28%);
+
+    --accent-bg-color: rgb(255 255 255 / 75%);
+    --accent-fg-color: rgb(0 0 0 / 75%);
+
+    --scrollbar-outline-color: rgb(0 0 0 / 25%);
+  }
+}

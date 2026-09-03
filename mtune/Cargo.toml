@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[package]
+name = "mtune"
+version.workspace = true
+edition.workspace = true
+license = "GPL-3.0-or-later"
+repository.workspace = true
+rust-version.workspace = true
+description = "Folder-first music player for the margo desktop"
+
+[[bin]]
+name = "mtune"
+path = "src/main.rs"
+
+[dependencies]
+# GUI stack — mtune-local, current gtk-rs generation. NOT workspace-pinned:
+# margo's workspace tracks gtk-rs 0.10; mtune shares no glib-typed API with
+# any other crate (theming reads the matugen palette as a file, logging is
+# `tracing`), so a second gtk-rs generation in Cargo.lock is a build-time
+# cost only, not a correctness risk.
+gtk = { version = "0.11", package = "gtk4", features = ["v4_16"] }
+gdk-pixbuf = { version = "0.22", features = ["v2_42"] }
+adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
+gst = { package = "gstreamer", version = "0.25" }
+gst-audio = { package = "gstreamer-audio", version = "0.25" }
+gst-play = { package = "gstreamer-play", version = "0.25" }
+color-thief = "0.2.1"
+lofty = "0.24"
+mpris-server = "0.10"
+fuzzy-matcher = "0.3.7"
+rand = { version = "0.10", features = ["thread_rng"] }
+itertools = "0.14"
+once_cell = "1"
+async-channel = "2.2"
+gettext-rs = { version = "0.7", features = ["gettext-system"] }
+log = "0.4"
+pretty_env_logger = "0.5"
+
+# Library subsystem
+ignore = "0.4"
+
+# Shared with margo — pinned to the workspace
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+regex = { workspace = true }
+notify = { workspace = true }
+futures = { workspace = true }
+
+# glib-build-tools tracks the glib crate generation (gtk4 0.11 -> glib 0.21).
+[build-dependencies]
+glib-build-tools = "0.21"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025 Emmanuele Bassi
+
+using Gtk 4.0;
+
+template $AmberolSongDetails: Widget {
+  Box {
+    orientation: vertical;
+    spacing: 12;
+
+    Box {
+      orientation: vertical;
+      valign: center;
+      margin-start: 6;
+      margin-end: 6;
+
+      $AmberolMarquee song_title_label {
+        width-chars: "20";
+
+        styles [
+          "song-title",
+        ]
+      }
+
+      $AmberolMarquee song_artist_label {
+        width-chars: "25";
+
+        styles [
+          "song-artist",
+        ]
+      }
+
+      $AmberolMarquee song_album_label {
+        width-chars: "25";
+
+        styles [
+          "song-album",
+        ]
+      }
+    }
+  }
+}

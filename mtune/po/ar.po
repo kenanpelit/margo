@@ -1,0 +1,522 @@
+# Arabic translation for amberol.
+# Copyright (C) 2024 amberol's COPYRIGHT HOLDER
+# This file is distributed under the same license as the amberol package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+# Khalid Abu Shawarib <khalid.shawarib@gmail.com>, 2024.
+# Bandar al-Khulayfi, 2024.
+# Ahmed Najmawi <iramosu@protonmail.com>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: amberol main\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"POT-Creation-Date: 2024-10-25 17:17+0000\n"
+"PO-Revision-Date: 2025-05-03 21:23+0300\n"
+"Last-Translator: Ahmed Najmawi <iramosu@protonmail.com>\n"
+"Language-Team: Arabic <doc@arabeyes.org>\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural= n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && "
+"n%100<=10 ? 3 : n%100>=11 && n%100<=99 ? 4 : 5;\n"
+"X-DL-Lang: ar\n"
+"X-DL-Module: amberol\n"
+"X-DL-Branch: main\n"
+"X-DL-Domain: po\n"
+"X-DL-State: Translating\n"
+"X-Generator: Poedit 3.4.4\n"
+
+#: data/io.bassi.Amberol.desktop.in.in:3 data/io.bassi.Amberol.metainfo.xml.in.in:6
+msgid "Amberol"
+msgstr "أمبرول"
+
+#: data/io.bassi.Amberol.desktop.in.in:4
+msgid "Music Player"
+msgstr "مُشَغِّل موسيقى"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/io.bassi.Amberol.desktop.in.in:12
+msgid "music;player;media;audio;playlist;"
+msgstr ""
+"موسيقى;مشغل;وسائط;صوتيات;سمعيات;قائمة تشغيل;music;player;media;audio;playlist;"
+"amberol;"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+msgid "Plays music, and nothing else"
+msgstr "شَغِّل الموسيقى، ولا شيء آخر"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+msgid ""
+"Amberol is a music player with no delusions of grandeur. If you just want to play "
+"music available on your local system then Amberol is the music player you are "
+"looking for."
+msgstr ""
+"أمبِرول هو مُشغِّل موسيقى خالٍ من وهم العظمة. إذا كنتَ ترغبُ فقط في تشغيل الموسيقى "
+"المتوفرة على نظامك المحلي، فإنَّ أمبِرول هو مُشغِّل الموسيقى الذي تبحث عنه."
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+msgid "Current features:"
+msgstr "الميزات الحالية:"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+msgid "adaptive UI"
+msgstr "واجهة متكيفة"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+msgid "UI recoloring using the album art"
+msgstr "تلوين الواجهة من صور الألبوم"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+msgid "drag and drop support to queue songs"
+msgstr "دعم صفِّ الأغاني بالسحب والإفلات"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+msgid "shuffle and repeat"
+msgstr "الإعادة والخلط"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+msgid "MPRIS integration"
+msgstr "إِدْمَاج MPRIS"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+msgid "Emmanuele Bassi"
+msgstr "إمانويل باسّي"
+
+#: src/audio/inhibit_controller.rs:40
+msgid "Playback in progress"
+msgstr "في طور التشغيل"
+
+#: src/audio/song.rs:317
+msgid "Unknown artist"
+msgstr "فنان مجهول"
+
+#: src/audio/song.rs:324
+msgid "Unknown title"
+msgstr "عنوان مجهول"
+
+#: src/audio/song.rs:331
+msgid "Unknown album"
+msgstr "ألبوم مجهول"
+
+#: src/gtk/help-overlay.ui:11
+msgctxt "shortcut window"
+msgid "General"
+msgstr "عامّ"
+
+#: src/gtk/help-overlay.ui:14
+msgctxt "shortcut window"
+msgid "Toggle primary menu"
+msgstr "بدِّل القائمة الرئيسة"
+
+#: src/gtk/help-overlay.ui:20
+msgctxt "shortcut window"
+msgid "Copy song details to the clipboard"
+msgstr "انسخ تفاصيل الأغنية إلى الحافظة"
+
+#: src/gtk/help-overlay.ui:26
+msgctxt "shortcut window"
+msgid "Show shortcuts"
+msgstr "أظهِر الاختصارات"
+
+#: src/gtk/help-overlay.ui:32
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "اخرج"
+
+#: src/gtk/help-overlay.ui:40
+msgctxt "shortcut window"
+msgid "Playlist"
+msgstr "قائمة التشغيل"
+
+#: src/gtk/help-overlay.ui:43
+msgctxt "shortcut window"
+msgid "Add a song to the playlist"
+msgstr "أضِف أغنية إلى قائمة التشغيل"
+
+#: src/gtk/help-overlay.ui:49
+msgctxt "shortcut window"
+msgid "Add a folder to the playlist"
+msgstr "أضف مجلدًا إلى قائمة التشغيل"
+
+#: src/gtk/help-overlay.ui:55
+msgctxt "shortcut window"
+msgid "Clear the playlist"
+msgstr "امحُ قائمة التشغيل"
+
+#: src/gtk/help-overlay.ui:61
+msgctxt "shortcut window"
+msgid "Toggle the playlist pane"
+msgstr "بدِّل قائمة التشغيل"
+
+#: src/gtk/help-overlay.ui:67
+msgctxt "shortcut window"
+msgid "Toggle shuffling songs"
+msgstr "بدِّل خلط الأغاني"
+
+#: src/gtk/help-overlay.ui:75
+msgctxt "shortcut window"
+msgid "Playback"
+msgstr "تشغيل"
+
+#: src/gtk/help-overlay.ui:78
+msgctxt "shortcut window"
+msgid "Toggle play/pause"
+msgstr "بدِّل التشغيل\\الإيقاف"
+
+#: src/gtk/help-overlay.ui:84
+msgctxt "shortcut window"
+msgid "Previous song"
+msgstr "الأغنية السابقة"
+
+#: src/gtk/help-overlay.ui:90
+msgctxt "shortcut window"
+msgid "Next song"
+msgstr "الأغنية التالية"
+
+#: src/gtk/help-overlay.ui:96
+msgctxt "shortcut window"
+msgid "Seek backwards in the current song"
+msgstr "السعي خلفًا في الأغنية الحالية"
+
+#: src/gtk/help-overlay.ui:102
+msgctxt "shortcut window"
+msgid "Seek forward in the current song"
+msgstr "السعي أمامًا في الأغنية الحالية"
+
+#: src/gtk/playback-control.ui:21
+msgid "Play the Previous Song"
+msgstr "شغِّل الأغنية السابقة"
+
+#: src/gtk/playback-control.ui:26
+msgctxt "a11y"
+msgid "Skip backwards"
+msgstr "تخطى للوراء"
+
+#: src/gtk/playback-control.ui:35
+msgid "Toggle Play"
+msgstr "بدِّل التشغيل"
+
+#: src/gtk/playback-control.ui:41
+msgctxt "a11y"
+msgid "Toggle play"
+msgstr "بدِّل التشغيل"
+
+#: src/gtk/playback-control.ui:50
+msgid "Play the Next Song"
+msgstr "شَغِّل الأغنية التالية"
+
+#: src/gtk/playback-control.ui:55
+msgctxt "a11y"
+msgid "Skip forward"
+msgstr "تخطى للأمام"
+
+#: src/gtk/playback-control.ui:78
+msgid "Toggle Playlist"
+msgstr "بدِّل قائمة التشغيل"
+
+#: src/gtk/playback-control.ui:83
+msgctxt "a11y"
+msgid "Toggle playlist"
+msgstr "بدِّل قائمة التشغيل"
+
+#: src/gtk/playback-control.ui:92
+msgid "Shuffle the Playlist"
+msgstr "اخلط قائمة التشغيل"
+
+#: src/gtk/playback-control.ui:94
+msgctxt "a11y"
+msgid "Shuffle"
+msgstr "اخلط"
+
+#: src/gtk/playback-control.ui:113 src/playback_control.rs:114
+msgid "Enable Repeat"
+msgstr "فعِّل الإعادة"
+
+#: src/gtk/playback-control.ui:118
+msgctxt "a11y"
+msgid "Repeat"
+msgstr "أعِد"
+
+#: src/gtk/playback-control.ui:129
+msgid "Main Menu"
+msgstr "القائمة الرئيسة"
+
+#: src/gtk/playback-control.ui:135
+msgctxt "a11y"
+msgid "Primary menu"
+msgstr "القائمة الابتدائية"
+
+#: src/gtk/playback-control.ui:151
+msgid "Copy"
+msgstr "انسخ"
+
+#: src/gtk/playback-control.ui:157
+msgid "Add _Song"
+msgstr "أضِف أ_غنية"
+
+#: src/gtk/playback-control.ui:161
+msgid "Add _Folder"
+msgstr "أضِف م_جلد"
+
+#: src/gtk/playback-control.ui:165
+msgid "Clear"
+msgstr "امحُ"
+
+#: src/gtk/playback-control.ui:171
+msgid "_Match Cover Art"
+msgstr "_طابق صور الغلاف"
+
+#: src/gtk/playback-control.ui:175
+msgid "_Background Playback"
+msgstr "شَغِّل في ال_خلفية"
+
+#: src/gtk/playback-control.ui:181
+msgid "_ReplayGain"
+msgstr "مطابقة الص_خب"
+
+#: src/gtk/playback-control.ui:183
+msgctxt "replaygain-menu"
+msgid "_Album"
+msgstr "الأل_بوم"
+
+#: src/gtk/playback-control.ui:188
+msgctxt "replaygain-menu"
+msgid "_Song"
+msgstr "الأ_غنية"
+
+#: src/gtk/playback-control.ui:193
+msgctxt "replaygain-menu"
+msgid "_Disabled"
+msgstr "مُ_عطَّل"
+
+#: src/gtk/playback-control.ui:201
+msgid "_Keyboard Shortcuts"
+msgstr "اخت_صارت لوحة المفاتيح"
+
+#: src/gtk/playback-control.ui:205
+msgid "_About Amberol"
+msgstr "_عَنْ أمبِرول"
+
+#: src/gtk/playback-control.ui:209
+msgid "_Quit"
+msgstr "ا_خرج"
+
+#: src/gtk/playlist-view.ui:14
+msgid "Search Songs in the Playlist"
+msgstr "ابحث الأغاني في قائمة التشغيل"
+
+#: src/gtk/playlist-view.ui:24
+msgid "Playlist"
+msgstr "قائمة التشغيل"
+
+#: src/gtk/playlist-view.ui:46
+msgid "Close the Playlist"
+msgstr "أغلِق قائمة التشغيل"
+
+#: src/gtk/playlist-view.ui:54
+msgid "Select Songs in the Playlist"
+msgstr "اختر الأغاني في قائمة التشغيل"
+
+#: src/gtk/playlist-view.ui:63
+msgid "Search songs"
+msgstr "ابحث الأغاني"
+
+#: src/gtk/playlist-view.ui:66
+msgctxt "a11y"
+msgid "Search"
+msgstr "ابحث"
+
+#: src/gtk/playlist-view.ui:67
+msgctxt "a11y"
+msgid "Type to search songs"
+msgstr "اكتب تبحث الأغاني"
+
+#: src/gtk/playlist-view.ui:113
+msgid "Select All Songs"
+msgstr "اختر كل الأغاني"
+
+#: src/gtk/playlist-view.ui:126
+msgid "Remove Selected Songs"
+msgstr "أزِل الأغاني المحدَّدة"
+
+#: src/gtk/queue-row.ui:27
+msgctxt "a11y"
+msgid "No cover available"
+msgstr "لا غلاف متوفر"
+
+#: src/gtk/queue-row.ui:84
+msgctxt "a11y"
+msgid "Currently playing"
+msgstr "يُشَغَّل حاليًا"
+
+#: src/gtk/window.ui:13
+msgid "Drop a song to add it to the playlist"
+msgstr "أفلِت أغنية لإضافتها إلى قائمة التشغيل"
+
+#: src/gtk/window.ui:43
+msgid ""
+"Select a file or a folder, or drag files from your file manager to the application "
+"window to add songs to the playlist"
+msgstr ""
+"حدِّد ملفًا أو مجلدًا، أو أفلت الملفات من مدير ملفاتك إلى نافذة التطبيق لإضافة أغاني "
+"إلى قائمة التشغيل"
+
+#: src/gtk/window.ui:52
+msgid "Restore Playlist"
+msgstr "استعد قائمة التشغيل"
+
+#: src/gtk/window.ui:62
+msgid "Add Folder"
+msgstr "أضف مجلدًا"
+
+#: src/gtk/window.ui:71
+msgid "Add Song"
+msgstr "أضف أغنية"
+
+#: src/gtk/window.ui:148
+msgctxt "a11y"
+msgid "Elapsed time"
+msgstr "الوقت المنقضي"
+
+#: src/gtk/window.ui:160
+msgctxt "a11y"
+msgid "Remaining time"
+msgstr "الوقت المتبقي"
+
+#. Translators: Replace "translator-credits" with your names, one name per line
+#: src/application.rs:243
+msgid "translator-credits"
+msgstr ""
+"خالد الوليد أبوشوارب <kas@gnome.org>\n"
+"بندر الخليفي\n"
+"أحمد النجماوي <iramosu@protonmail.com>"
+
+#: src/application.rs:255
+msgid "Amberol needs to run in the background to play music"
+msgstr "يتطلب أمبِرول العمل في الخلفية لتشغيل الموسيقى"
+
+#: src/cover_picture.rs:75
+msgid "Cover image"
+msgstr "صورة الغلاف"
+
+#: src/playback_control.rs:118
+msgid "Repeat All Songs"
+msgstr "أعِد كل الأغاني"
+
+#: src/playback_control.rs:122
+msgid "Repeat the Current Song"
+msgstr "أعِد الأغنية الحالية"
+
+#: src/window.rs:145
+msgid "Audio files"
+msgstr "ملفات صوتية"
+
+#: src/window.rs:155
+msgid "_Add Song"
+msgstr "أضف أ_غنية"
+
+#: src/window.rs:159
+msgid "Open File"
+msgstr "افتح ملفًا"
+
+#: src/window.rs:164 src/window.rs:186 src/window.rs:1474
+msgid "Unable to access files"
+msgstr "تعذَّر الوصول إلى الملفات"
+
+#: src/window.rs:178
+msgid "_Add Folder"
+msgstr "أضِف _مجلدًا"
+
+#: src/window.rs:181
+msgid "Open Folder"
+msgstr "افتح مجلدًا"
+
+#: src/window.rs:500
+msgid "No available song found"
+msgstr "لم يُعثر على أغاني متاحة"
+
+#: src/window.rs:561
+msgid "No songs found"
+msgstr "لم يُعثر على أغاني"
+
+#: src/window.rs:594
+msgid "Added a new song"
+msgstr "أضيفت أغنية"
+
+#: src/window.rs:595
+msgid "Play"
+msgstr "شَغِّل"
+
+#. Translators: the `{}` must be left unmodified;
+#. it will be expanded to the number of songs added
+#. to the playlist
+#: src/window.rs:604
+msgid "Added one song"
+msgid_plural "Added {} songs"
+msgstr[0] "لم يضف أي أغنية"
+msgstr[1] "أضيفت أغنية"
+msgstr[2] "أضيفت أغنيتان"
+msgstr[3] "أضيفت {} أغانٍ"
+msgstr[4] "أضيفت {} أغنية"
+msgstr[5] "أضيفت {} أغنية"
+
+#: src/window.rs:1234
+msgid "Unable to access dropped files"
+msgstr "تعذَّر الوصول للملفات المفلتة"
+
+#: src/window.rs:1328
+msgid "{} minute"
+msgid_plural "{} minutes"
+msgstr[0] "أقل من دقيقة"
+msgstr[1] "دقيقة واحدة"
+msgstr[2] "دقيقتان"
+msgstr[3] "{} دقائق"
+msgstr[4] "{} دقيقة"
+msgstr[5] "{} دقيقة"
+
+#: src/window.rs:1339
+msgid "{hours} hour {minutes} remaining"
+msgid_plural "{hours} hours {minutes} remaining"
+msgstr[0] "تبَّقى {minutes}"
+msgstr[1] "تَبَّقت ساعة و{minutes}"
+msgstr[2] "تَبَّقَت ساعتان و{minutes}"
+msgstr[3] "تَبَّقَت {hours} ساعات و{minutes}"
+msgstr[4] "تَبَّقَت {hours} ساعة و{minutes}"
+msgstr[5] "تَبَّقَت {hours} ساعة و{minutes}"
+
+#. Translators: the '{}' must be left unmodified, and
+#. it will be replaced by the number of minutes remaining
+#. in the playlist
+#: src/window.rs:1349
+msgid "{} minute remaining"
+msgid_plural "{} minutes remaining"
+msgstr[0] "تَبَّقَت أقل من دقيقة"
+msgstr[1] "تَبَّقَت دقيقة"
+msgstr[2] "تَبَّقَت دقيقتان"
+msgstr[3] "تَبَّقَت {} دقائق"
+msgstr[4] "تَبَّقَت {} دقيقة"
+msgstr[5] "تَبَّقَت {} دقيقة"
+
+#: src/window.rs:1453
+msgid "No song selected"
+msgstr "لا أغنية محددة"
+
+#. Translators: The '{}' must be left unmodified, and
+#. it is expanded to the number of songs selected
+#: src/window.rs:1458
+msgid "{} song selected"
+msgid_plural "{} songs selected"
+msgstr[0] "لا أغنية محدَّدة"
+msgstr[1] "حُدِّدَت أغنية"
+msgstr[2] "حُدِّدَت أغنيتان"
+msgstr[3] "حُدِّدَت {} أغانٍ"
+msgstr[4] "حُدِّدَت {} أغنية"
+msgstr[5] "حُدِّدَت {} أغنية"
+
+#. Translators: `{title}` and `{artist}` must be left
+#. untranslated; they will expand to the title and
+#. artist of the currently playing song, respectively
+#: src/window.rs:1514
+msgid "Currently playing “{title}” by “{artist}”"
+msgstr "يُشَغِّل «{title}» بواسطة «{artist}»"

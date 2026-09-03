@@ -1,0 +1,504 @@
+# Norwegian Nynorsk translation for amberol.
+# Copyright (C) 2026 amberol's COPYRIGHT HOLDER
+# This file is distributed under the same license as the amberol package.
+# Sunniva Løvstad <damnedlies@turtle.garden>,  2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: amberol main\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"POT-Creation-Date: 2025-10-02 15:14+0000\n"
+"PO-Revision-Date: 2026-03-14 15:19+0100\n"
+"Last-Translator: Sunniva Løvstad <turtle@turtle.garden>\n"
+"Language-Team: Norwegian Nynorsk <nn@li.org>\n"
+"Language: nn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.8\n"
+
+#: data/io.bassi.Amberol.desktop.in.in:2
+#: data/io.bassi.Amberol.metainfo.xml.in.in:6
+msgid "Amberol"
+msgstr "Amberol"
+
+#: data/io.bassi.Amberol.desktop.in.in:3
+msgid "Music Player"
+msgstr "Musikkavspelar"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/io.bassi.Amberol.desktop.in.in:11
+msgid "music;player;media;audio;playlist;"
+msgstr "musikk;spelar;avspelar;audio;speleliste;playlist;music;player;"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+msgid "Plays music, and nothing else"
+msgstr "Spelar av musikk og ingenting anna"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+msgid ""
+"Amberol is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Amberol is the music player "
+"you are looking for."
+msgstr ""
+"Amberol er ein musikkavspelar med inkje stordomsvanvit. Dersom du berre vil "
+"spela av musikk tilgjengeleg på ditt lokale system, er Amberol "
+"musikkavspelaren som du leitar etter."
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+msgid "Current features:"
+msgstr "Noverande funksjonar:"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+msgid "adaptive UI"
+msgstr "adaptiv brukargrensesnitt"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+msgid "UI recoloring using the album art"
+msgstr "brukargrensesnittsomfarging basert på albumkunsten"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+msgid "drag and drop support to queue songs"
+msgstr "støtte for drag-og-slepp for å stilla songar i kø"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+msgid "shuffle and repeat"
+msgstr "blanding og gjentaking"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+msgid "MPRIS integration"
+msgstr "MPRIS-integrering"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+msgid "Emmanuele Bassi"
+msgstr "Emmanuele Bassi"
+
+#: src/gtk/playback-control.blp:21
+msgid "Play the Previous Song"
+msgstr "Spela av førre song"
+
+#: src/gtk/playback-control.blp:28
+msgctxt "a11y"
+msgid "Skip backwards"
+msgstr "Hoppa attover"
+
+#: src/gtk/playback-control.blp:36
+msgid "Toggle Play"
+msgstr "Spela av eller pausa"
+
+#: src/gtk/playback-control.blp:44
+msgctxt "a11y"
+msgid "Toggle play"
+msgstr "Spela av eller pausa"
+
+#: src/gtk/playback-control.blp:52
+msgid "Play the Next Song"
+msgstr "Spela av neste song"
+
+#: src/gtk/playback-control.blp:59
+msgctxt "a11y"
+msgid "Skip forward"
+msgstr "Hoppa framover"
+
+#: src/gtk/playback-control.blp:79
+msgid "Toggle Playlist"
+msgstr "Syn/gøym speleliste"
+
+#: src/gtk/playback-control.blp:86
+msgctxt "a11y"
+msgid "Toggle playlist"
+msgstr "Syn/gøym speleliste"
+
+#: src/gtk/playback-control.blp:94
+msgid "Shuffle the Playlist"
+msgstr "Blanda spelelista"
+
+#: src/gtk/playback-control.blp:97
+msgctxt "a11y"
+msgid "Shuffle"
+msgstr "Blanda"
+
+#: src/gtk/playback-control.blp:116 src/playback_control.rs:115
+msgid "Enable Repeat"
+msgstr "Slå på gjentaking"
+
+#: src/gtk/playback-control.blp:123
+msgctxt "a11y"
+msgid "Repeat"
+msgstr "Gjentak"
+
+#: src/gtk/playback-control.blp:133
+msgid "Main Menu"
+msgstr "Hovudmeny"
+
+#: src/gtk/playback-control.blp:141
+msgctxt "a11y"
+msgid "Primary menu"
+msgstr "Hovudmeny"
+
+#: src/gtk/playback-control.blp:152
+msgid "Copy"
+msgstr "Kopier"
+
+#: src/gtk/playback-control.blp:157
+msgid "Open Directory"
+msgstr "Opna mappe"
+
+#: src/gtk/playback-control.blp:164
+msgid "Add _Song"
+msgstr "Legg til _song"
+
+#: src/gtk/playback-control.blp:169
+msgid "Add _Folder"
+msgstr "Legg til _mappe"
+
+#: src/gtk/playback-control.blp:174
+msgid "Clear"
+msgstr "Reinska"
+
+#: src/gtk/playback-control.blp:181
+msgid "_Match Cover Art"
+msgstr "Samsvara med _albumkunst"
+
+#: src/gtk/playback-control.blp:186
+msgid "_Background Playback"
+msgstr "_Bakgrunnsavspeling"
+
+#: src/gtk/playback-control.blp:193
+msgid "_ReplayGain"
+msgstr "_ReplayGain"
+
+#: src/gtk/playback-control.blp:196
+msgctxt "replaygain-menu"
+msgid "_Album"
+msgstr "_Album"
+
+#: src/gtk/playback-control.blp:202
+msgctxt "replaygain-menu"
+msgid "_Song"
+msgstr "_Song"
+
+#: src/gtk/playback-control.blp:208
+msgctxt "replaygain-menu"
+msgid "_Disabled"
+msgstr "_Slått av"
+
+#: src/gtk/playback-control.blp:217
+msgid "_Keyboard Shortcuts"
+msgstr "_Tastatursnarvegar"
+
+#: src/gtk/playback-control.blp:222
+msgid "_About Amberol"
+msgstr "_Om Amberol"
+
+#: src/gtk/playback-control.blp:227
+msgid "_Quit"
+msgstr "_Avslutt"
+
+#: src/gtk/playlist-view.blp:16
+msgid "Search Songs in the Playlist"
+msgstr "Søk etter songar i spelelista"
+
+#: src/gtk/playlist-view.blp:25
+msgid "Playlist"
+msgstr "Speleiste"
+
+#: src/gtk/playlist-view.blp:47
+msgid "Close the Playlist"
+msgstr "Lat att spelelista"
+
+#: src/gtk/playlist-view.blp:55
+msgid "Select Songs in the Playlist"
+msgstr "Vel songar i spelelista"
+
+#: src/gtk/playlist-view.blp:62
+msgid "Search songs"
+msgstr "Søk gjennom songar"
+
+#: src/gtk/playlist-view.blp:66
+msgctxt "a11y"
+msgid "Search"
+msgstr "Søk"
+
+#: src/gtk/playlist-view.blp:67
+msgctxt "a11y"
+msgid "Type to search songs"
+msgstr "Skriv for å søkja etter songar"
+
+#: src/gtk/playlist-view.blp:110
+msgid "Select All Songs"
+msgstr "Vel alle songar"
+
+#: src/gtk/playlist-view.blp:123
+msgid "Remove Selected Songs"
+msgstr "Fjerna valde songar"
+
+#: src/gtk/queue-row.blp:27
+msgctxt "a11y"
+msgid "No cover available"
+msgstr "Ingen albumkunst tilgjengeleg"
+
+#: src/gtk/queue-row.blp:81
+msgctxt "a11y"
+msgid "Currently playing"
+msgstr "Spelar no"
+
+#: src/gtk/shortcuts-dialog.blp:10
+msgctxt "shortcut window"
+msgid "General"
+msgstr "Ålment"
+
+#: src/gtk/shortcuts-dialog.blp:13
+msgctxt "shortcut window"
+msgid "Toggle primary menu"
+msgstr "Syn/gøym hovudmeny"
+
+#: src/gtk/shortcuts-dialog.blp:18
+msgctxt "shortcut window"
+msgid "Copy song details to the clipboard"
+msgstr "Kopier songdetaljar til utklippstavla"
+
+#: src/gtk/shortcuts-dialog.blp:23
+msgctxt "shortcut window"
+msgid "Show shortcuts"
+msgstr "Syn tastatursnarvegar"
+
+#: src/gtk/shortcuts-dialog.blp:28
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "Avslutt"
+
+#: src/gtk/shortcuts-dialog.blp:34
+msgctxt "shortcut window"
+msgid "Playlist"
+msgstr "Speleliste"
+
+#: src/gtk/shortcuts-dialog.blp:37
+msgctxt "shortcut window"
+msgid "Add a song to the playlist"
+msgstr "Legg til ein song i spelelista"
+
+#: src/gtk/shortcuts-dialog.blp:42
+msgctxt "shortcut window"
+msgid "Add a folder to the playlist"
+msgstr "Legg til ei mappe i spelelista"
+
+#: src/gtk/shortcuts-dialog.blp:47
+msgctxt "shortcut window"
+msgid "Clear the playlist"
+msgstr "Reinska spelelista"
+
+#: src/gtk/shortcuts-dialog.blp:52
+msgctxt "shortcut window"
+msgid "Toggle the playlist pane"
+msgstr "Syn/gøym spelelistefana"
+
+#: src/gtk/shortcuts-dialog.blp:57
+msgctxt "shortcut window"
+msgid "Toggle shuffling songs"
+msgstr "Slå på/av songblanding"
+
+#: src/gtk/shortcuts-dialog.blp:63
+msgctxt "shortcut window"
+msgid "Playback"
+msgstr "Avspeling"
+
+#: src/gtk/shortcuts-dialog.blp:66
+msgctxt "shortcut window"
+msgid "Toggle play/pause"
+msgstr "Spela av/pausa"
+
+#: src/gtk/shortcuts-dialog.blp:71
+msgctxt "shortcut window"
+msgid "Previous song"
+msgstr "Førre song"
+
+#: src/gtk/shortcuts-dialog.blp:76
+msgctxt "shortcut window"
+msgid "Next song"
+msgstr "Neste song"
+
+#: src/gtk/shortcuts-dialog.blp:81
+msgctxt "shortcut window"
+msgid "Seek backwards in the current song"
+msgstr "Søk attover i noverande song"
+
+#: src/gtk/shortcuts-dialog.blp:86
+msgctxt "shortcut window"
+msgid "Seek forward in the current song"
+msgstr "Søk framover i noverande song"
+
+#: src/gtk/window.blp:15
+msgid "Drop a song to add it to the playlist"
+msgstr "Slepp ein song for å leggja han til i spelelista"
+
+#: src/gtk/window.blp:39
+msgid ""
+"Select a file or a folder, or drag files from your file manager to the "
+"application window to add songs to the playlist"
+msgstr ""
+"Vel ei fil eller mappe, eller drag filer frå filhandsamaren din til "
+"applikaksjonsvindauga for å leggja til songar i spelelista"
+
+#: src/gtk/window.blp:48
+msgid "Restore Playlist"
+msgstr "Attoppretta spelelista"
+
+#: src/gtk/window.blp:58
+msgid "Add Folder"
+msgstr "Legg til mappe"
+
+#: src/gtk/window.blp:67
+msgid "Add Song"
+msgstr "Legg til song"
+
+#: src/gtk/window.blp:128
+msgctxt "a11y"
+msgid "Elapsed time"
+msgstr "Forlaupt tid"
+
+#: src/gtk/window.blp:142
+msgctxt "a11y"
+msgid "Remaining time"
+msgstr "Attståande tid"
+
+#. Translators: Replace "translator-credits" with your names, one name per line
+#: src/application.rs:243
+msgid "translator-credits"
+msgstr "Sunniva Løvstad <amberol@turtle.garden>"
+
+#: src/application.rs:255
+msgid "Amberol needs to run in the background to play music"
+msgstr "Amberol må køyra i bakgrunnen for å spela av musikk"
+
+#: src/audio/inhibit_controller.rs:40
+msgid "Playback in progress"
+msgstr "Avspeling i gang"
+
+#: src/audio/song.rs:317
+msgid "Unknown artist"
+msgstr "Ukjend artist"
+
+#: src/audio/song.rs:324
+msgid "Unknown title"
+msgstr "Ukjend tittel"
+
+#: src/audio/song.rs:331
+msgid "Unknown album"
+msgstr "Ukjent album"
+
+#: src/cover_picture.rs:75
+msgid "Cover image"
+msgstr "Albumkunst"
+
+#: src/playback_control.rs:119
+msgid "Repeat All Songs"
+msgstr "Gjentak alle songar"
+
+#: src/playback_control.rs:123
+msgid "Repeat the Current Song"
+msgstr "Gjentak noverande song"
+
+#: src/window.rs:149
+msgid "Audio files"
+msgstr "Audiofiler"
+
+#: src/window.rs:159
+msgid "_Add Song"
+msgstr "Legg til _song"
+
+#: src/window.rs:163
+msgid "Open File"
+msgstr "Opna fil"
+
+#: src/window.rs:168 src/window.rs:190 src/window.rs:1483
+msgid "Unable to access files"
+msgstr "Klarte ikkje å nå filer"
+
+#: src/window.rs:182
+msgid "_Add Folder"
+msgstr "Legg til _mappe"
+
+#: src/window.rs:185
+msgid "Open Folder"
+msgstr "Opna mappe"
+
+#: src/window.rs:509
+msgid "No available song found"
+msgstr "Ingen tilgjengeleg song funnen"
+
+#: src/window.rs:570
+msgid "No songs found"
+msgstr "Ingen songar funne"
+
+#: src/window.rs:603
+msgid "Added a new song"
+msgstr "La til ein ny song"
+
+#: src/window.rs:604
+msgid "Play"
+msgstr "Spela av"
+
+#. Translators: the `{}` must be left unmodified;
+#. it will be expanded to the number of songs added
+#. to the playlist
+#: src/window.rs:613
+#, rust-format
+msgid "Added one song"
+msgid_plural "Added {} songs"
+msgstr[0] "La til ein song"
+msgstr[1] "La til {} songar"
+
+#: src/window.rs:1243
+msgid "Unable to access dropped files"
+msgstr "Klarte ikkje å nå slopne filer"
+
+#: src/window.rs:1337
+#, rust-format
+msgid "{} minute"
+msgid_plural "{} minutes"
+msgstr[0] "{} minutt"
+msgstr[1] "{} minutt"
+
+#: src/window.rs:1348
+#, rust-format
+msgid "{hours} hour {minutes} remaining"
+msgid_plural "{hours} hours {minutes} remaining"
+msgstr[0] "{hours} time {minutes} står att"
+msgstr[1] "{hours} timar {minutes} står att"
+
+#. Translators: the '{}' must be left unmodified, and
+#. it will be replaced by the number of minutes remaining
+#. in the playlist
+#: src/window.rs:1358
+#, rust-format
+msgid "{} minute remaining"
+msgid_plural "{} minutes remaining"
+msgstr[0] "{} minutt står att"
+msgstr[1] "{} minutt står att"
+
+#: src/window.rs:1462
+msgid "No song selected"
+msgstr "Ingen song vald"
+
+#. Translators: The '{}' must be left unmodified, and
+#. it is expanded to the number of songs selected
+#: src/window.rs:1467
+#, rust-format
+msgid "{} song selected"
+msgid_plural "{} songs selected"
+msgstr[0] "{} song vald"
+msgstr[1] "{} songar valde"
+
+#. Translators: `{title}` and `{artist}` must be left
+#. untranslated; they will expand to the title and
+#. artist of the currently playing song, respectively
+#: src/window.rs:1523
+#, rust-format
+msgid "Currently playing “{title}” by “{artist}”"
+msgstr "Spelar av «{title}» av «{artist}»"
+
+#: src/window.rs:1560
+msgid "Unable to open folder"
+msgstr "Klarte ikkje å opna mappe"

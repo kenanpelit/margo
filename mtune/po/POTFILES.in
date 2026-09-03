@@ -1,0 +1,14 @@
+data/io.bassi.Amberol.desktop.in.in
+data/io.bassi.Amberol.gschema.xml
+data/io.bassi.Amberol.metainfo.xml.in.in
+src/gtk/playback-control.blp
+src/gtk/playlist-view.blp
+src/gtk/queue-row.blp
+src/gtk/shortcuts-dialog.blp
+src/gtk/window.blp
+src/application.rs
+src/audio/inhibit_controller.rs
+src/audio/song.rs
+src/cover_picture.rs
+src/playback_control.rs
+src/window.rs

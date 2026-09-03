@@ -1,0 +1,531 @@
+# Slovenian translation for amberol.
+# Copyright (C) 2022 amberol's COPYRIGHT HOLDER
+# This file is distributed under the same license as the amberol package.
+#
+# Matej Urbančič <mateju@src.gnome.org>, 2022–.
+# Martin Srebotnjak <miles@filmsi.net>, 2022.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: amberol main\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"POT-Creation-Date: 2026-03-29 14:16+0000\n"
+"PO-Revision-Date: 2026-03-29 19:03+0200\n"
+"Last-Translator: Martin Srebotnjak <miles@filmsi.net>\n"
+"Language-Team: Slovenian GNOME Translation Team <gnome-si@googlegroups.com>\n"
+"Language: sl_SI\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=(n%100==1 ? 1 : n%100==2 ? 2 : n%100==3 || "
+"n%100==4 ? 3 : 0);\n"
+"X-Poedit-SourceCharset: utf-8\n"
+"X-Generator: Poedit 3.8\n"
+
+#: data/io.bassi.Amberol.desktop.in.in:2
+#: data/io.bassi.Amberol.metainfo.xml.in.in:6
+msgid "Amberol"
+msgstr "Amberol"
+
+#: data/io.bassi.Amberol.desktop.in.in:3
+msgid "Music Player"
+msgstr "Predvajalnik glasbe"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/io.bassi.Amberol.desktop.in.in:11
+msgid "music;player;media;audio;playlist;"
+msgstr ""
+"music;player;media;audio;playlist;glasba;predvajalnik;predstavna "
+"vsebina;seznam predvajanja;skladbe;pesmi;"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+msgid "Plays music, and nothing else"
+msgstr "Predvaja glasbo in nič drugega"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+msgid ""
+"Amberol is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Amberol is the music player "
+"you are looking for."
+msgstr ""
+"Amberol je predvajalnik glasbe brez zablod o svoji veličini. Če želite "
+"predvajati glasbo, ki je na voljo v krajevnem sistemu, je Amberol "
+"predvajalnik glasbe, ki ga iščete."
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+msgid "Current features:"
+msgstr "Trenutne zmožnosti:"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+msgid "adaptive UI"
+msgstr "prilagodljiv vmesnik"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+msgid "UI recoloring using the album art"
+msgstr "prebarvanje vmesnika z uporabo oblikovanja albuma"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+msgid "drag and drop support to queue songs"
+msgstr "podpora povleci-in-spusti za posnetke v čakalni vrsti"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+msgid "shuffle and repeat"
+msgstr "premešanje in ponavljanje"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+msgid "MPRIS integration"
+msgstr "Podpora MPRIS"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+msgid "Emmanuele Bassi"
+msgstr "Emmanuele Bassi"
+
+#: src/gtk/playback-control.blp:21
+msgid "Play the Previous Song"
+msgstr "Predvajaj predhodni posnetek"
+
+#: src/gtk/playback-control.blp:28
+msgctxt "a11y"
+msgid "Skip backwards"
+msgstr "Preskoči nazaj"
+
+#: src/gtk/playback-control.blp:36
+msgid "Toggle Play"
+msgstr "Preklopi predvajanje"
+
+#: src/gtk/playback-control.blp:44
+msgctxt "a11y"
+msgid "Toggle play"
+msgstr "Preklopi predvajanje"
+
+#: src/gtk/playback-control.blp:52
+msgid "Play the Next Song"
+msgstr "Predvajaj naslednji posnetek"
+
+#: src/gtk/playback-control.blp:59
+msgctxt "a11y"
+msgid "Skip forward"
+msgstr "Preskoči naprej"
+
+#: src/gtk/playback-control.blp:79
+msgid "Toggle Playlist"
+msgstr "Preklopi seznam predvajanja"
+
+#: src/gtk/playback-control.blp:86
+msgctxt "a11y"
+msgid "Toggle playlist"
+msgstr "Preklopi seznam predvajanja"
+
+#: src/gtk/playback-control.blp:94
+msgid "Shuffle the Playlist"
+msgstr "Premešaj seznam predvajanja"
+
+#: src/gtk/playback-control.blp:97
+msgctxt "a11y"
+msgid "Shuffle"
+msgstr "Premešaj"
+
+#: src/gtk/playback-control.blp:116
+msgid "Enable Repeat"
+msgstr "Omogoči ponavljanje predvajanja"
+
+#: src/gtk/playback-control.blp:123
+msgctxt "a11y"
+msgid "Repeat"
+msgstr "Ponovi"
+
+#: src/gtk/playback-control.blp:133
+msgid "Main Menu"
+msgstr "Glavni meni"
+
+#: src/gtk/playback-control.blp:141
+msgctxt "a11y"
+msgid "Primary menu"
+msgstr "Osnovni meni"
+
+#: src/gtk/playback-control.blp:152
+msgid "Copy"
+msgstr "Kopiraj"
+
+#: src/gtk/playback-control.blp:157
+msgid "Open Directory"
+msgstr "Odpri mapo"
+
+#: src/gtk/playback-control.blp:164
+msgid "Add _Song"
+msgstr "Dodaj _posnetek"
+
+#: src/gtk/playback-control.blp:169
+msgid "Add _Folder"
+msgstr "Dodaj _mapo"
+
+#: src/gtk/playback-control.blp:174
+msgid "Clear"
+msgstr "Počisti"
+
+#: src/gtk/playback-control.blp:181
+msgid "_Match Cover Art"
+msgstr "_Ujemanje naslovnice albuma"
+
+#: src/gtk/playback-control.blp:186
+msgid "_Background Playback"
+msgstr "Predvajanje v _ozadju"
+
+#: src/gtk/playback-control.blp:193
+msgid "_ReplayGain"
+msgstr "Normaliziraj po _ReplayGain"
+
+#: src/gtk/playback-control.blp:196
+msgctxt "replaygain-menu"
+msgid "_Album"
+msgstr "_Album"
+
+#: src/gtk/playback-control.blp:202
+msgctxt "replaygain-menu"
+msgid "_Song"
+msgstr "_Posnetek"
+
+#: src/gtk/playback-control.blp:208
+msgctxt "replaygain-menu"
+msgid "_Disabled"
+msgstr "_Onemogočeno"
+
+#: src/gtk/playback-control.blp:217
+msgid "_Keyboard Shortcuts"
+msgstr "_Tipkovne bližnjice"
+
+#: src/gtk/playback-control.blp:222
+msgid "_About Amberol"
+msgstr "_O programu"
+
+#: src/gtk/playback-control.blp:227
+msgid "_Quit"
+msgstr "_Končaj"
+
+#: src/gtk/playlist-view.blp:16
+msgid "Search Songs in the Playlist"
+msgstr "Poišči posnetke v seznamu predvajanja"
+
+#: src/gtk/playlist-view.blp:25
+msgid "Playlist"
+msgstr "Seznam predvajanja"
+
+#: src/gtk/playlist-view.blp:47
+msgid "Close the Playlist"
+msgstr "Zapri seznam predvajanja"
+
+#: src/gtk/playlist-view.blp:55
+msgid "Select Songs in the Playlist"
+msgstr "Izberite posnetke na seznamu predvajanja"
+
+#: src/gtk/playlist-view.blp:62
+msgid "Search songs"
+msgstr "Iskanje posnetkov"
+
+#: src/gtk/playlist-view.blp:66
+msgctxt "a11y"
+msgid "Search"
+msgstr "Poišči"
+
+#: src/gtk/playlist-view.blp:67
+msgctxt "a11y"
+msgid "Type to search songs"
+msgstr "Tipkajte ali vnesite za iskanje pesmi"
+
+#: src/gtk/playlist-view.blp:110
+msgid "Select All Songs"
+msgstr "Izberi vse posnetke"
+
+#: src/gtk/playlist-view.blp:123
+msgid "Remove Selected Songs"
+msgstr "Odstrani izbrane posnetke"
+
+#: src/gtk/queue-row.blp:27
+msgctxt "a11y"
+msgid "No cover available"
+msgstr "Naslovnica ni na voljo"
+
+#: src/gtk/queue-row.blp:81
+msgctxt "a11y"
+msgid "Currently playing"
+msgstr "Trenutno se predvaja"
+
+#: src/gtk/shortcuts-dialog.blp:10
+msgctxt "shortcut window"
+msgid "General"
+msgstr "Splošno"
+
+#: src/gtk/shortcuts-dialog.blp:13
+msgctxt "shortcut window"
+msgid "Toggle primary menu"
+msgstr "Preklopi osnovni meni"
+
+#: src/gtk/shortcuts-dialog.blp:18
+msgctxt "shortcut window"
+msgid "Copy song details to the clipboard"
+msgstr "Kopira podrobnosti posnetka v odložišče"
+
+#: src/gtk/shortcuts-dialog.blp:23
+msgctxt "shortcut window"
+msgid "Show shortcuts"
+msgstr "Pokaži tipkovne bližnjice"
+
+#: src/gtk/shortcuts-dialog.blp:28
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "Konča program"
+
+#: src/gtk/shortcuts-dialog.blp:34
+msgctxt "shortcut window"
+msgid "Playlist"
+msgstr "Pokaže seznam predvajanja"
+
+#: src/gtk/shortcuts-dialog.blp:37
+msgctxt "shortcut window"
+msgid "Add a song to the playlist"
+msgstr "Doda posnetek na seznam predvajanja"
+
+#: src/gtk/shortcuts-dialog.blp:42
+msgctxt "shortcut window"
+msgid "Add a folder to the playlist"
+msgstr "Doda mapo na seznam predvajanja"
+
+#: src/gtk/shortcuts-dialog.blp:47
+msgctxt "shortcut window"
+msgid "Clear the playlist"
+msgstr "Počisti seznam predvajanja"
+
+#: src/gtk/shortcuts-dialog.blp:52
+msgctxt "shortcut window"
+msgid "Toggle the playlist pane"
+msgstr "Preklopi okno seznama predvajanja"
+
+#: src/gtk/shortcuts-dialog.blp:57
+msgctxt "shortcut window"
+msgid "Search the playlist"
+msgstr "Počisti seznam predvajanja"
+
+#: src/gtk/shortcuts-dialog.blp:62
+msgctxt "shortcut window"
+msgid "Toggle shuffling songs"
+msgstr "Preklopi premešanje posnetkov"
+
+#: src/gtk/shortcuts-dialog.blp:68
+msgctxt "shortcut window"
+msgid "Playback"
+msgstr "Začne predvajanje"
+
+#: src/gtk/shortcuts-dialog.blp:71
+msgctxt "shortcut window"
+msgid "Toggle play/pause"
+msgstr "Preklopi predvajanje/premor"
+
+#: src/gtk/shortcuts-dialog.blp:76
+msgctxt "shortcut window"
+msgid "Previous song"
+msgstr "Skoči na predhodni posnetek"
+
+#: src/gtk/shortcuts-dialog.blp:81
+msgctxt "shortcut window"
+msgid "Next song"
+msgstr "Skoči na naslednji posnetek"
+
+#: src/gtk/shortcuts-dialog.blp:86
+msgctxt "shortcut window"
+msgid "Seek backwards in the current song"
+msgstr "Išče nazaj po trenutnem posnetku"
+
+#: src/gtk/shortcuts-dialog.blp:91
+msgctxt "shortcut window"
+msgid "Seek forward in the current song"
+msgstr "Išče naprej po trenutnem posnetku"
+
+#: src/gtk/window.blp:15
+msgid "Drop a song to add it to the playlist"
+msgstr "Spustite skladbo oz. posnetek, da ga dodate v čakalno vrstico"
+
+#: src/gtk/window.blp:39
+msgid ""
+"Select a file or a folder, or drag files from your file manager to the "
+"application window to add songs to the playlist"
+msgstr ""
+"Izberite datoteko ali mapo ali povlecite datoteke iz upravitelja datotek v "
+"okno programa, da dodate posnetke na seznam predvajanja"
+
+#: src/gtk/window.blp:48
+msgid "Restore Playlist"
+msgstr "Obnovi seznam predvajanja"
+
+#: src/gtk/window.blp:58
+msgid "Add Folder"
+msgstr "Dodaj mapo"
+
+#: src/gtk/window.blp:67
+msgid "Add Song"
+msgstr "Dodaj posnetek"
+
+#: src/gtk/window.blp:128
+msgctxt "a11y"
+msgid "Elapsed time"
+msgstr "Pretekli čas"
+
+#: src/gtk/window.blp:142
+msgctxt "a11y"
+msgid "Remaining time"
+msgstr "Preostali čas"
+
+#. Translators: Replace "translator-credits" with your names, one name per line
+#: src/application.rs:243
+msgid "translator-credits"
+msgstr ""
+"Matej Urbančič <mateju@svn.gnome.org>\n"
+"Martin Srebotnjak <miles@filmsi.net>"
+
+#: src/application.rs:255
+msgid "Amberol needs to run in the background to play music"
+msgstr "Amberol se mora za predvajanje glasbe izvajati v ozadju"
+
+#: src/audio/inhibit_controller.rs:40
+msgid "Playback in progress"
+msgstr "Predvajanje v teku"
+
+#: src/audio/song.rs:339
+msgid "Unknown artist"
+msgstr "Neznan izvajalec"
+
+#: src/audio/song.rs:346
+msgid "Unknown title"
+msgstr "Neznan naslov"
+
+#: src/audio/song.rs:353
+msgid "Unknown album"
+msgstr "Neznan album"
+
+#: src/cover_picture.rs:75
+msgid "Cover image"
+msgstr "Slika naslovnice"
+
+#: src/playback_control.rs:115
+msgid "Do Not Repeat"
+msgstr "Ne ponavljaj"
+
+#: src/playback_control.rs:119
+msgid "Repeat All Songs"
+msgstr "Ponovi vse posnetke"
+
+#: src/playback_control.rs:123
+msgid "Repeat the Current Song"
+msgstr "Ponovi trenutni posnetek"
+
+#: src/window.rs:149
+msgid "Audio files"
+msgstr "Zvokovne datoteke"
+
+#: src/window.rs:159
+msgid "_Add Song"
+msgstr "Dodaj _posnetek"
+
+#: src/window.rs:163
+msgid "Open File"
+msgstr "Odpri datoteko"
+
+#: src/window.rs:168 src/window.rs:190 src/window.rs:1487
+msgid "Unable to access files"
+msgstr "Dostop do datotek ni možen"
+
+#: src/window.rs:182
+msgid "_Add Folder"
+msgstr "Dodaj _mapo"
+
+#: src/window.rs:185
+msgid "Open Folder"
+msgstr "Odpri mapo"
+
+#: src/window.rs:512
+msgid "No available song found"
+msgstr "Ni najdenih posnetkov"
+
+#: src/window.rs:574
+msgid "No songs found"
+msgstr "Ni najdenih posnetkov"
+
+#: src/window.rs:607
+msgid "Added a new song"
+msgstr "Dodan nov posnetek oz. skladba"
+
+#: src/window.rs:608
+msgid "Play"
+msgstr "Predvajaj"
+
+#. Translators: the `{}` must be left unmodified;
+#. it will be expanded to the number of songs added
+#. to the playlist
+#: src/window.rs:617
+#, rust-format
+msgid "Added one song"
+msgid_plural "Added {} songs"
+msgstr[0] "Dodanih {} posnetkov"
+msgstr[1] "Dodan {} posnetek"
+msgstr[2] "Dodana {} posnetka"
+msgstr[3] "Dodani {} posnetki"
+
+#: src/window.rs:1247
+msgid "Unable to access dropped files"
+msgstr "Dostop do opuščenih datotek ni možen"
+
+#: src/window.rs:1341
+#, rust-format
+msgid "{} minute"
+msgid_plural "{} minutes"
+msgstr[0] "{} minuta"
+msgstr[1] "{} minuti"
+msgstr[2] "{} minute"
+msgstr[3] "{} minut"
+
+#: src/window.rs:1352
+#, rust-format
+msgid "{hours} hour {minutes} remaining"
+msgid_plural "{hours} hours {minutes} remaining"
+msgstr[0] "Preostali čas: {hours} ur {minutes} min"
+msgstr[1] "Preostali čas: {hours} ura {minutes} min"
+msgstr[2] "Preostali čas: {hours} uri {minutes} min"
+msgstr[3] "Preostali čas: {hours} ure {minutes} min"
+
+#. Translators: the '{}' must be left unmodified, and
+#. it will be replaced by the number of minutes remaining
+#. in the playlist
+#: src/window.rs:1362
+#, rust-format
+msgid "{} minute remaining"
+msgid_plural "{} minutes remaining"
+msgstr[0] "Preostali čas: {} minut"
+msgstr[1] "Preostali čas: {} minuta"
+msgstr[2] "Preostali čas: {} minuti"
+msgstr[3] "Preostali čas: {} minute"
+
+#: src/window.rs:1466
+msgid "No song selected"
+msgstr "Ni izbranih posnetkov"
+
+#. Translators: The '{}' must be left unmodified, and
+#. it is expanded to the number of songs selected
+#: src/window.rs:1471
+#, rust-format
+msgid "{} song selected"
+msgid_plural "{} songs selected"
+msgstr[0] "{} izbranih posnetkov"
+msgstr[1] "{} izbran posnetek"
+msgstr[2] "{} izbrana posnetka"
+msgstr[3] "{} izbrani posnetki"
+
+#. Translators: `{title}` and `{artist}` must be left
+#. untranslated; they will expand to the title and
+#. artist of the currently playing song, respectively
+#: src/window.rs:1527
+#, rust-format
+msgid "Currently playing “{title}” by “{artist}”"
+msgstr "Trenutno predvaja »{title}« ({artist})"
+
+#: src/window.rs:1564
+msgid "Unable to open folder"
+msgstr "Mape ni mogoče odpreti"

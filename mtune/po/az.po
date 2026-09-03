@@ -1,0 +1,498 @@
+# Azerbaijani translation for amberol.
+# Copyright (C) 2025 amberol's COPYRIGHT HOLDER
+# This file is distributed under the same license as the amberol package.
+# Ramal Rəhimov <jhonaluman@gmail.com>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: amberol main\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"POT-Creation-Date: 2025-08-09 05:48+0000\n"
+"PO-Revision-Date: 2025-08-09 15:17+0300\n"
+"Last-Translator: Ramal Rəhimov <jhonaluman@gmail.com>\n"
+"Language-Team: Azerbaijani <contact@azlinux.org>\n"
+"Language: az\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Gtranslator 48.0\n"
+
+#: data/io.bassi.Amberol.desktop.in.in:2
+#: data/io.bassi.Amberol.metainfo.xml.in.in:6
+msgid "Amberol"
+msgstr "Amberol"
+
+#: data/io.bassi.Amberol.desktop.in.in:3
+msgid "Music Player"
+msgstr "Musiqi Pleyeri"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/io.bassi.Amberol.desktop.in.in:11
+msgid "music;player;media;audio;playlist;"
+msgstr "musiqi;pleyer;media;audio;pleylist;"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+msgid "Plays music, and nothing else"
+msgstr "Musiqi çalır, başqa heç nə"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+msgid ""
+"Amberol is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Amberol is the music player "
+"you are looking for."
+msgstr ""
+"Amberol, böyük iddiaları olmayan bir musiqi pleyeridir. Əgər sadəcə yerli "
+"sisteminizdəki musiqiləri çalmaq istəyirsinizsə, Amberol axtardığınız musiqi "
+"pleyeridir."
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+msgid "Current features:"
+msgstr "Cari xüsusiyyətlər:"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+msgid "adaptive UI"
+msgstr "adaptiv istifadəçi interfeysi"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+msgid "UI recoloring using the album art"
+msgstr "Albom şəkli ilə interfeysin rənglərinin dəyişdirilməsi"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+msgid "drag and drop support to queue songs"
+msgstr "musiqiləri növbəyə əlavə etmək üçün sürüklə və burax dəstəyi"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+msgid "shuffle and repeat"
+msgstr "qarışdırma və təkrarlama"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+msgid "MPRIS integration"
+msgstr "MPRIS inteqrasiyası"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+msgid "Emmanuele Bassi"
+msgstr "Emmanuele Bassi"
+
+#: src/audio/inhibit_controller.rs:40
+msgid "Playback in progress"
+msgstr "Çalma davam edir"
+
+#: src/audio/song.rs:317
+msgid "Unknown artist"
+msgstr "Naməlum sənətçi"
+
+#: src/audio/song.rs:324
+msgid "Unknown title"
+msgstr "Naməlum başlıq"
+
+#: src/audio/song.rs:331
+msgid "Unknown album"
+msgstr "Naməlum albom"
+
+#: src/gtk/help-overlay.ui:11
+msgctxt "shortcut window"
+msgid "General"
+msgstr "Ümumi"
+
+#: src/gtk/help-overlay.ui:14
+msgctxt "shortcut window"
+msgid "Toggle primary menu"
+msgstr "Əsas menyunu aç/bağla"
+
+#: src/gtk/help-overlay.ui:20
+msgctxt "shortcut window"
+msgid "Copy song details to the clipboard"
+msgstr "Musiqi detallarını buferə kopyala"
+
+#: src/gtk/help-overlay.ui:26
+msgctxt "shortcut window"
+msgid "Show shortcuts"
+msgstr "Qısayolları göstər"
+
+#: src/gtk/help-overlay.ui:32
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "Çıx"
+
+#: src/gtk/help-overlay.ui:40
+msgctxt "shortcut window"
+msgid "Playlist"
+msgstr "Pleylist"
+
+#: src/gtk/help-overlay.ui:43
+msgctxt "shortcut window"
+msgid "Add a song to the playlist"
+msgstr "Pleylistə mahnı əlavə et"
+
+#: src/gtk/help-overlay.ui:49
+msgctxt "shortcut window"
+msgid "Add a folder to the playlist"
+msgstr "Pleylistə qovluq əlavə et"
+
+#: src/gtk/help-overlay.ui:55
+msgctxt "shortcut window"
+msgid "Clear the playlist"
+msgstr "Pleylisti təmizlə"
+
+#: src/gtk/help-overlay.ui:61
+msgctxt "shortcut window"
+msgid "Toggle the playlist pane"
+msgstr "Pleylist panelini aç/bağla"
+
+#: src/gtk/help-overlay.ui:67
+msgctxt "shortcut window"
+msgid "Toggle shuffling songs"
+msgstr "Mahnıları qarışdırmanı aç/bağla"
+
+#: src/gtk/help-overlay.ui:75
+msgctxt "shortcut window"
+msgid "Playback"
+msgstr "Çalma"
+
+#: src/gtk/help-overlay.ui:78
+msgctxt "shortcut window"
+msgid "Toggle play/pause"
+msgstr "Çal/dayandır aç/bağla"
+
+#: src/gtk/help-overlay.ui:84
+msgctxt "shortcut window"
+msgid "Previous song"
+msgstr "Əvvəlki mahnı"
+
+#: src/gtk/help-overlay.ui:90
+msgctxt "shortcut window"
+msgid "Next song"
+msgstr "Növbəti mahnı"
+
+#: src/gtk/help-overlay.ui:96
+msgctxt "shortcut window"
+msgid "Seek backwards in the current song"
+msgstr "Cari mahnıda geri sar"
+
+#: src/gtk/help-overlay.ui:102
+msgctxt "shortcut window"
+msgid "Seek forward in the current song"
+msgstr "Cari mahnıda irəli sar"
+
+#: src/gtk/playback-control.ui:21
+msgid "Play the Previous Song"
+msgstr "Əvvəlki Mahnını Çal"
+
+#: src/gtk/playback-control.ui:26
+msgctxt "a11y"
+msgid "Skip backwards"
+msgstr "Geri keç"
+
+#: src/gtk/playback-control.ui:35
+msgid "Toggle Play"
+msgstr "Çalmanı Aç/Bağla"
+
+#: src/gtk/playback-control.ui:41
+msgctxt "a11y"
+msgid "Toggle play"
+msgstr "Çalmanı aç/bağla"
+
+#: src/gtk/playback-control.ui:50
+msgid "Play the Next Song"
+msgstr "Növbəti Mahnını Çal"
+
+#: src/gtk/playback-control.ui:55
+msgctxt "a11y"
+msgid "Skip forward"
+msgstr "İrəli keç"
+
+#: src/gtk/playback-control.ui:78
+msgid "Toggle Playlist"
+msgstr "Pleylisti Aç/Bağla"
+
+#: src/gtk/playback-control.ui:83
+msgctxt "a11y"
+msgid "Toggle playlist"
+msgstr "Pleylisti aç/bağla"
+
+#: src/gtk/playback-control.ui:92
+msgid "Shuffle the Playlist"
+msgstr "Pleylisti Qarışdır"
+
+#: src/gtk/playback-control.ui:94
+msgctxt "a11y"
+msgid "Shuffle"
+msgstr "Qarışdır"
+
+#: src/gtk/playback-control.ui:113 src/playback_control.rs:114
+msgid "Enable Repeat"
+msgstr "Təkrarlamanı Aktivləşdir"
+
+#: src/gtk/playback-control.ui:118
+msgctxt "a11y"
+msgid "Repeat"
+msgstr "Təkrarla"
+
+#: src/gtk/playback-control.ui:129
+msgid "Main Menu"
+msgstr "Əsas Menyu"
+
+#: src/gtk/playback-control.ui:135
+msgctxt "a11y"
+msgid "Primary menu"
+msgstr "Əsas menyu"
+
+#: src/gtk/playback-control.ui:151
+msgid "Copy"
+msgstr "Kopyala"
+
+#: src/gtk/playback-control.ui:155
+msgid "Open Directory"
+msgstr "Qovluğu Aç"
+
+#: src/gtk/playback-control.ui:161
+msgid "Add _Song"
+msgstr "Mahnı _Əlavə Et"
+
+#: src/gtk/playback-control.ui:165
+msgid "Add _Folder"
+msgstr "Qovluq _Əlavə Et"
+
+#: src/gtk/playback-control.ui:169
+msgid "Clear"
+msgstr "Təmizlə"
+
+#: src/gtk/playback-control.ui:175
+msgid "_Match Cover Art"
+msgstr "_Albom Şəklini Uyğunlaşdır"
+
+#: src/gtk/playback-control.ui:179
+msgid "_Background Playback"
+msgstr "_Arxa Plan Çalması"
+
+#: src/gtk/playback-control.ui:185
+msgid "_ReplayGain"
+msgstr "_TəkrarQazanc"
+
+#: src/gtk/playback-control.ui:187
+msgctxt "replaygain-menu"
+msgid "_Album"
+msgstr "_Albom"
+
+#: src/gtk/playback-control.ui:192
+msgctxt "replaygain-menu"
+msgid "_Song"
+msgstr "_Mahnı"
+
+#: src/gtk/playback-control.ui:197
+msgctxt "replaygain-menu"
+msgid "_Disabled"
+msgstr "_Deaktiv"
+
+#: src/gtk/playback-control.ui:205
+msgid "_Keyboard Shortcuts"
+msgstr "_Klaviatura Qısayolları"
+
+#: src/gtk/playback-control.ui:209
+msgid "_About Amberol"
+msgstr "Amberol _Haqqında"
+
+#: src/gtk/playback-control.ui:213
+msgid "_Quit"
+msgstr "_Çıx"
+
+#: src/gtk/playlist-view.ui:14
+msgid "Search Songs in the Playlist"
+msgstr "Pleylistdə Mahnıları Axtar"
+
+#: src/gtk/playlist-view.ui:24
+msgid "Playlist"
+msgstr "Pleylist"
+
+#: src/gtk/playlist-view.ui:46
+msgid "Close the Playlist"
+msgstr "Pleylisti Bağla"
+
+#: src/gtk/playlist-view.ui:54
+msgid "Select Songs in the Playlist"
+msgstr "Pleylistdə Mahnıları Seç"
+
+#: src/gtk/playlist-view.ui:63
+msgid "Search songs"
+msgstr "Mahnıları axtar"
+
+#: src/gtk/playlist-view.ui:66
+msgctxt "a11y"
+msgid "Search"
+msgstr "Axtar"
+
+#: src/gtk/playlist-view.ui:67
+msgctxt "a11y"
+msgid "Type to search songs"
+msgstr "Mahnıları axtarmaq üçün yaz"
+
+#: src/gtk/playlist-view.ui:113
+msgid "Select All Songs"
+msgstr "Bütün Mahnıları Seç"
+
+#: src/gtk/playlist-view.ui:126
+msgid "Remove Selected Songs"
+msgstr "Seçilmiş Mahnıları Sil"
+
+#: src/gtk/queue-row.ui:27
+msgctxt "a11y"
+msgid "No cover available"
+msgstr "Albom şəkli mövcud deyil"
+
+#: src/gtk/queue-row.ui:84
+msgctxt "a11y"
+msgid "Currently playing"
+msgstr "Hazırda çalınır"
+
+#: src/gtk/window.ui:13
+msgid "Drop a song to add it to the playlist"
+msgstr "Pleylistə əlavə etmək üçün mahnını burax"
+
+#: src/gtk/window.ui:43
+msgid ""
+"Select a file or a folder, or drag files from your file manager to the "
+"application window to add songs to the playlist"
+msgstr ""
+"Pleylistə mahnılar əlavə etmək üçün fayl menecerinizdən fayl və ya qovluq "
+"seçin və ya faylları tətbiq pəncərəsinə sürükləyin"
+
+#: src/gtk/window.ui:52
+msgid "Restore Playlist"
+msgstr "Pleylisti Bərpa Et"
+
+#: src/gtk/window.ui:62
+msgid "Add Folder"
+msgstr "Qovluq Əlavə Et"
+
+#: src/gtk/window.ui:71
+msgid "Add Song"
+msgstr "Mahnı Əlavə Et"
+
+#: src/gtk/window.ui:148
+msgctxt "a11y"
+msgid "Elapsed time"
+msgstr "Keçən vaxt"
+
+#: src/gtk/window.ui:160
+msgctxt "a11y"
+msgid "Remaining time"
+msgstr "Qalan vaxt"
+
+#. Translators: Replace "translator-credits" with your names, one name per line
+#: src/application.rs:243
+msgid "translator-credits"
+msgstr "Ramal Rəhimov <jhonaluman@gmail.com>"
+
+#: src/application.rs:255
+msgid "Amberol needs to run in the background to play music"
+msgstr "Musiqi çalmaq üçün Amberol arxa planda işləməlidir"
+
+#: src/cover_picture.rs:75
+msgid "Cover image"
+msgstr "Albom şəkli"
+
+#: src/playback_control.rs:118
+msgid "Repeat All Songs"
+msgstr "Bütün Mahnıları Təkrarla"
+
+#: src/playback_control.rs:122
+msgid "Repeat the Current Song"
+msgstr "Cari Mahnını Təkrarla"
+
+#: src/window.rs:149
+msgid "Audio files"
+msgstr "Audio fayllar"
+
+#: src/window.rs:159
+msgid "_Add Song"
+msgstr "_Mahnı Əlavə Et"
+
+#: src/window.rs:163
+msgid "Open File"
+msgstr "Faylı Aç"
+
+#: src/window.rs:168 src/window.rs:190 src/window.rs:1482
+msgid "Unable to access files"
+msgstr "Fayllara daxil olmaq mümkün deyil"
+
+#: src/window.rs:182
+msgid "_Add Folder"
+msgstr "_Qovluq Əlavə Et"
+
+#: src/window.rs:185
+msgid "Open Folder"
+msgstr "Qovluğu Aç"
+
+#: src/window.rs:508
+msgid "No available song found"
+msgstr "Mövcud mahnı tapılmadı"
+
+#: src/window.rs:569
+msgid "No songs found"
+msgstr "Mahnılar tapılmadı"
+
+#: src/window.rs:602
+msgid "Added a new song"
+msgstr "Yeni mahnı əlavə edildi"
+
+#: src/window.rs:603
+msgid "Play"
+msgstr "Çal"
+
+#. Translators: the `{}` must be left unmodified;
+#. it will be expanded to the number of songs added
+#. to the playlist
+#: src/window.rs:612
+msgid "Added one song"
+msgid_plural "Added {} songs"
+msgstr[0] "Bir mahnı əlavə edildi"
+msgstr[1] "{} mahnı əlavə edildi"
+
+#: src/window.rs:1242
+msgid "Unable to access dropped files"
+msgstr "Buraxılmış fayllara daxil olmaq mümkün deyil"
+
+#: src/window.rs:1336
+msgid "{} minute"
+msgid_plural "{} minutes"
+msgstr[0] "{} dəqiqə"
+msgstr[1] "{} dəqiqə"
+
+#: src/window.rs:1347
+msgid "{hours} hour {minutes} remaining"
+msgid_plural "{hours} hours {minutes} remaining"
+msgstr[0] "{hours} saat {minutes} qalıb"
+msgstr[1] "{hours} saat {minutes} qalıb"
+
+#. Translators: the '{}' must be left unmodified, and
+#. it will be replaced by the number of minutes remaining
+#. in the playlist
+#: src/window.rs:1357
+msgid "{} minute remaining"
+msgid_plural "{} minutes remaining"
+msgstr[0] "{} dəqiqə qalıb"
+msgstr[1] "{} dəqiqə qalıb"
+
+#: src/window.rs:1461
+msgid "No song selected"
+msgstr "Mahnı seçilməyib"
+
+#. Translators: The '{}' must be left unmodified, and
+#. it is expanded to the number of songs selected
+#: src/window.rs:1466
+msgid "{} song selected"
+msgid_plural "{} songs selected"
+msgstr[0] "{} mahnı seçilib"
+msgstr[1] "{} mahnı seçilib"
+
+#. Translators: `{title}` and `{artist}` must be left
+#. untranslated; they will expand to the title and
+#. artist of the currently playing song, respectively
+#: src/window.rs:1522
+msgid "Currently playing “{title}” by “{artist}”"
+msgstr "Hazırda “{title}” mahnısı “{artist}” tərəfindən çalınır"
+
+#: src/window.rs:1559
+msgid "Unable to open folder"
+msgstr "Qovluğu açmaq mümkün olmadı"

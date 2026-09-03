@@ -1,0 +1,516 @@
+# Korean translation for amberol.
+# Copyright (C) 2022-2026 amberol's all of contributors.
+# This file is distributed under the same license as the amberol package.
+# Seong-ho Cho <shcho@gnome.org>, 2022-2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: amberol main\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"POT-Creation-Date: 2025-10-02 15:14+0000\n"
+"PO-Revision-Date: 2026-02-23 22:42+0900\n"
+"Last-Translator: Seong-ho Cho <shcho@gnome.org>\n"
+"Language-Team: Korean <gnome-kr@googlegroups.com>\n"
+"Language: ko\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 3.7\n"
+
+#: data/io.bassi.Amberol.desktop.in.in:2
+#: data/io.bassi.Amberol.metainfo.xml.in.in:6
+msgid "Amberol"
+msgstr "앰버롤"
+
+#: data/io.bassi.Amberol.desktop.in.in:3
+msgid "Music Player"
+msgstr "음악 재생기"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/io.bassi.Amberol.desktop.in.in:11
+msgid "music;player;media;audio;playlist;"
+msgstr ""
+"music;음악;곡;player;재생;재생기;media;매체;미디어;audio;오디오;소리;음"
+"성;playlist;재생목록;목록;"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+msgid "Plays music, and nothing else"
+msgstr "음악을 재생하며, 다른 동작은 하지 않습니다"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+msgid ""
+"Amberol is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Amberol is the music player "
+"you are looking for."
+msgstr ""
+"앰버롤은 장엄한 착각을 주지 않는 음악 재생 프로그램입니다. 로컬 시스템에 있"
+"는 음악을 재생하려 한다면 앰버롤은 여러분이 찾던 음악 재생 프로그램으로 안성"
+"맞춤입니다."
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+msgid "Current features:"
+msgstr "현재 기능:"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+msgid "adaptive UI"
+msgstr "적응형 UI"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+msgid "UI recoloring using the album art"
+msgstr "앨범 표지에 맞춰 인터페이스 색상 변경"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+msgid "drag and drop support to queue songs"
+msgstr "재생 대기열로 곡 끌어다 놓기 기능"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+msgid "shuffle and repeat"
+msgstr "뒤섞고 반복 재생"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+msgid "MPRIS integration"
+msgstr "MPRIS 통합"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+msgid "Emmanuele Bassi"
+msgstr "Emmanuele Bassi"
+
+#: src/gtk/playback-control.blp:21
+msgid "Play the Previous Song"
+msgstr "이전 곡 재생"
+
+#: src/gtk/playback-control.blp:28
+msgctxt "a11y"
+msgid "Skip backwards"
+msgstr "뒤로 건너뛰기"
+
+#: src/gtk/playback-control.blp:36
+msgid "Toggle Play"
+msgstr "재생 전환"
+
+#: src/gtk/playback-control.blp:44
+msgctxt "a11y"
+msgid "Toggle play"
+msgstr "재생 전환"
+
+#: src/gtk/playback-control.blp:52
+msgid "Play the Next Song"
+msgstr "다음 곡 재생"
+
+#: src/gtk/playback-control.blp:59
+msgctxt "a11y"
+msgid "Skip forward"
+msgstr "앞으로 건너뛰기"
+
+#: src/gtk/playback-control.blp:79
+msgid "Toggle Playlist"
+msgstr "재생 목록 전환"
+
+#: src/gtk/playback-control.blp:86
+msgctxt "a11y"
+msgid "Toggle playlist"
+msgstr "재생 목록 전환"
+
+#: src/gtk/playback-control.blp:94
+msgid "Shuffle the Playlist"
+msgstr "재생 목록 뒤섞기"
+
+#: src/gtk/playback-control.blp:97
+msgctxt "a11y"
+msgid "Shuffle"
+msgstr "임의재생"
+
+#: src/gtk/playback-control.blp:116 src/playback_control.rs:115
+msgid "Enable Repeat"
+msgstr "반복 활성화"
+
+#: src/gtk/playback-control.blp:123
+msgctxt "a11y"
+msgid "Repeat"
+msgstr "반복"
+
+#: src/gtk/playback-control.blp:133
+msgid "Main Menu"
+msgstr "주 메뉴"
+
+#: src/gtk/playback-control.blp:141
+msgctxt "a11y"
+msgid "Primary menu"
+msgstr "기본 메뉴"
+
+#: src/gtk/playback-control.blp:152
+msgid "Copy"
+msgstr "복사"
+
+#: src/gtk/playback-control.blp:157
+msgid "Open Directory"
+msgstr "디렉터리 열기"
+
+#: src/gtk/playback-control.blp:164
+msgid "Add _Song"
+msgstr "곡 추가(_S)"
+
+#: src/gtk/playback-control.blp:169
+msgid "Add _Folder"
+msgstr "폴더 추가(_F)"
+
+#: src/gtk/playback-control.blp:174
+msgid "Clear"
+msgstr "지우기"
+
+#: src/gtk/playback-control.blp:181
+msgid "_Match Cover Art"
+msgstr "표지 그림 일치(_M)"
+
+#: src/gtk/playback-control.blp:186
+msgid "_Background Playback"
+msgstr "백그라운드 재생(_B)"
+
+#: src/gtk/playback-control.blp:193
+msgid "_ReplayGain"
+msgstr "리플레이 게인(_R)"
+
+#: src/gtk/playback-control.blp:196
+msgctxt "replaygain-menu"
+msgid "_Album"
+msgstr "앨범(_A)"
+
+#: src/gtk/playback-control.blp:202
+msgctxt "replaygain-menu"
+msgid "_Song"
+msgstr "곡(_S)"
+
+#: src/gtk/playback-control.blp:208
+msgctxt "replaygain-menu"
+msgid "_Disabled"
+msgstr "비활성(_D)"
+
+#: src/gtk/playback-control.blp:217
+msgid "_Keyboard Shortcuts"
+msgstr "키보드 바로 가기 키(_K)"
+
+#: src/gtk/playback-control.blp:222
+msgid "_About Amberol"
+msgstr "앰버롤 정보(_A)"
+
+#: src/gtk/playback-control.blp:227
+msgid "_Quit"
+msgstr "끝내기(_Q)"
+
+#: src/gtk/playlist-view.blp:16
+msgid "Search Songs in the Playlist"
+msgstr "재생 목록의 곡 검색"
+
+#: src/gtk/playlist-view.blp:25
+msgid "Playlist"
+msgstr "재생 목록"
+
+#: src/gtk/playlist-view.blp:47
+msgid "Close the Playlist"
+msgstr "재생 목록 닫기"
+
+#: src/gtk/playlist-view.blp:55
+msgid "Select Songs in the Playlist"
+msgstr "재생 목록의 곡 선택"
+
+#: src/gtk/playlist-view.blp:62
+msgid "Search songs"
+msgstr "곡 검색"
+
+#: src/gtk/playlist-view.blp:66
+msgctxt "a11y"
+msgid "Search"
+msgstr "검색"
+
+#: src/gtk/playlist-view.blp:67
+msgctxt "a11y"
+msgid "Type to search songs"
+msgstr "검색할 곡 이름을 입력하십시오"
+
+#: src/gtk/playlist-view.blp:110
+msgid "Select All Songs"
+msgstr "모든 곡 선택"
+
+#: src/gtk/playlist-view.blp:123
+msgid "Remove Selected Songs"
+msgstr "선택한 곡 제거"
+
+#: src/gtk/queue-row.blp:27
+msgctxt "a11y"
+msgid "No cover available"
+msgstr "표지 없음"
+
+#: src/gtk/queue-row.blp:81
+msgctxt "a11y"
+msgid "Currently playing"
+msgstr "현재 재생중"
+
+#: src/gtk/shortcuts-dialog.blp:10
+msgctxt "shortcut window"
+msgid "General"
+msgstr "일반"
+
+#: src/gtk/shortcuts-dialog.blp:13
+msgctxt "shortcut window"
+msgid "Toggle primary menu"
+msgstr "기본 메뉴 전환"
+
+#: src/gtk/shortcuts-dialog.blp:18
+msgctxt "shortcut window"
+msgid "Copy song details to the clipboard"
+msgstr "곡 세부 정보를 클립보드에 복사"
+
+#: src/gtk/shortcuts-dialog.blp:23
+msgctxt "shortcut window"
+msgid "Show shortcuts"
+msgstr "바로 가기 키 표시"
+
+#: src/gtk/shortcuts-dialog.blp:28
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "끝내기"
+
+#: src/gtk/shortcuts-dialog.blp:34
+msgctxt "shortcut window"
+msgid "Playlist"
+msgstr "재생 목록"
+
+#: src/gtk/shortcuts-dialog.blp:37
+msgctxt "shortcut window"
+msgid "Add a song to the playlist"
+msgstr "곡을 재생 목록에 추가"
+
+#: src/gtk/shortcuts-dialog.blp:42
+msgctxt "shortcut window"
+msgid "Add a folder to the playlist"
+msgstr "폴더를 재생 목록에 추가"
+
+#: src/gtk/shortcuts-dialog.blp:47
+msgctxt "shortcut window"
+msgid "Clear the playlist"
+msgstr "재생 목록 지우기"
+
+#: src/gtk/shortcuts-dialog.blp:52
+msgctxt "shortcut window"
+msgid "Toggle the playlist pane"
+msgstr "재생 목록 창 전환"
+
+#: src/gtk/shortcuts-dialog.blp:57
+msgctxt "shortcut window"
+msgid "Toggle shuffling songs"
+msgstr "곡 재생 순서 섞기 전환"
+
+#: src/gtk/shortcuts-dialog.blp:63
+msgctxt "shortcut window"
+msgid "Playback"
+msgstr "재생"
+
+#: src/gtk/shortcuts-dialog.blp:66
+msgctxt "shortcut window"
+msgid "Toggle play/pause"
+msgstr "재생/일시정지 전환"
+
+#: src/gtk/shortcuts-dialog.blp:71
+msgctxt "shortcut window"
+msgid "Previous song"
+msgstr "이전 곡"
+
+#: src/gtk/shortcuts-dialog.blp:76
+msgctxt "shortcut window"
+msgid "Next song"
+msgstr "다음 곡"
+
+#: src/gtk/shortcuts-dialog.blp:81
+msgctxt "shortcut window"
+msgid "Seek backwards in the current song"
+msgstr "현재 곡 후위 탐색"
+
+#: src/gtk/shortcuts-dialog.blp:86
+msgctxt "shortcut window"
+msgid "Seek forward in the current song"
+msgstr "현재 곡 전위 탐색"
+
+#: src/gtk/window.blp:15
+msgid "Drop a song to add it to the playlist"
+msgstr "곡을 끌어다 놓아 재생 목록에 추가하십시오"
+
+#: src/gtk/window.blp:39
+msgid ""
+"Select a file or a folder, or drag files from your file manager to the "
+"application window to add songs to the playlist"
+msgstr ""
+"파일 또는 폴더를 선택하거나 파일 관리자에서 파일을 끌어다 프로그램 창에 올려"
+"두어 재생 목록에 곡을 추가하십시오"
+
+#: src/gtk/window.blp:48
+msgid "Restore Playlist"
+msgstr "재생 목록 복원"
+
+#: src/gtk/window.blp:58
+msgid "Add Folder"
+msgstr "폴더 추가"
+
+#: src/gtk/window.blp:67
+msgid "Add Song"
+msgstr "곡 추가"
+
+#: src/gtk/window.blp:128
+msgctxt "a11y"
+msgid "Elapsed time"
+msgstr "경과 시간"
+
+#: src/gtk/window.blp:142
+msgctxt "a11y"
+msgid "Remaining time"
+msgstr "남은 시간"
+
+#. Translators: Replace "translator-credits" with your names, one name per line
+#: src/application.rs:243
+msgid "translator-credits"
+msgstr "조성호 <shcho@gnome.org>"
+
+#: src/application.rs:255
+msgid "Amberol needs to run in the background to play music"
+msgstr "앰버롤은 음악을 재생할 때 백그라운드에서 실행해야 합니다"
+
+#: src/audio/inhibit_controller.rs:40
+msgid "Playback in progress"
+msgstr "재생 중"
+
+#: src/audio/song.rs:317
+msgid "Unknown artist"
+msgstr "알 수 없는 음악가"
+
+#: src/audio/song.rs:324
+msgid "Unknown title"
+msgstr "알 수 없는 제목"
+
+#: src/audio/song.rs:331
+msgid "Unknown album"
+msgstr "알 수 없는 앨범"
+
+#: src/cover_picture.rs:75
+msgid "Cover image"
+msgstr "표지 그림"
+
+#: src/playback_control.rs:119
+msgid "Repeat All Songs"
+msgstr "모든 곡 반복 재생"
+
+#: src/playback_control.rs:123
+msgid "Repeat the Current Song"
+msgstr "현재 곡 반복 재생"
+
+#: src/window.rs:149
+msgid "Audio files"
+msgstr "오디오 파일"
+
+#: src/window.rs:159
+msgid "_Add Song"
+msgstr "곡 추가(_A)"
+
+#: src/window.rs:163
+msgid "Open File"
+msgstr "파일 열기"
+
+#: src/window.rs:168 src/window.rs:190 src/window.rs:1483
+msgid "Unable to access files"
+msgstr "파일을 열 수 없습니다"
+
+#: src/window.rs:182
+msgid "_Add Folder"
+msgstr "폴더 추가(_A)"
+
+#: src/window.rs:185
+msgid "Open Folder"
+msgstr "폴더 열기"
+
+#: src/window.rs:509
+msgid "No available song found"
+msgstr "곡이 없습니다"
+
+#: src/window.rs:570
+msgid "No songs found"
+msgstr "곡이 없습니다"
+
+#: src/window.rs:603
+msgid "Added a new song"
+msgstr "새 곡을 추가했습니다"
+
+#: src/window.rs:604
+msgid "Play"
+msgstr "재생"
+
+#. Translators: the `{}` must be left unmodified;
+#. it will be expanded to the number of songs added
+#. to the playlist
+#: src/window.rs:613
+#, rust-format
+msgid "Added one song"
+msgid_plural "Added {} songs"
+msgstr[0] "곡 {}개를 추가했습니다"
+
+#: src/window.rs:1243
+msgid "Unable to access dropped files"
+msgstr "끌어다 놓은 파일을 열 수 없습니다"
+
+#: src/window.rs:1337
+#, rust-format
+msgid "{} minute"
+msgid_plural "{} minutes"
+msgstr[0] "{}분"
+
+#: src/window.rs:1348
+#, rust-format
+msgid "{hours} hour {minutes} remaining"
+msgid_plural "{hours} hours {minutes} remaining"
+msgstr[0] "{hours}시간 {minutes}분 남음"
+
+#. Translators: the '{}' must be left unmodified, and
+#. it will be replaced by the number of minutes remaining
+#. in the playlist
+#: src/window.rs:1358
+#, rust-format
+msgid "{} minute remaining"
+msgid_plural "{} minutes remaining"
+msgstr[0] "{}분 남음"
+
+#: src/window.rs:1462
+msgid "No song selected"
+msgstr "선택한 곡이 없습니다"
+
+#. Translators: The '{}' must be left unmodified, and
+#. it is expanded to the number of songs selected
+#: src/window.rs:1467
+#, rust-format
+msgid "{} song selected"
+msgid_plural "{} songs selected"
+msgstr[0] "곡 {}개 선택함"
+
+#. Translators: `{title}` and `{artist}` must be left
+#. untranslated; they will expand to the title and
+#. artist of the currently playing song, respectively
+#: src/window.rs:1523
+#, rust-format
+msgid "Currently playing “{title}” by “{artist}”"
+msgstr "현재 재생중: “{title}” ― “{artist}”"
+
+#: src/window.rs:1560
+msgid "Unable to open folder"
+msgstr "폴더를 열 수 없습니다"
+
+#~ msgid "_Track"
+#~ msgstr "트랙(_T)"
+
+#~ msgid "_Off"
+#~ msgstr "끔(_O)"
+
+#~ msgid "Repeat All Tracks"
+#~ msgstr "모든 트랙 반복 재생"
+
+#~ msgid "_Cancel"
+#~ msgstr "취소(_C)"
+
+#~ msgid "Add File"
+#~ msgstr "파일 추가"

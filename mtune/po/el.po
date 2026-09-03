@@ -1,0 +1,520 @@
+# Greek translation for amberol.
+# Copyright (C) 2022 amberol's COPYRIGHT HOLDER
+# This file is distributed under the same license as the amberol package.
+# Efstathios Iosifidis <eiosifidis@gnome.org>, 2022.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: amberol main\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"POT-Creation-Date: 2025-10-02 15:14+0000\n"
+"PO-Revision-Date: 2024-01-05 22:02+0200\n"
+"Last-Translator: Giannis Antypas <gianni.antypas@gmail.com>\n"
+"Language-Team: Greek <gnome-el-list@gnome.org>\n"
+"Language: el\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.4\n"
+
+#: data/io.bassi.Amberol.desktop.in.in:2
+#: data/io.bassi.Amberol.metainfo.xml.in.in:6
+msgid "Amberol"
+msgstr "Amberol"
+
+#: data/io.bassi.Amberol.desktop.in.in:3
+msgid "Music Player"
+msgstr "Αναπαραγωγή μουσικής"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/io.bassi.Amberol.desktop.in.in:11
+msgid "music;player;media;audio;playlist;"
+msgstr "μουσική;αναπαραγωγέας;μέσα;ήχος;λίστα αναπαραγωγής;"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+msgid "Plays music, and nothing else"
+msgstr "Αναπαραγωγή μουσικής, τίποτα άλλο"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+msgid ""
+"Amberol is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Amberol is the music player "
+"you are looking for."
+msgstr ""
+"Το Amberol είναι ένας αναπαραγωγέας μουσικής χωρίς αυταπάτες και "
+"μεγαλοπρέπειες. Αν θέλετε απλά να ακούτε μουσική που είναι διαθέσιμη στο "
+"τοπικό σας σύστημα, τότε το Amberol είναι ο αναπαραγωγέας μουσικής που "
+"ψάχνετε."
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+msgid "Current features:"
+msgstr "Τρέχοντα χαρακτηριστικά:"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+msgid "adaptive UI"
+msgstr "προσαρμοστικό UI"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+msgid "UI recoloring using the album art"
+msgstr "αλλαγή χρωμάτων του UI χρησιμοποιώντας το εξώφυλλο του άλμπουμ"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+msgid "drag and drop support to queue songs"
+msgstr "υποστήριξη drag and drop για ουρά τραγουδιών"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+msgid "shuffle and repeat"
+msgstr "τυχαία σειρά και επανάληψη"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+msgid "MPRIS integration"
+msgstr "Ενσωμάτωση MPRIS"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+msgid "Emmanuele Bassi"
+msgstr "Emmanuele Bassi"
+
+#: src/gtk/playback-control.blp:21
+msgid "Play the Previous Song"
+msgstr "Αναπαραγωγή του προηγούμενου τραγουδιού"
+
+#: src/gtk/playback-control.blp:28
+msgctxt "a11y"
+msgid "Skip backwards"
+msgstr "Παράβλεψη προς τα πίσω"
+
+#: src/gtk/playback-control.blp:36
+msgid "Toggle Play"
+msgstr "Εναλλαγή Αναπαραγωγής"
+
+#: src/gtk/playback-control.blp:44
+msgctxt "a11y"
+msgid "Toggle play"
+msgstr "Εναλλαγή αναπαραγωγής"
+
+#: src/gtk/playback-control.blp:52
+msgid "Play the Next Song"
+msgstr "Αναπαραγωγή επόμενου τραγουδιού"
+
+#: src/gtk/playback-control.blp:59
+msgctxt "a11y"
+msgid "Skip forward"
+msgstr "Παράβλεψη προς τα εμπρός"
+
+#: src/gtk/playback-control.blp:79
+msgid "Toggle Playlist"
+msgstr "Εναλλαγή Λίστας αναπαραγωγής"
+
+#: src/gtk/playback-control.blp:86
+msgctxt "a11y"
+msgid "Toggle playlist"
+msgstr "Εναλλαγή λίστας αναπαραγωγής"
+
+#: src/gtk/playback-control.blp:94
+msgid "Shuffle the Playlist"
+msgstr "Ανακάτεμα της λίστας αναπαραγωγής"
+
+#: src/gtk/playback-control.blp:97
+msgctxt "a11y"
+msgid "Shuffle"
+msgstr "Τυχαία σειρά"
+
+#: src/gtk/playback-control.blp:116 src/playback_control.rs:115
+msgid "Enable Repeat"
+msgstr "Ενεργοποίηση Επανάληψης"
+
+#: src/gtk/playback-control.blp:123
+msgctxt "a11y"
+msgid "Repeat"
+msgstr "Επανάληψη"
+
+#: src/gtk/playback-control.blp:133
+msgid "Main Menu"
+msgstr "Κυρίως μενού"
+
+#: src/gtk/playback-control.blp:141
+msgctxt "a11y"
+msgid "Primary menu"
+msgstr "Κύριο μενού"
+
+#: src/gtk/playback-control.blp:152
+msgid "Copy"
+msgstr "Αντιγραφή"
+
+#: src/gtk/playback-control.blp:157
+#| msgid "Open File"
+msgid "Open Directory"
+msgstr "Άνοιγμα καταλόγου"
+
+#: src/gtk/playback-control.blp:164
+msgid "Add _Song"
+msgstr "Προσθήκη _Τραγουδιού"
+
+#: src/gtk/playback-control.blp:169
+msgid "Add _Folder"
+msgstr "Προσθήκη _Φακέλου"
+
+#: src/gtk/playback-control.blp:174
+msgid "Clear"
+msgstr "Εκκαθάριση"
+
+#: src/gtk/playback-control.blp:181
+msgid "_Match Cover Art"
+msgstr "_Ταιριάζει το Εξώφυλλο"
+
+#: src/gtk/playback-control.blp:186
+msgid "_Background Playback"
+msgstr "Αναπαραγωγή στο _Φόντο"
+
+#: src/gtk/playback-control.blp:193
+msgid "_ReplayGain"
+msgstr "_ReplayGain"
+
+#: src/gtk/playback-control.blp:196
+msgctxt "replaygain-menu"
+msgid "_Album"
+msgstr "Ά_λμπουμ"
+
+#: src/gtk/playback-control.blp:202
+msgctxt "replaygain-menu"
+msgid "_Song"
+msgstr "_Τραγούδι"
+
+#: src/gtk/playback-control.blp:208
+msgctxt "replaygain-menu"
+msgid "_Disabled"
+msgstr "_Απενεργοποιημένο"
+
+#: src/gtk/playback-control.blp:217
+msgid "_Keyboard Shortcuts"
+msgstr "Συντομεύσεις _Πληκτρολογίου"
+
+#: src/gtk/playback-control.blp:222
+msgid "_About Amberol"
+msgstr "_Περί του Amberol"
+
+#: src/gtk/playback-control.blp:227
+msgid "_Quit"
+msgstr "Έ_ξοδος"
+
+#: src/gtk/playlist-view.blp:16
+msgid "Search Songs in the Playlist"
+msgstr "Αναζήτηση τραγουδιών στη λίστα αναπαραγωγής"
+
+#: src/gtk/playlist-view.blp:25
+msgid "Playlist"
+msgstr "Λίστα αναπαραγωγής"
+
+#: src/gtk/playlist-view.blp:47
+msgid "Close the Playlist"
+msgstr "Κλείσιμο λίστας αναπαραγωγής"
+
+#: src/gtk/playlist-view.blp:55
+msgid "Select Songs in the Playlist"
+msgstr "Επιλογή τραγουδιών στη λίστα αναπαραγωγής"
+
+#: src/gtk/playlist-view.blp:62
+msgid "Search songs"
+msgstr "Αναζήτηση τραγουδιών"
+
+#: src/gtk/playlist-view.blp:66
+msgctxt "a11y"
+msgid "Search"
+msgstr "Αναζήτηση"
+
+#: src/gtk/playlist-view.blp:67
+msgctxt "a11y"
+msgid "Type to search songs"
+msgstr "Πληκτρολόγηση για αναζήτηση τραγουδιών"
+
+#: src/gtk/playlist-view.blp:110
+msgid "Select All Songs"
+msgstr "Επιλογή όλων των τραγουδιών"
+
+#: src/gtk/playlist-view.blp:123
+msgid "Remove Selected Songs"
+msgstr "Αφαίρεση επιλεγμένων τραγουδιών"
+
+#: src/gtk/queue-row.blp:27
+msgctxt "a11y"
+msgid "No cover available"
+msgstr "Μη διαθέσιμο εξώφυλλο"
+
+#: src/gtk/queue-row.blp:81
+msgctxt "a11y"
+msgid "Currently playing"
+msgstr "Παίζει τώρα"
+
+#: src/gtk/shortcuts-dialog.blp:10
+msgctxt "shortcut window"
+msgid "General"
+msgstr "Γενικά"
+
+#: src/gtk/shortcuts-dialog.blp:13
+msgctxt "shortcut window"
+msgid "Toggle primary menu"
+msgstr "Εναλλαγή πρωτεύοντος μενού"
+
+#: src/gtk/shortcuts-dialog.blp:18
+msgctxt "shortcut window"
+msgid "Copy song details to the clipboard"
+msgstr "Αντιγραφή λεπτομερειών τραγουδιού στο πρόχειρο"
+
+#: src/gtk/shortcuts-dialog.blp:23
+msgctxt "shortcut window"
+msgid "Show shortcuts"
+msgstr "Εμφάνιση συντομεύσεων"
+
+#: src/gtk/shortcuts-dialog.blp:28
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "Έξοδος"
+
+#: src/gtk/shortcuts-dialog.blp:34
+msgctxt "shortcut window"
+msgid "Playlist"
+msgstr "Λίστα αναπαραγωγής"
+
+#: src/gtk/shortcuts-dialog.blp:37
+msgctxt "shortcut window"
+msgid "Add a song to the playlist"
+msgstr "Προσθήκη τραγουδιού στη λίστα αναπαραγωγής"
+
+#: src/gtk/shortcuts-dialog.blp:42
+msgctxt "shortcut window"
+msgid "Add a folder to the playlist"
+msgstr "Προσθήκη φακέλου στη λίστα αναπαραγωγής"
+
+#: src/gtk/shortcuts-dialog.blp:47
+msgctxt "shortcut window"
+msgid "Clear the playlist"
+msgstr "Εκκαθάριση της λίστας αναπαραγωγής"
+
+#: src/gtk/shortcuts-dialog.blp:52
+msgctxt "shortcut window"
+msgid "Toggle the playlist pane"
+msgstr "Εναλλαγή παραθύρου λίστας αναπαραγωγής"
+
+#: src/gtk/shortcuts-dialog.blp:57
+msgctxt "shortcut window"
+msgid "Toggle shuffling songs"
+msgstr "Εναλλαγή ανακάτεματος τραγουδιών"
+
+#: src/gtk/shortcuts-dialog.blp:63
+msgctxt "shortcut window"
+msgid "Playback"
+msgstr "Αναπαραγωγή"
+
+#: src/gtk/shortcuts-dialog.blp:66
+msgctxt "shortcut window"
+msgid "Toggle play/pause"
+msgstr "Εναλλαγή αναπαραγωγής/παύσης"
+
+#: src/gtk/shortcuts-dialog.blp:71
+msgctxt "shortcut window"
+msgid "Previous song"
+msgstr "Προηγούμενο τραγούδι"
+
+#: src/gtk/shortcuts-dialog.blp:76
+msgctxt "shortcut window"
+msgid "Next song"
+msgstr "Επόμενο τραγούδι"
+
+#: src/gtk/shortcuts-dialog.blp:81
+msgctxt "shortcut window"
+msgid "Seek backwards in the current song"
+msgstr "Αναζήτηση προς τα πίσω στο τρέχον τραγούδι"
+
+#: src/gtk/shortcuts-dialog.blp:86
+msgctxt "shortcut window"
+msgid "Seek forward in the current song"
+msgstr "Αναζήτηση προς τα εμπρός στο τρέχον τραγούδι"
+
+#: src/gtk/window.blp:15
+msgid "Drop a song to add it to the playlist"
+msgstr "Αφήστε ένα τραγούδι για να το προσθέσετε στη λίστα αναπαραγωγής"
+
+#: src/gtk/window.blp:39
+msgid ""
+"Select a file or a folder, or drag files from your file manager to the "
+"application window to add songs to the playlist"
+msgstr ""
+"Επιλέξτε ένα αρχείο ή έναν φάκελο, ή σύρετε αρχεία από τον διαχειριστή "
+"αρχείων σας στο παράθυρο της εφαρμογής για να προσθέσετε τραγούδια στην "
+"λίστα αναπαραγωγής"
+
+#: src/gtk/window.blp:48
+msgid "Restore Playlist"
+msgstr "Επαναφορά λίστας αναπαραγωγής"
+
+#: src/gtk/window.blp:58
+msgid "Add Folder"
+msgstr "Προσθήκη φακέλου"
+
+#: src/gtk/window.blp:67
+msgid "Add Song"
+msgstr "Προσθήκη Τραγουδιού"
+
+#: src/gtk/window.blp:128
+msgctxt "a11y"
+msgid "Elapsed time"
+msgstr "Χρόνος που παρήλθε"
+
+#: src/gtk/window.blp:142
+msgctxt "a11y"
+msgid "Remaining time"
+msgstr "Υπόλοιπος χρόνος"
+
+#. Translators: Replace "translator-credits" with your names, one name per line
+#: src/application.rs:243
+msgid "translator-credits"
+msgstr ""
+"Ελληνική μεταφραστική ομάδα GNOME\n"
+" Ευστάθιος Ιωσηφίδης <iosifidis@opensuse.org>\n"
+"\n"
+"Για περισσότερες πληροφορίες, επισκεφθείτε τη σελίδα\n"
+"http://gnome.gr/"
+
+#: src/application.rs:255
+msgid "Amberol needs to run in the background to play music"
+msgstr ""
+"Το Amberol χρειάζεται να εκτελείται στο παρασκήνιο για να αναπαράγει μουσική"
+
+#: src/audio/inhibit_controller.rs:40
+msgid "Playback in progress"
+msgstr "Αναπαραγωγή σε εξέλιξη"
+
+#: src/audio/song.rs:317
+msgid "Unknown artist"
+msgstr "Άγνωστος καλλιτέχνης"
+
+#: src/audio/song.rs:324
+msgid "Unknown title"
+msgstr "Άγνωστος τίτλος"
+
+#: src/audio/song.rs:331
+msgid "Unknown album"
+msgstr "Άγνωστο άλμπουμ"
+
+#: src/cover_picture.rs:75
+msgid "Cover image"
+msgstr "Εικόνα εξωφύλλου"
+
+#: src/playback_control.rs:119
+msgid "Repeat All Songs"
+msgstr "Επανάληψη όλων των τραγουδιών"
+
+#: src/playback_control.rs:123
+msgid "Repeat the Current Song"
+msgstr "Επανάληψη του τρέχοντος τραγουδιού"
+
+#: src/window.rs:149
+msgid "Audio files"
+msgstr "Αρχεία ήχου"
+
+#: src/window.rs:159
+msgid "_Add Song"
+msgstr "_Προσθήκη τραγουδιού"
+
+#: src/window.rs:163
+msgid "Open File"
+msgstr "Άνοιγμα αρχείου"
+
+#: src/window.rs:168 src/window.rs:190 src/window.rs:1483
+msgid "Unable to access files"
+msgstr "Αδυναμία πρόσβασης στα αρχεία"
+
+#: src/window.rs:182
+msgid "_Add Folder"
+msgstr "_Προσθήκη φακέλου"
+
+#: src/window.rs:185
+msgid "Open Folder"
+msgstr "Άνοιγμα φακέλου"
+
+#: src/window.rs:509
+msgid "No available song found"
+msgstr "Δεν βρέθηκαν διαθέσιμα τραγούδια"
+
+#: src/window.rs:570
+msgid "No songs found"
+msgstr "Δεν βρέθηκαν τραγούδια"
+
+#: src/window.rs:603
+msgid "Added a new song"
+msgstr "Προστέθηκε νέο τραγούδι"
+
+#: src/window.rs:604
+msgid "Play"
+msgstr "Aναπαραγωγή"
+
+#. Translators: the `{}` must be left unmodified;
+#. it will be expanded to the number of songs added
+#. to the playlist
+#: src/window.rs:613
+#, rust-format
+msgid "Added one song"
+msgid_plural "Added {} songs"
+msgstr[0] "Προστέθηκε ένα τραγούδι"
+msgstr[1] "Προστέθηκαν {} τραγούδια"
+
+#: src/window.rs:1243
+msgid "Unable to access dropped files"
+msgstr "Αδυναμία πρόσβασης στα αρχεία που εναποτέθησαν"
+
+#: src/window.rs:1337
+#, rust-format
+msgid "{} minute"
+msgid_plural "{} minutes"
+msgstr[0] "{} λεπτό"
+msgstr[1] "{} λεπτά"
+
+#: src/window.rs:1348
+#, rust-format
+msgid "{hours} hour {minutes} remaining"
+msgid_plural "{hours} hours {minutes} remaining"
+msgstr[0] "Απομένει {hours} ώρα και {minutes} λεπτά"
+msgstr[1] "Απομένουν {hours} ώρες και {minutes} λεπτά"
+
+#. Translators: the '{}' must be left unmodified, and
+#. it will be replaced by the number of minutes remaining
+#. in the playlist
+#: src/window.rs:1358
+#, rust-format
+msgid "{} minute remaining"
+msgid_plural "{} minutes remaining"
+msgstr[0] "Απομένει {} λεπτό"
+msgstr[1] "Απομένουν {} λεπτά"
+
+#: src/window.rs:1462
+msgid "No song selected"
+msgstr "Δεν επιλέχθηκε τραγούδι"
+
+#. Translators: The '{}' must be left unmodified, and
+#. it is expanded to the number of songs selected
+#: src/window.rs:1467
+#, rust-format
+msgid "{} song selected"
+msgid_plural "{} songs selected"
+msgstr[0] "{} τραγούδι επιλέχθηκε"
+msgstr[1] "{} τραγούδια επιλέχθηκαν"
+
+#. Translators: `{title}` and `{artist}` must be left
+#. untranslated; they will expand to the title and
+#. artist of the currently playing song, respectively
+#: src/window.rs:1523
+#, rust-format
+msgid "Currently playing “{title}” by “{artist}”"
+msgstr "Αυτή τη στιγμή παίζει το “{title}” από τον/την “{artist}”"
+
+#: src/window.rs:1560
+#| msgid "Unable to access files"
+msgid "Unable to open folder"
+msgstr "Αδυναμία ανοίγματος φακέλου"
+
+#~ msgid "Add File"
+#~ msgstr "Προσθήκη αρχείου"
+
+#~ msgid "Repeat All Tracks"
+#~ msgstr "Επανάληψη όλων των κομματιών"

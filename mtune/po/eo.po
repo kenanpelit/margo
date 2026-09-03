@@ -1,0 +1,498 @@
+# Esperanto translation for amberol.
+# Copyright (C) 2025 amberol's COPYRIGHT HOLDER
+# This file is distributed under the same license as the amberol package.
+# Kristjan SCHMIDT <kristjan.schmidt@googlemail.com>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: amberol main\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"POT-Creation-Date: 2025-12-10 11:05+0000\n"
+"PO-Revision-Date: 2025-12-25 00:11+0100\n"
+"Last-Translator: Kristjan SCHMIDT <kristjan.schmidt@googlemail.com>\n"
+"Language-Team: Esperanto <gnome-eo-list@gnome.org>\n"
+"Language: eo\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Gtranslator 49.0\n"
+
+#: data/io.bassi.Amberol.desktop.in.in:2
+#: data/io.bassi.Amberol.metainfo.xml.in.in:6
+msgid "Amberol"
+msgstr "Amberolo"
+
+#: data/io.bassi.Amberol.desktop.in.in:3
+msgid "Music Player"
+msgstr "Muzikilo"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/io.bassi.Amberol.desktop.in.in:11
+msgid "music;player;media;audio;playlist;"
+msgstr "muziko;ludilo;medio;sono;kantolisto;"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+msgid "Plays music, and nothing else"
+msgstr "Ludas muzikon, kaj nenion alian"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+msgid ""
+"Amberol is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Amberol is the music player "
+"you are looking for."
+msgstr ""
+"Amberolo estas muzikludilo sen grandiozaj ambicioj. Se vi simple volas ludi "
+"muzikon haveblan en via loka sistemo, tiam Amberolo estas la muzikludilo, "
+"kiun vi serĉas."
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+msgid "Current features:"
+msgstr "Nunaj funkcioj:"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+msgid "adaptive UI"
+msgstr "adaptema interfaco"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+msgid "UI recoloring using the album art"
+msgstr "Interfaca rekulorigado laŭ la kovrila arto"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+msgid "drag and drop support to queue songs"
+msgstr "Treni kaj faligi subteno por vici kantojn"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+msgid "shuffle and repeat"
+msgstr "Hazarda ordo kaj ripeto"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+msgid "MPRIS integration"
+msgstr "MPRIS integriĝo"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+msgid "Emmanuele Bassi"
+msgstr "Emmanuele BASSI"
+
+#: src/gtk/playback-control.blp:21
+msgid "Play the Previous Song"
+msgstr "Ludi la antaŭan kanton"
+
+#: src/gtk/playback-control.blp:28
+msgctxt "a11y"
+msgid "Skip backwards"
+msgstr "Salti malantaŭen"
+
+#: src/gtk/playback-control.blp:36
+msgid "Toggle Play"
+msgstr "Ŝalti/malŝalti ludon"
+
+#: src/gtk/playback-control.blp:44
+msgctxt "a11y"
+msgid "Toggle play"
+msgstr "Ŝalti/malŝalti ludon"
+
+#: src/gtk/playback-control.blp:52
+msgid "Play the Next Song"
+msgstr "Ludi la sekvan kanton"
+
+#: src/gtk/playback-control.blp:59
+msgctxt "a11y"
+msgid "Skip forward"
+msgstr "Salti antaŭen"
+
+#: src/gtk/playback-control.blp:79
+msgid "Toggle Playlist"
+msgstr "Ŝalti/malŝalti kantoliston"
+
+#: src/gtk/playback-control.blp:86
+msgctxt "a11y"
+msgid "Toggle playlist"
+msgstr "Ŝalti/malŝalti kantoliston"
+
+#: src/gtk/playback-control.blp:94
+msgid "Shuffle the Playlist"
+msgstr "Hazardigi la kantoliston"
+
+#: src/gtk/playback-control.blp:97
+msgctxt "a11y"
+msgid "Shuffle"
+msgstr "Hazardigi"
+
+#: src/gtk/playback-control.blp:116 src/playback_control.rs:115
+msgid "Enable Repeat"
+msgstr "Ebligi ripeton"
+
+#: src/gtk/playback-control.blp:123
+msgctxt "a11y"
+msgid "Repeat"
+msgstr "Ripeti"
+
+#: src/gtk/playback-control.blp:133
+msgid "Main Menu"
+msgstr "Ĉefa menuo"
+
+#: src/gtk/playback-control.blp:141
+msgctxt "a11y"
+msgid "Primary menu"
+msgstr "Ĉefa menuo"
+
+#: src/gtk/playback-control.blp:152
+msgid "Copy"
+msgstr "Kopii"
+
+#: src/gtk/playback-control.blp:157
+msgid "Open Directory"
+msgstr "Malfermi dosierujon"
+
+#: src/gtk/playback-control.blp:164
+msgid "Add _Song"
+msgstr "Aldoni _Kanton"
+
+#: src/gtk/playback-control.blp:169
+msgid "Add _Folder"
+msgstr "Aldoni _Dosierujon"
+
+#: src/gtk/playback-control.blp:174
+msgid "Clear"
+msgstr "Vakigi"
+
+#: src/gtk/playback-control.blp:181
+msgid "_Match Cover Art"
+msgstr "_Kongruigi kovrilan arton"
+
+#: src/gtk/playback-control.blp:186
+msgid "_Background Playback"
+msgstr "_Fona reproduktado"
+
+#: src/gtk/playback-control.blp:193
+msgid "_ReplayGain"
+msgstr "_ReplayGain"
+
+#: src/gtk/playback-control.blp:196
+msgctxt "replaygain-menu"
+msgid "_Album"
+msgstr "_Albumo"
+
+#: src/gtk/playback-control.blp:202
+msgctxt "replaygain-menu"
+msgid "_Song"
+msgstr "_Kanto"
+
+#: src/gtk/playback-control.blp:208
+msgctxt "replaygain-menu"
+msgid "_Disabled"
+msgstr "_Malŝaltita"
+
+#: src/gtk/playback-control.blp:217
+msgid "_Keyboard Shortcuts"
+msgstr "_Klavaraj ŝparvojoj"
+
+#: src/gtk/playback-control.blp:222
+msgid "_About Amberol"
+msgstr "_Pri Amberolo"
+
+#: src/gtk/playback-control.blp:227
+msgid "_Quit"
+msgstr "_Forlasi"
+
+#: src/gtk/playlist-view.blp:16
+msgid "Search Songs in the Playlist"
+msgstr "Serĉi kantojn en la kantolisto"
+
+#: src/gtk/playlist-view.blp:25
+msgid "Playlist"
+msgstr "Kantolisto"
+
+#: src/gtk/playlist-view.blp:47
+msgid "Close the Playlist"
+msgstr "Fermi la kantoliston"
+
+#: src/gtk/playlist-view.blp:55
+msgid "Select Songs in the Playlist"
+msgstr "Elekti kantojn en la kantolisto"
+
+#: src/gtk/playlist-view.blp:62
+msgid "Search songs"
+msgstr "Serĉi kantojn"
+
+#: src/gtk/playlist-view.blp:66
+msgctxt "a11y"
+msgid "Search"
+msgstr "Serĉi"
+
+#: src/gtk/playlist-view.blp:67
+msgctxt "a11y"
+msgid "Type to search songs"
+msgstr "Tajpu por serĉi kantojn"
+
+#: src/gtk/playlist-view.blp:110
+msgid "Select All Songs"
+msgstr "Elekti ĉiujn kantojn"
+
+#: src/gtk/playlist-view.blp:123
+msgid "Remove Selected Songs"
+msgstr "Forigi elektitajn kantojn"
+
+#: src/gtk/queue-row.blp:27
+msgctxt "a11y"
+msgid "No cover available"
+msgstr "Neniu kovrilo disponebla"
+
+#: src/gtk/queue-row.blp:81
+msgctxt "a11y"
+msgid "Currently playing"
+msgstr "Nuntempe ludas"
+
+#: src/gtk/shortcuts-dialog.blp:10
+msgctxt "shortcut window"
+msgid "General"
+msgstr "Ĝenerala"
+
+#: src/gtk/shortcuts-dialog.blp:13
+msgctxt "shortcut window"
+msgid "Toggle primary menu"
+msgstr "Ŝalti/malŝalti ĉefan menuon"
+
+#: src/gtk/shortcuts-dialog.blp:18
+msgctxt "shortcut window"
+msgid "Copy song details to the clipboard"
+msgstr "Kopii kantajn detalojn al la tondujo"
+
+#: src/gtk/shortcuts-dialog.blp:23
+msgctxt "shortcut window"
+msgid "Show shortcuts"
+msgstr "Montri ŝparvojojn"
+
+#: src/gtk/shortcuts-dialog.blp:28
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "Forlasi"
+
+#: src/gtk/shortcuts-dialog.blp:34
+msgctxt "shortcut window"
+msgid "Playlist"
+msgstr "Kantolisto"
+
+#: src/gtk/shortcuts-dialog.blp:37
+msgctxt "shortcut window"
+msgid "Add a song to the playlist"
+msgstr "Aldoni kanton al la kantolisto"
+
+#: src/gtk/shortcuts-dialog.blp:42
+msgctxt "shortcut window"
+msgid "Add a folder to the playlist"
+msgstr "Aldoni dosierujon al la kantolisto"
+
+#: src/gtk/shortcuts-dialog.blp:47
+msgctxt "shortcut window"
+msgid "Clear the playlist"
+msgstr "Vakigi la kantoliston"
+
+#: src/gtk/shortcuts-dialog.blp:52
+msgctxt "shortcut window"
+msgid "Toggle the playlist pane"
+msgstr "Ŝalti/malŝalti la kantolistan panelon"
+
+#: src/gtk/shortcuts-dialog.blp:57
+msgctxt "shortcut window"
+msgid "Toggle shuffling songs"
+msgstr "Ŝalti/malŝalti hazardigon de kantoj"
+
+#: src/gtk/shortcuts-dialog.blp:63
+msgctxt "shortcut window"
+msgid "Playback"
+msgstr "Reproduktado"
+
+#: src/gtk/shortcuts-dialog.blp:66
+msgctxt "shortcut window"
+msgid "Toggle play/pause"
+msgstr "Ŝalti/malŝalti ludi/paŭzi"
+
+#: src/gtk/shortcuts-dialog.blp:71
+msgctxt "shortcut window"
+msgid "Previous song"
+msgstr "Antaŭa kanto"
+
+#: src/gtk/shortcuts-dialog.blp:76
+msgctxt "shortcut window"
+msgid "Next song"
+msgstr "Sekva kanto"
+
+#: src/gtk/shortcuts-dialog.blp:81
+msgctxt "shortcut window"
+msgid "Seek backwards in the current song"
+msgstr "Serĉi malantaŭen en la nuna kanto"
+
+#: src/gtk/shortcuts-dialog.blp:86
+msgctxt "shortcut window"
+msgid "Seek forward in the current song"
+msgstr "Serĉi antaŭen en la nuna kanto"
+
+#: src/gtk/window.blp:15
+msgid "Drop a song to add it to the playlist"
+msgstr "Faligu kanton por aldoni ĝin al la kantolisto"
+
+#: src/gtk/window.blp:39
+msgid ""
+"Select a file or a folder, or drag files from your file manager to the "
+"application window to add songs to the playlist"
+msgstr ""
+"Elektu dosieron aŭ dosierujon, aŭ trenu dosierojn el via dosieradministrilo "
+"al la aplika fenestro por aldoni kantojn al la kantolisto"
+
+#: src/gtk/window.blp:48
+msgid "Restore Playlist"
+msgstr "Restarigi kantoliston"
+
+#: src/gtk/window.blp:58
+msgid "Add Folder"
+msgstr "Aldoni dosierujon"
+
+#: src/gtk/window.blp:67
+msgid "Add Song"
+msgstr "Aldoni kanton"
+
+#: src/gtk/window.blp:128
+msgctxt "a11y"
+msgid "Elapsed time"
+msgstr "Pasinta tempo"
+
+#: src/gtk/window.blp:142
+msgctxt "a11y"
+msgid "Remaining time"
+msgstr "Restanta tempo"
+
+#. Translators: Replace "translator-credits" with your names, one name per line
+#: src/application.rs:243
+msgid "translator-credits"
+msgstr "Kristjan SCHMIDT"
+
+#: src/application.rs:255
+msgid "Amberol needs to run in the background to play music"
+msgstr "Amberolo devas funkcii en la fono por ludi muzikon"
+
+#: src/audio/inhibit_controller.rs:40
+msgid "Playback in progress"
+msgstr "Reproduktado en progreso"
+
+#: src/audio/song.rs:317
+msgid "Unknown artist"
+msgstr "Nekonata artisto"
+
+#: src/audio/song.rs:324
+msgid "Unknown title"
+msgstr "Nekonata titolo"
+
+#: src/audio/song.rs:331
+msgid "Unknown album"
+msgstr "Nekonata albumo"
+
+#: src/cover_picture.rs:75
+msgid "Cover image"
+msgstr "Kovrila bildo"
+
+#: src/playback_control.rs:119
+msgid "Repeat All Songs"
+msgstr "Ripeti ĉiujn kantojn"
+
+#: src/playback_control.rs:123
+msgid "Repeat the Current Song"
+msgstr "Ripeti la nunan kanton"
+
+#: src/window.rs:149
+msgid "Audio files"
+msgstr "Sonaj dosieroj"
+
+#: src/window.rs:159
+msgid "_Add Song"
+msgstr "_Aldoni kanton"
+
+#: src/window.rs:163
+msgid "Open File"
+msgstr "Malfermi dosieron"
+
+#: src/window.rs:168 src/window.rs:190 src/window.rs:1483
+msgid "Unable to access files"
+msgstr "Ne eblas aliri dosierojn"
+
+#: src/window.rs:182
+msgid "_Add Folder"
+msgstr "_Aldoni dosierujon"
+
+#: src/window.rs:185
+msgid "Open Folder"
+msgstr "Malfermi dosierujon"
+
+#: src/window.rs:509
+msgid "No available song found"
+msgstr "Neniu disponebla kanto trovita"
+
+#: src/window.rs:570
+msgid "No songs found"
+msgstr "Neniuj kantoj trovitaj"
+
+#: src/window.rs:603
+msgid "Added a new song"
+msgstr "Nova kanto aldonita"
+
+#: src/window.rs:604
+msgid "Play"
+msgstr "Ludi"
+
+#. Translators: the `{}` must be left unmodified;
+#. it will be expanded to the number of songs added
+#. to the playlist
+#: src/window.rs:613
+msgid "Added one song"
+msgid_plural "Added {} songs"
+msgstr[0] "Aldonis unu kanton"
+msgstr[1] "Aldonis {} kantojn"
+
+#: src/window.rs:1243
+msgid "Unable to access dropped files"
+msgstr "Ne eblas aliri faligitajn dosierojn"
+
+#: src/window.rs:1337
+msgid "{} minute"
+msgid_plural "{} minutes"
+msgstr[0] "{} minuto"
+msgstr[1] "{} minutoj"
+
+#: src/window.rs:1348
+msgid "{hours} hour {minutes} remaining"
+msgid_plural "{hours} hours {minutes} remaining"
+msgstr[0] "{hours} horo {minutes} restas"
+msgstr[1] "{hours} horoj {minutes} restas"
+
+#. Translators: the '{}' must be left unmodified, and
+#. it will be replaced by the number of minutes remaining
+#. in the playlist
+#: src/window.rs:1358
+msgid "{} minute remaining"
+msgid_plural "{} minutes remaining"
+msgstr[0] "{} minuto restas"
+msgstr[1] "{} minutoj restas"
+
+#: src/window.rs:1462
+msgid "No song selected"
+msgstr "Neniu kanto elektita"
+
+#. Translators: The '{}' must be left unmodified, and
+#. it is expanded to the number of songs selected
+#: src/window.rs:1467
+msgid "{} song selected"
+msgid_plural "{} songs selected"
+msgstr[0] "{} kanto elektita"
+msgstr[1] "{} kantoj elektitaj"
+
+#. Translators: `{title}` and `{artist}` must be left
+#. untranslated; they will expand to the title and
+#. artist of the currently playing song, respectively
+#: src/window.rs:1523
+msgid "Currently playing “{title}” by “{artist}”"
+msgstr "Nuntempe ludas “{title}” de “{artist}”"
+
+#: src/window.rs:1560
+msgid "Unable to open folder"
+msgstr "Ne eblas malfermi dosierujon"

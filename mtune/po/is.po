@@ -1,0 +1,515 @@
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+#
+# SPDX-FileCopyrightText: 2022, 2025 Sveinn í Felli <sv1@fellsnet.is>
+# Ingir <ingirafn@this.is>, 2025.
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"POT-Creation-Date: 2025-04-10 11:05+0000\n"
+"PO-Revision-Date: 2025-04-21 14:33+0000\n"
+"Last-Translator: Sveinn í Felli <sv1@fellsnet.is>\n"
+"Language-Team: Icelandic\n"
+"Language: is\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Lokalize 23.08.5\n"
+
+#: data/io.bassi.Amberol.desktop.in.in:3
+#: data/io.bassi.Amberol.metainfo.xml.in.in:6
+msgid "Amberol"
+msgstr "Amberol"
+
+#: data/io.bassi.Amberol.desktop.in.in:4
+msgid "Music Player"
+msgstr "Tónlistarspilari"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/io.bassi.Amberol.desktop.in.in:12
+msgid "music;player;media;audio;playlist;"
+msgstr "tónlist;spilari;margmiðlun;hljóð;spilun;spilunarlisti"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+msgid "Plays music, and nothing else"
+msgstr "Spilar tónlist og ekkert annað"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+msgid ""
+"Amberol is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Amberol is the music player "
+"you are looking for."
+msgstr ""
+"Amberol er tónlistarspilari án alls óþarfa. Ef þú ert bara að leita að "
+"spilara fyrir tónlist sem þú átt þegar á tölvunni þinni, þá er Amberol "
+"eitthvað fyrir þig."
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+msgid "Current features:"
+msgstr "Núverandi eiginleikar:"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+msgid "adaptive UI"
+msgstr "Aðlaganlegt viðmót"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+msgid "UI recoloring using the album art"
+msgstr "Endurlitun notandaviðmóts út frá umslagsmyndum"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+msgid "drag and drop support to queue songs"
+msgstr "stuðningur við draga og sleppa lögum í biðröð"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+msgid "shuffle and repeat"
+msgstr "stokka og endurtaka"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+msgid "MPRIS integration"
+msgstr "MPRIS-samþætting"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+msgid "Emmanuele Bassi"
+msgstr "Emmanuele Bassi"
+
+#: src/audio/inhibit_controller.rs:40
+msgid "Playback in progress"
+msgstr "Afspilun í gangi"
+
+#: src/audio/song.rs:317
+msgid "Unknown artist"
+msgstr "Óþekktur flytjandi"
+
+#: src/audio/song.rs:324
+msgid "Unknown title"
+msgstr "Óþekktur titill"
+
+#: src/audio/song.rs:331
+msgid "Unknown album"
+msgstr "Óþekktur diskur"
+
+#: src/gtk/help-overlay.ui:11
+msgctxt "shortcut window"
+msgid "General"
+msgstr "Almennt"
+
+#: src/gtk/help-overlay.ui:14
+msgctxt "shortcut window"
+msgid "Toggle primary menu"
+msgstr "Víxla aðalvalmynd af/á"
+
+#: src/gtk/help-overlay.ui:20
+msgctxt "shortcut window"
+msgid "Copy song details to the clipboard"
+msgstr "Afrita valinn texta á klippispjald"
+
+#: src/gtk/help-overlay.ui:26
+msgctxt "shortcut window"
+msgid "Show shortcuts"
+msgstr "Sýna flýtilykla"
+
+#: src/gtk/help-overlay.ui:32
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "Loka forriti"
+
+#: src/gtk/help-overlay.ui:40
+msgctxt "shortcut window"
+msgid "Playlist"
+msgstr "Spilunarlisti"
+
+#: src/gtk/help-overlay.ui:43
+msgctxt "shortcut window"
+msgid "Add a song to the playlist"
+msgstr "Bæta lagi á spilunarlista"
+
+#: src/gtk/help-overlay.ui:49
+msgctxt "shortcut window"
+msgid "Add a folder to the playlist"
+msgstr "Bæta möppu á spilunarlista"
+
+#: src/gtk/help-overlay.ui:55
+msgctxt "shortcut window"
+msgid "Clear the playlist"
+msgstr "Hreinsa spilunarlistann"
+
+#: src/gtk/help-overlay.ui:61
+msgctxt "shortcut window"
+msgid "Toggle the playlist pane"
+msgstr "Víxla spilunarlistaspjaldi af/á"
+
+#: src/gtk/help-overlay.ui:67
+msgctxt "shortcut window"
+msgid "Toggle shuffling songs"
+msgstr "Víxla stokkun laga af/á"
+
+#: src/gtk/help-overlay.ui:75
+msgctxt "shortcut window"
+msgid "Playback"
+msgstr "Afspilun"
+
+#: src/gtk/help-overlay.ui:78
+msgctxt "shortcut window"
+msgid "Toggle play/pause"
+msgstr "Víxla á milli Spila/Bíða"
+
+#: src/gtk/help-overlay.ui:84
+msgctxt "shortcut window"
+msgid "Previous song"
+msgstr "Fyrra lag"
+
+#: src/gtk/help-overlay.ui:90
+msgctxt "shortcut window"
+msgid "Next song"
+msgstr "Næsta lag"
+
+#: src/gtk/help-overlay.ui:96
+msgctxt "shortcut window"
+msgid "Seek backwards in the current song"
+msgstr "Leita afturábak í þessu lagi"
+
+#: src/gtk/help-overlay.ui:102
+msgctxt "shortcut window"
+msgid "Seek forward in the current song"
+msgstr "Leita áfram í þessu lagi"
+
+#: src/gtk/playback-control.ui:21
+msgid "Play the Previous Song"
+msgstr "Spila fyrra lag"
+
+#: src/gtk/playback-control.ui:26
+msgctxt "a11y"
+msgid "Skip backwards"
+msgstr "Stökkva til baka"
+
+#: src/gtk/playback-control.ui:35
+msgid "Toggle Play"
+msgstr "Víxla afspilun af/á"
+
+#: src/gtk/playback-control.ui:41
+msgctxt "a11y"
+msgid "Toggle play"
+msgstr "Víxla afspilun af/á"
+
+#: src/gtk/playback-control.ui:50
+msgid "Play the Next Song"
+msgstr "Spila næsta lag"
+
+#: src/gtk/playback-control.ui:55
+msgctxt "a11y"
+msgid "Skip forward"
+msgstr "Stökkva áfram"
+
+#: src/gtk/playback-control.ui:78
+msgid "Toggle Playlist"
+msgstr "Víxla spilunarlista af/á"
+
+#: src/gtk/playback-control.ui:83
+msgctxt "a11y"
+msgid "Toggle playlist"
+msgstr "Víxla spilunarlista af/á"
+
+#: src/gtk/playback-control.ui:92
+msgid "Shuffle the Playlist"
+msgstr "Stokka spilunarlista"
+
+#: src/gtk/playback-control.ui:94
+msgctxt "a11y"
+msgid "Shuffle"
+msgstr "Stokka"
+
+#: src/gtk/playback-control.ui:113 src/playback_control.rs:114
+msgid "Enable Repeat"
+msgstr "Virkja endurtekningu"
+
+#: src/gtk/playback-control.ui:118
+msgctxt "a11y"
+msgid "Repeat"
+msgstr "Endurtaka"
+
+#: src/gtk/playback-control.ui:129
+msgid "Main Menu"
+msgstr "Aðalvalmynd"
+
+#: src/gtk/playback-control.ui:135
+msgctxt "a11y"
+msgid "Primary menu"
+msgstr "Meginvalmynd"
+
+#: src/gtk/playback-control.ui:151
+msgid "Copy"
+msgstr "Afrita"
+
+#: src/gtk/playback-control.ui:157
+msgid "Add _Song"
+msgstr "_Bæta við lagi"
+
+#: src/gtk/playback-control.ui:161
+msgid "Add _Folder"
+msgstr "Bæta við mö_ppu"
+
+#: src/gtk/playback-control.ui:165
+msgid "Clear"
+msgstr "Hreinsa"
+
+#: src/gtk/playback-control.ui:171
+msgid "_Match Cover Art"
+msgstr "Sa_msvara umslagsmynd"
+
+#: src/gtk/playback-control.ui:175
+msgid "_Background Playback"
+msgstr "_Afspilun i bakgrunni"
+
+#: src/gtk/playback-control.ui:181
+msgid "_ReplayGain"
+msgstr "_ReplayGain styrkjöfnun"
+
+#: src/gtk/playback-control.ui:183
+msgctxt "replaygain-menu"
+msgid "_Album"
+msgstr "_Albúm"
+
+#: src/gtk/playback-control.ui:188
+msgctxt "replaygain-menu"
+msgid "_Song"
+msgstr "_Lag"
+
+#: src/gtk/playback-control.ui:193
+msgctxt "replaygain-menu"
+msgid "_Disabled"
+msgstr "_Óvirk"
+
+#: src/gtk/playback-control.ui:201
+msgid "_Keyboard Shortcuts"
+msgstr "Flýtily_klar"
+
+#: src/gtk/playback-control.ui:205
+msgid "_About Amberol"
+msgstr "_Um Amberol"
+
+#: src/gtk/playback-control.ui:209
+msgid "_Quit"
+msgstr "_Hætta"
+
+#: src/gtk/playlist-view.ui:14
+msgid "Search Songs in the Playlist"
+msgstr "Leita að lögum í spilunarlistanum"
+
+#: src/gtk/playlist-view.ui:24
+msgid "Playlist"
+msgstr "Spilunarlisti"
+
+#: src/gtk/playlist-view.ui:46
+msgid "Close the Playlist"
+msgstr "Loka spilunarlistanum"
+
+#: src/gtk/playlist-view.ui:54
+msgid "Select Songs in the Playlist"
+msgstr "Velja lög í spilunarlistanum"
+
+#: src/gtk/playlist-view.ui:63
+msgid "Search songs"
+msgstr "Leita að lögum"
+
+#: src/gtk/playlist-view.ui:66
+msgctxt "a11y"
+msgid "Search"
+msgstr "Leit"
+
+#: src/gtk/playlist-view.ui:67
+msgctxt "a11y"
+msgid "Type to search songs"
+msgstr "Slá inn leitarorð fyrir leit"
+
+#: src/gtk/playlist-view.ui:113
+msgid "Select All Songs"
+msgstr "Velja öll lög"
+
+#: src/gtk/playlist-view.ui:126
+msgid "Remove Selected Songs"
+msgstr "Fjarlægja valin lög"
+
+#: src/gtk/queue-row.ui:27
+msgctxt "a11y"
+msgid "No cover available"
+msgstr "Engin umslagsmynd tiltæk"
+
+#: src/gtk/queue-row.ui:84
+msgctxt "a11y"
+msgid "Currently playing"
+msgstr "Í spilun"
+
+#: src/gtk/window.ui:13
+msgid "Drop a song to add it to the playlist"
+msgstr "Slepptu lagi til að bæta því í biðröðina"
+
+#: src/gtk/window.ui:43
+msgid ""
+"Select a file or a folder, or drag files from your file manager to the "
+"application window to add songs to the playlist"
+msgstr ""
+"Veldu skrá eða möppu, eða dragðu skrár úr skráastjóranum þínum yfir á "
+"forritsgluggann til að bæta lögum á spilunarlistann"
+
+#: src/gtk/window.ui:52
+msgid "Restore Playlist"
+msgstr "Endurstilla spilunarlista"
+
+#: src/gtk/window.ui:62
+msgid "Add Folder"
+msgstr "Bæta við möppu"
+
+#: src/gtk/window.ui:71
+msgid "Add Song"
+msgstr "Bæta við lagi"
+
+#: src/gtk/window.ui:148
+msgctxt "a11y"
+msgid "Elapsed time"
+msgstr "Liðinn tími"
+
+#: src/gtk/window.ui:160
+msgctxt "a11y"
+msgid "Remaining time"
+msgstr "Tími eftir"
+
+#. Translators: Replace "translator-credits" with your names, one name per line
+#: src/application.rs:243
+msgid "translator-credits"
+msgstr "Sveinn í Felli, sv1@fellsnet.is"
+
+#: src/application.rs:255
+msgid "Amberol needs to run in the background to play music"
+msgstr "Amberol þarf að keyra í bakgrunni til að geta spilað tónlist"
+
+#: src/cover_picture.rs:75
+msgid "Cover image"
+msgstr "Umslagsmynd"
+
+#: src/playback_control.rs:118
+msgid "Repeat All Songs"
+msgstr "Endurtaka öll lög"
+
+#: src/playback_control.rs:122
+msgid "Repeat the Current Song"
+msgstr "Endurtaka núverandi lag"
+
+#: src/window.rs:145
+msgid "Audio files"
+msgstr "Hljóðskrár"
+
+#: src/window.rs:155
+msgid "_Add Song"
+msgstr "Bæt_a við lagi"
+
+#: src/window.rs:159
+msgid "Open File"
+msgstr "Opna skrá"
+
+#: src/window.rs:164 src/window.rs:186 src/window.rs:1474
+msgid "Unable to access files"
+msgstr "Gat ekki fengið aðgang að skrám"
+
+#: src/window.rs:178
+msgid "_Add Folder"
+msgstr "Bæt_a við möppu"
+
+#: src/window.rs:181
+msgid "Open Folder"
+msgstr "Opna möppu"
+
+#: src/window.rs:500
+msgid "No available song found"
+msgstr "Ekkert tiltækt lag fannst"
+
+#: src/window.rs:561
+msgid "No songs found"
+msgstr "Engin lög fundust"
+
+#: src/window.rs:594
+msgid "Added a new song"
+msgstr "Bætti við nýju lagi"
+
+#: src/window.rs:595
+msgid "Play"
+msgstr "Spila"
+
+#. Translators: the `{}` must be left unmodified;
+#. it will be expanded to the number of songs added
+#. to the playlist
+#: src/window.rs:604
+msgid "Added one song"
+msgid_plural "Added {} songs"
+msgstr[0] "Bætti við einu lagi"
+msgstr[1] "Bætti við {} lögum"
+
+#: src/window.rs:1234
+msgid "Unable to access dropped files"
+msgstr "Gat ekki fengið aðgang að slepptum skrám"
+
+#: src/window.rs:1328
+msgid "{} minute"
+msgid_plural "{} minutes"
+msgstr[0] "{} mínúta"
+msgstr[1] "{} mínútur"
+
+#: src/window.rs:1339
+msgid "{hours} hour {minutes} remaining"
+msgid_plural "{hours} hours {minutes} remaining"
+msgstr[0] "{hours} klukkustund {minutes} eftir"
+msgstr[1] "{hours} klukkustundir {minutes} eftir"
+
+#. Translators: the '{}' must be left unmodified, and
+#. it will be replaced by the number of minutes remaining
+#. in the playlist
+#: src/window.rs:1349
+msgid "{} minute remaining"
+msgid_plural "{} minutes remaining"
+msgstr[0] "{} mínúta eftir"
+msgstr[1] "{} mínútur eftir"
+
+#: src/window.rs:1453
+msgid "No song selected"
+msgstr "Ekkert lag valið"
+
+#. Translators: The '{}' must be left unmodified, and
+#. it is expanded to the number of songs selected
+#: src/window.rs:1458
+msgid "{} song selected"
+msgid_plural "{} songs selected"
+msgstr[0] "{} lag valið"
+msgstr[1] "{} lög valin"
+
+#. Translators: `{title}` and `{artist}` must be left
+#. untranslated; they will expand to the title and
+#. artist of the currently playing song, respectively
+#: src/window.rs:1514
+msgid "Currently playing “{title}” by “{artist}”"
+msgstr "Er núna að spila “{title}” með “{artist}”"
+
+#~ msgid "_Track"
+#~ msgstr "_Lag"
+
+#~ msgid "_Off"
+#~ msgstr "Slö_kkt"
+
+#~ msgid "Add File"
+#~ msgstr "Bæta við skrá"
+
+#~ msgid "Plays music and nothing else"
+#~ msgstr "Spilar tónlist og ekkert annað"
+
+#~ msgid "Repeat All Tracks"
+#~ msgstr "Endurtaka öll lög"
+
+#~ msgid "_Cancel"
+#~ msgstr "_Hætta við"
+
+#~ msgid "Unable to access folders"
+#~ msgstr "Gat ekki fengið aðgang að möppum"
+
+#~ msgid "Amberol cannot run in the background"
+#~ msgstr "Amberol getur ekki keyrt í bakgrunni"
+

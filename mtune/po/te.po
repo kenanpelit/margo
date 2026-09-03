@@ -1,0 +1,512 @@
+# Telugu translation for amberol.
+# Copyright (C) 2026 amberol's COPYRIGHT HOLDER
+# This file is distributed under the same license as the amberol package.
+# Aryan Karamtoth <spaciouskarter78@disroot.org>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: amberol main\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/World/amberol/-/issues/\n"
+"POT-Creation-Date: 2026-04-05 16:57+0000\n"
+"PO-Revision-Date: 2026-05-19 07:45+0530\n"
+"Last-Translator: Aryan Karamtoth <spaciouskarter78@disroot.org>\n"
+"Language-Team: GNOME Telugu Translation Team\n"
+"Language: te\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Gtranslator 50.0\n"
+
+#: data/io.bassi.Amberol.desktop.in.in:2
+#: data/io.bassi.Amberol.metainfo.xml.in.in:6
+msgid "Amberol"
+msgstr "Amberol"
+
+#: data/io.bassi.Amberol.desktop.in.in:3
+msgid "Music Player"
+msgstr "మ్యూజిక్ ప్లేయర్"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/io.bassi.Amberol.desktop.in.in:11
+msgid "music;player;media;audio;playlist;"
+msgstr "music;player;media;audio;playlist;"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:7
+msgid "Plays music, and nothing else"
+msgstr "సంగీతం మాత్రమే ప్లే చేస్తుంది, మరేమీ కాదు."
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:9
+msgid ""
+"Amberol is a music player with no delusions of grandeur. If you just want to "
+"play music available on your local system then Amberol is the music player "
+"you are looking for."
+msgstr ""
+"ఆంబరోల్ అనేది ఆడంబరమైన భ్రమలు లేని ఒక మ్యూజిక్ ప్లేయర్. మీరు మీ స్థానిక సిస్టమ్‌లో అందుబాటులో ఉన్న "
+"సంగీతాన్ని మాత్రమే ప్లే చేయాలనుకుంటే, మీరు వెతుకుతున్న మ్యూజిక్ ప్లేయర్ ఆంబరోల్ మాత్రమే."
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:14
+msgid "Current features:"
+msgstr "ప్రస్తుత ఫీచర్లు:"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:16
+msgid "adaptive UI"
+msgstr "అనుకూల UI"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:17
+msgid "UI recoloring using the album art"
+msgstr "ఆల్బమ్ ఆర్ట్‌ను ఉపయోగించి UIకి రంగులు మార్చడం"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:18
+msgid "drag and drop support to queue songs"
+msgstr "పాటలను క్యూలో పెట్టడానికి డ్రాగ్ అండ్ డ్రాప్ సదుపాయం"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:19
+msgid "shuffle and repeat"
+msgstr "షఫుల్ మరియు మళ్ళీ ప్లే చేయు"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:20
+msgid "MPRIS integration"
+msgstr "MPRIS ఇంటిగ్రేషన్"
+
+#: data/io.bassi.Amberol.metainfo.xml.in.in:48
+msgid "Emmanuele Bassi"
+msgstr "Emmanuele Bassi"
+
+#: src/gtk/playback-control.blp:21
+msgid "Play the Previous Song"
+msgstr "మునుపటి పాటను ప్లే చేయండి"
+
+#: src/gtk/playback-control.blp:28
+msgctxt "a11y"
+msgid "Skip backwards"
+msgstr "పాటను వెనక్కి స్కిప్ చేయండి"
+
+#: src/gtk/playback-control.blp:36
+msgid "Toggle Play"
+msgstr "ప్లే టోగుల్ చేయండి"
+
+#: src/gtk/playback-control.blp:44
+msgctxt "a11y"
+msgid "Toggle play"
+msgstr "ప్లే టోగుల్ చేయండి"
+
+#: src/gtk/playback-control.blp:52
+msgid "Play the Next Song"
+msgstr "తదుపరి పాటను ప్లే చేయండి"
+
+#: src/gtk/playback-control.blp:59
+msgctxt "a11y"
+msgid "Skip forward"
+msgstr "పాటను ముందుకు దాటవేయండి"
+
+#: src/gtk/playback-control.blp:79
+msgid "Toggle Playlist"
+msgstr "ప్లేలిస్ట్‌ను టోగుల్ చేయండి"
+
+#: src/gtk/playback-control.blp:86
+msgctxt "a11y"
+msgid "Toggle playlist"
+msgstr "ప్లేలిస్ట్‌ను టోగుల్ చేయండి"
+
+#: src/gtk/playback-control.blp:94
+msgid "Shuffle the Playlist"
+msgstr "ప్లేలిస్ట్‌ను షఫుల్ చేయండి"
+
+#: src/gtk/playback-control.blp:97
+msgctxt "a11y"
+msgid "Shuffle"
+msgstr "షఫుల్"
+
+#: src/gtk/playback-control.blp:116
+msgid "Enable Repeat"
+msgstr "రిపీట్‌ని ఎనేబుల్ చేయండి"
+
+#: src/gtk/playback-control.blp:123
+msgctxt "a11y"
+msgid "Repeat"
+msgstr "రిపీట్‌"
+
+#: src/gtk/playback-control.blp:133
+msgid "Main Menu"
+msgstr "ప్రధాన మెనూ"
+
+#: src/gtk/playback-control.blp:141
+msgctxt "a11y"
+msgid "Primary menu"
+msgstr "ప్రాథమిక మెను"
+
+#: src/gtk/playback-control.blp:152
+msgid "Copy"
+msgstr "కాపీ చేయండి"
+
+#: src/gtk/playback-control.blp:157
+msgid "Open Directory"
+msgstr "డైరెక్టరీని తెరవండి"
+
+#: src/gtk/playback-control.blp:164
+msgid "Add _Song"
+msgstr "పాటను జోడించండి (_S)"
+
+#: src/gtk/playback-control.blp:169
+msgid "Add _Folder"
+msgstr "ఫోల్డర్‌ను జోడించండి (_F)"
+
+#: src/gtk/playback-control.blp:174
+msgid "Clear"
+msgstr "క్లియర్"
+
+#: src/gtk/playback-control.blp:181
+msgid "_Match Cover Art"
+msgstr "కవర్ ఆర్ట్‌తో సరిపోలండి (_M)"
+
+#: src/gtk/playback-control.blp:186
+msgid "_Background Playback"
+msgstr "బ్యాక్‌గ్రౌండ్ లో ప్లేబ్యాక్ (_B)"
+
+#: src/gtk/playback-control.blp:193
+msgid "_ReplayGain"
+msgstr "రీప్లేగెయిన్ (_R)"
+
+#: src/gtk/playback-control.blp:196
+msgctxt "replaygain-menu"
+msgid "_Album"
+msgstr "ఆల్బమ్ (_A)"
+
+#: src/gtk/playback-control.blp:202
+msgctxt "replaygain-menu"
+msgid "_Song"
+msgstr "పాట (_S)"
+
+#: src/gtk/playback-control.blp:208
+msgctxt "replaygain-menu"
+msgid "_Disabled"
+msgstr "నిలిపివేయబడింది (_D)"
+
+#: src/gtk/playback-control.blp:217
+msgid "_Keyboard Shortcuts"
+msgstr "కీబోర్డ్ షార్ట్‌కట్‌లు (_K)"
+
+#: src/gtk/playback-control.blp:222
+msgid "_About Amberol"
+msgstr "Amberol గురించి (_A)"
+
+#: src/gtk/playback-control.blp:227
+msgid "_Quit"
+msgstr "విడిచిపెట్టు (_Q)"
+
+#: src/gtk/playlist-view.blp:16
+msgid "Search Songs in the Playlist"
+msgstr "ప్లేలిస్ట్‌లో పాటలను వెతకండి"
+
+#: src/gtk/playlist-view.blp:25
+msgid "Playlist"
+msgstr "ప్లేలిస్టు"
+
+#: src/gtk/playlist-view.blp:47
+msgid "Close the Playlist"
+msgstr "ప్లేలిస్టును మూసివేయండి"
+
+#: src/gtk/playlist-view.blp:55
+msgid "Select Songs in the Playlist"
+msgstr "ప్లేలిస్ట్‌లో పాటలను ఎంచుకోండి"
+
+#: src/gtk/playlist-view.blp:62
+msgid "Search songs"
+msgstr "పాటలను వెతకండి"
+
+#: src/gtk/playlist-view.blp:66
+msgctxt "a11y"
+msgid "Search"
+msgstr "వెతకండి"
+
+#: src/gtk/playlist-view.blp:67
+msgctxt "a11y"
+msgid "Type to search songs"
+msgstr "టైపు చేసి పాటలను వెతకండి "
+
+#: src/gtk/playlist-view.blp:110
+msgid "Select All Songs"
+msgstr "అన్ని పాటలను ని వెతకండి "
+
+#: src/gtk/playlist-view.blp:123
+msgid "Remove Selected Songs"
+msgstr "ఎంచుకున్న పాటలను తీసేయండి"
+
+#: src/gtk/queue-row.blp:27
+msgctxt "a11y"
+msgid "No cover available"
+msgstr "కవర్ అందుబాటులో లేదు "
+
+#: src/gtk/queue-row.blp:81
+msgctxt "a11y"
+msgid "Currently playing"
+msgstr "ప్రస్తుతం ఆడుతోంది"
+
+#: src/gtk/shortcuts-dialog.blp:10
+msgctxt "shortcut window"
+msgid "General"
+msgstr "జనరల్"
+
+#: src/gtk/shortcuts-dialog.blp:13
+msgctxt "shortcut window"
+msgid "Toggle primary menu"
+msgstr "ప్రాథమిక మెనూను టోగుల్ చేయండి"
+
+#: src/gtk/shortcuts-dialog.blp:18
+msgctxt "shortcut window"
+msgid "Copy song details to the clipboard"
+msgstr "పాట వివరాలను క్లిప్‌బోర్డ్‌కు కాపీ చేయండి"
+
+#: src/gtk/shortcuts-dialog.blp:23
+msgctxt "shortcut window"
+msgid "Show shortcuts"
+msgstr "సత్వరమార్గాలను చూపు"
+
+#: src/gtk/shortcuts-dialog.blp:28
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "వదలిపెట్టు"
+
+#: src/gtk/shortcuts-dialog.blp:34
+msgctxt "shortcut window"
+msgid "Playlist"
+msgstr "ప్లేలిస్టు"
+
+#: src/gtk/shortcuts-dialog.blp:37
+msgctxt "shortcut window"
+msgid "Add a song to the playlist"
+msgstr "ప్లేలిస్ట్‌కు పాటను జోడించండి"
+
+#: src/gtk/shortcuts-dialog.blp:42
+msgctxt "shortcut window"
+msgid "Add a folder to the playlist"
+msgstr "ప్లేలిస్ట్‌కు ఫోల్డర్‌ను జోడించండి"
+
+#: src/gtk/shortcuts-dialog.blp:47
+msgctxt "shortcut window"
+msgid "Clear the playlist"
+msgstr "ప్లేజాబితాను క్లియర్ చేయండి"
+
+#: src/gtk/shortcuts-dialog.blp:52
+msgctxt "shortcut window"
+msgid "Toggle the playlist pane"
+msgstr "ప్లేలిస్ట్ పేన్‌ను టోగుల్ చేయండి"
+
+#: src/gtk/shortcuts-dialog.blp:57
+msgctxt "shortcut window"
+msgid "Search the playlist"
+msgstr "ప్లేయలిస్ట్ ను వెతకండి "
+
+#: src/gtk/shortcuts-dialog.blp:62
+msgctxt "shortcut window"
+msgid "Toggle shuffling songs"
+msgstr "షఫుల్ పాటలను టోగుల్ చేయండి"
+
+#: src/gtk/shortcuts-dialog.blp:68
+msgctxt "shortcut window"
+msgid "Playback"
+msgstr "ప్లేబ్యాక్"
+
+#: src/gtk/shortcuts-dialog.blp:71
+msgctxt "shortcut window"
+msgid "Toggle play/pause"
+msgstr "ప్లే/పాజ్‌ను టోగుల్ చేయండి"
+
+#: src/gtk/shortcuts-dialog.blp:76
+msgctxt "shortcut window"
+msgid "Previous song"
+msgstr "మునుపటి పాట"
+
+#: src/gtk/shortcuts-dialog.blp:81
+msgctxt "shortcut window"
+msgid "Next song"
+msgstr "తదుపరి పాట"
+
+#: src/gtk/shortcuts-dialog.blp:86
+msgctxt "shortcut window"
+msgid "Seek backwards in the current song"
+msgstr "ప్రస్తుత పాటలో వెనక్కి వెతకండి"
+
+#: src/gtk/shortcuts-dialog.blp:91
+msgctxt "shortcut window"
+msgid "Seek forward in the current song"
+msgstr "ప్రస్తుత పాటలో ముందుకు సాగండి"
+
+#: src/gtk/window.blp:15
+msgid "Drop a song to add it to the playlist"
+msgstr "ప్లేలిస్ట్‌కు జోడించడానికి పాటను డ్రాప్ చేయండి"
+
+#: src/gtk/window.blp:39
+msgid ""
+"Select a file or a folder, or drag files from your file manager to the "
+"application window to add songs to the playlist"
+msgstr ""
+"ప్లేలిస్ట్‌కు పాటలను జోడించడానికి, ఒక ఫైల్ లేదా ఫోల్డర్‌ను ఎంచుకోండి, లేదా మీ ఫైల్ మేనేజర్ నుండి ఫైళ్లను "
+"అప్లికేషన్ విండోలోకి డ్రాగ్ చేయండి."
+
+#: src/gtk/window.blp:48
+msgid "Restore Playlist"
+msgstr "ప్లేజాబితాని పునరుద్ధరించండి"
+
+#: src/gtk/window.blp:58
+msgid "Add Folder"
+msgstr "ఫోల్డర్‌ని జోడించండి"
+
+#: src/gtk/window.blp:67
+msgid "Add Song"
+msgstr "పాటను జోడించండి"
+
+#: src/gtk/window.blp:128
+msgctxt "a11y"
+msgid "Elapsed time"
+msgstr "గడిచిన సమయం"
+
+#: src/gtk/window.blp:142
+msgctxt "a11y"
+msgid "Remaining time"
+msgstr "మిగిలిన సమయం"
+
+#. Translators: Replace "translator-credits" with your names, one name per line
+#: src/application.rs:243
+msgid "translator-credits"
+msgstr "Aryan Karamtoth"
+
+#: src/application.rs:255
+msgid "Amberol needs to run in the background to play music"
+msgstr "సంగీతాన్ని ప్లే చేయడానికి అంబెరోల్ బాక్గ్రౌండ్లో నడవాలి"
+
+#: src/audio/inhibit_controller.rs:40
+msgid "Playback in progress"
+msgstr "ప్లేబ్యాక్ ప్రోగ్రెస్‌లో ఉంది"
+
+#: src/audio/song.rs:341
+msgid "Unknown artist"
+msgstr "తెలియని కళాకారుడు"
+
+#: src/audio/song.rs:348
+msgid "Unknown title"
+msgstr "తెలియని శీర్షిక"
+
+#: src/audio/song.rs:355
+msgid "Unknown album"
+msgstr "తెలియని ఆల్బమ్"
+
+#: src/cover_picture.rs:75
+msgid "Cover image"
+msgstr "కవర్ చిత్రం"
+
+#: src/playback_control.rs:115
+msgid "Do Not Repeat"
+msgstr "మల్లి ప్లే చేయకు "
+
+#: src/playback_control.rs:119
+msgid "Repeat All Songs"
+msgstr "అన్ని పాటలను పునరావృతం చేయండి"
+
+#: src/playback_control.rs:123
+msgid "Repeat the Current Song"
+msgstr "ప్రస్తుత పాటను పునరావృతం చేయండి"
+
+#: src/window.rs:149
+msgid "Audio files"
+msgstr "ఆడియో ఫైల్స్"
+
+#: src/window.rs:159
+msgid "_Add Song"
+msgstr "పాటను జోడించండి (_A)"
+
+#: src/window.rs:163
+msgid "Open File"
+msgstr "ఫైల్‌ని తెరవండి"
+
+#: src/window.rs:168 src/window.rs:190 src/window.rs:1487
+msgid "Unable to access files"
+msgstr "ఫైళ్ళను యాక్సెస్ చేయలేకపోతున్నాను"
+
+#: src/window.rs:182
+msgid "_Add Folder"
+msgstr "ఫోల్డర్‌ను జోడించండి (_A)"
+
+#: src/window.rs:185
+msgid "Open Folder"
+msgstr "ఫోల్డర్ తెరవండి"
+
+#: src/window.rs:512
+msgid "No available song found"
+msgstr "అందుబాటులో ఉన్న పాట ఏదీ కనుగొనబడలేదు"
+
+#: src/window.rs:574
+msgid "No songs found"
+msgstr "పాటలు ఏవీ కనుగొనబడలేదు"
+
+#: src/window.rs:607
+msgid "Added a new song"
+msgstr "కొత్త పాటను జోడించారు"
+
+#: src/window.rs:608
+msgid "Play"
+msgstr "ఆడండి"
+
+#. Translators: the `{}` must be left unmodified;
+#. it will be expanded to the number of songs added
+#. to the playlist
+#: src/window.rs:617
+#, rust-format
+msgid "Added one song"
+msgid_plural "Added {} songs"
+msgstr[0] "ఒక పాటను జోడించారు"
+msgstr[1] "{} పాటలు జోడించబడ్డాయి"
+
+#: src/window.rs:1247
+msgid "Unable to access dropped files"
+msgstr "డ్రాప్ చేయబడిన ఫైల్‌లను యాక్సెస్ చేయలేకపోతున్నాను"
+
+#: src/window.rs:1341
+#, rust-format
+msgid "{} minute"
+msgid_plural "{} minutes"
+msgstr[0] "{} నిమిషం"
+msgstr[1] "{} నిమిషాలు"
+
+#: src/window.rs:1352
+#, rust-format
+msgid "{hours} hour {minutes} remaining"
+msgid_plural "{hours} hours {minutes} remaining"
+msgstr[0] "{hours} గంట {minutes} మిగిలి ఉన్నాయి"
+msgstr[1] "{hours} గంటలు {minutes} మిగిలి ఉన్నాయి"
+
+#. Translators: the '{}' must be left unmodified, and
+#. it will be replaced by the number of minutes remaining
+#. in the playlist
+#: src/window.rs:1362
+#, rust-format
+msgid "{} minute remaining"
+msgid_plural "{} minutes remaining"
+msgstr[0] "{} నిమిషం మిగిలి ఉంది"
+msgstr[1] "{} నిమిషాలు మిగిలి ఉన్నాయి"
+
+#: src/window.rs:1466
+msgid "No song selected"
+msgstr "పాట ఏదీ ఎంచుకోబడలేదు"
+
+#. Translators: The '{}' must be left unmodified, and
+#. it is expanded to the number of songs selected
+#: src/window.rs:1471
+#, rust-format
+msgid "{} song selected"
+msgid_plural "{} songs selected"
+msgstr[0] "{} పాట ఎంపిక చేయబడింది"
+msgstr[1] "{} పాటలు ఎంపిక చేయబడ్డాయి"
+
+#. Translators: `{title}` and `{artist}` must be left
+#. untranslated; they will expand to the title and
+#. artist of the currently playing song, respectively
+#: src/window.rs:1527
+#, rust-format
+msgid "Currently playing “{title}” by “{artist}”"
+msgstr "ప్రస్తుతం ప్లే అవుతున్నది “{title}”, “{artist}” గారిది"
+
+#: src/window.rs:1564
+msgid "Unable to open folder"
+msgstr "ఫోల్డర్‌ను తెరవలేకపోతున్నాను"

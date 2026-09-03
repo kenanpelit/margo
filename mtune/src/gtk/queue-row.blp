@@ -1,0 +1,144 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025 Emmanuele Bassi
+
+using Gtk 4.0;
+
+template $AmberolQueueRow: Widget {
+  Stack row_stack {
+    StackPage {
+      name: "song-details";
+
+      child: Box {
+        Stack song_cover_stack {
+          StackPage {
+            name: "no-cover";
+
+            child: Image {
+              icon-name: "folder-music-symbolic";
+              pixel-size: 32;
+
+              styles [
+                "dim-label",
+                "card",
+                "small",
+              ]
+
+              accessibility {
+                label: C_("a11y", "No cover available");
+              }
+            };
+          }
+
+          StackPage {
+            name: "cover";
+
+            child: $AmberolCoverPicture song_cover_image {
+              cover-size: "1";
+              halign: "center";
+              valign: "center";
+
+              styles [
+                "card",
+              ]
+            };
+          }
+        }
+
+        Box {
+          orientation: vertical;
+          valign: center;
+          hexpand: true;
+          spacing: 3;
+
+          Inscription song_title_label {
+            xalign: 0;
+            text-overflow: ellipsize_end;
+
+            styles [
+              "song-title",
+            ]
+          }
+
+          Inscription song_artist_label {
+            xalign: 0;
+            text-overflow: ellipsize_end;
+
+            styles [
+              "song-artist",
+            ]
+          }
+        }
+
+        [end]
+        Image song_playing_image {
+          icon-name: "audio-only-symbolic";
+          pixel-size: 16;
+          halign: center;
+          valign: center;
+          opacity: 0;
+
+          accessibility {
+            label: C_("a11y", "Currently playing");
+          }
+        }
+
+        styles [
+          "song-details",
+        ]
+      };
+    }
+
+    StackPage {
+      name: "selection-mode";
+
+      child: Box {
+        CheckButton selected_button {
+          halign: center;
+          valign: center;
+
+          styles [
+            "selection-mode",
+          ]
+        }
+
+        Box {
+          orientation: vertical;
+          valign: center;
+          hexpand: true;
+          spacing: 3;
+
+          Inscription selection_title_label {
+            xalign: 0;
+            text-overflow: ellipsize_end;
+
+            styles [
+              "song-title",
+            ]
+          }
+
+          Inscription selection_artist_label {
+            xalign: 0;
+            text-overflow: ellipsize_end;
+
+            styles [
+              "song-artist",
+            ]
+          }
+        }
+
+        [end]
+        Image selection_playing_image {
+          icon-name: "audio-only-symbolic";
+          pixel-size: 16;
+          halign: center;
+          valign: center;
+          opacity: 0;
+        }
+
+        styles [
+          "song-details",
+        ]
+      };
+    }
+  }
+}
