@@ -3,7 +3,7 @@
 //! index preservation, containment), a few exact geometries for the
 //! master-stack layouts, and the `LayoutId` name/symbol round-trips.
 
-use margo_layouts::{ArrangeCtx, GapConfig, LayoutId, Rect, arrange};
+use margo_layouts::{ArrangeCtx, GapConfig, LayoutId, Rect, arrange, place_floating_cascade};
 
 const WA: Rect = Rect {
     x: 0,
@@ -50,6 +50,7 @@ const ALL_LAYOUTS: &[LayoutId] = &[
     LayoutId::TgMix,
     LayoutId::Canvas,
     LayoutId::Dwindle,
+    LayoutId::Floating,
     LayoutId::Overview,
 ];
 
@@ -93,9 +94,9 @@ fn each_layout_places_every_client_exactly_once() {
     let c = ctx(&tiled, &gaps, &props, 1, 0.55);
 
     for &layout in ALL_LAYOUTS {
-        // Canvas is the one exception — it positions clients at render
-        // time and returns nothing through the arrange path.
-        if layout == LayoutId::Canvas {
+        // Canvas and Floating are the exceptions — they position clients
+        // outside the arrange path and return nothing.
+        if layout == LayoutId::Canvas || layout == LayoutId::Floating {
             assert!(arrange(layout, &c).is_empty());
             continue;
         }
@@ -263,14 +264,105 @@ fn layout_symbols_round_trip() {
 }
 
 #[test]
-fn all_tileable_has_10_entries_and_excludes_overview() {
+fn all_tileable_has_11_entries_and_excludes_overview() {
     let tileable = LayoutId::all_tileable();
-    assert_eq!(tileable.len(), 10);
+    assert_eq!(tileable.len(), 11);
     assert!(!tileable.contains(&LayoutId::Overview));
+    assert!(tileable.contains(&LayoutId::Floating));
 }
 
 #[test]
 fn unknown_name_and_symbol_are_none() {
     assert_eq!(LayoutId::from_name("not-a-layout"), None);
     assert_eq!(LayoutId::from_symbol("??"), None);
+}
+
+// ── floating ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn floating_arranges_nothing_through_the_normal_path() {
+    let gaps = GapConfig::default();
+    for n in [0usize, 1, 3, 8] {
+        let tiled: Vec<usize> = (0..n).collect();
+        let props = props_for(&tiled);
+        assert!(
+            arrange(LayoutId::Floating, &ctx(&tiled, &gaps, &props, 1, 0.55)).is_empty(),
+            "floating produced rects for n={n}"
+        );
+    }
+}
+
+#[test]
+fn floating_name_and_symbol_round_trip() {
+    assert_eq!(LayoutId::from_name("floating"), Some(LayoutId::Floating));
+    assert_eq!(LayoutId::from_symbol("F"), Some(LayoutId::Floating));
+    assert_eq!(LayoutId::Floating.name(), "floating");
+    assert_eq!(LayoutId::Floating.symbol(), "F");
+}
+
+const FWA: Rect = Rect {
+    x: 0,
+    y: 0,
+    width: 1000,
+    height: 600,
+};
+
+#[test]
+fn place_floating_falls_back_to_60_percent_when_no_preferred_size() {
+    let r = place_floating_cascade(FWA, None, (0, 0), (0, 0), 0);
+    assert_eq!(r, Rect::new(24, 24, 600, 360));
+}
+
+#[test]
+fn place_floating_cascades_down_and_right_by_32px() {
+    assert_eq!(
+        place_floating_cascade(FWA, None, (0, 0), (0, 0), 1),
+        Rect::new(56, 56, 600, 360)
+    );
+    assert_eq!(
+        place_floating_cascade(FWA, None, (0, 0), (0, 0), 2),
+        Rect::new(88, 88, 600, 360)
+    );
+}
+
+#[test]
+fn place_floating_wraps_the_cascade() {
+    // 60% box on FWA leaves 216px of vertical slack; step 32 → wrap every 6.
+    let base = place_floating_cascade(FWA, None, (0, 0), (0, 0), 0);
+    assert_eq!(place_floating_cascade(FWA, None, (0, 0), (0, 0), 6), base);
+}
+
+#[test]
+fn place_floating_uses_the_committed_size_when_it_fits() {
+    let r = place_floating_cascade(FWA, Some((800, 400)), (0, 0), (0, 0), 0);
+    assert_eq!(r, Rect::new(24, 24, 800, 400));
+}
+
+#[test]
+fn place_floating_ignores_a_committed_size_that_does_not_fit() {
+    let r = place_floating_cascade(FWA, Some((1200, 700)), (0, 0), (0, 0), 0);
+    assert_eq!(r, Rect::new(24, 24, 600, 360)); // fell back to 60%
+}
+
+#[test]
+fn place_floating_honours_min_constraints() {
+    let r = place_floating_cascade(FWA, Some((100, 80)), (400, 300), (0, 0), 0);
+    assert_eq!(r, Rect::new(24, 24, 400, 300));
+}
+
+#[test]
+fn place_floating_keeps_the_rect_inside_the_work_area() {
+    for idx in 0..40usize {
+        let r = place_floating_cascade(FWA, None, (0, 0), (0, 0), idx);
+        assert!(r.x >= FWA.x && r.y >= FWA.y);
+        assert!(r.x + r.width <= FWA.x + FWA.width);
+        assert!(r.y + r.height <= FWA.y + FWA.height);
+    }
+}
+
+#[test]
+fn place_floating_respects_a_non_zero_work_area_origin() {
+    let wa = Rect::new(100, 50, 1000, 600);
+    let r = place_floating_cascade(wa, None, (0, 0), (0, 0), 0);
+    assert_eq!(r, Rect::new(124, 74, 600, 360));
 }

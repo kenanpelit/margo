@@ -479,6 +479,79 @@ pub fn canvas(_ctx: &ArrangeCtx) -> ArrangeResult {
     vec![]
 }
 
+// ── Floating (stacking desktop — positions set by the compositor) ────────────
+
+/// Floating layout — the tiler produces nothing; every client keeps
+/// its own `float_geom`. The compositor auto-floats tiled clients and
+/// cascades their placement in `reconcile_floating_layout`, and the
+/// existing float-apply pass in `arrange_monitor` writes `float_geom`
+/// to `geom`.
+pub fn floating(_ctx: &ArrangeCtx) -> ArrangeResult {
+    vec![]
+}
+
+/// Cascade placement for the `floating` layout. Pure geometry — the
+/// compositor calls this once per newly-auto-floated client to seed
+/// its `float_geom`.
+///
+/// * `preferred` — the client's committed toplevel size, used only
+///   when both dimensions are positive and it fits `work_area`;
+///   otherwise the window opens at 60% of the work area.
+/// * `min` / `max` — the client's size constraints (`0` = unset).
+/// * `cascade_index` — how many floating clients were already placed
+///   on this tag; each step shifts the window 32px down-right, the
+///   diagonal wrapping as a unit before it would leave `work_area`.
+pub fn place_floating_cascade(
+    work_area: Rect,
+    preferred: Option<(i32, i32)>,
+    min: (i32, i32),
+    max: (i32, i32),
+    cascade_index: usize,
+) -> Rect {
+    const INSET: i32 = 24;
+    const STEP: i32 = 32;
+
+    // 1. Size.
+    let fallback = (
+        (work_area.width as f32 * 0.6) as i32,
+        (work_area.height as f32 * 0.6) as i32,
+    );
+    let (mut w, mut h) = match preferred {
+        Some((pw, ph)) if pw > 0 && ph > 0 && pw <= work_area.width && ph <= work_area.height => {
+            (pw, ph)
+        }
+        _ => fallback,
+    };
+    if min.0 > 0 {
+        w = w.max(min.0);
+    }
+    if min.1 > 0 {
+        h = h.max(min.1);
+    }
+    if max.0 > 0 {
+        w = w.min(max.0);
+    }
+    if max.1 > 0 {
+        h = h.min(max.1);
+    }
+    w = w.clamp(1, work_area.width.max(1));
+    h = h.clamp(1, work_area.height.max(1));
+
+    // 2. Diagonal cascade, wrapping as a unit.
+    let slack_x = (work_area.width - w - INSET).max(0);
+    let slack_y = (work_area.height - h - INSET).max(0);
+    let cycle = (slack_x.min(slack_y) / STEP).max(1);
+    let offset = (cascade_index as i32 % cycle) * STEP;
+    let mut x = work_area.x + INSET + offset;
+    let mut y = work_area.y + INSET + offset;
+
+    // 3. Clamp fully inside.
+    x = x.min(work_area.x + work_area.width - w).max(work_area.x);
+    y = y.min(work_area.y + work_area.height - h).max(work_area.y);
+
+    Rect::new(x, y, w, h)
+}
+
 // ── Dwindle ───────────────────────────────────────────────────────────────────
 
 pub fn dwindle(ctx: &ArrangeCtx) -> ArrangeResult {
@@ -542,6 +615,7 @@ pub fn arrange(layout: LayoutId, ctx: &ArrangeCtx) -> ArrangeResult {
         LayoutId::TgMix => tgmix(ctx),
         LayoutId::Canvas => canvas(ctx),
         LayoutId::Dwindle => dwindle(ctx),
+        LayoutId::Floating => floating(ctx),
         LayoutId::Overview => monocle(ctx), // overview handled elsewhere
     }
 }

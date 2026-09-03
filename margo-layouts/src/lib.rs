@@ -133,6 +133,11 @@ pub enum LayoutId {
     TgMix,
     Canvas,
     Dwindle,
+    /// Stacking / floating desktop — the tiler produces no geometry;
+    /// every client keeps its own `float_geom`. The compositor
+    /// auto-floats tiled clients and cascades their placement in
+    /// `reconcile_floating_layout`.
+    Floating,
     Overview,
 }
 
@@ -149,6 +154,7 @@ impl LayoutId {
             LayoutId::TgMix => "TG",
             LayoutId::Canvas => "CV",
             LayoutId::Dwindle => "DW",
+            LayoutId::Floating => "F",
             LayoutId::Overview => "󰃇",
         }
     }
@@ -165,6 +171,7 @@ impl LayoutId {
             LayoutId::TgMix => "tgmix",
             LayoutId::Canvas => "canvas",
             LayoutId::Dwindle => "dwindle",
+            LayoutId::Floating => "floating",
             LayoutId::Overview => "overview",
         }
     }
@@ -181,6 +188,7 @@ impl LayoutId {
             LayoutId::TgMix,
             LayoutId::Canvas,
             LayoutId::Dwindle,
+            LayoutId::Floating,
         ];
         all.iter().find(|l| l.symbol() == s).copied()
     }
@@ -197,13 +205,16 @@ impl LayoutId {
             LayoutId::TgMix,
             LayoutId::Canvas,
             LayoutId::Dwindle,
+            LayoutId::Floating,
         ];
         all.iter().find(|l| l.name() == s).copied()
     }
 
-    /// All tile-able layouts (excludes `Overview`, which is rendered
-    /// via a separate code path). Useful for `mvisual` and any
-    /// catalogue UI.
+    /// All layouts offered in catalogues / pickers (excludes
+    /// `Overview`, which is rendered via a separate code path).
+    /// "Tileable" is historical — the list includes `Canvas` and
+    /// `Floating`, which produce no tiled geometry. Useful for
+    /// `mvisual` and any catalogue UI.
     pub fn all_tileable() -> &'static [LayoutId] {
         &[
             LayoutId::Tile,
@@ -216,6 +227,7 @@ impl LayoutId {
             LayoutId::TgMix,
             LayoutId::Canvas,
             LayoutId::Dwindle,
+            LayoutId::Floating,
         ]
     }
 }

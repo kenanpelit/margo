@@ -255,6 +255,19 @@ fn tile_no_gap() {
     assert_snapshot!(format_arranged(&tile(&ctx)));
 }
 
+// ── floating ───────────────────────────────────────────────────────────────
+
+#[test]
+fn floating_arranges_nothing() {
+    // The floating layout produces no tiled geometry — clients keep
+    // their own float_geom, seeded by the compositor's reconcile pass.
+    // No snapshot: the result is always empty (see the margo-layouts
+    // integration test for the exhaustive count coverage).
+    let f = Fixture::with_windows(HD_1080P, 3);
+    let ctx = f.ctx().build();
+    assert!(arrange(LayoutId::Floating, &ctx).is_empty());
+}
+
 // ── monocle ────────────────────────────────────────────────────────────────
 
 #[test]
@@ -506,7 +519,9 @@ fn arrange_dispatcher_matches_direct_call_all_layouts() {
             LayoutId::TgMix => tgmix(&ctx),
             LayoutId::Dwindle => dwindle(&ctx),
             LayoutId::Overview => monocle(&ctx),
-            LayoutId::Canvas => unreachable!("Canvas is filtered out of the test loop earlier"),
+            LayoutId::Canvas | LayoutId::Floating => {
+                unreachable!("Canvas / Floating are filtered out of the test loop earlier")
+            }
         };
         assert_eq!(
             arrange(layout, &ctx),
@@ -692,6 +707,7 @@ fn empty_input_yields_empty_output_for_every_layout() {
         );
     }
     assert!(arrange(LayoutId::Canvas, &ctx).is_empty());
+    assert!(arrange(LayoutId::Floating, &ctx).is_empty());
 }
 
 #[test]
