@@ -101,6 +101,7 @@ allow = [
     "CC-PDDC",             # oklab — public-domain dedication
     "CDLA-Permissive-2.0", # webpki-roots / webpki-root-certs — TLS root cert data
     "NCSA",                # libfuzzer-sys — permissive, BSD-like (fuzz targets only)
+    "Unlicense",           # ksni (mtune's StatusNotifierItem tray) — PD-equivalent
     "0BSD",
     "BSL-1.0",
     "GPL-3.0",
