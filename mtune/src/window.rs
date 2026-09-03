@@ -145,6 +145,8 @@ mod imp {
         #[template_child]
         pub mini_queue_scroll: TemplateChild<gtk::ScrolledWindow>,
         #[template_child]
+        pub mini_queue_sep: TemplateChild<gtk::Separator>,
+        #[template_child]
         pub mini_queue: TemplateChild<gtk::ListView>,
         #[template_child]
         pub mini_play_button: TemplateChild<gtk::Button>,
@@ -408,6 +410,7 @@ mod imp {
                 mini_artist: TemplateChild::default(),
                 mini_album: TemplateChild::default(),
                 mini_queue_scroll: TemplateChild::default(),
+                mini_queue_sep: TemplateChild::default(),
                 mini_queue: TemplateChild::default(),
                 mini_play_button: TemplateChild::default(),
                 mini_seek: TemplateChild::default(),
@@ -805,28 +808,30 @@ impl Window {
         imp.mini_cover.set_pixel_size(if strip { 40 } else { 56 });
         imp.mini_album.set_visible(!strip);
         imp.mini_queue_scroll.set_visible(!strip);
+        imp.mini_queue_sep.set_visible(!strip);
+        // Strip has no queue peek, so pin a sensible width for the
+        // control row; mini sizes to its content (cover + meta + queue).
+        imp.compact_box
+            .set_width_request(if strip { 380 } else { -1 });
 
         match mode {
             ViewMode::Full => {
                 imp.main_stack.set_visible_child_name("main-view");
-                self.set_resizable(true);
                 self.set_size_request(360, 480);
+                self.set_resizable(true);
                 self.set_default_size(
                     imp.settings.int("window-width").max(360),
                     imp.settings.int("window-height").max(480),
                 );
             }
-            ViewMode::Mini => {
+            // Compact skins are fixed to their natural content size —
+            // `resizable(false)` makes GTK track the content exactly, so
+            // there are no magic dimensions to get wrong.
+            ViewMode::Mini | ViewMode::Strip => {
                 imp.main_stack.set_visible_child_name("compact-view");
-                self.set_resizable(true);
-                self.set_size_request(480, 150);
-                self.set_default_size(660, 190);
-            }
-            ViewMode::Strip => {
-                imp.main_stack.set_visible_child_name("compact-view");
+                self.set_size_request(-1, -1);
+                self.set_default_size(-1, -1);
                 self.set_resizable(false);
-                self.set_size_request(420, 78);
-                self.set_default_size(460, 78);
             }
         }
     }
@@ -2149,6 +2154,9 @@ impl Window {
             WindowMode::MainView => {
                 stack.set_visible_child_name("main-view");
                 self.set_default_widget(Some(&self.imp().playback_control.play_button()));
+                // A queue now exists — honour the saved compact skin
+                // (`apply_view_mode` no-ops while the initial screen is up).
+                self.apply_view_mode(self.imp().view_mode.get());
             }
         };
     }

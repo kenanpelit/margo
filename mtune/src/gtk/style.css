@@ -212,10 +212,10 @@ volume > scale trough slider { opacity: 0; }
 
 /* ── Compact skin (mini / strip) ───────────────────────────── */
 .compact-view {
-  padding: 12px 14px;
+  padding: 14px 16px;
 }
 .compact-view.strip {
-  padding: 8px 12px;
+  padding: 10px 14px;
 }
 .compact-view .mini-cover {
   border-radius: 10px;
@@ -223,22 +223,50 @@ volume > scale trough slider { opacity: 0; }
 }
 .compact-view .mini-title {
   font-weight: 700;
+  font-size: 1.05em;
 }
 .compact-view .mini-artist,
 .compact-view .mini-album {
   font-size: 0.9em;
 }
+
+/* Bigger, friendlier control buttons than the default flat/circular */
+.compact-view button.circular {
+  min-width: 34px;
+  min-height: 34px;
+}
+.compact-view button.mini-play {
+  min-width: 44px;
+  min-height: 44px;
+}
+.compact-view button.circular image {
+  -gtk-icon-size: 17px;
+}
+
 .compact-view .mini-queue {
-  border-radius: 8px;
-  background-color: color-mix(in srgb, var(--tune-surface) 60%, transparent);
+  border-radius: 9px;
+  background-color: color-mix(in srgb, var(--tune-surface) 55%, transparent);
+  padding: 3px;
 }
 .compact-view .mini-queue-row {
-  padding: 3px 8px;
+  padding: 5px 9px;
   border-radius: 6px;
+  min-height: 22px;
+}
+.compact-view .mini-queue-row:hover {
+  background-color: color-mix(in srgb, var(--tune-primary) 12%, transparent);
 }
 .compact-view .mini-queue-row.current {
   font-weight: 700;
   color: var(--tune-primary);
+  background-color: color-mix(in srgb, var(--tune-primary) 16%, transparent);
+}
+
+.compact-view scale {
+  margin: 0;
+}
+.compact-view scale trough {
+  min-height: 6px;
 }
 .compact-view scale trough highlight {
   background: var(--tune-primary);

@@ -285,15 +285,16 @@
                             <property name="child">
                               <object class="GtkBox" id="compact_box">
                                 <property name="orientation">1</property>
-                                <property name="spacing">8</property>
+                                <property name="spacing">10</property>
                                 <property name="valign">center</property>
-                                <property name="vexpand">true</property>
                                 <style>
                                   <class name="compact-view"/>
                                 </style>
+
+                                <!-- Row 1 — now playing + (mini) queue peek -->
                                 <child>
                                   <object class="GtkBox">
-                                    <property name="spacing">10</property>
+                                    <property name="spacing">12</property>
                                     <child>
                                       <object class="GtkImage" id="mini_cover">
                                         <property name="pixel-size">56</property>
@@ -304,15 +305,18 @@
                                       </object>
                                     </child>
                                     <child>
-                                      <object class="GtkBox">
+                                      <object class="GtkBox" id="mini_meta_box">
                                         <property name="orientation">1</property>
                                         <property name="valign">center</property>
-                                        <property name="hexpand">true</property>
+                                        <property name="hexpand">false</property>
+                                        <property name="halign">start</property>
                                         <property name="spacing">1</property>
                                         <child>
                                           <object class="GtkLabel" id="mini_title">
                                             <property name="xalign">0</property>
                                             <property name="ellipsize">3</property>
+                                            <property name="max-width-chars">26</property>
+                                            <property name="width-chars">16</property>
                                             <style>
                                               <class name="mini-title"/>
                                             </style>
@@ -322,6 +326,7 @@
                                           <object class="GtkLabel" id="mini_artist">
                                             <property name="xalign">0</property>
                                             <property name="ellipsize">3</property>
+                                            <property name="max-width-chars">36</property>
                                             <style>
                                               <class name="mini-artist"/>
                                               <class name="dim-label"/>
@@ -332,6 +337,7 @@
                                           <object class="GtkLabel" id="mini_album">
                                             <property name="xalign">0</property>
                                             <property name="ellipsize">3</property>
+                                            <property name="max-width-chars">36</property>
                                             <style>
                                               <class name="mini-album"/>
                                               <class name="dim-label"/>
@@ -342,12 +348,20 @@
                                       </object>
                                     </child>
                                     <child>
+                                      <object class="GtkSeparator" id="mini_queue_sep">
+                                        <property name="orientation">1</property>
+                                        <property name="margin-top">2</property>
+                                        <property name="margin-bottom">2</property>
+                                      </object>
+                                    </child>
+                                    <child>
                                       <object class="GtkScrolledWindow" id="mini_queue_scroll">
                                         <property name="hscrollbar-policy">2</property>
-                                        <property name="width-request">210</property>
-                                        <property name="min-content-width">180</property>
-                                        <property name="min-content-height">96</property>
-                                        <property name="max-content-height">120</property>
+                                        <property name="hexpand">true</property>
+                                        <property name="width-request">200</property>
+                                        <property name="min-content-width">200</property>
+                                        <property name="min-content-height">132</property>
+                                        <property name="max-content-height">132</property>
                                         <property name="propagate-natural-height">false</property>
                                         <property name="propagate-natural-width">false</property>
                                         <style>
@@ -365,71 +379,12 @@
                                     </child>
                                   </object>
                                 </child>
+
+                                <!-- Row 2 — seek -->
                                 <child>
                                   <object class="GtkBox">
-                                    <property name="spacing">6</property>
+                                    <property name="spacing">8</property>
                                     <property name="valign">center</property>
-                                    <child>
-                                      <object class="GtkButton" id="view_cycle_button">
-                                        <property name="icon-name">view-restore-symbolic</property>
-                                        <property name="tooltip-text" translatable="yes">Cycle view (Ctrl+M)</property>
-                                        <property name="action-name">win.cycle-view</property>
-                                        <style>
-                                          <class name="flat"/>
-                                          <class name="circular"/>
-                                        </style>
-                                      </object>
-                                    </child>
-                                    <child>
-                                      <object class="GtkScaleButton" id="mini_volume">
-                                        <property name="icons">audio-volume-muted-symbolic
-audio-volume-high-symbolic
-audio-volume-low-symbolic
-audio-volume-medium-symbolic</property>
-                                        <property name="value">1.0</property>
-                                        <property name="adjustment">
-                                          <object class="GtkAdjustment" id="mini_volume_adjustment">
-                                            <property name="lower">0</property>
-                                            <property name="upper">1.0</property>
-                                            <property name="step-increment">0.05</property>
-                                          </object>
-                                        </property>
-                                        <style>
-                                          <class name="flat"/>
-                                          <class name="circular"/>
-                                        </style>
-                                      </object>
-                                    </child>
-                                    <child>
-                                      <object class="GtkButton">
-                                        <property name="icon-name">media-skip-backward-symbolic</property>
-                                        <property name="action-name">win.previous</property>
-                                        <style>
-                                          <class name="flat"/>
-                                          <class name="circular"/>
-                                        </style>
-                                      </object>
-                                    </child>
-                                    <child>
-                                      <object class="GtkButton" id="mini_play_button">
-                                        <property name="icon-name">media-playback-start-symbolic</property>
-                                        <property name="action-name">win.play</property>
-                                        <style>
-                                          <class name="suggested-action"/>
-                                          <class name="circular"/>
-                                        </style>
-                                      </object>
-                                    </child>
-                                    <child>
-                                      <object class="GtkButton">
-                                        <property name="icon-name">media-skip-forward-symbolic</property>
-                                        <property name="action-name">win.next</property>
-                                        <style>
-                                          <class name="flat"/>
-                                          <class name="circular"/>
-                                        </style>
-                                      </object>
-                                    </child>
                                     <child>
                                       <object class="GtkScale" id="mini_seek">
                                         <property name="hexpand">true</property>
@@ -453,7 +408,89 @@ audio-volume-medium-symbolic</property>
                                         </style>
                                       </object>
                                     </child>
-                                    <child>
+                                  </object>
+                                </child>
+
+                                <!-- Row 3 — controls -->
+                                <child>
+                                  <object class="GtkCenterBox">
+                                    <property name="valign">center</property>
+                                    <child type="start">
+                                      <object class="GtkBox">
+                                        <property name="spacing">2</property>
+                                        <child>
+                                          <object class="GtkButton" id="view_cycle_button">
+                                            <property name="icon-name">view-restore-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Cycle view (Ctrl+M)</property>
+                                            <property name="action-name">win.cycle-view</property>
+                                            <style>
+                                              <class name="flat"/>
+                                              <class name="circular"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkScaleButton" id="mini_volume">
+                                            <property name="icons">audio-volume-muted-symbolic
+audio-volume-high-symbolic
+audio-volume-low-symbolic
+audio-volume-medium-symbolic</property>
+                                            <property name="value">1.0</property>
+                                            <property name="adjustment">
+                                              <object class="GtkAdjustment" id="mini_volume_adjustment">
+                                                <property name="lower">0</property>
+                                                <property name="upper">1.0</property>
+                                                <property name="step-increment">0.05</property>
+                                              </object>
+                                            </property>
+                                            <style>
+                                              <class name="flat"/>
+                                              <class name="circular"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child type="center">
+                                      <object class="GtkBox">
+                                        <property name="spacing">6</property>
+                                        <child>
+                                          <object class="GtkButton">
+                                            <property name="icon-name">media-skip-backward-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Previous</property>
+                                            <property name="action-name">win.previous</property>
+                                            <style>
+                                              <class name="flat"/>
+                                              <class name="circular"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkButton" id="mini_play_button">
+                                            <property name="icon-name">media-playback-start-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Play / Pause</property>
+                                            <property name="action-name">win.play</property>
+                                            <style>
+                                              <class name="suggested-action"/>
+                                              <class name="circular"/>
+                                              <class name="mini-play"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkButton">
+                                            <property name="icon-name">media-skip-forward-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Next</property>
+                                            <property name="action-name">win.next</property>
+                                            <style>
+                                              <class name="flat"/>
+                                              <class name="circular"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child type="end">
                                       <object class="GtkButton">
                                         <property name="icon-name">window-close-symbolic</property>
                                         <property name="tooltip-text" translatable="yes">Close</property>
