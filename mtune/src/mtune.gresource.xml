@@ -21,14 +21,13 @@
   </gresource>
   <gresource prefix="/org/margo/Tune">
     <file alias="style.css">gtk/style.css</file>
-    <!-- All UI files are generated in the builddir/src/gtk directory -->
-    <file preprocess="xml-stripblanks">playback-control.ui</file>
-    <file preprocess="xml-stripblanks">playlist-view.ui</file>
-    <file preprocess="xml-stripblanks">queue-row.ui</file>
-    <file preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
-    <file preprocess="xml-stripblanks">song-cover.ui</file>
-    <file preprocess="xml-stripblanks">song-details.ui</file>
-    <file preprocess="xml-stripblanks">volume-control.ui</file>
-    <file preprocess="xml-stripblanks">window.ui</file>
+    <file preprocess="xml-stripblanks" alias="playback-control.ui">gtk/playback-control.ui</file>
+    <file preprocess="xml-stripblanks" alias="playlist-view.ui">gtk/playlist-view.ui</file>
+    <file preprocess="xml-stripblanks" alias="queue-row.ui">gtk/queue-row.ui</file>
+    <file preprocess="xml-stripblanks" alias="shortcuts-dialog.ui">gtk/shortcuts-dialog.ui</file>
+    <file preprocess="xml-stripblanks" alias="song-cover.ui">gtk/song-cover.ui</file>
+    <file preprocess="xml-stripblanks" alias="song-details.ui">gtk/song-details.ui</file>
+    <file preprocess="xml-stripblanks" alias="volume-control.ui">gtk/volume-control.ui</file>
+    <file preprocess="xml-stripblanks" alias="window.ui">gtk/window.ui</file>
   </gresource>
 </gresources>
