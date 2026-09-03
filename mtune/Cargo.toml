@@ -26,6 +26,10 @@ gst-play = { package = "gstreamer-play", version = "0.25" }
 color-thief = "0.2.1"
 lofty = "0.24"
 mpris-server = "0.10"
+# StatusNotifierItem tray. `async-io` executor to match zbus / mpris-server
+# (mtune never enters a tokio runtime).
+ksni = { version = "0.3", default-features = false, features = ["async-io"] }
+zbus = { workspace = true }
 sha2 = { workspace = true }
 fuzzy-matcher = "0.3.7"
 rand = { version = "0.10", features = ["thread_rng"] }

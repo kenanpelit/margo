@@ -12,13 +12,16 @@ use log::debug;
 
 use crate::{
     audio::AudioPlayer,
+    bridge::{AppCommand, CommandReceiver, CommandSender, SharedSnapshot, new_shared},
     config::{APPLICATION_ID, VERSION},
+    dbus,
     i18n::i18n,
     library::LibraryEvent,
     library::config::{MtuneConfig, OnStart},
     library::index::{IndexEntry, LibraryIndex, mtime_of},
     library::scanner,
     library::watcher::LibraryWatcher,
+    tray::{self, TuneTray},
     utils,
     window::{StartIntent, Window},
 };
@@ -34,7 +37,6 @@ pub enum ApplicationAction {
 mod imp {
     use super::*;
 
-    #[derive(Debug)]
     pub struct Application {
         pub player: Rc<AudioPlayer>,
         pub receiver: RefCell<Option<Receiver<ApplicationAction>>>,
@@ -44,6 +46,18 @@ mod imp {
         pub watcher: RefCell<Option<LibraryWatcher>>,
         /// Guard so `load_library` only ever runs once per process.
         pub library_loaded: std::cell::Cell<bool>,
+        /// `Send` mirror of playback/library state for the tray + D-Bus.
+        pub snap: SharedSnapshot,
+        pub cmd_tx: CommandSender,
+        pub cmd_rx: RefCell<Option<CommandReceiver>>,
+        pub dbus_conn: RefCell<Option<zbus::Connection>>,
+        pub tray: RefCell<Option<ksni::Handle<TuneTray>>>,
+    }
+
+    impl std::fmt::Debug for Application {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("Application").finish_non_exhaustive()
+        }
     }
 
     #[glib::object_subclass]
@@ -55,6 +69,7 @@ mod imp {
         fn new() -> Self {
             let (sender, r) = async_channel::unbounded();
             let receiver = RefCell::new(Some(r));
+            let (cmd_tx, cmd_rx) = async_channel::unbounded();
 
             Self {
                 player: AudioPlayer::new(sender),
@@ -64,6 +79,11 @@ mod imp {
                 config: RefCell::new(MtuneConfig::load()),
                 watcher: RefCell::default(),
                 library_loaded: std::cell::Cell::new(false),
+                snap: new_shared(),
+                cmd_tx,
+                cmd_rx: RefCell::new(Some(cmd_rx)),
+                dbus_conn: RefCell::default(),
+                tray: RefCell::default(),
             }
         }
     }
@@ -76,6 +96,7 @@ mod imp {
             obj.setup_channel();
             obj.setup_gactions();
             obj.setup_settings();
+            obj.setup_bridge();
 
             obj.set_accels_for_action("app.quit", &["<primary>q"]);
 
@@ -167,6 +188,18 @@ impl Application {
             return;
         }
 
+        {
+            let mut s = self
+                .imp()
+                .snap
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            s.scanning = true;
+            s.scan_done = 0;
+            s.scan_total = 0;
+        }
+        self.refresh_bridge();
+
         let this = self.clone();
         glib::spawn_future_local(async move {
             let lib = cfg.library.clone();
@@ -191,6 +224,17 @@ impl Application {
             };
 
             debug!("mtune: library has {} tracks", paths.len());
+            {
+                let mut s = this
+                    .imp()
+                    .snap
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                s.scanning = false;
+                s.scan_done = paths.len() as u32;
+                s.scan_total = paths.len() as u32;
+            }
+            this.refresh_bridge();
 
             // Refresh the on-disk index (path + mtime is enough to drive
             // the fast path next launch; tags are re-read from the songs).
@@ -275,6 +319,207 @@ impl Application {
                 }
             }
         });
+    }
+
+    // ── tray + `org.margo.Tune` bridge ──────────────────────────────
+
+    /// Spawn the command-receiver loop, the `org.margo.Tune` D-Bus service,
+    /// and the tray; wire player/queue change signals to refresh both.
+    fn setup_bridge(&self) {
+        let imp = self.imp();
+
+        // 1. Apply tray / D-Bus commands on the main context.
+        if let Some(rx) = imp.cmd_rx.borrow_mut().take() {
+            let this = self.clone();
+            glib::spawn_future_local(async move {
+                while let Ok(cmd) = rx.recv().await {
+                    this.apply_command(cmd);
+                }
+            });
+        }
+
+        // 2. Claim org.margo.Tune.
+        {
+            let this = self.clone();
+            let snap = imp.snap.clone();
+            let tx = imp.cmd_tx.clone();
+            glib::spawn_future_local(async move {
+                if let Some(conn) = dbus::serve(snap, tx).await {
+                    this.imp().dbus_conn.replace(Some(conn));
+                    this.refresh_bridge();
+                }
+            });
+        }
+
+        // 3. Register the tray item.
+        {
+            let this = self.clone();
+            let snap = imp
+                .snap
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
+            let tx = imp.cmd_tx.clone();
+            glib::spawn_future_local(async move {
+                if let Some(handle) = tray::spawn(snap, tx).await {
+                    this.imp().tray.replace(Some(handle));
+                    this.refresh_bridge();
+                }
+            });
+        }
+
+        // 4. Refresh on every playback / queue change.
+        let state = imp.player.state();
+        let queue = imp.player.queue();
+        for (obj, sig) in [
+            (state.upcast_ref::<glib::Object>(), "playing"),
+            (state.upcast_ref::<glib::Object>(), "song"),
+            (state.upcast_ref::<glib::Object>(), "volume"),
+            (queue.upcast_ref::<glib::Object>(), "current"),
+            (queue.upcast_ref::<glib::Object>(), "n-songs"),
+            (queue.upcast_ref::<glib::Object>(), "repeat-mode"),
+        ] {
+            obj.connect_notify_local(
+                Some(sig),
+                clone!(
+                    #[weak(rename_to = this)]
+                    self,
+                    move |_, _| this.refresh_bridge()
+                ),
+            );
+        }
+
+        self.refresh_bridge();
+    }
+
+    /// Snapshot the player + library into the `Send` mirror, then poke the
+    /// tray and emit the D-Bus `Changed` signal.
+    fn refresh_bridge(&self) {
+        let imp = self.imp();
+        let state = imp.player.state();
+        let queue = imp.player.queue();
+
+        let next = {
+            let song = state.current_song();
+            crate::bridge::Snapshot {
+                has_song: song.is_some(),
+                playing: state.playing(),
+                title: state.title().unwrap_or_default(),
+                artist: state.artist().unwrap_or_default(),
+                album: state.album().unwrap_or_default(),
+                position_secs: state.position(),
+                duration_secs: state.duration(),
+                volume: state.volume(),
+                shuffle: queue.is_shuffled(),
+                repeat: queue.repeat_mode(),
+                queue_len: queue.n_songs(),
+                current_index: queue.current_song_index().map(|i| i as i64).unwrap_or(-1),
+                library_roots: imp
+                    .config
+                    .borrow()
+                    .library
+                    .roots
+                    .iter()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .collect(),
+                scanning: imp
+                    .snap
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .scanning,
+                scan_done: imp
+                    .snap
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .scan_done,
+                scan_total: imp
+                    .snap
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .scan_total,
+            }
+        };
+
+        *imp.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = next.clone();
+
+        if let Some(handle) = imp.tray.borrow().clone() {
+            glib::spawn_future_local(async move {
+                handle.update(move |t| t.set_snapshot(next)).await;
+            });
+        }
+        if let Some(conn) = imp.dbus_conn.borrow().clone() {
+            glib::spawn_future_local(async move {
+                dbus::emit_changed(&conn).await;
+            });
+        }
+    }
+
+    fn apply_command(&self, cmd: AppCommand) {
+        let imp = self.imp();
+        let player = imp.player.clone();
+        match cmd {
+            AppCommand::PlayPause => player.toggle_play(),
+            AppCommand::Next => player.skip_next(),
+            AppCommand::Previous => player.skip_previous(),
+            AppCommand::Stop => player.stop(),
+            AppCommand::SetShuffle(b) => player.queue().set_shuffled(b),
+            AppCommand::SetRepeat(m) => player.queue().set_repeat_mode(m),
+            AppCommand::SeekAbs(s) => player.seek_position_abs(s),
+            AppCommand::SetVolume(v) => player.set_volume(v),
+            AppCommand::PlayIndex(i) => player.skip_to(i),
+            AppCommand::RemoveIndex(i) => {
+                if let Some(song) = player.queue().song_at(i) {
+                    player.remove_song(&song);
+                }
+            }
+            AppCommand::ToggleWindow => {
+                if let Some(win) = self.active_window() {
+                    if win.is_visible() {
+                        win.set_visible(false);
+                    } else {
+                        win.present();
+                    }
+                } else {
+                    self.activate();
+                }
+            }
+            AppCommand::Raise => {
+                if let Some(win) = self.active_window() {
+                    win.present();
+                } else {
+                    self.activate();
+                }
+            }
+            AppCommand::Quit => self.quit(),
+            AppCommand::PlayFolder(path) => {
+                player.clear_queue();
+                if let Some(win) = self.active_window().and_downcast::<Window>() {
+                    win.load_library_files(vec![gio::File::for_path(&path)], StartIntent::Top);
+                }
+            }
+            AppCommand::SetLibraryRoots(roots) => {
+                {
+                    let mut cfg = imp.config.borrow_mut();
+                    cfg.library.roots = roots;
+                    if let Err(e) = cfg.save() {
+                        debug!("mtune: could not save mtune.toml: {e}");
+                    }
+                }
+                imp.library_loaded.set(false);
+                imp.watcher.replace(None);
+                player.clear_queue();
+                self.load_library();
+            }
+            AppCommand::RescanLibrary => {
+                imp.library_loaded.set(false);
+                imp.watcher.replace(None);
+                player.clear_queue();
+                self.load_library();
+            }
+        }
+        self.refresh_bridge();
     }
 
     /// Hold the GApplication alive with no visible window while playback is

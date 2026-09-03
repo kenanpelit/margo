@@ -3,8 +3,10 @@
 
 mod application;
 mod audio;
+mod bridge;
 mod config;
 mod cover_picture;
+mod dbus;
 mod drag_overlay;
 mod i18n;
 mod library;
@@ -16,6 +18,7 @@ mod search;
 mod song_cover;
 mod song_details;
 mod sort;
+mod tray;
 mod utils;
 mod volume_control;
 mod waveform_view;
