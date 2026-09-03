@@ -1,0 +1,59 @@
+@use "../02-functions/index" as *;
+
+// Tune — the dedicated bar pill + menu for the `mtune` folder-first
+// music player. Shares the media-player card vocabulary; the menu adds
+// a library section (folder picker + scan status).
+
+.mtune-menu-widget {
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-high);
+  padding: var(--space-2);
+}
+
+.mtune-menu-cover {
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container-highest);
+  min-width: 64px;
+  min-height: 64px;
+}
+
+.mtune-menu-title {
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.mtune-menu-artist,
+.mtune-menu-album {
+  font-size: var(--font-sm);
+  color: var(--on-surface-variant);
+}
+
+.mtune-menu-library {
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+  padding: var(--space-2);
+}
+
+.mtune-menu-section-label {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--on-surface-variant);
+}
+
+.mtune-menu-status {
+  font-size: var(--font-sm);
+  color: var(--on-surface-variant);
+}
+
+// ── Bar pill ───────────────────────────────────────────────
+.mtune-bar-label {
+  font-size: var(--font-sm);
+  color: var(--on-surface);
+}
+
+.mtune-bar-widget.paused {
+  opacity: 0.6;
+}

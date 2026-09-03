@@ -33,6 +33,7 @@ pub(crate) mod margo_tags;
 pub(crate) mod mdash;
 pub(crate) mod mdock_layout;
 pub(crate) mod media_player;
+pub(crate) mod mtune;
 pub(crate) mod network;
 pub(crate) mod notes;
 pub(crate) mod notifications;

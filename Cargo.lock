@@ -5557,11 +5557,13 @@ name = "mshell-services"
 version = "3.0.0"
 dependencies = [
  "anyhow",
+ "futures",
  "mpd_client",
  "mshell-config",
  "mshell-margo-client",
  "notify-rust",
  "reactive_graph",
+ "serde",
  "tokio",
  "tracing",
  "ureq",

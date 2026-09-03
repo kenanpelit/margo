@@ -189,6 +189,7 @@ pub(crate) enum ShellInput {
     ToggleNetworkMenu(Option<String>),
     TogglePowerMenu(Option<String>),
     ToggleMediaPlayerMenu(Option<String>),
+    ToggleMtuneMenu(Option<String>),
     ToggleLyricsMenu(Option<String>),
     ToggleSessionMenu(Option<String>),
     ToggleSettingsMenu(Option<String>),
@@ -900,6 +901,11 @@ impl Component for Shell {
             ShellInput::ToggleMediaPlayerMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleMenu(MenuId::MediaPlayer));
+                }
+            }
+            ShellInput::ToggleMtuneMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleMenu(MenuId::Mtune));
                 }
             }
             ShellInput::ToggleLyricsMenu(monitor_name) => {

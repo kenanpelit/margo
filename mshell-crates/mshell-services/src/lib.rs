@@ -42,6 +42,7 @@ pub mod audio_watchdog;
 pub mod bluetooth;
 pub mod login_net;
 pub mod mpd;
+pub mod mtune;
 
 use mshell_margo_client::MargoService;
 use wayle_audio::AudioService;

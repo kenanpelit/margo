@@ -1357,6 +1357,10 @@ pub struct Menus {
     #[serde(default = "default_vpn_indicator_menu")]
     pub vpn_indicator_menu: Menu,
     pub media_player_menu: Menu,
+    /// Dedicated `mtune` (folder-first music player) menu. Default-on-missing
+    /// so profiles predating it still parse.
+    #[serde(default = "default_mtune_menu")]
+    pub mtune_menu: Menu,
     pub lyrics_menu: Menu,
     pub session_menu: Menu,
     /// Settings panel — embeds in the frame's menu stack instead
@@ -1527,6 +1531,15 @@ fn default_vpn_indicator_menu() -> Menu {
     Menu {
         position: Position::TopRight,
         widgets: vec![MenuWidget::VpnIndicator],
+        minimum_width: 380,
+        maximum_height: 0,
+    }
+}
+
+fn default_mtune_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::Mtune],
         minimum_width: 380,
         maximum_height: 0,
     }
@@ -1791,6 +1804,7 @@ impl Default for Menus {
                 minimum_width: 380,
                 maximum_height: 0,
             },
+            mtune_menu: default_mtune_menu(),
             lyrics_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Lyrics],

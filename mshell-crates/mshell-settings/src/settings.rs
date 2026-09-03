@@ -1025,6 +1025,12 @@ impl Component for SettingsWindowModel {
                 icon: "starred-symbolic",
             },
             WidgetEntry::MediaPlayer,
+            WidgetEntry::Menu {
+                kind: MenuKind::Mtune,
+                stack_name: "mtune",
+                label: "Tune",
+                icon: "folder-music-symbolic",
+            },
             WidgetEntry::Lyrics,
             WidgetEntry::HiddenBar,
             WidgetEntry::Catwalk,

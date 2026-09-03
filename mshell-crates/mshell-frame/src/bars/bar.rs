@@ -27,6 +27,7 @@ use crate::bars::bar_widgets::mdash::{MdashInit, MdashModel, MdashOutput};
 use crate::bars::bar_widgets::media_player::{
     MediaPlayerInit, MediaPlayerModel, MediaPlayerOutput,
 };
+use crate::bars::bar_widgets::mtune::{MtuneInit, MtuneModel, MtuneOutput};
 use crate::bars::bar_widgets::network::{NetworkInit, NetworkModel};
 use crate::bars::bar_widgets::notes::{NotesInit, NotesModel};
 use crate::bars::bar_widgets::notifications::{
@@ -234,6 +235,7 @@ pub(crate) enum BarOutput {
     PowerClicked,
     PrivacyClicked,
     MediaPlayerClicked,
+    MtuneClicked,
     LyricsClicked,
     /// Margo layout switcher bar pill clicked. Frame catches and
     /// toggles the in-stack MargoLayout menu (replaces the
@@ -1263,6 +1265,12 @@ impl BarModel {
                         MediaPlayerOutput::Clicked => BarOutput::MediaPlayerClicked,
                     }),
             ),
+            BarWidget::Mtune => Box::new(MtuneModel::builder().launch(MtuneInit {}).forward(
+                sender.output_sender(),
+                |msg| match msg {
+                    MtuneOutput::Clicked => BarOutput::MtuneClicked,
+                },
+            )),
             BarWidget::Lyrics => Box::new(LyricsModel::builder().launch(LyricsInit {}).forward(
                 sender.output_sender(),
                 |msg| match msg {

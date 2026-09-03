@@ -26,7 +26,78 @@ impl TuneService {
 
 #[interface(name = "org.margo.Tune")]
 impl TuneService {
-    // ── Properties (read-only mirror of the player) ──────────────────
+    // ── Now-playing (so a consumer needs only this one interface) ────
+
+    #[zbus(property)]
+    async fn playing(&self) -> bool {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .playing
+    }
+
+    #[zbus(property)]
+    async fn has_song(&self) -> bool {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .has_song
+    }
+
+    #[zbus(property)]
+    async fn title(&self) -> String {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .title
+            .clone()
+    }
+
+    #[zbus(property)]
+    async fn artist(&self) -> String {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .artist
+            .clone()
+    }
+
+    #[zbus(property)]
+    async fn album(&self) -> String {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .album
+            .clone()
+    }
+
+    /// Absolute path to the current track's cached cover art, or `""`.
+    #[zbus(property)]
+    async fn cover_art(&self) -> String {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .cover_art
+            .clone()
+    }
+
+    #[zbus(property)]
+    async fn position(&self) -> u64 {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .position_secs
+    }
+
+    #[zbus(property)]
+    async fn duration(&self) -> u64 {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .duration_secs
+    }
+
+    // ── Library / queue ─────────────────────────────────────────────
 
     #[zbus(property)]
     async fn library_roots(&self) -> Vec<String> {
@@ -97,6 +168,30 @@ impl TuneService {
     }
 
     // ── Methods (actions, applied on the GTK main context) ───────────
+
+    async fn play_pause(&self) {
+        self.send(AppCommand::PlayPause);
+    }
+
+    async fn next(&self) {
+        self.send(AppCommand::Next);
+    }
+
+    async fn previous(&self) {
+        self.send(AppCommand::Previous);
+    }
+
+    async fn stop(&self) {
+        self.send(AppCommand::Stop);
+    }
+
+    async fn seek(&self, position_secs: u64) {
+        self.send(AppCommand::SeekAbs(position_secs));
+    }
+
+    async fn set_volume(&self, volume: f64) {
+        self.send(AppCommand::SetVolume(volume));
+    }
 
     async fn set_library_roots(&self, roots: Vec<String>) {
         self.send(AppCommand::SetLibraryRoots(

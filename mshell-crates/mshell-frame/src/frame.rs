@@ -53,6 +53,7 @@ const NVPN_INDICATOR_MENU: &str = "vpn_indicator";
 const NNETWORK_MENU: &str = "network";
 const NPOWER_MENU: &str = "power";
 const MEDIA_PLAYER_MENU: &str = "media_player";
+const MTUNE_MENU: &str = "mtune";
 const LYRICS_MENU: &str = "lyrics";
 const SESSION_MENU: &str = "session";
 const SETTINGS_MENU: &str = "settings";
@@ -194,6 +195,7 @@ pub enum MenuId {
     Network,
     Power,
     MediaPlayer,
+    Mtune,
     Lyrics,
     Session,
     Mdash,
@@ -237,6 +239,7 @@ impl MenuId {
             MenuId::Network => NNETWORK_MENU,
             MenuId::Power => NPOWER_MENU,
             MenuId::MediaPlayer => MEDIA_PLAYER_MENU,
+            MenuId::Mtune => MTUNE_MENU,
             MenuId::Lyrics => LYRICS_MENU,
             MenuId::Session => SESSION_MENU,
             MenuId::Mdash => MDASH_MENU,
@@ -281,6 +284,7 @@ impl MenuId {
             MenuId::Network => MenuType::Network,
             MenuId::Power => MenuType::Power,
             MenuId::MediaPlayer => MenuType::MediaPlayer,
+            MenuId::Mtune => MenuType::Mtune,
             MenuId::Lyrics => MenuType::Lyrics,
             MenuId::Session => MenuType::Session,
             MenuId::Mdash => MenuType::Mdash,
@@ -994,6 +998,7 @@ impl Component for Frame {
             pos!(network_menu);
             pos!(power_menu);
             pos!(media_player_menu);
+            pos!(mtune_menu);
             pos!(lyrics_menu);
             pos!(session_menu);
             pos!(settings_menu);
@@ -2237,6 +2242,7 @@ fn menu_position(name: &str) -> Position {
         NNETWORK_MENU => pos!(network_menu),
         NPOWER_MENU => pos!(power_menu),
         MEDIA_PLAYER_MENU => pos!(media_player_menu),
+        MTUNE_MENU => pos!(mtune_menu),
         LYRICS_MENU => pos!(lyrics_menu),
         SESSION_MENU => pos!(session_menu),
         MDASH_MENU => pos!(mdash_menu),

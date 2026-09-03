@@ -144,6 +144,9 @@ pub(crate) enum MenuType {
     /// clearable mic / camera / screen-share access log.
     Privacy,
     MediaPlayer,
+    /// `mtune` bar pill's panel — now-playing + transport + the
+    /// folder-first library controls (folder picker, scan status).
+    Mtune,
     /// `lyrics` bar pill's panel — scrolling synced lyrics of the
     /// now-playing track.
     Lyrics,
@@ -600,6 +603,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, media_player_menu);
                 effect_min_width!(effects, base_config, sender, media_player_menu);
                 effect_max_height!(effects, base_config, sender, media_player_menu);
+            }
+            MenuType::Mtune => {
+                css_class = "mtune-menu".to_string();
+                effect_widgets!(effects, base_config, sender, mtune_menu);
+                effect_min_width!(effects, base_config, sender, mtune_menu);
+                effect_max_height!(effects, base_config, sender, mtune_menu);
             }
             MenuType::Lyrics => {
                 css_class = "lyrics-menu".to_string();

@@ -106,6 +106,11 @@ pub enum BarWidget {
     /// setup wizard) — a layer-shell surface, not a separate window.
     Setup,
     MediaPlayer,
+    /// Tune pill — the dedicated entry point for the `mtune` folder-first
+    /// music player. Mirrors *only* mtune (via `org.margo.Tune`); its menu
+    /// (`MenuType::Mtune`) carries the library / folder-picker controls
+    /// MPRIS can't express. Separate from the generic `MediaPlayer` pill.
+    Mtune,
     /// Lyrics pill — current synced line of the now-playing track. Opens the
     /// scrolling lyrics panel (`MenuType::Lyrics`).
     Lyrics,
@@ -189,6 +194,7 @@ impl BarWidget {
             BarWidget::Logout => "Logout",
             BarWidget::Setup => "Setup",
             BarWidget::MediaPlayer => "Media Player",
+            BarWidget::Mtune => "Tune",
             BarWidget::Lyrics => "Lyrics",
             BarWidget::Vpn => "VPN",
             BarWidget::Dns => "DNS",
@@ -252,6 +258,7 @@ impl BarWidget {
             BarWidget::Logout,
             BarWidget::Setup,
             BarWidget::MediaPlayer,
+            BarWidget::Mtune,
             BarWidget::Lyrics,
             BarWidget::Vpn,
             BarWidget::Dns,

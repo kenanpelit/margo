@@ -407,6 +407,11 @@ impl Application {
                 title: state.title().unwrap_or_default(),
                 artist: state.artist().unwrap_or_default(),
                 album: state.album().unwrap_or_default(),
+                cover_art: song
+                    .as_ref()
+                    .and_then(|s| s.cover_cache())
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
                 position_secs: state.position(),
                 duration_secs: state.duration(),
                 volume: state.volume(),

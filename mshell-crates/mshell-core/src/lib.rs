@@ -297,6 +297,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // whenever it starts.
     mshell_services::mpd::spawn_mpd_watcher();
 
+    // Native `mtune` (folder-first music player) bridge: mirrors its
+    // `org.margo.Tune` interface for the dedicated Tune bar pill + menu.
+    // No-op quietly until mtune is running.
+    mshell_services::mtune::spawn_mtune_watcher();
+
     // Restore default audio levels: PipeWire doesn't persist sink/source volume
     // across reboots, so on opt-in (Settings → Sound) we pin the default output
     // + input to the user's chosen levels once WirePlumber has settled. Done

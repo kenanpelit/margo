@@ -118,6 +118,8 @@ pub enum MenuCommands {
     Power,
     /// Toggle the Media Player menu
     MediaPlayer,
+    /// Toggle the Tune (mtune folder-first music player) menu
+    Mtune,
     /// Toggle the Lyrics menu (synced lyrics of the now-playing track)
     Lyrics,
     /// Toggle the session / power menu, or run a session action
@@ -260,6 +262,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::MediaPlayer => {
             bus_command("MediaPlayer").await?;
+        }
+        MenuCommands::Mtune => {
+            bus_command("Mtune").await?;
         }
         MenuCommands::Lyrics => {
             bus_command("Lyrics").await?;

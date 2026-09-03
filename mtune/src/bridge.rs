@@ -19,6 +19,8 @@ pub struct Snapshot {
     pub title: String,
     pub artist: String,
     pub album: String,
+    /// Absolute path to the current track's cached cover, or empty.
+    pub cover_art: String,
     pub position_secs: u64,
     pub duration_secs: u64,
     pub volume: f64,

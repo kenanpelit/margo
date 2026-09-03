@@ -265,6 +265,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::MediaPlayer => {
                     app_sender.emit(ShellInput::ToggleMediaPlayerMenu(active_monitor().await));
                 }
+                IPCCommand::Mtune => {
+                    app_sender.emit(ShellInput::ToggleMtuneMenu(active_monitor().await));
+                }
                 IPCCommand::Lyrics => {
                     app_sender.emit(ShellInput::ToggleLyricsMenu(active_monitor().await));
                 }
@@ -702,6 +705,7 @@ enum IPCCommand {
     Network,
     Power,
     MediaPlayer,
+    Mtune,
     Lyrics,
     Mdash,
     /// Toggle an installed plugin's panel/menu by key (generic — any plugin).
@@ -1807,6 +1811,9 @@ impl IPCService {
     }
     async fn media_player(&self) {
         let _ = self.tx.send(IPCCommand::MediaPlayer);
+    }
+    async fn mtune(&self) {
+        let _ = self.tx.send(IPCCommand::Mtune);
     }
     async fn lyrics(&self) {
         let _ = self.tx.send(IPCCommand::Lyrics);

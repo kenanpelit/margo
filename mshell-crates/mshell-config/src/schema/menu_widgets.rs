@@ -58,6 +58,9 @@ pub enum MenuWidget {
     /// `mshellctl dock`.
     MargoDock,
     MediaPlayer,
+    /// Tune menu content — now-playing + transport + the folder-first
+    /// library controls (folder picker, scan status, rescan).
+    Mtune,
     /// Lyrics menu content — the scrolling synced-lyrics column.
     Lyrics,
     Dns,
@@ -172,6 +175,7 @@ impl MenuWidget {
             MenuWidget::MargoLayout => "Margo Layout",
             MenuWidget::MargoDock => "mdock",
             MenuWidget::MediaPlayer => "Media Player",
+            MenuWidget::Mtune => "Tune",
             MenuWidget::Lyrics => "Lyrics",
             MenuWidget::Dns => "DNS / VPN",
             MenuWidget::Vpn => "VPN",
@@ -239,6 +243,7 @@ impl MenuWidget {
             MenuWidget::Divider,
             MenuWidget::MargoLayout,
             MenuWidget::MediaPlayer,
+            MenuWidget::Mtune,
             MenuWidget::Lyrics,
             MenuWidget::Dns,
             MenuWidget::Vpn,

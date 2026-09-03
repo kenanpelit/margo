@@ -120,6 +120,7 @@ impl Frame {
                 BarOutput::NetworkClicked => FrameInput::ToggleMenu(MenuId::Network),
                 BarOutput::PowerClicked => FrameInput::ToggleMenu(MenuId::Power),
                 BarOutput::MediaPlayerClicked => FrameInput::ToggleMenu(MenuId::MediaPlayer),
+                BarOutput::MtuneClicked => FrameInput::ToggleMenu(MenuId::Mtune),
                 BarOutput::LyricsClicked => FrameInput::ToggleMenu(MenuId::Lyrics),
                 BarOutput::MargoLayoutClicked => FrameInput::ToggleMenu(MenuId::MargoLayout),
                 BarOutput::CloseMenu => FrameInput::CloseMenus,

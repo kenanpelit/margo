@@ -53,6 +53,7 @@ use crate::menus::menu_widgets::margo_layout::margo_layout_menu_widget::{
 use crate::menus::menu_widgets::media_player::media_players::{
     MediaPlayersInit, MediaPlayersModel,
 };
+use crate::menus::menu_widgets::mtune::mtune::{MtuneMenuWidgetInit, MtuneMenuWidgetModel};
 use crate::menus::menu_widgets::network::network_menu_widget::{
     NetworkMenuWidgetInit, NetworkMenuWidgetModel,
 };
@@ -263,6 +264,11 @@ pub fn build_widget(
         MenuWidget::MediaPlayer => Box::new(
             MediaPlayersModel::builder()
                 .launch(MediaPlayersInit {})
+                .detach(),
+        ),
+        MenuWidget::Mtune => Box::new(
+            MtuneMenuWidgetModel::builder()
+                .launch(MtuneMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Lyrics => Box::new(
