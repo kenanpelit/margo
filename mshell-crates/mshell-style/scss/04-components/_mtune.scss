@@ -56,7 +56,7 @@
   min-width: 38px;
   min-height: 38px;
   padding: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background-color: var(--surface-container-highest);
   color: var(--on-surface);
   @include state-layer(var(--surface-container-highest));
