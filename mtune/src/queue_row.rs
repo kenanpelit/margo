@@ -182,6 +182,13 @@ impl QueueRow {
 
     fn set_playing(&self, playing: bool) {
         if playing != self.imp().playing.replace(playing) {
+            // Colour the row's text so the current track stands out in
+            // the list (see `.playing` in style.css).
+            if playing {
+                self.add_css_class("playing");
+            } else {
+                self.remove_css_class("playing");
+            }
             self.update_mode();
             self.notify("playing");
         }

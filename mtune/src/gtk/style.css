@@ -141,6 +141,22 @@ queuerow.currently-playing-row {
   background-color: color-mix(in srgb, var(--tune-primary) 16%, transparent);
 }
 
+/* The track that's playing right now — coloured text + faint wash so
+   it's obvious which row is live. */
+queuerow.playing {
+  background-color: color-mix(in srgb, var(--tune-primary) 12%, transparent);
+}
+queuerow.playing label.song-title {
+  color: var(--tune-primary);
+  font-weight: 700;
+}
+queuerow.playing label.song-artist {
+  color: color-mix(in srgb, var(--tune-primary) 70%, var(--tune-on-surface-dim));
+}
+queuerow.playing image {
+  color: var(--tune-primary);
+}
+
 queuerow checkbutton.selection-mode {
   padding-right: 12px;
   padding-left: 8px;
