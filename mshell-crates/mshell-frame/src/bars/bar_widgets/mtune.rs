@@ -78,7 +78,9 @@ impl Component for MtuneModel {
                         add_css_class: "mtune-bar-cover",
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
-                        set_pixel_size: 20,
+                        // Match the bar's icon rhythm (16px, like every
+                        // other pill glyph); album art still reads fine.
+                        set_pixel_size: 16,
                     },
 
                     #[name = "label"]
@@ -196,7 +198,7 @@ fn read(model: &mut MtuneModel) {
 
 fn apply(widgets: &MtuneModelWidgets, model: &MtuneModel) {
     if !model.running {
-        widgets.cover.set_icon_name(Some("folder-music-symbolic"));
+        widgets.cover.set_icon_name(Some("org.margo.Tune-symbolic"));
         widgets.label.set_visible(false);
         widgets.root.remove_css_class("paused");
         widgets

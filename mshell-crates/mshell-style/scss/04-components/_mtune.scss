@@ -49,6 +49,13 @@
 }
 
 // ── Bar pill ───────────────────────────────────────────────
+.mtune-bar-cover {
+  // Smallest shape token (--radius-xs, 8px) — matches the generic
+  // media-player pill; tidies album art and the folder glyph alike.
+  border-radius: var(--radius-xs);
+  background-color: var(--surface-container-high);
+}
+
 .mtune-bar-label {
   font-size: var(--font-sm);
   color: var(--on-surface);
