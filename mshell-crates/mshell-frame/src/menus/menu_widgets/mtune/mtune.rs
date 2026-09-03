@@ -392,7 +392,7 @@ fn read(m: &mut MtuneMenuWidgetModel) {
 fn apply_cover(widgets: &MtuneMenuWidgetModelWidgets, m: &MtuneMenuWidgetModel) {
     match m.cover_art.as_deref() {
         Some(path) if !path.trim().is_empty() => widgets.cover.set_from_file(Some(path)),
-        _ => widgets.cover.set_icon_name(Some("folder-music-symbolic")),
+        _ => widgets.cover.set_icon_name(Some("org.margo.Tune-symbolic")),
     }
 }
 

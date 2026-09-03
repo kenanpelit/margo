@@ -1031,7 +1031,7 @@ impl Component for SettingsWindowModel {
                 kind: MenuKind::Mtune,
                 stack_name: "mtune_widget",
                 label: "Tune",
-                icon: "folder-music-symbolic",
+                icon: "org.margo.Tune-symbolic",
             },
             WidgetEntry::Lyrics,
             WidgetEntry::HiddenBar,
@@ -2263,7 +2263,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     },
     Page {
         route: "mtune",
-        icon: "folder-music-symbolic",
+        icon: "org.margo.Tune-symbolic",
         label: "Tune",
     },
     Page {
