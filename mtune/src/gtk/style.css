@@ -1,47 +1,92 @@
+/* Tune — application stylesheet.
+ *
+ * Auto-loaded by GtkApplication from the gresource base path. Tokens
+ * (`--surface`, `--primary`, …) come from the margo matugen palette
+ * (`~/.cache/mshell/last_theme.css`, loaded by application.rs at a higher
+ * priority) when it exists; the fallbacks below keep a coherent dark look
+ * on their own. The `--background-color-N` set is the per-song album-art
+ * recolour, driven from window.rs.
+ */
+
+:root {
+  --tune-surface:         var(--surface, #1e1e28);
+  --tune-surface-2:       var(--surface-container, #262633);
+  --tune-surface-3:       var(--surface-container-high, #2f2f3e);
+  --tune-on-surface:      var(--on-surface, #e6e6ef);
+  --tune-on-surface-dim:  var(--on-surface-variant, #a9a9bd);
+  --tune-primary:         var(--primary, #b4a0f0);
+  --tune-on-primary:      var(--on-primary, #1e1e28);
+  --tune-outline:         var(--outline, rgb(255 255 255 / 12%));
+  --tune-radius:          14px;
+  --tune-radius-sm:       8px;
+
+  /* A monospace-leaning stack — the "now playing" panel reads like a
+     console readout (see the reference screenshot). Override with a
+     GTK global if you prefer the system sans. */
+  --tune-font: "Iosevka", "JetBrains Mono", "IBM Plex Mono", "SF Mono",
+               ui-monospace, "Cascadia Code", monospace;
+}
+
+.main-window,
+window.background {
+  background-color: var(--tune-surface);
+  color: var(--tune-on-surface);
+  font-family: var(--tune-font);
+}
+
 button.large {
-  min-width: 48px;
-  min-height: 48px;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .main-box {
-  padding: 6px;
+  padding: 8px;
   margin-left: 12px;
   margin-right: 12px;
 }
 
+/* ── Album cover ─────────────────────────────────────────────── */
 songcover {
-  padding-bottom: 24px;
+  padding-bottom: 20px;
 }
 
 songcover picture.cover,
 songcover image.card {
-  box-shadow: 0px 1px 6px rgba(0,0,0,0.3),
-              0px 2px 12px rgba(0,0,0,0.15),
-              0px 6px 32px rgba(0,0,0,0.1);
-  border-radius: 12px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 22%),
+              0 8px 28px rgb(0 0 0 / 14%);
+  border-radius: var(--tune-radius);
   margin: 6px;
 }
 
 image.card.small {
-  border: 1px solid rgb(0 0 0 / 15%);
+  border: 1px solid var(--tune-outline);
   background-clip: padding-box;
 }
 
 .main-window songcover picture.cover {
-  background: linear-gradient(to bottom, var(--background-color-0), var(--background-color-1));
+  background: linear-gradient(to bottom,
+              var(--background-color-0, var(--tune-surface-2)),
+              var(--background-color-1, var(--tune-surface-3)));
 }
 
+/* ── Song title / artist / album ────────────────────────────── */
 songdetails {
-  padding-top: 12px;
-  padding-bottom: 24px;
+  padding-top: 10px;
+  padding-bottom: 20px;
 }
 
 songdetails label.song-title {
-  /* match title-1 */
   font-size: 15pt;
-  font-weight: 800;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   padding-left: 12px;
   padding-right: 12px;
+  color: var(--tune-on-surface);
+}
+
+songdetails label.song-artist,
+songdetails label.song-album {
+  color: var(--tune-on-surface-dim);
 }
 
 songdetails label.song-title,
@@ -58,9 +103,11 @@ playbackcontrol {
   padding-bottom: 12px;
 }
 
+/* ── Playlist rows ──────────────────────────────────────────── */
 queuerow .currently-playing {
   padding-left: 6px;
   font-weight: 700;
+  color: var(--tune-primary);
 }
 
 queuerow box.song-details {
@@ -69,19 +116,29 @@ queuerow box.song-details {
 }
 
 queuerow label.song-title {
-  font-weight: 700;
-  font-size: 85%;
+  font-weight: 600;
+  font-size: 90%;
 }
 
 queuerow label.song-artist {
   font-size: 85%;
+  color: var(--tune-on-surface-dim);
 }
 
 queuerow picture.cover,
 queuerow image.card {
   box-shadow: none;
-  border-radius: 4px;
-  margin: 0px;
+  border-radius: var(--tune-radius-sm);
+  margin: 0;
+}
+
+queuerow:hover {
+  background-color: var(--tune-surface-2);
+}
+
+queuerow:selected,
+queuerow.currently-playing-row {
+  background-color: color-mix(in srgb, var(--tune-primary) 16%, transparent);
 }
 
 queuerow checkbutton.selection-mode {
@@ -89,70 +146,66 @@ queuerow checkbutton.selection-mode {
   padding-left: 8px;
 }
 
+/* ── Drag-to-add overlay ────────────────────────────────────── */
 dragoverlay {
   box-shadow: none;
 }
 
 .drag-overlay-status-page {
-  background-color: color-mix(in srgb, var(--accent-bg-color) 50%, transparent);
-  color: var(--accent-fg-color);
+  background-color: color-mix(in srgb, var(--tune-primary) 30%, transparent);
+  color: var(--tune-on-primary);
   padding: 32px;
+  border-radius: var(--tune-radius);
 }
 
 .blurred {
   filter: blur(6px);
 }
 
+/* ── Recoloured window background (album-art palette) ───────── */
 .main-window {
-  --sidebar-bg-color: rgb(0 0 0 / 6%);
-  --sidebar-backdrop-color: rgb(0 0 0 / 3%);
-  --sidebar-shade-color: rgb(0 0 0 / 10%);
-  --sidebar-border-color: rgb(0 0 0 / 10%);
+  --sidebar-bg-color: rgb(255 255 255 / 4%);
+  --sidebar-backdrop-color: rgb(255 255 255 / 2%);
+  --sidebar-shade-color: rgb(0 0 0 / 22%);
+  --sidebar-border-color: var(--tune-outline);
 
-  --accent-bg-color: rgb(0 0 0 / 75%);
-  --accent-fg-color: white;
-  --accent-color: oklab(from var(--accent-bg-color) var(--standalone-color-oklab));
+  --accent-bg-color: var(--tune-primary);
+  --accent-fg-color: var(--tune-on-primary);
+  --accent-color: var(--tune-primary);
 
-  --scrollbar-outline-color: rgb(255 255 255 / 25%);
+  --scrollbar-outline-color: rgb(0 0 0 / 25%);
 
-  background: linear-gradient(127deg, color-mix(in srgb, var(--background-color-0) 55%, transparent), color-mix(in srgb, var(--background-color-0) 0%, transparent) 70.71%),
-              linear-gradient(217deg, color-mix(in srgb, var(--background-color-1) 55%, transparent), color-mix(in srgb, var(--background-color-1) 0%, transparent) 70.71%),
-              linear-gradient(336deg, color-mix(in srgb, var(--background-color-2) 55%, transparent), color-mix(in srgb, var(--background-color-2) 0%, transparent) 70.71%);
-  transition-property: background;
-  transition-duration: 250ms;
-  transition-timing-function: ease;
+  background:
+    linear-gradient(127deg,
+      color-mix(in srgb, var(--background-color-0, transparent) 42%, transparent),
+      transparent 70.71%),
+    linear-gradient(217deg,
+      color-mix(in srgb, var(--background-color-1, transparent) 42%, transparent),
+      transparent 70.71%),
+    linear-gradient(336deg,
+      color-mix(in srgb, var(--background-color-2, transparent) 42%, transparent),
+      transparent 70.71%),
+    var(--tune-surface);
+  transition: background 250ms ease;
 }
 
 .main-window > overlay-split-view > widget.background > playlistview {
-  background: linear-gradient(127deg, color-mix(in srgb, var(--background-color-0) 55%, transparent), color-mix(in srgb, var(--background-color-0) 0%, transparent) 70.71%),
-              linear-gradient(217deg, color-mix(in srgb, var(--background-color-1) 55%, transparent), color-mix(in srgb, var(--background-color-1) 0%, transparent) 70.71%),
-              linear-gradient(336deg, color-mix(in srgb, var(--background-color-2) 55%, transparent), color-mix(in srgb, var(--background-color-2) 0%, transparent) 70.71%),
-              var(--window-bg-color);
-  transition-property: background;
-  transition-duration: 250ms;
-  transition-timing-function: ease;
+  background:
+    linear-gradient(127deg,
+      color-mix(in srgb, var(--background-color-0, transparent) 30%, transparent),
+      transparent 70.71%),
+    linear-gradient(336deg,
+      color-mix(in srgb, var(--background-color-2, transparent) 30%, transparent),
+      transparent 70.71%),
+    var(--tune-surface);
+  transition: background 250ms ease;
 }
 
+/* ── Volume slider ─────────────────────────────────────────── */
 .main-window volume > scale trough highlight {
-  background: color-mix(in srgb, var(--accent-bg-color) var(--dim-opacity), transparent);
+  background: var(--tune-primary);
 }
 
 volume:hover > scale { color: inherit; }
-
-volume > scale trough highlight { min-height: 12px; min-width: 12px; }
-
+volume > scale trough highlight { min-height: 10px; min-width: 10px; border-radius: 999px; }
 volume > scale trough slider { opacity: 0; }
-
-@media (prefers-color-scheme: dark) {
-  .main-window {
-    --sidebar-bg-color: rgb(255 255 255 / 5.5%);
-    --sidebar-backdrop-color: rgb(255 255 255 / 2.75%);
-    --sidebar-shade-color: rgb(0 0 0 / 20%);
-    --sidebar-border-color: rgb(0 0 0 / 28%);
-
-    --accent-bg-color: rgb(255 255 255 / 75%);
-    --accent-fg-color: rgb(0 0 0 / 75%);
-
-    --scrollbar-outline-color: rgb(0 0 0 / 25%);
-  }
-}

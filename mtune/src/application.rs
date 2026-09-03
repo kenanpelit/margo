@@ -52,6 +52,10 @@ mod imp {
         pub cmd_rx: RefCell<Option<CommandReceiver>>,
         pub dbus_conn: RefCell<Option<zbus::Connection>>,
         pub tray: RefCell<Option<ksni::Handle<TuneTray>>>,
+        /// Overlays the margo matugen palette (`~/.cache/mshell/last_theme.css`)
+        /// on top of the baked stylesheet; reloaded when matugen rewrites it.
+        pub matugen_provider: gtk::CssProvider,
+        pub matugen_monitor: RefCell<Option<gio::FileMonitor>>,
     }
 
     impl std::fmt::Debug for Application {
@@ -84,6 +88,8 @@ mod imp {
                 cmd_rx: RefCell::new(Some(cmd_rx)),
                 dbus_conn: RefCell::default(),
                 tray: RefCell::default(),
+                matugen_provider: gtk::CssProvider::new(),
+                matugen_monitor: RefCell::default(),
             }
         }
     }
@@ -121,6 +127,7 @@ mod imp {
             self.parent_startup();
 
             gtk::Window::set_default_icon_name(APPLICATION_ID);
+            self.obj().setup_matugen_palette();
         }
 
         fn activate(&self) {
@@ -319,6 +326,54 @@ impl Application {
                 }
             }
         });
+    }
+
+    /// The margo matugen palette file (`:root { --surface: …; --primary: …; }`),
+    /// shared with the shell + `mlock` / `mgreet`.
+    fn matugen_palette_path() -> std::path::PathBuf {
+        let base = std::env::var_os("XDG_CACHE_HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache"))
+            })
+            .unwrap_or_default();
+        base.join("mshell").join("last_theme.css")
+    }
+
+    /// Load the matugen palette as a CSS provider above the baked stylesheet,
+    /// and reload it whenever matugen rewrites the file (wallpaper change).
+    fn setup_matugen_palette(&self) {
+        let Some(display) = gtk::gdk::Display::default() else {
+            return;
+        };
+        let provider = self.imp().matugen_provider.clone();
+        // 700 > GTK_STYLE_PROVIDER_PRIORITY_APPLICATION (600, the auto-loaded
+        // style.css), < USER (800) — the palette's `:root` tokens win over the
+        // stylesheet's fallbacks without overriding a user's own gtk.css.
+        gtk::style_context_add_provider_for_display(&display, &provider, 700);
+
+        let path = Self::matugen_palette_path();
+        Self::load_matugen(&provider, &path);
+
+        let file = gio::File::for_path(&path);
+        if let Ok(monitor) = file.monitor_file(gio::FileMonitorFlags::NONE, gio::Cancellable::NONE)
+        {
+            monitor.connect_changed(clone!(
+                #[weak]
+                provider,
+                move |_, _, _, _| {
+                    Self::load_matugen(&provider, &Self::matugen_palette_path());
+                }
+            ));
+            self.imp().matugen_monitor.replace(Some(monitor));
+        }
+    }
+
+    fn load_matugen(provider: &gtk::CssProvider, path: &std::path::Path) {
+        match std::fs::read_to_string(path) {
+            Ok(css) => provider.load_from_string(&css),
+            Err(_) => provider.load_from_string(""), // no palette yet — fall back
+        }
     }
 
     // ── tray + `org.margo.Tune` bridge ──────────────────────────────
