@@ -56,7 +56,9 @@ mod imp {
         pub tray: RefCell<Option<ksni::Handle<TuneTray>>>,
         /// Overlays the margo matugen palette (`~/.cache/mshell/last_theme.css`)
         /// on top of the baked stylesheet; reloaded when matugen rewrites it.
-        pub matugen_provider: gtk::CssProvider,
+        /// Built lazily in `setup_matugen_palette` — `CssProvider::new()`
+        /// aborts if called before `gtk::init` (i.e. at object construction).
+        pub matugen_provider: RefCell<Option<gtk::CssProvider>>,
         pub matugen_monitor: RefCell<Option<gio::FileMonitor>>,
     }
 
@@ -90,7 +92,7 @@ mod imp {
                 cmd_rx: RefCell::new(Some(cmd_rx)),
                 dbus_conn: RefCell::default(),
                 tray: RefCell::default(),
-                matugen_provider: gtk::CssProvider::new(),
+                matugen_provider: RefCell::default(),
                 matugen_monitor: RefCell::default(),
             }
         }
@@ -348,7 +350,8 @@ impl Application {
         let Some(display) = gtk::gdk::Display::default() else {
             return;
         };
-        let provider = self.imp().matugen_provider.clone();
+        let provider = gtk::CssProvider::new();
+        self.imp().matugen_provider.replace(Some(provider.clone()));
         // 700 > GTK_STYLE_PROVIDER_PRIORITY_APPLICATION (600, the auto-loaded
         // style.css), < USER (800) — the palette's `:root` tokens win over the
         // stylesheet's fallbacks without overriding a user's own gtk.css.
