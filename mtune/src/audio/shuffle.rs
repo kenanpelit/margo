@@ -75,10 +75,10 @@ mod imp {
 
         fn item(&self, position: u32) -> Option<glib::Object> {
             if let Some(ref model) = *self.model.borrow() {
-                if let Some(ref shuffle) = *self.shuffle.borrow() {
-                    if let Some(shuffled_pos) = shuffle.get(position as usize) {
-                        return model.item(*shuffled_pos);
-                    }
+                if let Some(ref shuffle) = *self.shuffle.borrow()
+                    && let Some(shuffled_pos) = shuffle.get(position as usize)
+                {
+                    return model.item(*shuffled_pos);
                 }
                 return model.item(position);
             }
@@ -117,11 +117,11 @@ impl ShuffleListModel {
                 #[strong(rename_to = this)]
                 self,
                 move |_, position, removed, added| {
-                    if let Some(ref shuffle) = *this.imp().shuffle.borrow() {
-                        if let Some(shuffled_pos) = shuffle.get(position as usize) {
-                            this.items_changed(*shuffled_pos, removed, added);
-                            return;
-                        }
+                    if let Some(ref shuffle) = *this.imp().shuffle.borrow()
+                        && let Some(shuffled_pos) = shuffle.get(position as usize)
+                    {
+                        this.items_changed(*shuffled_pos, removed, added);
+                        return;
                     }
 
                     this.items_changed(position, removed, added);

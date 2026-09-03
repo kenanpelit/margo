@@ -96,7 +96,7 @@ impl GstBackend {
             #[strong(rename_to = sender)]
             self.sender,
             move |_bus, msg| {
-                let Ok(play_msg) = gst_play::PlayMessage::parse(&msg) else {
+                let Ok(play_msg) = gst_play::PlayMessage::parse(msg) else {
                     return gst::BusSyncReply::Drop;
                 };
 

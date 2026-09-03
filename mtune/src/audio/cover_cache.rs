@@ -92,8 +92,8 @@ impl CoverCache {
         // caches out of the water, which will slow down loading the song into the
         // playlist model
         if let Some(p) = path {
-            let ext_cover_basename = vec!["Cover", "cover", "Folder", "folder"];
-            let ext_cover_ext = vec!["jpg", "png"];
+            let ext_cover_basename = ["Cover", "cover", "Folder", "folder"];
+            let ext_cover_ext = ["jpg", "png"];
 
             let ext_covers = ext_cover_basename
                 .iter()
@@ -193,7 +193,11 @@ impl CoverCache {
                     None
                 };
 
-                // The texture we draw on screen
+                // The texture we draw on screen.
+                // `Texture::for_pixbuf` is deprecated since GTK 4.20; the cover
+                // pipeline still hands us a decoded `Pixbuf`, so keep it until
+                // the pipeline is moved to `gdk::MemoryTexture` (Phase 5 reskin).
+                #[allow(deprecated)]
                 let texture = cover_pixbuf.as_ref().map(gdk::Texture::for_pixbuf);
 
                 // The color palette we use for styling the UI
@@ -204,10 +208,10 @@ impl CoverCache {
                 };
 
                 // We want both texture and palette
-                if texture.is_some() && palette.is_some() {
+                if let (Some(texture), Some(palette)) = (texture, palette) {
                     let res = CoverArt {
-                        texture: texture.unwrap(),
-                        palette: palette.unwrap(),
+                        texture,
+                        palette,
                         cache: cache_path,
                     };
 

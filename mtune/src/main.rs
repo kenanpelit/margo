@@ -7,7 +7,7 @@ mod config;
 mod cover_picture;
 mod drag_overlay;
 mod i18n;
-// mod library; // TEMP: added in Plan1 Task 6
+// mod library; // Plan 1 phase 2
 mod marquee;
 mod playback_control;
 mod playlist_view;

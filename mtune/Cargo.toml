@@ -26,6 +26,7 @@ gst-play = { package = "gstreamer-play", version = "0.25" }
 color-thief = "0.2.1"
 lofty = "0.24"
 mpris-server = "0.10"
+sha2 = { workspace = true }
 fuzzy-matcher = "0.3.7"
 rand = { version = "0.10", features = ["thread_rng"] }
 itertools = "0.14"
@@ -48,9 +49,9 @@ regex = { workspace = true }
 notify = { workspace = true }
 futures = { workspace = true }
 
-# glib-build-tools tracks the glib crate generation (gtk4 0.11 -> glib 0.21).
+# glib-build-tools tracks the glib crate generation (gtk4 0.11 -> glib 0.22).
 [build-dependencies]
-glib-build-tools = "0.21"
+glib-build-tools = "0.22"
 
 [dev-dependencies]
 tempfile = "3"

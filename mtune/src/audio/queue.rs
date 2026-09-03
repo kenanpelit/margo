@@ -191,13 +191,13 @@ impl Queue {
     }
 
     pub fn previous_song(&self) -> Option<Song> {
-        if let Some(current_pos) = self.imp().current_pos.get() {
-            if current_pos > 0 {
-                let prev = current_pos - 1;
-                self.imp().current_pos.replace(Some(prev));
-                self.notify("current");
-                return self.song_at(current_pos - 1);
-            }
+        if let Some(current_pos) = self.imp().current_pos.get()
+            && current_pos > 0
+        {
+            let prev = current_pos - 1;
+            self.imp().current_pos.replace(Some(prev));
+            self.notify("current");
+            return self.song_at(current_pos - 1);
         }
 
         None
@@ -261,10 +261,10 @@ impl Queue {
     pub fn is_last_song(&self) -> bool {
         let n_items = self.imp().model.n_items();
 
-        if let Some(current_pos) = self.imp().current_pos.get() {
-            if n_items > 0 {
-                return current_pos == n_items - 1;
-            }
+        if let Some(current_pos) = self.imp().current_pos.get()
+            && n_items > 0
+        {
+            return current_pos == n_items - 1;
         }
 
         false

@@ -64,7 +64,7 @@ impl Display for RepeatMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, glib::Enum, PartialEq)]
+#[derive(Clone, Copy, Debug, glib::Enum, PartialEq, Default)]
 #[enum_type(name = "TuneReplayGainMode")]
 pub enum ReplayGainMode {
     #[enum_value(name = "album")]
@@ -72,13 +72,8 @@ pub enum ReplayGainMode {
     #[enum_value(name = "track")]
     Track,
     #[enum_value(name = "off")]
+    #[default]
     Off,
-}
-
-impl Default for ReplayGainMode {
-    fn default() -> Self {
-        Self::Off
-    }
 }
 
 impl From<i32> for ReplayGainMode {

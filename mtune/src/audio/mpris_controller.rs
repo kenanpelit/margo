@@ -97,10 +97,10 @@ impl MprisController {
             #[weak(rename_to = mpris)]
             self.mpris,
             async move {
-                if let Some(mpris) = mpris.get() {
-                    if let Err(err) = mpris.set_metadata(metadata).await {
-                        error!("Unable to set MPRIS metadata: {err:?}");
-                    }
+                if let Some(mpris) = mpris.get()
+                    && let Err(err) = mpris.set_metadata(metadata).await
+                {
+                    error!("Unable to set MPRIS metadata: {err:?}");
                 }
             }
         ));
@@ -146,10 +146,10 @@ impl Controller for MprisController {
                 #[weak(rename_to = mpris)]
                 self.mpris,
                 async move {
-                    if let Some(mpris) = mpris.get() {
-                        if let Err(err) = mpris.seeked(pos).await {
-                            error!("Unable to emit MPRIS Seeked: {err:?}");
-                        }
+                    if let Some(mpris) = mpris.get()
+                        && let Err(err) = mpris.seeked(pos).await
+                    {
+                        error!("Unable to emit MPRIS Seeked: {err:?}");
                     }
                 }
             ));
@@ -167,10 +167,10 @@ impl Controller for MprisController {
             #[weak(rename_to = mpris)]
             self.mpris,
             async move {
-                if let Some(mpris) = mpris.get() {
-                    if let Err(err) = mpris.set_loop_status(status).await {
-                        error!("Unable to set MPRIS loop status: {err:?}");
-                    }
+                if let Some(mpris) = mpris.get()
+                    && let Err(err) = mpris.set_loop_status(status).await
+                {
+                    error!("Unable to set MPRIS loop status: {err:?}");
                 }
             }
         ));
