@@ -246,9 +246,12 @@ impl mpris_server::LocalPlayerInterface for TuneMpris {
         Ok(())
     }
     async fn rate(&self) -> fdo::Result<PlaybackRate> {
-        Ok(1.0)
+        Ok(self.player().map(|p| p.playback_rate()).unwrap_or(1.0))
     }
-    async fn set_rate(&self, _: PlaybackRate) -> mpris_server::zbus::Result<()> {
+    async fn set_rate(&self, rate: PlaybackRate) -> mpris_server::zbus::Result<()> {
+        if let Some(p) = self.player() {
+            p.set_playback_rate(rate);
+        }
         Ok(())
     }
     async fn shuffle(&self) -> fdo::Result<bool> {
@@ -283,10 +286,10 @@ impl mpris_server::LocalPlayerInterface for TuneMpris {
         ))
     }
     async fn minimum_rate(&self) -> fdo::Result<PlaybackRate> {
-        Ok(1.0)
+        Ok(crate::audio::MIN_RATE)
     }
     async fn maximum_rate(&self) -> fdo::Result<PlaybackRate> {
-        Ok(1.0)
+        Ok(crate::audio::MAX_RATE)
     }
     async fn can_go_next(&self) -> fdo::Result<bool> {
         Ok(self
@@ -505,5 +508,9 @@ impl Controller for MprisController {
 
     fn set_repeat_mode(&self, repeat: RepeatMode) {
         self.emit_props(vec![Property::LoopStatus(loop_status(repeat))]);
+    }
+
+    fn set_playback_rate(&self, rate: f64) {
+        self.emit_props(vec![Property::Rate(rate)]);
     }
 }

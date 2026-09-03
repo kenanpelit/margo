@@ -12,6 +12,7 @@ mod i18n;
 mod library;
 mod marquee;
 mod playback_control;
+mod playlist;
 mod playlist_view;
 mod queue_row;
 mod search;

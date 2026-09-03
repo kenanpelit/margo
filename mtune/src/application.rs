@@ -132,6 +132,27 @@ mod imp {
 
             gtk::Window::set_default_icon_name(APPLICATION_ID);
             self.obj().setup_matugen_palette();
+
+            // Checkpoint the resume position while running, so a crash /
+            // SIGKILL still leaves a recent spot to come back to.
+            glib::timeout_add_seconds_local(
+                10,
+                clone!(
+                    #[weak(rename_to = this)]
+                    self.obj(),
+                    #[upgrade_or]
+                    glib::ControlFlow::Break,
+                    move || {
+                        this.persist_resume();
+                        glib::ControlFlow::Continue
+                    }
+                ),
+            );
+        }
+
+        fn shutdown(&self) {
+            self.obj().persist_resume();
+            self.parent_shutdown();
         }
 
         fn activate(&self) {
@@ -505,6 +526,7 @@ impl Application {
                 position_secs: state.position(),
                 duration_secs: state.duration(),
                 volume: state.volume(),
+                rate: state.playback_rate(),
                 shuffle: queue.is_shuffled(),
                 repeat: queue.repeat_mode(),
                 queue_len: queue.n_songs(),
@@ -517,6 +539,7 @@ impl Application {
                     .iter()
                     .map(|p| p.to_string_lossy().into_owned())
                     .collect(),
+                playlists: crate::playlist::saved_names(),
                 scanning,
                 scan_done,
                 scan_total,
@@ -601,6 +624,22 @@ impl Application {
                 player.clear_queue();
                 self.load_library();
             }
+            AppCommand::SetRate(rate) => player.set_playback_rate(rate),
+            AppCommand::LoadPlaylist(name) => {
+                if let Some(win) = self.active_window().and_downcast::<Window>() {
+                    win.open_playlist_file(&crate::playlist::saved_path(&name));
+                }
+            }
+            AppCommand::OpenPlaylist(path) => {
+                if let Some(win) = self.active_window().and_downcast::<Window>() {
+                    win.open_playlist_file(&path);
+                }
+            }
+            AppCommand::SavePlaylist(name) => {
+                if let Err(e) = crate::playlist::save(&name, player.queue()) {
+                    debug!("mtune: save playlist: {e}");
+                }
+            }
         }
         self.refresh_bridge();
     }
@@ -638,6 +677,43 @@ impl Application {
         );
 
         let _dummy = self.imp().settings.boolean("background-play");
+
+        // Playback rate is sticky: restore the last value, and persist it
+        // whenever it changes (the pill / MPRIS / window all route through
+        // `PlayerState`).
+        let imp = self.imp();
+        let rate = imp.settings.double("playback-rate");
+        if (rate - 1.0).abs() > f64::EPSILON {
+            imp.player.set_playback_rate(rate);
+        }
+        imp.player.state().connect_notify_local(
+            Some("playback-rate"),
+            clone!(
+                #[weak(rename_to = this)]
+                self,
+                move |state, _| {
+                    let _ = this
+                        .imp()
+                        .settings
+                        .set_double("playback-rate", state.playback_rate());
+                }
+            ),
+        );
+    }
+
+    /// Write the current track + position to GSettings so
+    /// `[playback] on_start = "resume"` can pick it up next launch.
+    /// Called on a timer, on MPRIS/tray `Quit`, on `shutdown`, and on
+    /// window close.
+    pub fn persist_resume(&self) {
+        let imp = self.imp();
+        let Some(song) = imp.player.state().current_song() else {
+            return;
+        };
+        let _ = imp.settings.set_string("resume-uri", &song.uri());
+        let _ = imp
+            .settings
+            .set_uint64("resume-position", imp.player.state().position());
     }
 
     fn setup_channel(&self) {
@@ -660,7 +736,10 @@ impl Application {
     fn process_action(&self, action: ApplicationAction) -> glib::ControlFlow {
         match action {
             ApplicationAction::Present => self.present_main_window(),
-            ApplicationAction::Quit => self.quit(),
+            ApplicationAction::Quit => {
+                self.persist_resume();
+                self.quit();
+            }
             ApplicationAction::BackgroundHold(active) => self.set_background_hold(active),
         }
 

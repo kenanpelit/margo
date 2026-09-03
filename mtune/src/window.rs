@@ -9,16 +9,17 @@ use std::{
     time::Instant,
 };
 
+use adw::prelude::*;
 use adw::subclass::prelude::*;
 use glib::{clone, closure_local};
-use gtk::{CompositeTemplate, gdk, gio, glib, prelude::*};
+use gtk::{CompositeTemplate, gdk, gio, glib};
 use log::debug;
 
 use crate::{
     audio::{AudioPlayer, RepeatMode, ReplayGainMode, Song},
     config::APPLICATION_ID,
     drag_overlay::DragOverlay,
-    i18n::{i18n, i18n_k, ni18n_f, ni18n_k},
+    i18n::{i18n, i18n_f, i18n_k, ni18n_f, ni18n_k},
     playback_control::PlaybackControl,
     playlist_view::PlaylistView,
     queue_row::QueueRow,
@@ -89,6 +90,14 @@ mod imp {
         pub add_folder_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub restore_playlist_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub speed_button: TemplateChild<gtk::MenuButton>,
+        #[template_child]
+        pub speed_scale: TemplateChild<gtk::Scale>,
+        #[template_child]
+        pub speed_adjustment: TemplateChild<gtk::Adjustment>,
+        #[template_child]
+        pub speed_presets: TemplateChild<gtk::Box>,
 
         pub provider: gtk::CssProvider,
         pub settings: gio::Settings,
@@ -214,6 +223,62 @@ mod imp {
                 debug!("Window::queue.restore-playlist()");
                 win.restore_playlist();
             });
+            klass.install_action_async("queue.open-playlist", None, |win, _, _| async move {
+                let filters = gio::ListStore::new::<gtk::FileFilter>();
+                let filter = gtk::FileFilter::new();
+                gtk::FileFilter::set_name(&filter, Some(&i18n("Playlists")));
+                for m in ["audio/x-mpegurl", "audio/mpegurl", "audio/x-scpls"] {
+                    filter.add_mime_type(m);
+                }
+                for p in ["*.m3u", "*.m3u8", "*.pls"] {
+                    filter.add_pattern(p);
+                }
+                filters.append(&filter);
+
+                let dialog = gtk::FileDialog::builder()
+                    .accept_label(i18n("_Open"))
+                    .filters(&filters)
+                    .initial_folder(&gio::File::for_path(crate::playlist::library_dir()))
+                    .modal(true)
+                    .title(i18n("Open Playlist"))
+                    .build();
+
+                if let Ok(file) = dialog.open_future(Some(&win)).await
+                    && let Some(path) = file.path()
+                {
+                    win.open_playlist_file(&path);
+                }
+            });
+            klass.install_action_async("queue.save-playlist", None, |win, _, _| async move {
+                let entry = gtk::Entry::builder()
+                    .placeholder_text(i18n("Playlist name"))
+                    .activates_default(true)
+                    .build();
+                let dialog = adw::AlertDialog::builder()
+                    .heading(i18n("Save Playlist"))
+                    .body(i18n("Store the current queue in your playlist library"))
+                    .extra_child(&entry)
+                    .default_response("save")
+                    .close_response("cancel")
+                    .build();
+                dialog.add_responses(&[("cancel", &i18n("_Cancel")), ("save", &i18n("_Save"))]);
+                dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
+                if dialog.choose_future(Some(&win)).await == "save" {
+                    let name = entry.text().trim().to_string();
+                    if !name.is_empty() {
+                        win.save_current_playlist(&name);
+                    }
+                }
+            });
+            klass.install_action(
+                "queue.load-saved",
+                Some(glib::VariantTy::STRING),
+                move |win, _, param| {
+                    if let Some(name) = param.and_then(glib::Variant::get::<String>) {
+                        win.load_saved_playlist(&name);
+                    }
+                },
+            );
             klass.install_action("win.copy", None, move |win, _, _| {
                 debug!("Window::win.copy()");
                 win.copy_song();
@@ -265,6 +330,10 @@ mod imp {
                 status_page: TemplateChild::default(),
                 add_folder_button: TemplateChild::default(),
                 restore_playlist_button: TemplateChild::default(),
+                speed_button: TemplateChild::default(),
+                speed_scale: TemplateChild::default(),
+                speed_adjustment: TemplateChild::default(),
+                speed_presets: TemplateChild::default(),
                 playlist_view: TemplateChild::default(),
                 playlist_shuffled: Cell::new(false),
                 playlist_visible: Cell::new(true),
@@ -355,6 +424,7 @@ impl Window {
         win.setup_waveform();
         win.setup_actions();
         win.setup_playlist();
+        win.setup_speed();
         win.setup_drop_target();
         win.setup_provider();
         win.bind_state();
@@ -376,6 +446,82 @@ impl Window {
         }
 
         None
+    }
+
+    /// Wire the header playback-speed control (scale + preset pills) to
+    /// the (sticky, global) player rate.
+    fn setup_speed(&self) {
+        let imp = self.imp();
+        let Some(player) = self.player() else { return };
+
+        const PRESETS: [f64; 6] = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+        for rate in PRESETS {
+            let label = if rate.fract() == 0.0 {
+                format!("{rate:.0}×")
+            } else {
+                format!("{rate}×")
+            };
+            let btn = gtk::Button::builder()
+                .label(label)
+                .css_classes(["flat"])
+                .build();
+            btn.connect_clicked(clone!(
+                #[weak(rename_to = win)]
+                self,
+                move |_| {
+                    if let Some(p) = win.player() {
+                        p.set_playback_rate(rate);
+                    }
+                }
+            ));
+            imp.speed_presets.append(&btn);
+        }
+
+        // scale -> player
+        imp.speed_adjustment.connect_value_changed(clone!(
+            #[weak(rename_to = win)]
+            self,
+            move |adj| {
+                if let Some(p) = win.player() {
+                    p.set_playback_rate(adj.value());
+                }
+            }
+        ));
+
+        // player -> scale + button label
+        let sync = clone!(
+            #[weak(rename_to = win)]
+            self,
+            move |state: &crate::audio::PlayerState| {
+                let rate = state.playback_rate();
+                let imp = win.imp();
+                if (imp.speed_adjustment.value() - rate).abs() > 0.001 {
+                    imp.speed_adjustment.set_value(rate);
+                }
+                let label = if rate.fract() == 0.0 {
+                    format!("{rate:.0}×")
+                } else {
+                    format!("{rate:.2}×")
+                };
+                imp.speed_button.set_label(&label);
+                imp.speed_button
+                    .remove_css_class(if (rate - 1.0).abs() < 0.001 {
+                        "accent"
+                    } else {
+                        "flat"
+                    });
+                imp.speed_button
+                    .add_css_class(if (rate - 1.0).abs() < 0.001 {
+                        "flat"
+                    } else {
+                        "accent"
+                    });
+            }
+        );
+        sync(player.state());
+        player
+            .state()
+            .connect_notify_local(Some("playback-rate"), move |s, _| sync(s));
     }
 
     fn setup_actions(&self) {
@@ -523,6 +669,41 @@ impl Window {
         }
     }
 
+    /// Replace the queue with the tracks referenced by a playlist file
+    /// (`.m3u` / `.m3u8` / `.pls`).
+    pub fn open_playlist_file(&self, path: &std::path::Path) {
+        let files: Vec<gio::File> = crate::playlist::parse(path)
+            .into_iter()
+            .map(gio::File::for_path)
+            .collect();
+        if files.is_empty() {
+            self.add_toast(i18n("Playlist is empty or unreadable"));
+            return;
+        }
+        if let Some(p) = self.player() {
+            p.clear_queue();
+        }
+        self.imp().pending_start.replace(Some(StartIntent::Top));
+        self.queue_songs(files);
+    }
+
+    /// Load a playlist from the library by display name.
+    fn load_saved_playlist(&self, name: &str) {
+        self.open_playlist_file(&crate::playlist::saved_path(name));
+    }
+
+    /// Write the current queue to the library under `name`.
+    fn save_current_playlist(&self, name: &str) {
+        let Some(player) = self.player() else { return };
+        match crate::playlist::save(name, player.queue()) {
+            Ok(_) => self.add_toast(i18n_f("Saved playlist “{}”", &[name])),
+            Err(e) => {
+                debug!("save playlist: {e}");
+                self.add_toast(i18n("Could not save the playlist"));
+            }
+        }
+    }
+
     fn queue_songs(&self, queue: Vec<gio::File>) {
         if queue.is_empty() {
             self.add_toast(i18n("No available song found"));
@@ -612,7 +793,9 @@ impl Window {
                                         match queue.position_of_uri(&uri) {
                                             Some(ix) => {
                                                 player.skip_to(ix);
-                                                player.seek_position_abs(pos);
+                                                // Defer the seek — the pipeline
+                                                // isn't ready this instant.
+                                                player.queue_resume_seek(pos);
                                             }
                                             None => player.skip_to(0),
                                         }
@@ -1539,9 +1722,35 @@ impl Window {
             return;
         }
 
+        // A single playlist file → open it as the queue.
+        if let [only] = files
+            && let Some(path) = only.path()
+            && matches!(
+                path.extension().and_then(|e| e.to_str()),
+                Some("m3u") | Some("m3u8") | Some("pls")
+            )
+        {
+            self.open_playlist_file(&path);
+            return;
+        }
+
         let model = gio::ListStore::new::<gio::File>();
         for f in files {
-            model.append(f);
+            // Expand any playlist argument into its entries.
+            let ext = f
+                .path()
+                .as_deref()
+                .and_then(|p| p.extension())
+                .and_then(|e| e.to_str())
+                .map(str::to_owned);
+            match (ext.as_deref(), f.path()) {
+                (Some("m3u" | "m3u8" | "pls"), Some(path)) => {
+                    for p in crate::playlist::parse(&path) {
+                        model.append(&gio::File::for_path(p));
+                    }
+                }
+                _ => model.append(f),
+            }
         }
         self.add_files_to_queue(model.upcast_ref::<gio::ListModel>());
     }

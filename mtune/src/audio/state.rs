@@ -22,6 +22,7 @@ mod imp {
         pub position: Cell<u64>,
         pub current_song: RefCell<Option<Song>>,
         pub volume: Cell<f64>,
+        pub playback_rate: Cell<f64>,
     }
 
     #[glib::object_subclass]
@@ -35,6 +36,7 @@ mod imp {
                 position: Cell::new(0),
                 current_song: RefCell::new(None),
                 volume: Cell::new(1.0),
+                playback_rate: Cell::new(1.0),
             }
         }
     }
@@ -59,6 +61,12 @@ mod imp {
                         .default_value(1.0)
                         .read_only()
                         .build(),
+                    ParamSpecDouble::builder("playback-rate")
+                        .minimum(0.5)
+                        .maximum(2.0)
+                        .default_value(1.0)
+                        .read_only()
+                        .build(),
                 ]
             });
             PROPERTIES.as_ref()
@@ -71,6 +79,7 @@ mod imp {
                 "position" => obj.position().to_value(),
                 "song" => self.current_song.borrow().to_value(),
                 "volume" => obj.volume().to_value(),
+                "playback-rate" => obj.playback_rate().to_value(),
 
                 // These are proxies for Song properties
                 "title" => obj.title().to_value(),
@@ -171,6 +180,17 @@ impl PlayerState {
     pub fn set_position(&self, position: u64) {
         self.imp().position.replace(position);
         self.notify("position");
+    }
+
+    pub fn playback_rate(&self) -> f64 {
+        self.imp().playback_rate.get()
+    }
+
+    pub fn set_playback_rate(&self, rate: f64) {
+        let old = self.imp().playback_rate.replace(rate);
+        if format!("{old:.2}") != format!("{rate:.2}") {
+            self.notify("playback-rate");
+        }
     }
 
     pub fn volume(&self) -> f64 {

@@ -28,6 +28,9 @@ pub enum PlaybackAction {
     UpdatePosition(u64, bool),
     VolumeChanged(f64),
     PlayNext,
+    /// The pipeline reached PAUSED/PLAYING — a deferred resume seek can
+    /// be applied.
+    PipelineReady,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
@@ -105,6 +108,10 @@ pub struct AudioPlayer {
     queue: Queue,
     state: PlayerState,
     waveform_generator: WaveformGenerator,
+    /// A resume seek (secs) to apply once the freshly-loaded pipeline is
+    /// ready — issuing it straight after `set_song_uri` is too early and
+    /// `gst_play` drops it. Consumed on `PlaybackAction::PipelineReady`.
+    pending_seek: std::cell::Cell<Option<u64>>,
 }
 
 impl fmt::Debug for AudioPlayer {
@@ -147,6 +154,7 @@ impl AudioPlayer {
             queue,
             state,
             waveform_generator,
+            pending_seek: std::cell::Cell::new(None),
         });
 
         res.clone().setup_channel();
@@ -189,6 +197,7 @@ impl AudioPlayer {
             PlaybackAction::UpdatePosition(pos, notify) => self.update_position(pos, notify),
             PlaybackAction::VolumeChanged(vol) => self.update_volume(vol),
             PlaybackAction::PlayNext => self.play_next(),
+            PlaybackAction::PipelineReady => self.apply_pending_seek(),
         }
 
         glib::ControlFlow::Continue
@@ -455,7 +464,15 @@ impl AudioPlayer {
     }
 
     pub fn seek_position_abs(&self, position: u64) {
-        let pos = u64::max(position, self.state.duration());
+        let duration = self.state.duration();
+        // Clamp *below* the duration (seeking exactly to the end just
+        // fires EOS); `max` here was a long-standing bug — it sent every
+        // seek to the end of the track.
+        let pos = if duration > 0 {
+            position.min(duration.saturating_sub(1))
+        } else {
+            position
+        };
         self.backend.seek_position(pos);
     }
 
@@ -476,10 +493,54 @@ impl AudioPlayer {
     }
 
     fn update_position(&self, position: u64, notify: bool) {
+        // Backstop: if the pipeline never sent a StateChanged we could act
+        // on, the first real position tick still lets the seek land.
+        if self.pending_seek.get().is_some() {
+            self.apply_pending_seek();
+            return;
+        }
+
         self.state.set_position(position);
 
         for c in &self.controllers {
             c.set_position(position, notify);
+        }
+    }
+
+    /// Arm a resume seek to `secs`, applied once the current track's
+    /// pipeline reaches PAUSED/PLAYING (see [`PlaybackAction::PipelineReady`]).
+    pub fn queue_resume_seek(&self, secs: u64) {
+        self.pending_seek.set(Some(secs));
+    }
+
+    fn apply_pending_seek(&self) {
+        let Some(target) = self.pending_seek.take() else {
+            return;
+        };
+        let dur = self.state.duration();
+        let target = if dur > 0 {
+            target.min(dur.saturating_sub(1))
+        } else {
+            target
+        };
+        if target > 0 {
+            self.backend.seek_position(target);
+        }
+    }
+
+    pub fn playback_rate(&self) -> f64 {
+        self.backend.rate()
+    }
+
+    /// Set the (sticky, global) playback rate — clamped to 0.5..=2.0,
+    /// propagated to the pipeline, `PlayerState` and every controller
+    /// (so MPRIS emits `Rate`).
+    pub fn set_playback_rate(&self, rate: f64) {
+        self.backend.set_rate(rate);
+        let applied = self.backend.rate();
+        self.state.set_playback_rate(applied);
+        for c in &self.controllers {
+            c.set_playback_rate(applied);
         }
     }
 

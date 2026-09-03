@@ -49,7 +49,7 @@ pub use inhibit_controller::InhibitController;
 pub use mpris_controller::MprisController;
 
 mod gst_backend;
-pub use gst_backend::GstBackend;
+pub use gst_backend::{GstBackend, MAX_RATE, MIN_RATE};
 
 mod player;
 mod queue;

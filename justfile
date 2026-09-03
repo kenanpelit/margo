@@ -64,6 +64,8 @@ mtune:
     sudo install -Dm644 mtune/data/icons/hicolor/scalable/apps/org.margo.Tune.svg /usr/share/icons/hicolor/scalable/apps/org.margo.Tune.svg
     sudo install -Dm644 mtune/data/icons/hicolor/symbolic/apps/org.margo.Tune-symbolic.svg /usr/share/icons/hicolor/symbolic/apps/org.margo.Tune-symbolic.svg
     sudo glib-compile-schemas /usr/share/glib-2.0/schemas
+    sudo update-desktop-database /usr/share/applications || true
+    sudo gtk-update-icon-cache -qtf /usr/share/icons/hicolor || true
     @echo "mtune installed"
 
 # Regenerate the checked-in mctl + mshellctl shell completions (bash/zsh/fish)

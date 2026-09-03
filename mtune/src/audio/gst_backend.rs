@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022  Emmanuele Bassi
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::cell::Cell;
+
 use async_channel::Sender;
 use glib::clone;
 use gst::prelude::*;
@@ -9,11 +11,18 @@ use log::{debug, error, warn};
 
 use crate::audio::{PlaybackAction, ReplayGainMode, SeekDirection};
 
+/// Playback-rate bounds (also mirrored to MPRIS `MinimumRate`/`MaximumRate`).
+pub const MIN_RATE: f64 = 0.5;
+pub const MAX_RATE: f64 = 2.0;
+
 #[derive(Debug)]
 pub struct GstBackend {
     sender: Sender<PlaybackAction>,
     gst_player: gst_play::Play,
     replaygain: Option<GstReplayGain>,
+    /// Sticky playback rate — `gst_play::Play` resets to 1.0 on `set_uri`,
+    /// so we re-apply this after every track change.
+    rate: Cell<f64>,
 }
 
 #[derive(Debug)]
@@ -83,6 +92,7 @@ impl GstBackend {
             sender,
             gst_player,
             replaygain: GstReplayGain::new().ok(),
+            rate: Cell::new(1.0),
         };
 
         res.setup_signals();
@@ -110,6 +120,15 @@ impl GstBackend {
                     gst_play::PlayMessage::EndOfStream(_) => {
                         if let Err(e) = sender.send_blocking(PlaybackAction::PlayNext) {
                             error!("Failed to send PlayNext: {e}");
+                        }
+                    }
+                    gst_play::PlayMessage::StateChanged(message) => {
+                        // Preroll finished — a queued resume seek can land now.
+                        if matches!(
+                            message.state(),
+                            gst_play::PlayState::Paused | gst_play::PlayState::Playing
+                        ) {
+                            let _ = sender.send_blocking(PlaybackAction::PipelineReady);
                         }
                     }
                     gst_play::PlayMessage::PositionUpdated(message) => {
@@ -143,6 +162,20 @@ impl GstBackend {
 
     pub fn set_song_uri(&self, uri: Option<&str>) {
         self.gst_player.set_uri(uri);
+        // `set_uri` drops back to 1.0 — restore the user's chosen rate.
+        if uri.is_some() && (self.rate.get() - 1.0).abs() > f64::EPSILON {
+            self.gst_player.set_rate(self.rate.get());
+        }
+    }
+
+    pub fn rate(&self) -> f64 {
+        self.rate.get()
+    }
+
+    pub fn set_rate(&self, rate: f64) {
+        let rate = rate.clamp(MIN_RATE, MAX_RATE);
+        self.rate.set(rate);
+        self.gst_player.set_rate(rate);
     }
 
     pub fn seek(&self, position: u64, duration: u64, offset: u64, direction: SeekDirection) {

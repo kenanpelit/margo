@@ -12,7 +12,7 @@ use crate::audio::RepeatMode;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Snapshot {
     pub has_song: bool,
     pub playing: bool,
@@ -24,14 +24,43 @@ pub struct Snapshot {
     pub position_secs: u64,
     pub duration_secs: u64,
     pub volume: f64,
+    pub rate: f64,
     pub shuffle: bool,
     pub repeat: RepeatMode,
     pub queue_len: u32,
     pub current_index: i64,
     pub library_roots: Vec<String>,
+    /// Names of the saved playlists (`~/.config/margo/mtune/playlists/`).
+    pub playlists: Vec<String>,
     pub scanning: bool,
     pub scan_done: u32,
     pub scan_total: u32,
+}
+
+impl Default for Snapshot {
+    fn default() -> Self {
+        Self {
+            has_song: false,
+            playing: false,
+            title: String::new(),
+            artist: String::new(),
+            album: String::new(),
+            cover_art: String::new(),
+            position_secs: 0,
+            duration_secs: 0,
+            volume: 1.0,
+            rate: 1.0,
+            shuffle: false,
+            repeat: RepeatMode::default(),
+            queue_len: 0,
+            current_index: -1,
+            library_roots: Vec::new(),
+            playlists: Vec::new(),
+            scanning: false,
+            scan_done: 0,
+            scan_total: 0,
+        }
+    }
 }
 
 pub type SharedSnapshot = Arc<Mutex<Snapshot>>;
@@ -61,6 +90,14 @@ pub enum AppCommand {
     RescanLibrary,
     PlayIndex(u32),
     RemoveIndex(u32),
+    /// Sticky playback rate (0.5..=2.0).
+    SetRate(f64),
+    /// Load a saved playlist by name.
+    LoadPlaylist(String),
+    /// Open an arbitrary `.m3u` / `.pls` file.
+    OpenPlaylist(PathBuf),
+    /// Save the current queue to the library under this name.
+    SavePlaylist(String),
 }
 
 pub type CommandSender = async_channel::Sender<AppCommand>;

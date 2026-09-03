@@ -167,6 +167,25 @@ impl TuneService {
             .volume
     }
 
+    /// Sticky playback rate (0.5..=2.0; 1.0 = normal speed).
+    #[zbus(property)]
+    async fn rate(&self) -> f64 {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .rate
+    }
+
+    /// Names of the saved playlists.
+    #[zbus(property)]
+    async fn playlists(&self) -> Vec<String> {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .playlists
+            .clone()
+    }
+
     // ── Methods (actions, applied on the GTK main context) ───────────
 
     async fn play_pause(&self) {
@@ -191,6 +210,25 @@ impl TuneService {
 
     async fn set_volume(&self, volume: f64) {
         self.send(AppCommand::SetVolume(volume));
+    }
+
+    async fn set_rate(&self, rate: f64) {
+        self.send(AppCommand::SetRate(rate));
+    }
+
+    /// Load a saved playlist by name.
+    async fn load_playlist(&self, name: String) {
+        self.send(AppCommand::LoadPlaylist(name));
+    }
+
+    /// Open a `.m3u` / `.m3u8` / `.pls` file.
+    async fn open_playlist(&self, path: String) {
+        self.send(AppCommand::OpenPlaylist(PathBuf::from(path)));
+    }
+
+    /// Save the current queue to the library under this name.
+    async fn save_playlist(&self, name: String) {
+        self.send(AppCommand::SavePlaylist(name));
     }
 
     async fn set_library_roots(&self, roots: Vec<String>) {

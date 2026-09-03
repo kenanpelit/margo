@@ -42,9 +42,13 @@ pub struct MtunePlayer {
     pub shuffle: Property<bool>,
     /// `"consecutive"` / `"repeat-all"` / `"repeat-one"`.
     pub repeat_mode: Property<String>,
+    /// Sticky playback rate (0.5..=2.0).
+    pub rate: Property<f64>,
     pub queue_len: Property<u32>,
     pub current_index: Property<i64>,
     pub library_roots: Property<Vec<String>>,
+    /// Names of the saved playlists.
+    pub playlists: Property<Vec<String>>,
     pub scanning: Property<bool>,
     /// `(done, total)` during a scan, `(0, 0)` otherwise.
     pub scan_progress: Property<(u32, u32)>,
@@ -64,9 +68,11 @@ impl MtunePlayer {
             duration: Property::new(Duration::ZERO),
             shuffle: Property::new(false),
             repeat_mode: Property::new("consecutive".into()),
+            rate: Property::new(1.0),
             queue_len: Property::new(0),
             current_index: Property::new(-1),
             library_roots: Property::new(Vec::new()),
+            playlists: Property::new(Vec::new()),
             scanning: Property::new(false),
             scan_progress: Property::new((0, 0)),
         }
@@ -112,6 +118,18 @@ impl MtunePlayer {
     }
     pub async fn set_repeat_mode(&self, mode: &str) {
         self.call("SetRepeatMode", &(mode,)).await;
+    }
+    pub async fn set_rate(&self, rate: f64) {
+        self.call("SetRate", &(rate,)).await;
+    }
+    pub async fn load_playlist(&self, name: &str) {
+        self.call("LoadPlaylist", &(name,)).await;
+    }
+    pub async fn open_playlist(&self, path: &str) {
+        self.call("OpenPlaylist", &(path,)).await;
+    }
+    pub async fn save_playlist(&self, name: &str) {
+        self.call("SavePlaylist", &(name,)).await;
     }
     pub async fn play_index(&self, index: u32) {
         self.call("PlayIndex", &(index,)).await;
@@ -268,6 +286,12 @@ async fn refresh(proxy: &zbus::Proxy<'_>, p: &MtunePlayer) {
     }
     if let Some(v) = get!("RepeatMode", String) {
         p.repeat_mode.set(v);
+    }
+    if let Some(v) = get!("Rate", f64) {
+        p.rate.set(v);
+    }
+    if let Some(v) = get!("Playlists", Vec<String>) {
+        p.playlists.set(v);
     }
     if let Some(v) = get!("QueueLength", u32) {
         p.queue_len.set(v);
