@@ -64,6 +64,25 @@ pub fn load_cover_texture(buffer: &glib::Bytes) -> Option<gdk_pixbuf::Pixbuf> {
     }
 }
 
+/// Wrap a decoded `Pixbuf` in a `gdk::Texture`. Uses `gdk::MemoryTexture`
+/// directly (`Texture::for_pixbuf` is deprecated since GTK 4.20) — the
+/// pixbuf's pixel buffer is copied into the texture.
+pub fn texture_from_pixbuf(pixbuf: &gdk_pixbuf::Pixbuf) -> gdk::Texture {
+    let format = if pixbuf.has_alpha() {
+        gdk::MemoryFormat::R8g8b8a8
+    } else {
+        gdk::MemoryFormat::R8g8b8
+    };
+    gdk::MemoryTexture::new(
+        pixbuf.width(),
+        pixbuf.height(),
+        format,
+        &pixbuf.read_pixel_bytes(),
+        pixbuf.rowstride() as usize,
+    )
+    .upcast()
+}
+
 pub fn cache_cover_art(uuid: &str, pixbuf: &gdk_pixbuf::Pixbuf) -> Option<PathBuf> {
     let mut cache_dir = glib::user_cache_dir();
     cache_dir.push("margo");

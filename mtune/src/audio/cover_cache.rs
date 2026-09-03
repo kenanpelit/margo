@@ -194,11 +194,7 @@ impl CoverCache {
                 };
 
                 // The texture we draw on screen.
-                // `Texture::for_pixbuf` is deprecated since GTK 4.20; the cover
-                // pipeline still hands us a decoded `Pixbuf`, so keep it until
-                // the pipeline is moved to `gdk::MemoryTexture` (Phase 5 reskin).
-                #[allow(deprecated)]
-                let texture = cover_pixbuf.as_ref().map(gdk::Texture::for_pixbuf);
+                let texture = cover_pixbuf.as_ref().map(utils::texture_from_pixbuf);
 
                 // The color palette we use for styling the UI
                 let palette = if let Some(ref pixbuf) = cover_pixbuf {
