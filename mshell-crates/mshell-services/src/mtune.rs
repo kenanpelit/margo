@@ -184,7 +184,19 @@ async fn run(p: &MtunePlayer) -> zbus::Result<()> {
     use futures::StreamExt;
 
     let conn = Connection::session().await?;
-    let proxy = zbus::Proxy::new(&conn, BUS_NAME, OBJECT_PATH, IFACE).await?;
+    // No property cache. mtune signals changes with its own `Changed`
+    // signal, not the standard `org.freedesktop.DBus.Properties.
+    // PropertiesChanged`, so a caching proxy would `GetAll` once and then
+    // freeze every value forever — `refresh` would keep re-reading the
+    // stale cache. `CacheProperties::No` makes each `get_property` a live
+    // `Get` call.
+    let proxy = zbus::proxy::Builder::<zbus::Proxy>::new(&conn)
+        .destination(BUS_NAME)?
+        .path(OBJECT_PATH)?
+        .interface(IFACE)?
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
 
     // Wait for the name to have an owner (mtune running).
     let dbus = DBusProxy::new(&conn).await?;
