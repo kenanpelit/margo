@@ -308,16 +308,19 @@ impl Component for MtuneSettingsModel {
         widgets: &mut Self::Widgets,
         message: Self::Input,
         sender: ComponentSender<Self>,
-        root: &Self::Root,
+        _root: &Self::Root,
     ) {
         match message {
             MtuneSettingsInput::AddRoot => {
+                // Parent must be `None`: Settings is a layer-shell surface
+                // with no xdg_toplevel, so handing it to the file-chooser
+                // as a parent aborts GTK (crashing the shell).
                 let dialog = gtk::FileDialog::builder()
                     .title("Add a music folder")
+                    .modal(true)
                     .build();
-                let parent: Option<gtk::Window> = root.root().and_downcast();
                 let s = sender.clone();
-                dialog.select_folder(parent.as_ref(), gtk::gio::Cancellable::NONE, move |res| {
+                dialog.select_folder(gtk::Window::NONE, gtk::gio::Cancellable::NONE, move |res| {
                     if let Ok(folder) = res
                         && let Some(p) = folder.path()
                     {

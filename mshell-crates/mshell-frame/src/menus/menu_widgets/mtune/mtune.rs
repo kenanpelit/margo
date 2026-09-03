@@ -300,7 +300,7 @@ impl Component for MtuneMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, root: &Self::Root) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             MtuneMenuInput::PlayPause => {
                 tokio_rt_spawn(async { mtune_service().player.play_pause().await });
@@ -331,11 +331,15 @@ impl Component for MtuneMenuWidgetModel {
             }
             MtuneMenuInput::Launch => spawn_mtune(),
             MtuneMenuInput::ChooseFolder => {
+                // Parent must be `None`: a layer-shell menu surface has no
+                // xdg_toplevel, so handing it to the file-chooser as a
+                // parent aborts GTK (crashing the shell). The wallpaper
+                // and Valent menus pick folders the same way.
                 let dialog = gtk::FileDialog::builder()
                     .title("Choose a music folder")
+                    .modal(true)
                     .build();
-                let parent: Option<gtk::Window> = root.root().and_downcast();
-                dialog.select_folder(parent.as_ref(), gtk::gio::Cancellable::NONE, move |res| {
+                dialog.select_folder(gtk::Window::NONE, gtk::gio::Cancellable::NONE, move |res| {
                     if let Ok(folder) = res
                         && let Some(path) = folder.path()
                     {
