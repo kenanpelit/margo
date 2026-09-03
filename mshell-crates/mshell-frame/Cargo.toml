@@ -8,6 +8,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+gio-unix.workspace = true
 cairo-rs.workspace = true
 futures.workspace = true
 libc.workspace = true

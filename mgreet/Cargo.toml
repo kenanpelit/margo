@@ -16,6 +16,7 @@ rust-version.workspace = true
 [dependencies]
 gtk4.workspace = true
 gtk4-layer-shell.workspace = true
+glib-unix.workspace = true
 zeroize.workspace = true
 libc.workspace = true
 # The greeter ⇄ session-runner protocol. mgreet runs no PAM of its own, so the

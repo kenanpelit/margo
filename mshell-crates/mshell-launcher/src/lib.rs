@@ -26,7 +26,7 @@
 //!
 //! ## Providers vs the runtime
 //!
-//! The `Apps` provider needs `gtk::gio::DesktopAppInfo` (GTK types
+//! The `Apps` provider needs `gtk::gio_unix::DesktopAppInfo` (GTK types
 //! that don't cross threads cleanly) so it lives in `mshell-frame`.
 //! Pure providers — Calculator, Command, Session, Settings — live
 //! here and only depend on plain data + `std::process::Command`.

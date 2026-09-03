@@ -1,4 +1,4 @@
-//! Apps provider — wraps `gio::DesktopAppInfo` so the launcher
+//! Apps provider — wraps `gio_unix::DesktopAppInfo` so the launcher
 //! runtime can search desktop entries through the same trait every
 //! other provider uses.
 //!
@@ -26,7 +26,7 @@ use std::{
 /// cache the lowercased name + the original `DesktopAppInfo` so
 /// fuzzy match runs without re-allocating per keystroke.
 struct AppEntry {
-    info: gio::DesktopAppInfo,
+    info: gio_unix::DesktopAppInfo,
     /// Pre-computed lowercase name for case-insensitive fallback
     /// substring matching (used when fuzzy returns nothing).
     name: String,
@@ -73,7 +73,7 @@ impl AppsProvider {
     pub fn refresh(&self) {
         let mut new_entries: Vec<AppEntry> = gio::AppInfo::all()
             .into_iter()
-            .filter_map(|info| info.downcast::<gio::DesktopAppInfo>().ok())
+            .filter_map(|info| info.downcast::<gio_unix::DesktopAppInfo>().ok())
             .filter(|info| !info.is_hidden() && !info.is_nodisplay())
             .map(|info| {
                 let id = info
@@ -211,7 +211,7 @@ impl Provider for AppsProvider {
         // Resolve and clone what the closure needs *now* so the
         // captured state is plain owned strings (Rc<dyn Fn> can't
         // hold a `DesktopAppInfo` ergonomically across threads).
-        let info = relm4::gtk::gio::DesktopAppInfo::new(app_id)?;
+        let info = gio_unix::DesktopAppInfo::new(app_id)?;
         let exec = info.commandline()?.to_string_lossy().to_string();
         let term = std::env::var("TERMINAL").ok().filter(|t| !t.is_empty());
         Some(std::rc::Rc::new(move || {

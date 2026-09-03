@@ -244,7 +244,9 @@ fn main() -> glib::ExitCode {
         if let Some(fd) = raw {
             let app = app.clone();
             let state = state.clone();
-            glib::unix_fd_add_local(
+            // gtk-rs 0.22 moved the Unix fd-source helpers out of `glib`
+            // into the `glib-unix` companion crate.
+            glib_unix::unix_fd_add_local(
                 fd,
                 glib::IOCondition::IN | glib::IOCondition::HUP,
                 move |_, _| ui::on_runner_event(&app, &state),

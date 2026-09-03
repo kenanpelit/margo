@@ -1,4 +1,5 @@
 use crate::bars::bar::BarType;
+use gio_unix::DesktopAppInfo;
 use mshell_cache::pinned_apps::{PinnedApp, pin_app, unpin_app};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
@@ -12,7 +13,6 @@ use mshell_utils::app_info::find_app_info;
 use mshell_utils::launch::launch_detached;
 use mshell_utils::strings::truncate_string;
 use reactive_graph::traits::GetUntracked;
-use relm4::gtk::gio::DesktopAppInfo;
 use relm4::gtk::glib::{self, variant::ToVariant};
 use relm4::gtk::prelude::{
     ActionMapExt, AppInfoExt, ButtonExt, OrientableExt, PopoverExt, WidgetExt,

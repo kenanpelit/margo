@@ -12,10 +12,11 @@ name = "mkeys"
 path = "src/main.rs"
 
 [dependencies]
-# GTK / relm4 — pinned to the margo workspace generation (gtk4 0.10 gen).
-relm4 = "0.10"
-gtk4-layer-shell = "0.7"
-gdk4 = "0.10"
+# GTK / relm4 — pinned to the margo workspace generation (gtk-rs 0.11 gen).
+relm4 = { workspace = true }
+gtk4 = { workspace = true }
+gtk4-layer-shell = { workspace = true }
+gdk4 = "0.11"
 # Wayland virtual keyboard
 wayland-client = { workspace = true }
 wayland-protocols-misc = { version = "0.3", features = ["client", "wayland-client"] }

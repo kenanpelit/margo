@@ -13,12 +13,12 @@
 //! ids it resolves the desktop entry and calls `set_icon` (the
 //! same helper the legacy app launcher used).
 
+use gio_unix::DesktopAppInfo;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, IconsStoreFields, ThemeStoreFields};
 use mshell_launcher::{DisplayItem, LauncherItem};
 use mshell_utils::app_icon::app_icon::set_icon;
 use reactive_graph::traits::GetUntracked;
-use relm4::gtk::gio::DesktopAppInfo;
 use relm4::gtk::prelude::*;
 use relm4::gtk::{gio, pango};
 use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, Sender, gtk};

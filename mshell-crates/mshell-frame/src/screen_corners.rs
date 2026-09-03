@@ -91,7 +91,7 @@ fn build_corner_window(monitor: &gtk::gdk::Monitor, corner: Corner, radius: u32)
     window.connect_realize(|w| {
         if let Some(surface) = w.surface() {
             let empty = cairo::Region::create();
-            surface.set_input_region(&empty);
+            surface.set_input_region(Some(&empty));
         }
     });
 

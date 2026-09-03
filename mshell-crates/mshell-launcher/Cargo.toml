@@ -8,6 +8,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+gio-unix.workspace = true
 anyhow.workspace = true
 dirs.workspace = true
 emojis = "0.7"

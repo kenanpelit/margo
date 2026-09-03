@@ -1,7 +1,7 @@
 //! Built-in providers: Calculator, Command, Session, Settings.
 //!
 //! Apps is intentionally absent — it depends on
-//! `gtk::gio::DesktopAppInfo` and so lives in `mshell-frame`
+//! `gtk::gio_unix::DesktopAppInfo` and so lives in `mshell-frame`
 //! alongside the rest of the GTK code.
 
 pub mod archpkgs;

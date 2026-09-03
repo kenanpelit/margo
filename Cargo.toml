@@ -18,6 +18,7 @@ members = [
     "mpower",
     "mscreenshot",
     "mtm",
+    "mtune",
     "mvpn",
     "mvisual",
     "mwizard",
@@ -64,13 +65,6 @@ members = [
 # wasm32-wasip2, not part of the host workspace build.
 exclude = [
     "mplugin-sdk",
-    # mtune (music player) — temporarily excluded. Its GUI stack is the
-    # current gtk-rs generation (gtk4 0.11 / libadwaita 0.9 / gstreamer
-    # 0.25); the workspace is on gtk-rs 0.10, and gtk4-sys `links = "gtk-4"`
-    # allows only ONE gtk4-sys per dependency graph. Moves back into
-    # `members` once the workspace bump to gtk-rs 0.11 lands
-    # (docs/superpowers/specs/2026-09-03-workspace-gtk-rs-0.11-bump-design.md).
-    "mtune",
     "mshell-crates/mshell-plugin-host/tests/fixtures/hello-guest",
     "mshell-crates/mshell-plugin-host/tests/fixtures/sdk-guest",
     "mshell-crates/mshell-plugin-host/tests/fixtures/assistant-guest",
@@ -157,16 +151,22 @@ wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 xkbcommon = { version = "0.8", features = ["wayland"] }
 xcursor = "0.3"
 
-# mshell GUI stack (gtk4 + relm4 + layer-shell + session-lock)
-gtk4 = { version = "0.10", features = ["v4_20"] }
-gtk4-layer-shell = "0.7"
-gtk4-session-lock = { version = "0.3", features = ["v1_2"] }
-relm4 = "0.10"
-# Match gtk4 0.10's gtk-rs generation (cairo/pango 0.21). Declaring 0.22
-# here pulled a SECOND full gtk-rs stack (glib/gio/cairo/pango/pangocairo
-# + their proc-macros, all at 0.22) alongside gtk4's 0.21 — pure build-time
-# bloat, and a latent cairo-version mismatch across the gtk4 boundary.
-cairo-rs = "0.21"
+# mshell GUI stack (gtk4 + relm4 + layer-shell + session-lock).
+# gtk-rs 0.11 generation (glib/gio/cairo/pango 0.22). This must stay one
+# self-consistent generation: `gtk4-sys` declares `links = "gtk-4"`, so
+# only ONE gtk4-sys may exist in the dependency graph — a mixed 0.10/0.11
+# set does not resolve at all. `mtune` (libadwaita 0.9 / gstreamer 0.25)
+# is what pulled the whole workspace onto 0.11.
+gtk4 = { version = "0.11", features = ["v4_20"] }
+gtk4-layer-shell = "0.8"
+gtk4-session-lock = { version = "0.4", features = ["v1_2"] }
+relm4 = "0.11"
+cairo-rs = "0.22"
+# gtk-rs 0.22 split the Unix-only bindings out of `glib` / `gio` into
+# companion crates: `glib::unix_fd_add_local` -> `glib_unix`,
+# `gio::DesktopAppInfo` / `gio::UnixInputStream` -> `gio_unix`.
+glib-unix = "0.22"
+gio-unix = "0.22"
 any_spawner = { version = "0.3", features = ["glib", "async-executor"] }
 reactive_graph = { version = "0.2", features = ["effects"] }
 reactive_stores = "0.4"

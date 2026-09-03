@@ -14,12 +14,10 @@ name = "mtune"
 path = "src/main.rs"
 
 [dependencies]
-# GUI stack — mtune-local, current gtk-rs generation. NOT workspace-pinned:
-# margo's workspace tracks gtk-rs 0.10; mtune shares no glib-typed API with
-# any other crate (theming reads the matugen palette as a file, logging is
-# `tracing`), so a second gtk-rs generation in Cargo.lock is a build-time
-# cost only, not a correctness risk.
-gtk = { version = "0.11", package = "gtk4", features = ["v4_16"] }
+# GUI stack. gtk4 matches the workspace generation (0.11); libadwaita +
+# gstreamer are mtune-only (no other crate needs them) so they stay direct
+# deps here rather than in [workspace.dependencies].
+gtk = { version = "0.11", package = "gtk4", features = ["v4_20"] }
 gdk-pixbuf = { version = "0.22", features = ["v2_42"] }
 adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
 gst = { package = "gstreamer", version = "0.25" }
