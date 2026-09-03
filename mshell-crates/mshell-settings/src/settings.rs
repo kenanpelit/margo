@@ -33,6 +33,7 @@ use crate::logging_settings::{LoggingInit, LoggingModel};
 use crate::login_settings::{LoginSettingsInit, LoginSettingsModel};
 use crate::media_player_settings::{MediaPlayerSettingsInit, MediaPlayerSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
+use crate::mtune_settings::{MtuneSettingsInit, MtuneSettingsModel};
 use crate::network_settings::{NetworkSettingsInit, NetworkSettingsModel};
 use crate::notification_settings::{NotificationSettingsInit, NotificationSettingsModel};
 use crate::osd_settings::{OsdSettingsInit, OsdSettingsModel};
@@ -206,6 +207,7 @@ fn build_top_page(route: &str) -> Option<BuiltPage> {
         "power" => page!(PowerSettingsModel => PowerSettingsInit {}),
         "privacy" => page!(PrivacySettingsModel => PrivacySettingsInit {}),
         "idle" => page!(IdleSettingsModel => IdleSettingsInit {}),
+        "mtune" => page!(MtuneSettingsModel => MtuneSettingsInit {}),
         "toasts" => page!(ToastSettingsModel => ToastSettingsInit {}),
         "game_mode" => page!(GameModeSettingsModel => GameModeSettingsInit {}),
         "keyboard" => page!(KeyboardSettingsModel => KeyboardSettingsInit {}),
@@ -1027,7 +1029,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::MediaPlayer,
             WidgetEntry::Menu {
                 kind: MenuKind::Mtune,
-                stack_name: "mtune",
+                stack_name: "mtune_widget",
                 label: "Tune",
                 icon: "folder-music-symbolic",
             },
@@ -1945,6 +1947,10 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
         "screensaver dim timeout inhibitor dpms blank suspend",
     ),
     (
+        "mtune",
+        "tune music player folder library scan mtune album track playback",
+    ),
+    (
         "toasts",
         "toast popup state change charging battery low caps lock num lock keyboard layout audio device vpn now playing notify",
     ),
@@ -2029,6 +2035,8 @@ const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("display", "display"),
     ("fonts", "theme/fonts"),
     ("idle", "idle"),
+    ("tune", "mtune"),
+    ("music player", "mtune"),
     ("toasts", "toasts"),
     ("toast", "toasts"),
     ("game mode", "game_mode"),
@@ -2252,6 +2260,11 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "idle",
         icon: "coffee-symbolic",
         label: "Idle",
+    },
+    Page {
+        route: "mtune",
+        icon: "folder-music-symbolic",
+        label: "Tune",
     },
     Page {
         route: "toasts",

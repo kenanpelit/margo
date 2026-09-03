@@ -47,6 +47,7 @@ mod hidden_bar_settings;
 mod idle_settings;
 mod input_settings;
 mod keybinds_settings;
+mod mtune_settings;
 /// Fire a startup toast when a keybind is bound twice across active sources.
 pub use keybinds_settings::warn_conflicts_toast;
 mod keyboard_settings;

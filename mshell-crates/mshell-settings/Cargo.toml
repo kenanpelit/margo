@@ -31,7 +31,9 @@ notify-rust.workspace = true
 paste = "1"
 reactive_graph.workspace = true
 relm4.workspace = true
+serde = { workspace = true }
 serde_json.workspace = true
+toml = { workspace = true }
 tokio = { workspace = true }
 tracing.workspace = true
 wayle-audio.workspace = true
