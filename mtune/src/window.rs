@@ -36,6 +36,19 @@ pub enum WindowMode {
     MainView,
 }
 
+/// Where playback should land after the folder library finishes loading
+/// into a previously-empty queue. Maps from `[playback] on_start`.
+#[derive(Debug, Clone)]
+pub enum StartIntent {
+    /// Select the top of the queue, paused.
+    Top,
+    /// Skip to the track with this URI and seek to this position (secs),
+    /// paused; falls back to `Top` if the URI is no longer in the library.
+    Resume(String, u64),
+    /// Leave the queue untouched — no current song.
+    Nothing,
+}
+
 const ATTRIBUTE_HOST_PATH: &str = "xattr::document-portal.host-path";
 
 mod imp {
@@ -95,6 +108,10 @@ mod imp {
         pub notify_nsongs_id: RefCell<Option<glib::SignalHandlerId>>,
         pub notify_current_id: RefCell<Option<glib::SignalHandlerId>>,
         pub notify_peaks_id: RefCell<Option<glib::SignalHandlerId>>,
+
+        /// What to do once a library load finishes filling an empty queue
+        /// (set by `load_library_files`, consumed in `queue_songs`).
+        pub pending_start: RefCell<Option<super::StartIntent>>,
     }
 
     #[glib::object_subclass]
@@ -264,6 +281,7 @@ mod imp {
                 notify_nsongs_id: RefCell::new(None),
                 notify_current_id: RefCell::new(None),
                 notify_peaks_id: RefCell::new(None),
+                pending_start: RefCell::new(None),
             }
         }
     }
@@ -589,7 +607,19 @@ impl Window {
                                 queue.n_songs()
                             );
                             if was_empty {
-                                player.skip_to(0);
+                                match win.imp().pending_start.borrow_mut().take() {
+                                    Some(StartIntent::Resume(uri, pos)) => {
+                                        match queue.position_of_uri(&uri) {
+                                            Some(ix) => {
+                                                player.skip_to(ix);
+                                                player.seek_position_abs(pos);
+                                            }
+                                            None => player.skip_to(0),
+                                        }
+                                    }
+                                    Some(StartIntent::Nothing) => {}
+                                    _ => player.skip_to(0),
+                                }
                             }
 
                             // Allow jumping to the song we just added
@@ -1018,6 +1048,18 @@ impl Window {
             settings
                 .set_int("window-height", height)
                 .expect("Unable to stop window-height");
+
+            // Remember where we were so `[playback] on_start = "resume"`
+            // can pick the queue back up next launch.
+            if let Some(player) = window.player() {
+                let (uri, pos) = player
+                    .state()
+                    .current_song()
+                    .map(|s| (s.uri(), player.state().position()))
+                    .unwrap_or_default();
+                let _ = settings.set_string("resume-uri", &uri);
+                let _ = settings.set_uint64("resume-position", pos);
+            }
 
             window.unbind_queue();
             window.unbind_state();
@@ -1478,6 +1520,17 @@ impl Window {
                 .queue_selected_label()
                 .set_label(&selected_str);
         }
+    }
+
+    /// Load the folder library into the queue and, once it lands in a
+    /// previously-empty queue, apply `intent` (resume / top / nothing)
+    /// instead of the blind `skip_to(0)` that `open_files` would do.
+    pub fn load_library_files(&self, files: Vec<gio::File>, intent: StartIntent) {
+        if files.is_empty() {
+            return;
+        }
+        self.imp().pending_start.replace(Some(intent));
+        self.open_files(&files);
     }
 
     pub fn open_files(&self, files: &[gio::File]) {

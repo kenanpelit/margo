@@ -14,8 +14,13 @@ use crate::{
     audio::AudioPlayer,
     config::{APPLICATION_ID, VERSION},
     i18n::i18n,
+    library::LibraryEvent,
+    library::config::{MtuneConfig, OnStart},
+    library::index::{IndexEntry, LibraryIndex, mtime_of},
+    library::scanner,
+    library::watcher::LibraryWatcher,
     utils,
-    window::Window,
+    window::{StartIntent, Window},
 };
 
 pub enum ApplicationAction {
@@ -35,6 +40,10 @@ mod imp {
         pub receiver: RefCell<Option<Receiver<ApplicationAction>>>,
         pub background_hold: RefCell<Option<gio::ApplicationHoldGuard>>,
         pub settings: gio::Settings,
+        pub config: RefCell<MtuneConfig>,
+        pub watcher: RefCell<Option<LibraryWatcher>>,
+        /// Guard so `load_library` only ever runs once per process.
+        pub library_loaded: std::cell::Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -52,6 +61,9 @@ mod imp {
                 receiver,
                 background_hold: RefCell::default(),
                 settings: utils::settings_manager(),
+                config: RefCell::new(MtuneConfig::load()),
+                watcher: RefCell::default(),
+                library_loaded: std::cell::Cell::new(false),
             }
         }
     }
@@ -94,6 +106,7 @@ mod imp {
             debug!("Application::activate");
 
             self.obj().present_main_window();
+            self.obj().load_library();
         }
 
         fn open(&self, files: &[gio::File], _hint: &str) {
@@ -104,6 +117,9 @@ mod imp {
             if let Some(window) = application.active_window() {
                 window.downcast_ref::<Window>().unwrap().open_files(files);
             }
+            // Files passed on the command line take precedence over the
+            // configured library for this run.
+            self.library_loaded.set(true);
         }
     }
 
@@ -134,6 +150,131 @@ impl Application {
 
     pub fn player(&self) -> Rc<AudioPlayer> {
         self.imp().player.clone()
+    }
+
+    /// Load the configured folder library into the queue, then start the
+    /// inotify watcher. Runs once per process; a no-op when no roots are
+    /// configured (the plain "open a folder" flow still works) or when the
+    /// app was launched with files on the command line.
+    pub fn load_library(&self) {
+        if self.imp().library_loaded.replace(true) {
+            return;
+        }
+        let cfg = self.imp().config.borrow().clone();
+        let roots = cfg.library.resolved_roots();
+        if roots.is_empty() {
+            debug!("mtune: no library roots configured");
+            return;
+        }
+
+        let this = self.clone();
+        glib::spawn_future_local(async move {
+            let lib = cfg.library.clone();
+
+            // Prefer the cached index when the user opted out of a full
+            // rescan and it still reflects the filesystem; otherwise scan.
+            let paths: Vec<std::path::PathBuf> = if lib.scan_on_start {
+                let (r, l) = (roots.clone(), lib.clone());
+                gio::spawn_blocking(move || scanner::scan_blocking(&r, &l))
+                    .await
+                    .unwrap_or_default()
+            } else {
+                let fresh = LibraryIndex::load().fresh_paths();
+                if fresh.is_empty() {
+                    let (r, l) = (roots.clone(), lib.clone());
+                    gio::spawn_blocking(move || scanner::scan_blocking(&r, &l))
+                        .await
+                        .unwrap_or_default()
+                } else {
+                    fresh
+                }
+            };
+
+            debug!("mtune: library has {} tracks", paths.len());
+
+            // Refresh the on-disk index (path + mtime is enough to drive
+            // the fast path next launch; tags are re-read from the songs).
+            let index = LibraryIndex {
+                entries: paths
+                    .iter()
+                    .filter_map(|p| {
+                        Some(IndexEntry {
+                            path: p.clone(),
+                            mtime: mtime_of(p)?,
+                            title: String::new(),
+                            artist: String::new(),
+                            album: String::new(),
+                            duration_secs: 0,
+                        })
+                    })
+                    .collect(),
+            };
+            if let Err(e) = index.save() {
+                debug!("mtune: could not save the library index: {e}");
+            }
+
+            let intent = match cfg.playback.on_start {
+                OnStart::Nothing => StartIntent::Nothing,
+                OnStart::Library => StartIntent::Top,
+                OnStart::Resume => {
+                    let uri = this.imp().settings.string("resume-uri");
+                    let pos = this.imp().settings.uint64("resume-position");
+                    if uri.is_empty() {
+                        StartIntent::Top
+                    } else {
+                        StartIntent::Resume(uri.to_string(), pos)
+                    }
+                }
+            };
+
+            if let Some(win) = this.active_window().and_downcast::<Window>() {
+                let files: Vec<gio::File> = paths.iter().map(gio::File::for_path).collect();
+                win.load_library_files(files, intent);
+            }
+
+            if lib.watch {
+                this.start_watch(lib);
+            }
+        });
+    }
+
+    /// Watch the library roots and reflect adds / removes into the queue live.
+    fn start_watch(&self, lib: crate::library::config::LibrarySection) {
+        let (tx, rx) = async_channel::unbounded();
+        match LibraryWatcher::start(lib, tx) {
+            Ok(w) => {
+                self.imp().watcher.replace(Some(w));
+            }
+            Err(e) => {
+                debug!("mtune: library watch unavailable: {e}");
+                return;
+            }
+        }
+        let this = self.clone();
+        glib::spawn_future_local(async move {
+            while let Ok(ev) = rx.recv().await {
+                let Some(win) = this.active_window().and_downcast::<Window>() else {
+                    continue;
+                };
+                let player = this.imp().player.clone();
+                match ev {
+                    LibraryEvent::Added(p) => {
+                        let uri = gio::File::for_path(&p).uri().to_string();
+                        if player.queue().position_of_uri(&uri).is_none() {
+                            win.open_files(&[gio::File::for_path(&p)]);
+                        }
+                    }
+                    LibraryEvent::Removed(p) => {
+                        let uri = gio::File::for_path(&p).uri().to_string();
+                        if let Some(ix) = player.queue().position_of_uri(&uri)
+                            && let Some(song) = player.queue().song_at(ix)
+                        {
+                            player.remove_song(&song);
+                        }
+                    }
+                }
+            }
+        });
     }
 
     /// Hold the GApplication alive with no visible window while playback is

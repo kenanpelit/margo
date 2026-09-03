@@ -5759,7 +5759,6 @@ dependencies = [
  "sha2",
  "tempfile",
  "toml 0.8.23",
- "tracing",
 ]
 
 [[package]]

@@ -4,9 +4,8 @@
 //!
 //! See `docs/superpowers/plans/2026-09-03-mtune-app-foundation.md` phase 2.
 
-// The pieces land task-by-task (config -> scanner -> index -> watcher) and
-// are only consumed once `Application` startup is wired (Task 10), which
-// removes this allow.
+// Some helpers (e.g. `MtuneConfig::save`, `LibraryIndex::reconcile`) are only
+// exercised by the Settings page + background reconcile added in later phases.
 #![allow(dead_code)]
 
 pub mod config;

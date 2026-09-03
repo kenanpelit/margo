@@ -108,6 +108,11 @@ impl Queue {
         None
     }
 
+    /// Queue position of the first song whose URI matches, if any.
+    pub fn position_of_uri(&self, uri: &str) -> Option<u32> {
+        (0..self.n_songs()).find(|&i| self.song_at(i).map(|s| s.uri()) == Some(uri.to_string()))
+    }
+
     pub fn set_current_song(&self, song: Option<Song>) {
         if let Some(song) = song {
             for i in 0..self.n_songs() {

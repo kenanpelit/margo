@@ -18,6 +18,12 @@ pub struct LibraryWatcher {
     _pump: std::thread::JoinHandle<()>,
 }
 
+impl std::fmt::Debug for LibraryWatcher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LibraryWatcher").finish_non_exhaustive()
+    }
+}
+
 impl LibraryWatcher {
     /// Start watching `lib`'s resolved roots. `sink` receives coalesced
     /// `LibraryEvent`s for playable files only.
