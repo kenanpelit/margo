@@ -124,6 +124,9 @@ mod imp {
             obj.set_accels_for_action("win.play", &["<primary>p"]);
             obj.set_accels_for_action("win.copy", &["<primary>c"]);
             obj.set_accels_for_action("win.cycle-view", &["<primary>m"]);
+            obj.set_accels_for_action("queue.open-playlist", &["<primary>o"]);
+            obj.set_accels_for_action("queue.save-playlist", &["<primary><shift>s"]);
+            obj.set_accels_for_action("app.shortcuts", &["<primary>question", "<primary>slash"]);
         }
     }
 
@@ -770,6 +773,11 @@ impl Application {
                     app.show_about();
                 })
                 .build(),
+            gio::ActionEntry::builder("shortcuts")
+                .activate(|app: &Application, _, _| {
+                    app.show_shortcuts();
+                })
+                .build(),
         ]);
 
         let background_play = self.imp().settings.boolean("background-play");
@@ -806,5 +814,12 @@ impl Application {
             .build();
 
         dialog.present(Some(&window));
+    }
+
+    fn show_shortcuts(&self) {
+        let builder = gtk::Builder::from_resource("/org/margo/Tune/shortcuts-dialog.ui");
+        if let Some(dialog) = builder.object::<adw::Dialog>("shortcuts_dialog") {
+            dialog.present(self.active_window().as_ref());
+        }
     }
 }

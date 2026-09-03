@@ -791,50 +791,42 @@ impl Window {
         let imp = self.imp();
         imp.view_mode.set(mode);
 
-        // Only switch away from the initial/main split view once there is
-        // actually a queue — the empty state stays full.
-        let has_queue = self
-            .player()
-            .map(|p| !p.queue().is_empty())
-            .unwrap_or(false);
-        let target = match mode {
-            _ if !has_queue => "main-view",
-            ViewMode::Full => "main-view",
-            ViewMode::Mini | ViewMode::Strip => "compact-view",
-        };
-        // Preserve the "no library yet" screen.
-        if imp.main_stack.visible_child_name().as_deref() != Some("initial-view") || has_queue {
-            imp.main_stack.set_visible_child_name(target);
+        // The empty-library screen owns the window until a queue exists.
+        if imp.main_stack.visible_child_name().as_deref() == Some("initial-view") {
+            return;
         }
 
         let strip = mode == ViewMode::Strip;
-        if imp.compact_box.get().parent().is_some() {
-            imp.compact_box.set_css_classes(if strip {
-                &["compact-view", "strip"]
-            } else {
-                &["compact-view"]
-            });
-            imp.mini_cover.set_pixel_size(if strip { 40 } else { 64 });
-            imp.mini_album.set_visible(!strip);
-            imp.mini_queue_scroll.set_visible(!strip);
-        }
+        imp.compact_box.set_css_classes(if strip {
+            &["compact-view", "strip"]
+        } else {
+            &["compact-view"]
+        });
+        imp.mini_cover.set_pixel_size(if strip { 40 } else { 56 });
+        imp.mini_album.set_visible(!strip);
+        imp.mini_queue_scroll.set_visible(!strip);
 
         match mode {
             ViewMode::Full => {
-                let (w, h) = (
+                imp.main_stack.set_visible_child_name("main-view");
+                self.set_resizable(true);
+                self.set_size_request(360, 480);
+                self.set_default_size(
                     imp.settings.int("window-width").max(360),
                     imp.settings.int("window-height").max(480),
                 );
-                self.set_resizable(true);
-                self.set_default_size(w, h);
             }
             ViewMode::Mini => {
+                imp.main_stack.set_visible_child_name("compact-view");
                 self.set_resizable(true);
-                self.set_default_size(640, 210);
+                self.set_size_request(480, 150);
+                self.set_default_size(660, 190);
             }
             ViewMode::Strip => {
-                self.set_default_size(460, 96);
+                imp.main_stack.set_visible_child_name("compact-view");
                 self.set_resizable(false);
+                self.set_size_request(420, 78);
+                self.set_default_size(460, 78);
             }
         }
     }
