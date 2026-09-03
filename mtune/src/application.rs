@@ -477,6 +477,18 @@ impl Application {
         let state = imp.player.state();
         let queue = imp.player.queue();
 
+        // Read the scan fields in one lock — a plain `std::sync::Mutex`
+        // is not reentrant, and temporaries in a `let x = { StructLit {
+        // .lock()…, .lock()… } };` all live to the end of the `let`, so
+        // three inline `.lock()` calls self-deadlock the first launch.
+        let (scanning, scan_done, scan_total) = {
+            let s = imp
+                .snap
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            (s.scanning, s.scan_done, s.scan_total)
+        };
+
         let next = {
             let song = state.current_song();
             crate::bridge::Snapshot {
@@ -505,21 +517,9 @@ impl Application {
                     .iter()
                     .map(|p| p.to_string_lossy().into_owned())
                     .collect(),
-                scanning: imp
-                    .snap
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .scanning,
-                scan_done: imp
-                    .snap
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .scan_done,
-                scan_total: imp
-                    .snap
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .scan_total,
+                scanning,
+                scan_done,
+                scan_total,
             }
         };
 
