@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use adw::subclass::prelude::*;
-use gtk::{gio, glib, prelude::*, CompositeTemplate};
+use gtk::{CompositeTemplate, gio, glib, prelude::*};
 
 use crate::{audio::RepeatMode, i18n::i18n, volume_control::VolumeControl};
 

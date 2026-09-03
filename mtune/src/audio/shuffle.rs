@@ -29,9 +29,11 @@ mod imp {
     impl ObjectImpl for ShuffleListModel {
         fn properties() -> &'static [ParamSpec] {
             static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
-                vec![ParamSpecObject::builder::<gio::ListModel>("model")
-                    .explicit_notify()
-                    .build()]
+                vec![
+                    ParamSpecObject::builder::<gio::ListModel>("model")
+                        .explicit_notify()
+                        .build(),
+                ]
             });
 
             PROPERTIES.as_ref()

@@ -5,11 +5,11 @@ use std::cell::Cell;
 
 use adw::subclass::prelude::*;
 use glib::clone;
-use gtk::{gio, glib, prelude::*, CompositeTemplate};
+use gtk::{CompositeTemplate, gio, glib, prelude::*};
 use log::debug;
 
 mod imp {
-    use glib::{subclass::Signal, ParamSpec, ParamSpecBoolean, ParamSpecDouble, Value};
+    use glib::{ParamSpec, ParamSpecBoolean, ParamSpecDouble, Value, subclass::Signal};
     use once_cell::sync::Lazy;
 
     use super::*;
@@ -103,9 +103,11 @@ mod imp {
 
         fn signals() -> &'static [Signal] {
             static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![Signal::builder("volume-changed")
-                    .param_types([f64::static_type()])
-                    .build()]
+                vec![
+                    Signal::builder("volume-changed")
+                        .param_types([f64::static_type()])
+                        .build(),
+                ]
             });
 
             SIGNALS.as_ref()

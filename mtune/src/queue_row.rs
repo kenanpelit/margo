@@ -5,7 +5,7 @@ use std::cell::{Cell, RefCell};
 
 use adw::subclass::prelude::*;
 use glib::clone;
-use gtk::{gdk, gio, glib, prelude::*, CompositeTemplate};
+use gtk::{CompositeTemplate, gdk, gio, glib, prelude::*};
 
 use crate::{audio::Song, cover_picture::CoverPicture};
 

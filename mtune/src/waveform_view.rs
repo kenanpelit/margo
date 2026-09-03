@@ -38,7 +38,7 @@ impl DivAssign<f64> for PeakPair {
 }
 
 mod imp {
-    use glib::{subclass::Signal, ParamSpec, ParamSpecDouble, Value};
+    use glib::{ParamSpec, ParamSpecDouble, Value, subclass::Signal};
     use once_cell::sync::Lazy;
 
     use super::*;
@@ -70,11 +70,13 @@ mod imp {
     impl ObjectImpl for WaveformView {
         fn properties() -> &'static [ParamSpec] {
             static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
-                vec![ParamSpecDouble::builder("position")
-                    .minimum(0.0)
-                    .maximum(1.0)
-                    .default_value(0.0)
-                    .build()]
+                vec![
+                    ParamSpecDouble::builder("position")
+                        .minimum(0.0)
+                        .maximum(1.0)
+                        .default_value(0.0)
+                        .build(),
+                ]
             });
 
             PROPERTIES.as_ref()
@@ -96,9 +98,11 @@ mod imp {
 
         fn signals() -> &'static [Signal] {
             static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![Signal::builder("position-changed")
-                    .param_types([f64::static_type()])
-                    .build()]
+                vec![
+                    Signal::builder("position-changed")
+                        .param_types([f64::static_type()])
+                        .build(),
+                ]
             });
 
             SIGNALS.as_ref()

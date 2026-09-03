@@ -7,7 +7,7 @@ mod imp {
 
     use std::cell::RefCell;
 
-    use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
+    use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
     use gtk::{
         glib::{self, ParamSpec, ParamSpecString, Value},
         prelude::*,

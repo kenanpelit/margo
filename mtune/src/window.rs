@@ -11,7 +11,7 @@ use std::{
 
 use adw::subclass::prelude::*;
 use glib::{clone, closure_local};
-use gtk::{gdk, gio, glib, prelude::*, CompositeTemplate};
+use gtk::{CompositeTemplate, gdk, gio, glib, prelude::*};
 use log::debug;
 
 use crate::{

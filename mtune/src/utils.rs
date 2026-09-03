@@ -4,7 +4,7 @@
 use core::cmp::Ordering;
 use std::path::PathBuf;
 
-use color_thief::{get_palette, ColorFormat};
+use color_thief::{ColorFormat, get_palette};
 use gtk::{gdk, gio, glib, prelude::*};
 use log::{debug, warn};
 
