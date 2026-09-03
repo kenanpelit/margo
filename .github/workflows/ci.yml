@@ -55,7 +55,7 @@ jobs:
             mesa libdrm seatd pixman libgudev systemd-libs \
             pcre2 pam cairo pango dbus \
             mpv \
-            gtk4 gtk4-layer-shell gdk-pixbuf2 graphene fontconfig freetype2 \
+            gtk4 gtk4-layer-shell libadwaita gdk-pixbuf2 graphene fontconfig freetype2 \
             gstreamer gst-plugins-base gst-plugins-base-libs gst-plugins-good \
             alsa-lib libpulse pipewire
           rustup default stable

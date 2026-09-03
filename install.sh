@@ -298,7 +298,7 @@ debian_install_files() {
   # ── binaries ──
   local bin
   for bin in margo start-margo mctl mlock mlayout mscreenshot mvisual mdots \
-             mlogind mgreet mpower mshell mshellctl mshellshare mpicker mwizard mkeys mvpn mcal; do
+             mlogind mgreet mpower mshell mshellctl mshellshare mpicker mwizard mkeys mvpn mcal mtune; do
     install_file 755 "${tgt}/${bin}" "/usr/bin/${bin}"
   done
   # margo-portal lives under /usr/lib (D-Bus-activated, not a CLI)
@@ -345,6 +345,21 @@ debian_install_files() {
     "/usr/share/icons/hicolor/scalable/apps/margo.svg"
   install_file 644 "${REPO_ROOT}/docs/assets/margo-icon.svg" "/usr/share/pixmaps/margo.svg"
   install_tree "${REPO_ROOT}/assets/icons/MargoMaterial" "/usr/share/icons/MargoMaterial"
+
+  # ── mtune (music player) assets ──
+  install_file 644 "${REPO_ROOT}/mtune/data/org.margo.Tune.desktop.in" \
+    "/usr/share/applications/org.margo.Tune.desktop"
+  install_file 644 "${REPO_ROOT}/mtune/data/org.margo.Tune.metainfo.xml" \
+    "/usr/share/metainfo/org.margo.Tune.metainfo.xml"
+  install_file 644 "${REPO_ROOT}/mtune/data/org.margo.Tune.service" \
+    "/usr/share/dbus-1/services/org.margo.Tune.service"
+  install_file 644 "${REPO_ROOT}/mtune/data/org.margo.Tune.gschema.xml" \
+    "/usr/share/glib-2.0/schemas/org.margo.Tune.gschema.xml"
+  install_file 644 "${REPO_ROOT}/mtune/data/icons/hicolor/scalable/apps/org.margo.Tune.svg" \
+    "/usr/share/icons/hicolor/scalable/apps/org.margo.Tune.svg"
+  install_file 644 "${REPO_ROOT}/mtune/data/icons/hicolor/symbolic/apps/org.margo.Tune-symbolic.svg" \
+    "/usr/share/icons/hicolor/symbolic/apps/org.margo.Tune-symbolic.svg"
+  $SUDO glib-compile-schemas /usr/share/glib-2.0/schemas 2>/dev/null || true
 
   # ── example config + layouts ──
   install_file 644 "${REPO_ROOT}/margo/src/config.example.conf" \
@@ -478,7 +493,7 @@ debian_uninstall() {
   if [[ ! -f "$MANIFEST" ]]; then
     warn "no manifest at ${MANIFEST} — removing known fixed paths only"
     local p
-    for p in /usr/bin/{margo,start-margo,mctl,mlock,mlayout,mscreenshot,mvisual,mplay,mdots,mlogind,mgreet,mshell,mshellctl,mshellshare,mpicker,mwizard,mcal} \
+    for p in /usr/bin/{margo,start-margo,mctl,mlock,mlayout,mscreenshot,mvisual,mdots,mlogind,mgreet,mshell,mshellctl,mshellshare,mpicker,mwizard,mkeys,mvpn,mcal,mtune} \
              /usr/bin/margo-uwsm-session /usr/bin/margo-session \
              /usr/lib/margo/margo-portal \
              /usr/share/wayland-sessions/margo-uwsm.desktop \

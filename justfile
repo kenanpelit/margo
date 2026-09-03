@@ -53,14 +53,27 @@ dots:
     cargo build --release -p mdots
     sudo install -m755 target/release/mdots {{bindir}}/mdots
 
+# Build + install mtune (folder-first music player) + its desktop/schema/icons.
+mtune:
+    cargo build --release -p mtune
+    sudo install -m755 target/release/mtune {{bindir}}/mtune
+    sudo install -Dm644 mtune/data/org.margo.Tune.desktop.in /usr/share/applications/org.margo.Tune.desktop
+    sudo install -Dm644 mtune/data/org.margo.Tune.metainfo.xml /usr/share/metainfo/org.margo.Tune.metainfo.xml
+    sudo install -Dm644 mtune/data/org.margo.Tune.service /usr/share/dbus-1/services/org.margo.Tune.service
+    sudo install -Dm644 mtune/data/org.margo.Tune.gschema.xml /usr/share/glib-2.0/schemas/org.margo.Tune.gschema.xml
+    sudo install -Dm644 mtune/data/icons/hicolor/scalable/apps/org.margo.Tune.svg /usr/share/icons/hicolor/scalable/apps/org.margo.Tune.svg
+    sudo install -Dm644 mtune/data/icons/hicolor/symbolic/apps/org.margo.Tune-symbolic.svg /usr/share/icons/hicolor/symbolic/apps/org.margo.Tune-symbolic.svg
+    sudo glib-compile-schemas /usr/share/glib-2.0/schemas
+    @echo "mtune installed"
+
 # Regenerate the checked-in mctl + mshellctl shell completions (bash/zsh/fish)
 # from clap. Run after adding/renaming a subcommand or argument, then commit
 # contrib/completions/.
 completions:
     ./contrib/completions/generate.sh
 
-# Everything: compositor + shell + CLI tools.
-all: margo shell cli dots
+# Everything: compositor + shell + CLI tools + music player.
+all: margo shell cli dots mtune
 
 # Re-read the compositor config (config.conf + sourced fragments). Does NOT
 # install or swap the margo binary — use `just margo` + re-login for that.
