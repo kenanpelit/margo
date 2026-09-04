@@ -616,7 +616,14 @@ impl Component for MenuModel {
                 css_class = "lyrics-menu".to_string();
                 effect_widgets!(effects, base_config, sender, lyrics_menu);
                 effect_min_width!(effects, base_config, sender, lyrics_menu);
-                effect_max_height!(effects, base_config, sender, lyrics_menu);
+                // NOTE: like the clipboard and notifications menus, this does
+                // NOT cap its *outer* scroller at `maximum_height`. The
+                // lyrics widget applies that cap to its own inner lines
+                // scroller instead (see lyrics_menu_widget.rs), so the
+                // header + badge stay fixed while only the lyric lines
+                // scroll. Capping both would let the outer scroller's
+                // min-content floor (from the inner scroller's own minimum)
+                // silently defeat any configured cap below it.
             }
             MenuType::Session => {
                 css_class = "session-menu".to_string();

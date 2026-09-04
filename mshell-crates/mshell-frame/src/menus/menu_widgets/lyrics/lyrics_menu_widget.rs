@@ -12,9 +12,13 @@
 
 use crate::lyrics::{self, Lyrics, LyricsSource, TrackKey};
 use futures::StreamExt;
+use mshell_common::scoped_effects::EffectScope;
 use mshell_common::{WatcherToken, watch_cancellable};
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, MenuStoreFields, MenusStoreFields};
 use mshell_services::media_service;
 use mshell_utils::media::spawn_media_players_watcher;
+use reactive_graph::traits::Get;
 use relm4::gtk::prelude::*;
 use relm4::gtk::{glib, pango};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -43,6 +47,11 @@ pub(crate) struct LyricsMenuWidgetModel {
     /// One label per *synced* line, in order — rebuilt when lyrics change,
     /// re-styled (active tint) as the position advances.
     line_labels: Vec<gtk::Label>,
+    /// Configured cap (px) for the *inner* lines scroller, live from
+    /// Settings → Widgets → Lyrics ("Maximum Height",
+    /// `menus.lyrics_menu.maximum_height`). 0 = no cap.
+    max_height: i32,
+    _effects: EffectScope,
 }
 
 #[derive(Debug)]
@@ -52,6 +61,9 @@ pub(crate) enum LyricsMenuWidgetInput {
     ParentRevealChanged(bool),
     /// Refresh button — re-fetch the current track's lyrics, bypassing cache.
     Refresh,
+    /// `menus.lyrics_menu.maximum_height` changed (Settings → Widgets →
+    /// Lyrics) — applied live, no reopen needed.
+    SetMaxHeight(i32),
 }
 
 #[derive(Debug)]
@@ -166,12 +178,25 @@ impl Component for LyricsMenuWidgetModel {
                 add_css_class: "lyrics-scroller",
                 set_hexpand: true,
                 set_vexpand: true,
-                // A GtkScrolledWindow reports ~0 natural height, so in a menu
-                // that sizes to its content the lyrics viewport would collapse
-                // to nothing and no lines render (header + badge show, body is
-                // blank). Give it an explicit content height — the active line
-                // auto-centres within it and long songs scroll internally.
-                set_min_content_height: 360,
+                // A GtkScrolledWindow reports ~0 natural height by default, so
+                // in a menu that sizes to its content the lyrics viewport
+                // would collapse to nothing and no lines render (header +
+                // badge show, body is blank). `propagate_natural_height`
+                // fixes that by sizing to the actual lines_box content
+                // instead — and, unlike a hardcoded minimum, it still lets
+                // `max_content_height` below cap it smaller than that
+                // natural size (see Settings → Widgets → Lyrics "Maximum
+                // Height"; a fixed minimum would silently defeat any cap
+                // below it, since a container can't allocate less than a
+                // child's reported minimum). 0 = no cap (grow to fit),
+                // matching the clipboard / notifications inner scrollers.
+                set_propagate_natural_height: true,
+                #[watch]
+                set_max_content_height: if model.max_height > 0 {
+                    model.max_height
+                } else {
+                    -1
+                },
                 set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
                 #[watch]
                 set_visible: model.status_message().is_none(),
@@ -200,6 +225,23 @@ impl Component for LyricsMenuWidgetModel {
             || LyricsMenuWidgetCommandOutput::PlayersChanged,
         );
 
+        // Track the inner-scroller max height (Settings → Widgets → Lyrics)
+        // live, so a Settings change applies immediately without reopening
+        // the panel.
+        let mut effects = EffectScope::new();
+        {
+            let eff_sender = sender.clone();
+            effects.push(move |_| {
+                let h = config_manager()
+                    .config()
+                    .menus()
+                    .lyrics_menu()
+                    .maximum_height()
+                    .get();
+                eff_sender.input(LyricsMenuWidgetInput::SetMaxHeight(h));
+            });
+        }
+
         let model = LyricsMenuWidgetModel {
             players_token: WatcherToken::new(),
             position_token: WatcherToken::new(),
@@ -215,6 +257,8 @@ impl Component for LyricsMenuWidgetModel {
             position_ms: 0,
             active_idx: None,
             line_labels: Vec::new(),
+            max_height: 0,
+            _effects: effects,
         };
 
         let widgets = view_output!();
@@ -255,6 +299,9 @@ impl Component for LyricsMenuWidgetModel {
                     kick_refetch(&sender, key);
                     self.rebuild_lines(widgets);
                 }
+            }
+            LyricsMenuWidgetInput::SetMaxHeight(h) => {
+                self.max_height = h;
             }
         }
         self.apply_active(widgets);
