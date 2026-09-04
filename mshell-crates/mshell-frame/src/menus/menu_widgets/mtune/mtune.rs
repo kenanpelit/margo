@@ -8,9 +8,12 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, MenuStoreFields, MenusStoreFields};
 use mshell_services::mtune::{mtune_service, spawn_mtune};
 use mshell_services::tokio_rt_spawn;
 use mshell_utils::media::format_duration;
+use reactive_graph::traits::Get;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -37,6 +40,10 @@ pub(crate) struct MtuneMenuWidgetModel {
     rate: f64,
     queue_len: u32,
     current_index: i64,
+    /// (title, artist, duration_secs) per entry, queue order.
+    queue_entries: Vec<(String, String, u64)>,
+    /// Live text from the queue filter entry.
+    queue_filter: String,
     roots: Vec<String>,
     playlists: Vec<String>,
     scanning: bool,
@@ -70,6 +77,12 @@ pub(crate) enum MtuneMenuInput {
     Rescan,
     OpenTune,
     Launch,
+    /// Queue filter text changed.
+    FilterQueue(String),
+    /// A queue row was clicked.
+    PlayQueueIndex(u32),
+    /// A queue row's remove (×) button was clicked.
+    RemoveQueueIndex(u32),
 }
 
 #[derive(Debug)]
@@ -315,6 +328,66 @@ impl Component for MtuneMenuWidgetModel {
                 },
             },
 
+            // ── Queue ────────────────────────────────────────────
+            gtk::Box {
+                add_css_class: "mtune-queue-section",
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 6,
+                set_vexpand: true,
+
+                gtk::Label {
+                    add_css_class: "mtune-menu-section-label",
+                    set_xalign: 0.0,
+                    set_label: "Queue",
+                },
+
+                #[name = "queue_filter_entry"]
+                gtk::SearchEntry {
+                    add_css_class: "mtune-queue-filter",
+                    set_placeholder_text: Some("Filter queue…"),
+                    #[watch]
+                    set_visible: model.queue_len > 0,
+                    connect_search_changed[sender] => move |e| {
+                        sender.input(MtuneMenuInput::FilterQueue(e.text().to_string()));
+                    },
+                },
+
+                #[name = "queue_scroller"]
+                gtk::ScrolledWindow {
+                    add_css_class: "mtune-queue-scroller",
+                    set_hexpand: true,
+                    set_vexpand: true,
+                    set_propagate_natural_height: true,
+                    set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
+                    #[watch]
+                    set_visible: model.queue_len > 0,
+                    #[watch]
+                    set_max_content_height: {
+                        let h = config_manager()
+                            .config()
+                            .menus()
+                            .mtune_menu()
+                            .maximum_height()
+                            .get();
+                        if h > 0 { h } else { -1 }
+                    },
+
+                    #[name = "queue_rows"]
+                    gtk::Box {
+                        add_css_class: "mtune-queue-rows",
+                        set_orientation: gtk::Orientation::Vertical,
+                    },
+                },
+
+                gtk::Label {
+                    add_css_class: "mtune-menu-status",
+                    set_xalign: 0.0,
+                    set_label: "Queue is empty — choose a folder or open a playlist.",
+                    #[watch]
+                    set_visible: model.queue_len == 0,
+                },
+            },
+
             // ── Library ────────────────────────────────────────
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
@@ -403,6 +476,7 @@ impl Component for MtuneMenuWidgetModel {
                 Box::pin(p.rate.watch().map(|_| ())),
                 Box::pin(p.queue_len.watch().map(|_| ())),
                 Box::pin(p.current_index.watch().map(|_| ())),
+                Box::pin(p.queue_entries.watch().map(|_| ())),
                 Box::pin(p.library_roots.watch().map(|_| ())),
                 Box::pin(p.playlists.watch().map(|_| ())),
                 Box::pin(p.scanning.watch().map(|_| ())),
@@ -440,6 +514,8 @@ impl Component for MtuneMenuWidgetModel {
             rate: 1.0,
             queue_len: 0,
             current_index: -1,
+            queue_entries: Vec::new(),
+            queue_filter: String::new(),
             roots: Vec::new(),
             playlists: Vec::new(),
             scanning: false,
@@ -468,6 +544,7 @@ impl Component for MtuneMenuWidgetModel {
         }
 
         apply_dynamic(&widgets, &model, &sender);
+        rebuild_queue_rows(&widgets, &model, &sender);
         ComponentParts { model, widgets }
     }
 
@@ -573,6 +650,16 @@ impl Component for MtuneMenuWidgetModel {
                     }
                 });
             }
+            MtuneMenuInput::FilterQueue(text) => {
+                self.queue_filter = text;
+                rebuild_queue_rows(widgets, self, &sender);
+            }
+            MtuneMenuInput::PlayQueueIndex(i) => {
+                tokio_rt_spawn(async move { mtune_service().player.play_index(i).await });
+            }
+            MtuneMenuInput::RemoveQueueIndex(i) => {
+                tokio_rt_spawn(async move { mtune_service().player.remove_index(i).await });
+            }
         }
         // relm4 doesn't re-run `#[watch]` after `update_with_view` — do it.
         self.update_view(widgets, sender);
@@ -590,6 +677,7 @@ impl Component for MtuneMenuWidgetModel {
                 read(self);
                 // A fresh song / stop clears any in-flight seek.
                 self.pending_seek = None;
+                rebuild_queue_rows(widgets, self, &sender);
             }
             MtuneMenuCmd::PositionTick(d) => {
                 // Ignore ticks while a seek is settling.
@@ -610,6 +698,16 @@ impl Component for MtuneMenuWidgetModel {
     }
 }
 
+/// Whether `title`/`artist` should show under `query` (case-insensitive
+/// substring on either field; a blank query matches everything).
+fn queue_row_matches(title: &str, artist: &str, query: &str) -> bool {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return true;
+    }
+    title.to_lowercase().contains(&q) || artist.to_lowercase().contains(&q)
+}
+
 fn read(m: &mut MtuneMenuWidgetModel) {
     let p = mtune_service().player.clone();
     m.running = p.running.get();
@@ -624,6 +722,7 @@ fn read(m: &mut MtuneMenuWidgetModel) {
     m.rate = p.rate.get();
     m.queue_len = p.queue_len.get();
     m.current_index = p.current_index.get();
+    m.queue_entries = p.queue_entries.get();
     m.roots = p.library_roots.get();
     m.playlists = p.playlists.get();
     m.scanning = p.scanning.get();
@@ -703,6 +802,109 @@ fn apply_dynamic(
     }
 }
 
+/// Rebuild the queue row list from `m.queue_entries`, filtered by
+/// `m.queue_filter`. Called after every refresh and every filter
+/// keystroke — the list is small enough (a folder-first personal
+/// library queue, not a virtualized thousand-row history) that a full
+/// rebuild is simpler and cheap enough, same call shape as the
+/// existing saved-playlist rows.
+fn rebuild_queue_rows(
+    widgets: &MtuneMenuWidgetModelWidgets,
+    m: &MtuneMenuWidgetModel,
+    sender: &ComponentSender<MtuneMenuWidgetModel>,
+) {
+    while let Some(c) = widgets.queue_rows.first_child() {
+        widgets.queue_rows.remove(&c);
+    }
+
+    let mut current_row: Option<gtk::Widget> = None;
+    for (i, (title, artist, duration)) in m.queue_entries.iter().enumerate() {
+        if !queue_row_matches(title, artist, &m.queue_filter) {
+            continue;
+        }
+        let idx = i as u32;
+        let is_current = m.current_index >= 0 && m.current_index as usize == i;
+
+        let row = gtk::Box::builder()
+            .css_classes(["mtune-queue-row"])
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(8)
+            .build();
+        if is_current {
+            row.add_css_class("mtune-queue-row-current");
+        }
+
+        let num = gtk::Label::new(Some(&(i + 1).to_string()));
+        num.add_css_class("mtune-queue-row-num");
+
+        let text = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let title_label = gtk::Label::new(Some(title));
+        title_label.set_xalign(0.0);
+        title_label.set_ellipsize(pango::EllipsizeMode::End);
+        title_label.add_css_class("mtune-queue-row-title");
+        let artist_label = gtk::Label::new(Some(artist));
+        artist_label.set_xalign(0.0);
+        artist_label.set_ellipsize(pango::EllipsizeMode::End);
+        artist_label.add_css_class("mtune-queue-row-artist");
+        text.append(&title_label);
+        text.append(&artist_label);
+        text.set_hexpand(true);
+
+        let dur = gtk::Label::new(Some(&format_duration(Duration::from_secs(*duration))));
+        dur.add_css_class("mtune-queue-row-duration");
+
+        let remove_btn = gtk::Button::builder()
+            .css_classes(["mtune-queue-row-remove"])
+            .icon_name("window-close-symbolic")
+            .tooltip_text("Remove from queue")
+            .valign(gtk::Align::Center)
+            .build();
+        let s = sender.clone();
+        remove_btn.connect_clicked(move |_| s.input(MtuneMenuInput::RemoveQueueIndex(idx)));
+
+        let click = gtk::GestureClick::new();
+        let s = sender.clone();
+        click.connect_released(move |_, _, _, _| s.input(MtuneMenuInput::PlayQueueIndex(idx)));
+        row.add_controller(click);
+
+        row.append(&num);
+        row.append(&text);
+        row.append(&dur);
+        row.append(&remove_btn);
+        widgets.queue_rows.append(&row);
+
+        if is_current {
+            current_row = Some(row.upcast::<gtk::Widget>());
+        }
+    }
+
+    if let Some(row) = current_row {
+        scroll_queue_to(&widgets.queue_scroller, &row);
+    }
+}
+
+/// Smoothly centre `row` in `scroller`. Deferred to idle so its geometry
+/// is laid out (freshly appended on a rebuild) — same technique as the
+/// Lyrics menu's `scroll_center`.
+fn scroll_queue_to(scroller: &gtk::ScrolledWindow, row: &gtk::Widget) {
+    let scroller = scroller.clone();
+    let row = row.clone();
+    gtk::glib::idle_add_local_once(move || {
+        let Some(parent) = row.parent() else { return };
+        let Some(bounds) = row.compute_bounds(&parent) else {
+            return;
+        };
+        if bounds.height() == 0.0 {
+            return;
+        }
+        let vadj = scroller.vadjustment();
+        let center = bounds.y() as f64 + bounds.height() as f64 / 2.0;
+        let target = center - vadj.page_size() / 2.0;
+        let max = (vadj.upper() - vadj.page_size()).max(0.0);
+        vadj.set_value(target.clamp(0.0, max));
+    });
+}
+
 /// Wire the seek scale: immediate readout on drag, the real seek
 /// debounced ~280ms after the last move. Returns the `value-changed`
 /// handler id so programmatic updates can block it.
@@ -780,5 +982,23 @@ impl MtuneMenuWidgetModel {
             self.roots.join(", ")
         };
         format!("{} tracks  ·  {roots}", self.queue_len)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn matches_on_title_or_artist_case_insensitively() {
+        assert!(queue_row_matches("Get Lucky", "Daft Punk", "lucky"));
+        assert!(queue_row_matches("Get Lucky", "Daft Punk", "DAFT"));
+        assert!(!queue_row_matches("Get Lucky", "Daft Punk", "acoustic"));
+    }
+
+    #[test]
+    fn blank_query_matches_everything() {
+        assert!(queue_row_matches("Anything", "Anyone", ""));
+        assert!(queue_row_matches("Anything", "Anyone", "   "));
     }
 }
