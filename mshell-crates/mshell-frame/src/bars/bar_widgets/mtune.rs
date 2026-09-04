@@ -27,6 +27,9 @@ pub(crate) struct MtuneModel {
     cover_art: Option<String>,
     position: Duration,
     duration: Duration,
+    /// 0-based queue position, `-1` when nothing is current.
+    current_index: i64,
+    queue_len: u32,
 }
 
 #[derive(Debug)]
@@ -88,6 +91,14 @@ impl Component for MtuneModel {
                         set_pixel_size: 16,
                     },
 
+                    // Queue position (1-based), like the playlist rows.
+                    #[name = "num"]
+                    gtk::Label {
+                        add_css_class: "mtune-bar-num",
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                    },
+
                     #[name = "label"]
                     gtk::Label {
                         add_css_class: "mtune-bar-label",
@@ -129,6 +140,8 @@ impl Component for MtuneModel {
             let mut cover = p.cover_art.watch();
             let mut position = p.position.watch();
             let mut duration = p.duration.watch();
+            let mut current_index = p.current_index.watch();
+            let mut queue_len = p.queue_len.watch();
             loop {
                 tokio::select! {
                     () = &mut shutdown_fut => break,
@@ -140,6 +153,8 @@ impl Component for MtuneModel {
                     _ = cover.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
                     _ = position.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
                     _ = duration.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
+                    _ = current_index.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
+                    _ = queue_len.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
                 }
             }
         });
@@ -153,6 +168,8 @@ impl Component for MtuneModel {
             cover_art: None,
             position: Duration::ZERO,
             duration: Duration::ZERO,
+            current_index: -1,
+            queue_len: 0,
         };
         read(&mut model);
 
@@ -216,11 +233,14 @@ fn read(model: &mut MtuneModel) {
     model.cover_art = p.cover_art.get();
     model.position = p.position.get();
     model.duration = p.duration.get();
+    model.current_index = p.current_index.get();
+    model.queue_len = p.queue_len.get();
 }
 
 fn apply(widgets: &MtuneModelWidgets, model: &MtuneModel) {
     if !model.running {
         widgets.cover.set_icon_name(Some("org.margo.Tune-symbolic"));
+        widgets.num.set_visible(false);
         widgets.label.set_visible(false);
         widgets.time.set_visible(false);
         widgets.root.remove_css_class("paused");
@@ -250,6 +270,14 @@ fn apply(widgets: &MtuneModelWidgets, model: &MtuneModel) {
     widgets.label.set_label(&text);
     widgets.label.set_visible(model.has_song);
 
+    let num = if model.has_song && model.current_index >= 0 {
+        format!("{}", model.current_index + 1)
+    } else {
+        String::new()
+    };
+    widgets.num.set_label(&num);
+    widgets.num.set_visible(!num.is_empty());
+
     let time = if model.has_song && !model.duration.is_zero() {
         format!(
             "{} / {}",
@@ -270,10 +298,15 @@ fn apply(widgets: &MtuneModelWidgets, model: &MtuneModel) {
 
     widgets.root.set_tooltip_text(Some(&if model.has_song {
         let head = if model.playing { "Playing" } else { "Paused" };
-        if time.is_empty() {
-            format!("{head}  ·  {text}")
+        let pos = if model.current_index >= 0 && model.queue_len > 0 {
+            format!("  ·  {} of {}", model.current_index + 1, model.queue_len)
         } else {
-            format!("{head}  ·  {text}  ·  {time}")
+            String::new()
+        };
+        if time.is_empty() {
+            format!("{head}  ·  {text}{pos}")
+        } else {
+            format!("{head}  ·  {text}{pos}  ·  {time}")
         }
     } else {
         "Tune".to_string()
