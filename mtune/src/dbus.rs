@@ -153,6 +153,17 @@ impl TuneService {
             .current_index
     }
 
+    /// (title, artist, duration_secs) for every song in the queue, in
+    /// queue order.
+    #[zbus(property)]
+    async fn queue_entries(&self) -> Vec<(String, String, u64)> {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .queue_entries
+            .clone()
+    }
+
     #[zbus(property)]
     async fn repeat_mode(&self) -> String {
         self.snap

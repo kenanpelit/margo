@@ -569,6 +569,10 @@ impl Application {
         let imp = self.imp();
         let state = imp.player.state();
         let queue = imp.player.queue();
+        let queue_entries: Vec<(String, String, u64)> = (0..queue.n_songs())
+            .filter_map(|i| queue.song_at(i))
+            .map(|s| (s.title(), s.artist(), s.duration()))
+            .collect();
 
         // Read the scan fields in one lock — a plain `std::sync::Mutex`
         // is not reentrant, and temporaries in a `let x = { StructLit {
@@ -604,6 +608,7 @@ impl Application {
                 repeat: queue.repeat_mode(),
                 queue_len: queue.n_songs(),
                 current_index: queue.current_song_index().map(|i| i as i64).unwrap_or(-1),
+                queue_entries,
                 library_roots: imp
                     .config
                     .borrow()

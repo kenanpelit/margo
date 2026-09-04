@@ -32,6 +32,10 @@ pub struct Snapshot {
     pub repeat: RepeatMode,
     pub queue_len: u32,
     pub current_index: i64,
+    /// (title, artist, duration_secs) for every song in the queue, in
+    /// queue order. Rebuilt on every refresh — not diffed — since the
+    /// whole snapshot already goes out together on `Changed`.
+    pub queue_entries: Vec<(String, String, u64)>,
     pub library_roots: Vec<String>,
     /// Names of the saved playlists (`~/.config/margo/mtune/playlists/`).
     pub playlists: Vec<String>,
@@ -58,6 +62,7 @@ impl Default for Snapshot {
             repeat: RepeatMode::default(),
             queue_len: 0,
             current_index: -1,
+            queue_entries: Vec::new(),
             library_roots: Vec::new(),
             playlists: Vec::new(),
             scanning: false,
