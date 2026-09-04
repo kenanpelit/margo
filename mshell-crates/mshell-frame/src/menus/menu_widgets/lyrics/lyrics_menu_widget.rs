@@ -183,20 +183,19 @@ impl Component for LyricsMenuWidgetModel {
                 // would collapse to nothing and no lines render (header +
                 // badge show, body is blank). `propagate_natural_height`
                 // fixes that by sizing to the actual lines_box content
-                // instead — and, unlike a hardcoded minimum, it still lets
-                // `max_content_height` below cap it smaller than that
-                // natural size (see Settings → Widgets → Lyrics "Maximum
-                // Height"; a fixed minimum would silently defeat any cap
-                // below it, since a container can't allocate less than a
-                // child's reported minimum). 0 = no cap (grow to fit),
-                // matching the clipboard / notifications inner scrollers.
+                // instead when uncapped (max_height == 0).
+                //
+                // When Settings → Widgets → Lyrics "Maximum Height" is > 0,
+                // `pin_lines_scroller` (called imperatively from `init` and
+                // `SetMaxHeight`, NOT via `#[watch]` here) pins min == max ==
+                // that value, so it's a real target size the lines scroll
+                // within — not just a ceiling — matching the AI / VPN / App
+                // Launcher menus' `fixed_height` behaviour. It must be
+                // imperative and reset-then-set (see `pin_scroller_bounds`'s
+                // doc comment): a static min/max setter pair asserts on
+                // whichever direction (grow or shrink) the value changes
+                // against the *other* attribute's stale bound.
                 set_propagate_natural_height: true,
-                #[watch]
-                set_max_content_height: if model.max_height > 0 {
-                    model.max_height
-                } else {
-                    -1
-                },
                 set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
                 #[watch]
                 set_visible: model.status_message().is_none(),
@@ -262,6 +261,7 @@ impl Component for LyricsMenuWidgetModel {
         };
 
         let widgets = view_output!();
+        pin_lines_scroller(&widgets.scroller, model.max_height);
 
         ComponentParts { model, widgets }
     }
@@ -302,6 +302,7 @@ impl Component for LyricsMenuWidgetModel {
             }
             LyricsMenuWidgetInput::SetMaxHeight(h) => {
                 self.max_height = h;
+                pin_lines_scroller(&widgets.scroller, h);
             }
         }
         self.apply_active(widgets);
@@ -491,6 +492,22 @@ impl LyricsMenuWidgetModel {
             scroll_center(&widgets.scroller, label);
         }
     }
+}
+
+/// Pin the lines scroller to `max_height` (Settings → Widgets → Lyrics
+/// "Maximum Height"): `0` clears both bounds (uncapped, sizes to content via
+/// `propagate_natural_height`); `> 0` sets min == max, making it a real
+/// target size — matching the AI / VPN / App Launcher menus' `fixed_height`
+/// behaviour, not just a shrink-only ceiling. Always resets to `-1` before
+/// setting the new pair (mirrors `pin_scroller_bounds` in `menu.rs`): with a
+/// static setter order, whichever attribute applies second would assert
+/// (`min <= max`) against the *other* one's stale bound on every grow *or*
+/// shrink, depending on which direction the value changed.
+fn pin_lines_scroller(scroller: &gtk::ScrolledWindow, max_height: i32) {
+    let h = if max_height > 0 { max_height } else { -1 };
+    scroller.set_min_content_height(-1);
+    scroller.set_max_content_height(h);
+    scroller.set_min_content_height(h);
 }
 
 fn make_line_label(text: &str, plain: bool) -> gtk::Label {
