@@ -264,6 +264,10 @@ debian_build() {
   log "building shell group (dist)"
   cargo build --profile dist -p mshell -p mshellctl -p mshellshare \
     -p mpicker -p mwizard -p mkeys -p mvpn -p margo-portal -p mgreet
+  # mtune on its own — its async-io zbus stack must not feature-unify with
+  # the shell group's tokio (matches the PKGBUILD's isolated invocation).
+  log "building mtune (dist)"
+  cargo build --profile dist -p mtune
 }
 
 # install_file <mode> <src> <dst> — install one file and record <dst>
