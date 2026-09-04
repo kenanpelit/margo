@@ -98,6 +98,59 @@ impl Component for MtuneMenuWidgetModel {
             set_spacing: 14,
             set_hexpand: true,
 
+            // ── Panel header (DESIGN.md §12) ────────────────────
+            // Hand-rolled (like Clipboard) rather than the composed
+            // MenuWidget::PanelHeader, since this is one monolithic
+            // component, not a widget-list menu. Reuses the *generic*
+            // panel-header classes (panel_header.rs / the Dashboard
+            // header), not per-widget-prefixed ones.
+            gtk::Box {
+                add_css_class: "panel-header",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+
+                gtk::Image {
+                    add_css_class: "panel-header-icon",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: Some("org.margo.Tune-symbolic"),
+                },
+                gtk::Label {
+                    add_css_class: "panel-title",
+                    set_xalign: 0.0,
+                    set_hexpand: true,
+                    set_label: "Tune",
+                },
+                gtk::Label {
+                    add_css_class: "panel-header-meta",
+                    #[watch]
+                    set_label: &model.queue_count_meta(),
+                    #[watch]
+                    set_visible: model.running,
+                },
+                gtk::Button {
+                    add_css_class: "panel-action-btn",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: "folder-open-symbolic",
+                    set_tooltip_text: Some("Choose a music folder"),
+                    connect_clicked => MtuneMenuInput::ChooseFolder,
+                },
+                gtk::Button {
+                    add_css_class: "panel-action-btn",
+                    set_valign: gtk::Align::Center,
+                    #[watch]
+                    set_icon_name: if model.running { "go-next-symbolic" } else { "media-playback-start-symbolic" },
+                    #[watch]
+                    set_tooltip_text: Some(if model.running { "Open Tune window" } else { "Launch Tune" }),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(if mtune_service().player.running.get() {
+                            MtuneMenuInput::OpenTune
+                        } else {
+                            MtuneMenuInput::Launch
+                        });
+                    },
+                },
+            },
+
             // ── Now playing ────────────────────────────────────
             gtk::Box {
                 add_css_class: "mtune-menu-hero",
@@ -106,7 +159,7 @@ impl Component for MtuneMenuWidgetModel {
                 #[name = "cover"]
                 gtk::Image {
                     add_css_class: "mtune-menu-cover",
-                    set_pixel_size: 60,
+                    set_pixel_size: 88,
                     set_valign: gtk::Align::Start,
                 },
                 gtk::Box {
@@ -172,101 +225,92 @@ impl Component for MtuneMenuWidgetModel {
                 gtk::Label { add_css_class: "mtune-menu-time" },
             },
 
-            // ── Transport ──────────────────────────────────────
+            // ── Controls (transport + shuffle/repeat + speed) ────
             gtk::Box {
-                add_css_class: "mtune-menu-transport",
-                set_halign: gtk::Align::Center,
+                add_css_class: "mtune-menu-controls",
+                set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 10,
+                set_halign: gtk::Align::Fill,
                 #[watch]
                 set_sensitive: model.running,
 
-                gtk::Button {
-                    set_css_classes: &["mtune-round"],
-                    set_icon_name: "media-skip-backward-symbolic",
-                    set_tooltip_text: Some("Previous"),
-                    #[watch]
-                    set_sensitive: model.running && model.queue_len > 1,
-                    connect_clicked => MtuneMenuInput::Previous,
-                },
-                #[name = "play_btn"]
-                gtk::Button {
-                    set_css_classes: &["mtune-round", "mtune-round-primary"],
-                    #[watch]
-                    set_icon_name: if model.playing {
-                        "media-playback-pause-symbolic"
-                    } else {
-                        "media-playback-start-symbolic"
+                gtk::Box {
+                    add_css_class: "mtune-menu-transport",
+                    set_halign: gtk::Align::Start,
+                    set_spacing: 8,
+
+                    gtk::Button {
+                        set_css_classes: &["mtune-round"],
+                        set_icon_name: "media-skip-backward-symbolic",
+                        set_tooltip_text: Some("Previous"),
+                        #[watch]
+                        set_sensitive: model.running && model.queue_len > 1,
+                        connect_clicked => MtuneMenuInput::Previous,
                     },
-                    set_tooltip_text: Some("Play / Pause"),
-                    #[watch]
-                    set_sensitive: model.running && (model.has_song || model.queue_len > 0),
-                    connect_clicked => MtuneMenuInput::PlayPause,
-                },
-                gtk::Button {
-                    set_css_classes: &["mtune-round"],
-                    set_icon_name: "media-skip-forward-symbolic",
-                    set_tooltip_text: Some("Next"),
-                    #[watch]
-                    set_sensitive: model.running && model.queue_len > 1,
-                    connect_clicked => MtuneMenuInput::Next,
-                },
-            },
-
-            // ── Shuffle / repeat ───────────────────────────────
-            gtk::Box {
-                add_css_class: "mtune-menu-toggles",
-                set_halign: gtk::Align::Center,
-                set_spacing: 8,
-                #[watch]
-                set_sensitive: model.running,
-
-                #[name = "shuffle_btn"]
-                gtk::ToggleButton {
-                    set_css_classes: &["mtune-toggle"],
-                    set_icon_name: "media-playlist-shuffle-symbolic",
-                    set_tooltip_text: Some("Shuffle"),
-                    #[watch]
-                    #[block_signal(shuffle_toggled)]
-                    set_active: model.shuffle,
-                    connect_toggled[sender] => move |_| {
-                        sender.input(MtuneMenuInput::ToggleShuffle);
-                    } @shuffle_toggled,
-                },
-                #[name = "repeat_btn"]
-                gtk::Button {
-                    set_css_classes: &["mtune-toggle"],
-                    #[watch]
-                    set_icon_name: match model.repeat.as_str() {
-                        "repeat-one" => "media-playlist-repeat-song-symbolic",
-                        "repeat-all" => "media-playlist-repeat-symbolic",
-                        _ => "media-playlist-consecutive-symbolic",
+                    #[name = "play_btn"]
+                    gtk::Button {
+                        set_css_classes: &["mtune-round", "mtune-round-primary"],
+                        #[watch]
+                        set_icon_name: if model.playing {
+                            "media-playback-pause-symbolic"
+                        } else {
+                            "media-playback-start-symbolic"
+                        },
+                        set_tooltip_text: Some("Play / Pause"),
+                        #[watch]
+                        set_sensitive: model.running && (model.has_song || model.queue_len > 0),
+                        connect_clicked => MtuneMenuInput::PlayPause,
                     },
-                    #[watch]
-                    set_tooltip_text: Some(match model.repeat.as_str() {
-                        "repeat-one" => "Repeat: one",
-                        "repeat-all" => "Repeat: all",
-                        _ => "Repeat: off",
-                    }),
-                    connect_clicked => MtuneMenuInput::CycleRepeat,
+                    gtk::Button {
+                        set_css_classes: &["mtune-round"],
+                        set_icon_name: "media-skip-forward-symbolic",
+                        set_tooltip_text: Some("Next"),
+                        #[watch]
+                        set_sensitive: model.running && model.queue_len > 1,
+                        connect_clicked => MtuneMenuInput::Next,
+                    },
                 },
-            },
 
-            // ── Speed ──────────────────────────────────────────
-            gtk::Box {
-                set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 5,
-                #[watch]
-                set_sensitive: model.running,
+                gtk::Box {
+                    add_css_class: "mtune-menu-toggles",
+                    set_hexpand: true,
+                    set_halign: gtk::Align::End,
+                    set_spacing: 6,
 
-                gtk::Label {
-                    add_css_class: "mtune-menu-section-label",
-                    set_xalign: 0.0,
-                    set_label: "Speed",
+                    #[name = "shuffle_btn"]
+                    gtk::ToggleButton {
+                        set_css_classes: &["mtune-toggle"],
+                        set_icon_name: "media-playlist-shuffle-symbolic",
+                        set_tooltip_text: Some("Shuffle"),
+                        #[watch]
+                        #[block_signal(shuffle_toggled)]
+                        set_active: model.shuffle,
+                        connect_toggled[sender] => move |_| {
+                            sender.input(MtuneMenuInput::ToggleShuffle);
+                        } @shuffle_toggled,
+                    },
+                    #[name = "repeat_btn"]
+                    gtk::Button {
+                        set_css_classes: &["mtune-toggle"],
+                        #[watch]
+                        set_icon_name: match model.repeat.as_str() {
+                            "repeat-one" => "media-playlist-repeat-song-symbolic",
+                            "repeat-all" => "media-playlist-repeat-symbolic",
+                            _ => "media-playlist-consecutive-symbolic",
+                        },
+                        #[watch]
+                        set_tooltip_text: Some(match model.repeat.as_str() {
+                            "repeat-one" => "Repeat: one",
+                            "repeat-all" => "Repeat: all",
+                            _ => "Repeat: off",
+                        }),
+                        connect_clicked => MtuneMenuInput::CycleRepeat,
+                    },
                 },
+
                 #[name = "speed_row"]
                 gtk::Box {
                     add_css_class: "mtune-menu-speed",
-                    set_homogeneous: true,
                     set_spacing: 4,
                 },
             },
@@ -330,20 +374,6 @@ impl Component for MtuneMenuWidgetModel {
                     set_hexpand: true,
                     set_label: "Open playlist file…",
                     connect_clicked => MtuneMenuInput::OpenPlaylist,
-                },
-            },
-
-            // ── Footer ─────────────────────────────────────────
-            gtk::Button {
-                set_css_classes: &["mtune-menu-action"],
-                #[watch]
-                set_label: if model.running { "Open Tune window" } else { "Launch Tune" },
-                connect_clicked[sender] => move |_| {
-                    sender.input(if mtune_service().player.running.get() {
-                        MtuneMenuInput::OpenTune
-                    } else {
-                        MtuneMenuInput::Launch
-                    });
                 },
             },
         }
@@ -704,6 +734,17 @@ fn setup_seek(
 }
 
 impl MtuneMenuWidgetModel {
+    /// "12 songs" for the header's trailing meta; empty when there's no
+    /// queue yet (header hides it via `set_visible` in that case, but an
+    /// empty string is the harmless fallback either way).
+    fn queue_count_meta(&self) -> String {
+        if self.queue_len == 0 {
+            String::new()
+        } else {
+            format!("{} songs", self.queue_len)
+        }
+    }
+
     /// "3 of 240 · 1.5×" — position in the queue plus a non-default speed.
     fn now_playing_meta(&self) -> String {
         let mut parts: Vec<String> = Vec::new();
