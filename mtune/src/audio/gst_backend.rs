@@ -25,10 +25,29 @@ pub struct GstBackend {
     rate: Cell<f64>,
 }
 
+/// The `playbin` `audio-filter`. Always routes audio through a
+/// `scaletempo` element so a non-1.0 playback rate changes tempo
+/// **without shifting pitch** (like mpv's default) — plain `playbin`
+/// rate changes are pitch-shifting seeks. ReplayGain's `rgvolume` /
+/// `rglimiter` are chained after it when enabled.
 #[derive(Debug)]
 pub struct GstReplayGain {
-    rg_filter_bin: gst::Element,
+    /// audio-filter when ReplayGain is off: `scaletempo` alone.
+    plain: gst::Element,
+    /// audio-filter when on: `scaletempo ! rgvolume ! rglimiter`.
+    rg_bin: gst::Element,
     rg_volume: gst::Element,
+}
+
+/// A fresh `scaletempo`, falling back to `identity` where the
+/// `audiofx` plugin is missing (rate still works, pitch still shifts —
+/// today's behaviour).
+fn tempo_element(name: &str) -> Result<gst::Element, Box<dyn std::error::Error>> {
+    if let Ok(e) = gst::ElementFactory::make_with_name("scaletempo", Some(name)) {
+        return Ok(e);
+    }
+    warn!("mtune: `scaletempo` element unavailable — speed changes will shift pitch");
+    Ok(gst::ElementFactory::make_with_name("identity", Some(name))?)
 }
 
 fn send_update_position(sender: &Sender<PlaybackAction>, clock: gst::ClockTime, notify: bool) {
@@ -40,37 +59,44 @@ fn send_update_position(sender: &Sender<PlaybackAction>, clock: gst::ClockTime, 
 
 impl GstReplayGain {
     pub fn new() -> Result<GstReplayGain, Box<dyn std::error::Error>> {
+        let plain = tempo_element("tempo-plain")?;
+
+        let tempo = tempo_element("tempo-rg")?;
         let rg_volume = gst::ElementFactory::make_with_name("rgvolume", Some("rg volume"))?;
         let rg_limiter = gst::ElementFactory::make_with_name("rglimiter", Some("rg limiter"))?;
 
         let filter_bin = gst::Bin::builder().name("filter bin").build();
+        filter_bin.add(&tempo)?;
         filter_bin.add(&rg_volume)?;
         filter_bin.add(&rg_limiter)?;
-        rg_volume.link(&rg_limiter)?;
+        gst::Element::link_many([&tempo, &rg_volume, &rg_limiter])?;
 
-        let pad_src = rg_limiter.static_pad("src").unwrap();
-        pad_src.set_active(true).unwrap();
+        let pad_src = rg_limiter
+            .static_pad("src")
+            .ok_or("rglimiter has no src pad")?;
+        pad_src.set_active(true)?;
         let ghost_src = gst::GhostPad::with_target(&pad_src)?;
         filter_bin.add_pad(&ghost_src)?;
 
-        let pad_sink = rg_volume.static_pad("sink").unwrap();
-        pad_sink.set_active(true).unwrap();
+        let pad_sink = tempo
+            .static_pad("sink")
+            .ok_or("scaletempo has no sink pad")?;
+        pad_sink.set_active(true)?;
         let ghost_sink = gst::GhostPad::with_target(&pad_sink)?;
         filter_bin.add_pad(&ghost_sink)?;
 
         Ok(Self {
-            rg_filter_bin: filter_bin.upcast(),
+            plain,
+            rg_bin: filter_bin.upcast(),
             rg_volume,
         })
     }
 
     pub fn set_mode(&self, playbin: gst::Element, replaygain: ReplayGainMode) {
-        let identity = gst::ElementFactory::make_with_name("identity", None).unwrap();
-
         let (filter, album_mode) = match replaygain {
-            ReplayGainMode::Album => (self.rg_filter_bin.as_ref(), true),
-            ReplayGainMode::Track => (self.rg_filter_bin.as_ref(), false),
-            ReplayGainMode::Off => (&identity, true),
+            ReplayGainMode::Album => (&self.rg_bin, true),
+            ReplayGainMode::Track => (&self.rg_bin, false),
+            ReplayGainMode::Off => (&self.plain, true),
         };
 
         self.rg_volume.set_property("album-mode", album_mode);
@@ -96,6 +122,13 @@ impl GstBackend {
         };
 
         res.setup_signals();
+
+        // Put `scaletempo` in the audio path from the start — before the
+        // window pushes the persisted ReplayGain mode — so the very
+        // first speed change is already pitch-preserving.
+        if let Some(ref rg) = res.replaygain {
+            rg.set_mode(res.gst_player.pipeline(), ReplayGainMode::Off);
+        }
 
         res
     }
