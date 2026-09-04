@@ -10,7 +10,7 @@
 //! position tracking start **lazily** on first reveal (`ParentRevealChanged`)
 //! and stop on hide — only a song you actually open the panel for is fetched.
 
-use crate::lyrics::{self, Lyrics, TrackKey};
+use crate::lyrics::{self, Lyrics, LyricsSource, TrackKey};
 use futures::StreamExt;
 use mshell_common::{WatcherToken, watch_cancellable};
 use mshell_services::media_service;
@@ -36,6 +36,7 @@ pub(crate) struct LyricsMenuWidgetModel {
     artist: String,
     key: Option<TrackKey>,
     lyrics: Lyrics,
+    source: LyricsSource,
     loading: bool,
     position_ms: u64,
     active_idx: Option<usize>,
@@ -63,7 +64,7 @@ pub(crate) enum LyricsMenuWidgetCommandOutput {
     PlayersChanged,
     TrackChanged,
     Position(Duration),
-    Fetched(TrackKey, Lyrics),
+    Fetched(TrackKey, Lyrics, LyricsSource),
 }
 
 #[relm4::component(pub)]
@@ -209,6 +210,7 @@ impl Component for LyricsMenuWidgetModel {
             artist: String::new(),
             key: None,
             lyrics: Lyrics::None,
+            source: LyricsSource::Lrclib,
             loading: false,
             position_ms: 0,
             active_idx: None,
@@ -247,6 +249,7 @@ impl Component for LyricsMenuWidgetModel {
                     && let Some(key) = self.key.clone().filter(TrackKey::is_valid)
                 {
                     self.lyrics = Lyrics::None;
+                    self.source = LyricsSource::Lrclib;
                     self.active_idx = None;
                     self.loading = true;
                     kick_refetch(&sender, key);
@@ -287,11 +290,12 @@ impl Component for LyricsMenuWidgetModel {
                 }
                 self.active_idx = new_idx;
             }
-            LyricsMenuWidgetCommandOutput::Fetched(key, lyrics) => {
+            LyricsMenuWidgetCommandOutput::Fetched(key, lyrics, source) => {
                 if self.key.as_ref() != Some(&key) {
                     return;
                 }
                 self.lyrics = lyrics;
+                self.source = source;
                 self.loading = false;
                 self.active_idx = self.compute_active();
                 self.rebuild_lines(widgets);
@@ -329,11 +333,12 @@ impl LyricsMenuWidgetModel {
         if self.loading {
             return "Searching lyrics…";
         }
-        match &self.lyrics {
-            Lyrics::Synced(_) => "Synced · lrclib.net",
-            Lyrics::Plain(_) => "Unsynced · lrclib.net",
-            Lyrics::Instrumental => "Instrumental",
-            Lyrics::None => "No lyrics found",
+        match (&self.lyrics, self.source) {
+            (Lyrics::Synced(_), _) => "Synced · lrclib.net",
+            (Lyrics::Plain(_), LyricsSource::Embedded) => "Embedded",
+            (Lyrics::Plain(_), LyricsSource::Lrclib) => "Unsynced · lrclib.net",
+            (Lyrics::Instrumental, _) => "Instrumental",
+            (Lyrics::None, _) => "No lyrics found",
         }
     }
 
@@ -363,6 +368,7 @@ impl LyricsMenuWidgetModel {
             self.artist.clear();
             self.key = None;
             self.lyrics = Lyrics::None;
+            self.source = LyricsSource::Lrclib;
             self.loading = false;
             self.active_idx = None;
             self.position_player_id = None;
@@ -389,6 +395,7 @@ impl LyricsMenuWidgetModel {
 
         self.key = Some(key.clone());
         self.lyrics = Lyrics::None;
+        self.source = LyricsSource::Lrclib;
         self.active_idx = None;
         if key.is_valid() {
             self.loading = true;
@@ -537,23 +544,45 @@ fn subscribe_position(
     });
 }
 
+/// Non-empty embedded lyrics text when the display player is mtune and its
+/// current track's tags carry any — `None` for every other player.
+fn embedded_hint() -> Option<String> {
+    display_player()
+        .filter(|p| p.id.bus_name() == mshell_services::mtune::BUS_NAME)
+        .map(|_| {
+            mshell_services::mtune::mtune_service()
+                .player
+                .lyrics_embedded
+                .get()
+        })
+        .filter(|s| !s.is_empty())
+}
+
 fn kick_fetch(sender: &ComponentSender<LyricsMenuWidgetModel>, key: TrackKey) {
     sender.command(move |out, _shutdown| async move {
         let for_fetch = key.clone();
-        let lyrics = tokio::task::spawn_blocking(move || lyrics::fetch(&for_fetch))
-            .await
-            .unwrap_or(Lyrics::None);
-        let _ = out.send(LyricsMenuWidgetCommandOutput::Fetched(key, lyrics));
+        let embedded = embedded_hint();
+        let (lyrics, source) =
+            tokio::task::spawn_blocking(move || lyrics::fetch(&for_fetch, embedded.as_deref()))
+                .await
+                .unwrap_or((Lyrics::None, LyricsSource::Lrclib));
+        let _ = out.send(LyricsMenuWidgetCommandOutput::Fetched(key, lyrics, source));
     });
 }
 
-/// Like [`kick_fetch`] but bypasses the disk cache (manual refresh).
+/// Like [`kick_fetch`] but bypasses the disk cache (manual refresh) — always
+/// a real lrclib lookup, deliberately ignoring any embedded hint so the
+/// refresh button can be used to double-check a track's lrclib match.
 fn kick_refetch(sender: &ComponentSender<LyricsMenuWidgetModel>, key: TrackKey) {
     sender.command(move |out, _shutdown| async move {
         let for_fetch = key.clone();
         let lyrics = tokio::task::spawn_blocking(move || lyrics::refetch(&for_fetch))
             .await
             .unwrap_or(Lyrics::None);
-        let _ = out.send(LyricsMenuWidgetCommandOutput::Fetched(key, lyrics));
+        let _ = out.send(LyricsMenuWidgetCommandOutput::Fetched(
+            key,
+            lyrics,
+            LyricsSource::Lrclib,
+        ));
     });
 }

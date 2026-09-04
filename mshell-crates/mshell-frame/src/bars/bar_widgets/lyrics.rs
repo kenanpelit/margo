@@ -13,7 +13,7 @@
 //! Fetching only happens when this pill (or the lyrics menu) is actually in
 //! use, so a user who never adds the widget never hits lrclib.
 
-use crate::lyrics::{self, Lyrics, TrackKey};
+use crate::lyrics::{self, Lyrics, LyricsSource, TrackKey};
 use futures::StreamExt;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_common::{WatcherToken, watch_cancellable};
@@ -44,6 +44,7 @@ pub(crate) struct LyricsModel {
     has_player: bool,
     key: Option<TrackKey>,
     lyrics: Lyrics,
+    source: LyricsSource,
     loading: bool,
     position_ms: u64,
     active_idx: Option<usize>,
@@ -77,7 +78,7 @@ pub(crate) enum LyricsCommandOutput {
     /// Display player's position advanced.
     Position(Duration),
     /// Background lyrics fetch finished (for the given track key).
-    Fetched(TrackKey, Lyrics),
+    Fetched(TrackKey, Lyrics, LyricsSource),
     /// `show_line_in_bar` config changed.
     ShowLineChanged(bool),
     /// `max_width_chars` config changed.
@@ -181,6 +182,7 @@ impl Component for LyricsModel {
             has_player: false,
             key: None,
             lyrics: Lyrics::None,
+            source: LyricsSource::Lrclib,
             loading: false,
             position_ms: 0,
             active_idx: None,
@@ -246,12 +248,13 @@ impl Component for LyricsModel {
                 }
                 self.active_idx = new_idx;
             }
-            LyricsCommandOutput::Fetched(key, lyrics) => {
+            LyricsCommandOutput::Fetched(key, lyrics, source) => {
                 if self.key.as_ref() != Some(&key) {
                     // The track moved on while we were fetching — stale result.
                     return;
                 }
                 self.lyrics = lyrics;
+                self.source = source;
                 self.loading = false;
                 self.active_idx = self.compute_active();
             }
@@ -282,6 +285,7 @@ impl LyricsModel {
             self.has_player = false;
             self.key = None;
             self.lyrics = Lyrics::None;
+            self.source = LyricsSource::Lrclib;
             self.loading = false;
             self.active_idx = None;
             self.position_player_id = None;
@@ -318,6 +322,7 @@ impl LyricsModel {
 
         self.key = Some(key.clone());
         self.lyrics = Lyrics::None;
+        self.source = LyricsSource::Lrclib;
         self.active_idx = None;
         if key.is_valid() {
             self.loading = true;
@@ -379,15 +384,32 @@ fn subscribe_position(
     });
 }
 
+/// Non-empty embedded lyrics text when the display player is mtune and its
+/// current track's tags carry any — `None` for every other player.
+fn embedded_hint() -> Option<String> {
+    display_player()
+        .filter(|p| p.id.bus_name() == mshell_services::mtune::BUS_NAME)
+        .map(|_| {
+            mshell_services::mtune::mtune_service()
+                .player
+                .lyrics_embedded
+                .get()
+        })
+        .filter(|s| !s.is_empty())
+}
+
 /// Resolve lyrics for `key` off the main thread, then deliver them tagged with
-/// the key so a stale (track-changed) result can be discarded.
+/// the key so a stale (track-changed) result can be discarded. mtune's own
+/// embedded lyrics (when present) win over a lrclib lookup.
 fn kick_fetch(sender: &ComponentSender<LyricsModel>, key: TrackKey) {
     sender.command(move |out, _shutdown| async move {
         let for_fetch = key.clone();
-        let lyrics = tokio::task::spawn_blocking(move || lyrics::fetch(&for_fetch))
-            .await
-            .unwrap_or(Lyrics::None);
-        let _ = out.send(LyricsCommandOutput::Fetched(key, lyrics));
+        let embedded = embedded_hint();
+        let (lyrics, source) =
+            tokio::task::spawn_blocking(move || lyrics::fetch(&for_fetch, embedded.as_deref()))
+                .await
+                .unwrap_or((Lyrics::None, LyricsSource::Lrclib));
+        let _ = out.send(LyricsCommandOutput::Fetched(key, lyrics, source));
     });
 }
 
@@ -433,7 +455,11 @@ fn apply_visual(widgets: &LyricsModelWidgets, model: &LyricsModel) {
         Lyrics::Plain(_) => {
             widgets.label.set_visible(false);
             root.add_css_class("has-lyrics");
-            root.set_tooltip_text(Some("Lyrics available (unsynced) — click to view"));
+            let tip = match model.source {
+                LyricsSource::Embedded => "Embedded lyrics — click to view",
+                LyricsSource::Lrclib => "Lyrics available (unsynced) — click to view",
+            };
+            root.set_tooltip_text(Some(tip));
         }
         Lyrics::Instrumental => {
             widgets.label.set_visible(false);
