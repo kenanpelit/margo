@@ -49,6 +49,8 @@ pub struct MtunePlayer {
     pub rate: Property<f64>,
     pub queue_len: Property<u32>,
     pub current_index: Property<i64>,
+    /// (title, artist, duration_secs) per queue entry, in queue order.
+    pub queue_entries: Property<Vec<(String, String, u64)>>,
     pub library_roots: Property<Vec<String>>,
     /// Names of the saved playlists.
     pub playlists: Property<Vec<String>>,
@@ -75,6 +77,7 @@ impl MtunePlayer {
             rate: Property::new(1.0),
             queue_len: Property::new(0),
             current_index: Property::new(-1),
+            queue_entries: Property::new(Vec::new()),
             library_roots: Property::new(Vec::new()),
             playlists: Property::new(Vec::new()),
             scanning: Property::new(false),
@@ -140,6 +143,9 @@ impl MtunePlayer {
     }
     pub async fn play_index(&self, index: u32) {
         self.call("PlayIndex", &(index,)).await;
+    }
+    pub async fn remove_index(&self, index: u32) {
+        self.call("RemoveIndex", &(index,)).await;
     }
     pub async fn play_folder(&self, path: &str) {
         self.call("PlayFolder", &(path,)).await;
@@ -333,6 +339,9 @@ async fn refresh(proxy: &zbus::Proxy<'_>, p: &MtunePlayer) {
     }
     if let Some(v) = get!("CurrentIndex", i64) {
         p.current_index.set(v);
+    }
+    if let Some(v) = get!("QueueEntries", Vec<(String, String, u64)>) {
+        p.queue_entries.set(v);
     }
     if let Some(v) = get!("LibraryRoots", Vec<String>) {
         p.library_roots.set(v);
