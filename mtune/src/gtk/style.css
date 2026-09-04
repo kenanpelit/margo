@@ -125,6 +125,14 @@ queuerow label.song-artist {
   color: var(--tune-on-surface-dim);
 }
 
+queuerow label.song-number {
+  font-size: 85%;
+  color: var(--tune-on-surface-dim);
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+}
+
 queuerow picture.cover,
 queuerow image.card {
   box-shadow: none;
@@ -150,7 +158,8 @@ queuerow.playing label.song-title {
   color: var(--tune-primary);
   font-weight: 700;
 }
-queuerow.playing label.song-artist {
+queuerow.playing label.song-artist,
+queuerow.playing label.song-number {
   color: color-mix(in srgb, var(--tune-primary) 70%, var(--tune-on-surface-dim));
 }
 queuerow.playing image {

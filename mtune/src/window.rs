@@ -1679,6 +1679,11 @@ impl Window {
                     .property_expression("item")
                     .chain_property::<Song>("selected")
                     .bind(&row, "selected", gtk::Widget::NONE);
+                list_item.property_expression("position").bind(
+                    &row,
+                    "track-number",
+                    gtk::Widget::NONE,
+                );
             }
         ));
         imp.playlist_view

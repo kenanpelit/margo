@@ -15,6 +15,19 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
             <property name="child">
               <object class="GtkBox">
                 <child>
+                  <object class="GtkLabel" id="song_number_label">
+                    <property name="xalign">1</property>
+                    <property name="valign">3</property>
+                    <property name="width-chars">2</property>
+                    <style>
+                      <class name="song-number"/>
+                    </style>
+                    <accessibility>
+                      <property name="label" translatable="yes" context="a11y">Track number</property>
+                    </accessibility>
+                  </object>
+                </child>
+                <child>
                   <object class="GtkStack" id="song_cover_stack">
                     <child>
                       <object class="GtkStackPage">

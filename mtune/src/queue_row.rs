@@ -10,7 +10,9 @@ use gtk::{CompositeTemplate, gdk, gio, glib, prelude::*};
 use crate::{audio::Song, cover_picture::CoverPicture};
 
 mod imp {
-    use glib::{ParamSpec, ParamSpecBoolean, ParamSpecObject, ParamSpecString, Value};
+    use glib::{
+        ParamSpec, ParamSpecBoolean, ParamSpecObject, ParamSpecString, ParamSpecUInt, Value,
+    };
     use once_cell::sync::Lazy;
 
     use super::*;
@@ -19,6 +21,8 @@ mod imp {
     #[template(resource = "/org/margo/Tune/queue-row.ui")]
     pub struct QueueRow {
         // Template widgets
+        #[template_child]
+        pub song_number_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub row_stack: TemplateChild<gtk::Stack>,
         #[template_child]
@@ -43,6 +47,9 @@ mod imp {
         pub song: RefCell<Option<Song>>,
         pub playing: Cell<bool>,
         pub selection_mode: Cell<bool>,
+        /// 0-based row position in the (filtered / sorted) queue view;
+        /// shown 1-based.
+        pub track_number: Cell<u32>,
     }
 
     #[glib::object_subclass]
@@ -87,6 +94,7 @@ mod imp {
                     ParamSpecBoolean::builder("playing").build(),
                     ParamSpecBoolean::builder("selection-mode").build(),
                     ParamSpecBoolean::builder("selected").build(),
+                    ParamSpecUInt::builder("track-number").build(),
                 ]
             });
             PROPERTIES.as_ref()
@@ -128,6 +136,11 @@ mod imp {
                         .expect("The value needs to be a boolean");
                     self.selected_button.set_active(p);
                 }
+                "track-number" => {
+                    let n = value.get::<u32>().unwrap_or(0);
+                    self.track_number.set(n);
+                    self.song_number_label.set_text(&(n + 1).to_string());
+                }
                 _ => unimplemented!(),
             }
         }
@@ -141,6 +154,7 @@ mod imp {
                 "playing" => self.playing.get().to_value(),
                 "selection-mode" => self.selection_mode.get().to_value(),
                 "selected" => self.selected_button.is_active().to_value(),
+                "track-number" => self.track_number.get().to_value(),
                 _ => unimplemented!(),
             }
         }
