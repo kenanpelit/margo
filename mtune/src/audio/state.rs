@@ -126,6 +126,14 @@ impl PlayerState {
         None
     }
 
+    pub fn lyrics(&self) -> Option<String> {
+        if let Some(song) = &*self.imp().current_song.borrow() {
+            return Some(song.lyrics());
+        }
+
+        None
+    }
+
     pub fn duration(&self) -> u64 {
         if let Some(song) = &*self.imp().current_song.borrow() {
             return song.duration();

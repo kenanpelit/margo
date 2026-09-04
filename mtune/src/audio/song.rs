@@ -30,11 +30,26 @@ pub struct SongData {
     artist: Option<String>,
     title: Option<String>,
     album: Option<String>,
+    lyrics: Option<String>,
     cover_art: Option<CoverArt>,
     cover_uuid: Option<String>,
     uuid: Option<String>,
     duration: u64,
     file: gio::File,
+}
+
+/// Embedded lyrics text, if the file's tag carries any. `ItemKey::Lyrics`
+/// ("possibly synchronized") covers Vorbis Comments and MP4 `©lyr`;
+/// **ID3v2 does not map that key at all** — an MP3's USLT frame only
+/// comes through `ItemKey::UnsyncLyrics`, so that's the fallback. v1 shows
+/// whatever comes back as plain text, even if it happens to contain
+/// `[mm:ss.xx]`-style timestamps (no LRC parsing here).
+fn resolve_lyrics(tag: &lofty::tag::Tag) -> Option<String> {
+    tag.get_string(ItemKey::Lyrics)
+        .or_else(|| tag.get_string(ItemKey::UnsyncLyrics))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 impl SongData {
@@ -48,6 +63,10 @@ impl SongData {
 
     pub fn album(&self) -> Option<&str> {
         self.album.as_deref()
+    }
+
+    pub fn lyrics(&self) -> Option<&str> {
+        self.lyrics.as_deref()
     }
 
     pub fn uuid(&self) -> Option<&str> {
@@ -124,6 +143,7 @@ impl SongData {
         let mut artist = None;
         let mut title = None;
         let mut album = None;
+        let mut lyrics = None;
         let mut cover_art = None;
         let mut cover_uuid = None;
         if let Some(tag) = tagged_file.primary_tag() {
@@ -131,6 +151,7 @@ impl SongData {
             artist = Some(tag.get_strings(ItemKey::TrackArtist).join(", "));
             title = tag.title().map(|s| s.to_string());
             album = tag.album().map(|s| s.to_string());
+            lyrics = resolve_lyrics(tag);
             if let Some(res) = cover_cache.cover_art(&path, tag) {
                 cover_art = Some(res.0);
                 cover_uuid = Some(res.1);
@@ -142,6 +163,7 @@ impl SongData {
                 artist = Some(tag.get_strings(ItemKey::TrackArtist).join(", "));
                 title = tag.title().map(|s| s.to_string());
                 album = tag.album().map(|s| s.to_string());
+                lyrics = resolve_lyrics(tag);
                 if let Some(res) = cover_cache.cover_art(&path, tag) {
                     cover_art = Some(res.0);
                     cover_uuid = Some(res.1);
@@ -192,6 +214,7 @@ impl SongData {
             artist,
             title,
             album,
+            lyrics,
             cover_art,
             cover_uuid,
             uuid,
@@ -215,6 +238,7 @@ impl Default for SongData {
             artist: Some("Invalid Artist".to_string()),
             title: Some("Invalid Title".to_string()),
             album: Some("Invalid Album".to_string()),
+            lyrics: None,
             cover_art: None,
             cover_uuid: None,
             uuid: None,
@@ -356,6 +380,17 @@ impl Song {
         }
     }
 
+    /// Plain empty string when absent — unlike `artist()`/`title()`/
+    /// `album()`, this must NOT localize an "Unknown …" placeholder: it
+    /// feeds `org.margo.Tune::EmbeddedLyrics`, and the shell treats a
+    /// non-empty string there as "this track has embedded lyrics".
+    pub fn lyrics(&self) -> String {
+        match self.imp().data.borrow().lyrics() {
+            Some(lyrics) => lyrics.to_string(),
+            None => String::new(),
+        }
+    }
+
     pub fn cover_texture(&self) -> Option<gdk::Texture> {
         self.imp().data.borrow().cover_texture().cloned()
     }
@@ -431,5 +466,46 @@ impl Display for Song {
             self.artist(),
             self.title()
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lofty::tag::{Tag, TagType};
+
+    #[test]
+    fn prefers_the_generic_lyrics_key() {
+        let mut tag = Tag::new(TagType::VorbisComments);
+        tag.insert_text(ItemKey::Lyrics, "la la la".to_string());
+        tag.insert_text(ItemKey::UnsyncLyrics, "should not win".to_string());
+        assert_eq!(resolve_lyrics(&tag).as_deref(), Some("la la la"));
+    }
+
+    #[test]
+    fn falls_back_to_unsync_lyrics_for_id3v2() {
+        // ID3v2 doesn't map ItemKey::Lyrics at all — only UnsyncLyrics
+        // (the USLT frame). A tag that only has UnsyncLyrics must still
+        // resolve.
+        let mut tag = Tag::new(TagType::Id3v2);
+        tag.insert_text(ItemKey::UnsyncLyrics, "hello darkness".to_string());
+        assert_eq!(resolve_lyrics(&tag).as_deref(), Some("hello darkness"));
+    }
+
+    #[test]
+    fn trims_and_rejects_whitespace_only() {
+        let mut tag = Tag::new(TagType::VorbisComments);
+        tag.insert_text(ItemKey::Lyrics, "  padded  ".to_string());
+        assert_eq!(resolve_lyrics(&tag).as_deref(), Some("padded"));
+
+        let mut blank = Tag::new(TagType::VorbisComments);
+        blank.insert_text(ItemKey::Lyrics, "   ".to_string());
+        assert_eq!(resolve_lyrics(&blank), None);
+    }
+
+    #[test]
+    fn no_lyrics_tag_at_all() {
+        let tag = Tag::new(TagType::VorbisComments);
+        assert_eq!(resolve_lyrics(&tag), None);
     }
 }
