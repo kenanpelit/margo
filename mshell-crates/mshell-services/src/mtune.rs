@@ -122,6 +122,9 @@ impl MtunePlayer {
     pub async fn set_rate(&self, rate: f64) {
         self.call("SetRate", &(rate,)).await;
     }
+    pub async fn seek(&self, position_secs: u64) {
+        self.call("Seek", &(position_secs,)).await;
+    }
     pub async fn load_playlist(&self, name: &str) {
         self.call("LoadPlaylist", &(name,)).await;
     }
@@ -216,6 +219,18 @@ async fn run(p: &MtunePlayer) -> zbus::Result<()> {
         .build()
         .await?;
 
+    // Second proxy for the live MPRIS `Position` (µs) — the custom
+    // `org.margo.Tune::Position` is only a coalesced snapshot, so a
+    // moving progress bar reads MPRIS instead, polled once a second
+    // while playing.
+    let mpris = zbus::proxy::Builder::<zbus::Proxy>::new(&conn)
+        .destination(BUS_NAME)?
+        .path("/org/mpris/MediaPlayer2")?
+        .interface("org.mpris.MediaPlayer2.Player")?
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+        .await?;
+
     // Wait for the name to have an owner (mtune running).
     let dbus = DBusProxy::new(&conn).await?;
     let name = BusName::try_from(BUS_NAME).map_err(|e| zbus::Error::Failure(e.to_string()))?;
@@ -226,6 +241,9 @@ async fn run(p: &MtunePlayer) -> zbus::Result<()> {
 
     let mut owner_changes = dbus.receive_name_owner_changed().await?;
     let mut changed = proxy.receive_signal("Changed").await?;
+
+    let mut pos_tick = tokio::time::interval(Duration::from_secs(1));
+    pos_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
         tokio::select! {
@@ -244,6 +262,16 @@ async fn run(p: &MtunePlayer) -> zbus::Result<()> {
             }
             Some(_) = changed.next() => {
                 refresh(&proxy, p).await;
+            }
+            _ = pos_tick.tick() => {
+                // Only while actually playing — a paused/stopped position
+                // doesn't move, and `Changed` already refreshed it.
+                if p.running.get()
+                    && p.playing.get()
+                    && let Ok(us) = mpris.get_property::<i64>("Position").await
+                {
+                    p.position.set(Duration::from_micros(us.max(0) as u64));
+                }
             }
             else => return Ok(()),
         }

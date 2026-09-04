@@ -3,9 +3,14 @@
 //! controls the generic MPRIS media menu can't offer. Talks only to
 //! `mtune_service()` (→ `org.margo.Tune`).
 
+use std::cell::Cell;
+use std::rc::Rc;
+use std::time::{Duration, Instant};
+
 use futures::StreamExt;
 use mshell_services::mtune::{mtune_service, spawn_mtune};
 use mshell_services::tokio_rt_spawn;
+use mshell_utils::media::format_duration;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -36,6 +41,15 @@ pub(crate) struct MtuneMenuWidgetModel {
     playlists: Vec<String>,
     scanning: bool,
     scan_progress: (u32, u32),
+    position: Duration,
+    duration: Duration,
+    /// Set while a seek is in flight — ignore incoming position ticks
+    /// until mtune catches up (or the ~1s guard expires) so the bar
+    /// doesn't snap back under the cursor.
+    pending_seek: Option<(Duration, Instant)>,
+    /// The seek scale's `value-changed` handler, blocked while the bar
+    /// is moved programmatically.
+    seek_signal: Option<gtk::glib::SignalHandlerId>,
 }
 
 #[derive(Debug)]
@@ -46,6 +60,10 @@ pub(crate) enum MtuneMenuInput {
     ToggleShuffle,
     CycleRepeat,
     SetRate(f64),
+    /// Scale moved (0.0–1.0) — update the readout, debounce the real seek.
+    SeekPreview(f64),
+    /// Debounce elapsed — actually seek to this fraction.
+    Seek(f64),
     ChooseFolder,
     OpenPlaylist,
     LoadPlaylist(String),
@@ -62,6 +80,7 @@ pub(crate) struct MtuneMenuWidgetInit {}
 #[derive(Debug)]
 pub(crate) enum MtuneMenuCmd {
     Refresh,
+    PositionTick(Duration),
 }
 
 #[relm4::component(pub)]
@@ -127,6 +146,30 @@ impl Component for MtuneMenuWidgetModel {
                         set_visible: model.running && (model.has_song || model.queue_len > 0),
                     },
                 },
+            },
+
+            // ── Seek bar ───────────────────────────────────────
+            gtk::Box {
+                add_css_class: "mtune-menu-progress",
+                set_spacing: 8,
+                set_valign: gtk::Align::Center,
+                #[watch]
+                set_visible: model.running && model.has_song && !model.duration.is_zero(),
+
+                #[name = "elapsed"]
+                gtk::Label { add_css_class: "mtune-menu-time" },
+
+                #[name = "seek"]
+                gtk::Scale {
+                    add_css_class: "ok-progress-bar",
+                    set_hexpand: true,
+                    set_can_focus: false,
+                    set_focus_on_click: false,
+                    set_range: (0.0, 1.0),
+                },
+
+                #[name = "total"]
+                gtk::Label { add_css_class: "mtune-menu-time" },
             },
 
             // ── Transport ──────────────────────────────────────
@@ -334,8 +377,10 @@ impl Component for MtuneMenuWidgetModel {
                 Box::pin(p.playlists.watch().map(|_| ())),
                 Box::pin(p.scanning.watch().map(|_| ())),
                 Box::pin(p.scan_progress.watch().map(|_| ())),
+                Box::pin(p.duration.watch().map(|_| ())),
             ];
             let mut merged = futures::stream::select_all(streams.drain(..));
+            let mut position = p.position.watch();
             loop {
                 tokio::select! {
                     () = &mut shutdown_fut => break,
@@ -344,6 +389,9 @@ impl Component for MtuneMenuWidgetModel {
                             break;
                         }
                         let _ = out.send(MtuneMenuCmd::Refresh);
+                    }
+                    Some(d) = position.next() => {
+                        let _ = out.send(MtuneMenuCmd::PositionTick(d));
                     }
                 }
             }
@@ -366,10 +414,16 @@ impl Component for MtuneMenuWidgetModel {
             playlists: Vec::new(),
             scanning: false,
             scan_progress: (0, 0),
+            position: Duration::ZERO,
+            duration: Duration::ZERO,
+            pending_seek: None,
+            seek_signal: None,
         };
         read(&mut model);
 
         let widgets = view_output!();
+
+        model.seek_signal = Some(setup_seek(&widgets.seek, &sender));
 
         // Build the speed-preset row once; state (highlight) is applied
         // on every refresh.
@@ -387,8 +441,30 @@ impl Component for MtuneMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::Input,
+        sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
         match message {
+            MtuneMenuInput::SeekPreview(value) => {
+                // Immediate feedback; the real seek is debounced.
+                let pos = self.duration.mul_f64(value.clamp(0.0, 1.0));
+                self.pending_seek = Some((pos, Instant::now()));
+                self.position = pos;
+                widgets.elapsed.set_label(&format_duration(pos));
+                if let Some(sig) = &self.seek_signal {
+                    widgets.seek.block_signal(sig);
+                    widgets.seek.set_value(value);
+                    widgets.seek.unblock_signal(sig);
+                }
+            }
+            MtuneMenuInput::Seek(value) => {
+                let secs = self.duration.mul_f64(value.clamp(0.0, 1.0)).as_secs();
+                tokio_rt_spawn(async move { mtune_service().player.seek(secs).await });
+            }
             MtuneMenuInput::PlayPause => {
                 tokio_rt_spawn(async { mtune_service().player.play_pause().await });
             }
@@ -468,6 +544,8 @@ impl Component for MtuneMenuWidgetModel {
                 });
             }
         }
+        // relm4 doesn't re-run `#[watch]` after `update_with_view` — do it.
+        self.update_view(widgets, sender);
     }
 
     fn update_cmd_with_view(
@@ -478,7 +556,21 @@ impl Component for MtuneMenuWidgetModel {
         _root: &Self::Root,
     ) {
         match message {
-            MtuneMenuCmd::Refresh => read(self),
+            MtuneMenuCmd::Refresh => {
+                read(self);
+                // A fresh song / stop clears any in-flight seek.
+                self.pending_seek = None;
+            }
+            MtuneMenuCmd::PositionTick(d) => {
+                // Ignore ticks while a seek is settling.
+                let settling = self
+                    .pending_seek
+                    .is_some_and(|(_, at)| at.elapsed() < Duration::from_millis(1200));
+                if !settling {
+                    self.pending_seek = None;
+                    self.position = d;
+                }
+            }
         }
         apply_dynamic(widgets, self, &sender);
         // CRITICAL: re-run the `#[watch]` bindings (title, icons,
@@ -506,6 +598,8 @@ fn read(m: &mut MtuneMenuWidgetModel) {
     m.playlists = p.playlists.get();
     m.scanning = p.scanning.get();
     m.scan_progress = p.scan_progress.get();
+    m.position = p.position.get();
+    m.duration = p.duration.get();
 }
 
 /// Widget updates the `#[watch]` macro can't express: the cover image,
@@ -520,6 +614,23 @@ fn apply_dynamic(
         Some(path) if !path.trim().is_empty() => widgets.cover.set_from_file(Some(path)),
         _ => widgets.cover.set_icon_name(Some("org.margo.Tune-symbolic")),
     }
+
+    // Seek bar + time readouts
+    let frac = if m.duration.is_zero() {
+        0.0
+    } else {
+        (m.position.as_secs_f64() / m.duration.as_secs_f64()).clamp(0.0, 1.0)
+    };
+    match &m.seek_signal {
+        Some(sig) => {
+            widgets.seek.block_signal(sig);
+            widgets.seek.set_value(frac);
+            widgets.seek.unblock_signal(sig);
+        }
+        None => widgets.seek.set_value(frac),
+    }
+    widgets.elapsed.set_label(&format_duration(m.position));
+    widgets.total.set_label(&format_duration(m.duration));
 
     // Repeat active state
     if m.repeat == "consecutive" {
@@ -560,6 +671,36 @@ fn apply_dynamic(
         row.connect_clicked(move |_| s.input(MtuneMenuInput::LoadPlaylist(name.clone())));
         widgets.playlists_list.append(&row);
     }
+}
+
+/// Wire the seek scale: immediate readout on drag, the real seek
+/// debounced ~280ms after the last move. Returns the `value-changed`
+/// handler id so programmatic updates can block it.
+fn setup_seek(
+    scale: &gtk::Scale,
+    sender: &ComponentSender<MtuneMenuWidgetModel>,
+) -> gtk::glib::SignalHandlerId {
+    let pending: Rc<Cell<Option<gtk::glib::SourceId>>> = Rc::new(Cell::new(None));
+    let sender = sender.clone();
+    scale.connect_value_changed(move |scale| {
+        if let Some(id) = pending.take() {
+            id.remove();
+        }
+        let value = scale.value();
+        // Fallible send: `value-changed` also fires on a programmatic
+        // `set_value` during teardown, where `input()` would panic.
+        let _ = sender
+            .input_sender()
+            .send(MtuneMenuInput::SeekPreview(value));
+
+        let s = sender.clone();
+        let p = pending.clone();
+        let id = gtk::glib::timeout_add_local_once(Duration::from_millis(280), move || {
+            p.set(None);
+            let _ = s.input_sender().send(MtuneMenuInput::Seek(value));
+        });
+        pending.set(Some(id));
+    })
 }
 
 impl MtuneMenuWidgetModel {

@@ -8,9 +8,12 @@
 //!   * right click → play / pause in place.
 //!   * when mtune isn't running → a single glyph; click launches it.
 
+use std::time::Duration;
+
 use futures::StreamExt;
 use mshell_services::mtune::{mtune_service, spawn_mtune};
 use mshell_services::tokio_rt_spawn;
+use mshell_utils::media::format_duration;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -22,6 +25,8 @@ pub(crate) struct MtuneModel {
     title: String,
     artist: String,
     cover_art: Option<String>,
+    position: Duration,
+    duration: Duration,
 }
 
 #[derive(Debug)]
@@ -91,6 +96,15 @@ impl Component for MtuneModel {
                         set_ellipsize: pango::EllipsizeMode::End,
                         set_max_width_chars: 40,
                     },
+
+                    // Elapsed / total — never ellipsised, so the title
+                    // truncates first.
+                    #[name = "time"]
+                    gtk::Label {
+                        add_css_class: "mtune-bar-time",
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                    },
                 }
             }
         }
@@ -113,6 +127,8 @@ impl Component for MtuneModel {
             let mut title = p.title.watch();
             let mut artist = p.artist.watch();
             let mut cover = p.cover_art.watch();
+            let mut position = p.position.watch();
+            let mut duration = p.duration.watch();
             loop {
                 tokio::select! {
                     () = &mut shutdown_fut => break,
@@ -122,6 +138,8 @@ impl Component for MtuneModel {
                     _ = title.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
                     _ = artist.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
                     _ = cover.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
+                    _ = position.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
+                    _ = duration.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
                 }
             }
         });
@@ -133,6 +151,8 @@ impl Component for MtuneModel {
             title: String::new(),
             artist: String::new(),
             cover_art: None,
+            position: Duration::ZERO,
+            duration: Duration::ZERO,
         };
         read(&mut model);
 
@@ -194,12 +214,15 @@ fn read(model: &mut MtuneModel) {
     model.title = p.title.get();
     model.artist = p.artist.get();
     model.cover_art = p.cover_art.get();
+    model.position = p.position.get();
+    model.duration = p.duration.get();
 }
 
 fn apply(widgets: &MtuneModelWidgets, model: &MtuneModel) {
     if !model.running {
         widgets.cover.set_icon_name(Some("org.margo.Tune-symbolic"));
         widgets.label.set_visible(false);
+        widgets.time.set_visible(false);
         widgets.root.remove_css_class("paused");
         widgets
             .root
@@ -227,6 +250,18 @@ fn apply(widgets: &MtuneModelWidgets, model: &MtuneModel) {
     widgets.label.set_label(&text);
     widgets.label.set_visible(model.has_song);
 
+    let time = if model.has_song && !model.duration.is_zero() {
+        format!(
+            "{} / {}",
+            format_duration(model.position),
+            format_duration(model.duration)
+        )
+    } else {
+        String::new()
+    };
+    widgets.time.set_label(&time);
+    widgets.time.set_visible(!time.is_empty());
+
     if model.playing {
         widgets.root.remove_css_class("paused");
     } else {
@@ -234,11 +269,12 @@ fn apply(widgets: &MtuneModelWidgets, model: &MtuneModel) {
     }
 
     widgets.root.set_tooltip_text(Some(&if model.has_song {
-        format!(
-            "{}  ·  {}",
-            if model.playing { "Playing" } else { "Paused" },
-            text
-        )
+        let head = if model.playing { "Playing" } else { "Paused" };
+        if time.is_empty() {
+            format!("{head}  ·  {text}")
+        } else {
+            format!("{head}  ·  {text}  ·  {time}")
+        }
     } else {
         "Tune".to_string()
     }));

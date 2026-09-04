@@ -1,14 +1,20 @@
 @use "../02-functions/index" as *;
 
 // Tune — the dedicated bar pill + menu for the `mtune` folder-first
-// music player. Follows DESIGN.md + the menu-professionalization recipe:
-// tonal section labels, real-looking action buttons, `--primary-container`
-// wash for the active/selected state.
+// music player. DESIGN.md: tokens only, SemiBold titles, `--font-2xs`
+// tonal section labels, `--button-circle-size` media controls, the
+// `--primary-container` wash for the active/selected state, tabular
+// numerals for the time readouts.
+//
+// One deliberate divergence: the play/pause button is 44px (vs the 40px
+// `--button-circle-size`) — the standard media-control emphasis, so the
+// primary transport target reads a touch larger than prev/next.
 
 .mtune-menu-widget {
-  border-radius: var(--radius-md);
-  background-color: var(--surface-container-high);
-  padding: var(--space-3);
+  border-radius: var(--card-radius);
+  background-color: var(--card-bg);
+  color: var(--on-surface);
+  padding: var(--space-3) var(--space-4);
 }
 
 // ── Now playing ──────────────────────────────────────────────
@@ -21,7 +27,7 @@
 
 .mtune-menu-title {
   font-size: var(--font-md);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--on-surface);
 }
 
@@ -34,14 +40,32 @@
   font-size: var(--font-xs);
   color: var(--on-surface-variant);
   opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+// ── Seek bar ─────────────────────────────────────────────────
+.mtune-menu-progress {
+  margin-top: var(--space-1);
+
+  .mtune-menu-time {
+    font-size: var(--font-2xs);
+    color: var(--on-surface-variant);
+    font-variant-numeric: tabular-nums;
+    min-width: 5ch;
+
+    &:first-child {
+      // elapsed → right-aligned so the digits hug the bar
+      margin-left: var(--space-1);
+    }
+  }
 }
 
 // ── Section labels ───────────────────────────────────────────
 .mtune-menu-section-label {
-  font-size: var(--font-xs);
-  font-weight: 700;
+  font-size: var(--font-2xs);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   color: var(--on-surface-variant);
   margin-top: var(--space-1);
 }
@@ -51,10 +75,10 @@
   color: var(--on-surface-variant);
 }
 
-// ── Transport (round buttons) ────────────────────────────────
+// ── Transport (circular buttons) ─────────────────────────────
 .mtune-round {
-  min-width: 38px;
-  min-height: 38px;
+  min-width: 40px;
+  min-height: 40px;
   padding: 0;
   border-radius: var(--radius-pill);
   background-color: var(--surface-container-highest);
@@ -67,8 +91,8 @@
 }
 
 .mtune-round-primary {
-  min-width: 46px;
-  min-height: 46px;
+  min-width: 44px;
+  min-height: 44px;
   background-color: var(--primary);
   color: var(--on-primary);
   @include state-layer(var(--primary));
@@ -77,7 +101,8 @@
 // ── Shuffle / repeat toggles ─────────────────────────────────
 .mtune-toggle {
   min-width: 40px;
-  min-height: 34px;
+  min-height: 40px;
+  padding: 0;
   border-radius: var(--radius-sm);
   background-color: var(--surface-container-highest);
   color: var(--on-surface-variant);
@@ -91,30 +116,28 @@
   }
 }
 
-// ── Speed presets ────────────────────────────────────────────
-.mtune-menu-speed {
-  // linked-ish equal segments
-  .mtune-speed-preset {
-    min-height: 30px;
-    padding: 0 var(--space-2);
-    font-size: var(--font-sm);
-    font-weight: 600;
-    border-radius: var(--radius-sm);
-    background-color: var(--surface-container-highest);
-    color: var(--on-surface-variant);
-    @include state-layer(var(--surface-container-highest));
+// ── Speed presets (equal linked-ish segments) ────────────────
+.mtune-menu-speed .mtune-speed-preset {
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container-highest);
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  @include state-layer(var(--surface-container-highest));
 
-    &.selected {
-      background-color: var(--primary-container);
-      color: var(--on-primary-container);
-      @include state-layer(var(--primary-container));
-    }
+  &.selected {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+    @include state-layer(var(--primary-container));
   }
 }
 
 // ── Action buttons (Choose folder / Rescan / Open playlist / …) ──
 .mtune-menu-action {
-  min-height: 34px;
+  min-height: var(--button-min-height);
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   background-color: var(--surface-container-highest);
@@ -126,20 +149,24 @@
   }
 }
 
-// ── Saved-playlist rows ──────────────────────────────────────
+// ── Saved-playlist rows (one boxed-list card) ────────────────
 .mtune-menu-playlists {
-  border-radius: var(--radius-sm);
-  background-color: var(--surface-container);
-  padding: var(--space-1);
-}
+  border-radius: var(--list-radius);
+  background-color: var(--card-bg);
+  overflow: hidden;
 
-.mtune-playlist-row {
-  min-height: 30px;
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-xs);
-  background-color: transparent;
-  color: var(--on-surface);
-  @include state-layer(var(--surface-container));
+  .mtune-playlist-row {
+    min-height: 34px;
+    padding: 0 var(--space-3);
+    border-radius: 0;
+    background-color: transparent;
+    color: var(--on-surface);
+    @include state-layer(var(--card-bg));
+
+    &:not(:last-child) {
+      border-bottom: 1px solid var(--list-separator);
+    }
+  }
 }
 
 // ── Bar pill ─────────────────────────────────────────────────
@@ -149,8 +176,14 @@
 }
 
 .mtune-bar-label {
-  font-size: var(--font-sm);
+  font-size: var(--font-bar);
   color: var(--on-surface);
+}
+
+.mtune-bar-time {
+  font-size: var(--font-bar);
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
 }
 
 .mtune-bar-widget.paused {

@@ -6,6 +6,17 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use wayle_media::core::player::Player;
 
+/// `m:ss` (or `h:mm:ss` past an hour) — the media time readout shape.
+pub fn format_duration(d: Duration) -> String {
+    let total = d.as_secs();
+    let (h, m, s) = (total / 3600, (total % 3600) / 60, total % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
+
 pub fn spawn_media_players_watcher<C>(
     sender: &ComponentSender<C>,
     players_changed: impl Fn() -> C::CommandOutput + Send + Sync + 'static,
