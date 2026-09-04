@@ -109,6 +109,28 @@ fn render_layout(cr: &cairo::Context, w: i32, h: i32, p: &LayoutParams, big: boo
         return;
     }
 
+    // Floating: the real arrange() returns nothing (clients keep their
+    // own float_geom). Draw a small cascade so the catalogue tile reads
+    // as "stacking".
+    if p.layout == LayoutId::Floating {
+        let n = p.n_windows.min(4) as i32;
+        let bw = w as f64 * 0.55;
+        let bh = h as f64 * 0.55;
+        let step_x = (w as f64 - bw) / (n.max(2) as f64);
+        let step_y = (h as f64 - bh) / (n.max(2) as f64);
+        for i in 0..n {
+            let (r, g, b) = hsv_to_rgb(i as f64 / n.max(1) as f64, 0.42, 0.78);
+            let alpha = if big { 0.92 } else { 0.85 };
+            cr.set_source_rgba(r, g, b, alpha);
+            cr.rectangle(i as f64 * step_x, i as f64 * step_y, bw, bh);
+            let _ = cr.fill_preserve();
+            cr.set_source_rgba(r * 0.5, g * 0.5, b * 0.5, 1.0);
+            cr.set_line_width(if big { 1.5 } else { 1.0 });
+            let _ = cr.stroke();
+        }
+        return;
+    }
+
     let tiled: Vec<usize> = (0..p.n_windows as usize).collect();
     let proportions = vec![p.scroller_prop; p.n_windows as usize];
     let gaps = GapConfig {

@@ -14,7 +14,9 @@ use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
 
-/// The 10 tiling layouts, in `LayoutId` order.
+/// The 11 layouts offered per-tag, in `LayoutId` order. The last,
+/// `floating`, is a stacking layout — the compositor bypasses the tiler
+/// for it and auto-floats the tag's windows.
 const LAYOUTS: &[&str] = &[
     "tile",
     "scroller",
@@ -26,6 +28,7 @@ const LAYOUTS: &[&str] = &[
     "tgmix",
     "canvas",
     "dwindle",
+    "floating",
 ];
 
 /// margo's tag count.
