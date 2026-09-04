@@ -58,7 +58,7 @@ The floor everything else stands on. Behaviour-stable for the lifetime of the pr
 ## 2. Window management
 
 ### Layouts & tags
-- 14 layout algorithms: tile, scroller, grid, monocle, deck, center / right / vertical variants, canvas, dwindle.
+- 14 layout algorithms: tile, scroller, grid, monocle, deck, center / right / vertical variants, canvas, dwindle — plus a **floating** (stacking) layout: no tiler, every window keeps its own geometry, cascaded on first show (issue #1).
 - **Adaptive layout engine** (`b19b5d6`) — `Pertag::user_picked_layout: Vec<bool>` sticky bit + `maybe_apply_adaptive_layout()` heuristic (window count + monitor aspect ratio). User's `setlayout` pins the choice; heuristic never overrides.
 - **Spatial canvas** (`1c2bed1`) — per-tag pan via `Pertag::canvas_pan_x/y`, `canvas_pan` and `canvas_reset` actions, threaded into 5 layout algorithms via `ArrangeCtx::canvas_pan`. PaperWM-style — each tag remembers its viewport.
 

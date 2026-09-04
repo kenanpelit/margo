@@ -144,7 +144,11 @@ Touch all four or the knob silently no-ops / fails validation:
   rule layout when it has a `taglayout`) + `reload_config` (seed taglayouts,
   then apply `default_layout` to tags with neither an override nor a live
   user-picked layout). A manual `setlayout` sets `user_picked_layout` and is
-  never clobbered.
+  never clobbered. `floating` is a valid value for `taglayout` /
+  `tagrule layout_name` / `default_layout` — it routes through
+  `LayoutId::from_name` like any other, but bypasses the tiler entirely: the
+  compositor auto-floats the tag's windows and cascades their placement, and
+  re-tiles them when the tag switches back to a tiling layout (issue #1).
 - **If a setting should take effect on `mctl reload`, re-apply it in
   `reload_config`** — seeding only at output/Pertag creation means it lands at
   the next start, not on reload (the bug behind "Apply does nothing").
