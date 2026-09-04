@@ -1242,6 +1242,12 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
+(toggle-window)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (quit)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -1347,6 +1353,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (raise)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(toggle-window)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -3736,6 +3746,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(toggle-window)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (quit)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -6000,6 +6014,7 @@ _mshellctl__subcmd__help__subcmd__mtune_commands() {
 'status:Now-playing summary' \
 'metadata:Full track metadata' \
 'raise:Raise the mtune window' \
+'toggle-window:Show the mtune window if hidden, hide it if visible (creates it after \`mtune --hidden\`). Handy on a keybind' \
 'quit:Quit mtune' \
 'menu:Open the shell'\''s Tune menu (needs mshell)' \
     )
@@ -6114,6 +6129,11 @@ _mshellctl__subcmd__help__subcmd__mtune__subcmd__status_commands() {
 _mshellctl__subcmd__help__subcmd__mtune__subcmd__stop_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help mtune stop commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__mtune__subcmd__toggle-window_commands] )) ||
+_mshellctl__subcmd__help__subcmd__mtune__subcmd__toggle-window_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help mtune toggle-window commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__mtune__subcmd__volume_commands] )) ||
 _mshellctl__subcmd__help__subcmd__mtune__subcmd__volume_commands() {
@@ -7560,6 +7580,7 @@ _mshellctl__subcmd__mtune_commands() {
 'status:Now-playing summary' \
 'metadata:Full track metadata' \
 'raise:Raise the mtune window' \
+'toggle-window:Show the mtune window if hidden, hide it if visible (creates it after \`mtune --hidden\`). Handy on a keybind' \
 'quit:Quit mtune' \
 'menu:Open the shell'\''s Tune menu (needs mshell)' \
 'help:Print this message or the help of the given subcommand(s)' \
@@ -7590,6 +7611,7 @@ _mshellctl__subcmd__mtune__subcmd__help_commands() {
 'status:Now-playing summary' \
 'metadata:Full track metadata' \
 'raise:Raise the mtune window' \
+'toggle-window:Show the mtune window if hidden, hide it if visible (creates it after \`mtune --hidden\`). Handy on a keybind' \
 'quit:Quit mtune' \
 'menu:Open the shell'\''s Tune menu (needs mshell)' \
 'help:Print this message or the help of the given subcommand(s)' \
@@ -7711,6 +7733,11 @@ _mshellctl__subcmd__mtune__subcmd__help__subcmd__stop_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl mtune help stop commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__mtune__subcmd__help__subcmd__toggle-window_commands] )) ||
+_mshellctl__subcmd__mtune__subcmd__help__subcmd__toggle-window_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl mtune help toggle-window commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__mtune__subcmd__help__subcmd__volume_commands] )) ||
 _mshellctl__subcmd__mtune__subcmd__help__subcmd__volume_commands() {
     local commands; commands=()
@@ -7825,6 +7852,11 @@ _mshellctl__subcmd__mtune__subcmd__status_commands() {
 _mshellctl__subcmd__mtune__subcmd__stop_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl mtune stop commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__mtune__subcmd__toggle-window_commands] )) ||
+_mshellctl__subcmd__mtune__subcmd__toggle-window_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl mtune toggle-window commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__mtune__subcmd__volume_commands] )) ||
 _mshellctl__subcmd__mtune__subcmd__volume_commands() {

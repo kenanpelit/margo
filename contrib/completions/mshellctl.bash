@@ -919,6 +919,9 @@ _mshellctl() {
             mshellctl__subcmd__help__subcmd__mtune,stop)
                 cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__stop"
                 ;;
+            mshellctl__subcmd__help__subcmd__mtune,toggle-window)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__toggle__subcmd__window"
+                ;;
             mshellctl__subcmd__help__subcmd__mtune,volume)
                 cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__volume"
                 ;;
@@ -1627,6 +1630,9 @@ _mshellctl() {
             mshellctl__subcmd__mtune,stop)
                 cmd="mshellctl__subcmd__mtune__subcmd__stop"
                 ;;
+            mshellctl__subcmd__mtune,toggle-window)
+                cmd="mshellctl__subcmd__mtune__subcmd__toggle__subcmd__window"
+                ;;
             mshellctl__subcmd__mtune,volume)
                 cmd="mshellctl__subcmd__mtune__subcmd__volume"
                 ;;
@@ -1698,6 +1704,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__mtune__subcmd__help,stop)
                 cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__stop"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,toggle-window)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__toggle__subcmd__window"
                 ;;
             mshellctl__subcmd__mtune__subcmd__help,volume)
                 cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__volume"
@@ -5427,7 +5436,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__mtune)
-            opts="play-pause play pause stop next previous seek volume rate repeat shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise quit menu"
+            opts="play-pause play pause stop next previous seek volume rate repeat shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise toggle-window quit menu"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -5735,6 +5744,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__mtune__subcmd__stop)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__toggle__subcmd__window)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -9057,7 +9080,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__mtune)
-            opts="-h --help play-pause play pause stop next previous seek volume rate repeat shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise quit menu help"
+            opts="-h --help play-pause play pause stop next previous seek volume rate repeat shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise toggle-window quit menu help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -9071,7 +9094,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__mtune__subcmd__help)
-            opts="play-pause play pause stop next previous seek volume rate repeat shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise quit menu help"
+            opts="play-pause play pause stop next previous seek volume rate repeat shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise toggle-window quit menu help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -9406,6 +9429,20 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__toggle__subcmd__window)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mshellctl__subcmd__mtune__subcmd__help__subcmd__volume)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
@@ -9715,6 +9752,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__mtune__subcmd__stop)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__toggle__subcmd__window)
             opts="-h --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

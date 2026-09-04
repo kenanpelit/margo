@@ -87,6 +87,10 @@ pub struct BehaviourSection {
     pub close_to_tray: bool,
     /// Refuse a second instance; raise the running one instead.
     pub single_instance: bool,
+    /// Start with no window — just the tray icon. Overridden per-launch
+    /// by `mtune --hidden`. Click the tray (or `mshellctl mtune
+    /// toggle-window`) to show the player.
+    pub start_hidden: bool,
 }
 
 impl Default for BehaviourSection {
@@ -94,6 +98,7 @@ impl Default for BehaviourSection {
         Self {
             close_to_tray: true,
             single_instance: true,
+            start_hidden: false,
         }
     }
 }
@@ -171,6 +176,15 @@ mod tests {
         assert_eq!(c.playback.on_start, OnStart::Resume);
         assert!(!c.library.extensions.is_empty());
         assert!(c.behaviour.close_to_tray);
+        assert!(!c.behaviour.start_hidden);
+    }
+
+    #[test]
+    fn start_hidden_roundtrips() {
+        let mut c = MtuneConfig::default();
+        c.behaviour.start_hidden = true;
+        let back: MtuneConfig = toml::from_str(&toml::to_string(&c).unwrap()).unwrap();
+        assert!(back.behaviour.start_hidden);
     }
 
     #[test]

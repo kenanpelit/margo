@@ -65,6 +65,14 @@ mod imp {
         /// `np` = now-playing, `setting` = the transient setting blips.
         pub np_notify_id: std::cell::Cell<u32>,
         pub setting_notify_id: std::cell::Cell<u32>,
+        /// `mtune --hidden` was passed on this launch.
+        pub hidden_flag: std::cell::Cell<bool>,
+        /// `activate()` has run once — later re-launches always show the
+        /// window even when the first start was hidden.
+        pub activated: std::cell::Cell<bool>,
+        /// Keeps the GApplication alive while it runs windowless after a
+        /// hidden start (it would otherwise quit with zero windows).
+        pub startup_hold: RefCell<Option<gio::ApplicationHoldGuard>>,
     }
 
     impl std::fmt::Debug for Application {
@@ -101,6 +109,9 @@ mod imp {
                 matugen_monitor: RefCell::default(),
                 np_notify_id: std::cell::Cell::new(0),
                 setting_notify_id: std::cell::Cell::new(0),
+                hidden_flag: std::cell::Cell::new(false),
+                activated: std::cell::Cell::new(false),
+                startup_hold: RefCell::default(),
             }
         }
     }
@@ -110,6 +121,20 @@ mod imp {
             self.parent_constructed();
 
             let obj = self.obj();
+
+            // Register `--hidden` so GApplication documents it in `--help`
+            // and doesn't abort on it; the value itself is set from argv
+            // in `main` before `run()` (a second `mtune --hidden` while
+            // one is already running just raises the window).
+            obj.add_main_option(
+                "hidden",
+                glib::Char(0),
+                glib::OptionFlags::NONE,
+                glib::OptionArg::None,
+                "Start with no window — just the tray icon",
+                None,
+            );
+
             obj.setup_channel();
             obj.setup_gactions();
             obj.setup_settings();
@@ -169,9 +194,26 @@ mod imp {
 
         fn activate(&self) {
             debug!("Application::activate");
+            let obj = self.obj();
 
-            self.obj().present_main_window();
-            self.obj().load_library();
+            // Start-hidden: only on the very first activation, only when
+            // nothing forced a window open. `mtune --hidden` or the
+            // `[behaviour] start_hidden` config both take this path.
+            let first = !self.activated.replace(true);
+            let start_hidden = first
+                && obj.active_window().is_none()
+                && (self.hidden_flag.get() || self.config.borrow().behaviour.start_hidden);
+
+            if start_hidden {
+                debug!("Application::activate — hidden start, tray only");
+                // No window → hold the app so GApplication doesn't quit.
+                // The `tray::spawn` failure path (setup_bridge) shows the
+                // window if there's nowhere for the icon to live.
+                self.startup_hold.replace(Some(obj.hold()));
+            } else {
+                obj.present_main_window();
+            }
+            obj.load_library();
         }
 
         fn open(&self, files: &[gio::File], _hint: &str) {
@@ -211,6 +253,12 @@ impl Default for Application {
 impl Application {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Set from `main` when `--hidden` is on this launch's argv — start
+    /// with no window, just the tray icon.
+    pub fn set_start_hidden(&self, hidden: bool) {
+        self.imp().hidden_flag.set(hidden);
     }
 
     pub fn player(&self) -> Rc<AudioPlayer> {
@@ -472,9 +520,21 @@ impl Application {
                 .clone();
             let tx = imp.cmd_tx.clone();
             glib::spawn_future_local(async move {
-                if let Some(handle) = tray::spawn(snap, tx).await {
-                    this.imp().tray.replace(Some(handle));
-                    this.refresh_bridge();
+                match tray::spawn(snap, tx).await {
+                    Some(handle) => {
+                        this.imp().tray.replace(Some(handle));
+                        this.refresh_bridge();
+                    }
+                    None => {
+                        // No StatusNotifierWatcher — a hidden start would
+                        // leave an invisible process. Fall back to the
+                        // window and drop the windowless hold.
+                        if this.imp().startup_hold.borrow().is_some() {
+                            log::warn!("mtune: no system tray available — showing the window");
+                            this.present_main_window();
+                            this.imp().startup_hold.replace(None);
+                        }
+                    }
                 }
             });
         }

@@ -270,6 +270,13 @@ impl TuneService {
         self.send(AppCommand::Raise);
     }
 
+    /// Show the window if hidden, hide it if visible (creating it if it
+    /// was never opened — e.g. after `mtune --hidden`). Bind to a key
+    /// for a quick peek at the player.
+    async fn toggle_window(&self) {
+        self.send(AppCommand::ToggleWindow);
+    }
+
     async fn quit(&self) {
         self.send(AppCommand::Quit);
     }

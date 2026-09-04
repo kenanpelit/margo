@@ -59,6 +59,8 @@ fn default_on_start() -> String {
 struct BehaviourSection {
     #[serde(default = "default_true")]
     close_to_tray: bool,
+    #[serde(default)]
+    start_hidden: bool,
     #[serde(flatten)]
     rest: toml::Table,
 }
@@ -66,6 +68,7 @@ impl Default for BehaviourSection {
     fn default() -> Self {
         Self {
             close_to_tray: true,
+            start_hidden: false,
             rest: toml::Table::new(),
         }
     }
@@ -123,6 +126,7 @@ pub(crate) enum MtuneSettingsInput {
     RemoveRoot(usize),
     OnStartChanged(u32),
     CloseToTrayToggled(bool),
+    StartHiddenToggled(bool),
     FolderPicked(String),
 }
 
@@ -260,6 +264,32 @@ impl Component for MtuneSettingsModel {
                             set_valign: gtk::Align::Center,
                         },
                     },
+
+                    gtk::Box {
+                        add_css_class: "action-row",
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Start hidden in the system tray",
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small-dim",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_label: "Launch with no window — just the tray icon. Click it (or bind `mshellctl mtune toggle-window`) to open the player.",
+                            },
+                        },
+                        #[name = "start_hidden_switch"]
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                        },
+                    },
                 },
             }
         }
@@ -295,6 +325,16 @@ impl Component for MtuneSettingsModel {
         let s = sender.clone();
         widgets.tray_switch.connect_state_set(move |_, on| {
             s.input(MtuneSettingsInput::CloseToTrayToggled(on));
+            glib::Propagation::Proceed
+        });
+
+        // start-hidden switch
+        widgets
+            .start_hidden_switch
+            .set_active(model.cfg.behaviour.start_hidden);
+        let s = sender.clone();
+        widgets.start_hidden_switch.connect_state_set(move |_, on| {
+            s.input(MtuneSettingsInput::StartHiddenToggled(on));
             glib::Propagation::Proceed
         });
 
@@ -352,6 +392,10 @@ impl Component for MtuneSettingsModel {
             }
             MtuneSettingsInput::CloseToTrayToggled(on) => {
                 self.cfg.behaviour.close_to_tray = on;
+                save(&self.cfg);
+            }
+            MtuneSettingsInput::StartHiddenToggled(on) => {
+                self.cfg.behaviour.start_hidden = on;
                 save(&self.cfg);
             }
         }

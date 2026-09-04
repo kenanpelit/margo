@@ -81,5 +81,11 @@ fn main() -> glib::ExitCode {
     let ctx = glib::MainContext::default();
     let _guard = ctx.acquire().unwrap();
 
-    Application::new().run()
+    let app = Application::new();
+    // Read `--hidden` straight from argv (before `run()` hands the rest
+    // to GApplication, which knows the flag via `add_main_option`).
+    if env::args().any(|a| a == "--hidden") {
+        app.set_start_hidden(true);
+    }
+    app.run()
 }

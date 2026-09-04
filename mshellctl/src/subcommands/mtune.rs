@@ -67,6 +67,10 @@ pub enum MtuneCommands {
     },
     /// Raise the mtune window.
     Raise,
+    /// Show the mtune window if hidden, hide it if visible (creates it
+    /// after `mtune --hidden`). Handy on a keybind.
+    #[command(alias = "tw")]
+    ToggleWindow,
     /// Quit mtune.
     Quit,
     /// Open the shell's Tune menu (needs mshell).
@@ -185,6 +189,7 @@ pub async fn execute(command: MtuneCommands) -> Result<()> {
         MtuneCommands::PlaylistLoad { name } => call(&conn, "LoadPlaylist", &(name,)).await?,
         MtuneCommands::PlaylistSave { name } => call(&conn, "SavePlaylist", &(name,)).await?,
         MtuneCommands::Raise => call(&conn, "Raise", &()).await?,
+        MtuneCommands::ToggleWindow => call(&conn, "ToggleWindow", &()).await?,
         MtuneCommands::Quit => call(&conn, "Quit", &()).await?,
         // Already handled (with an early `return`) before the connection.
         MtuneCommands::Status { .. }
