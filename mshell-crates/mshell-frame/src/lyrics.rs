@@ -36,6 +36,18 @@ pub(crate) enum Lyrics {
     None,
 }
 
+/// Where a resolved [`Lyrics`] value came from — drives the status badge.
+/// Always returned alongside a `Lyrics`, never inferred after the fact: a
+/// `Lyrics::Plain` from an embedded tag and one from lrclib are
+/// structurally identical.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LyricsSource {
+    /// Read from the playing file's own tags (mtune only).
+    Embedded,
+    /// Resolved via lrclib.net (disk-cached or fresh).
+    Lrclib,
+}
+
 impl Lyrics {
     /// Whether there is anything to show.
     pub(crate) fn is_empty(&self) -> bool {
@@ -184,11 +196,18 @@ const USER_AGENT: &str = concat!(
 );
 const TIMEOUT: Duration = Duration::from_secs(12);
 
-/// Resolve lyrics for `key`: cache first, then lrclib. Blocking — run off the
-/// main thread. A transient network failure returns [`Lyrics::None`] without
+/// Resolve lyrics for `key`. `embedded` — the playing file's own embedded
+/// lyrics text, when the caller has one (mtune only) — wins unconditionally
+/// and short-circuits before touching the disk cache or the network at
+/// all. Otherwise: cache first, then lrclib. Blocking — run off the main
+/// thread. A transient network failure returns [`Lyrics::None`] without
 /// caching it, so the caller can retry on the next track change.
-pub(crate) fn fetch(key: &TrackKey) -> Lyrics {
-    fetch_inner(key, false)
+pub(crate) fn fetch(key: &TrackKey, embedded: Option<&str>) -> (Lyrics, LyricsSource) {
+    if let Some(text) = embedded.map(str::trim).filter(|s| !s.is_empty()) {
+        let lines = text.lines().map(str::to_string).collect();
+        return (Lyrics::Plain(lines), LyricsSource::Embedded);
+    }
+    (fetch_inner(key, false), LyricsSource::Lrclib)
 }
 
 /// Like [`fetch`] but always re-hits lrclib, bypassing (and overwriting) the
@@ -464,5 +483,34 @@ mod tests {
 
         // A title-only key is still valid (artist optional).
         assert!(key_for("Clocks", "", "", 0).is_valid());
+    }
+
+    #[test]
+    fn embedded_hint_short_circuits_to_plain_lines() {
+        let key = key_for("Title", "Artist", "Album", 180);
+        let (lyrics, source) = fetch(&key, Some("line one\nline two\n"));
+        assert_eq!(source, LyricsSource::Embedded);
+        match lyrics {
+            Lyrics::Plain(lines) => assert_eq!(lines, vec!["line one", "line two"]),
+            other => panic!("expected Plain, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn blank_or_absent_hint_falls_through_to_lrclib() {
+        // An invalid key (no title) short-circuits `fetch_inner` to `None`
+        // before it ever touches the network, so this stays offline and
+        // deterministic while still proving the non-embedded branch ran.
+        let key = key_for("", "", "", 0);
+
+        let (lyrics, source) = fetch(&key, None);
+        assert_eq!(source, LyricsSource::Lrclib);
+        assert_eq!(lyrics, Lyrics::None);
+
+        // Whitespace-only embedded text must not be mistaken for real
+        // lyrics either.
+        let (lyrics, source) = fetch(&key, Some("   \n  "));
+        assert_eq!(source, LyricsSource::Lrclib);
+        assert_eq!(lyrics, Lyrics::None);
     }
 }
