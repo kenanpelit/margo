@@ -41,10 +41,11 @@ impl MargoState {
         );
         for (i, c) in self.clients.iter().enumerate().take(32) {
             tracing::info!(
-                "  client[{i}] mon={} tags={:#x} float={} fs={} app_id={:?} title={:?} geom={}x{}+{}+{}",
+                "  client[{i}] mon={} tags={:#x} float={} fbl={} fs={} app_id={:?} title={:?} geom={}x{}+{}+{}",
                 c.monitor,
                 c.tags,
                 c.is_floating,
+                c.floated_by_layout,
                 c.is_fullscreen,
                 c.app_id,
                 c.title,

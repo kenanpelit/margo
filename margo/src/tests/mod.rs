@@ -37,6 +37,7 @@ mod arrange;
 mod bootstrap;
 mod color_management;
 mod dmabuf;
+mod floating_layout;
 mod focus_mon;
 mod gamma_control;
 mod globals;

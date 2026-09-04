@@ -97,6 +97,19 @@ impl MargoState {
         }
     }
 
+    /// Dissolve an entire group: every member becomes a plain
+    /// ungrouped window. Used when a tag switches to the `Floating`
+    /// layout, where a tabbed group (a tiling construct) has no
+    /// meaning.
+    pub(crate) fn dissolve_group(&mut self, gid: u32) {
+        for c in self.clients.iter_mut() {
+            if c.group_id == Some(gid) {
+                c.group_id = None;
+                c.group_active = false;
+            }
+        }
+    }
+
     /// Re-assert the one-active-member invariant for `gid` (e.g. after
     /// the active member was removed / ungrouped). Promotes the first
     /// remaining member when none is active. Dissolves a group of one.

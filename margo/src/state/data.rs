@@ -182,6 +182,12 @@ pub struct MargoClient {
     /// always has exactly one active member. Meaningless (and left
     /// `false`) when `group_id` is `None`.
     pub group_active: bool,
+    /// `true` only while the `Floating` layout is auto-floating this
+    /// client (set/cleared by `reconcile_floating_layout`). Lets a
+    /// switch back to a tiling layout re-tile the windows the layout
+    /// floated without disturbing windows the user floated by hand
+    /// (`is_floating && !floated_by_layout`).
+    pub floated_by_layout: bool,
     pub canvas_no_tile: bool,
     /// Set by a window rule. When true, screen-capture clients see
     /// solid black for this window's region.
@@ -284,6 +290,7 @@ impl MargoClient {
             no_blur: false,
             group_id: None,
             group_active: false,
+            floated_by_layout: false,
             canvas_no_tile: false,
             block_out_from_screencast: false,
             min_width: 0,

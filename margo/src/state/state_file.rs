@@ -178,6 +178,7 @@ impl MargoState {
                     "width": c.geom.width,
                     "height": c.geom.height,
                     "floating": c.is_floating,
+                    "floated_by_layout": c.floated_by_layout,
                     "fullscreen": c.is_fullscreen,
                     "minimized": c.is_minimized,
                     "urgent": c.is_urgent,

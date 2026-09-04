@@ -64,6 +64,109 @@ impl MargoState {
             .find_map(|&id| tiled.iter().position(|&idx| self.clients[idx].id == id))
     }
 
+    /// Auto-float / re-tile clients for the `Floating` layout. Runs at
+    /// the top of every `arrange_monitor` pass (issue #1).
+    ///
+    /// On a tag whose layout is `Floating`, every governed tiled
+    /// client is switched to floating (`floated_by_layout` marks it as
+    /// ours) and given a cascaded `float_geom`; the existing
+    /// float-apply pass later in `arrange_monitor` then writes that to
+    /// `geom`. On any other layout, clients we previously auto-floated
+    /// are returned to the tiled set. Clients the user floated by hand
+    /// (`is_floating && !floated_by_layout`) are never touched.
+    /// Idempotent: a second pass with no state change is a no-op.
+    fn reconcile_floating_layout(&mut self, mon_idx: usize) {
+        let Some(mon) = self.monitors.get(mon_idx) else {
+            return;
+        };
+        if mon.is_overview {
+            return;
+        }
+        let curtag = mon.pertag.curtag;
+        let is_floating_layout =
+            mon.pertag.ltidxs.get(curtag).copied() == Some(crate::layout::LayoutId::Floating);
+        let tagset = mon.current_tagset();
+        let work_area = mon.work_area;
+
+        // Clients on this monitor, visible on the current tagset, that
+        // the floating layout governs. Excludes fullscreen (the
+        // fullscreen override wins above `is_floating`), scratchpad /
+        // overlay (own visibility model), and not-yet-mapped / dying /
+        // hidden-group-member clients.
+        let governed: Vec<usize> = self
+            .clients
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                c.monitor == mon_idx
+                    && !c.is_initial_map_pending
+                    && c.is_visible_on(mon_idx, tagset)
+                    && c.fullscreen_mode == FullscreenMode::Off
+                    && !c.is_in_scratchpad
+                    && !c.is_named_scratchpad
+                    && !c.is_overlay
+                    && !c.is_minimized
+                    && !c.is_killing
+                    && !c.is_hidden_group_member()
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        if is_floating_layout {
+            // A tabbed group is a tiling construct — dissolve any on
+            // this tag before floating its members.
+            let gids: std::collections::BTreeSet<u32> = governed
+                .iter()
+                .filter_map(|&i| self.clients[i].group_id)
+                .collect();
+            for gid in gids {
+                self.dissolve_group(gid);
+            }
+
+            // Cascade slots already consumed by floating clients on
+            // this tag (recomputed each pass → stable / idempotent).
+            let mut cascade_index = governed
+                .iter()
+                .filter(|&&i| self.clients[i].is_floating && self.clients[i].float_geom.width != 0)
+                .count();
+
+            for &i in &governed {
+                let needs_geom = self.clients[i].float_geom.width == 0;
+                if !self.clients[i].is_floating {
+                    self.clients[i].is_floating = true;
+                    self.clients[i].floated_by_layout = true;
+                }
+                if needs_geom {
+                    let c = &self.clients[i];
+                    let preferred = if c.geom.width > 0 && c.geom.height > 0 {
+                        Some((c.geom.width, c.geom.height))
+                    } else {
+                        None
+                    };
+                    let seed = crate::layout::place_floating_cascade(
+                        work_area,
+                        preferred,
+                        (c.min_width, c.min_height),
+                        (c.max_width, c.max_height),
+                        cascade_index,
+                    );
+                    self.clients[i].float_geom = seed;
+                    cascade_index += 1;
+                }
+                self.clients[i].geom = self.clients[i].float_geom;
+            }
+        } else {
+            for &i in &governed {
+                if self.clients[i].floated_by_layout {
+                    self.clients[i].is_floating = false;
+                    self.clients[i].floated_by_layout = false;
+                    // `float_geom` is left intact: switching back to
+                    // Floating restores each window to its last spot.
+                }
+            }
+        }
+    }
+
     pub fn arrange_monitor(&mut self, mon_idx: usize) {
         let _span = tracy_client::span!("arrange_monitor");
         if mon_idx >= self.monitors.len() {
@@ -103,6 +206,10 @@ impl MargoState {
         if self.config.auto_layout && !self.monitors[mon_idx].is_overview {
             self.maybe_apply_adaptive_layout(mon_idx);
         }
+
+        // Floating layout: auto-float / re-tile the current tag's
+        // clients before `tiled` is built below (issue #1).
+        self.reconcile_floating_layout(mon_idx);
 
         let mon = &self.monitors[mon_idx];
         let is_overview = mon.is_overview;
@@ -203,7 +310,11 @@ impl MargoState {
             .collect();
         let focused_tiled_pos = self.focused_tiled_pos(mon_idx, &tiled, self.focused_client_idx());
 
-        if !is_overview && self.config.smartgaps && tiled.len() <= 1 {
+        if !is_overview
+            && layout != crate::layout::LayoutId::Floating
+            && self.config.smartgaps
+            && tiled.len() <= 1
+        {
             // Collapse the OUTER gaps for a lone window — but not all the way to
             // 0. Window borders are drawn OUTSET (`render_element_for_client`
             // grows the border rect by `border_width` beyond `c.geom` on every
@@ -238,7 +349,11 @@ impl MargoState {
         // the lone window fills the work area even in column layouts like
         // scroller (where it would otherwise keep its column width). Pairs with
         // `smartgaps` above, which drops the outer gaps for a single window.
-        if !is_overview && self.config.monly && tiled.len() == 1 {
+        if !is_overview
+            && layout != crate::layout::LayoutId::Floating
+            && self.config.monly
+            && tiled.len() == 1
+        {
             layout = crate::layout::LayoutId::Monocle;
         }
 
