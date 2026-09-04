@@ -62,6 +62,7 @@ const ALL_LAYOUTS: &[LayoutId] = &[
     LayoutId::TgMix,
     LayoutId::Canvas,
     LayoutId::Dwindle,
+    LayoutId::Floating,
 ];
 
 pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {

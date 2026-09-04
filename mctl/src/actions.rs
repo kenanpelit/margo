@@ -219,7 +219,7 @@ pub const ACTIONS: &[Action] = &[
         group: Group::Layout,
         summary: "Switch the current tag's layout by name.",
         detail: "Names: tile, scroller, grid, monocle, deck, center_tile, \
-                 right_tile, tgmix, canvas, dwindle.",
+                 right_tile, tgmix, canvas, dwindle, floating.",
     },
     Action {
         name: "switch_layout",
@@ -721,4 +721,5 @@ pub const LAYOUT_NAMES: &[&str] = &[
     "tgmix",
     "canvas",
     "dwindle",
+    "floating",
 ];
