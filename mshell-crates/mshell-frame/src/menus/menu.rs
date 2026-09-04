@@ -605,12 +605,15 @@ impl Component for MenuModel {
                 effect_max_height!(effects, base_config, sender, media_player_menu);
             }
             MenuType::Mtune => {
-                // Shared card-stack chrome (DESIGN.md §5) + the mtune
-                // media-control specifics.
-                css_class = "quick-settings-menu mtune-menu".to_string();
+                css_class = "mtune-menu".to_string();
                 effect_widgets!(effects, base_config, sender, mtune_menu);
                 effect_min_width!(effects, base_config, sender, mtune_menu);
-                effect_max_height!(effects, base_config, sender, mtune_menu);
+                // NOTE: like the clipboard, notifications, and lyrics
+                // menus, this does NOT cap its *outer* scroller at
+                // `maximum_height`. The mtune widget applies that cap to
+                // its own inner queue scroller instead (see mtune.rs),
+                // so the header + hero + seek + controls stay fixed
+                // while only the queue scrolls.
             }
             MenuType::Lyrics => {
                 css_class = "lyrics-menu".to_string();

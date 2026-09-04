@@ -1540,8 +1540,8 @@ fn default_mtune_menu() -> Menu {
     Menu {
         position: Position::TopRight,
         widgets: vec![MenuWidget::Mtune],
-        minimum_width: 380,
-        maximum_height: 0,
+        minimum_width: 500,
+        maximum_height: 760,
     }
 }
 
