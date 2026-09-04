@@ -7,6 +7,25 @@ use gtk::{gio, glib, prelude::*, subclass::prelude::*};
 
 use crate::audio::{CoverCache, RepeatMode, ShuffleListModel, Song};
 
+/// Which queue index a "next" lands on, or `None` to stop playback.
+/// Pure so the repeat-mode matrix is unit-testable. `manual` (the user
+/// pressed skip) collapses `RepeatOne` to `RepeatAll`: repeat-one only
+/// loops a track when it *ends*, never under the skip button.
+fn next_index(current: u32, n_songs: u32, repeat_mode: RepeatMode, manual: bool) -> Option<u32> {
+    let effective = if manual && repeat_mode == RepeatMode::RepeatOne {
+        RepeatMode::RepeatAll
+    } else {
+        repeat_mode
+    };
+    match effective {
+        RepeatMode::RepeatOne => Some(current),
+        RepeatMode::Consecutive if current + 1 < n_songs => Some(current + 1),
+        RepeatMode::Consecutive => None,
+        RepeatMode::RepeatAll if current + 1 < n_songs => Some(current + 1),
+        RepeatMode::RepeatAll => Some(0),
+    }
+}
+
 mod imp {
     use glib::{ParamSpec, ParamSpecBoolean, ParamSpecEnum, ParamSpecObject, ParamSpecUInt, Value};
     use once_cell::sync::Lazy;
@@ -210,40 +229,27 @@ impl Queue {
         None
     }
 
-    pub fn next_song(&self) -> Option<Song> {
-        let store = &self.imp().model;
-
-        let n_songs = store.n_items();
+    /// The next song to play. `manual` = the user pressed "next" (vs. a
+    /// track ending on its own): an explicit skip always moves to a
+    /// *different* track — `RepeatOne` only loops the current track when
+    /// it finishes by itself, never under the skip button.
+    pub fn next_song(&self, manual: bool) -> Option<Song> {
+        let n_songs = self.imp().model.n_items();
         if n_songs == 0 {
             return None;
         }
 
-        let repeat_mode = self.imp().repeat_mode.get();
-        if let Some(current) = self.current_song_index() {
-            let next: Option<u32> = match repeat_mode {
-                RepeatMode::Consecutive if current < n_songs - 1 => Some(current + 1),
-                RepeatMode::Consecutive if current == n_songs - 1 => None,
-                RepeatMode::RepeatOne => Some(current),
-                RepeatMode::RepeatAll if current < n_songs - 1 => Some(current + 1),
-                RepeatMode::RepeatAll if current == n_songs - 1 => Some(0),
-                _ => None,
-            };
-
-            if let Some(next) = next {
-                self.imp().current_pos.replace(Some(next));
-                self.notify("current");
-                self.song_at(next)
-            } else {
-                self.imp().current_pos.replace(None);
-                self.notify("current");
-                None
-            }
-        } else {
-            // Return the first song
+        let Some(current) = self.current_song_index() else {
+            // Nothing playing yet — start at the top.
             self.imp().current_pos.replace(Some(0));
             self.notify("current");
-            self.song_at(0)
-        }
+            return self.song_at(0);
+        };
+
+        let next = next_index(current, n_songs, self.imp().repeat_mode.get(), manual);
+        self.imp().current_pos.replace(next);
+        self.notify("current");
+        next.and_then(|n| self.song_at(n))
     }
 
     pub fn repeat_mode(&self) -> RepeatMode {
@@ -332,5 +338,44 @@ impl Queue {
         }
 
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manual_next_skips_past_repeat_one() {
+        // Regression: with LoopStatus=Track (RepeatOne) the "next"
+        // button / MPRIS Next / shell IPC did nothing — next_index
+        // returned the *current* track. An explicit skip must always
+        // move on; repeat-one only loops on a natural track end.
+        // 3-song queue, currently on song 0.
+        assert_eq!(next_index(0, 3, RepeatMode::RepeatOne, false), Some(0)); // auto: replay
+        assert_eq!(next_index(0, 3, RepeatMode::RepeatOne, true), Some(1)); // manual: advance
+        assert_eq!(next_index(2, 3, RepeatMode::RepeatOne, true), Some(0)); // manual at end: wrap
+    }
+
+    #[test]
+    fn consecutive_stops_at_the_end_regardless_of_manual() {
+        assert_eq!(next_index(1, 3, RepeatMode::Consecutive, false), Some(2));
+        assert_eq!(next_index(1, 3, RepeatMode::Consecutive, true), Some(2));
+        assert_eq!(next_index(2, 3, RepeatMode::Consecutive, false), None);
+        assert_eq!(next_index(2, 3, RepeatMode::Consecutive, true), None);
+    }
+
+    #[test]
+    fn repeat_all_wraps_regardless_of_manual() {
+        assert_eq!(next_index(0, 3, RepeatMode::RepeatAll, false), Some(1));
+        assert_eq!(next_index(2, 3, RepeatMode::RepeatAll, false), Some(0));
+        assert_eq!(next_index(2, 3, RepeatMode::RepeatAll, true), Some(0));
+    }
+
+    #[test]
+    fn single_song_queue() {
+        assert_eq!(next_index(0, 1, RepeatMode::Consecutive, true), None);
+        assert_eq!(next_index(0, 1, RepeatMode::RepeatAll, true), Some(0));
+        assert_eq!(next_index(0, 1, RepeatMode::RepeatOne, true), Some(0));
     }
 }

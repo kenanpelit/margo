@@ -220,7 +220,7 @@ impl AudioPlayer {
             }
         } else {
             debug!("Getting the next song");
-            if let Some(next_song) = self.queue.next_song() {
+            if let Some(next_song) = self.queue.next_song(false) {
                 debug!("Next song: {}", next_song.uri());
 
                 for c in &self.controllers {
@@ -261,10 +261,6 @@ impl AudioPlayer {
         let _ = self
             .app_sender
             .send_blocking(ApplicationAction::BackgroundHold(active));
-    }
-
-    fn play_next(&self) {
-        self.skip_next();
     }
 
     pub fn toggle_play(&self) {
@@ -343,7 +339,19 @@ impl AudioPlayer {
         }
     }
 
+    /// Explicit "next" — user pressed the button / keybind / sent it
+    /// over MPRIS or the shell IPC. Always advances to a different
+    /// track (see [`Queue::next_song`]'s `manual` flag).
     pub fn skip_next(&self) {
+        self.advance(true);
+    }
+
+    /// A track ended on its own — honour `RepeatOne` (replay it).
+    fn play_next(&self) {
+        self.advance(false);
+    }
+
+    fn advance(&self, manual: bool) {
         if self.queue.is_empty() {
             return;
         }
@@ -352,7 +360,7 @@ impl AudioPlayer {
             current_song.set_playing(false);
         }
 
-        if let Some(next_song) = self.queue.next_song() {
+        if let Some(next_song) = self.queue.next_song(manual) {
             debug!("Playing next (skip-next): {}", next_song.uri());
 
             let was_playing = self.state.playing();
