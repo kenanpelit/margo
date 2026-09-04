@@ -8,7 +8,7 @@ use gtk::{gio, glib, prelude::*, subclass::prelude::*};
 use crate::audio::{CoverCache, RepeatMode, ShuffleListModel, Song};
 
 mod imp {
-    use glib::{ParamSpec, ParamSpecEnum, ParamSpecObject, ParamSpecUInt, Value};
+    use glib::{ParamSpec, ParamSpecBoolean, ParamSpecEnum, ParamSpecObject, ParamSpecUInt, Value};
     use once_cell::sync::Lazy;
 
     use super::*;
@@ -52,6 +52,7 @@ mod imp {
                         .read_only()
                         .build(),
                     ParamSpecUInt::builder("n-songs").read_only().build(),
+                    ParamSpecBoolean::builder("shuffled").read_only().build(),
                 ]
             });
 
@@ -63,6 +64,7 @@ mod imp {
                 "current" => self.obj().current_song().to_value(),
                 "repeat-mode" => self.repeat_mode.get().to_value(),
                 "n-songs" => self.store.n_items().to_value(),
+                "shuffled" => self.shuffled.get().to_value(),
                 _ => unimplemented!(),
             }
         }
@@ -290,6 +292,7 @@ impl Queue {
                 self.imp().model.unshuffle();
                 self.set_current_song(current_song);
             }
+            self.notify("shuffled");
         }
     }
 

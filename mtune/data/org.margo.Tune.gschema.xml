@@ -26,6 +26,11 @@
     <key name="background-play" type="b">
       <default>true</default>
     </key>
+    <key name="notifications" type="b">
+      <default>true</default>
+      <summary>Show desktop notifications</summary>
+      <description>Toast when the track changes (while Tune is not focused) and when a playback setting is toggled.</description>
+    </key>
     <key name="resume-uri" type="s">
       <default>''</default>
     </key>

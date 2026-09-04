@@ -60,6 +60,11 @@ mod imp {
         /// aborts if called before `gtk::init` (i.e. at object construction).
         pub matugen_provider: RefCell<Option<gtk::CssProvider>>,
         pub matugen_monitor: RefCell<Option<gio::FileMonitor>>,
+        /// Last `org.freedesktop.Notifications` ids so a new toast
+        /// replaces the previous one in its slot instead of stacking:
+        /// `np` = now-playing, `setting` = the transient setting blips.
+        pub np_notify_id: std::cell::Cell<u32>,
+        pub setting_notify_id: std::cell::Cell<u32>,
     }
 
     impl std::fmt::Debug for Application {
@@ -94,6 +99,8 @@ mod imp {
                 tray: RefCell::default(),
                 matugen_provider: RefCell::default(),
                 matugen_monitor: RefCell::default(),
+                np_notify_id: std::cell::Cell::new(0),
+                setting_notify_id: std::cell::Cell::new(0),
             }
         }
     }
@@ -107,6 +114,7 @@ mod imp {
             obj.setup_gactions();
             obj.setup_settings();
             obj.setup_bridge();
+            obj.setup_notifications();
 
             obj.set_accels_for_action("app.quit", &["<primary>q"]);
 
@@ -705,6 +713,129 @@ impl Application {
         );
     }
 
+    /// Wire desktop-notification toasts: the now-playing track (only
+    /// while Tune isn't the focused window) and a transient blip on each
+    /// playback-setting toggle. All gated on the `notifications`
+    /// GSetting; every toast rides the MPRIS session-bus connection.
+    fn setup_notifications(&self) {
+        let imp = self.imp();
+        let state = imp.player.state();
+        let queue = imp.player.queue();
+
+        state.connect_notify_local(
+            Some("song"),
+            clone!(
+                #[weak(rename_to = this)]
+                self,
+                move |_, _| this.toast_track_change()
+            ),
+        );
+        state.connect_notify_local(
+            Some("playback-rate"),
+            clone!(
+                #[weak(rename_to = this)]
+                self,
+                move |s, _| {
+                    let rate = (s.playback_rate() * 100.0).round() / 100.0;
+                    this.toast_setting(&format!("Speed: {rate}×"));
+                }
+            ),
+        );
+        queue.connect_notify_local(
+            Some("repeat-mode"),
+            clone!(
+                #[weak(rename_to = this)]
+                self,
+                move |q, _| {
+                    let label = match q.repeat_mode() {
+                        crate::audio::RepeatMode::RepeatAll => "all",
+                        crate::audio::RepeatMode::RepeatOne => "one",
+                        crate::audio::RepeatMode::Consecutive => "off",
+                    };
+                    this.toast_setting(&format!("Repeat: {label}"));
+                }
+            ),
+        );
+        queue.connect_notify_local(
+            Some("shuffled"),
+            clone!(
+                #[weak(rename_to = this)]
+                self,
+                move |q, _| {
+                    let on = if q.is_shuffled() { "on" } else { "off" };
+                    this.toast_setting(&format!("Shuffle: {on}"));
+                }
+            ),
+        );
+        imp.settings.connect_changed(
+            Some("replay-gain"),
+            clone!(
+                #[weak(rename_to = this)]
+                self,
+                move |settings, _| {
+                    let label = match settings.enum_("replay-gain") {
+                        0 => "album",
+                        1 => "track",
+                        _ => "off",
+                    };
+                    this.toast_setting(&format!("ReplayGain: {label}"));
+                }
+            ),
+        );
+    }
+
+    /// Toast the current track — unless Tune's own window is focused
+    /// (then it's just noise) or notifications are off.
+    fn toast_track_change(&self) {
+        let imp = self.imp();
+        if !imp.settings.boolean("notifications") {
+            return;
+        }
+        if self.active_window().map(|w| w.is_active()).unwrap_or(false) {
+            return;
+        }
+        let Some(conn) = imp.dbus_conn.borrow().clone() else {
+            return;
+        };
+        let state = imp.player.state();
+        let title = state.title().unwrap_or_default();
+        if title.is_empty() {
+            return;
+        }
+        let artist = state.artist().unwrap_or_default();
+        let album = state.album().unwrap_or_default();
+        let body = match (artist.is_empty(), album.is_empty()) {
+            (false, false) => format!("{artist} · {album}"),
+            (false, true) => artist,
+            (true, false) => album,
+            (true, true) => String::new(),
+        };
+        let prev = imp.np_notify_id.get();
+        let this = self.clone();
+        glib::spawn_future_local(async move {
+            let id = crate::notify::notify(&conn, prev, &title, &body, false, -1).await;
+            this.imp().np_notify_id.set(id);
+        });
+    }
+
+    /// A short transient toast confirming a playback-setting change.
+    fn toast_setting(&self, summary: &str) {
+        let imp = self.imp();
+        if !imp.settings.boolean("notifications") {
+            return;
+        }
+        let Some(conn) = imp.dbus_conn.borrow().clone() else {
+            return;
+        };
+        let prev = imp.setting_notify_id.get();
+        let summary = summary.to_owned();
+        let this = self.clone();
+        glib::spawn_future_local(async move {
+            let id = crate::notify::notify(&conn, prev, &summary, "", true, 1500).await;
+            this.imp().setting_notify_id.set(id);
+        });
+    }
+
     /// Write the current track + position to GSettings so
     /// `[playback] on_start = "resume"` can pick it up next launch.
     /// Called on a timer, on MPRIS/tray `Quit`, on `shutdown`, and on
@@ -793,6 +924,16 @@ impl Application {
                     .settings
                     .set_boolean("background-play", background_play)
                     .expect("Unable to store background-play setting");
+            })
+            .build()]);
+
+        let notifications = self.imp().settings.boolean("notifications");
+        self.add_action_entries([gio::ActionEntry::builder("notifications")
+            .state(notifications.to_variant())
+            .activate(|this: &Application, action, _| {
+                let on = action.state().and_then(|s| s.get::<bool>()).unwrap_or(true);
+                action.set_state(&(!on).to_variant());
+                let _ = this.imp().settings.set_boolean("notifications", !on);
             })
             .build()]);
     }

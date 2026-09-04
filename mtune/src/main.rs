@@ -11,6 +11,7 @@ mod drag_overlay;
 mod i18n;
 mod library;
 mod marquee;
+mod notify;
 mod playback_control;
 mod playlist;
 mod playlist_view;

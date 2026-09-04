@@ -181,6 +181,10 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
         <attribute name="label" translatable="yes">_Background Playback</attribute>
         <attribute name="action">app.background-play</attribute>
       </item>
+      <item>
+        <attribute name="label" translatable="yes">_Notifications</attribute>
+        <attribute name="action">app.notifications</attribute>
+      </item>
     </section>
     <section>
       <submenu>
