@@ -19,6 +19,9 @@ pub struct Snapshot {
     pub title: String,
     pub artist: String,
     pub album: String,
+    /// The current track's embedded lyrics text, or empty when the file's
+    /// tags don't carry any.
+    pub lyrics: String,
     /// Absolute path to the current track's cached cover, or empty.
     pub cover_art: String,
     pub position_secs: u64,
@@ -45,6 +48,7 @@ impl Default for Snapshot {
             title: String::new(),
             artist: String::new(),
             album: String::new(),
+            lyrics: String::new(),
             cover_art: String::new(),
             position_secs: 0,
             duration_secs: 0,

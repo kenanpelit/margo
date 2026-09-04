@@ -71,6 +71,17 @@ impl TuneService {
             .clone()
     }
 
+    /// The current track's embedded lyrics text, or `""` when the file's
+    /// tags don't carry any.
+    #[zbus(property)]
+    async fn embedded_lyrics(&self) -> String {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .lyrics
+            .clone()
+    }
+
     /// Absolute path to the current track's cached cover art, or `""`.
     #[zbus(property)]
     async fn cover_art(&self) -> String {

@@ -590,6 +590,7 @@ impl Application {
                 title: state.title().unwrap_or_default(),
                 artist: state.artist().unwrap_or_default(),
                 album: state.album().unwrap_or_default(),
+                lyrics: state.lyrics().unwrap_or_default(),
                 cover_art: song
                     .as_ref()
                     .and_then(|s| s.cover_cache())
