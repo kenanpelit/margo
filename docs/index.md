@@ -86,7 +86,7 @@ and works out of the box.
 ## The compositor
 
 - **Tags, not workspaces.** Nine multi-select tags, dwm-style: press the same tag twice to bounce back, view a union of several at once, pin tags to a home monitor, or regex-match windows into tags at map time.
-- **Layouts that remember.** Tile, scroller, grid, monocle, deck, dwindle, plus center / right mirrors and a global overview. Each tag keeps its own layout; switch tags and the layout follows.
+- **Layouts that remember.** Tile, scroller, grid, monocle, deck, dwindle, center / right mirrors, a global overview — and a **floating** layout for a classic stacking desktop. Each tag keeps its own layout; switch tags and the layout follows.
 - **Animations done right.** Niri-style spring physics with mid-flight retarget for window movement; tuned bezier curves for open / close / tag / focus / layer transitions. Drop shadows, rounded corners, focus-fade opacity, optional rounded screen corners.
 - **Modern protocol stack.** DMA-BUF screencopy, `pointer_constraints` + `relative_pointer` for FPS games, `xdg_activation` with anti-focus-steal, runtime `wlr_output_management` (mode + position apply live), VBlank-accurate `presentation-time`, `wp_color_management_v1` for HDR-aware clients. See the [protocol comparison](protocol-comparison.md).
 - **Window rules with PCRE2.** Float password prompts, pin apps to tags, blackout password managers from screencasts, swallow terminal children, force CSD per-app — all by `app_id` / `title` regex.
@@ -106,6 +106,7 @@ scripting glue.
 - **Material You theming.** matugen extracts a palette from your wallpaper and recolours the whole shell **and** the compositor's window borders. Wallpaper rotation, dark/light, and a live theme picker are built in.
 - **Built-in twilight.** A blue-light filter with Auto / Manual / Static / Schedule modes, live temperature preview, and schedule presets — no `wlsunset`/`hyprsunset` needed.
 - **The essentials, integrated.** Corner-toast notifications with history, volume/brightness OSD pulses, a PAM lock screen, idle management (dim → lock → suspend), clipboard history with pinning, polkit auth dialogs, and a native settings window.
+- **A folder-first music player.** `mtune` — an Amberol fork re-themed to the margo look: point it at folders, MPRIS + tray + a dedicated bar pill and menu (seek bar, speed, playlists), pitch-preserving speed, and a `mshellctl mtune` CLI. See [Companion tools → mtune](companion-tools.md#mtune).
 
 ## Screen sharing & screenshots — GNOME-free
 

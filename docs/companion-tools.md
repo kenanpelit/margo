@@ -10,6 +10,7 @@ Margo ships several binaries that share its workspace:
 | **`mscreenshot`** | screen / region / window capture |
 | **`mvpn`** | native Mullvad VPN control (CLI + the DNS/VPN bar menu) |
 | **`mcal`** | calendar — local + remote ICS (read-only), CLI + Settings → Calendar |
+| **`mtune`** | folder-first music player — GTK4 + GStreamer, MPRIS, tray, own bar pill + menu |
 | **`mpower`** | automatic power-profile daemon + manual `cycle` / `set` |
 | **`mkeys`** | on-screen keyboard (layer-shell, virtual-keyboard protocol) |
 | **`mlogind`** | login / display manager (matugen-themed) — TUI or GTK4 greeter |
@@ -170,6 +171,53 @@ The embedded yt-dlp shim (anti-bot client fallback + cookie file + browser
 user-agent) is built in — no external `yt-dlp-mpv` script. Optional dep:
 `yt-dlp`, for `play`/`download`'s YouTube handling. `mpv` (libmpv) is
 required, build- and runtime-side, for the companion + wallpaper commands.
+
+## `mtune`
+
+A native **folder-first** music player — a de-branded fork of
+[Amberol](https://gitlab.gnome.org/World/amberol), vendored into the workspace
+and re-themed to the margo look with a live matugen palette. Where `mshellctl
+media` *controls* other players, `mtune` *is* one.
+
+- **Folder library, not a database.** Point `[library] roots` in
+  `~/.config/margo/mtune.toml` (or Settings → Tune) at one or more folders;
+  recursive off-thread scan, an on-disk tag index, and a debounced inotify
+  watcher keep the queue live as files come and go.
+- **Interop.** MPRIS + MPRIS `TrackList`, a `StatusNotifierItem` tray icon, and
+  a supplementary `org.margo.Tune` D-Bus interface for the library / queue that
+  MPRIS can't express.
+- **Shell surface.** A dedicated **Tune bar pill** (queue position + elapsed /
+  total) and a menu with a draggable seek bar, transport, shuffle / repeat, a
+  speed control, and the folder / playlist actions — distinct from the generic
+  MPRIS media pill.
+- **Playback.** Speed control with **pitch held constant** (`scaletempo`),
+  playlists (m3u / m3u8 / pls, open + save), resume the last track + position on
+  launch, ReplayGain, compact **mini / strip** window skins (cycled with
+  `Ctrl+M`), and desktop notifications on track / setting change.
+- **Start hidden.** `mtune --hidden`, `[behaviour] start_hidden = true`, or the
+  Settings toggle — runs in the tray with no window. Show / hide it with the
+  tray icon or `mshellctl mtune toggle-window`.
+
+```sh
+mtune                          # open the player
+mtune --hidden                 # start in the tray, no window
+mtune ~/Music/album            # queue a folder / file / playlist and play
+
+# CLI — talks straight to mtune's D-Bus (spawns it for actions)
+mshellctl mtune play-pause
+mshellctl mtune next | previous
+mshellctl mtune seek 90        # absolute seconds; +30 / -30 for relative
+mshellctl mtune rate 1.5       # 0.5–2.0, pitch preserved
+mshellctl mtune repeat one     # off | all | one
+mshellctl mtune jump 12        # play queue entry 12
+mshellctl mtune playlist-save "focus"
+mshellctl mtune status --json  # now-playing + queue state
+mshellctl mtune toggle-window  # show / hide the window
+```
+
+Runtime deps: `gstreamer` + `gst-plugins-base` / `gst-plugins-good`; optional
+`gst-libav` / `gst-plugins-bad` for AAC / M4A / ALAC / WMA and extra
+containers.
 
 ## `mlogind`
 

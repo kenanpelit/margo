@@ -5,6 +5,96 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] – 2026-09-04
+
+**A native music player, and a floating layout.**
+
+### Added
+
+- **`mtune` — a folder-first music player.** A de-branded fork of Amberol
+  (`org.margo.Tune`), vendored into the workspace and re-themed to the margo
+  look with a live matugen palette.
+  - **Folder library**, not a database: point `~/.config/margo/mtune.toml`
+    `[library] roots` (or Settings → Tune) at one or more folders; recursive
+    off-thread scan, an on-disk tag index with mtime invalidation, and a
+    debounced inotify watcher keep the queue live.
+  - **Interop** — MPRIS + MPRIS `TrackList`, a `StatusNotifierItem` tray, and a
+    supplementary `org.margo.Tune` D-Bus interface for the library / queue.
+  - **Dedicated shell surface** — a **Tune bar pill** (queue position + elapsed
+    / total) and a menu with a draggable seek bar, transport, shuffle / repeat,
+    a speed control, and the folder / playlist actions (not the generic MPRIS
+    pill). Follows `DESIGN.md`.
+  - **`mshellctl mtune`** — a full CLI (`play-pause`, `next`, `seek`, `rate`,
+    `repeat`, `jump`, `open`, `playlist-*`, `status --json`, `toggle-window`, …)
+    talking straight to mtune's D-Bus.
+  - Playback speed with **pitch held constant** (`scaletempo`), **playlists**
+    (m3u / m3u8 / pls, open + save), **resume** the last track + position on
+    launch, compact **mini / strip** window skins (`Ctrl+M`), **desktop
+    notifications** on track / setting change, **start-hidden in the tray**
+    (`mtune --hidden` / `[behaviour] start_hidden` / Settings toggle), and
+    track numbers in the queue list.
+  - Optional runtime deps: `gst-libav` / `gst-plugins-bad` for AAC / M4A /
+    ALAC / WMA and extra containers.
+- **Floating layout.** A `LayoutId::Floating` alongside the tiling layouts —
+  a classic stacking desktop. `setlayout floating`, `taglayout = N, floating`,
+  `default_layout = floating`, or pick it in Settings → Tiling Layout. On a
+  floating tag the compositor auto-floats every window with a cascade and
+  re-tiles them when the tag switches back to a tiling layout (a per-client
+  `floated_by_layout` flag keeps hand-floated windows untouched). Not part of
+  the `cyclelayout` rotation — explicit selection only. Closes
+  [#1](https://github.com/kenanpelit/margo/issues/1).
+
+### Fixed
+
+- mtune: an explicit "next" now advances past a track even under repeat-one
+  (`LoopStatus=Track`) instead of silently replaying it; the queue-row track
+  number no longer overflow-aborts on an unbound list item; the pitch-shift on
+  a non-1.0 playback speed is gone.
+
+## [3.0.0] – 2026-09-02
+
+**`mplay` folds into `mshellctl`; automatic `config.conf` history.**
+
+### Breaking
+
+- **The standalone `mplay` binary is gone.** Its entire surface — window
+  control, playback, yt-dlp, media picking, the video-wallpaper engine — is now
+  native `mshellctl`. Scripts / keybinds invoking `mplay` directly switch to
+  the equivalent `mshellctl play` / `media` command; `man/mplay.1` is gone too.
+
+### Added
+
+- **`mctl config` — automatic history for `config.conf`.** Every time the
+  config takes effect (boot or a successful `mctl reload`) a timestamped copy
+  is saved (`$XDG_STATE_HOME/margo/config-generations/`, last 20 kept).
+  `mctl config list` / `diff [N]` / `rollback [N] [--yes]` — a candidate
+  generation is validated before it is written and a backup is kept;
+  `--config <path>` is honoured throughout.
+- **`mshellctl` gains a full native mpv companion**, ported from `mplay`:
+  window control, `play <target>` / `download` (clipboard / URL, YouTube via
+  yt-dlp), and a native video-wallpaper engine (`play wallpaper start/stop`).
+  `mshellctl`'s IPC now goes straight to margo's Unix socket.
+- **`mshellctl media` reaches native MPD parity** — a unified MPRIS + MPD
+  player-scoring path, and `media toggle spotify` falls back to the browser
+  player.
+- **mango 0.16.1 port** — `view_insert` dispatch action, a `tag_gather` config
+  knob, and an invalid `xkb_layout` no longer refuses to boot.
+- **Valent (KDE Connect) panel** — share text / clipboard, Accept / Reject a
+  pairing request, per-device alias + avatar, a settings popover.
+
+### Fixed
+
+- Boot-time config parse failures were silent — margo now tries the last
+  known-good generation first and always shows the on-screen banner;
+  `mctl config-errors` reports what happened.
+- The app-launcher window switcher focuses windows by exact client id instead
+  of jumping to a tag.
+
+## [1.2.0] – 2026-07-15 &nbsp;·&nbsp; [2.0.0] – 2026-08-11 &nbsp;·&nbsp; [2.1.0] – 2026-08-14
+
+Release notes for these tags live on the
+[GitHub Releases](https://github.com/kenanpelit/margo/releases) page.
+
 ## [1.1.9] – 2026-07-13
 
 **Presentation pacing done right, and repaints that stay on their own screen.**

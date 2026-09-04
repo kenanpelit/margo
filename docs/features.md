@@ -13,6 +13,9 @@ the dwl/mango tradition — **tags instead of workspaces**, driven by `mctl`.
   monocle, deck, dwindle, and more; each tag remembers its own. Set with
   `setlayout <name>`, cycle with `switch_layout`. See
   [Configuration → Layouts](configuration.md#layouts).
+- **Floating layout** — `setlayout floating` (or `taglayout` / `default_layout`)
+  gives a classic stacking desktop: the tag's windows auto-float with a cascade
+  and re-tile when you switch back to a tiling layout.
 - **Dispatch actions** — the full keybind/IPC verb catalogue (focus, move,
   resize, scratchpad, overview, summon/focusapp, …). Always-current list:
   `mctl actions --verbose`.
@@ -55,6 +58,9 @@ The GTK4 + relm4 shell hosting the bars, menus, settings, and dashboard.
   and holds the idle inhibitor (`mshellctl gamemode toggle`).
 - **WASM plugins** — capability-sandboxed plugin runtime (wasmtime). See
   [WASM plugins](mplugins-wasm-design.md).
+- **Music player (`mtune`)** — a folder-first player with its own bar pill +
+  menu (seek bar, transport, speed, playlists), MPRIS + tray, and a
+  `mshellctl mtune` CLI. See [Companion tools → mtune](companion-tools.md#mtune).
 
 ## Companion binaries
 
@@ -64,9 +70,10 @@ Standalone tools that ship with margo. Full guide:
 | Tool | Role |
 | --- | --- |
 | `mctl` | Compositor IPC client — control + introspect margo. |
-| `mshellctl` | Shell IPC client — toggle menus, query state, media control, mpv companion + video wallpaper. |
+| `mshellctl` | Shell IPC client — toggle menus, query state, media control, mpv companion + video wallpaper, `mtune`. |
 | `mvpn` | Mullvad VPN control (CLI + GTK panel). |
 | `mcal` | Calendar — local + remote ICS (read-only), CLI + Settings → Calendar. |
+| `mtune` | Folder-first music player — GTK4 + GStreamer, MPRIS, tray, own bar pill + menu. |
 | `mkeys` | On-screen keyboard. |
 | `mpicker` | Screen colour picker. |
 | `mscreenshot` | Screenshot CLI (region / window / output). |
