@@ -10,19 +10,20 @@
 // `--button-circle-size`) — the standard media-control emphasis, so the
 // primary transport target reads a touch larger than prev/next.
 
+// §12 panel root: one calm tonal sheet, no separate "card" background
+// (matches .clipboard-menu-widget — the compositor-level surface tint
+// shows through; only rows/sections below get tonal depth).
 .mtune-menu-widget {
-  border-radius: var(--card-radius);
-  background-color: var(--card-bg);
   color: var(--on-surface);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--padding-xl);
 }
 
 // ── Now playing ──────────────────────────────────────────────
 .mtune-menu-cover {
   border-radius: var(--radius-sm);
   background-color: var(--surface-container-highest);
-  min-width: 60px;
-  min-height: 60px;
+  min-width: 88px;
+  min-height: 88px;
 }
 
 .mtune-menu-title {
@@ -167,6 +168,82 @@
       border-bottom: 1px solid var(--list-separator);
     }
   }
+}
+
+// ── Control row (transport + toggles + speed, one line) ───────
+.mtune-menu-controls {
+  align-items: center;
+}
+
+// ── Queue ───────────────────────────────────────────────────
+.mtune-queue-filter {
+  border-radius: var(--radius-pill);
+}
+
+.mtune-queue-scroller {
+  border-radius: var(--list-radius);
+  background-color: var(--surface-container);
+}
+
+.mtune-queue-rows {
+  padding: var(--space-1) 0;
+}
+
+.mtune-queue-row {
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  align-items: center;
+  @include state-layer(var(--surface-container));
+
+  &:not(:last-child) {
+    border-bottom: 1px solid var(--list-separator);
+  }
+}
+
+.mtune-queue-row-current {
+  background-color: var(--primary-container);
+
+  .mtune-queue-row-title,
+  .mtune-queue-row-num {
+    color: var(--on-primary-container);
+  }
+}
+
+.mtune-queue-row-num {
+  min-width: 22px;
+  color: var(--on-surface-variant);
+  font-size: var(--font-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.mtune-queue-row-title {
+  font-weight: 500;
+  color: var(--on-surface);
+}
+
+.mtune-queue-row-artist {
+  color: var(--on-surface-variant);
+  font-size: var(--font-2xs);
+}
+
+.mtune-queue-row-duration {
+  color: var(--on-surface-variant);
+  font-size: var(--font-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.mtune-queue-row-remove {
+  all: unset;
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: var(--radius-pill);
+  color: var(--on-surface-variant);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+
+.mtune-queue-row:hover .mtune-queue-row-remove {
+  opacity: 1;
 }
 
 // ── Bar pill ─────────────────────────────────────────────────
