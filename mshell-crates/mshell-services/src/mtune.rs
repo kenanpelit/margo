@@ -21,7 +21,7 @@ use crate::tokio_rt;
 // mtune serves this interface on its MPRIS server connection — the
 // GApplication owns the bare `org.margo.Tune` name, so the supplementary
 // interface is reached via the MPRIS well-known name instead.
-const BUS_NAME: &str = "org.mpris.MediaPlayer2.org.margo.Tune";
+pub const BUS_NAME: &str = "org.mpris.MediaPlayer2.org.margo.Tune";
 const OBJECT_PATH: &str = "/org/margo/Tune";
 const IFACE: &str = "org.margo.Tune";
 
@@ -37,6 +37,9 @@ pub struct MtunePlayer {
     pub album: Property<String>,
     /// Absolute path to the current track's cached cover, or `None`.
     pub cover_art: Property<Option<String>>,
+    /// The current track's embedded lyrics text, or empty when its tags
+    /// don't carry any.
+    pub lyrics_embedded: Property<String>,
     pub position: Property<Duration>,
     pub duration: Property<Duration>,
     pub shuffle: Property<bool>,
@@ -64,6 +67,7 @@ impl MtunePlayer {
             artist: Property::new(String::new()),
             album: Property::new(String::new()),
             cover_art: Property::new(None),
+            lyrics_embedded: Property::new(String::new()),
             position: Property::new(Duration::ZERO),
             duration: Property::new(Duration::ZERO),
             shuffle: Property::new(false),
@@ -302,6 +306,9 @@ async fn refresh(proxy: &zbus::Proxy<'_>, p: &MtunePlayer) {
     }
     if let Some(v) = get!("CoverArt", String) {
         p.cover_art.set((!v.is_empty()).then_some(v));
+    }
+    if let Some(v) = get!("EmbeddedLyrics", String) {
+        p.lyrics_embedded.set(v);
     }
     if let Some(v) = get!("Position", u64) {
         p.position.set(Duration::from_secs(v));
