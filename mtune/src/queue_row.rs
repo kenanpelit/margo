@@ -137,9 +137,9 @@ mod imp {
                     self.selected_button.set_active(p);
                 }
                 "track-number" => {
-                    let n = value.get::<u32>().unwrap_or(0);
+                    let n = value.get::<u32>().unwrap_or(u32::MAX);
                     self.track_number.set(n);
-                    self.song_number_label.set_text(&(n + 1).to_string());
+                    self.song_number_label.set_text(&super::track_label(n));
                 }
                 _ => unimplemented!(),
             }
@@ -168,6 +168,17 @@ glib::wrapper! {
         @extends gtk::Widget,
         @implements gio::ActionGroup, gio::ActionMap, gtk::Accessible,
                     gtk::Buildable, gtk::ConstraintTarget;
+}
+
+/// The 1-based track label for a queue position. `GtkListItem:position`
+/// is `GTK_INVALID_LIST_POSITION` (`u32::MAX`) while a row is unbound /
+/// being recycled, so guard the `+ 1` — a plain add overflows and
+/// aborts (the setter runs in a non-unwinding glib context).
+fn track_label(position: u32) -> String {
+    position
+        .checked_add(1)
+        .map(|n| n.to_string())
+        .unwrap_or_default()
 }
 
 impl Default for QueueRow {
@@ -253,5 +264,15 @@ impl QueueRow {
 
     pub fn song(&self) -> Option<Song> {
         self.imp().song.borrow().clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn track_label_is_one_based_and_blank_for_the_invalid_sentinel() {
+        assert_eq!(super::track_label(0), "1");
+        assert_eq!(super::track_label(41), "42");
+        assert_eq!(super::track_label(u32::MAX), "");
     }
 }
