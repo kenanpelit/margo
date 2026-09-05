@@ -35,8 +35,10 @@ pub(crate) struct MtuneMenuWidgetModel {
     album: String,
     cover_art: Option<String>,
     shuffle: bool,
-    /// `"consecutive"` / `"repeat-all"` / `"repeat-one"`.
+    /// `"consecutive"` / `"repeat-all"` / `"repeat-one"` / `"repeat-each"`.
     repeat: String,
+    /// Configured N for `"repeat-each"`.
+    repeat_count: u32,
     rate: f64,
     queue_len: u32,
     current_index: i64,
@@ -307,15 +309,16 @@ impl Component for MtuneMenuWidgetModel {
                         set_css_classes: &["mtune-toggle"],
                         #[watch]
                         set_icon_name: match model.repeat.as_str() {
-                            "repeat-one" => "media-playlist-repeat-song-symbolic",
+                            "repeat-one" | "repeat-each" => "media-playlist-repeat-song-symbolic",
                             "repeat-all" => "media-playlist-repeat-symbolic",
                             _ => "media-playlist-consecutive-symbolic",
                         },
                         #[watch]
-                        set_tooltip_text: Some(match model.repeat.as_str() {
-                            "repeat-one" => "Repeat: one",
-                            "repeat-all" => "Repeat: all",
-                            _ => "Repeat: off",
+                        set_tooltip_text: Some(&match model.repeat.as_str() {
+                            "repeat-one" => "Repeat: one".to_string(),
+                            "repeat-all" => "Repeat: all".to_string(),
+                            "repeat-each" => format!("Repeat: each ({}\u{00d7})", model.repeat_count),
+                            _ => "Repeat: off".to_string(),
                         }),
                         connect_clicked => MtuneMenuInput::CycleRepeat,
                     },
@@ -474,6 +477,7 @@ impl Component for MtuneMenuWidgetModel {
                 Box::pin(p.shuffle.watch().map(|_| ())),
                 Box::pin(p.repeat_mode.watch().map(|_| ())),
                 Box::pin(p.rate.watch().map(|_| ())),
+                Box::pin(p.repeat_count.watch().map(|_| ())),
                 Box::pin(p.queue_len.watch().map(|_| ())),
                 Box::pin(p.current_index.watch().map(|_| ())),
                 Box::pin(p.queue_entries.watch().map(|_| ())),
@@ -511,6 +515,7 @@ impl Component for MtuneMenuWidgetModel {
             cover_art: None,
             shuffle: false,
             repeat: "consecutive".into(),
+            repeat_count: 3,
             rate: 1.0,
             queue_len: 0,
             current_index: -1,
@@ -589,6 +594,7 @@ impl Component for MtuneMenuWidgetModel {
                 let next = match self.repeat.as_str() {
                     "consecutive" => "repeat-all",
                     "repeat-all" => "repeat-one",
+                    "repeat-one" => "repeat-each",
                     _ => "consecutive",
                 };
                 tokio_rt_spawn(async move { mtune_service().player.set_repeat_mode(next).await });
@@ -719,6 +725,7 @@ fn read(m: &mut MtuneMenuWidgetModel) {
     m.cover_art = p.cover_art.get();
     m.shuffle = p.shuffle.get();
     m.repeat = p.repeat_mode.get();
+    m.repeat_count = p.repeat_count.get();
     m.rate = p.rate.get();
     m.queue_len = p.queue_len.get();
     m.current_index = p.current_index.get();
