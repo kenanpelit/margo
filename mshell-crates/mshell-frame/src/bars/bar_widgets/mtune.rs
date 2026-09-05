@@ -30,6 +30,10 @@ pub(crate) struct MtuneModel {
     /// 0-based queue position, `-1` when nothing is current.
     current_index: i64,
     queue_len: u32,
+    /// `"consecutive"` / `"repeat-all"` / `"repeat-one"` / `"repeat-each"`.
+    repeat: String,
+    /// Configured N for `"repeat-each"`.
+    repeat_count: u32,
 }
 
 #[derive(Debug)]
@@ -116,6 +120,14 @@ impl Component for MtuneModel {
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
                     },
+
+                    // Repeat-each count ("×3") — only when that mode is on.
+                    #[name = "repeat_badge"]
+                    gtk::Label {
+                        add_css_class: "mtune-bar-repeat",
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                    },
                 }
             }
         }
@@ -142,6 +154,8 @@ impl Component for MtuneModel {
             let mut duration = p.duration.watch();
             let mut current_index = p.current_index.watch();
             let mut queue_len = p.queue_len.watch();
+            let mut repeat_mode = p.repeat_mode.watch();
+            let mut repeat_count = p.repeat_count.watch();
             loop {
                 tokio::select! {
                     () = &mut shutdown_fut => break,
@@ -155,6 +169,8 @@ impl Component for MtuneModel {
                     _ = duration.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
                     _ = current_index.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
                     _ = queue_len.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
+                    _ = repeat_mode.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
+                    _ = repeat_count.next() => { let _ = out.send(MtuneCommandOutput::Refresh); }
                 }
             }
         });
@@ -170,6 +186,8 @@ impl Component for MtuneModel {
             duration: Duration::ZERO,
             current_index: -1,
             queue_len: 0,
+            repeat: "consecutive".into(),
+            repeat_count: 3,
         };
         read(&mut model);
 
@@ -235,6 +253,8 @@ fn read(model: &mut MtuneModel) {
     model.duration = p.duration.get();
     model.current_index = p.current_index.get();
     model.queue_len = p.queue_len.get();
+    model.repeat = p.repeat_mode.get();
+    model.repeat_count = p.repeat_count.get();
 }
 
 fn apply(widgets: &MtuneModelWidgets, model: &MtuneModel) {
@@ -243,6 +263,7 @@ fn apply(widgets: &MtuneModelWidgets, model: &MtuneModel) {
         widgets.num.set_visible(false);
         widgets.label.set_visible(false);
         widgets.time.set_visible(false);
+        widgets.repeat_badge.set_visible(false);
         widgets.root.remove_css_class("paused");
         widgets
             .root
@@ -289,6 +310,12 @@ fn apply(widgets: &MtuneModelWidgets, model: &MtuneModel) {
     };
     widgets.time.set_label(&time);
     widgets.time.set_visible(!time.is_empty());
+
+    let is_repeat_each = model.repeat == "repeat-each";
+    widgets
+        .repeat_badge
+        .set_label(&format!("×{}", model.repeat_count));
+    widgets.repeat_badge.set_visible(is_repeat_each);
 
     if model.playing {
         widgets.root.remove_css_class("paused");

@@ -277,7 +277,8 @@
 }
 
 .mtune-bar-num,
-.mtune-bar-time {
+.mtune-bar-time,
+.mtune-bar-repeat {
   font-size: var(--font-bar);
   color: var(--on-surface-variant);
   font-variant-numeric: tabular-nums;
