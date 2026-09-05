@@ -36,8 +36,10 @@ pub enum MtuneCommands {
     /// Set playback speed `0.5`–`2.0` (`up` / `down` step ±0.1); omit to
     /// print it.
     Rate { value: Option<String> },
-    /// Repeat mode: `off` / `all` / `one` / `cycle`; omit to print it.
+    /// Repeat mode: `off` / `all` / `one` / `each` / `cycle`; omit to print it.
     Repeat { mode: Option<String> },
+    /// Times to repeat each track under `repeat each` mode; omit to print it.
+    RepeatCount { value: Option<u32> },
     /// Shuffle: `on` / `off` / `toggle`; omit to print it.
     Shuffle { state: Option<String> },
     /// Jump to a queue position (0-based) and play it.
@@ -137,15 +139,23 @@ pub async fn execute(command: MtuneCommands) -> Result<()> {
                     "off" | "none" | "consecutive" => "consecutive",
                     "all" | "playlist" | "repeat-all" => "repeat-all",
                     "one" | "track" | "repeat-one" => "repeat-one",
+                    "each" | "repeat-each" => "repeat-each",
                     "cycle" | "next" => match cur.as_str() {
                         "consecutive" => "repeat-all",
                         "repeat-all" => "repeat-one",
+                        "repeat-one" => "repeat-each",
                         _ => "consecutive",
                     },
-                    other => bail!("unknown repeat mode '{other}' (off / all / one / cycle)"),
+                    other => {
+                        bail!("unknown repeat mode '{other}' (off / all / one / each / cycle)")
+                    }
                 };
                 call(&conn, "SetRepeatMode", &(target,)).await?;
             }
+        },
+        MtuneCommands::RepeatCount { value } => match value {
+            None => println!("{}", get::<u32>(&conn, "RepeatCount").await?),
+            Some(n) => call(&conn, "SetRepeatCount", &(n,)).await?,
         },
         MtuneCommands::Shuffle { state } => match state {
             None => println!(
