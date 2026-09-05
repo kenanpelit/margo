@@ -48,6 +48,7 @@ pub enum RepeatMode {
     Consecutive,
     RepeatAll,
     RepeatOne,
+    RepeatEach,
 }
 
 impl Display for RepeatMode {
@@ -56,6 +57,7 @@ impl Display for RepeatMode {
             RepeatMode::Consecutive => write!(f, "consecutive"),
             RepeatMode::RepeatAll => write!(f, "repeat-all"),
             RepeatMode::RepeatOne => write!(f, "repeat-one"),
+            RepeatMode::RepeatEach => write!(f, "repeat-each"),
         }
     }
 }
@@ -566,7 +568,8 @@ impl AudioPlayer {
         let new_mode = match cur_mode {
             RepeatMode::Consecutive => RepeatMode::RepeatAll,
             RepeatMode::RepeatAll => RepeatMode::RepeatOne,
-            RepeatMode::RepeatOne => RepeatMode::Consecutive,
+            RepeatMode::RepeatOne => RepeatMode::RepeatEach,
+            RepeatMode::RepeatEach => RepeatMode::Consecutive,
         };
         self.queue.set_repeat_mode(new_mode);
 

@@ -1336,7 +1336,22 @@ impl Window {
                     move |queue, _| {
                         win.imp()
                             .playback_control
-                            .set_repeat_mode(queue.repeat_mode());
+                            .set_repeat_mode(queue.repeat_mode(), queue.repeat_count());
+                    }
+                ),
+            );
+            // A live `repeat-count` change (e.g. `mshellctl mtune
+            // repeat-count`) should refresh the tooltip immediately even
+            // when the mode itself doesn't change.
+            queue.connect_notify_local(
+                Some("repeat-count"),
+                clone!(
+                    #[weak(rename_to = win)]
+                    self,
+                    move |queue, _| {
+                        win.imp()
+                            .playback_control
+                            .set_repeat_mode(queue.repeat_mode(), queue.repeat_count());
                     }
                 ),
             );
@@ -1592,7 +1607,7 @@ impl Window {
 
             self.imp()
                 .playback_control
-                .set_repeat_mode(queue.repeat_mode());
+                .set_repeat_mode(queue.repeat_mode(), queue.repeat_count());
             self.set_playlist_shuffled(queue.is_shuffled());
 
             // Manually update the icon on the initial empty state

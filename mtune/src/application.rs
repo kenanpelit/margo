@@ -816,6 +816,7 @@ impl Application {
                     let label = match q.repeat_mode() {
                         crate::audio::RepeatMode::RepeatAll => "all",
                         crate::audio::RepeatMode::RepeatOne => "one",
+                        crate::audio::RepeatMode::RepeatEach => "each",
                         crate::audio::RepeatMode::Consecutive => "off",
                     };
                     this.toast_setting(&format!("Repeat: {label}"));

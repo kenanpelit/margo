@@ -4,7 +4,11 @@
 use adw::subclass::prelude::*;
 use gtk::{CompositeTemplate, gio, glib, prelude::*};
 
-use crate::{audio::RepeatMode, i18n::i18n, volume_control::VolumeControl};
+use crate::{
+    audio::RepeatMode,
+    i18n::{i18n, i18n_f},
+    volume_control::VolumeControl,
+};
 
 mod imp {
     use super::*;
@@ -107,7 +111,7 @@ impl PlaybackControl {
         self.imp().volume_control.get()
     }
 
-    pub fn set_repeat_mode(&self, repeat_mode: RepeatMode) {
+    pub fn set_repeat_mode(&self, repeat_mode: RepeatMode, repeat_count: u32) {
         let repeat_button = self.imp().repeat_button.get();
         match repeat_mode {
             RepeatMode::Consecutive => {
@@ -121,6 +125,16 @@ impl PlaybackControl {
             RepeatMode::RepeatOne => {
                 repeat_button.set_icon_name("media-playlist-repeat-song-symbolic");
                 repeat_button.set_tooltip_text(Some(&i18n("Repeat the Current Song")));
+            }
+            RepeatMode::RepeatEach => {
+                // No dedicated "repeat song N times" icon exists in the
+                // standard symbolic set -- reuse RepeatOne's icon, the
+                // tooltip is what actually distinguishes the mode.
+                repeat_button.set_icon_name("media-playlist-repeat-song-symbolic");
+                repeat_button.set_tooltip_text(Some(&i18n_f(
+                    "Repeat Each Song {} Times",
+                    &[&repeat_count.to_string()],
+                )));
             }
         }
     }

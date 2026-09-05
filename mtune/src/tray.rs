@@ -121,11 +121,13 @@ impl ksni::Tray for TuneTray {
                     RepeatMode::Consecutive => 0,
                     RepeatMode::RepeatAll => 1,
                     RepeatMode::RepeatOne => 2,
+                    RepeatMode::RepeatEach => 3,
                 },
                 select: Box::new(|t: &mut Self, i| {
                     let mode = match i {
                         1 => RepeatMode::RepeatAll,
                         2 => RepeatMode::RepeatOne,
+                        3 => RepeatMode::RepeatEach,
                         _ => RepeatMode::Consecutive,
                     };
                     t.send(AppCommand::SetRepeat(mode));
@@ -141,6 +143,10 @@ impl ksni::Tray for TuneTray {
                     },
                     RadioItem {
                         label: "Repeat one".into(),
+                        ..Default::default()
+                    },
+                    RadioItem {
+                        label: "Repeat each".into(),
                         ..Default::default()
                     },
                 ],

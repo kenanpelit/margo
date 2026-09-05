@@ -46,7 +46,10 @@ fn loop_status(repeat: RepeatMode) -> LoopStatus {
     match repeat {
         RepeatMode::Consecutive => LoopStatus::None,
         RepeatMode::RepeatOne => LoopStatus::Track,
-        RepeatMode::RepeatAll => LoopStatus::Playlist,
+        // MPRIS has no fourth LoopStatus value -- RepeatEach reports as
+        // Playlist, so an external client at least sees "some loop is
+        // on" (it can't specifically request RepeatEach back).
+        RepeatMode::RepeatAll | RepeatMode::RepeatEach => LoopStatus::Playlist,
     }
 }
 

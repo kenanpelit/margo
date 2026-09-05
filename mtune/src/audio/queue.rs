@@ -21,8 +21,41 @@ fn next_index(current: u32, n_songs: u32, repeat_mode: RepeatMode, manual: bool)
         RepeatMode::RepeatOne => Some(current),
         RepeatMode::Consecutive if current + 1 < n_songs => Some(current + 1),
         RepeatMode::Consecutive => None,
-        RepeatMode::RepeatAll if current + 1 < n_songs => Some(current + 1),
-        RepeatMode::RepeatAll => Some(0),
+        // `next_song()` branches to `next_index_repeat_each` before ever
+        // calling this function for `RepeatEach` -- this arm only exists
+        // for match-exhaustiveness. Falls back to RepeatAll's semantics
+        // (advance/wrap) if it were ever reached some other way.
+        RepeatMode::RepeatAll | RepeatMode::RepeatEach if current + 1 < n_songs => {
+            Some(current + 1)
+        }
+        RepeatMode::RepeatAll | RepeatMode::RepeatEach => Some(0),
+    }
+}
+
+/// `next_index` counterpart for `RepeatMode::RepeatEach`: repeats the
+/// current track `repeat_count` times before advancing (wrapping at the
+/// end of the queue), tracking replays via `plays_so_far`. Manual skip
+/// always advances immediately and resets the counter -- same
+/// "an explicit skip always moves to a different track" convention
+/// `next_index` already applies to `RepeatOne`. Pure so it's directly
+/// unit-testable; the caller stores the returned counter back into
+/// `Queue`'s `repeat_plays` cell.
+fn next_index_repeat_each(
+    current: u32,
+    n_songs: u32,
+    repeat_count: u32,
+    plays_so_far: u32,
+    manual: bool,
+) -> (Option<u32>, u32) {
+    if manual || plays_so_far + 1 >= repeat_count {
+        let next = if current + 1 < n_songs {
+            current + 1
+        } else {
+            0
+        };
+        (Some(next), 0)
+    } else {
+        (Some(current), plays_so_far + 1)
     }
 }
 
@@ -37,6 +70,12 @@ mod imp {
         pub model: ShuffleListModel,
         pub store: gio::ListStore,
         pub repeat_mode: Cell<RepeatMode>,
+        /// Configurable N for `RepeatMode::RepeatEach` (Settings/CLI via
+        /// `mshellctl mtune repeat-count`; persisted in `mtune.toml`).
+        pub repeat_count: Cell<u32>,
+        /// How many times the *current* track has played consecutively
+        /// under `RepeatEach`. Internal only -- not a GObject property.
+        pub repeat_plays: Cell<u32>,
         pub current_pos: Cell<Option<u32>>,
         pub shuffled: Cell<bool>,
     }
@@ -54,6 +93,8 @@ mod imp {
                 store,
                 model,
                 repeat_mode: Cell::new(RepeatMode::default()),
+                repeat_count: Cell::new(3),
+                repeat_plays: Cell::new(0),
                 current_pos: Cell::new(None),
                 shuffled: Cell::new(false),
             }
@@ -70,6 +111,7 @@ mod imp {
                     ParamSpecEnum::builder::<RepeatMode>("repeat-mode")
                         .read_only()
                         .build(),
+                    ParamSpecUInt::builder("repeat-count").read_only().build(),
                     ParamSpecUInt::builder("n-songs").read_only().build(),
                     ParamSpecBoolean::builder("shuffled").read_only().build(),
                 ]
@@ -82,6 +124,7 @@ mod imp {
             match pspec.name() {
                 "current" => self.obj().current_song().to_value(),
                 "repeat-mode" => self.repeat_mode.get().to_value(),
+                "repeat-count" => self.repeat_count.get().to_value(),
                 "n-songs" => self.store.n_items().to_value(),
                 "shuffled" => self.shuffled.get().to_value(),
                 _ => unimplemented!(),
@@ -140,12 +183,14 @@ impl Queue {
                 let s = self.song_at(i).unwrap();
                 if song.equals(&s) {
                     self.imp().current_pos.replace(Some(i));
+                    self.imp().repeat_plays.set(0);
                     self.notify("current");
                     return;
                 }
             }
         } else {
             self.imp().current_pos.replace(None);
+            self.imp().repeat_plays.set(0);
             self.notify("current");
         }
     }
@@ -198,6 +243,7 @@ impl Queue {
 
         if self.is_empty() {
             self.imp().current_pos.replace(None);
+            self.imp().repeat_plays.set(0);
         }
     }
 
@@ -206,12 +252,14 @@ impl Queue {
         cover_cache.clear();
 
         self.imp().current_pos.replace(None);
+        self.imp().repeat_plays.set(0);
         self.imp().store.remove_all();
         self.notify("n-songs");
     }
 
     pub fn skip_song(&self, pos: u32) -> Option<Song> {
         self.imp().current_pos.replace(Some(pos));
+        self.imp().repeat_plays.set(0);
         self.notify("current");
         self.song_at(pos)
     }
@@ -222,6 +270,7 @@ impl Queue {
         {
             let prev = current_pos - 1;
             self.imp().current_pos.replace(Some(prev));
+            self.imp().repeat_plays.set(0);
             self.notify("current");
             return self.song_at(current_pos - 1);
         }
@@ -246,7 +295,20 @@ impl Queue {
             return self.song_at(0);
         };
 
-        let next = next_index(current, n_songs, self.imp().repeat_mode.get(), manual);
+        let repeat_mode = self.imp().repeat_mode.get();
+        let next = if repeat_mode == RepeatMode::RepeatEach {
+            let (next, plays) = next_index_repeat_each(
+                current,
+                n_songs,
+                self.imp().repeat_count.get(),
+                self.imp().repeat_plays.get(),
+                manual,
+            );
+            self.imp().repeat_plays.set(plays);
+            next
+        } else {
+            next_index(current, n_songs, repeat_mode, manual)
+        };
         self.imp().current_pos.replace(next);
         self.notify("current");
         next.and_then(|n| self.song_at(n))
@@ -260,6 +322,17 @@ impl Queue {
         let old_mode = self.imp().repeat_mode.replace(repeat_mode);
         if old_mode != repeat_mode {
             self.notify("repeat-mode");
+        }
+    }
+
+    pub fn repeat_count(&self) -> u32 {
+        self.imp().repeat_count.get()
+    }
+
+    pub fn set_repeat_count(&self, count: u32) {
+        let old = self.imp().repeat_count.replace(count);
+        if old != count {
+            self.notify("repeat-count");
         }
     }
 
@@ -377,5 +450,27 @@ mod tests {
         assert_eq!(next_index(0, 1, RepeatMode::Consecutive, true), None);
         assert_eq!(next_index(0, 1, RepeatMode::RepeatAll, true), Some(0));
         assert_eq!(next_index(0, 1, RepeatMode::RepeatOne, true), Some(0));
+    }
+
+    #[test]
+    fn repeat_each_replays_then_advances() {
+        // 3-song queue, count=3, currently on song 0, auto (track ended).
+        assert_eq!(next_index_repeat_each(0, 3, 3, 0, false), (Some(0), 1)); // 1st replay
+        assert_eq!(next_index_repeat_each(0, 3, 3, 1, false), (Some(0), 2)); // 2nd replay
+        assert_eq!(next_index_repeat_each(0, 3, 3, 2, false), (Some(1), 0)); // 3rd play done, advance
+    }
+
+    #[test]
+    fn repeat_each_wraps_at_the_end() {
+        assert_eq!(next_index_repeat_each(2, 3, 3, 2, false), (Some(0), 0));
+    }
+
+    #[test]
+    fn repeat_each_manual_skip_advances_immediately() {
+        // Manual skip always moves on and resets the counter, regardless
+        // of how many replays have happened so far -- same convention as
+        // RepeatOne's manual-skip-breaks-the-loop rule.
+        assert_eq!(next_index_repeat_each(0, 3, 3, 1, true), (Some(1), 0));
+        assert_eq!(next_index_repeat_each(2, 3, 3, 0, true), (Some(0), 0));
     }
 }
