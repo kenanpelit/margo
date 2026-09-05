@@ -30,6 +30,8 @@ pub struct Snapshot {
     pub rate: f64,
     pub shuffle: bool,
     pub repeat: RepeatMode,
+    /// Configured N for `RepeatMode::RepeatEach`.
+    pub repeat_count: u32,
     pub queue_len: u32,
     pub current_index: i64,
     /// (title, artist, duration_secs) for every song in the queue, in
@@ -60,6 +62,7 @@ impl Default for Snapshot {
             rate: 1.0,
             shuffle: false,
             repeat: RepeatMode::default(),
+            repeat_count: 3,
             queue_len: 0,
             current_index: -1,
             queue_entries: Vec::new(),
@@ -88,6 +91,8 @@ pub enum AppCommand {
     Stop,
     SetShuffle(bool),
     SetRepeat(RepeatMode),
+    /// Configured N for `RepeatMode::RepeatEach`.
+    SetRepeatCount(u32),
     SeekAbs(u64),
     SetVolume(f64),
     /// Show the window if hidden, hide it (to the tray) if visible.

@@ -198,6 +198,15 @@ impl TuneService {
             .rate
     }
 
+    /// Configured N for `RepeatMode::RepeatEach`.
+    #[zbus(property)]
+    async fn repeat_count(&self) -> u32 {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .repeat_count
+    }
+
     /// Names of the saved playlists.
     #[zbus(property)]
     async fn playlists(&self) -> Vec<String> {
@@ -236,6 +245,10 @@ impl TuneService {
 
     async fn set_rate(&self, rate: f64) {
         self.send(AppCommand::SetRate(rate));
+    }
+
+    async fn set_repeat_count(&self, count: u32) {
+        self.send(AppCommand::SetRepeatCount(count));
     }
 
     /// Load a saved playlist by name.
@@ -279,6 +292,7 @@ impl TuneService {
         let mode = match mode.as_str() {
             "repeat-all" => RepeatMode::RepeatAll,
             "repeat-one" => RepeatMode::RepeatOne,
+            "repeat-each" => RepeatMode::RepeatEach,
             _ => RepeatMode::Consecutive,
         };
         self.send(AppCommand::SetRepeat(mode));

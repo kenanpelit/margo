@@ -610,6 +610,7 @@ impl Application {
                 rate: state.playback_rate(),
                 shuffle: queue.is_shuffled(),
                 repeat: queue.repeat_mode(),
+                repeat_count: queue.repeat_count(),
                 queue_len: queue.n_songs(),
                 current_index: queue.current_song_index().map(|i| i as i64).unwrap_or(-1),
                 queue_entries,
@@ -654,6 +655,16 @@ impl Application {
             AppCommand::Stop => player.stop(),
             AppCommand::SetShuffle(b) => player.queue().set_shuffled(b),
             AppCommand::SetRepeat(m) => player.update_repeat_mode(m),
+            AppCommand::SetRepeatCount(n) => {
+                {
+                    let mut cfg = imp.config.borrow_mut();
+                    cfg.playback.repeat_count = n;
+                    if let Err(e) = cfg.save() {
+                        debug!("mtune: could not save mtune.toml: {e}");
+                    }
+                }
+                player.queue().set_repeat_count(n);
+            }
             AppCommand::SeekAbs(s) => player.seek_position_abs(s),
             AppCommand::SetVolume(v) => player.set_volume(v),
             AppCommand::PlayIndex(i) => player.skip_to(i),
