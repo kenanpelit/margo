@@ -47,6 +47,8 @@ pub struct MtunePlayer {
     pub repeat_mode: Property<String>,
     /// Sticky playback rate (0.5..=2.0).
     pub rate: Property<f64>,
+    /// Configured N for repeat-each mode.
+    pub repeat_count: Property<u32>,
     pub queue_len: Property<u32>,
     pub current_index: Property<i64>,
     /// (title, artist, duration_secs) per queue entry, in queue order.
@@ -75,6 +77,7 @@ impl MtunePlayer {
             shuffle: Property::new(false),
             repeat_mode: Property::new("consecutive".into()),
             rate: Property::new(1.0),
+            repeat_count: Property::new(3),
             queue_len: Property::new(0),
             current_index: Property::new(-1),
             queue_entries: Property::new(Vec::new()),
@@ -128,6 +131,9 @@ impl MtunePlayer {
     }
     pub async fn set_rate(&self, rate: f64) {
         self.call("SetRate", &(rate,)).await;
+    }
+    pub async fn set_repeat_count(&self, count: u32) {
+        self.call("SetRepeatCount", &(count,)).await;
     }
     pub async fn seek(&self, position_secs: u64) {
         self.call("Seek", &(position_secs,)).await;
@@ -330,6 +336,9 @@ async fn refresh(proxy: &zbus::Proxy<'_>, p: &MtunePlayer) {
     }
     if let Some(v) = get!("Rate", f64) {
         p.rate.set(v);
+    }
+    if let Some(v) = get!("RepeatCount", u32) {
+        p.repeat_count.set(v);
     }
     if let Some(v) = get!("Playlists", Vec<String>) {
         p.playlists.set(v);
