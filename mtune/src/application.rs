@@ -931,6 +931,13 @@ impl Application {
         let _ = imp
             .settings
             .set_uint64("resume-position", imp.player.state().position());
+
+        if let Some(win) = self.active_window().and_downcast::<Window>()
+            && let Some(playlist_path) = win.active_playlist()
+        {
+            let ix = imp.player.queue().current_song_index().unwrap_or(0);
+            let _ = crate::playlist::update_resume_index(&playlist_path, ix);
+        }
     }
 
     fn setup_channel(&self) {

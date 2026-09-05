@@ -80,6 +80,9 @@ pub enum StartIntent {
     /// Skip to the track with this URI and seek to this position (secs),
     /// paused; falls back to `Top` if the URI is no longer in the library.
     Resume(String, u64),
+    /// Skip to this queue index (clamped to the queue's bounds), paused.
+    /// Used to resume a saved playlist at its remembered position.
+    AtIndex(u32),
     /// Leave the queue untouched — no current song.
     Nothing,
 }
@@ -188,6 +191,13 @@ mod imp {
         /// What to do once a library load finishes filling an empty queue
         /// (set by `load_library_files`, consumed in `queue_songs`).
         pub pending_start: RefCell<Option<super::StartIntent>>,
+
+        /// The saved playlist backing the current queue, if any -- set by
+        /// `open_playlist_file` when the path is one of the named
+        /// saved playlists (`playlist::library_dir()`), cleared on
+        /// folder/library load or loading a different playlist. Drives
+        /// live resume-index persistence (see `persist_resume` call sites).
+        pub active_playlist: RefCell<Option<PathBuf>>,
     }
 
     #[glib::object_subclass]
@@ -437,6 +447,7 @@ mod imp {
                 notify_current_id: RefCell::new(None),
                 notify_peaks_id: RefCell::new(None),
                 pending_start: RefCell::new(None),
+                active_playlist: RefCell::new(None),
             }
         }
     }
@@ -995,8 +1006,23 @@ impl Window {
         if let Some(p) = self.player() {
             p.clear_queue();
         }
-        self.imp().pending_start.replace(Some(StartIntent::Top));
+        let is_saved = path.starts_with(crate::playlist::library_dir());
+        self.imp()
+            .active_playlist
+            .replace(is_saved.then(|| path.to_path_buf()));
+        let intent = is_saved
+            .then(|| crate::playlist::resume_index(path))
+            .flatten()
+            .map(StartIntent::AtIndex)
+            .unwrap_or(StartIntent::Top);
+        self.imp().pending_start.replace(Some(intent));
         self.queue_songs(files);
+    }
+
+    /// The saved playlist backing the current queue, if any -- see
+    /// `active_playlist`'s field doc.
+    pub fn active_playlist(&self) -> Option<PathBuf> {
+        self.imp().active_playlist.borrow().clone()
     }
 
     /// Load a playlist from the library by display name.
@@ -1111,6 +1137,10 @@ impl Window {
                                             }
                                             None => player.skip_to(0),
                                         }
+                                    }
+                                    Some(StartIntent::AtIndex(ix)) => {
+                                        let clamped = ix.min(queue.n_songs().saturating_sub(1));
+                                        player.skip_to(clamped);
                                     }
                                     Some(StartIntent::Nothing) => {}
                                     _ => player.skip_to(0),
@@ -1571,6 +1601,11 @@ impl Window {
                     .unwrap_or_default();
                 let _ = settings.set_string("resume-uri", &uri);
                 let _ = settings.set_uint64("resume-position", pos);
+
+                if let Some(playlist_path) = window.imp().active_playlist.borrow().as_deref() {
+                    let ix = player.queue().current_song_index().unwrap_or(0);
+                    let _ = crate::playlist::update_resume_index(playlist_path, ix);
+                }
             }
 
             window.unbind_queue();
@@ -2046,6 +2081,9 @@ impl Window {
         if files.is_empty() {
             return;
         }
+        // A folder/library load is never a saved playlist -- stop treating
+        // whatever the previous queue's source was as one.
+        self.imp().active_playlist.replace(None);
         self.imp().pending_start.replace(Some(intent));
         self.open_files(&files);
     }
