@@ -124,6 +124,50 @@ corresponding .blp file and regenerate this file with blueprint-compiler.
                   </object>
                 </child>
                 <child>
+                  <object class="GtkBox" id="repeat_count_box">
+                    <property name="spacing">2</property>
+                    <property name="valign">3</property>
+                    <property name="visible">false</property>
+                    <child>
+                      <object class="GtkButton" id="repeat_count_decrement">
+                        <property name="icon-name">list-remove-symbolic</property>
+                        <property name="action-name">win.repeat-count-decrement</property>
+                        <property name="valign">3</property>
+                        <property name="tooltip-text" translatable="yes">Repeat Fewer Times</property>
+                        <style>
+                          <class name="flat"/>
+                          <class name="circular"/>
+                        </style>
+                        <accessibility>
+                          <property name="label" translatable="yes" context="a11y">Repeat fewer times</property>
+                        </accessibility>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="repeat_count_label">
+                        <property name="valign">3</property>
+                        <property name="width-chars">2</property>
+                        <property name="xalign">0.5</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="repeat_count_increment">
+                        <property name="icon-name">list-add-symbolic</property>
+                        <property name="action-name">win.repeat-count-increment</property>
+                        <property name="valign">3</property>
+                        <property name="tooltip-text" translatable="yes">Repeat More Times</property>
+                        <style>
+                          <class name="flat"/>
+                          <class name="circular"/>
+                        </style>
+                        <accessibility>
+                          <property name="label" translatable="yes" context="a11y">Repeat more times</property>
+                        </accessibility>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
                   <object class="GtkMenuButton" id="menu_button">
                     <property name="menu-model">primary_menu</property>
                     <property name="icon-name">open-menu-symbolic</property>

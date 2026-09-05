@@ -656,14 +656,7 @@ impl Application {
             AppCommand::SetShuffle(b) => player.queue().set_shuffled(b),
             AppCommand::SetRepeat(m) => player.update_repeat_mode(m),
             AppCommand::SetRepeatCount(n) => {
-                {
-                    let mut cfg = imp.config.borrow_mut();
-                    cfg.playback.repeat_count = n;
-                    if let Err(e) = cfg.save() {
-                        debug!("mtune: could not save mtune.toml: {e}");
-                    }
-                }
-                player.queue().set_repeat_count(n);
+                self.apply_repeat_count(n);
             }
             AppCommand::SeekAbs(s) => player.seek_position_abs(s),
             AppCommand::SetVolume(v) => player.set_volume(v),
@@ -916,6 +909,21 @@ impl Application {
             let id = crate::notify::notify(&conn, prev, &summary, "", true, 1500).await;
             this.imp().setting_notify_id.set(id);
         });
+    }
+
+    /// Set the live `RepeatMode::RepeatEach` count and persist it to
+    /// `mtune.toml`. Shared by the `SetRepeatCount` D-Bus/CLI path and
+    /// the native window's repeat-count stepper.
+    pub fn apply_repeat_count(&self, n: u32) {
+        let imp = self.imp();
+        {
+            let mut cfg = imp.config.borrow_mut();
+            cfg.playback.repeat_count = n;
+            if let Err(e) = cfg.save() {
+                debug!("mtune: could not save mtune.toml: {e}");
+            }
+        }
+        imp.player.queue().set_repeat_count(n);
     }
 
     /// Write the current track + position to GSettings so

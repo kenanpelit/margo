@@ -245,6 +245,12 @@ mod imp {
                     p.toggle_repeat_mode();
                 }
             });
+            klass.install_action("win.repeat-count-increment", None, move |win, _, _| {
+                win.adjust_repeat_count(1);
+            });
+            klass.install_action("win.repeat-count-decrement", None, move |win, _, _| {
+                win.adjust_repeat_count(-1);
+            });
             klass.install_action_async("queue.add-song", None, |win, _, _| async move {
                 debug!("Window::win.add-song()");
                 let filters = gio::ListStore::new::<gtk::FileFilter>();
@@ -535,6 +541,23 @@ impl Window {
         win.apply_view_mode(ViewMode::from_str(&win.imp().settings.string("view-mode")));
 
         win
+    }
+
+    /// Change the `RepeatMode::RepeatEach` count by `delta`, clamped to a
+    /// sane 1..=20 range (0 would silently degrade the mode to "always
+    /// advance" -- see `next_index_repeat_each`'s own reasoning). Applied
+    /// through `Application::apply_repeat_count` so it persists to
+    /// `mtune.toml` the same way the D-Bus/CLI path already does.
+    fn adjust_repeat_count(&self, delta: i32) {
+        let Some(player) = self.player() else { return };
+        let cur = player.queue().repeat_count();
+        let next = (cur as i32 + delta).clamp(1, 20) as u32;
+        if let Some(app) = self
+            .application()
+            .and_then(|a| a.downcast::<crate::application::Application>().ok())
+        {
+            app.apply_repeat_count(next);
+        }
     }
 
     fn player(&self) -> Option<Rc<AudioPlayer>> {

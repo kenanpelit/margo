@@ -41,6 +41,10 @@ mod imp {
         #[template_child]
         pub repeat_button: TemplateChild<gtk::Button>,
         #[template_child]
+        pub repeat_count_box: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub repeat_count_label: TemplateChild<gtk::Label>,
+        #[template_child]
         pub menu_button: TemplateChild<gtk::MenuButton>,
     }
 
@@ -137,5 +141,11 @@ impl PlaybackControl {
                 )));
             }
         }
+        self.imp()
+            .repeat_count_box
+            .set_visible(repeat_mode == RepeatMode::RepeatEach);
+        self.imp()
+            .repeat_count_label
+            .set_label(&repeat_count.to_string());
     }
 }
