@@ -68,6 +68,8 @@ pub(crate) enum MtuneMenuInput {
     Previous,
     ToggleShuffle,
     CycleRepeat,
+    /// The repeat-count stepper's − / + was clicked (delta = ±1).
+    AdjustRepeatCount(i32),
     SetRate(f64),
     /// Scale moved (0.0–1.0) — update the readout, debounce the real seek.
     SeekPreview(f64),
@@ -321,6 +323,32 @@ impl Component for MtuneMenuWidgetModel {
                             _ => "Repeat: off".to_string(),
                         }),
                         connect_clicked => MtuneMenuInput::CycleRepeat,
+                    },
+                    #[name = "repeat_count_box"]
+                    gtk::Box {
+                        add_css_class: "mtune-repeat-count",
+                        set_spacing: 2,
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_visible: model.repeat == "repeat-each",
+
+                        gtk::Button {
+                            set_css_classes: &["mtune-repeat-count-btn"],
+                            set_icon_name: "list-remove-symbolic",
+                            set_tooltip_text: Some("Repeat fewer times"),
+                            connect_clicked => MtuneMenuInput::AdjustRepeatCount(-1),
+                        },
+                        gtk::Label {
+                            add_css_class: "mtune-repeat-count-label",
+                            #[watch]
+                            set_label: &model.repeat_count.to_string(),
+                        },
+                        gtk::Button {
+                            set_css_classes: &["mtune-repeat-count-btn"],
+                            set_icon_name: "list-add-symbolic",
+                            set_tooltip_text: Some("Repeat more times"),
+                            connect_clicked => MtuneMenuInput::AdjustRepeatCount(1),
+                        },
                     },
                 },
 
@@ -598,6 +626,10 @@ impl Component for MtuneMenuWidgetModel {
                     _ => "consecutive",
                 };
                 tokio_rt_spawn(async move { mtune_service().player.set_repeat_mode(next).await });
+            }
+            MtuneMenuInput::AdjustRepeatCount(delta) => {
+                let next = (self.repeat_count as i32 + delta).clamp(1, 20) as u32;
+                tokio_rt_spawn(async move { mtune_service().player.set_repeat_count(next).await });
             }
             MtuneMenuInput::SetRate(r) => {
                 tokio_rt_spawn(async move { mtune_service().player.set_rate(r).await });
