@@ -126,6 +126,50 @@ pub fn write_m3u(path: &Path, queue: &Queue) -> std::io::Result<()> {
     Ok(())
 }
 
+const RESUME_PREFIX: &str = "#TUNE-RESUME:";
+
+/// The 0-based track index a playlist last left off at, if the file
+/// carries a `#TUNE-RESUME:` comment (written by `update_resume_index`).
+pub fn resume_index(path: &Path) -> Option<u32> {
+    let text = fs::read_to_string(path).ok()?;
+    text.lines()
+        .find_map(|l| l.strip_prefix(RESUME_PREFIX))
+        .and_then(|n| n.trim().parse().ok())
+}
+
+/// Rewrite just the `#TUNE-RESUME:` line in `path` -- every other line
+/// (the `#EXTM3U` header, `#EXTINF` metadata, song paths) is copied
+/// through unchanged. `index == 0` removes the line entirely, keeping a
+/// never-resumed or freshly-saved playlist's file pristine. A missing or
+/// unreadable file is a silent no-op (nothing to update).
+pub fn update_resume_index(path: &Path, index: u32) -> std::io::Result<()> {
+    let Ok(text) = fs::read_to_string(path) else {
+        return Ok(());
+    };
+    let mut out = String::with_capacity(text.len() + 16);
+    let mut inserted = false;
+    for line in text.lines() {
+        if line.starts_with(RESUME_PREFIX) {
+            if index > 0 && !inserted {
+                out.push_str(&format!("{RESUME_PREFIX}{index}\n"));
+                inserted = true;
+            }
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+        if !inserted && line.starts_with("#EXTM3U") && index > 0 {
+            out.push_str(&format!("{RESUME_PREFIX}{index}\n"));
+            inserted = true;
+        }
+    }
+    if index > 0 && !inserted {
+        // No #EXTM3U header (a bare/legacy playlist) -- prepend it.
+        out = format!("{RESUME_PREFIX}{index}\n{out}");
+    }
+    fs::write(path, out)
+}
+
 /// Save the queue to the library under `name`, returning its path.
 pub fn save(name: &str, queue: &Queue) -> std::io::Result<PathBuf> {
     let path = saved_path(name);
@@ -149,5 +193,52 @@ fn sanitize(name: &str) -> String {
         "playlist".to_string()
     } else {
         trimmed.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn write_fixture(dir: &std::path::Path, body: &str) -> PathBuf {
+        let path = dir.join("fixture.m3u");
+        let mut f = fs::File::create(&path).unwrap();
+        f.write_all(body.as_bytes()).unwrap();
+        path
+    }
+
+    #[test]
+    fn resume_index_absent_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_fixture(dir.path(), "#EXTM3U\n/song1.mp3\n/song2.mp3\n");
+        assert_eq!(resume_index(&path), None);
+    }
+
+    #[test]
+    fn resume_index_reads_the_comment() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_fixture(
+            dir.path(),
+            "#EXTM3U\n#TUNE-RESUME:2\n/song1.mp3\n/song2.mp3\n/song3.mp3\n",
+        );
+        assert_eq!(resume_index(&path), Some(2));
+    }
+
+    #[test]
+    fn update_resume_index_inserts_then_updates_without_touching_songs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_fixture(dir.path(), "#EXTM3U\n/song1.mp3\n/song2.mp3\n");
+
+        update_resume_index(&path, 1).unwrap();
+        assert_eq!(resume_index(&path), Some(1));
+        let songs = parse(&path);
+        assert_eq!(songs.len(), 2);
+
+        update_resume_index(&path, 0).unwrap();
+        // Index 0 removes the line entirely (keeps a pristine file for
+        // the common/never-resumed case).
+        assert_eq!(resume_index(&path), None);
+        assert_eq!(parse(&path).len(), 2);
     }
 }
