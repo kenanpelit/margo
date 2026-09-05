@@ -274,6 +274,10 @@ impl Application {
             return;
         }
         let cfg = self.imp().config.borrow().clone();
+        self.imp()
+            .player
+            .queue()
+            .set_repeat_count(cfg.playback.repeat_count);
         let roots = cfg.library.resolved_roots();
         if roots.is_empty() {
             debug!("mtune: no library roots configured");

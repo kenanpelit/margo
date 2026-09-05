@@ -74,10 +74,22 @@ impl LibrarySection {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(default)]
 pub struct PlaybackSection {
     pub on_start: OnStart,
+    /// Times to repeat each track under `RepeatMode::RepeatEach` before
+    /// advancing. Settings/CLI via `mshellctl mtune repeat-count`.
+    pub repeat_count: u32,
+}
+
+impl Default for PlaybackSection {
+    fn default() -> Self {
+        Self {
+            on_start: OnStart::default(),
+            repeat_count: 3,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -174,6 +186,7 @@ mod tests {
         assert!(c.library.watch);
         assert!(c.library.recursive);
         assert_eq!(c.playback.on_start, OnStart::Resume);
+        assert_eq!(c.playback.repeat_count, 3);
         assert!(!c.library.extensions.is_empty());
         assert!(c.behaviour.close_to_tray);
         assert!(!c.behaviour.start_hidden);
@@ -185,6 +198,14 @@ mod tests {
         c.behaviour.start_hidden = true;
         let back: MtuneConfig = toml::from_str(&toml::to_string(&c).unwrap()).unwrap();
         assert!(back.behaviour.start_hidden);
+    }
+
+    #[test]
+    fn repeat_count_roundtrips() {
+        let mut c = MtuneConfig::default();
+        c.playback.repeat_count = 5;
+        let back: MtuneConfig = toml::from_str(&toml::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back.playback.repeat_count, 5);
     }
 
     #[test]
