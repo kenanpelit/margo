@@ -11,7 +11,7 @@ use smithay::{
     utils::{Logical, Point},
     wayland::{
         pointer_constraints::{
-            PointerConstraint, PointerConstraintsHandler, with_pointer_constraint,
+            ConstraintRemove, PointerConstraintsHandler, with_pointer_constraint,
         },
         seat::WaylandFocus,
     },
@@ -42,7 +42,7 @@ impl PointerConstraintsHandler for MargoState {
         &mut self,
         _surface: &WlSurface,
         _pointer: &PointerHandle<Self>,
-        _constraint: Option<&PointerConstraint>,
+        _constraint_remove: ConstraintRemove,
     ) {
         // Nothing to tear down: enforcement in `handle_pointer_motion`
         // reads the live constraint via `with_pointer_constraint` every

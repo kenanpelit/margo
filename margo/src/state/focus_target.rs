@@ -12,6 +12,7 @@
 use std::sync::Arc;
 
 use smithay::{
+    backend::input::InputTime,
     desktop::{Window, WindowSurface},
     input::{
         Seat,
@@ -171,7 +172,7 @@ impl KeyboardTarget<MargoState> for FocusTarget {
         key: KeysymHandle<'_>,
         state: smithay::backend::input::KeyState,
         serial: Serial,
-        time: u32,
+        time: InputTime,
     ) {
         if let Some(x11) = self.inner_x11_surface() {
             KeyboardTarget::key(x11, seat, data, key, state, serial, time);
@@ -230,7 +231,13 @@ impl PointerTarget<MargoState> for FocusTarget {
             PointerTarget::frame(s, seat, data);
         }
     }
-    fn leave(&self, seat: &Seat<MargoState>, data: &mut MargoState, serial: Serial, time: u32) {
+    fn leave(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        serial: Serial,
+        time: InputTime,
+    ) {
         if let Some(s) = self.inner_wl_surface() {
             PointerTarget::leave(s, seat, data, serial, time);
         }
@@ -420,7 +427,7 @@ impl DndFocus<MargoState> for FocusTarget {
         offer: Option<&mut WlOfferData<S>>,
         seat: &Seat<MargoState>,
         location: Point<f64, Logical>,
-        time: u32,
+        time: InputTime,
     ) {
         if let Some(s) = self.inner_wl_surface() {
             DndFocus::motion(s, data, offer, seat, location, time);

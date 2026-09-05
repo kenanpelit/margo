@@ -296,16 +296,16 @@ mshell-wallpaper = { path = "mshell-crates/mshell-wallpaper" }
 
 [workspace.dependencies.smithay]
 git = "https://github.com/Smithay/smithay.git"
-# Master HEAD 2026-08-14 — well past the v0.7.0 tag (a166cf4c). The 0.7.0
+# Master HEAD 2026-09-05 — well past the v0.7.0 tag (a166cf4c). The 0.7.0
 # "breaking changes" (Option<DrmSyncobjState>, GbmFramebufferExporter
 # import_node, DrmTimeline OwnedFd, eventfd Arc) are all baked in here and
 # handled in our code. Pinning the tag would be a large downgrade; we track
-# HEAD instead. This bump carries DrmCompositor::set_format (the runtime
-# swapchain reformat the HDR Phase 2 linear-composite path builds on), plus
-# session-lock hardening (an unrelated client could no longer unlock a
-# session; lock status resets if the locking client disconnects) and
-# Renderer::invalidate_caches / GpuManager cache cleanup on device removal.
-rev = "347b2b30225b0425f0b44dc4c590e768f7dbe73e"
+# HEAD instead. This bump (from 347b2b30) carries: InputTime replacing raw
+# u32/u64 timestamps on input events, a foreign-toplevel-list identifier
+# hook, an XWayland unrecognized-property-forwarding hook, back-to-front
+# damage calculation + empty-rect-in-opaque-coverage fixes, and deadlock
+# fixes in pointer_constraints and tablet with_tools.
+rev = "28c8e0fad905f3e7d01c2446fb60d26659071684"
 default-features = false
 
 # Local dev + test builds default to full DWARF (`debug = 2`), which is the

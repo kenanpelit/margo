@@ -6,7 +6,7 @@
 
 use crate::state::MargoState;
 use margo_config::Arg;
-use smithay::backend::input::KeyState;
+use smithay::backend::input::{InputTime, KeyState};
 use smithay::input::keyboard::FilterResult;
 use smithay::utils::SERIAL_COUNTER;
 use std::time::Duration;
@@ -179,7 +179,7 @@ impl MargoState {
                 (evdev + 8).into(),
                 key_state,
                 serial,
-                time,
+                InputTime::from_millis(time),
                 |_, _, _| FilterResult::Forward,
             );
         }

@@ -7,6 +7,7 @@
 //! ("alt+l → black screen" symptom).
 
 use smithay::{
+    backend::input::InputTime,
     input::pointer::CursorImageStatus,
     output::Output,
     reexports::wayland_server::protocol::wl_output::WlOutput,
@@ -35,7 +36,7 @@ impl SessionLockHandler for MargoState {
         // lock surface. Clear any desktop focus immediately so keys arriving
         // in that gap can never be forwarded to the previously focused app.
         if let Some(pointer) = self.seat.get_pointer() {
-            pointer.unset_grab(self, SERIAL_COUNTER.next_serial(), crate::utils::now_ms());
+            pointer.unset_grab(self, SERIAL_COUNTER.next_serial(), InputTime::now());
         }
         if let Some(keyboard) = self.seat.get_keyboard() {
             keyboard.unset_grab(self);

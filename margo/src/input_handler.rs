@@ -215,7 +215,7 @@ fn handle_touch_down<B: InputBackend, E: smithay::backend::input::TouchDownEvent
     // long as DOWN/MOTION/UP agree.
     let pos = event.position_transformed(smithay::utils::Size::from((1, 1)));
     let (x, y) = (pos.x, pos.y);
-    let now = event.time_msec();
+    let now = event.time().millis();
     state.input_touch.points.push(TouchPoint {
         id,
         x,
@@ -290,7 +290,7 @@ fn handle_touch_up<B: InputBackend, E: smithay::backend::input::TouchUpEvent<B>>
 
 fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoState, event: E) {
     let serial = SERIAL_COUNTER.next_serial();
-    let time = event.time_msec();
+    let time = event.time();
     let key_state = event.state();
     let keycode = event.key_code();
 
@@ -665,7 +665,7 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
     let serial = SERIAL_COUNTER.next_serial();
     let delta = (event.delta_x(), event.delta_y()).into();
     let delta_unaccel = (event.delta_x_unaccel(), event.delta_y_unaccel()).into();
-    let time = event.time_msec();
+    let time = event.time();
 
     // Save the pre-move cursor position so we can restore it for
     // pointer-constraints-v1 lock requests (FPS games etc.).
@@ -761,7 +761,7 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
             &RelativeMotionEvent {
                 delta,
                 delta_unaccel,
-                utime: event.time() * 1000,
+                time: event.time(),
             },
         );
         ptr.frame(state);
@@ -980,7 +980,7 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
                 &MotionEvent {
                     location: pos,
                     serial,
-                    time: event.time_msec(),
+                    time: event.time(),
                 },
             );
             ptr.frame(state);
@@ -1076,14 +1076,14 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
                 &MotionEvent {
                     location: pos,
                     serial,
-                    time: event.time_msec(),
+                    time: event.time(),
                 },
             );
             ptr.button(
                 state,
                 &ButtonEvent {
                     serial,
-                    time: event.time_msec(),
+                    time: event.time(),
                     button,
                     state: btn_state,
                 },
@@ -1233,7 +1233,7 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
                     &MotionEvent {
                         location: pos,
                         serial,
-                        time: event.time_msec(),
+                        time: event.time(),
                     },
                 );
             }
@@ -1244,7 +1244,7 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
             state,
             &ButtonEvent {
                 serial,
-                time: event.time_msec(),
+                time: event.time(),
                 button: event.button_code(),
                 state: btn_state,
             },
@@ -1264,11 +1264,11 @@ fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(state: &mut Marg
                 &MotionEvent {
                     location: pos,
                     serial: SERIAL_COUNTER.next_serial(),
-                    time: event.time_msec(),
+                    time: event.time(),
                 },
             );
             let source = event.source();
-            let mut frame = AxisFrame::new(event.time_msec()).source(source);
+            let mut frame = AxisFrame::new(event.time()).source(source);
             for axis in [Axis::Horizontal, Axis::Vertical] {
                 if let Some(amount) = event.amount(axis) {
                     frame = frame.value(axis, amount);
@@ -1326,7 +1326,7 @@ fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(state: &mut Marg
 
     // AxisFrame::source() and AxisFrame::value() both use smithay::backend::input types.
     let source = event.source();
-    let mut frame = AxisFrame::new(event.time_msec()).source(source);
+    let mut frame = AxisFrame::new(event.time()).source(source);
 
     for axis in [Axis::Horizontal, Axis::Vertical] {
         if event.amount_v120(axis).is_none() && event.amount(axis).is_none() {
