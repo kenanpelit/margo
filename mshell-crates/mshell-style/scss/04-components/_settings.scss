@@ -124,31 +124,28 @@
     .sidebar-button {
         @include buttons.button-base("--surface", "--on-surface");
         @include buttons.state-layers("--surface", "--on-surface");
-        // 33px row (was 38): with the box's 2px spacing this gives the nav
-        // list a compact, GNOME-Settings-like rhythm instead of gapped
-        // free-floating rows. The labels' own padding keeps glyph headroom.
-        min-height: calc(33px * var(--font-scale-settings, 1.0));
+        // 35px row: a touch more breathing room than the old 33 without
+        // reading as a gapped list (the box's own 2px spacing still groups
+        // them). The labels' own padding keeps glyph headroom.
+        min-height: calc(35px * var(--font-scale-settings, 1.0));
 
+        // Selected row — DESIGN.md's token table has the active nav item as
+        // `--surface-container-high` + a glyph, NOT a solid `--primary` fill
+        // (that reads as a toggle button and forced a pile of contrast-patch
+        // overrides). A 3px leading bar drawn as an inset shadow (so it never
+        // shifts the label) marks it; the icon takes the accent, the label
+        // goes full-strength `--on-surface` / 600.
         &:checked {
-            @include buttons.button-base("--primary", "--on-primary");
-            @include buttons.state-layers("--primary", "--on-primary");
+            @include buttons.button-base("--surface-container-high", "--on-surface");
+            @include buttons.state-layers("--surface-container-high", "--on-surface");
+            box-shadow: inset 3px 0 0 0 var(--primary);
 
-            // Inner `.label-medium` / `.label-medium-bold` hardcode
-            // `color: var(--on-surface)` (see 03-primitives/_labels.scss).
-            // Without this override the active sidebar button keeps its
-            // text on-surface (white in dark mode), which against the
-            // primary-tinted background reads as low-contrast — the user
-            // reports the active item looks like "white on white". Force
-            // the contrasting `--on-primary` for every label / image
-            // nested under a checked sidebar button, regardless of which
-            // `label-*` class was used.
-            label,
-            label.label-medium,
-            label.label-medium-bold,
-            label.label-medium-primary,
-            label.label-medium-variant,
+            label.settings-sidebar-label {
+                color: var(--on-surface);
+                font-weight: 600;
+            }
             image {
-                color: var(--on-primary);
+                color: var(--primary);
             }
         }
 
@@ -159,6 +156,10 @@
             // base keeps Pango off that bad rounding cliff.
             font-size: calc(15.5px * var(--font-scale-settings, 1.0));
             font-weight: 500;
+            // Quiet at rest so the one selected row (and, above it, the
+            // uppercase section header) carry the column's hierarchy —
+            // the rows themselves shouldn't all shout `--on-surface`.
+            color: var(--on-surface-variant);
             // GTK clips the label's draw to its border-box; a font whose
             // cap-ink overshoots the logical top edge gets shaved (the tops
             // of "General", "Appearance", … were cut). Vertical padding opens
@@ -186,9 +187,23 @@
 
 // Sidebar and content are both --surface (same tonal tier), so a
 // hairline is the justified fallback separator (DESIGN.md §0.1) —
-// softened to a 1px --outline-variant rule, not the heavy 2px outline.
+// a 1px rule at ~45% --outline-variant so it reads as a seam, not a bar.
 .settings-sidebar {
-    border-right: solid 1px var(--outline-variant);
+    border-right: 1px solid transparent;
+    border-right-color: unquote("color-mix(in srgb, var(--outline-variant) 45%, transparent)");
+
+    // Fade the scrolled nav list into the sidebar background at both
+    // edges so a long list doesn't hard-cut under the search box or at
+    // the window bottom. GTK renders these nodes only when there is
+    // content scrolled past that edge.
+    scrolledwindow {
+        undershoot.top {
+            background: linear-gradient(to bottom, var(--surface), transparent);
+        }
+        undershoot.bottom {
+            background: linear-gradient(to top, var(--surface), transparent);
+        }
+    }
 }
 
 // ── Widgets sub-sidebar density overrides ──────────────────────
@@ -235,9 +250,9 @@
     border: none;
     box-shadow: none;
     outline: none;
-    min-height: 30px;
-    margin-top: var(--space-2);
-    margin-bottom: 2px;
+    min-height: 28px;
+    margin-top: var(--space-3);
+    margin-bottom: var(--space-1);
     padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
     border-radius: var(--radius-sm);
     transition: background-color var(--motion-fast) var(--ease-standard);
@@ -250,28 +265,27 @@
     }
 }
 .settings-sidebar-section-icon {
-    // Accent the group with a primary-tinted leading glyph — carries the
-    // "pop" so the title text can stay neutral-strong rather than coloured.
-    color: var(--primary);
-    -gtk-icon-size: 17px;
+    // Quiet, untinted — the header earns its rank from the tracked
+    // uppercase label, not a coloured glyph (GNOME / macOS section style).
+    color: var(--on-surface-variant);
+    -gtk-icon-size: 15px;
 }
 .settings-sidebar-section-label {
-    // A real group header, not a caption: it must out-rank the page rows
-    // beneath it (15.5px / 500 / --on-surface), so it was reading *weaker*
-    // than its own children when set at 13px / on-surface-variant. Match the
-    // page-label baseline size, go full-strength --on-surface, and carry the
-    // hierarchy on weight (700) + a touch more tracking. Title Case set in
-    // Rust (GTK CSS has no text-transform).
-    font-size: calc(15.5px * var(--font-scale-settings, 1.0));
+    // An eyebrow category label, not a title: small, heavy, wide-tracked,
+    // UPPERCASE (cased in Rust — GTK CSS has no text-transform) and
+    // quiet-toned. Reads as a divider ABOVE the rows, so making the rows
+    // themselves quieter (--on-surface-variant / 500) is what keeps this
+    // from being out-shouted — not bumping the header's own size/weight.
+    font-size: calc(12.5px * var(--font-scale-settings, 1.0));
     font-weight: 700;
     line-height: 1.4;
-    letter-spacing: 0.02em;
-    color: var(--on-surface);
+    letter-spacing: 0.08em;
+    color: var(--on-surface-variant);
 }
 .settings-sidebar-chevron {
-    -gtk-icon-size: 16px;
-    color: var(--on-surface);
-    opacity: 0.8;
+    -gtk-icon-size: 14px;
+    color: var(--on-surface-variant);
+    opacity: 0.7;
 }
 
 .settings-sidebar-title {

@@ -2115,6 +2115,11 @@ enum SidebarEntry {
     Section {
         name: &'static str,
         icon: &'static str,
+        /// First-run reveal state: `true` opens this group collapsed until
+        /// the user has touched *any* group (once the state file exists,
+        /// the persisted per-group choice takes over). Keeps the initial
+        /// list short by folding the rarely-visited groups away.
+        collapsed: bool,
     },
     Page {
         route: &'static str,
@@ -2137,6 +2142,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     Section {
         name: "Appearance",
         icon: "applications-graphics-symbolic",
+        collapsed: false,
     },
     Page {
         route: "appearance",
@@ -2150,7 +2156,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     },
     Page {
         route: "osd",
-        icon: "audio-volume-high-symbolic",
+        icon: "notification-symbolic",
         label: "On-screen Displays",
     },
     Page {
@@ -2165,7 +2171,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     },
     Page {
         route: "tag_rules",
-        icon: "view-grid-symbolic",
+        icon: "window-symbolic",
         label: "Tag Rules",
     },
     Page {
@@ -2195,7 +2201,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     },
     Page {
         route: "window_switcher",
-        icon: "view-grid-symbolic",
+        icon: "view-more-horizontal-symbolic",
         label: "Window Switcher",
     },
     Page {
@@ -2206,6 +2212,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     Section {
         name: "Shell & Desktop",
         icon: "sidebar-symbolic",
+        collapsed: false,
     },
     Page {
         route: "bar",
@@ -2234,17 +2241,18 @@ const SIDEBAR: &[SidebarEntry] = &[
     },
     Page {
         route: "tiling_layout",
-        icon: "view-grid-symbolic",
+        icon: "video-joined-displays-symbolic",
         label: "Tiling Layout",
     },
     Page {
         route: "widgets",
-        icon: "view-grid-symbolic",
+        icon: "view-app-grid-symbolic",
         label: "Widgets",
     },
     Section {
         name: "System & Devices",
         icon: "preferences-system-symbolic",
+        collapsed: false,
     },
     Page {
         route: "bluetooth",
@@ -2288,7 +2296,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     },
     Page {
         route: "login",
-        icon: "system-users-symbolic",
+        icon: "avatar-default-symbolic",
         label: "Login Screen",
     },
     Page {
@@ -2314,6 +2322,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     Section {
         name: "Input & Shortcuts",
         icon: "input-keyboard-symbolic",
+        collapsed: false,
     },
     Page {
         route: "input",
@@ -2327,7 +2336,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     },
     Page {
         route: "summon",
-        icon: "view-app-grid-symbolic",
+        icon: "view-grid-symbolic",
         label: "Tags",
     },
     Page {
@@ -2338,6 +2347,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     Section {
         name: "Locale & Accounts",
         icon: "preferences-desktop-locale-symbolic",
+        collapsed: true,
     },
     Page {
         route: "date_time",
@@ -2367,6 +2377,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     Section {
         name: "Advanced",
         icon: "emblem-system-symbolic",
+        collapsed: true,
     },
     Page {
         route: "plugins",
@@ -2381,6 +2392,7 @@ const SIDEBAR: &[SidebarEntry] = &[
     Section {
         name: "About",
         icon: "help-about-symbolic",
+        collapsed: false,
     },
     Page {
         route: "about",
@@ -2514,7 +2526,10 @@ fn build_section_group(
     hb.append(&img);
 
     let lbl = gtk::Label::new(None);
-    lbl.set_markup(&settings_sidebar_markup(name));
+    // Uppercased for the eyebrow-label look — GTK CSS has no
+    // text-transform, so the casing is applied here. `name` itself
+    // (persistence key, ActivateSection lookup) keeps its original case.
+    lbl.set_markup(&settings_sidebar_markup(&name.to_uppercase()));
     lbl.add_css_class("settings-sidebar-section-label");
     lbl.set_halign(gtk::Align::Start);
     lbl.set_xalign(0.0);
@@ -2598,7 +2613,11 @@ fn build_sidebar(
     use gtk::prelude::*;
     let mut buttons = std::collections::HashMap::new();
     let mut anchor: Option<gtk::ToggleButton> = None;
-    let collapsed = load_collapsed_sections();
+    let collapsed_prefs = load_collapsed_sections();
+    // Once the user has toggled any group the state file exists and its
+    // per-group record is authoritative; before that, honour each entry's
+    // `collapsed` default so the list opens short.
+    let has_prefs = sidebar_state_path().exists();
     // Where the next page button goes. Starts at the sidebar root (for any
     // ungrouped page before the first section — e.g. General), then points
     // at each section group's revealer-pages box.
@@ -2609,8 +2628,16 @@ fn build_sidebar(
 
     for entry in SIDEBAR {
         match entry {
-            Section { name, icon } => {
-                let expanded = !collapsed.contains(*name);
+            Section {
+                name,
+                icon,
+                collapsed,
+            } => {
+                let expanded = if has_prefs {
+                    !collapsed_prefs.contains(*name)
+                } else {
+                    !*collapsed
+                };
                 let (group, revealer, pages, chevron) = build_section_group(name, icon, expanded);
                 sidebar_box.append(&group);
                 current_pages = pages;
