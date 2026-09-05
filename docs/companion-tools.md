@@ -191,9 +191,12 @@ media` *controls* other players, `mtune` *is* one.
   speed control, and the folder / playlist actions — distinct from the generic
   MPRIS media pill.
 - **Playback.** Speed control with **pitch held constant** (`scaletempo`),
-  playlists (m3u / m3u8 / pls, open + save), resume the last track + position on
-  launch, ReplayGain, compact **mini / strip** window skins (cycled with
-  `Ctrl+M`), and desktop notifications on track / setting change.
+  playlists (m3u / m3u8 / pls, open + save — each saved playlist remembers
+  and resumes at its own last-played track), resume the last track +
+  position on launch, ReplayGain, compact **mini / strip** window skins
+  (cycled with `Ctrl+M`), and desktop notifications on track / setting
+  change. Repeat modes: off / all / one / **each** (repeat a track N times,
+  then advance — `[playback] repeat_count`, default 3).
 - **Start hidden.** `mtune --hidden`, `[behaviour] start_hidden = true`, or the
   Settings toggle — runs in the tray with no window. Show / hide it with the
   tray icon or `mshellctl mtune toggle-window`.
@@ -208,7 +211,8 @@ mshellctl mtune play-pause
 mshellctl mtune next | previous
 mshellctl mtune seek 90        # absolute seconds; +30 / -30 for relative
 mshellctl mtune rate 1.5       # 0.5–2.0, pitch preserved
-mshellctl mtune repeat one     # off | all | one
+mshellctl mtune repeat one     # off | all | one | each | cycle
+mshellctl mtune repeat-count 5 # times to repeat under "each" (default 3)
 mshellctl mtune jump 12        # play queue entry 12
 mshellctl mtune playlist-save "focus"
 mshellctl mtune status --json  # now-playing + queue state
