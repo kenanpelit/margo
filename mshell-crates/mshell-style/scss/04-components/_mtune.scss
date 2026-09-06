@@ -276,6 +276,10 @@
   color: var(--on-surface);
 }
 
+// Secondary metadata — each its own quiet chip (same tone as the cover art)
+// rather than plain text run together with the title, so the eye can tell
+// queue position / time / repeat / queue-remaining apart without needing a
+// separator character.
 .mtune-bar-num,
 .mtune-bar-time,
 .mtune-bar-repeat,
@@ -283,6 +287,9 @@
   font-size: var(--font-bar);
   color: var(--on-surface-variant);
   font-variant-numeric: tabular-nums;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-container-high);
 }
 
 .mtune-bar-widget.paused {
