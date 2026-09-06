@@ -132,20 +132,17 @@
         // Selected row — DESIGN.md's token table has the active nav item as
         // `--surface-container-high` + a glyph, NOT a solid `--primary` fill
         // (that reads as a toggle button and forced a pile of contrast-patch
-        // overrides). A 3px leading bar drawn as an inset shadow (so it never
-        // shifts the label) marks it; the icon takes the accent, the label
-        // goes full-strength `--on-surface` / 600.
+        // overrides). The container-high fill + a 3px `--primary` leading bar
+        // (inset shadow, so it never shifts the label) mark it; the label
+        // goes weight 600. Icon stays `--on-surface` — `--primary` is the
+        // section-header colour, the row is marked structurally not by hue.
         &:checked {
             @include buttons.button-base("--surface-container-high", "--on-surface");
             @include buttons.state-layers("--surface-container-high", "--on-surface");
             box-shadow: inset 3px 0 0 0 var(--primary);
 
             label.settings-sidebar-label {
-                color: var(--on-surface);
                 font-weight: 600;
-            }
-            image {
-                color: var(--primary);
             }
         }
 
@@ -156,10 +153,6 @@
             // base keeps Pango off that bad rounding cliff.
             font-size: calc(15.5px * var(--font-scale-settings, 1.0));
             font-weight: 500;
-            // Quiet at rest so the one selected row (and, above it, the
-            // uppercase section header) carry the column's hierarchy —
-            // the rows themselves shouldn't all shout `--on-surface`.
-            color: var(--on-surface-variant);
             // GTK clips the label's draw to its border-box; a font whose
             // cap-ink overshoots the logical top edge gets shaved (the tops
             // of "General", "Appearance", … were cut). Vertical padding opens
@@ -265,26 +258,26 @@
     }
 }
 .settings-sidebar-section-icon {
-    // Quiet, untinted — the header earns its rank from the tracked
-    // uppercase label, not a coloured glyph (GNOME / macOS section style).
-    color: var(--on-surface-variant);
+    // Primary-tinted: the group header has to read as a DIFFERENT element
+    // from the page rows below it, and tone can't carry that —
+    // `--on-surface-variant` == `--on-surface` in the default palette.
+    // The hue does the separating.
+    color: var(--primary);
     -gtk-icon-size: 15px;
 }
 .settings-sidebar-section-label {
-    // An eyebrow category label, not a title: small, heavy, wide-tracked,
-    // UPPERCASE (cased in Rust — GTK CSS has no text-transform) and
-    // quiet-toned. Reads as a divider ABOVE the rows, so making the rows
-    // themselves quieter (--on-surface-variant / 500) is what keeps this
-    // from being out-shouted — not bumping the header's own size/weight.
+    // Eyebrow category label: small, heavy, wide-tracked, UPPERCASE (cased
+    // in Rust — GTK CSS has no text-transform) and `--primary`-coloured so
+    // it can never be mistaken for a page row.
     font-size: calc(12.5px * var(--font-scale-settings, 1.0));
     font-weight: 700;
     line-height: 1.4;
     letter-spacing: 0.08em;
-    color: var(--on-surface-variant);
+    color: var(--primary);
 }
 .settings-sidebar-chevron {
     -gtk-icon-size: 14px;
-    color: var(--on-surface-variant);
+    color: var(--primary);
     opacity: 0.7;
 }
 
