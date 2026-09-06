@@ -938,6 +938,7 @@ impl Component for SettingsWindowModel {
             Session,
             Weather,
             MediaPlayer,
+            Tune,
             Lyrics,
             HiddenBar,
             Catwalk,
@@ -960,6 +961,7 @@ impl Component for SettingsWindowModel {
                     Self::Session => "Session",
                     Self::Weather => "Weather",
                     Self::MediaPlayer => "Media Player",
+                    Self::Tune => "Tune",
                     Self::Lyrics => "Lyrics",
                     Self::HiddenBar => "Hidden Bar",
                     Self::Catwalk => "Catwalk",
@@ -979,6 +981,7 @@ impl Component for SettingsWindowModel {
                     Self::Session => "session",
                     Self::Weather => "weather",
                     Self::MediaPlayer => "media_player",
+                    Self::Tune => "tune",
                     Self::Lyrics => "lyrics",
                     Self::HiddenBar => "hidden_bar",
                     Self::Catwalk => "catwalk",
@@ -1027,12 +1030,7 @@ impl Component for SettingsWindowModel {
                 icon: "starred-symbolic",
             },
             WidgetEntry::MediaPlayer,
-            WidgetEntry::Menu {
-                kind: MenuKind::Mtune,
-                stack_name: "mtune_widget",
-                label: "Tune",
-                icon: "org.margo.Tune-symbolic",
-            },
+            WidgetEntry::Tune,
             WidgetEntry::Lyrics,
             WidgetEntry::HiddenBar,
             WidgetEntry::Catwalk,
@@ -1421,6 +1419,60 @@ impl Component for SettingsWindowModel {
                     widget_registry
                         .borrow_mut()
                         .insert("media_player".to_string(), factory);
+                }
+                WidgetEntry::Tune => {
+                    let btn = make_sub_btn(
+                        "Tune",
+                        "org.margo.Tune-symbolic",
+                        "tune",
+                        group_anchor.as_ref(),
+                    );
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
+                    widgets_sub_sidebar_box.append(&btn);
+                    // Tune has two config domains: the bar-pill behaviour
+                    // (which elements show, cover/label size) and the menu
+                    // surface geometry (the generic per-menu page). Compose
+                    // both into one page, same as Lyrics.
+                    let factory: PageFactory = Box::new(|| {
+                        let bar_ctrl = crate::tune_bar_settings::TuneBarSettingsModel::builder()
+                            .launch(crate::tune_bar_settings::TuneBarSettingsInit {})
+                            .detach();
+                        let menu_ctrl = WidgetMenuSettingsModel::builder()
+                            .launch(WidgetMenuSettingsInit {
+                                kind: MenuKind::Mtune,
+                            })
+                            .detach();
+                        let bs = bar_ctrl.widget().clone();
+                        let ms = menu_ctrl.widget().clone();
+                        for sw in [&bs, &ms] {
+                            sw.set_vscrollbar_policy(gtk::PolicyType::Never);
+                            sw.set_propagate_natural_height(true);
+                            sw.set_vexpand(false);
+                        }
+                        let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                        inner.append(&bs);
+                        inner.append(&ms);
+                        let outer = gtk::ScrolledWindow::builder()
+                            .hscrollbar_policy(gtk::PolicyType::Never)
+                            .vscrollbar_policy(gtk::PolicyType::Automatic)
+                            .hexpand(true)
+                            .vexpand(true)
+                            .child(&inner)
+                            .build();
+                        let widget: gtk::Widget = outer.into();
+                        (
+                            widget,
+                            vec![
+                                Box::new(bar_ctrl) as Box<dyn std::any::Any>,
+                                Box::new(menu_ctrl) as Box<dyn std::any::Any>,
+                            ],
+                        )
+                    });
+                    widget_registry
+                        .borrow_mut()
+                        .insert("tune".to_string(), factory);
                 }
                 WidgetEntry::Lyrics => {
                     let btn =

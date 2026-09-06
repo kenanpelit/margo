@@ -165,6 +165,28 @@ impl MtunePlayer {
     pub async fn raise(&self) {
         self.call("Raise", &()).await;
     }
+
+    /// Live `(total, elapsed, remaining)` across the whole queue, derived
+    /// from `queue_entries` + `current_index` + `position` — no extra
+    /// D-Bus round-trip. All zero when the queue is empty; `elapsed` /
+    /// `remaining` are `(Duration::ZERO, total)` when nothing is current.
+    pub fn playlist_progress(&self) -> (Duration, Duration, Duration) {
+        let entries = self.queue_entries.get();
+        let total = Duration::from_secs(entries.iter().map(|(_, _, secs)| *secs).sum());
+
+        let idx = self.current_index.get();
+        let Ok(idx) = usize::try_from(idx) else {
+            return (total, Duration::ZERO, total);
+        };
+        if idx >= entries.len() {
+            return (total, Duration::ZERO, total);
+        }
+
+        let played: u64 = entries[..idx].iter().map(|(_, _, secs)| *secs).sum();
+        let elapsed = (Duration::from_secs(played) + self.position.get()).min(total);
+        let remaining = total.saturating_sub(elapsed);
+        (total, elapsed, remaining)
+    }
 }
 
 /// Spawn `mtune` detached (fire-and-forget). Used when a control is hit

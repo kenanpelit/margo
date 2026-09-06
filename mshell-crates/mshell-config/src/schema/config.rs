@@ -931,6 +931,9 @@ pub struct BarWidgets {
     /// Lyrics bar pill behaviour (whether the current line shows in the bar).
     #[serde(default)]
     pub lyrics: LyricsBarWidget,
+    /// Tune bar pill behaviour (which elements show, cover/label size).
+    #[serde(default)]
+    pub mtune: TuneBarWidget,
     /// Hidden Bar drawer behaviour (hover-expand, auto-collapse, …) for the
     /// bar's default (`!HiddenBar`) drawer.
     pub hidden_bar: HiddenBarConfig,
@@ -1299,6 +1302,75 @@ impl Default for LyricsBarWidget {
         Self {
             show_line_in_bar: true,
             max_width_chars: default_lyrics_max_width_chars(),
+        }
+    }
+}
+
+/// Tune bar pill behaviour: which elements the pill shows and how large the
+/// cover art / title read. The menu (`MenuType::Mtune`) has its own generic
+/// position/width/height page — this only covers the pill itself.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct TuneBarWidget {
+    /// Show the cover art thumbnail (falls back to a play/pause glyph when a
+    /// track has none). Always shown while mtune isn't running — the pill's
+    /// only affordance is then "click this glyph to launch".
+    #[serde(default = "default_true")]
+    pub show_cover: bool,
+    /// Show the "Title — Artist" label.
+    #[serde(default = "default_true")]
+    pub show_track_info: bool,
+    /// Show the 1-based queue position (e.g. "3").
+    #[serde(default = "default_true")]
+    pub show_queue_number: bool,
+    /// Show the elapsed / total time readout.
+    #[serde(default = "default_true")]
+    pub show_time: bool,
+    /// Show previous / play-pause / next buttons in the pill. Right-click
+    /// anywhere on the pill still toggles play/pause either way.
+    #[serde(default = "default_true")]
+    pub show_transport: bool,
+    /// Show the "×N" badge while repeat-each is active.
+    #[serde(default = "default_true")]
+    pub show_repeat_badge: bool,
+    /// Show a thin playback-position line under the pill.
+    #[serde(default = "default_true")]
+    pub show_progress_bar: bool,
+    /// Show the queue's remaining time (e.g. "-12:34"), summed across every
+    /// track left in the queue — not just the current track.
+    #[serde(default = "default_true")]
+    pub show_playlist_remaining: bool,
+    /// Cover art size in the bar, in pixels. Clamped 12..=28 when applied.
+    #[serde(default = "default_tune_cover_size_px")]
+    pub cover_size_px: i32,
+    /// Max width of the "Title — Artist" label, in characters — the label
+    /// ellipsizes past this so a long title can't stretch the bar. Clamped
+    /// 10..=80 when applied.
+    #[serde(default = "default_tune_label_max_width_chars")]
+    pub label_max_width_chars: i32,
+}
+
+fn default_tune_cover_size_px() -> i32 {
+    16
+}
+
+fn default_tune_label_max_width_chars() -> i32 {
+    40
+}
+
+impl Default for TuneBarWidget {
+    fn default() -> Self {
+        Self {
+            show_cover: true,
+            show_track_info: true,
+            show_queue_number: true,
+            show_time: true,
+            show_transport: true,
+            show_repeat_badge: true,
+            show_progress_bar: true,
+            show_playlist_remaining: true,
+            cover_size_px: default_tune_cover_size_px(),
+            label_max_width_chars: default_tune_label_max_width_chars(),
         }
     }
 }

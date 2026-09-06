@@ -986,7 +986,9 @@ impl MtuneMenuWidgetModel {
         }
     }
 
-    /// "3 of 240 · 1.5×" — position in the queue plus a non-default speed.
+    /// "3 of 240  ·  45:20 played  ·  12:34 left  ·  58:20 total  ·  1.5×" —
+    /// position in the queue, time played/left/total across the *whole*
+    /// queue (not just this track), and a non-default speed.
     fn now_playing_meta(&self) -> String {
         let mut parts: Vec<String> = Vec::new();
         if self.queue_len > 0 {
@@ -996,6 +998,13 @@ impl MtuneMenuWidgetModel {
                 0
             };
             parts.push(format!("{n} of {}", self.queue_len));
+
+            let (total, elapsed, remaining) = mtune_service().player.playlist_progress();
+            if !total.is_zero() {
+                parts.push(format!("{} played", format_duration(elapsed)));
+                parts.push(format!("{} left", format_duration(remaining)));
+                parts.push(format!("{} total", format_duration(total)));
+            }
         }
         if (self.rate - 1.0).abs() >= 0.01 {
             parts.push(format!("{:.2}×", self.rate));

@@ -89,6 +89,7 @@ mod tag_layout_settings;
 mod tag_rules_settings;
 mod theme_settings;
 mod toast_settings;
+mod tune_bar_settings;
 mod users_settings;
 mod vpn_settings;
 mod wallpaper_settings;

@@ -278,7 +278,8 @@
 
 .mtune-bar-num,
 .mtune-bar-time,
-.mtune-bar-repeat {
+.mtune-bar-repeat,
+.mtune-bar-queue {
   font-size: var(--font-bar);
   color: var(--on-surface-variant);
   font-variant-numeric: tabular-nums;
@@ -286,4 +287,21 @@
 
 .mtune-bar-widget.paused {
   opacity: 0.6;
+}
+
+// Thin playback-position line under the pill.
+.mtune-bar-progress {
+  min-height: 2px;
+
+  trough {
+    min-height: 2px;
+    border-radius: var(--radius-pill);
+    background-color: var(--surface-container-highest);
+
+    progress {
+      min-height: 2px;
+      border-radius: var(--radius-pill);
+      background-color: var(--primary);
+    }
+  }
 }
