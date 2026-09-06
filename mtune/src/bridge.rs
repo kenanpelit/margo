@@ -32,6 +32,9 @@ pub struct Snapshot {
     pub repeat: RepeatMode,
     /// Configured N for `RepeatMode::RepeatEach`.
     pub repeat_count: u32,
+    /// How many times the current track has already played consecutively
+    /// under `RepeatEach` (0 = first play). Meaningless otherwise.
+    pub repeat_plays: u32,
     pub queue_len: u32,
     pub current_index: i64,
     /// (title, artist, duration_secs) for every song in the queue, in
@@ -63,6 +66,7 @@ impl Default for Snapshot {
             shuffle: false,
             repeat: RepeatMode::default(),
             repeat_count: 3,
+            repeat_plays: 0,
             queue_len: 0,
             current_index: -1,
             queue_entries: Vec::new(),

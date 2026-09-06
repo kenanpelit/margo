@@ -39,6 +39,8 @@ pub(crate) struct MtuneMenuWidgetModel {
     repeat: String,
     /// Configured N for `"repeat-each"`.
     repeat_count: u32,
+    /// Which play of the current track this is (0-based) under repeat-each.
+    repeat_plays: u32,
     rate: f64,
     queue_len: u32,
     current_index: i64,
@@ -319,7 +321,11 @@ impl Component for MtuneMenuWidgetModel {
                         set_tooltip_text: Some(&match model.repeat.as_str() {
                             "repeat-one" => "Repeat: one".to_string(),
                             "repeat-all" => "Repeat: all".to_string(),
-                            "repeat-each" => format!("Repeat: each ({}\u{00d7})", model.repeat_count),
+                            "repeat-each" => format!(
+                                "Repeat: each — play {} of {}",
+                                model.repeat_plays + 1,
+                                model.repeat_count
+                            ),
                             _ => "Repeat: off".to_string(),
                         }),
                         connect_clicked => MtuneMenuInput::CycleRepeat,
@@ -506,6 +512,7 @@ impl Component for MtuneMenuWidgetModel {
                 Box::pin(p.repeat_mode.watch().map(|_| ())),
                 Box::pin(p.rate.watch().map(|_| ())),
                 Box::pin(p.repeat_count.watch().map(|_| ())),
+                Box::pin(p.repeat_plays.watch().map(|_| ())),
                 Box::pin(p.queue_len.watch().map(|_| ())),
                 Box::pin(p.current_index.watch().map(|_| ())),
                 Box::pin(p.queue_entries.watch().map(|_| ())),
@@ -544,6 +551,7 @@ impl Component for MtuneMenuWidgetModel {
             shuffle: false,
             repeat: "consecutive".into(),
             repeat_count: 3,
+            repeat_plays: 0,
             rate: 1.0,
             queue_len: 0,
             current_index: -1,
@@ -758,6 +766,7 @@ fn read(m: &mut MtuneMenuWidgetModel) {
     m.shuffle = p.shuffle.get();
     m.repeat = p.repeat_mode.get();
     m.repeat_count = p.repeat_count.get();
+    m.repeat_plays = p.repeat_plays.get();
     m.rate = p.rate.get();
     m.queue_len = p.queue_len.get();
     m.current_index = p.current_index.get();

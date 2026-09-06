@@ -207,6 +207,17 @@ impl TuneService {
             .repeat_count
     }
 
+    /// How many times the current track has already played consecutively
+    /// under `RepeatEach` (0 = first play, `RepeatCount - 1` = last replay
+    /// before advancing). Meaningless outside `RepeatEach`.
+    #[zbus(property)]
+    async fn repeat_plays(&self) -> u32 {
+        self.snap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .repeat_plays
+    }
+
     /// Names of the saved playlists.
     #[zbus(property)]
     async fn playlists(&self) -> Vec<String> {

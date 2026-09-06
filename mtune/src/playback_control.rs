@@ -115,7 +115,7 @@ impl PlaybackControl {
         self.imp().volume_control.get()
     }
 
-    pub fn set_repeat_mode(&self, repeat_mode: RepeatMode, repeat_count: u32) {
+    pub fn set_repeat_mode(&self, repeat_mode: RepeatMode, repeat_count: u32, repeat_plays: u32) {
         let repeat_button = self.imp().repeat_button.get();
         match repeat_mode {
             RepeatMode::Consecutive => {
@@ -144,8 +144,11 @@ impl PlaybackControl {
         self.imp()
             .repeat_count_box
             .set_visible(repeat_mode == RepeatMode::RepeatEach);
+        // Which play of the current track this is (1-based), out of the
+        // configured total — e.g. "2/3". `repeat_plays` is 0 on the first
+        // play, so it reads naturally as "current play / total plays".
         self.imp()
             .repeat_count_label
-            .set_label(&repeat_count.to_string());
+            .set_label(&format!("{}/{repeat_count}", repeat_plays + 1));
     }
 }

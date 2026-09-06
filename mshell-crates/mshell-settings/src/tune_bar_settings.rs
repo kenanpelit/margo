@@ -296,7 +296,7 @@ impl Component for TuneBarSettingsModel {
                             gtk::Label {
                                 add_css_class: "label-small",
                                 set_halign: gtk::Align::Start,
-                                set_label: "The \"×N\" count while repeat-each is active.",
+                                set_label: "The \"2/3\"-style play count while repeat-each is active.",
                                 set_hexpand: true,
                                 set_xalign: 0.0,
                                 set_wrap: true,

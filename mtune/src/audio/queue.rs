@@ -74,7 +74,8 @@ mod imp {
         /// `mshellctl mtune repeat-count`; persisted in `mtune.toml`).
         pub repeat_count: Cell<u32>,
         /// How many times the *current* track has played consecutively
-        /// under `RepeatEach`. Internal only -- not a GObject property.
+        /// under `RepeatEach`. A read-only GObject property (`repeat-plays`)
+        /// -- mutate only via `Queue::set_repeat_plays` so `notify` fires.
         pub repeat_plays: Cell<u32>,
         pub current_pos: Cell<Option<u32>>,
         pub shuffled: Cell<bool>,
@@ -112,6 +113,11 @@ mod imp {
                         .read_only()
                         .build(),
                     ParamSpecUInt::builder("repeat-count").read_only().build(),
+                    // How many times the current track has already played
+                    // consecutively under `RepeatEach` (0 = first play).
+                    // Read-only, notified alongside every `repeat_plays`
+                    // mutation via `Queue::set_repeat_plays`.
+                    ParamSpecUInt::builder("repeat-plays").read_only().build(),
                     ParamSpecUInt::builder("n-songs").read_only().build(),
                     ParamSpecBoolean::builder("shuffled").read_only().build(),
                 ]
@@ -125,6 +131,7 @@ mod imp {
                 "current" => self.obj().current_song().to_value(),
                 "repeat-mode" => self.repeat_mode.get().to_value(),
                 "repeat-count" => self.repeat_count.get().to_value(),
+                "repeat-plays" => self.repeat_plays.get().to_value(),
                 "n-songs" => self.store.n_items().to_value(),
                 "shuffled" => self.shuffled.get().to_value(),
                 _ => unimplemented!(),
@@ -183,14 +190,14 @@ impl Queue {
                 let s = self.song_at(i).unwrap();
                 if song.equals(&s) {
                     self.imp().current_pos.replace(Some(i));
-                    self.imp().repeat_plays.set(0);
+                    self.set_repeat_plays(0);
                     self.notify("current");
                     return;
                 }
             }
         } else {
             self.imp().current_pos.replace(None);
-            self.imp().repeat_plays.set(0);
+            self.set_repeat_plays(0);
             self.notify("current");
         }
     }
@@ -243,7 +250,7 @@ impl Queue {
 
         if self.is_empty() {
             self.imp().current_pos.replace(None);
-            self.imp().repeat_plays.set(0);
+            self.set_repeat_plays(0);
         }
     }
 
@@ -252,14 +259,14 @@ impl Queue {
         cover_cache.clear();
 
         self.imp().current_pos.replace(None);
-        self.imp().repeat_plays.set(0);
+        self.set_repeat_plays(0);
         self.imp().store.remove_all();
         self.notify("n-songs");
     }
 
     pub fn skip_song(&self, pos: u32) -> Option<Song> {
         self.imp().current_pos.replace(Some(pos));
-        self.imp().repeat_plays.set(0);
+        self.set_repeat_plays(0);
         self.notify("current");
         self.song_at(pos)
     }
@@ -270,7 +277,7 @@ impl Queue {
         {
             let prev = current_pos - 1;
             self.imp().current_pos.replace(Some(prev));
-            self.imp().repeat_plays.set(0);
+            self.set_repeat_plays(0);
             self.notify("current");
             return self.song_at(current_pos - 1);
         }
@@ -304,7 +311,7 @@ impl Queue {
                 self.imp().repeat_plays.get(),
                 manual,
             );
-            self.imp().repeat_plays.set(plays);
+            self.set_repeat_plays(plays);
             next
         } else {
             next_index(current, n_songs, repeat_mode, manual)
@@ -316,6 +323,22 @@ impl Queue {
 
     pub fn repeat_mode(&self) -> RepeatMode {
         self.imp().repeat_mode.get()
+    }
+
+    /// How many times the current track has already played consecutively
+    /// under `RepeatEach` (0 = first play, `repeat_count - 1` = last replay
+    /// before advancing). Meaningless outside `RepeatEach`.
+    pub fn repeat_plays(&self) -> u32 {
+        self.imp().repeat_plays.get()
+    }
+
+    /// Set `repeat_plays` and notify — every mutation site must go through
+    /// this, not `self.imp().repeat_plays.set()` directly, so `RepeatPlays`
+    /// stays live for anything watching the GObject property (the D-Bus
+    /// bridge included).
+    fn set_repeat_plays(&self, plays: u32) {
+        self.imp().repeat_plays.set(plays);
+        self.notify("repeat-plays");
     }
 
     pub fn set_repeat_mode(&self, repeat_mode: RepeatMode) {

@@ -49,6 +49,9 @@ pub struct MtunePlayer {
     pub rate: Property<f64>,
     /// Configured N for repeat-each mode.
     pub repeat_count: Property<u32>,
+    /// How many times the current track has already played consecutively
+    /// under repeat-each (0 = first play). Meaningless otherwise.
+    pub repeat_plays: Property<u32>,
     pub queue_len: Property<u32>,
     pub current_index: Property<i64>,
     /// (title, artist, duration_secs) per queue entry, in queue order.
@@ -78,6 +81,7 @@ impl MtunePlayer {
             repeat_mode: Property::new("consecutive".into()),
             rate: Property::new(1.0),
             repeat_count: Property::new(3),
+            repeat_plays: Property::new(0),
             queue_len: Property::new(0),
             current_index: Property::new(-1),
             queue_entries: Property::new(Vec::new()),
@@ -361,6 +365,9 @@ async fn refresh(proxy: &zbus::Proxy<'_>, p: &MtunePlayer) {
     }
     if let Some(v) = get!("RepeatCount", u32) {
         p.repeat_count.set(v);
+    }
+    if let Some(v) = get!("RepeatPlays", u32) {
+        p.repeat_plays.set(v);
     }
     if let Some(v) = get!("Playlists", Vec<String>) {
         p.playlists.set(v);

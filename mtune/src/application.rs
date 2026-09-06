@@ -553,6 +553,7 @@ impl Application {
             (queue.upcast_ref::<glib::Object>(), "current"),
             (queue.upcast_ref::<glib::Object>(), "n-songs"),
             (queue.upcast_ref::<glib::Object>(), "repeat-mode"),
+            (queue.upcast_ref::<glib::Object>(), "repeat-plays"),
         ] {
             obj.connect_notify_local(
                 Some(sig),
@@ -611,6 +612,7 @@ impl Application {
                 shuffle: queue.is_shuffled(),
                 repeat: queue.repeat_mode(),
                 repeat_count: queue.repeat_count(),
+                repeat_plays: queue.repeat_plays(),
                 queue_len: queue.n_songs(),
                 current_index: queue.current_song_index().map(|i| i as i64).unwrap_or(-1),
                 queue_entries,

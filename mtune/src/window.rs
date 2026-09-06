@@ -1387,9 +1387,11 @@ impl Window {
                     #[weak(rename_to = win)]
                     self,
                     move |queue, _| {
-                        win.imp()
-                            .playback_control
-                            .set_repeat_mode(queue.repeat_mode(), queue.repeat_count());
+                        win.imp().playback_control.set_repeat_mode(
+                            queue.repeat_mode(),
+                            queue.repeat_count(),
+                            queue.repeat_plays(),
+                        );
                     }
                 ),
             );
@@ -1402,9 +1404,27 @@ impl Window {
                     #[weak(rename_to = win)]
                     self,
                     move |queue, _| {
-                        win.imp()
-                            .playback_control
-                            .set_repeat_mode(queue.repeat_mode(), queue.repeat_count());
+                        win.imp().playback_control.set_repeat_mode(
+                            queue.repeat_mode(),
+                            queue.repeat_count(),
+                            queue.repeat_plays(),
+                        );
+                    }
+                ),
+            );
+            // Advance the "2/3"-style readout live as the current track
+            // replays under `RepeatEach`.
+            queue.connect_notify_local(
+                Some("repeat-plays"),
+                clone!(
+                    #[weak(rename_to = win)]
+                    self,
+                    move |queue, _| {
+                        win.imp().playback_control.set_repeat_mode(
+                            queue.repeat_mode(),
+                            queue.repeat_count(),
+                            queue.repeat_plays(),
+                        );
                     }
                 ),
             );
@@ -1663,9 +1683,11 @@ impl Window {
             // only updates player state when the value changes.
             player.set_replaygain(replaygain);
 
-            self.imp()
-                .playback_control
-                .set_repeat_mode(queue.repeat_mode(), queue.repeat_count());
+            self.imp().playback_control.set_repeat_mode(
+                queue.repeat_mode(),
+                queue.repeat_count(),
+                queue.repeat_plays(),
+            );
             self.set_playlist_shuffled(queue.is_shuffled());
 
             // Manually update the icon on the initial empty state
