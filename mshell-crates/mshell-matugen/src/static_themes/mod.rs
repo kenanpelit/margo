@@ -13,6 +13,7 @@ pub mod margo;
 pub mod monokai_classic;
 pub mod nord_dark;
 pub mod one_dark;
+pub mod one_margo;
 pub mod oxocarbon;
 pub mod rose_pine;
 pub mod solarized_dark;

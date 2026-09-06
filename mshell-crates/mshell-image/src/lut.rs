@@ -34,6 +34,7 @@ pub const CLUT_THEMES: &[(&str, Themes)] = &[
     ("monokai_classic", Themes::MonokaiClassic),
     ("nord_dark", Themes::NordDark),
     ("one_dark", Themes::OneDark),
+    ("one_margo", Themes::OneMargo),
     ("oxocarbon", Themes::Oxocarbon),
     ("rose_pine", Themes::RosePine),
     ("solarized_dark", Themes::SolarizedDark),

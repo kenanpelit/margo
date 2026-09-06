@@ -14,6 +14,7 @@ use crate::static_themes::margo::margo;
 use crate::static_themes::monokai_classic::monokai_classic;
 use crate::static_themes::nord_dark::nord_dark;
 use crate::static_themes::one_dark::one_dark;
+use crate::static_themes::one_margo::one_margo;
 use crate::static_themes::oxocarbon::oxocarbon;
 use crate::static_themes::rose_pine::rose_pine;
 use crate::static_themes::solarized_dark::solarized_dark;
@@ -47,6 +48,7 @@ pub fn static_theme(theme: &Themes, mshell: Option<MShell>) -> Option<MatugenThe
         Themes::MonokaiClassic => Some(monokai_classic(mshell)),
         Themes::NordDark => Some(nord_dark(mshell)),
         Themes::OneDark => Some(one_dark(mshell)),
+        Themes::OneMargo => Some(one_margo(mshell)),
         Themes::Oxocarbon => Some(oxocarbon(mshell)),
         Themes::RosePine => Some(rose_pine(mshell)),
         Themes::SolarizedDark => Some(solarized_dark(mshell)),
