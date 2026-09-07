@@ -9,6 +9,7 @@ on:
       - 'road_map.md'
       - 'CHANGELOG.md'
       - 'CONTRIBUTING.md'
+      - 'margo/src/config.example.conf'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
