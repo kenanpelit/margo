@@ -168,9 +168,14 @@ fn bind_row(row: &gtk::Widget, action: &'static Action) {
             text.push_str(action.detail);
         }
         detail.set_label(&text);
+    } else {
+        // ListView recycles row widgets across binds -- without this, a
+        // row previously bound to an action WITH args/detail keeps that
+        // stale text after being rebound to one with neither, and it
+        // surfaces (wrongly) the moment the user expands the revealer.
+        detail.set_label("");
     }
     revealer.set_reveal_child(false);
     root.set_can_target(true);
     root.set_sensitive(true);
-    let _ = has_extra; // row stays clickable either way; an empty revealer just toggles open on nothing
 }
