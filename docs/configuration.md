@@ -77,7 +77,7 @@ warmup_hidden_ms = 10000
 
 ## Layouts
 
-margo ships **11 tiling layouts**. Each tag remembers its own layout choice. Set one by name with the `setlayout` action, or cycle with `switch_layout`.
+margo ships **12 layouts** — 10 partition-style tiling algorithms plus **floating** and **mosaic** for non-partition desktops — and a separate zoom-out **overview** mode. Each tag remembers its own layout choice. Set one by name with the `setlayout` action, or cycle with `switch_layout`.
 
 | `setlayout` name | Layout | Description |
 | --- | --- | --- |
@@ -91,6 +91,8 @@ margo ships **11 tiling layouts**. Each tag remembers its own layout choice. Set
 | `tgmix` | TG-mix | tile / grid hybrid |
 | `canvas` | Canvas | free-form pan/zoom canvas (PaperWM-meets-Excalidraw) |
 | `dwindle` | Dwindle | recursive split (Hyprland default) |
+| `floating` | Floating | classic stacking desktop — windows auto-float with a cascade |
+| `mosaic` | Mosaic | [GNOME's content-aware self-arranging concept](https://blogs.gnome.org/tbernard/2023/07/26/rethinking-window-management/) — windows keep their own size, drag one onto another to swap, overflow moves to an empty tag (or stacks in the corner, see below) |
 | `overview` | Overview | zoom-out of every tag — usually entered via `toggle_overview`, not set directly |
 
 ### Choosing and cycling

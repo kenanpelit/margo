@@ -43,7 +43,7 @@ itself from your wallpaper with Material You.
 
 <table>
 <tr>
-<td align="center" width="25%"><img src="docs/assets/layout.webp" alt="Tiling layouts"><br><sub><b>Tiling layouts</b><br>15 algorithms, per-tag</sub></td>
+<td align="center" width="25%"><img src="docs/assets/layout.webp" alt="Tiling layouts"><br><sub><b>Tiling layouts</b><br>12 layouts, per-tag</sub></td>
 <td align="center" width="25%"><img src="docs/assets/cpu.webp" alt="System monitor"><br><sub><b>System monitor</b><br>CPU · memory · top processes</sub></td>
 <td align="center" width="25%"><img src="docs/assets/dnsvpn.webp" alt="DNS / VPN"><br><sub><b>DNS / VPN</b><br>one-tap preset switching</sub></td>
 <td align="center" width="25%"><img src="docs/assets/lyrics.webp" alt="Lyrics"><br><sub><b>Lyrics</b><br>synced, scrolling</sub></td>
@@ -109,7 +109,7 @@ Library-only crates (`margo-config`, `margo-layouts`, and the `mshell-crates/*` 
 ## Compositor highlights
 
 - **Tags, not workspaces.** Nine multi-select tags; press the same tag twice to bounce back, several together to view a union, pin tags to a home monitor, regex-match windows into tags at map time.
-- **Layouts that remember.** Tile, scroller, grid, monocle, deck, dwindle, center / right mirrors, an overview — and a **floating** layout for a classic stacking desktop. Each tag holds its own layout choice.
+- **Layouts that remember.** Tile, scroller, grid, monocle, deck, dwindle, center / right mirrors, an overview — a **floating** layout for a classic stacking desktop, and **mosaic**, [GNOME's content-aware self-arranging concept](https://blogs.gnome.org/tbernard/2023/07/26/rethinking-window-management/): windows keep their own size instead of a fixed grid, drag one onto another to swap places, and one that no longer fits moves itself to an empty tag. Each tag holds its own layout choice.
 - **Spring + bezier animations.** Niri-style spring physics with mid-flight retarget for window movement; bezier curves for open / close / tag / focus / layer transitions. SDF drop shadows, rounded corners, focus-fade opacity.
 - **Modern protocol stack.** `ext-session-lock-v1`, `ext-idle-notify-v1`, DMA-BUF screencopy, `pointer_constraints` + `relative_pointer`, `xdg_activation` with anti-focus-steal, runtime `wlr_output_management`, VBlank-accurate `presentation-time`, `wp_color_management_v1`.
 - **Window rules with PCRE2.** Float password prompts, pin apps to tags, screencast-blackout password managers, swallow terminal children, force CSD per-app — all by `app_id` / `title` regex. Accepts `width:50%` / `height:50%` monitor-relative fractions alongside absolute pixels (mango 0.13+ syntax).

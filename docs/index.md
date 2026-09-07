@@ -30,7 +30,7 @@ hide:
 </blockquote>
 
 **margo** is a Wayland compositor in the dwl/dwm tradition — Rust + [Smithay],
-tags instead of workspaces, a 15-layout tiling catalogue. But margo ships
+tags instead of workspaces, a 12-layout tiling catalogue. But margo ships
 something the others don't: **[mshell](#the-shell-mshell)**, a complete GTK4
 desktop shell — bars, 50-plus widgets, an app launcher, a dashboard,
 quick-settings, notifications, OSD, a lock screen, and a settings app — all
@@ -86,7 +86,7 @@ and works out of the box.
 ## The compositor
 
 - **Tags, not workspaces.** Nine multi-select tags, dwm-style: press the same tag twice to bounce back, view a union of several at once, pin tags to a home monitor, or regex-match windows into tags at map time.
-- **Layouts that remember.** Tile, scroller, grid, monocle, deck, dwindle, center / right mirrors, a global overview — and a **floating** layout for a classic stacking desktop. Each tag keeps its own layout; switch tags and the layout follows.
+- **Layouts that remember.** Tile, scroller, grid, monocle, deck, dwindle, center / right mirrors, a global overview — a **floating** layout for a classic stacking desktop, and **mosaic**, [GNOME's content-aware self-arranging concept](https://blogs.gnome.org/tbernard/2023/07/26/rethinking-window-management/): windows keep their own size instead of a fixed grid, drag one onto another to swap places, and one that no longer fits moves itself to an empty tag. Each tag keeps its own layout; switch tags and the layout follows.
 - **Animations done right.** Niri-style spring physics with mid-flight retarget for window movement; tuned bezier curves for open / close / tag / focus / layer transitions. Drop shadows, rounded corners, focus-fade opacity, optional rounded screen corners.
 - **Modern protocol stack.** DMA-BUF screencopy, `pointer_constraints` + `relative_pointer` for FPS games, `xdg_activation` with anti-focus-steal, runtime `wlr_output_management` (mode + position apply live), VBlank-accurate `presentation-time`, `wp_color_management_v1` for HDR-aware clients. See the [protocol comparison](protocol-comparison.md).
 - **Window rules with PCRE2.** Float password prompts, pin apps to tags, blackout password managers from screencasts, swallow terminal children, force CSD per-app — all by `app_id` / `title` regex.
@@ -207,7 +207,7 @@ scripts. The whole shell recolours itself from your wallpaper.
 
 <div class="grid" markdown>
 
-![Tiling layouts — 15 algorithms, remembered per tag](assets/layout.webp){ loading=lazy }
+![Tiling layouts — 12 layouts, remembered per tag](assets/layout.webp){ loading=lazy }
 
 ![System monitor — CPU, memory, and the top processes](assets/cpu.webp){ loading=lazy }
 

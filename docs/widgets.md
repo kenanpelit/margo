@@ -77,7 +77,7 @@ parameter and use YAML tag syntax:
 | --- | --- | --- |
 | `ActiveWindow` | Active Window | Title of the globally focused window next to an app glyph; long titles marquee. |
 | `MargoTags` | Margo Tags | 1–9 tag pills with focus / occupied / urgent states. Click to switch tags, scroll to cycle. |
-| `MargoLayoutSwitcher` | Margo Layout Switcher | Trigger button that opens the layout menu to pick one of the 15 tiling layouts for the active tag. |
+| `MargoLayoutSwitcher` | Margo Layout Switcher | Trigger button that opens the layout menu to pick one of the 12 layouts for the active tag. |
 | `MargoDock` | Margo Dock | Per-app dock / taskbar — running + pinned apps as buttons; click focuses or launches. See [Dock (mdock)](mdock.md). |
 
 ## Indicators

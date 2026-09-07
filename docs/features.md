@@ -9,13 +9,21 @@ is the map; each section links to the detailed guide.
 The [Smithay](https://github.com/Smithay/smithay)-based tiling compositor, in
 the dwl/mango tradition — **tags instead of workspaces**, driven by `mctl`.
 
-- **15 tiling layouts** — tile, scroller (PaperWM-style, the default), grid,
+- **10 tiling layouts** — tile, scroller (PaperWM-style, the default), grid,
   monocle, deck, dwindle, and more; each tag remembers its own. Set with
   `setlayout <name>`, cycle with `switch_layout`. See
   [Configuration → Layouts](configuration.md#layouts).
 - **Floating layout** — `setlayout floating` (or `taglayout` / `default_layout`)
   gives a classic stacking desktop: the tag's windows auto-float with a cascade
   and re-tile when you switch back to a tiling layout.
+- **Mosaic layout** — `setlayout mosaic`, [GNOME's content-aware self-arranging
+  concept](https://blogs.gnome.org/tbernard/2023/07/26/rethinking-window-management/):
+  windows keep their own size (honouring each app's real min/max hints) instead
+  of a fixed grid, reflowing automatically as you open and close them. Drag one
+  window onto another to swap places (`drag_tile_to_tile`); a window that no
+  longer fits even at its own minimum size moves itself to the first empty tag
+  (`mosaic_auto_overflow_tag`), or, if you'd rather it stay put, shrinks to a
+  small always-visible "peek" in the corner instead (`mosaic_overflow_stack`).
 - **Dispatch actions** — the full keybind/IPC verb catalogue (focus, move,
   resize, scratchpad, overview, summon/focusapp, …). Always-current list:
   `mctl actions --verbose`.
