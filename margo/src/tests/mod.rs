@@ -44,6 +44,7 @@ mod globals;
 mod groups;
 mod idle;
 mod layer_shell;
+mod mosaic_layout;
 mod output_assignment;
 mod output_management;
 mod overview;

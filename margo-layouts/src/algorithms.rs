@@ -1,4 +1,4 @@
-use crate::{ArrangeCtx, ArrangeResult, Rect};
+use crate::{ArrangeCtx, ArrangeResult, GapConfig, Rect};
 
 // ── Tile (master-stack, horizontal split) ────────────────────────────────────
 
@@ -490,6 +490,158 @@ pub fn floating(_ctx: &ArrangeCtx) -> ArrangeResult {
     vec![]
 }
 
+/// Stub for the `arrange()` dispatcher: like `Floating`, `Mosaic` produces
+/// no tiled geometry — the compositor auto-floats governed clients and
+/// packs them with [`mosaic_arrange`] in `reconcile_mosaic_layout`.
+pub fn mosaic(_ctx: &ArrangeCtx) -> ArrangeResult {
+    vec![]
+}
+
+/// One client Mosaic needs to place. `ideal` is the client's own requested
+/// size (its committed geometry before Mosaic ever touched it) — the
+/// practical stand-in for GNOME's proposed "ideal size" metadata, since no
+/// protocol field for that exists; `min` / `max` come from the app's own
+/// `xdg_toplevel.set_min_size` / `set_max_size` (a `window_rules.conf` rule
+/// can also set them — see `MargoClient`). Either half of `ideal`, `min`,
+/// or `max` may be `0` meaning "unconstrained on that axis".
+#[derive(Debug, Clone, Copy)]
+pub struct MosaicClient {
+    pub index: usize,
+    pub ideal: (i32, i32),
+    pub min: (i32, i32),
+    pub max: (i32, i32),
+}
+
+/// Shelf-pack `clients` into `work_area`: each client sized to its own
+/// `ideal` (clamped to its `min`/`max`), laid left-to-right and centered
+/// per row, wrapping to a new row when the next client wouldn't fit the
+/// remaining width. If the stacked rows are taller than `work_area`, every
+/// row shrinks toward each client's own `min_height` (never below it) —
+/// GNOME's "as you open more windows, the existing windows move aside /
+/// shrink to make room" from the Mosaic article.
+///
+/// This is a placement pass over the *whole* `work_area` — it does not try
+/// to route around windows the user has manually moved. The caller (
+/// `reconcile_mosaic_layout`) excludes anything the user positioned by hand
+/// (`floated_by_layout == false`) from `clients` entirely, so those simply
+/// keep whatever geometry they already have; only the auto-managed clients
+/// passed in here get packed.
+pub fn mosaic_arrange(
+    work_area: Rect,
+    gaps: &GapConfig,
+    clients: &[MosaicClient],
+) -> ArrangeResult {
+    if clients.is_empty() || work_area.width <= 0 || work_area.height <= 0 {
+        return vec![];
+    }
+
+    struct Sized {
+        index: usize,
+        w: i32,
+        h: i32,
+        min_h: i32,
+    }
+
+    // 1. Clamp each client's ideal size to its own min/max and to the work
+    //    area. No ideal size (a client that's never been mapped/sized) or
+    //    no min/max (unconstrained axis) falls back to a comfortable
+    //    fraction of the work area, mirroring `place_floating_cascade`'s
+    //    60%-of-work-area fallback.
+    let fallback_w = ((work_area.width as f32) * 0.42) as i32;
+    let fallback_h = ((work_area.height as f32) * 0.55) as i32;
+    let sized: Vec<Sized> = clients
+        .iter()
+        .map(|c| {
+            let (iw, ih) = c.ideal;
+            let (min_w, min_h) = c.min;
+            let (max_w, max_h) = c.max;
+            let mut w = if iw > 0 { iw } else { fallback_w };
+            let mut h = if ih > 0 { ih } else { fallback_h };
+            if min_w > 0 {
+                w = w.max(min_w);
+            }
+            if min_h > 0 {
+                h = h.max(min_h);
+            }
+            if max_w > 0 {
+                w = w.min(max_w);
+            }
+            if max_h > 0 {
+                h = h.min(max_h);
+            }
+            Sized {
+                index: c.index,
+                w: w.clamp(1, work_area.width),
+                h: h.clamp(1, work_area.height),
+                min_h: min_h.clamp(1, work_area.height),
+            }
+        })
+        .collect();
+
+    // 2. Shelf-flow: fill rows left-to-right, wrap when the next client
+    //    would overflow the row.
+    let gx = gaps.gappih.max(0);
+    let gy = gaps.gappiv.max(0);
+    let mut rows: Vec<Vec<&Sized>> = vec![Vec::new()];
+    let mut row_w = 0;
+    for s in &sized {
+        let needed = if row_w == 0 { s.w } else { row_w + gx + s.w };
+        if needed > work_area.width && row_w > 0 {
+            rows.push(Vec::new());
+            row_w = 0;
+        }
+        rows.last_mut().expect("just pushed if empty").push(s);
+        row_w = if row_w == 0 { s.w } else { row_w + gx + s.w };
+    }
+
+    // 3. If the stacked rows don't fit vertically, shrink every row's
+    //    *content* height by the same factor, clamped to each client's own
+    //    min height — a client that's already at its floor stays there and
+    //    the row (and everything below it) may still overflow slightly
+    //    rather than crush a window unusably small. The shrink factor is
+    //    computed against the height budget left over *after* reserving
+    //    the (fixed, never-shrunk) inter-row gaps — folding the gaps into
+    //    the same ratio as the content undercounts how much the content
+    //    itself needs to shrink by exactly the gap total, which is enough
+    //    to overflow the work area by a few px on some row counts.
+    let total_gap_h = gy * (rows.len() as i32 - 1).max(0);
+    let content_budget = (work_area.height - total_gap_h).max(0);
+    let natural_content_h: i32 = rows
+        .iter()
+        .map(|r| r.iter().map(|s| s.h).max().unwrap_or(0))
+        .sum();
+    let shrink = if natural_content_h > content_budget && natural_content_h > 0 {
+        (content_budget as f32 / natural_content_h as f32).clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+
+    // 4. Emit geometry: each row centered horizontally (the article's
+    //    windows "open in the center of the screen"), each client sized to
+    //    its own (possibly shrunk) height rather than stretched to match
+    //    row-mates — a chat window stays narrow-and-tall next to a wide,
+    //    shorter PDF reader in the same row.
+    let mut result = Vec::with_capacity(sized.len());
+    let mut y = work_area.y;
+    for row in &rows {
+        let row_h = row
+            .iter()
+            .map(|s| ((s.h as f32 * shrink) as i32).max(s.min_h))
+            .max()
+            .unwrap_or(0);
+        let row_total_w: i32 =
+            row.iter().map(|s| s.w).sum::<i32>() + gx * (row.len() as i32 - 1).max(0);
+        let mut x = work_area.x + (work_area.width - row_total_w).max(0) / 2;
+        for s in row {
+            let h = ((s.h as f32 * shrink) as i32).max(s.min_h).min(row_h);
+            result.push((s.index, Rect::new(x, y, s.w, h)));
+            x += s.w + gx;
+        }
+        y += row_h + gy;
+    }
+    result
+}
+
 /// Cascade placement for the `floating` layout. Pure geometry — the
 /// compositor calls this once per newly-auto-floated client to seed
 /// its `float_geom`.
@@ -616,6 +768,7 @@ pub fn arrange(layout: LayoutId, ctx: &ArrangeCtx) -> ArrangeResult {
         LayoutId::Canvas => canvas(ctx),
         LayoutId::Dwindle => dwindle(ctx),
         LayoutId::Floating => floating(ctx),
+        LayoutId::Mosaic => mosaic(ctx),
         LayoutId::Overview => monocle(ctx), // overview handled elsewhere
     }
 }

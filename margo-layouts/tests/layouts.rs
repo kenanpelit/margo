@@ -3,7 +3,10 @@
 //! index preservation, containment), a few exact geometries for the
 //! master-stack layouts, and the `LayoutId` name/symbol round-trips.
 
-use margo_layouts::{ArrangeCtx, GapConfig, LayoutId, Rect, arrange, place_floating_cascade};
+use margo_layouts::{
+    ArrangeCtx, GapConfig, LayoutId, MosaicClient, Rect, arrange, mosaic_arrange,
+    place_floating_cascade,
+};
 
 const WA: Rect = Rect {
     x: 0,
@@ -264,11 +267,12 @@ fn layout_symbols_round_trip() {
 }
 
 #[test]
-fn all_tileable_has_11_entries_and_excludes_overview() {
+fn all_tileable_has_12_entries_and_excludes_overview() {
     let tileable = LayoutId::all_tileable();
-    assert_eq!(tileable.len(), 11);
+    assert_eq!(tileable.len(), 12);
     assert!(!tileable.contains(&LayoutId::Overview));
     assert!(tileable.contains(&LayoutId::Floating));
+    assert!(tileable.contains(&LayoutId::Mosaic));
 }
 
 #[test]
@@ -365,4 +369,160 @@ fn place_floating_respects_a_non_zero_work_area_origin() {
     let wa = Rect::new(100, 50, 1000, 600);
     let r = place_floating_cascade(wa, None, (0, 0), (0, 0), 0);
     assert_eq!(r, Rect::new(124, 74, 600, 360));
+}
+
+// ── Mosaic (`mosaic_arrange`) ────────────────────────────────────────────────
+
+const MOSAIC_GAPS: GapConfig = GapConfig {
+    gappih: 8,
+    gappiv: 8,
+    gappoh: 0,
+    gappov: 0,
+};
+
+#[test]
+fn mosaic_empty_input_yields_no_rects() {
+    let result = mosaic_arrange(WA, &MOSAIC_GAPS, &[]);
+    assert!(result.is_empty());
+}
+
+#[test]
+fn mosaic_one_client_gets_exactly_its_ideal_size() {
+    let clients = [MosaicClient {
+        index: 7,
+        ideal: (400, 300),
+        min: (0, 0),
+        max: (0, 0),
+    }];
+    let result = mosaic_arrange(WA, &MOSAIC_GAPS, &clients);
+    assert_eq!(result.len(), 1);
+    let (idx, rect) = result[0];
+    assert_eq!(idx, 7);
+    assert_eq!((rect.width, rect.height), (400, 300));
+}
+
+#[test]
+fn mosaic_two_clients_that_fit_share_one_row() {
+    let clients = [
+        MosaicClient {
+            index: 0,
+            ideal: (300, 300),
+            min: (0, 0),
+            max: (0, 0),
+        },
+        MosaicClient {
+            index: 1,
+            ideal: (300, 300),
+            min: (0, 0),
+            max: (0, 0),
+        },
+    ];
+    let result = mosaic_arrange(WA, &MOSAIC_GAPS, &clients);
+    assert_eq!(result.len(), 2);
+    let ys: Vec<i32> = result.iter().map(|(_, r)| r.y).collect();
+    assert_eq!(
+        ys[0], ys[1],
+        "clients that fit side by side must share a row"
+    );
+    // Neither rect overlaps the other on the x axis.
+    let (r0, r1) = (result[0].1, result[1].1);
+    assert!(r0.x + r0.width <= r1.x || r1.x + r1.width <= r0.x);
+}
+
+#[test]
+fn mosaic_wraps_to_a_new_row_when_it_does_not_fit() {
+    // Three clients at 400px wide each: two fit (800 < 1000), the third
+    // must wrap rather than overlap or be pushed past the work area.
+    let make = |i: usize| MosaicClient {
+        index: i,
+        ideal: (400, 200),
+        min: (0, 0),
+        max: (0, 0),
+    };
+    let clients = [make(0), make(1), make(2)];
+    let result = mosaic_arrange(WA, &MOSAIC_GAPS, &clients);
+    assert_eq!(result.len(), 3);
+    let rows: std::collections::BTreeSet<i32> = result.iter().map(|(_, r)| r.y).collect();
+    assert_eq!(rows.len(), 2, "the third client must wrap to a second row");
+}
+
+#[test]
+fn mosaic_shrinks_toward_min_height_when_rows_overflow_vertically() {
+    // Five rows' worth of 200px-tall clients (1000px needed) into a
+    // 600px-tall work area: every row must shrink, but never below the
+    // client's own min_height.
+    let make = |i: usize| MosaicClient {
+        index: i,
+        ideal: (1000, 200),
+        min: (0, 60),
+        max: (0, 0),
+    };
+    let clients: Vec<_> = (0..5).map(make).collect();
+    let result = mosaic_arrange(WA, &MOSAIC_GAPS, &clients);
+    assert_eq!(result.len(), 5);
+    for (_, rect) in &result {
+        assert!(
+            rect.height >= 60,
+            "shrank a client below its own min_height"
+        );
+        assert!(rect.height <= 200, "grew a client past its ideal height");
+    }
+}
+
+#[test]
+fn mosaic_never_exceeds_min_or_max_bounds() {
+    let clients = [
+        MosaicClient {
+            index: 0,
+            ideal: (50, 50),
+            min: (200, 150),
+            max: (0, 0),
+        },
+        MosaicClient {
+            index: 1,
+            ideal: (5000, 5000),
+            min: (0, 0),
+            max: (300, 250),
+        },
+    ];
+    let result = mosaic_arrange(WA, &MOSAIC_GAPS, &clients);
+    let by_index = |i: usize| result.iter().find(|(idx, _)| *idx == i).unwrap().1;
+    let small = by_index(0);
+    assert!(
+        small.width >= 200 && small.height >= 150,
+        "ignored min bound"
+    );
+    let big = by_index(1);
+    assert!(big.width <= 300 && big.height <= 250, "ignored max bound");
+}
+
+#[test]
+fn mosaic_keeps_every_rect_inside_the_work_area() {
+    let make = |i: usize| MosaicClient {
+        index: i,
+        ideal: (350, 250),
+        min: (0, 0),
+        max: (0, 0),
+    };
+    let clients: Vec<_> = (0..6).map(make).collect();
+    let result = mosaic_arrange(WA, &MOSAIC_GAPS, &clients);
+    for (_, r) in &result {
+        assert!(r.x >= WA.x && r.y >= WA.y);
+        assert!(r.x + r.width <= WA.x + WA.width);
+        assert!(r.y + r.height <= WA.y + WA.height);
+    }
+}
+
+#[test]
+fn mosaic_zero_ideal_falls_back_to_a_comfortable_default() {
+    let clients = [MosaicClient {
+        index: 0,
+        ideal: (0, 0),
+        min: (0, 0),
+        max: (0, 0),
+    }];
+    let result = mosaic_arrange(WA, &MOSAIC_GAPS, &clients);
+    let (_, rect) = result[0];
+    assert!(rect.width > 0 && rect.height > 0);
+    assert!(rect.width <= WA.width && rect.height <= WA.height);
 }

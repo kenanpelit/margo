@@ -132,9 +132,18 @@ impl MargoState {
 
             for &i in &governed {
                 let needs_geom = self.clients[i].float_geom.width == 0;
-                if !self.clients[i].is_floating {
+                // Claim this client if it isn't floating yet (a tiled
+                // client entering Floating), or if it *is* floating but
+                // under Mosaic's ownership (a tag that just switched
+                // Mosaic -> Floating) — either way it becomes ours. A
+                // client already ours, or one the user hand-floated
+                // (`is_floating && !floated_by_layout`), is left alone.
+                let owned_by_other = self.clients[i].floated_by_layout
+                    && self.clients[i].auto_float_owner != Some(crate::layout::LayoutId::Floating);
+                if !self.clients[i].is_floating || owned_by_other {
                     self.clients[i].is_floating = true;
                     self.clients[i].floated_by_layout = true;
+                    self.clients[i].auto_float_owner = Some(crate::layout::LayoutId::Floating);
                 }
                 if needs_geom {
                     let c = &self.clients[i];
@@ -157,11 +166,154 @@ impl MargoState {
             }
         } else {
             for &i in &governed {
-                if self.clients[i].floated_by_layout {
+                if self.clients[i].floated_by_layout
+                    && self.clients[i].auto_float_owner == Some(crate::layout::LayoutId::Floating)
+                {
                     self.clients[i].is_floating = false;
                     self.clients[i].floated_by_layout = false;
+                    self.clients[i].auto_float_owner = None;
                     // `float_geom` is left intact: switching back to
                     // Floating restores each window to its last spot.
+                }
+            }
+        }
+    }
+
+    /// Auto-float / re-pack clients for the `Mosaic` layout — GNOME's
+    /// content-aware self-arranging desktop
+    /// (<https://blogs.gnome.org/tbernard/2023/07/26/rethinking-window-management/>).
+    /// Mirrors `reconcile_floating_layout`'s shape closely (both hand
+    /// governed clients to `is_floating`/`float_geom`, both leave
+    /// user-hand-floated windows alone, both idempotent no-ops on a
+    /// change-free pass) but hands off to a different placement algorithm
+    /// ([`crate::layout::mosaic_arrange`]) and, crucially, *re-packs every
+    /// governed client together on every pass* rather than only seeding
+    /// brand-new ones — that's what makes existing windows move aside /
+    /// shrink when a new one opens, and re-expand when one closes.
+    ///
+    /// `auto_float_owner` (not just `floated_by_layout`) gates every read
+    /// and write here so this never fights `reconcile_floating_layout` over
+    /// a client when a tag switches between the two layouts.
+    fn reconcile_mosaic_layout(&mut self, mon_idx: usize) {
+        let Some(mon) = self.monitors.get(mon_idx) else {
+            return;
+        };
+        if mon.is_overview {
+            return;
+        }
+        let curtag = mon.pertag.curtag;
+        let is_mosaic_layout =
+            mon.pertag.ltidxs.get(curtag).copied() == Some(crate::layout::LayoutId::Mosaic);
+        let tagset = mon.current_tagset();
+        let work_area = mon.work_area;
+        let gaps = crate::layout::GapConfig {
+            gappih: if self.enable_gaps { mon.gappih } else { 0 },
+            gappiv: if self.enable_gaps { mon.gappiv } else { 0 },
+            gappoh: if self.enable_gaps { mon.gappoh } else { 0 },
+            gappov: if self.enable_gaps { mon.gappov } else { 0 },
+        };
+
+        // Same governed-set contract as `reconcile_floating_layout`.
+        let governed: Vec<usize> = self
+            .clients
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                c.monitor == mon_idx
+                    && !c.is_initial_map_pending
+                    && c.is_visible_on(mon_idx, tagset)
+                    && c.fullscreen_mode == FullscreenMode::Off
+                    && !c.is_in_scratchpad
+                    && !c.is_named_scratchpad
+                    && !c.is_overlay
+                    && !c.is_minimized
+                    && !c.is_killing
+                    && !c.is_hidden_group_member()
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        if is_mosaic_layout {
+            // A tabbed group is a tiling construct — dissolve any on this
+            // tag before mosaic-floating its members (same reasoning as
+            // `reconcile_floating_layout`).
+            let gids: std::collections::BTreeSet<u32> = governed
+                .iter()
+                .filter_map(|&i| self.clients[i].group_id)
+                .collect();
+            for gid in gids {
+                self.dissolve_group(gid);
+            }
+
+            for &i in &governed {
+                // Claim this client if it isn't floating yet, or if it's
+                // floating under Floating's ownership (a tag that just
+                // switched Floating -> Mosaic) — see the matching comment
+                // in `reconcile_floating_layout`.
+                let owned_by_other = self.clients[i].floated_by_layout
+                    && self.clients[i].auto_float_owner != Some(crate::layout::LayoutId::Mosaic);
+                if !self.clients[i].is_floating || owned_by_other {
+                    self.clients[i].is_floating = true;
+                    self.clients[i].floated_by_layout = true;
+                    self.clients[i].auto_float_owner = Some(crate::layout::LayoutId::Mosaic);
+                }
+                // Capture "ideal size" exactly once, from the geometry the
+                // client had *before* mosaic ever touched it — not from
+                // `float_geom`, which mosaic itself is about to overwrite
+                // below (reading that back next pass would ratchet the
+                // window smaller every time it had to shrink to make room).
+                if self.clients[i].floated_by_layout
+                    && self.clients[i].auto_float_owner == Some(crate::layout::LayoutId::Mosaic)
+                    && self.clients[i].mosaic_ideal_width == 0
+                {
+                    let geom = self.clients[i].geom;
+                    if geom.width > 0 && geom.height > 0 {
+                        self.clients[i].mosaic_ideal_width = geom.width;
+                        self.clients[i].mosaic_ideal_height = geom.height;
+                    }
+                }
+            }
+
+            // Pack only the clients Mosaic itself owns. A window the user
+            // hand-floated before this tag ever became Mosaic
+            // (`is_floating && !floated_by_layout`) keeps its own spot,
+            // same as `reconcile_floating_layout`.
+            let packable: Vec<crate::layout::MosaicClient> = governed
+                .iter()
+                .copied()
+                .filter(|&i| {
+                    self.clients[i].floated_by_layout
+                        && self.clients[i].auto_float_owner == Some(crate::layout::LayoutId::Mosaic)
+                })
+                .map(|i| {
+                    let c = &self.clients[i];
+                    crate::layout::MosaicClient {
+                        index: i,
+                        ideal: (c.mosaic_ideal_width, c.mosaic_ideal_height),
+                        min: (c.min_width, c.min_height),
+                        max: (c.max_width, c.max_height),
+                    }
+                })
+                .collect();
+
+            let placed = crate::layout::mosaic_arrange(work_area, &gaps, &packable);
+            for (i, rect) in placed {
+                self.clients[i].float_geom = rect;
+                self.clients[i].geom = rect;
+            }
+        } else {
+            for &i in &governed {
+                if self.clients[i].floated_by_layout
+                    && self.clients[i].auto_float_owner == Some(crate::layout::LayoutId::Mosaic)
+                {
+                    self.clients[i].is_floating = false;
+                    self.clients[i].floated_by_layout = false;
+                    self.clients[i].auto_float_owner = None;
+                    // Fresh ideal next time this client enters Mosaic —
+                    // whatever it grew/shrank to on this tag shouldn't
+                    // outlive the tag switch.
+                    self.clients[i].mosaic_ideal_width = 0;
+                    self.clients[i].mosaic_ideal_height = 0;
                 }
             }
         }
@@ -210,6 +362,9 @@ impl MargoState {
         // Floating layout: auto-float / re-tile the current tag's
         // clients before `tiled` is built below (issue #1).
         self.reconcile_floating_layout(mon_idx);
+        // Mosaic layout: same idea, content-aware packing instead of a
+        // fixed grid — see `reconcile_mosaic_layout`.
+        self.reconcile_mosaic_layout(mon_idx);
 
         let mon = &self.monitors[mon_idx];
         let is_overview = mon.is_overview;

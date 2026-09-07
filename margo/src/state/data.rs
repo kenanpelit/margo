@@ -16,7 +16,7 @@ use smithay::{
     output::Output,
     wayland::{
         compositor::with_states,
-        shell::xdg::{ToplevelSurface, XdgToplevelSurfaceData},
+        shell::xdg::{SurfaceCachedState, ToplevelSurface, XdgToplevelSurfaceData},
     },
 };
 
@@ -182,12 +182,19 @@ pub struct MargoClient {
     /// always has exactly one active member. Meaningless (and left
     /// `false`) when `group_id` is `None`.
     pub group_active: bool,
-    /// `true` only while the `Floating` layout is auto-floating this
-    /// client (set/cleared by `reconcile_floating_layout`). Lets a
-    /// switch back to a tiling layout re-tile the windows the layout
-    /// floated without disturbing windows the user floated by hand
+    /// `true` only while the current layout (`Floating` or `Mosaic` — see
+    /// `auto_float_owner`) is auto-floating this client. Lets a switch back
+    /// to a tiling layout re-tile the windows a layout floated without
+    /// disturbing windows the user floated by hand
     /// (`is_floating && !floated_by_layout`).
     pub floated_by_layout: bool,
+    /// Which layout set `floated_by_layout` — `Some(Floating)` or
+    /// `Some(Mosaic)`, `None` when `floated_by_layout` is false. Both
+    /// layouts auto-float via the same `is_floating`/`float_geom`
+    /// machinery, so this is what stops `reconcile_floating_layout` and
+    /// `reconcile_mosaic_layout` from fighting over (or un-floating) each
+    /// other's clients when a tag switches between the two.
+    pub auto_float_owner: Option<LayoutId>,
     pub canvas_no_tile: bool,
     /// Set by a window rule. When true, screen-capture clients see
     /// solid black for this window's region.
@@ -196,6 +203,15 @@ pub struct MargoClient {
     pub min_height: i32,
     pub max_width: i32,
     pub max_height: i32,
+    /// The `Mosaic` layout's "ideal size" for this client — captured once,
+    /// from `geom`, the first time `reconcile_mosaic_layout` starts
+    /// governing it, and reset to `0` when it stops. `0` = not captured
+    /// (mosaic falls back to a fraction of the work area). Deliberately
+    /// separate from `float_geom`, which mosaic *writes* every repack —
+    /// reading `float_geom` back as the next repack's "ideal" would ratchet
+    /// the window smaller every time it had to shrink to make room.
+    pub mosaic_ideal_width: i32,
+    pub mosaic_ideal_height: i32,
     pub canvas_floating: bool,
     pub force_fake_maximize: bool,
     pub force_tiled_state: bool,
@@ -291,12 +307,15 @@ impl MargoClient {
             group_id: None,
             group_active: false,
             floated_by_layout: false,
+            auto_float_owner: None,
             canvas_no_tile: false,
             block_out_from_screencast: false,
             min_width: 0,
             min_height: 0,
             max_width: 0,
             max_height: 0,
+            mosaic_ideal_width: 0,
+            mosaic_ideal_height: 0,
             canvas_floating: false,
             force_fake_maximize: false,
             force_tiled_state: false,
@@ -446,6 +465,25 @@ pub(crate) fn read_toplevel_identity(surface: &ToplevelSurface) -> (String, Stri
                 )
             })
             .unwrap_or_default()
+    })
+}
+
+/// The app's own `xdg_toplevel.set_min_size` / `set_max_size` request, as
+/// `(min_width, min_height, max_width, max_height)`. Each axis is `0` when
+/// the app left it unconstrained — same convention `MargoClient::min_width`
+/// etc. already use for "no rule/hint set". This is the *protocol* size
+/// hint; a `window_rules.conf` rule with a nonzero value still overrides it
+/// (see `apply_matched_window_rules`), so this is only ever a baseline.
+pub(crate) fn read_toplevel_size_hints(surface: &ToplevelSurface) -> (i32, i32, i32, i32) {
+    with_states(surface.wl_surface(), |states| {
+        let mut cached = states.cached_state.get::<SurfaceCachedState>();
+        let current = cached.current();
+        (
+            current.min_size.w,
+            current.min_size.h,
+            current.max_size.w,
+            current.max_size.h,
+        )
     })
 }
 

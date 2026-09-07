@@ -40,7 +40,7 @@ pub use self::data::{
 };
 pub(crate) use self::data::{
     WindowRuleReason, clamp_size, matches_layer_name, matches_rule_text, read_toplevel_identity,
-    read_toplevel_identity_if_changed,
+    read_toplevel_identity_if_changed, read_toplevel_size_hints,
 };
 pub use self::focus_target::FocusTarget;
 pub use self::scroller_overview::{ScrollerOverview, overview_cells};

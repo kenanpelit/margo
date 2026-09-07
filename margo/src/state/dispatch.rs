@@ -18,7 +18,7 @@ use smithay::{desktop::WindowSurface, wayland::seat::WaylandFocus};
 
 use super::{
     ClosingClient, FocusTarget, FullscreenMode, MargoState, WindowRuleReason,
-    read_toplevel_identity,
+    read_toplevel_identity, read_toplevel_size_hints,
 };
 use crate::layout::LayoutId;
 
@@ -796,10 +796,12 @@ impl MargoState {
         }
         let current = self.monitors[mon_idx].current_layout().name();
         let layouts: Vec<String> = if self.config.circle_layouts.is_empty() {
-            vec!["tile", "scroller", "grid", "monocle", "deck"]
-                .into_iter()
-                .map(str::to_string)
-                .collect()
+            vec![
+                "tile", "scroller", "grid", "monocle", "deck", "floating", "mosaic",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect()
         } else {
             self.config.circle_layouts.clone()
         };
@@ -1371,8 +1373,17 @@ impl MargoState {
         }
         if let WindowSurface::Wayland(toplevel) = self.clients[idx].window.underlying_surface() {
             let (app_id, title) = read_toplevel_identity(toplevel);
+            // Baseline size hints from the app's own xdg_toplevel request
+            // (e.g. a chat client's "don't go narrower than 300px"). A
+            // window_rules.conf rule with a nonzero value overrides this
+            // right below, in `reapply_rules` -> `apply_matched_window_rules`.
+            let (min_w, min_h, max_w, max_h) = read_toplevel_size_hints(toplevel);
             self.clients[idx].app_id = app_id;
             self.clients[idx].title = title;
+            self.clients[idx].min_width = min_w;
+            self.clients[idx].min_height = min_h;
+            self.clients[idx].max_width = max_w;
+            self.clients[idx].max_height = max_h;
         }
 
         // Now run rules with the live app_id/title.

@@ -138,6 +138,13 @@ pub enum LayoutId {
     /// auto-floats tiled clients and cascades their placement in
     /// `reconcile_floating_layout`.
     Floating,
+    /// Content-aware, self-arranging desktop (GNOME's "Mosaic" concept).
+    /// Like `Floating`, the tiler produces no geometry here — the
+    /// compositor auto-floats governed clients and packs them with
+    /// `mosaic_arrange` in `reconcile_mosaic_layout`, honouring each
+    /// client's real xdg_toplevel min/max size and its own requested
+    /// ("ideal") size instead of a fixed grid.
+    Mosaic,
     Overview,
 }
 
@@ -155,6 +162,7 @@ impl LayoutId {
             LayoutId::Canvas => "CV",
             LayoutId::Dwindle => "DW",
             LayoutId::Floating => "F",
+            LayoutId::Mosaic => "MO",
             LayoutId::Overview => "󰃇",
         }
     }
@@ -172,6 +180,7 @@ impl LayoutId {
             LayoutId::Canvas => "canvas",
             LayoutId::Dwindle => "dwindle",
             LayoutId::Floating => "floating",
+            LayoutId::Mosaic => "mosaic",
             LayoutId::Overview => "overview",
         }
     }
@@ -189,6 +198,7 @@ impl LayoutId {
             LayoutId::Canvas,
             LayoutId::Dwindle,
             LayoutId::Floating,
+            LayoutId::Mosaic,
         ];
         all.iter().find(|l| l.symbol() == s).copied()
     }
@@ -206,6 +216,7 @@ impl LayoutId {
             LayoutId::Canvas,
             LayoutId::Dwindle,
             LayoutId::Floating,
+            LayoutId::Mosaic,
         ];
         all.iter().find(|l| l.name() == s).copied()
     }
@@ -228,6 +239,7 @@ impl LayoutId {
             LayoutId::Canvas,
             LayoutId::Dwindle,
             LayoutId::Floating,
+            LayoutId::Mosaic,
         ]
     }
 }

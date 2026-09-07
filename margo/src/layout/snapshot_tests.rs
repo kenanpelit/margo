@@ -519,8 +519,8 @@ fn arrange_dispatcher_matches_direct_call_all_layouts() {
             LayoutId::TgMix => tgmix(&ctx),
             LayoutId::Dwindle => dwindle(&ctx),
             LayoutId::Overview => monocle(&ctx),
-            LayoutId::Canvas | LayoutId::Floating => {
-                unreachable!("Canvas / Floating are filtered out of the test loop earlier")
+            LayoutId::Canvas | LayoutId::Floating | LayoutId::Mosaic => {
+                unreachable!("Canvas / Floating / Mosaic are filtered out of the test loop earlier")
             }
         };
         assert_eq!(
