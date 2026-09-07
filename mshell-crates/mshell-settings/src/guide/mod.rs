@@ -5,3 +5,4 @@
 pub mod actions_tab;
 pub mod config_parser;
 pub mod config_tab;
+pub mod markdown;
