@@ -210,6 +210,8 @@ fn default_layout_names() -> Vec<String> {
         "tgmix",
         "canvas",
         "dwindle",
+        "floating",
+        "mosaic",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -228,6 +230,8 @@ fn icon_for_layout(id: &str) -> &'static str {
         "tgmix" => "layout-mix-symbolic",
         "canvas" => "layout-canvas-symbolic",
         "dwindle" => "layout-dwindle-symbolic",
+        // No dedicated icon packaged for "floating" or "mosaic" yet —
+        // same generic fallback both already relied on.
         _ => "view-list-symbolic",
     }
 }

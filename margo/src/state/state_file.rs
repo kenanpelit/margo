@@ -197,7 +197,7 @@ impl MargoState {
 
         // The canonical layouts list — same set the live status bar
         // shows. It's compile-time constant, so build the JSON name
-        // array once and clone it instead of rebuilding the 11-element
+        // array once and clone it instead of rebuilding the 12-element
         // `LayoutId` array + re-running `name()` on every snapshot.
         static LAYOUT_NAMES: std::sync::OnceLock<Vec<serde_json::Value>> =
             std::sync::OnceLock::new();
@@ -215,6 +215,7 @@ impl MargoState {
                     crate::layout::LayoutId::Canvas,
                     crate::layout::LayoutId::Dwindle,
                     crate::layout::LayoutId::Floating,
+                    crate::layout::LayoutId::Mosaic,
                 ]
                 .iter()
                 .map(|l| serde_json::Value::String(l.name().to_string()))
