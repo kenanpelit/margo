@@ -34,6 +34,7 @@ pub(crate) struct BehaviourModel {
     cursor_hide_timeout: f64,
     xwayland_persistence: bool,
     drag_tile_to_tile: bool,
+    mosaic_auto_overflow_tag: bool,
     drag_warp_cursor: bool,
     drag_tile_refresh_interval: f64,
     drag_floating_refresh_interval: f64,
@@ -208,6 +209,10 @@ impl Component for BehaviourModel {
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.drag_tile_to_tile,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("drag_tile_to_tile", s.is_active())) } },
                     #[template] Row {
+                        #[template_child] title { set_label: "Mosaic: move overflowing windows to an empty tag" },
+                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.mosaic_auto_overflow_tag,
+                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("mosaic_auto_overflow_tag", s.is_active())) } },
+                    #[template] Row {
                         #[template_child] title { set_label: "Grab corner" },
                         gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,
                             set_model: Some(&model.corners5),
@@ -366,6 +371,7 @@ impl Component for BehaviourModel {
             cursor_hide_timeout: read_int("cursor_hide_timeout", 3) as f64,
             xwayland_persistence: read_bool("xwayland_persistence", true),
             drag_tile_to_tile: read_bool("drag_tile_to_tile", true),
+            mosaic_auto_overflow_tag: read_bool("mosaic_auto_overflow_tag", true),
             drag_warp_cursor: read_bool("drag_warp_cursor", true),
             drag_tile_refresh_interval: read_f64("drag_tile_refresh_interval", 8.0),
             drag_floating_refresh_interval: read_f64("drag_floating_refresh_interval", 8.0),

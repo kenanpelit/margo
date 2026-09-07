@@ -5,7 +5,7 @@
 
 use margo_layouts::{
     ArrangeCtx, GapConfig, LayoutId, MosaicClient, Rect, arrange, mosaic_arrange,
-    place_floating_cascade,
+    mosaic_overflow_client, place_floating_cascade,
 };
 
 const WA: Rect = Rect {
@@ -390,6 +390,7 @@ fn mosaic_empty_input_yields_no_rects() {
 fn mosaic_one_client_gets_exactly_its_ideal_size() {
     let clients = [MosaicClient {
         index: 7,
+        id: 7_u64,
         ideal: (400, 300),
         min: (0, 0),
         max: (0, 0),
@@ -406,12 +407,14 @@ fn mosaic_two_clients_that_fit_share_one_row() {
     let clients = [
         MosaicClient {
             index: 0,
+            id: 0_u64,
             ideal: (300, 300),
             min: (0, 0),
             max: (0, 0),
         },
         MosaicClient {
             index: 1,
+            id: 1_u64,
             ideal: (300, 300),
             min: (0, 0),
             max: (0, 0),
@@ -435,6 +438,7 @@ fn mosaic_wraps_to_a_new_row_when_it_does_not_fit() {
     // must wrap rather than overlap or be pushed past the work area.
     let make = |i: usize| MosaicClient {
         index: i,
+        id: (i) as u64,
         ideal: (400, 200),
         min: (0, 0),
         max: (0, 0),
@@ -453,6 +457,7 @@ fn mosaic_shrinks_toward_min_height_when_rows_overflow_vertically() {
     // client's own min_height.
     let make = |i: usize| MosaicClient {
         index: i,
+        id: (i) as u64,
         ideal: (1000, 200),
         min: (0, 60),
         max: (0, 0),
@@ -474,12 +479,14 @@ fn mosaic_never_exceeds_min_or_max_bounds() {
     let clients = [
         MosaicClient {
             index: 0,
+            id: 0_u64,
             ideal: (50, 50),
             min: (200, 150),
             max: (0, 0),
         },
         MosaicClient {
             index: 1,
+            id: 1_u64,
             ideal: (5000, 5000),
             min: (0, 0),
             max: (300, 250),
@@ -500,6 +507,7 @@ fn mosaic_never_exceeds_min_or_max_bounds() {
 fn mosaic_keeps_every_rect_inside_the_work_area() {
     let make = |i: usize| MosaicClient {
         index: i,
+        id: (i) as u64,
         ideal: (350, 250),
         min: (0, 0),
         max: (0, 0),
@@ -517,6 +525,7 @@ fn mosaic_keeps_every_rect_inside_the_work_area() {
 fn mosaic_zero_ideal_falls_back_to_a_comfortable_default() {
     let clients = [MosaicClient {
         index: 0,
+        id: 0_u64,
         ideal: (0, 0),
         min: (0, 0),
         max: (0, 0),
@@ -545,6 +554,7 @@ fn mosaic_reserves_the_outer_gap_on_every_edge() {
     };
     let make = |i: usize| MosaicClient {
         index: i,
+        id: (i) as u64,
         ideal: (300, 200),
         min: (0, 0),
         max: (0, 0),
@@ -573,4 +583,69 @@ fn mosaic_reserves_the_outer_gap_on_every_edge() {
             "client {idx} rect {r:?} bleeds past the bottom outer gap"
         );
     }
+}
+
+// ── Phase 3: mosaic_overflow_client ─────────────────────────────────────────
+
+#[test]
+fn mosaic_overflow_client_none_on_empty_input() {
+    assert_eq!(mosaic_overflow_client(WA, &MOSAIC_GAPS, &[]), None);
+}
+
+#[test]
+fn mosaic_overflow_client_none_when_everything_fits() {
+    let clients = [
+        MosaicClient {
+            index: 0,
+            id: 1,
+            ideal: (300, 200),
+            min: (0, 0),
+            max: (0, 0),
+        },
+        MosaicClient {
+            index: 1,
+            id: 2,
+            ideal: (300, 200),
+            min: (0, 0),
+            max: (0, 0),
+        },
+    ];
+    assert_eq!(mosaic_overflow_client(WA, &MOSAIC_GAPS, &clients), None);
+}
+
+#[test]
+fn mosaic_overflow_client_none_when_shrinking_alone_makes_it_fit() {
+    // Same shape as `mosaic_shrinks_toward_min_height_when_rows_overflow_
+    // vertically`: five rows' worth of 200px-tall clients into a 600px-tall
+    // work area don't fit at their *ideal* height, but every one has
+    // min_h: 60, and 5 * 60 = 300 (+ gaps) fits comfortably — shrinking is
+    // enough, nobody needs to leave.
+    let make = |i: usize| MosaicClient {
+        index: i,
+        id: i as u64,
+        ideal: (1000, 200),
+        min: (0, 60),
+        max: (0, 0),
+    };
+    let clients: Vec<_> = (0..5).map(make).collect();
+    assert_eq!(mosaic_overflow_client(WA, &MOSAIC_GAPS, &clients), None);
+}
+
+#[test]
+fn mosaic_overflow_client_detects_genuine_overflow_and_picks_the_newest() {
+    // Ten rows' worth of clients whose *min* height alone (80px each) is
+    // already 800px — more than WA's 600px tall work area — so no amount
+    // of shrinking fixes it.
+    let make = |i: usize, id: u64| MosaicClient {
+        index: i,
+        id,
+        ideal: (1000, 200),
+        min: (0, 80),
+        max: (0, 0),
+    };
+    // Ids deliberately out of index order — the *newest* (highest id)
+    // must win regardless of position in the queue.
+    let clients: Vec<_> = (0..10).map(|i| make(i, 100 - i as u64)).collect();
+    let evicted = mosaic_overflow_client(WA, &MOSAIC_GAPS, &clients);
+    assert_eq!(evicted, Some(100), "must evict the highest id, not index 0");
 }

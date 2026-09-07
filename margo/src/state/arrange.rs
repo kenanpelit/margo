@@ -179,6 +179,25 @@ impl MargoState {
         }
     }
 
+    /// The lowest-numbered tag (1..=`MAX_TAGS`) on `mon_idx` with no client
+    /// tagged onto it — a global/sticky client (`tags == u32::MAX`)
+    /// occupies every tag, so it rules all of them out. `exclude` (the
+    /// tag being evicted *from*) is skipped even if it would otherwise
+    /// qualify; there's no point "moving" a window to the tag it's
+    /// already on. `None` when every tag already has something.
+    fn find_empty_tag(&self, mon_idx: usize, exclude: usize) -> Option<usize> {
+        (1..=crate::layout::MAX_TAGS).find(|&tag| {
+            if tag == exclude {
+                return false;
+            }
+            let bit = 1u32 << (tag - 1);
+            !self
+                .clients
+                .iter()
+                .any(|c| c.monitor == mon_idx && (c.tags & bit) != 0)
+        })
+    }
+
     /// Auto-float / re-pack clients for the `Mosaic` layout — GNOME's
     /// content-aware self-arranging desktop
     /// (<https://blogs.gnome.org/tbernard/2023/07/26/rethinking-window-management/>).
@@ -282,7 +301,7 @@ impl MargoState {
             // immediately snap it back to its packed slot on every motion
             // tick, fighting the user's own drag (see `interactive_grab`'s
             // doc comment).
-            let packable: Vec<crate::layout::MosaicClient> = governed
+            let mut packable: Vec<crate::layout::MosaicClient> = governed
                 .iter()
                 .copied()
                 .filter(|&i| {
@@ -294,12 +313,39 @@ impl MargoState {
                     let c = &self.clients[i];
                     crate::layout::MosaicClient {
                         index: i,
+                        id: c.id,
                         ideal: (c.mosaic_ideal_width, c.mosaic_ideal_height),
                         min: (c.min_width, c.min_height),
                         max: (c.max_width, c.max_height),
                     }
                 })
                 .collect();
+
+            // Auto-move-to-empty-tag: even shrinking every client to its
+            // own minimum still doesn't fit — GNOME's "windows that don't
+            // fit move to a new workspace", with margo's fixed tag set
+            // standing in for infinite dynamic workspaces (see
+            // `mosaic_overflow_client`'s doc comment). Evicting shrinks
+            // `packable` for *this* pass too, so `mosaic_arrange` below
+            // never sees the client it just moved off-tag.
+            if self.config.mosaic_auto_overflow_tag
+                && let Some(evict_id) =
+                    crate::layout::mosaic_overflow_client(work_area, &gaps, &packable)
+                && let Some(evict_idx) = self.clients.iter().position(|c| c.id == evict_id)
+                && let Some(dest_tag) = self.find_empty_tag(mon_idx, curtag)
+            {
+                let dest_bit = 1u32 << (dest_tag - 1);
+                self.animate_tag_departure(evict_idx);
+                self.clients[evict_idx].old_tags = self.clients[evict_idx].tags;
+                self.clients[evict_idx].is_tag_switching = true;
+                self.clients[evict_idx].animation.running = false;
+                self.clients[evict_idx].tags = dest_bit;
+                packable.retain(|c| self.clients[c.index].id != evict_id);
+                if !self.clients[evict_idx].is_visible_on(mon_idx, tagset) {
+                    self.focus_first_visible_or_clear(mon_idx);
+                }
+                self.mark_state_dirty();
+            }
 
             let placed = crate::layout::mosaic_arrange(work_area, &gaps, &packable);
             for (i, rect) in placed {

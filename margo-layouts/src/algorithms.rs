@@ -503,13 +503,138 @@ pub fn mosaic(_ctx: &ArrangeCtx) -> ArrangeResult {
 /// protocol field for that exists; `min` / `max` come from the app's own
 /// `xdg_toplevel.set_min_size` / `set_max_size` (a `window_rules.conf` rule
 /// can also set them — see `MargoClient`). Either half of `ideal`, `min`,
-/// or `max` may be `0` meaning "unconstrained on that axis".
+/// or `max` may be `0` meaning "unconstrained on that axis". `id` is the
+/// client's stable, monotonically-assigned identity (`MargoClient::id`) —
+/// [`mosaic_overflow_client`] uses it to pick "the most recently opened
+/// offending window", which `index` (just a position in the caller's
+/// client list) can't tell you.
 #[derive(Debug, Clone, Copy)]
 pub struct MosaicClient {
     pub index: usize,
+    pub id: u64,
     pub ideal: (i32, i32),
     pub min: (i32, i32),
     pub max: (i32, i32),
+}
+
+/// One client after ideal/min/max resolve to a concrete size, still
+/// grouped into the shelf-flow rows [`pack_rows`] assigned it. Shared by
+/// [`mosaic_arrange`] (which shrinks toward `min_h` and emits geometry) and
+/// [`mosaic_overflow_client`] (which checks whether even `min_h` fits, with
+/// no shrinking involved).
+#[derive(Debug, Clone, Copy)]
+struct MosaicSized {
+    index: usize,
+    w: i32,
+    h: i32,
+    min_h: i32,
+}
+
+/// Clamp every client's ideal size to its own min/max and to `work_area`
+/// (inset by the *outer* gap — see [`mosaic_arrange`]'s doc comment on why
+/// that inset matters), then shelf-flow them into rows: left-to-right,
+/// wrapping to a new row when the next client would overflow the row's
+/// width. Returns the gap-inset packing area alongside the rows so callers
+/// don't have to recompute it.
+fn pack_rows(
+    work_area: Rect,
+    gaps: &GapConfig,
+    clients: &[MosaicClient],
+) -> (Rect, Vec<Vec<MosaicSized>>) {
+    let oh = gaps.gappoh.max(0);
+    let ov = gaps.gappov.max(0);
+    let area = Rect::new(
+        work_area.x + oh,
+        work_area.y + ov,
+        (work_area.width - 2 * oh).max(0),
+        (work_area.height - 2 * ov).max(0),
+    );
+    if clients.is_empty() || area.width <= 0 || area.height <= 0 {
+        return (area, Vec::new());
+    }
+
+    let fallback_w = ((area.width as f32) * 0.42) as i32;
+    let fallback_h = ((area.height as f32) * 0.55) as i32;
+    let sized: Vec<MosaicSized> = clients
+        .iter()
+        .map(|c| {
+            let (iw, ih) = c.ideal;
+            let (min_w, min_h) = c.min;
+            let (max_w, max_h) = c.max;
+            let mut w = if iw > 0 { iw } else { fallback_w };
+            let mut h = if ih > 0 { ih } else { fallback_h };
+            if min_w > 0 {
+                w = w.max(min_w);
+            }
+            if min_h > 0 {
+                h = h.max(min_h);
+            }
+            if max_w > 0 {
+                w = w.min(max_w);
+            }
+            if max_h > 0 {
+                h = h.min(max_h);
+            }
+            MosaicSized {
+                index: c.index,
+                w: w.clamp(1, area.width),
+                h: h.clamp(1, area.height),
+                min_h: min_h.clamp(1, area.height),
+            }
+        })
+        .collect();
+
+    let gx = gaps.gappih.max(0);
+    let mut rows: Vec<Vec<MosaicSized>> = Vec::new();
+    let mut current_row: Vec<MosaicSized> = Vec::new();
+    let mut row_w = 0;
+    for s in sized {
+        let needed = if row_w == 0 { s.w } else { row_w + gx + s.w };
+        if needed > area.width && row_w > 0 {
+            rows.push(std::mem::take(&mut current_row));
+            row_w = 0;
+        }
+        row_w = if row_w == 0 { s.w } else { row_w + gx + s.w };
+        current_row.push(s);
+    }
+    if !current_row.is_empty() {
+        rows.push(current_row);
+    }
+    (area, rows)
+}
+
+/// Whether `clients`, packed into `work_area` by [`pack_rows`], still don't
+/// fit *even after every one shrinks to its own minimum height* — the point
+/// past which [`mosaic_arrange`]'s shrink can't help anymore. GNOME's
+/// "windows that don't fit move to a new workspace" trigger; margo has a
+/// fixed set of tags rather than infinite dynamic workspaces, so the caller
+/// (`reconcile_mosaic_layout`) moves the offending client to an empty tag
+/// instead of creating one.
+///
+/// Returns the `id` of the client to evict — the most recently opened one
+/// (highest `MosaicClient::id`) among *all* of `clients`, not just the ones
+/// in an overflowing row, so "which window gets bumped" stays simple and
+/// predictable: whatever you opened last. `None` when everything fits (with
+/// or without `mosaic_arrange`'s shrink).
+pub fn mosaic_overflow_client(
+    work_area: Rect,
+    gaps: &GapConfig,
+    clients: &[MosaicClient],
+) -> Option<u64> {
+    let (area, rows) = pack_rows(work_area, gaps, clients);
+    if rows.is_empty() {
+        return None;
+    }
+    let gy = gaps.gappiv.max(0);
+    let floor_content_h: i32 = rows
+        .iter()
+        .map(|r| r.iter().map(|s| s.min_h).max().unwrap_or(0))
+        .sum();
+    let total_gap_h = gy * (rows.len() as i32 - 1).max(0);
+    if floor_content_h + total_gap_h <= area.height {
+        return None;
+    }
+    clients.iter().map(|c| c.id).max()
 }
 
 /// Shelf-pack `clients` into `work_area`: each client sized to its own
@@ -531,105 +656,31 @@ pub fn mosaic_arrange(
     gaps: &GapConfig,
     clients: &[MosaicClient],
 ) -> ArrangeResult {
-    if clients.is_empty() || work_area.width <= 0 || work_area.height <= 0 {
+    // Reserving the *outer* gap on every edge (done inside `pack_rows`) is
+    // the same reasoning as `tile()` / `grid()` / every other layout: the
+    // compositor draws a client's border *outside* `geom` (border frame =
+    // geom expanded by `border_width` on each side; see
+    // `render/rounded_border.rs`), so a client packed flush against
+    // `work_area`'s own edge has its border bleed past that edge — at the
+    // top, straight into the bar's exclusive zone, where the bar's own
+    // surface then paints over it and the border line simply never shows.
+    let (area, rows) = pack_rows(work_area, gaps, clients);
+    if rows.is_empty() {
         return vec![];
     }
-
-    // 0. Reserve the *outer* gap on every edge before packing anything —
-    //    same reasoning as `tile()` / `grid()` / every other layout. The
-    //    compositor draws a client's border *outside* `geom` (border frame
-    //    = geom expanded by `border_width` on each side; see
-    //    `render/rounded_border.rs`), so a client packed flush against
-    //    `work_area`'s own edge has its border bleed past that edge — at
-    //    the top, straight into the bar's exclusive zone, where the bar's
-    //    own surface then paints over it and the border line simply never
-    //    shows. `gappoh`/`gappov` is exactly the margin every other
-    //    layout already reserves for this; mosaic was missing it.
-    let oh = gaps.gappoh.max(0);
-    let ov = gaps.gappov.max(0);
-    let area = Rect::new(
-        work_area.x + oh,
-        work_area.y + ov,
-        (work_area.width - 2 * oh).max(0),
-        (work_area.height - 2 * ov).max(0),
-    );
-    if area.width <= 0 || area.height <= 0 {
-        return vec![];
-    }
-
-    struct Sized {
-        index: usize,
-        w: i32,
-        h: i32,
-        min_h: i32,
-    }
-
-    // 1. Clamp each client's ideal size to its own min/max and to the
-    //    (gap-inset) packing area. No ideal size (a client that's never
-    //    been mapped/sized) or no min/max (unconstrained axis) falls back
-    //    to a comfortable fraction of the area, mirroring
-    //    `place_floating_cascade`'s 60%-of-work-area fallback.
-    let fallback_w = ((area.width as f32) * 0.42) as i32;
-    let fallback_h = ((area.height as f32) * 0.55) as i32;
-    let sized: Vec<Sized> = clients
-        .iter()
-        .map(|c| {
-            let (iw, ih) = c.ideal;
-            let (min_w, min_h) = c.min;
-            let (max_w, max_h) = c.max;
-            let mut w = if iw > 0 { iw } else { fallback_w };
-            let mut h = if ih > 0 { ih } else { fallback_h };
-            if min_w > 0 {
-                w = w.max(min_w);
-            }
-            if min_h > 0 {
-                h = h.max(min_h);
-            }
-            if max_w > 0 {
-                w = w.min(max_w);
-            }
-            if max_h > 0 {
-                h = h.min(max_h);
-            }
-            Sized {
-                index: c.index,
-                w: w.clamp(1, area.width),
-                h: h.clamp(1, area.height),
-                min_h: min_h.clamp(1, area.height),
-            }
-        })
-        .collect();
-
-    // 2. Shelf-flow: fill rows left-to-right, wrap when the next client
-    //    would overflow the row.
     let gx = gaps.gappih.max(0);
     let gy = gaps.gappiv.max(0);
-    let mut rows: Vec<Vec<&Sized>> = Vec::new();
-    let mut current_row: Vec<&Sized> = Vec::new();
-    let mut row_w = 0;
-    for s in &sized {
-        let needed = if row_w == 0 { s.w } else { row_w + gx + s.w };
-        if needed > area.width && row_w > 0 {
-            rows.push(std::mem::take(&mut current_row));
-            row_w = 0;
-        }
-        current_row.push(s);
-        row_w = if row_w == 0 { s.w } else { row_w + gx + s.w };
-    }
-    if !current_row.is_empty() {
-        rows.push(current_row);
-    }
 
-    // 3. If the stacked rows don't fit vertically, shrink every row's
-    //    *content* height by the same factor, clamped to each client's own
-    //    min height — a client that's already at its floor stays there and
-    //    the row (and everything below it) may still overflow slightly
-    //    rather than crush a window unusably small. The shrink factor is
-    //    computed against the height budget left over *after* reserving
-    //    the (fixed, never-shrunk) inter-row gaps — folding the gaps into
-    //    the same ratio as the content undercounts how much the content
-    //    itself needs to shrink by exactly the gap total, which is enough
-    //    to overflow the area by a few px on some row counts.
+    // If the stacked rows don't fit vertically, shrink every row's
+    // *content* height by the same factor, clamped to each client's own
+    // min height — a client that's already at its floor stays there and
+    // the row (and everything below it) may still overflow slightly rather
+    // than crush a window unusably small. The shrink factor is computed
+    // against the height budget left over *after* reserving the (fixed,
+    // never-shrunk) inter-row gaps — folding the gaps into the same ratio
+    // as the content undercounts how much the content itself needs to
+    // shrink by exactly the gap total, which is enough to overflow the
+    // area by a few px on some row counts.
     let total_gap_h = gy * (rows.len() as i32 - 1).max(0);
     let content_budget = (area.height - total_gap_h).max(0);
     let natural_content_h: i32 = rows
@@ -642,12 +693,12 @@ pub fn mosaic_arrange(
         1.0
     };
 
-    // 4. Emit geometry: each row centered horizontally (the article's
-    //    windows "open in the center of the screen"), each client sized to
-    //    its own (possibly shrunk) height rather than stretched to match
-    //    row-mates — a chat window stays narrow-and-tall next to a wide,
-    //    shorter PDF reader in the same row.
-    let mut result = Vec::with_capacity(sized.len());
+    // Emit geometry: each row centered horizontally (the article's windows
+    // "open in the center of the screen"), each client sized to its own
+    // (possibly shrunk) height rather than stretched to match row-mates —
+    // a chat window stays narrow-and-tall next to a wide, shorter PDF
+    // reader in the same row.
+    let mut result = Vec::with_capacity(rows.iter().map(|r| r.len()).sum());
     let mut y = area.y;
     for row in &rows {
         let row_h = row

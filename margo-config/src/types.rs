@@ -704,6 +704,15 @@ pub struct Config {
     /// window is large. Backport of mango 0.13's
     /// `drag_tile_small`.
     pub drag_tile_small: bool,
+    /// `Mosaic` layout only: when even shrinking every window to its own
+    /// minimum size still doesn't fit the work area, move the most
+    /// recently opened offending window to the first empty tag on the
+    /// same monitor instead of leaving it crushed. GNOME's "windows that
+    /// don't fit move to a new workspace" — margo has a fixed set of tags
+    /// rather than infinite dynamic workspaces, so this moves to the
+    /// first tag with no clients on it (per-monitor) rather than creating
+    /// one; a no-op if every tag already has something on it.
+    pub mosaic_auto_overflow_tag: bool,
     pub swipe_min_threshold: u32,
     pub focused_opacity: f32,
     pub unfocused_opacity: f32,
@@ -1145,6 +1154,7 @@ impl Default for Config {
             enable_floating_snap: false,
             drag_tile_to_tile: false,
             drag_tile_small: true,
+            mosaic_auto_overflow_tag: true,
             swipe_min_threshold: 1,
             focused_opacity: 1.0,
             unfocused_opacity: 1.0,

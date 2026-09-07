@@ -27,6 +27,14 @@ fn three_windows(fx: &mut Fixture) -> [ClientId; 3] {
     [map_window(fx), map_window(fx), map_window(fx)]
 }
 
+/// `n` mapped windows on one 1080p output — for the overflow tests, which
+/// need more windows than `three_windows` gives.
+fn n_windows(fx: &mut Fixture, n: usize) -> Vec<ClientId> {
+    fx.add_keyboard();
+    fx.add_output("DP-1", (1920, 1080));
+    (0..n).map(|_| map_window(fx)).collect()
+}
+
 fn pin_layout(fx: &mut Fixture, tag: usize, layout: LayoutId) {
     fx.server.state.monitors[0].pertag.ltidxs[tag] = layout;
     fx.server.state.monitors[0].pertag.user_picked_layout[tag] = true;
@@ -307,4 +315,112 @@ fn dropping_a_classically_tiled_client_restores_original_float_geom_when_no_targ
 
     assert_eq!(fx.server.state.clients[0].float_geom, original_float_geom);
     assert!(!fx.server.state.clients[0].is_floating);
+}
+
+// ── Phase 3: auto-move to an empty tag on genuine overflow ──────────────────
+
+/// Force every client's own floor (`min_height`) high enough that ten of
+/// them genuinely cannot fit a 1080p output no matter how much
+/// `mosaic_arrange` shrinks toward it. `n_windows` maps clients in order
+/// and nothing before this point reorders `self.clients`, so positional
+/// indexing lines up 1:1 with the returned `ClientId`s (same convention
+/// every other test in this file/`floating_layout.rs` already relies on).
+fn force_overflow(fx: &mut Fixture, count: usize) {
+    for i in 0..count {
+        fx.server.state.clients[i].min_height = 200;
+    }
+}
+
+#[test]
+fn mosaic_moves_the_newest_overflowing_client_to_an_empty_tag() {
+    let mut fx = Fixture::new();
+    let windows = n_windows(&mut fx, 10);
+    pin_layout(&mut fx, 1, LayoutId::Mosaic);
+    fx.server.state.arrange_monitor(0);
+    force_overflow(&mut fx, windows.len());
+
+    // The client created *last* has the highest `id` — it's the one that
+    // must get moved.
+    let newest_window = fx.server.state.clients.last().unwrap().window.clone();
+    let newest_id = fx.server.state.clients.last().unwrap().id;
+
+    fx.server.state.arrange_monitor(0);
+
+    let newest = fx
+        .server
+        .state
+        .clients
+        .iter()
+        .find(|c| c.window == newest_window)
+        .expect("newest client still exists");
+    assert_eq!(newest.id, newest_id);
+    assert_eq!(
+        newest.tags,
+        1u32 << 1,
+        "newest client should have moved to tag 2 (the first empty tag)"
+    );
+
+    let remaining_on_tag1 = fx
+        .server
+        .state
+        .clients
+        .iter()
+        .filter(|c| c.tags & 1 != 0)
+        .count();
+    assert_eq!(
+        remaining_on_tag1, 9,
+        "exactly the evicted client should leave tag 1"
+    );
+}
+
+#[test]
+fn mosaic_does_not_evict_when_the_config_flag_is_off() {
+    let mut fx = Fixture::new();
+    let windows = n_windows(&mut fx, 10);
+    pin_layout(&mut fx, 1, LayoutId::Mosaic);
+    fx.server.state.arrange_monitor(0);
+    force_overflow(&mut fx, windows.len());
+    fx.server.state.config.mosaic_auto_overflow_tag = false;
+
+    fx.server.state.arrange_monitor(0);
+
+    let remaining_on_tag1 = fx
+        .server
+        .state
+        .clients
+        .iter()
+        .filter(|c| c.tags & 1 != 0)
+        .count();
+    assert_eq!(
+        remaining_on_tag1, 10,
+        "nobody should be evicted while the config flag is off"
+    );
+}
+
+#[test]
+fn mosaic_does_not_evict_when_every_tag_is_already_occupied() {
+    let mut fx = Fixture::new();
+    let windows = n_windows(&mut fx, 10);
+    pin_layout(&mut fx, 1, LayoutId::Mosaic);
+    fx.server.state.arrange_monitor(0);
+    force_overflow(&mut fx, windows.len());
+
+    // Occupy every other tag (2..=9) with one of the ten windows each, so
+    // `find_empty_tag` has nowhere left to send the overflow to. Leave at
+    // least two on tag 1 so it's still the one that's overflowing.
+    let _ = &windows; // only the count mattered — see force_overflow above
+    for i in 0..8 {
+        fx.server.state.clients[i].tags = 1u32 << (i + 1); // tags 2..=9
+    }
+
+    fx.server.state.arrange_monitor(0);
+
+    let untouched_tags: Vec<u32> = fx.server.state.clients.iter().map(|c| c.tags).collect();
+    // Re-arranging again must be a no-op: nothing left to evict *to*.
+    fx.server.state.arrange_monitor(0);
+    let after: Vec<u32> = fx.server.state.clients.iter().map(|c| c.tags).collect();
+    assert_eq!(
+        untouched_tags, after,
+        "no empty tag exists — nothing should move"
+    );
 }

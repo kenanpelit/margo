@@ -617,6 +617,7 @@ const BOOL_KEYS: &[&str] = &[
     "layer_shadows",
     "left_handed",
     "middle_button_emulation",
+    "mosaic_auto_overflow_tag",
     "mouse_natural_scrolling",
     "mru_show_labels",
     "mru_accent_selection",
