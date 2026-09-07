@@ -42,6 +42,7 @@ mod effects_settings;
 mod fonts_settings;
 mod game_mode_settings;
 mod general_settings;
+pub mod guide;
 mod helium_theme_settings;
 mod hidden_bar_settings;
 mod idle_settings;
