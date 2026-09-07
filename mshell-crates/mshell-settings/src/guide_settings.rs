@@ -10,6 +10,7 @@
 
 use crate::guide::actions_tab;
 use crate::guide::config_tab;
+use crate::guide::features_tab;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
@@ -97,6 +98,9 @@ impl Component for GuideSettingsModel {
         widgets
             .stack
             .add_titled(&config_tab::build(), Some("config"), "Settings");
+        widgets
+            .stack
+            .add_titled(&features_tab::build(), Some("features"), "Features");
         let _ = sender;
         ComponentParts { model, widgets }
     }
