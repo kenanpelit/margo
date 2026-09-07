@@ -526,3 +526,51 @@ fn mosaic_zero_ideal_falls_back_to_a_comfortable_default() {
     assert!(rect.width > 0 && rect.height > 0);
     assert!(rect.width <= WA.width && rect.height <= WA.height);
 }
+
+#[test]
+fn mosaic_reserves_the_outer_gap_on_every_edge() {
+    // Regression: the compositor draws a client's border *outside*
+    // `geom` (border frame = geom expanded by border_width). A client
+    // packed flush against `work_area`'s own top edge has its border
+    // bleed above it — into the bar's exclusive zone, where the bar
+    // then paints over it and the border line never shows. `gappoh`/
+    // `gappov` (the *outer* gap, distinct from the inter-window
+    // `gappih`/`gappiv` every other mosaic test uses) must be reserved
+    // on every edge, the same as `tile()`/`grid()`/every other layout.
+    let gaps = GapConfig {
+        gappih: 8,
+        gappiv: 8,
+        gappoh: 20,
+        gappov: 15,
+    };
+    let make = |i: usize| MosaicClient {
+        index: i,
+        ideal: (300, 200),
+        min: (0, 0),
+        max: (0, 0),
+    };
+    // Enough clients to fill more than one row/column so both the first
+    // and the last row are exercised, not just a single centered one.
+    let clients: Vec<_> = (0..6).map(make).collect();
+    let result = mosaic_arrange(WA, &gaps, &clients);
+    assert_eq!(result.len(), 6);
+    for (idx, r) in &result {
+        assert!(
+            r.x >= WA.x + gaps.gappoh,
+            "client {idx} rect {r:?} bleeds past the left outer gap"
+        );
+        assert!(
+            r.y >= WA.y + gaps.gappov,
+            "client {idx} rect {r:?} bleeds past the top outer gap \
+             (this is what hid under the bar)"
+        );
+        assert!(
+            r.x + r.width <= WA.x + WA.width - gaps.gappoh,
+            "client {idx} rect {r:?} bleeds past the right outer gap"
+        );
+        assert!(
+            r.y + r.height <= WA.y + WA.height - gaps.gappov,
+            "client {idx} rect {r:?} bleeds past the bottom outer gap"
+        );
+    }
+}

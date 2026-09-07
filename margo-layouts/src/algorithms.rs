@@ -535,6 +535,28 @@ pub fn mosaic_arrange(
         return vec![];
     }
 
+    // 0. Reserve the *outer* gap on every edge before packing anything —
+    //    same reasoning as `tile()` / `grid()` / every other layout. The
+    //    compositor draws a client's border *outside* `geom` (border frame
+    //    = geom expanded by `border_width` on each side; see
+    //    `render/rounded_border.rs`), so a client packed flush against
+    //    `work_area`'s own edge has its border bleed past that edge — at
+    //    the top, straight into the bar's exclusive zone, where the bar's
+    //    own surface then paints over it and the border line simply never
+    //    shows. `gappoh`/`gappov` is exactly the margin every other
+    //    layout already reserves for this; mosaic was missing it.
+    let oh = gaps.gappoh.max(0);
+    let ov = gaps.gappov.max(0);
+    let area = Rect::new(
+        work_area.x + oh,
+        work_area.y + ov,
+        (work_area.width - 2 * oh).max(0),
+        (work_area.height - 2 * ov).max(0),
+    );
+    if area.width <= 0 || area.height <= 0 {
+        return vec![];
+    }
+
     struct Sized {
         index: usize,
         w: i32,
@@ -542,13 +564,13 @@ pub fn mosaic_arrange(
         min_h: i32,
     }
 
-    // 1. Clamp each client's ideal size to its own min/max and to the work
-    //    area. No ideal size (a client that's never been mapped/sized) or
-    //    no min/max (unconstrained axis) falls back to a comfortable
-    //    fraction of the work area, mirroring `place_floating_cascade`'s
-    //    60%-of-work-area fallback.
-    let fallback_w = ((work_area.width as f32) * 0.42) as i32;
-    let fallback_h = ((work_area.height as f32) * 0.55) as i32;
+    // 1. Clamp each client's ideal size to its own min/max and to the
+    //    (gap-inset) packing area. No ideal size (a client that's never
+    //    been mapped/sized) or no min/max (unconstrained axis) falls back
+    //    to a comfortable fraction of the area, mirroring
+    //    `place_floating_cascade`'s 60%-of-work-area fallback.
+    let fallback_w = ((area.width as f32) * 0.42) as i32;
+    let fallback_h = ((area.height as f32) * 0.55) as i32;
     let sized: Vec<Sized> = clients
         .iter()
         .map(|c| {
@@ -571,9 +593,9 @@ pub fn mosaic_arrange(
             }
             Sized {
                 index: c.index,
-                w: w.clamp(1, work_area.width),
-                h: h.clamp(1, work_area.height),
-                min_h: min_h.clamp(1, work_area.height),
+                w: w.clamp(1, area.width),
+                h: h.clamp(1, area.height),
+                min_h: min_h.clamp(1, area.height),
             }
         })
         .collect();
@@ -587,7 +609,7 @@ pub fn mosaic_arrange(
     let mut row_w = 0;
     for s in &sized {
         let needed = if row_w == 0 { s.w } else { row_w + gx + s.w };
-        if needed > work_area.width && row_w > 0 {
+        if needed > area.width && row_w > 0 {
             rows.push(std::mem::take(&mut current_row));
             row_w = 0;
         }
@@ -607,9 +629,9 @@ pub fn mosaic_arrange(
     //    the (fixed, never-shrunk) inter-row gaps — folding the gaps into
     //    the same ratio as the content undercounts how much the content
     //    itself needs to shrink by exactly the gap total, which is enough
-    //    to overflow the work area by a few px on some row counts.
+    //    to overflow the area by a few px on some row counts.
     let total_gap_h = gy * (rows.len() as i32 - 1).max(0);
-    let content_budget = (work_area.height - total_gap_h).max(0);
+    let content_budget = (area.height - total_gap_h).max(0);
     let natural_content_h: i32 = rows
         .iter()
         .map(|r| r.iter().map(|s| s.h).max().unwrap_or(0))
@@ -626,7 +648,7 @@ pub fn mosaic_arrange(
     //    row-mates — a chat window stays narrow-and-tall next to a wide,
     //    shorter PDF reader in the same row.
     let mut result = Vec::with_capacity(sized.len());
-    let mut y = work_area.y;
+    let mut y = area.y;
     for row in &rows {
         let row_h = row
             .iter()
@@ -635,7 +657,7 @@ pub fn mosaic_arrange(
             .unwrap_or(0);
         let row_total_w: i32 =
             row.iter().map(|s| s.w).sum::<i32>() + gx * (row.len() as i32 - 1).max(0);
-        let mut x = work_area.x + (work_area.width - row_total_w).max(0) / 2;
+        let mut x = area.x + (area.width - row_total_w).max(0) / 2;
         for s in row {
             let h = ((s.h as f32 * shrink) as i32).max(s.min_h).min(row_h);
             result.push((s.index, Rect::new(x, y, s.w, h)));
