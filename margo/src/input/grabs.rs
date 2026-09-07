@@ -445,8 +445,8 @@ impl PointerGrab<MargoState> for ResizeSurfaceGrab {
 /// Otherwise just restore the dragged window's pre-grab floating geometry
 /// so the drag_tile_small thumbnail doesn't linger as a 300×300 floater —
 /// for a Mosaic client this is a no-op in practice, since the very next
-/// `reconcile_mosaic_layout` pass repacks it from its own `mosaic_ideal_*`
-/// regardless of where `float_geom` currently sits.
+/// `reconcile_mosaic_layout` pass repacks it from the work area + its own
+/// min/max size hints regardless of where `float_geom` currently sits.
 pub(crate) fn resolve_drag_tile_drop(
     data: &mut MargoState,
     dragged: &Window,

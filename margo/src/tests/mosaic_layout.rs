@@ -2,10 +2,15 @@
 //!
 //! Mirrors `floating_layout.rs`'s structure and fixture usage closely
 //! (both auto-float via `is_floating`/`float_geom`, both dissolve tabbed
-//! groups, both leave hand-floated clients alone), plus the two properties
-//! specific to Mosaic: repeated packing passes must not ratchet a window
-//! smaller (`mosaic_ideal_width`/`height` exist precisely to prevent that),
-//! and switching a tag between `Floating` and `Mosaic` must not let either
+//! groups, both leave hand-floated clients alone), plus the properties
+//! specific to Mosaic: placement is a pure function of the *current* work
+//! area and each client's own (layout-independent) min/max size hints —
+//! never of `geom`, so it never depends on whatever layout was active on
+//! this tag a moment ago (`mosaic_placement_is_independent_of_prior_
+//! layout` is the direct regression test); repeated packing passes must
+//! not ratchet a window smaller either, now moot for the same reason —
+//! there's nothing cached to re-read a shrunk value back from; and
+//! switching a tag between `Floating` and `Mosaic` must not let either
 //! reconcile pass reclaim/un-float the other's clients (`auto_float_owner`).
 
 use super::client::ClientId;
@@ -94,10 +99,6 @@ fn switching_away_from_mosaic_re_tiles_auto_floated_clients() {
         assert!(!c.is_floating, "auto-floated client not re-tiled");
         assert!(!c.floated_by_layout);
         assert_eq!(c.auto_float_owner, None);
-        assert_eq!(
-            c.mosaic_ideal_width, 0,
-            "ideal size must not survive leaving the Mosaic tag"
-        );
     }
 }
 
@@ -140,9 +141,11 @@ fn reconcile_is_idempotent_and_does_not_ratchet_size() {
         .collect();
 
     // Several more passes with nothing else changing must be a no-op —
-    // in particular, must not shrink anything further (the bug
-    // `mosaic_ideal_width`/`height` exist to prevent: re-reading a
-    // possibly-already-shrunk `float_geom` back as next pass's "ideal").
+    // in particular, must not shrink anything further. Placement is
+    // recomputed fresh from `work_area` + each client's own min/max every
+    // pass, never from a cached "ideal" or from `float_geom` itself, so
+    // there's nothing to ratchet: pass 2 sees exactly the same inputs
+    // pass 1 did.
     for _ in 0..3 {
         fx.server.state.arrange_monitor(0);
     }
@@ -155,6 +158,47 @@ fn reconcile_is_idempotent_and_does_not_ratchet_size() {
         .collect();
 
     assert_eq!(first, after, "repeated arrange passes drifted the packing");
+}
+
+#[test]
+fn mosaic_placement_is_independent_of_prior_layout() {
+    // The exact bug reported from screenshots: the same three windows
+    // landed in visibly different Mosaic grids depending on whether the
+    // tag had been on `scroller`, `tile`, or nothing beforehand — because
+    // "ideal size" used to be captured from `geom`, and `geom` is
+    // whatever the *previous* layout happened to leave behind (`tile`'s
+    // lopsided master/stack split, `scroller`'s near-full-width columns).
+    // Placement must be a pure function of the work area + each client's
+    // own min/max, so the same windows land in the exact same geometry no
+    // matter what tag history led up to switching to Mosaic.
+    fn mosaic_after(fx: &mut Fixture, prior: Option<LayoutId>) -> Vec<crate::layout::Rect> {
+        let _ = three_windows(fx);
+        if let Some(prior) = prior {
+            pin_layout(fx, 1, prior);
+            fx.server.state.arrange_monitor(0);
+        }
+        pin_layout(fx, 1, LayoutId::Mosaic);
+        fx.server.state.arrange_monitor(0);
+        fx.server
+            .state
+            .clients
+            .iter()
+            .map(|c| c.float_geom)
+            .collect()
+    }
+
+    let fresh = mosaic_after(&mut Fixture::new(), None);
+    let after_tile = mosaic_after(&mut Fixture::new(), Some(LayoutId::Tile));
+    let after_scroller = mosaic_after(&mut Fixture::new(), Some(LayoutId::Scroller));
+
+    assert_eq!(
+        fresh, after_tile,
+        "mosaic placement changed depending on a prior stint on `tile`"
+    );
+    assert_eq!(
+        fresh, after_scroller,
+        "mosaic placement changed depending on a prior stint on `scroller`"
+    );
 }
 
 #[test]

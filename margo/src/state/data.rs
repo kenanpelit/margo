@@ -213,15 +213,6 @@ pub struct MargoClient {
     pub min_height: i32,
     pub max_width: i32,
     pub max_height: i32,
-    /// The `Mosaic` layout's "ideal size" for this client — captured once,
-    /// from `geom`, the first time `reconcile_mosaic_layout` starts
-    /// governing it, and reset to `0` when it stops. `0` = not captured
-    /// (mosaic falls back to a fraction of the work area). Deliberately
-    /// separate from `float_geom`, which mosaic *writes* every repack —
-    /// reading `float_geom` back as the next repack's "ideal" would ratchet
-    /// the window smaller every time it had to shrink to make room.
-    pub mosaic_ideal_width: i32,
-    pub mosaic_ideal_height: i32,
     /// `mosaic_overflow_stack` alternative to the tag-move eviction: this
     /// client currently overflows `Mosaic`'s packing but, instead of
     /// moving tags, stays put shrunk to a small "peek" in the work area's
@@ -334,8 +325,6 @@ impl MargoClient {
             min_height: 0,
             max_width: 0,
             max_height: 0,
-            mosaic_ideal_width: 0,
-            mosaic_ideal_height: 0,
             is_mosaic_stacked: false,
             canvas_floating: false,
             force_fake_maximize: false,

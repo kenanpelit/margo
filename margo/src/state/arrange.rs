@@ -276,21 +276,6 @@ impl MargoState {
                     self.clients[i].floated_by_layout = true;
                     self.clients[i].auto_float_owner = Some(crate::layout::LayoutId::Mosaic);
                 }
-                // Capture "ideal size" exactly once, from the geometry the
-                // client had *before* mosaic ever touched it — not from
-                // `float_geom`, which mosaic itself is about to overwrite
-                // below (reading that back next pass would ratchet the
-                // window smaller every time it had to shrink to make room).
-                if self.clients[i].floated_by_layout
-                    && self.clients[i].auto_float_owner == Some(crate::layout::LayoutId::Mosaic)
-                    && self.clients[i].mosaic_ideal_width == 0
-                {
-                    let geom = self.clients[i].geom;
-                    if geom.width > 0 && geom.height > 0 {
-                        self.clients[i].mosaic_ideal_width = geom.width;
-                        self.clients[i].mosaic_ideal_height = geom.height;
-                    }
-                }
             }
 
             // Pack only the clients Mosaic itself owns. A window the user
@@ -315,7 +300,19 @@ impl MargoState {
                     crate::layout::MosaicClient {
                         index: i,
                         id: c.id,
-                        ideal: (c.mosaic_ideal_width, c.mosaic_ideal_height),
+                        // Deliberately never sourced from this client's own
+                        // `geom` — that's whatever layout happened to be
+                        // active on this tag a moment ago (Tile's lopsided
+                        // master/stack split, Scroller's near-full-width
+                        // columns, ...), so it made Mosaic's placement
+                        // depend on tiling history instead of being its own
+                        // consistent standard. `(0, 0)` always takes
+                        // `pack_rows`'s fallback fraction of the *current*
+                        // work area instead, clamped by this client's own
+                        // (layout-independent) min/max size hints — same
+                        // input, same output, no matter what tag/layout
+                        // this client was on a second ago.
+                        ideal: (0, 0),
                         min: (c.min_width, c.min_height),
                         max: (c.max_width, c.max_height),
                     }
@@ -389,11 +386,6 @@ impl MargoState {
                     self.clients[i].is_floating = false;
                     self.clients[i].floated_by_layout = false;
                     self.clients[i].auto_float_owner = None;
-                    // Fresh ideal next time this client enters Mosaic —
-                    // whatever it grew/shrank to on this tag shouldn't
-                    // outlive the tag switch.
-                    self.clients[i].mosaic_ideal_width = 0;
-                    self.clients[i].mosaic_ideal_height = 0;
                     self.clients[i].is_mosaic_stacked = false;
                 }
             }
