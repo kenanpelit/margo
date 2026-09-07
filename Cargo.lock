@@ -5600,6 +5600,7 @@ dependencies = [
  "margo-config",
  "margo-logging",
  "mcal",
+ "mctl",
  "mpower",
  "mshell-ai",
  "mshell-cache",
