@@ -220,3 +220,91 @@ fn opening_a_fourth_window_repacks_without_orphaning_geometry() {
         );
     }
 }
+
+// ── Phase 2: drag-tile-to-tile extended to Mosaic ───────────────────────────
+
+#[test]
+fn interactive_grab_excludes_a_client_from_mosaic_repacking() {
+    let mut fx = Fixture::new();
+    let _ = three_windows(&mut fx);
+    pin_layout(&mut fx, 1, LayoutId::Mosaic);
+    fx.server.state.arrange_monitor(0);
+
+    // Simulate an in-progress drag the way `MoveSurfaceGrab::motion` drives
+    // it: move the window and flag it grabbed, *without* going through the
+    // real pointer grab machinery.
+    fx.server.state.clients[0].interactive_grab = true;
+    let dragged_to = crate::layout::Rect::new(900, 700, 250, 180);
+    fx.server.state.clients[0].float_geom = dragged_to;
+    fx.server.state.clients[0].geom = dragged_to;
+
+    fx.server.state.arrange_monitor(0);
+
+    assert_eq!(
+        fx.server.state.clients[0].float_geom, dragged_to,
+        "reconcile_mosaic_layout repacked a client mid-drag"
+    );
+}
+
+// `resolve_drag_tile_drop`'s swap-target *decision* (same-kind check) is
+// covered directly, without a Space/pointer fixture, by
+// `input::grabs::drag_tile_target_tests` — the compositor's real hit-
+// testing needs a client with an actually-committed buffer, which this
+// harness's synthetic toplevels don't have.
+
+#[test]
+fn dropping_a_mosaic_client_on_empty_space_stays_floating_and_owned() {
+    let mut fx = Fixture::new();
+    let _ = three_windows(&mut fx);
+    pin_layout(&mut fx, 1, LayoutId::Mosaic);
+    fx.server.state.arrange_monitor(0);
+
+    let dragged_window = fx.server.state.clients[0].window.clone();
+    let original_float_geom = fx.server.state.clients[0].float_geom;
+
+    // Cursor far off in empty space — no client under it.
+    fx.server.state.input_pointer.x = -5000.0;
+    fx.server.state.input_pointer.y = -5000.0;
+
+    crate::input::grabs::resolve_drag_tile_drop(
+        &mut fx.server.state,
+        &dragged_window,
+        original_float_geom,
+    );
+
+    assert!(fx.server.state.clients[0].is_floating);
+    assert_eq!(
+        fx.server.state.clients[0].auto_float_owner,
+        Some(LayoutId::Mosaic)
+    );
+}
+
+#[test]
+fn dropping_a_classically_tiled_client_restores_original_float_geom_when_no_target() {
+    // For a classic-tile source, the trailing `arrange_monitor` recomputes
+    // *tiled* `geom` via the normal grid algorithms, which never touch
+    // `float_geom` — so the restored value sticks. (Unlike Mosaic, whose
+    // trailing repack overwrites `float_geom` again regardless of what
+    // `resolve_drag_tile_drop` just wrote — see
+    // `dropping_a_mosaic_client_on_empty_space_stays_floating_and_owned`
+    // above, which asserts what actually holds for that case.)
+    let mut fx = Fixture::new();
+    let _ = three_windows(&mut fx);
+    pin_layout(&mut fx, 1, LayoutId::Tile);
+    fx.server.state.arrange_monitor(0);
+    assert!(!fx.server.state.clients[0].is_floating);
+
+    let dragged_window = fx.server.state.clients[0].window.clone();
+    let original_float_geom = crate::layout::Rect::new(42, 42, 111, 222);
+
+    fx.server.state.input_pointer.x = -5000.0;
+    fx.server.state.input_pointer.y = -5000.0;
+    crate::input::grabs::resolve_drag_tile_drop(
+        &mut fx.server.state,
+        &dragged_window,
+        original_float_geom,
+    );
+
+    assert_eq!(fx.server.state.clients[0].float_geom, original_float_geom);
+    assert!(!fx.server.state.clients[0].is_floating);
+}

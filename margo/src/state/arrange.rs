@@ -277,13 +277,18 @@ impl MargoState {
             // Pack only the clients Mosaic itself owns. A window the user
             // hand-floated before this tag ever became Mosaic
             // (`is_floating && !floated_by_layout`) keeps its own spot,
-            // same as `reconcile_floating_layout`.
+            // same as `reconcile_floating_layout`. A client mid interactive
+            // move/resize is *also* excluded — otherwise this pass would
+            // immediately snap it back to its packed slot on every motion
+            // tick, fighting the user's own drag (see `interactive_grab`'s
+            // doc comment).
             let packable: Vec<crate::layout::MosaicClient> = governed
                 .iter()
                 .copied()
                 .filter(|&i| {
                     self.clients[i].floated_by_layout
                         && self.clients[i].auto_float_owner == Some(crate::layout::LayoutId::Mosaic)
+                        && !self.clients[i].interactive_grab
                 })
                 .map(|i| {
                     let c = &self.clients[i];

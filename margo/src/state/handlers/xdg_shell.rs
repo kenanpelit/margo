@@ -184,6 +184,7 @@ impl XdgShellHandler for MargoState {
         // CSD-initiated move via xdg_toplevel.move always starts
         // a regular drag — never the tile-to-tile swap path.
         let original_float_geom = self.clients[idx].float_geom;
+        self.clients[idx].interactive_grab = true;
 
         let grab = crate::input::grabs::MoveSurfaceGrab {
             start_data,
@@ -230,6 +231,7 @@ impl XdgShellHandler for MargoState {
         let window = c.window.clone();
         let initial_loc = Point::<i32, Logical>::from((c.geom.x, c.geom.y));
         let initial_size = Size::<i32, Logical>::from((c.geom.width.max(1), c.geom.height.max(1)));
+        self.clients[idx].interactive_grab = true;
 
         let grab = crate::input::grabs::ResizeSurfaceGrab {
             start_data,

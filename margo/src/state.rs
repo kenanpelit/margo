@@ -1482,9 +1482,14 @@ impl MargoState {
         ));
         // Remember the pre-grab tiled state so the grab's drop
         // handler can decide between "swap with target tile" and
-        // "restore to original float geometry".
-        let was_tiled = !self.clients[idx].is_floating;
+        // "restore to original float geometry". A client governed by
+        // `Mosaic` counts too (it's always `is_floating`, but dropping it
+        // on another Mosaic client should still swap their packing order)
+        // — see `resolve_drag_tile_drop`.
+        let was_tiled = !self.clients[idx].is_floating
+            || self.clients[idx].auto_float_owner == Some(crate::layout::LayoutId::Mosaic);
         let original_float_geom = self.clients[idx].float_geom;
+        self.clients[idx].interactive_grab = true;
         let Some(pointer) = self.seat.get_pointer() else {
             return;
         };
@@ -1524,6 +1529,7 @@ impl MargoState {
             c.geom.width.max(1),
             c.geom.height.max(1),
         ));
+        self.clients[idx].interactive_grab = true;
         let Some(pointer) = self.seat.get_pointer() else {
             return;
         };

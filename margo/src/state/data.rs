@@ -195,6 +195,16 @@ pub struct MargoClient {
     /// `reconcile_mosaic_layout` from fighting over (or un-floating) each
     /// other's clients when a tag switches between the two.
     pub auto_float_owner: Option<LayoutId>,
+    /// `true` for the duration of an interactive move or resize grab
+    /// (`MoveSurfaceGrab` / `ResizeSurfaceGrab`) on this client. Both
+    /// grabs drive `float_geom` from the cursor every motion tick and call
+    /// `arrange_monitor`, which for `Mosaic` re-packs every governed
+    /// client on *every* pass (unlike `Floating`, which only seeds a
+    /// client's geometry once) — without this flag, `reconcile_mosaic_
+    /// layout` would immediately snap a dragged/resized window back to
+    /// its packed slot, fighting the user's own grab. Set when a grab
+    /// starts, cleared unconditionally when it ends.
+    pub interactive_grab: bool,
     pub canvas_no_tile: bool,
     /// Set by a window rule. When true, screen-capture clients see
     /// solid black for this window's region.
@@ -308,6 +318,7 @@ impl MargoClient {
             group_active: false,
             floated_by_layout: false,
             auto_float_owner: None,
+            interactive_grab: false,
             canvas_no_tile: false,
             block_out_from_screencast: false,
             min_width: 0,

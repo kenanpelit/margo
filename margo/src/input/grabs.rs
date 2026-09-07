@@ -39,13 +39,14 @@ pub struct MoveSurfaceGrab {
     pub start_data: GrabStartData<MargoState>,
     pub window: Window,
     pub initial_loc: Point<i32, Logical>,
-    /// `true` when the dragged client was tiled at grab start.
-    /// Drives mango 0.13's drag-tile-to-tile flow: on release we
-    /// look for another tile under the cursor and swap positions
-    /// instead of leaving the window floating in mid-air.
-    /// `false` for CSD `xdg_toplevel.move` requests — those keep
-    /// the legacy behaviour (the client becomes floating wherever
-    /// the user drops it).
+    /// `true` when the dragged client was classically tiled *or*
+    /// `Mosaic`-governed at grab start. Drives mango 0.13's drag-tile-to-
+    /// tile flow, extended to Mosaic: on release we look for a *same-kind*
+    /// client under the cursor (`is_valid_drag_tile_target`) and swap
+    /// positions instead of leaving the window floating in mid-air.
+    /// `false` for CSD `xdg_toplevel.move` requests — those keep the
+    /// legacy behaviour (the client becomes floating wherever the user
+    /// drops it).
     pub was_tiled: bool,
     /// Pre-grab floating geometry. Restored on release when no
     /// valid drop target was found, so the user can undo a drag
@@ -114,10 +115,16 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
     ) {
         handle.button(data, event);
         if handle.current_pressed().is_empty() {
+            // Grab's over either way — clear the "don't repack me" flag
+            // before anything below touches arrange (`resolve_drag_tile_
+            // drop` ends with its own `arrange_monitor`).
+            if let Some(idx) = data.clients.iter().position(|c| c.window == self.window) {
+                data.clients[idx].interactive_grab = false;
+            }
             // Drag-tile-to-tile end of grab. Only kicks in when
-            // the grabbed window was tiled at start AND the
-            // config flag is on; CSD `xdg_toplevel.move` requests
-            // are unaffected because their grab is built with
+            // the grabbed window was tiled (or Mosaic-governed) at
+            // start AND the config flag is on; CSD `xdg_toplevel.move`
+            // requests are unaffected because their grab is built with
             // `was_tiled: false` over in xdg_shell.rs.
             if self.was_tiled && data.config.drag_tile_to_tile {
                 resolve_drag_tile_drop(data, &self.window, self.original_float_geom);
@@ -312,6 +319,9 @@ impl PointerGrab<MargoState> for ResizeSurfaceGrab {
     ) {
         handle.button(data, event);
         if handle.current_pressed().is_empty() {
+            if let Some(idx) = data.clients.iter().position(|c| c.window == self.window) {
+                data.clients[idx].interactive_grab = false;
+            }
             handle.unset_grab(self, data, event.serial, event.time, true);
         }
     }
@@ -404,12 +414,16 @@ impl PointerGrab<MargoState> for ResizeSurfaceGrab {
 // ── drag_tile_to_tile drop resolver ──────────────────────────────────────────
 
 /// Called from `MoveSurfaceGrab::button` when the left button is
-/// released. If the cursor is over another tiled client on the
-/// same monitor/tagset, swap the two tiles (mango's
-/// drag_tile_to_tile). Otherwise just restore the dragged
-/// window's pre-grab floating geometry so the drag_tile_small
-/// thumbnail doesn't linger as a 300×300 floater.
-fn resolve_drag_tile_drop(
+/// released. If the cursor is over another *same-kind* client — both
+/// classically tiled, or both `Mosaic`-governed — swap their positions
+/// (mango's drag_tile_to_tile; for Mosaic this reorders `mosaic_arrange`'s
+/// shelf-pack input, which is Mosaic's version of "combine two windows").
+/// Otherwise just restore the dragged window's pre-grab floating geometry
+/// so the drag_tile_small thumbnail doesn't linger as a 300×300 floater —
+/// for a Mosaic client this is a no-op in practice, since the very next
+/// `reconcile_mosaic_layout` pass repacks it from its own `mosaic_ideal_*`
+/// regardless of where `float_geom` currently sits.
+pub(crate) fn resolve_drag_tile_drop(
     data: &mut MargoState,
     dragged: &Window,
     original_float_geom: crate::layout::Rect,
@@ -417,12 +431,18 @@ fn resolve_drag_tile_drop(
     let Some(src) = data.clients.iter().position(|c| &c.window == dragged) else {
         return;
     };
+    let src_is_mosaic = data.clients[src].auto_float_owner == Some(crate::layout::LayoutId::Mosaic);
 
     // Always restore the pre-grab float_geom so the next time the
     // user un-tiles this window it falls back to its real size,
-    // not the 300×300 thumbnail.
+    // not the 300×300 thumbnail. A classically-tiled source goes back to
+    // being tiled (`is_floating = false`); a Mosaic source stays floating
+    // — Mosaic never un-floats a client just because a drag ended, only
+    // when the tag leaves Mosaic entirely (`reconcile_mosaic_layout`).
     data.clients[src].float_geom = original_float_geom;
-    data.clients[src].is_floating = false;
+    if !src_is_mosaic {
+        data.clients[src].is_floating = false;
+    }
 
     let cursor = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
         data.input_pointer.x,
@@ -431,7 +451,15 @@ fn resolve_drag_tile_drop(
 
     if let Some((target_window, _)) = data.space.element_under(cursor) {
         if let Some(dst) = data.clients.iter().position(|c| c.window == *target_window) {
-            if dst != src && !data.clients[dst].is_floating {
+            let dst_is_mosaic =
+                data.clients[dst].auto_float_owner == Some(crate::layout::LayoutId::Mosaic);
+            if dst != src
+                && is_valid_drag_tile_target(
+                    src_is_mosaic,
+                    data.clients[dst].is_floating,
+                    dst_is_mosaic,
+                )
+            {
                 data.clients.swap(src, dst);
             }
         }
@@ -440,5 +468,48 @@ fn resolve_drag_tile_drop(
     let mon = data.focused_monitor();
     if mon < data.monitors.len() {
         data.arrange_monitor(mon);
+    }
+}
+
+/// Whether a drop target is a valid drag-tile-to-tile partner for the
+/// dragged client, given whether the *source* is `Mosaic`-governed. Pure
+/// so it's directly unit-testable without a `Space`/pointer fixture —
+/// `resolve_drag_tile_drop`'s own hit-testing needs a real committed
+/// client buffer, which the compositor always has but a synthetic test
+/// harness does not.
+///
+/// A `Mosaic` source may only swap with another `Mosaic`-governed client
+/// (reordering `mosaic_arrange`'s packing input); a classically-tiled
+/// source may only swap with another classically-tiled client (`!is_floating`)
+/// — matching the pre-Mosaic behaviour exactly. Cross-kind drops (e.g. a
+/// `Tile`-family window dropped on a `Mosaic` one) are never valid.
+fn is_valid_drag_tile_target(
+    src_is_mosaic: bool,
+    dst_is_floating: bool,
+    dst_is_mosaic: bool,
+) -> bool {
+    if src_is_mosaic {
+        dst_is_mosaic
+    } else {
+        !dst_is_floating
+    }
+}
+
+#[cfg(test)]
+mod drag_tile_target_tests {
+    use super::is_valid_drag_tile_target;
+
+    #[test]
+    fn mosaic_source_only_targets_mosaic() {
+        assert!(is_valid_drag_tile_target(true, true, true));
+        assert!(!is_valid_drag_tile_target(true, true, false));
+        assert!(!is_valid_drag_tile_target(true, false, false));
+    }
+
+    #[test]
+    fn tiled_source_only_targets_tiled() {
+        assert!(is_valid_drag_tile_target(false, false, false));
+        assert!(!is_valid_drag_tile_target(false, true, false));
+        assert!(!is_valid_drag_tile_target(false, true, true));
     }
 }
