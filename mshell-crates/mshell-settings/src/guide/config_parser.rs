@@ -24,9 +24,23 @@ pub struct ConfigSection {
 }
 
 const DIRECTIVE_NAMES: &[&str] = &[
-    "bind", "bindr", "bindl", "bindc", "bindrl", "bindrc", "bindlc", "bindrlc",
-    "mousebind", "gesturebind", "axisbind", "windowrule", "tagrule", "layerrule",
-    "monitorrule", "source", "include",
+    "bind",
+    "bindr",
+    "bindl",
+    "bindc",
+    "bindrl",
+    "bindrc",
+    "bindlc",
+    "bindrlc",
+    "mousebind",
+    "gesturebind",
+    "axisbind",
+    "windowrule",
+    "tagrule",
+    "layerrule",
+    "monitorrule",
+    "source",
+    "include",
 ];
 
 pub fn parse(source: &str) -> Vec<ConfigSection> {

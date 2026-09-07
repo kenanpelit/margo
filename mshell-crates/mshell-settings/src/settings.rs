@@ -2065,7 +2065,10 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
     ("users", "user account password"),
     ("about", "version build info credits"),
     ("setup", "wizard onboarding first-run"),
-    ("guide", "help howto documentation actions binds keybinds config reference tutorial"),
+    (
+        "guide",
+        "help howto documentation actions binds keybinds config reference tutorial",
+    ),
 ];
 
 fn keywords_for(label: &str) -> &'static str {
