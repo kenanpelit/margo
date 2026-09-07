@@ -1011,7 +1011,26 @@ impl Window {
 
     fn restore_playlist(&self) {
         if let Some(songs) = utils::load_cached_songs() {
-            self.queue_songs(songs);
+            // `queue_songs` alone never looks at `pending_start` — that's
+            // only consumed once the queue lands, and only `open_files` /
+            // `load_library_files` set it first. Calling `queue_songs`
+            // directly (as this used to) left `pending_start` at its
+            // default `None`, so playback always fell through to the
+            // blind `skip_to(0)` in that match's `_` arm: the button
+            // restored *which songs* were queued, never *where you were*
+            // in them. `[playback] on_start = "resume"` already builds
+            // this exact intent from the same `resume-uri` /
+            // `resume-position` keys on every normal startup — reuse it
+            // here so the button matches that behaviour.
+            let settings = utils::settings_manager();
+            let uri = settings.string("resume-uri");
+            let pos = settings.uint64("resume-position");
+            let intent = if uri.is_empty() {
+                StartIntent::Top
+            } else {
+                StartIntent::Resume(uri.to_string(), pos)
+            };
+            self.load_library_files(songs, intent);
         }
     }
 
