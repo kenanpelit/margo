@@ -731,6 +731,15 @@ pub struct MargoState {
     pub input_touch: TouchState,
     pub input_gesture: GestureState,
 
+    /// Client id of the drag-tile-to-tile swap target currently under the
+    /// cursor, updated every motion tick by `MoveSurfaceGrab` and cleared
+    /// when the grab ends. `None` outside of an active tiled/`Mosaic`
+    /// drag. Purely a rendering hint (`render::drag_highlight`) — the
+    /// actual swap on release goes through the same lookup
+    /// (`input::grabs::find_drag_tile_target`) independently, so a stale
+    /// value here can at worst mis-highlight for a frame, never mis-swap.
+    pub drag_swap_target: Option<u64>,
+
     /// Last-writer-wins signal deciding which monitor a keybind/IPC menu
     /// open targets. Written by `refresh_pointer_monitor_tracking`
     /// (→ `Pointer`) and the keyboard keybind dispatch path (→ `Focus`);
@@ -1247,6 +1256,7 @@ impl MargoState {
             input_pointer: Default::default(),
             input_touch: Default::default(),
             input_gesture: Default::default(),
+            drag_swap_target: None,
             active_output_source: ActiveOutputSource::default(),
             decoration_ids: std::cell::RefCell::new(std::collections::HashMap::new()),
             foreign_toplevel_list,

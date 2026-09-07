@@ -222,6 +222,15 @@ pub struct MargoClient {
     /// the window smaller every time it had to shrink to make room.
     pub mosaic_ideal_width: i32,
     pub mosaic_ideal_height: i32,
+    /// `mosaic_overflow_stack` alternative to the tag-move eviction: this
+    /// client currently overflows `Mosaic`'s packing but, instead of
+    /// moving tags, stays put shrunk to a small "peek" in the work area's
+    /// corner (`mosaic_stack_peek_rect`). Excluded from normal packing
+    /// while set; cleared (and rejoins the pack) as soon as it's focused
+    /// again — see `refresh_keyboard_focus`. Always `false` when
+    /// `mosaic_overflow_stack` is off; reset whenever the tag leaves
+    /// `Mosaic` entirely, same as `floated_by_layout`/`auto_float_owner`.
+    pub is_mosaic_stacked: bool,
     pub canvas_floating: bool,
     pub force_fake_maximize: bool,
     pub force_tiled_state: bool,
@@ -327,6 +336,7 @@ impl MargoClient {
             max_height: 0,
             mosaic_ideal_width: 0,
             mosaic_ideal_height: 0,
+            is_mosaic_stacked: false,
             canvas_floating: false,
             force_fake_maximize: false,
             force_tiled_state: false,

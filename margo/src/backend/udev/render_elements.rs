@@ -1542,6 +1542,42 @@ fn push_group_tabs(
     }
 }
 
+/// Phase 2 drag-tile-to-tile drop-target preview — see
+/// `render::drag_highlight`. Called once per client alongside
+/// `push_group_tabs`; no-ops unless `client` is exactly the client
+/// `MoveSurfaceGrab::motion` currently has marked as the live swap
+/// target.
+fn push_drag_swap_highlight(
+    renderer: &mut GlesRenderer,
+    state: &MargoState,
+    client: Option<&MargoClient>,
+    output_geo: Rectangle<i32, Logical>,
+    output_scale: f64,
+    elements: &mut Vec<MargoRenderElement>,
+) {
+    let Some(target_id) = state.drag_swap_target else {
+        return;
+    };
+    let Some(client) = client else { return };
+    if client.id != target_id {
+        return;
+    }
+    let Some(prog) = crate::render::rounded_solid::shader(renderer) else {
+        return;
+    };
+    let radius = (state.config.border_radius as f32) * output_scale as f32;
+    elements.push(MargoRenderElement::RoundedSolid(
+        crate::render::drag_highlight::render_element(
+            client.geom,
+            output_geo.loc,
+            output_scale,
+            radius,
+            state.config.focuscolor.0,
+            prog.0,
+        ),
+    ));
+}
+
 fn push_client_elements(
     renderer: &mut GlesRenderer,
     state: &MargoState,
@@ -1715,6 +1751,14 @@ fn push_client_elements(
                 }
 
                 push_group_tabs(renderer, state, client, output_geo, output_scale, elements);
+                push_drag_swap_highlight(
+                    renderer,
+                    state,
+                    client,
+                    output_geo,
+                    output_scale,
+                    elements,
+                );
 
                 // Drop shadow under floating windows when
                 // `Config::shadows` is on, the client doesn't have
@@ -2050,6 +2094,14 @@ fn push_client_elements(
                 }
 
                 push_group_tabs(renderer, state, client, output_geo, output_scale, elements);
+                push_drag_swap_highlight(
+                    renderer,
+                    state,
+                    client,
+                    output_geo,
+                    output_scale,
+                    elements,
+                );
 
                 let rendered = AsRenderElements::<GlesRenderer>::render_elements::<
                     WaylandSurfaceRenderElement<GlesRenderer>,

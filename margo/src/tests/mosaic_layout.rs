@@ -317,6 +317,49 @@ fn dropping_a_classically_tiled_client_restores_original_float_geom_when_no_targ
     assert!(!fx.server.state.clients[0].is_floating);
 }
 
+#[test]
+fn dropping_a_mosaic_client_on_another_swaps_their_packing_order() {
+    // Regression coverage for the geometry-scan fix in
+    // `find_drag_tile_target`: this exact scenario used to be
+    // untestable through the fixture (its synthetic clients never
+    // commit a real buffer, so the old `space.element_under(cursor)`
+    // lookup never found anything — see the removed "fake-green" tests
+    // this replaces), and in production depended on z-order rather than
+    // where the cursor actually was.
+    let mut fx = Fixture::new();
+    let _ = three_windows(&mut fx);
+    pin_layout(&mut fx, 1, LayoutId::Mosaic);
+    fx.server.state.arrange_monitor(0);
+
+    let src_window = fx.server.state.clients[0].window.clone();
+    let src_id = fx.server.state.clients[0].id;
+    let dst_id = fx.server.state.clients[1].id;
+    let original_float_geom = fx.server.state.clients[0].float_geom;
+
+    // Drop dead-centre on client 1's actual packed geometry.
+    let target = fx.server.state.clients[1].geom;
+    fx.server.state.input_pointer.x = (target.x + target.width / 2) as f64;
+    fx.server.state.input_pointer.y = (target.y + target.height / 2) as f64;
+
+    crate::input::grabs::resolve_drag_tile_drop(
+        &mut fx.server.state,
+        &src_window,
+        original_float_geom,
+    );
+
+    // A successful swap exchanges the two clients' positions in
+    // `self.clients` — the dragged client's id now sits where the
+    // target's used to, and vice versa.
+    assert_eq!(
+        fx.server.state.clients[0].id, dst_id,
+        "target should now be at index 0"
+    );
+    assert_eq!(
+        fx.server.state.clients[1].id, src_id,
+        "dragged client should now be at index 1"
+    );
+}
+
 // ── Phase 3: auto-move to an empty tag on genuine overflow ──────────────────
 
 /// Force every client's own floor (`min_height`) high enough that ten of
@@ -426,5 +469,87 @@ fn mosaic_does_not_evict_when_every_tag_is_already_occupied() {
     assert_eq!(
         untouched_tags, after,
         "no empty tag exists — nothing should move"
+    );
+}
+
+// ── mosaic_overflow_stack: PaperWM-style "stay on tag, peek in the corner" ──
+
+#[test]
+fn mosaic_overflow_stack_shrinks_the_overflowing_client_instead_of_moving_tags() {
+    let mut fx = Fixture::new();
+    let windows = n_windows(&mut fx, 10);
+    pin_layout(&mut fx, 1, LayoutId::Mosaic);
+    fx.server.state.arrange_monitor(0);
+    force_overflow(&mut fx, windows.len());
+    fx.server.state.config.mosaic_overflow_stack = true;
+
+    let newest_window = fx.server.state.clients.last().unwrap().window.clone();
+    let newest_id = fx.server.state.clients.last().unwrap().id;
+    let original_tags = fx.server.state.clients.last().unwrap().tags;
+
+    fx.server.state.arrange_monitor(0);
+
+    let stacked = fx
+        .server
+        .state
+        .clients
+        .iter()
+        .find(|c| c.window == newest_window)
+        .expect("stacked client still exists");
+    assert_eq!(stacked.id, newest_id);
+    assert!(
+        stacked.is_mosaic_stacked,
+        "the overflowing client should be marked stacked, not moved"
+    );
+    assert_eq!(
+        stacked.tags, original_tags,
+        "mosaic_overflow_stack must not change the client's tag"
+    );
+    assert_eq!(
+        stacked.geom.width, 72,
+        "stacked clients render as a small fixed peek"
+    );
+    assert_eq!(stacked.geom.height, 72);
+
+    let still_on_tag1 = fx
+        .server
+        .state
+        .clients
+        .iter()
+        .filter(|c| c.tags & 1 != 0)
+        .count();
+    assert_eq!(still_on_tag1, 10, "nobody actually left the tag");
+}
+
+#[test]
+fn mosaic_overflow_stack_un_stacks_when_the_peek_is_focused() {
+    // Isolates the un-stack mechanism itself (the `refresh_keyboard_focus`
+    // hook + arrange.rs's `packable`/`stacked` split) from the eviction
+    // that would normally set the flag — this client's own constraints
+    // are modest, so nothing here needs to actually overflow. Eviction
+    // choosing "stack" correctly is covered separately, above.
+    let mut fx = Fixture::new();
+    let _ = three_windows(&mut fx);
+    pin_layout(&mut fx, 1, LayoutId::Mosaic);
+    fx.server.state.config.mosaic_overflow_stack = true;
+    fx.server.state.arrange_monitor(0);
+
+    fx.server.state.clients[2].is_mosaic_stacked = true;
+    fx.server.state.arrange_monitor(0);
+    assert_eq!(
+        fx.server.state.clients[2].geom.width, 72,
+        "should render as a peek while stacked"
+    );
+
+    fx.server.state.monitors[0].selected = Some(2);
+    fx.server.state.refresh_keyboard_focus();
+
+    assert!(
+        !fx.server.state.clients[2].is_mosaic_stacked,
+        "focusing the peek should un-stack it"
+    );
+    assert!(
+        fx.server.state.clients[2].geom.width > 72,
+        "should rejoin normal packing, not stay peek-sized"
     );
 }

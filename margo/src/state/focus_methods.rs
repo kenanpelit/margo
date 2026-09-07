@@ -61,6 +61,23 @@ impl MargoState {
     pub fn refresh_keyboard_focus(&mut self) {
         let desired = self.compute_desired_focus();
 
+        // A `mosaic_overflow_stack` peek that just became the desired
+        // focus (click, alt-tab, keybind — anything that routes through
+        // `compute_desired_focus`) rejoins normal packing: clear the flag
+        // and let the next `arrange_monitor` fold it back into
+        // `mosaic_arrange`, same as `Client::is_mosaic_stacked`'s doc
+        // comment promises.
+        if let Some(FocusTarget::Window(w)) = &desired
+            && let Some(idx) = self.clients.iter().position(|c| &c.window == w)
+            && self.clients[idx].is_mosaic_stacked
+        {
+            self.clients[idx].is_mosaic_stacked = false;
+            let mon = self.clients[idx].monitor;
+            if mon < self.monitors.len() {
+                self.arrange_monitor(mon);
+            }
+        }
+
         let current = self.seat.get_keyboard().and_then(|kb| kb.current_focus());
         if current.as_ref() == desired.as_ref() {
             tracing::debug!(

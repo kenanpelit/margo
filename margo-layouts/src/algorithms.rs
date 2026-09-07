@@ -607,20 +607,45 @@ fn pack_rows(
         })
         .collect();
 
+    // Masonry-style placement (same idea as GNOME-extension prior art —
+    // tilingshell's `MasonryLayoutManager` — adapted from its
+    // shortest-row heuristic to a sturdier best-fit one): each client
+    // joins whichever *already-open* row has the most room left while
+    // still fitting it, not just whichever row is currently being
+    // filled. A strict left-to-right shelf fill only ever looks at the
+    // last row, so once a wide client forces a wrap, an earlier
+    // under-filled row stays that way forever even when a later,
+    // narrower client would have completed it — exactly the "wasted
+    // space at the edges" symptom this whole function exists to avoid.
+    // Falls back to opening a new row only when nothing already open has
+    // space.
     let mut rows: Vec<Vec<MosaicSized>> = Vec::new();
-    let mut current_row: Vec<MosaicSized> = Vec::new();
-    let mut row_w = 0;
+    let mut row_w: Vec<i32> = Vec::new();
     for s in sized {
-        let needed = if row_w == 0 { s.w } else { row_w + gx + s.w };
-        if needed > area.width && row_w > 0 {
-            rows.push(std::mem::take(&mut current_row));
-            row_w = 0;
+        let mut best: Option<usize> = None;
+        for (ri, &w) in row_w.iter().enumerate() {
+            let needed = if w == 0 { s.w } else { w + gx + s.w };
+            if needed <= area.width {
+                best = match best {
+                    Some(bi) if row_w[bi] >= w => Some(bi),
+                    _ => Some(ri),
+                };
+            }
         }
-        row_w = if row_w == 0 { s.w } else { row_w + gx + s.w };
-        current_row.push(s);
-    }
-    if !current_row.is_empty() {
-        rows.push(current_row);
+        match best {
+            Some(ri) => {
+                row_w[ri] = if row_w[ri] == 0 {
+                    s.w
+                } else {
+                    row_w[ri] + gx + s.w
+                };
+                rows[ri].push(s);
+            }
+            None => {
+                row_w.push(s.w);
+                rows.push(vec![s]);
+            }
+        }
     }
     (area, rows)
 }
@@ -657,6 +682,37 @@ pub fn mosaic_overflow_client(
         return None;
     }
     clients.iter().map(|c| c.id).max()
+}
+
+/// Fixed size (logical px) of a `mosaic_overflow_stack` peek slot — big
+/// enough to read as a distinct little window, small enough that several
+/// can line up without eating the work area.
+const STACK_PEEK_SIZE: i32 = 72;
+
+/// Where the `stack_index`-th "stacked" overflow client sits when
+/// `mosaic_overflow_stack` is on — PaperWM's `stackoverlay.js` alternative
+/// to evicting to an empty tag (see `mosaic_overflow_client`'s doc
+/// comment): instead of leaving the tag, an overflowing client shrinks to
+/// a small, always-visible, always-clickable peek anchored to the work
+/// area's bottom-right corner. `stack_index` 0 sits flush in the corner;
+/// each subsequent index lines up to its left with one inner gap between,
+/// so multiple stacked clients read as a fanned-out row of cards rather
+/// than overlapping. Reused verbatim across reconcile passes with the
+/// caller's own stable ordering (ascending client id) so the row never
+/// reshuffles or leaves a gap as clients stack/un-stack.
+pub fn mosaic_stack_peek_rect(work_area: Rect, gaps: &GapConfig, stack_index: i32) -> Rect {
+    let oh = gaps.gappoh.max(0);
+    let ov = gaps.gappov.max(0);
+    let gx = gaps.gappih.max(0);
+    let size = STACK_PEEK_SIZE
+        .min(work_area.width.max(1))
+        .min(work_area.height.max(1))
+        .max(1);
+    let right = work_area.x + work_area.width - oh;
+    let bottom = work_area.y + work_area.height - ov;
+    let x = (right - size - stack_index.max(0) * (size + gx)).max(work_area.x);
+    let y = (bottom - size).max(work_area.y);
+    Rect::new(x, y, size, size)
 }
 
 /// Shelf-pack `clients` into `work_area`: each client sized to its own

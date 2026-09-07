@@ -5,7 +5,7 @@
 
 use margo_layouts::{
     ArrangeCtx, GapConfig, LayoutId, MosaicClient, Rect, arrange, mosaic_arrange,
-    mosaic_overflow_client, place_floating_cascade,
+    mosaic_overflow_client, mosaic_stack_peek_rect, place_floating_cascade,
 };
 
 const WA: Rect = Rect {
@@ -490,6 +490,36 @@ fn mosaic_caps_oversized_ideal_width_so_many_windows_form_a_grid_not_a_column() 
 }
 
 #[test]
+fn mosaic_backfills_an_under_filled_row_instead_of_leaving_it_wasted() {
+    // Two 700px-wide clients (each forced onto its own row — 700*2+gap >
+    // 1000px WA) followed by two 280px-wide clients that each fit
+    // alongside one of the wide ones (700+280+gap <= 1000). A strict
+    // left-to-right shelf fill only ever looks at the *last* row, so it
+    // packs the second narrow client into a brand new third row instead
+    // of noticing the first row still had room — exactly the wasted-edge-
+    // space complaint this masonry-style best-fit placement exists to
+    // fix. Widths are all below the column cap already (well under half
+    // the WA width) so the cap never kicks in here — this test is purely
+    // about the row-assignment heuristic.
+    let make = |i: usize, w: i32| MosaicClient {
+        index: i,
+        id: i as u64,
+        ideal: (w, 200),
+        min: (0, 0),
+        max: (0, 0),
+    };
+    let clients = [make(0, 700), make(1, 700), make(2, 280), make(3, 280)];
+    let result = mosaic_arrange(WA, &MOSAIC_GAPS, &clients);
+    assert_eq!(result.len(), 4);
+    let rows: std::collections::BTreeSet<i32> = result.iter().map(|(_, r)| r.y).collect();
+    assert_eq!(
+        rows.len(),
+        2,
+        "both narrow clients should backfill the two wide clients' rows, not open a third"
+    );
+}
+
+#[test]
 fn mosaic_shrinks_toward_min_height_when_rows_overflow_vertically() {
     // Five 200px-tall clients that genuinely can't share a row — their
     // own `min_width` (900) is the reason, not just an oversized `ideal`,
@@ -642,6 +672,34 @@ fn mosaic_reserves_the_outer_gap_on_every_edge() {
 #[test]
 fn mosaic_overflow_client_none_on_empty_input() {
     assert_eq!(mosaic_overflow_client(WA, &MOSAIC_GAPS, &[]), None);
+}
+
+#[test]
+fn mosaic_stack_peek_rect_first_slot_sits_flush_in_the_corner() {
+    let r = mosaic_stack_peek_rect(WA, &MOSAIC_GAPS, 0);
+    assert_eq!(r.width, 72);
+    assert_eq!(r.height, 72);
+    assert_eq!(r.x + r.width, WA.x + WA.width - MOSAIC_GAPS.gappoh);
+    assert_eq!(r.y + r.height, WA.y + WA.height - MOSAIC_GAPS.gappov);
+}
+
+#[test]
+fn mosaic_stack_peek_rect_later_slots_fan_out_leftward_without_overlap() {
+    let a = mosaic_stack_peek_rect(WA, &MOSAIC_GAPS, 0);
+    let b = mosaic_stack_peek_rect(WA, &MOSAIC_GAPS, 1);
+    let c = mosaic_stack_peek_rect(WA, &MOSAIC_GAPS, 2);
+    assert_eq!(a.y, b.y, "the row of peeks stays aligned on y");
+    assert_eq!(b.y, c.y);
+    assert!(b.x + b.width <= a.x, "slot 1 must not overlap slot 0");
+    assert!(c.x + c.width <= b.x, "slot 2 must not overlap slot 1");
+}
+
+#[test]
+fn mosaic_stack_peek_rect_stays_inside_a_tiny_work_area() {
+    let tiny = Rect::new(0, 0, 40, 40);
+    let r = mosaic_stack_peek_rect(tiny, &MOSAIC_GAPS, 0);
+    assert!(r.width <= tiny.width && r.height <= tiny.height);
+    assert!(r.x >= tiny.x && r.y >= tiny.y);
 }
 
 #[test]

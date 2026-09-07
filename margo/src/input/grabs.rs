@@ -95,6 +95,28 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
         if mon < data.monitors.len() {
             data.arrange_monitor(mon);
         }
+
+        // Phase 2 drop-target highlight: recomputed after arranging so
+        // the candidate's geometry reflects any repack that repositioning
+        // this drag just triggered (Mosaic repacks every other owned
+        // client around the one being dragged). Mirrors exactly what
+        // `resolve_drag_tile_drop` will look for on release, via the same
+        // `find_drag_tile_target` — see `render::drag_highlight`.
+        data.drag_swap_target = if self.was_tiled && data.config.drag_tile_to_tile {
+            data.clients
+                .iter()
+                .position(|c| c.window == self.window)
+                .and_then(|idx| {
+                    let cursor = (
+                        event.location.x.round() as i32,
+                        event.location.y.round() as i32,
+                    );
+                    find_drag_tile_target(data, idx, cursor)
+                })
+                .map(|dst| data.clients[dst].id)
+        } else {
+            None
+        };
     }
 
     fn relative_motion(
@@ -117,10 +139,12 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
         if handle.current_pressed().is_empty() {
             // Grab's over either way — clear the "don't repack me" flag
             // before anything below touches arrange (`resolve_drag_tile_
-            // drop` ends with its own `arrange_monitor`).
+            // drop` ends with its own `arrange_monitor`), and the
+            // highlight so it can't outlive the drag it was previewing.
             if let Some(idx) = data.clients.iter().position(|c| c.window == self.window) {
                 data.clients[idx].interactive_grab = false;
             }
+            data.drag_swap_target = None;
             // Drag-tile-to-tile end of grab. Only kicks in when
             // the grabbed window was tiled (or Mosaic-governed) at
             // start AND the config flag is on; CSD `xdg_toplevel.move`
@@ -444,49 +468,60 @@ pub(crate) fn resolve_drag_tile_drop(
         data.clients[src].is_floating = false;
     }
 
-    let cx = data.input_pointer.x as i32;
-    let cy = data.input_pointer.y as i32;
+    let cursor = (data.input_pointer.x as i32, data.input_pointer.y as i32);
+    if let Some(dst) = find_drag_tile_target(data, src, cursor) {
+        data.clients.swap(src, dst);
+    }
+    data.drag_swap_target = None;
+
+    let mon = data.focused_monitor();
+    if mon < data.monitors.len() {
+        data.arrange_monitor(mon);
+    }
+}
+
+/// Find the drag-tile-to-tile target at `cursor` (global-logical) for the
+/// client at index `src` in `data.clients`: the first other client, on
+/// `src`'s monitor and current tag, whose geometry contains `cursor` and
+/// which passes [`is_valid_drag_tile_target`] for `src`'s kind. Scans
+/// actual client geometry rather than `space.element_under(cursor)` —
+/// with `drag_tile_small` (on by default) the dragged window itself
+/// shrinks to a 300×300 thumbnail centred exactly on the cursor, so it
+/// always contains the cursor point too; `element_under` would return
+/// whichever of the two is topmost, which tracks z-order/creation order
+/// rather than "what the user visually dropped on". Excluding `src`
+/// outright here sidesteps that self-occlusion entirely.
+///
+/// Shared by [`resolve_drag_tile_drop`] (the actual swap, on release) and
+/// `MoveSurfaceGrab::motion` (the live highlight preview,
+/// `render::drag_highlight`) so the two can never disagree about what
+/// counts as a valid target.
+fn find_drag_tile_target(data: &MargoState, src: usize, cursor: (i32, i32)) -> Option<usize> {
+    let src_is_mosaic = data.clients[src].auto_float_owner == Some(crate::layout::LayoutId::Mosaic);
     let src_monitor = data.clients[src].monitor;
     let tagset = data
         .monitors
         .get(src_monitor)
         .map(|m| m.current_tagset())
         .unwrap_or(0);
-
-    // Find the drop target by scanning actual client geometry rather than
-    // `space.element_under(cursor)`. With `drag_tile_small` (on by
-    // default) the dragged window itself shrinks to a 300×300 thumbnail
-    // centred exactly on the cursor, so it always contains the cursor
-    // point too — `element_under` returns whichever of the two is
-    // topmost, which tracked array/z-order rather than "what the user
-    // visually dropped on", making the swap succeed or silently no-op
-    // depending on creation order instead of the actual drop position.
-    // A direct rect scan sidesteps that: `src` is excluded outright, so
-    // its own thumbnail can never self-occlude the real target underneath
-    // it.
-    if let Some((dst, _)) = data.clients.iter().enumerate().find(|(i, c)| {
-        *i != src
-            && c.monitor == src_monitor
-            && !c.is_overlay
-            && !c.is_in_scratchpad
-            && !c.is_minimized
-            && c.is_visible_on(src_monitor, tagset)
-            && cx >= c.geom.x
-            && cx < c.geom.x + c.geom.width
-            && cy >= c.geom.y
-            && cy < c.geom.y + c.geom.height
-    }) {
-        let dst_is_mosaic =
-            data.clients[dst].auto_float_owner == Some(crate::layout::LayoutId::Mosaic);
-        if is_valid_drag_tile_target(src_is_mosaic, data.clients[dst].is_floating, dst_is_mosaic) {
-            data.clients.swap(src, dst);
+    let (cx, cy) = cursor;
+    data.clients.iter().enumerate().find_map(|(i, c)| {
+        if i == src
+            || c.monitor != src_monitor
+            || c.is_overlay
+            || c.is_in_scratchpad
+            || c.is_minimized
+            || !c.is_visible_on(src_monitor, tagset)
+            || cx < c.geom.x
+            || cx >= c.geom.x + c.geom.width
+            || cy < c.geom.y
+            || cy >= c.geom.y + c.geom.height
+        {
+            return None;
         }
-    }
-
-    let mon = data.focused_monitor();
-    if mon < data.monitors.len() {
-        data.arrange_monitor(mon);
-    }
+        let dst_is_mosaic = c.auto_float_owner == Some(crate::layout::LayoutId::Mosaic);
+        is_valid_drag_tile_target(src_is_mosaic, c.is_floating, dst_is_mosaic).then_some(i)
+    })
 }
 
 /// Whether a drop target is a valid drag-tile-to-tile partner for the

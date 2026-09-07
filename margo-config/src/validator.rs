@@ -618,6 +618,7 @@ const BOOL_KEYS: &[&str] = &[
     "left_handed",
     "middle_button_emulation",
     "mosaic_auto_overflow_tag",
+    "mosaic_overflow_stack",
     "mouse_natural_scrolling",
     "mru_show_labels",
     "mru_accent_selection",

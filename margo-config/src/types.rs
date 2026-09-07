@@ -713,6 +713,17 @@ pub struct Config {
     /// first tag with no clients on it (per-monitor) rather than creating
     /// one; a no-op if every tag already has something on it.
     pub mosaic_auto_overflow_tag: bool,
+    /// Only consulted when `mosaic_auto_overflow_tag` is also on. When
+    /// true, an overflowing client doesn't leave the tag at all — it
+    /// shrinks to a small, always-visible "peek" anchored to the work
+    /// area's bottom-right corner (PaperWM's `stackoverlay.js`: windows
+    /// that don't fit stay reachable as a fanned-out stack of cards
+    /// instead of moving to another workspace). Clicking or otherwise
+    /// focusing a peeked client un-stacks it and lets it rejoin normal
+    /// packing, possibly bumping a different client to take its place.
+    /// `false` (default) keeps the original move-to-an-empty-tag
+    /// behaviour.
+    pub mosaic_overflow_stack: bool,
     pub swipe_min_threshold: u32,
     pub focused_opacity: f32,
     pub unfocused_opacity: f32,
@@ -1155,6 +1166,7 @@ impl Default for Config {
             drag_tile_to_tile: false,
             drag_tile_small: true,
             mosaic_auto_overflow_tag: true,
+            mosaic_overflow_stack: false,
             swipe_min_threshold: 1,
             focused_opacity: 1.0,
             unfocused_opacity: 1.0,

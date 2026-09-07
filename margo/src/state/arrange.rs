@@ -308,6 +308,7 @@ impl MargoState {
                     self.clients[i].floated_by_layout
                         && self.clients[i].auto_float_owner == Some(crate::layout::LayoutId::Mosaic)
                         && !self.clients[i].interactive_grab
+                        && !self.clients[i].is_mosaic_stacked
                 })
                 .map(|i| {
                     let c = &self.clients[i];
@@ -321,30 +322,58 @@ impl MargoState {
                 })
                 .collect();
 
-            // Auto-move-to-empty-tag: even shrinking every client to its
-            // own minimum still doesn't fit — GNOME's "windows that don't
-            // fit move to a new workspace", with margo's fixed tag set
-            // standing in for infinite dynamic workspaces (see
-            // `mosaic_overflow_client`'s doc comment). Evicting shrinks
-            // `packable` for *this* pass too, so `mosaic_arrange` below
-            // never sees the client it just moved off-tag.
+            // Overflow handling: even shrinking every client to its own
+            // minimum still doesn't fit — GNOME's "windows that don't fit
+            // move to a new workspace" (see `mosaic_overflow_client`'s doc
+            // comment). Two strategies, chosen by `mosaic_overflow_stack`:
+            // move the offender to an empty tag (default — margo's fixed
+            // tag set stands in for infinite dynamic workspaces), or keep
+            // it on this tag shrunk to a small corner "peek"
+            // (PaperWM-style always-reachable stack). Either way it drops
+            // out of `packable` for *this* pass, so `mosaic_arrange` below
+            // never sees the client that just left normal packing.
             if self.config.mosaic_auto_overflow_tag
                 && let Some(evict_id) =
                     crate::layout::mosaic_overflow_client(work_area, &gaps, &packable)
                 && let Some(evict_idx) = self.clients.iter().position(|c| c.id == evict_id)
-                && let Some(dest_tag) = self.find_empty_tag(mon_idx, curtag)
             {
-                let dest_bit = 1u32 << (dest_tag - 1);
-                self.animate_tag_departure(evict_idx);
-                self.clients[evict_idx].old_tags = self.clients[evict_idx].tags;
-                self.clients[evict_idx].is_tag_switching = true;
-                self.clients[evict_idx].animation.running = false;
-                self.clients[evict_idx].tags = dest_bit;
-                packable.retain(|c| self.clients[c.index].id != evict_id);
-                if !self.clients[evict_idx].is_visible_on(mon_idx, tagset) {
-                    self.focus_first_visible_or_clear(mon_idx);
+                if self.config.mosaic_overflow_stack {
+                    self.clients[evict_idx].is_mosaic_stacked = true;
+                    packable.retain(|c| self.clients[c.index].id != evict_id);
+                    self.mark_state_dirty();
+                } else if let Some(dest_tag) = self.find_empty_tag(mon_idx, curtag) {
+                    let dest_bit = 1u32 << (dest_tag - 1);
+                    self.animate_tag_departure(evict_idx);
+                    self.clients[evict_idx].old_tags = self.clients[evict_idx].tags;
+                    self.clients[evict_idx].is_tag_switching = true;
+                    self.clients[evict_idx].animation.running = false;
+                    self.clients[evict_idx].tags = dest_bit;
+                    packable.retain(|c| self.clients[c.index].id != evict_id);
+                    if !self.clients[evict_idx].is_visible_on(mon_idx, tagset) {
+                        self.focus_first_visible_or_clear(mon_idx);
+                    }
+                    self.mark_state_dirty();
                 }
-                self.mark_state_dirty();
+            }
+
+            // Position every currently-stacked client (existing ones from
+            // a prior pass plus any just marked above) along the work
+            // area's bottom-right corner, ascending by id so the row
+            // stays stable and gap-free as clients stack/un-stack (ids
+            // are monotonic creation order, so this never reshuffles
+            // relative to itself the way re-deriving order from `governed`
+            // each pass could).
+            let mut stacked: Vec<usize> = governed
+                .iter()
+                .copied()
+                .filter(|&i| self.clients[i].is_mosaic_stacked)
+                .collect();
+            stacked.sort_by_key(|&i| self.clients[i].id);
+            for (stack_index, &i) in stacked.iter().enumerate() {
+                let peek =
+                    crate::layout::mosaic_stack_peek_rect(work_area, &gaps, stack_index as i32);
+                self.clients[i].float_geom = peek;
+                self.clients[i].geom = peek;
             }
 
             let placed = crate::layout::mosaic_arrange(work_area, &gaps, &packable);
@@ -365,6 +394,7 @@ impl MargoState {
                     // outlive the tag switch.
                     self.clients[i].mosaic_ideal_width = 0;
                     self.clients[i].mosaic_ideal_height = 0;
+                    self.clients[i].is_mosaic_stacked = false;
                 }
             }
         }
