@@ -555,6 +555,27 @@ fn pack_rows(
 
     let fallback_w = ((area.width as f32) * 0.42) as i32;
     let fallback_h = ((area.height as f32) * 0.55) as i32;
+    let gx = gaps.gappih.max(0);
+
+    // Cap width toward a target column count so a client whose `ideal`
+    // width happens to be oversized (most commonly: it was captured while
+    // the tag was still on `scroller`, where a single column often runs
+    // 60-90% of the work area) can't unilaterally force every row down to
+    // one column. Without this, `needed > area.width` trips on the very
+    // second client every time, wasting the width that client didn't
+    // actually need at the row's edges, and piling every window into one
+    // tall column that the height-shrink pass below can't fully undo
+    // without crushing everything past its own `min_height`. This is the
+    // width-axis counterpart of that height-shrink pass — a ceiling, never
+    // pushed below the client's own `min_width`, and never binding on a
+    // client whose ideal width was already narrower than its share.
+    let target_cols = (clients.len() as f32).sqrt().ceil().max(1.0) as i32;
+    let max_col_w = if target_cols > 1 {
+        ((area.width - gx * (target_cols - 1)) / target_cols).max(1)
+    } else {
+        area.width
+    };
+
     let sized: Vec<MosaicSized> = clients
         .iter()
         .map(|c| {
@@ -575,6 +596,8 @@ fn pack_rows(
             if max_h > 0 {
                 h = h.min(max_h);
             }
+            let col_floor = if min_w > 0 { min_w.min(area.width) } else { 1 };
+            w = w.min(max_col_w.max(col_floor));
             MosaicSized {
                 index: c.index,
                 w: w.clamp(1, area.width),
@@ -584,7 +607,6 @@ fn pack_rows(
         })
         .collect();
 
-    let gx = gaps.gappih.max(0);
     let mut rows: Vec<Vec<MosaicSized>> = Vec::new();
     let mut current_row: Vec<MosaicSized> = Vec::new();
     let mut row_w = 0;

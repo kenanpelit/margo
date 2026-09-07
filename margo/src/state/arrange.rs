@@ -1209,6 +1209,24 @@ impl MargoState {
         for w in &floats {
             self.space.raise_element(w, false);
         }
+        // A client mid interactive move/resize must render above every
+        // other float/tile it may currently overlap, no matter where it
+        // sits in `clients` — `arrange_monitor` (and therefore this
+        // function) runs on every motion tick of a drag, so without this
+        // a resize that grows a window into a neighbour only shows on top
+        // when its array index happens to be higher than the neighbour's,
+        // which has nothing to do with what the user is actually
+        // dragging. Raising it here, after the plain float band above,
+        // wins the same last-raise-on-top race in the grabbed client's
+        // favour.
+        if let Some(w) = self
+            .clients
+            .iter()
+            .find(|c| c.interactive_grab)
+            .map(|c| c.window.clone())
+        {
+            self.space.raise_element(&w, false);
+        }
         let overlays: Vec<smithay::desktop::Window> = self
             .clients
             .iter()

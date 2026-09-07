@@ -451,20 +451,68 @@ fn mosaic_wraps_to_a_new_row_when_it_does_not_fit() {
 }
 
 #[test]
+fn mosaic_caps_oversized_ideal_width_so_many_windows_form_a_grid_not_a_column() {
+    // Simulates windows that just arrived from `scroller`, where a single
+    // column commonly runs 80-90% of the work area's width — captured
+    // once as each client's `ideal` the moment Mosaic takes over. Without
+    // a width-axis cap mirroring the existing height-shrink pass, none of
+    // these 9 clients (900px "ideal" against a 1000px-wide WA) could ever
+    // share a row, piling all of them into a single column: wasted width
+    // at every row's edges, and — for enough windows — rows overflowing
+    // past the work area's bottom.
+    let clients: Vec<_> = (0..9)
+        .map(|i| MosaicClient {
+            index: i,
+            id: i as u64,
+            ideal: (900, 150),
+            min: (0, 0),
+            max: (0, 0),
+        })
+        .collect();
+    let result = mosaic_arrange(WA, &MOSAIC_GAPS, &clients);
+    assert_eq!(result.len(), 9);
+    let rows: std::collections::BTreeSet<i32> = result.iter().map(|(_, r)| r.y).collect();
+    assert!(
+        rows.len() < 9,
+        "expected multiple clients per row, got {} distinct rows for 9 clients",
+        rows.len()
+    );
+    for (_, r) in &result {
+        assert!(
+            r.y + r.height <= WA.height,
+            "client overflowed past the bottom of the work area: {r:?}"
+        );
+        assert!(
+            r.x >= WA.x && r.x + r.width <= WA.x + WA.width,
+            "client overflowed the work area's width: {r:?}"
+        );
+    }
+}
+
+#[test]
 fn mosaic_shrinks_toward_min_height_when_rows_overflow_vertically() {
-    // Five rows' worth of 200px-tall clients (1000px needed) into a
-    // 600px-tall work area: every row must shrink, but never below the
-    // client's own min_height.
+    // Five 200px-tall clients that genuinely can't share a row — their
+    // own `min_width` (900) is the reason, not just an oversized `ideal`,
+    // so the column cap in `pack_rows` can't (and shouldn't) shrink them
+    // past it. Five separate rows need 1000px into a 600px-tall work
+    // area: every row must shrink, but never below the client's own
+    // min_height.
     let make = |i: usize| MosaicClient {
         index: i,
         id: (i) as u64,
         ideal: (1000, 200),
-        min: (0, 60),
+        min: (900, 60),
         max: (0, 0),
     };
     let clients: Vec<_> = (0..5).map(make).collect();
     let result = mosaic_arrange(WA, &MOSAIC_GAPS, &clients);
     assert_eq!(result.len(), 5);
+    let rows: std::collections::BTreeSet<i32> = result.iter().map(|(_, r)| r.y).collect();
+    assert_eq!(
+        rows.len(),
+        5,
+        "each client's own min_width must force its own row"
+    );
     for (_, rect) in &result {
         assert!(
             rect.height >= 60,
@@ -472,6 +520,10 @@ fn mosaic_shrinks_toward_min_height_when_rows_overflow_vertically() {
         );
         assert!(rect.height <= 200, "grew a client past its ideal height");
     }
+    assert!(
+        result.iter().any(|(_, r)| r.height < 200),
+        "five 200px rows can't fit in a 600px area without shrinking at least one"
+    );
 }
 
 #[test]
@@ -633,14 +685,16 @@ fn mosaic_overflow_client_none_when_shrinking_alone_makes_it_fit() {
 
 #[test]
 fn mosaic_overflow_client_detects_genuine_overflow_and_picks_the_newest() {
-    // Ten rows' worth of clients whose *min* height alone (80px each) is
-    // already 800px — more than WA's 600px tall work area — so no amount
-    // of shrinking fixes it.
+    // 10 clients, each with an oversized `ideal` width (1000 — the whole
+    // WA) that `pack_rows`'s column cap brings down to ~4 per row, so this
+    // packs into 3 rows, not 10. Each row's *min* height alone (250px) is
+    // still enough that 3 of them (750px + inter-row gaps) blow past WA's
+    // 600px tall work area — so no amount of shrinking fixes it.
     let make = |i: usize, id: u64| MosaicClient {
         index: i,
         id,
         ideal: (1000, 200),
-        min: (0, 80),
+        min: (0, 250),
         max: (0, 0),
     };
     // Ids deliberately out of index order — the *newest* (highest id)

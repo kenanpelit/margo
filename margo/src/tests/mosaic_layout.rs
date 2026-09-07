@@ -326,8 +326,12 @@ fn dropping_a_classically_tiled_client_restores_original_float_geom_when_no_targ
 /// indexing lines up 1:1 with the returned `ClientId`s (same convention
 /// every other test in this file/`floating_layout.rs` already relies on).
 fn force_overflow(fx: &mut Fixture, count: usize) {
+    // `pack_rows` caps each client's width toward roughly sqrt(count)
+    // columns (see its doc comment), so 10 clients land in ~3 rows, not
+    // one-per-row — min_height alone has to clear each row's floor
+    // (200 wasn't enough once that cap landed; 400 comfortably is).
     for i in 0..count {
-        fx.server.state.clients[i].min_height = 200;
+        fx.server.state.clients[i].min_height = 400;
     }
 }
 

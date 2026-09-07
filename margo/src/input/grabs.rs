@@ -444,24 +444,42 @@ pub(crate) fn resolve_drag_tile_drop(
         data.clients[src].is_floating = false;
     }
 
-    let cursor = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
-        data.input_pointer.x,
-        data.input_pointer.y,
-    ));
+    let cx = data.input_pointer.x as i32;
+    let cy = data.input_pointer.y as i32;
+    let src_monitor = data.clients[src].monitor;
+    let tagset = data
+        .monitors
+        .get(src_monitor)
+        .map(|m| m.current_tagset())
+        .unwrap_or(0);
 
-    if let Some((target_window, _)) = data.space.element_under(cursor) {
-        if let Some(dst) = data.clients.iter().position(|c| c.window == *target_window) {
-            let dst_is_mosaic =
-                data.clients[dst].auto_float_owner == Some(crate::layout::LayoutId::Mosaic);
-            if dst != src
-                && is_valid_drag_tile_target(
-                    src_is_mosaic,
-                    data.clients[dst].is_floating,
-                    dst_is_mosaic,
-                )
-            {
-                data.clients.swap(src, dst);
-            }
+    // Find the drop target by scanning actual client geometry rather than
+    // `space.element_under(cursor)`. With `drag_tile_small` (on by
+    // default) the dragged window itself shrinks to a 300×300 thumbnail
+    // centred exactly on the cursor, so it always contains the cursor
+    // point too — `element_under` returns whichever of the two is
+    // topmost, which tracked array/z-order rather than "what the user
+    // visually dropped on", making the swap succeed or silently no-op
+    // depending on creation order instead of the actual drop position.
+    // A direct rect scan sidesteps that: `src` is excluded outright, so
+    // its own thumbnail can never self-occlude the real target underneath
+    // it.
+    if let Some((dst, _)) = data.clients.iter().enumerate().find(|(i, c)| {
+        *i != src
+            && c.monitor == src_monitor
+            && !c.is_overlay
+            && !c.is_in_scratchpad
+            && !c.is_minimized
+            && c.is_visible_on(src_monitor, tagset)
+            && cx >= c.geom.x
+            && cx < c.geom.x + c.geom.width
+            && cy >= c.geom.y
+            && cy < c.geom.y + c.geom.height
+    }) {
+        let dst_is_mosaic =
+            data.clients[dst].auto_float_owner == Some(crate::layout::LayoutId::Mosaic);
+        if is_valid_drag_tile_target(src_is_mosaic, data.clients[dst].is_floating, dst_is_mosaic) {
+            data.clients.swap(src, dst);
         }
     }
 
