@@ -55,14 +55,20 @@ pub fn build() -> gtk::Widget {
 
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, list_item| {
-        let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+        let Some(list_item) = list_item.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
         let row = build_row();
         list_item.set_child(Some(&row));
     });
     factory.connect_bind(|_, list_item| {
-        let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+        let Some(list_item) = list_item.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
         let Some(item) = list_item.item() else { return };
-        let bo = item.downcast_ref::<glib::BoxedAnyObject>().unwrap();
+        let Some(bo) = item.downcast_ref::<glib::BoxedAnyObject>() else {
+            return;
+        };
         let action: std::cell::Ref<&'static Action> = bo.borrow();
         let action = *action;
         let Some(row) = list_item.child() else { return };
@@ -141,15 +147,24 @@ fn build_row() -> gtk::Box {
 }
 
 fn bind_row(row: &gtk::Widget, action: &'static Action) {
-    let root = row.downcast_ref::<gtk::Box>().unwrap();
-    let header = root.first_child().and_downcast::<gtk::Box>().unwrap();
-    let name = header.first_child().and_downcast::<gtk::Label>().unwrap();
-    let summary = name.next_sibling().and_downcast::<gtk::Label>().unwrap();
-    let revealer = header
-        .next_sibling()
-        .and_downcast::<gtk::Revealer>()
-        .unwrap();
-    let detail = revealer.child().and_downcast::<gtk::Label>().unwrap();
+    let Some(root) = row.downcast_ref::<gtk::Box>() else {
+        return;
+    };
+    let Some(header) = root.first_child().and_downcast::<gtk::Box>() else {
+        return;
+    };
+    let Some(name) = header.first_child().and_downcast::<gtk::Label>() else {
+        return;
+    };
+    let Some(summary) = name.next_sibling().and_downcast::<gtk::Label>() else {
+        return;
+    };
+    let Some(revealer) = header.next_sibling().and_downcast::<gtk::Revealer>() else {
+        return;
+    };
+    let Some(detail) = revealer.child().and_downcast::<gtk::Label>() else {
+        return;
+    };
 
     name.set_label(action.name);
     summary.set_label(action.summary);

@@ -47,13 +47,19 @@ pub fn build() -> gtk::Widget {
 
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, list_item| {
-        let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+        let Some(list_item) = list_item.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
         list_item.set_child(Some(&build_row()));
     });
     factory.connect_bind(|_, list_item| {
-        let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+        let Some(list_item) = list_item.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
         let Some(item) = list_item.item() else { return };
-        let bo = item.downcast_ref::<glib::BoxedAnyObject>().unwrap();
+        let Some(bo) = item.downcast_ref::<glib::BoxedAnyObject>() else {
+            return;
+        };
         let row: std::cell::Ref<Row> = bo.borrow();
         let Some(widget) = list_item.child() else {
             return;
@@ -125,18 +131,24 @@ fn build_row() -> gtk::Box {
 }
 
 fn bind_row(widget: &gtk::Widget, row: &Row) {
-    let root = widget.downcast_ref::<gtk::Box>().unwrap();
-    let header = root.first_child().and_downcast::<gtk::Box>().unwrap();
-    let key_value = header.first_child().and_downcast::<gtk::Label>().unwrap();
-    let section = key_value
-        .next_sibling()
-        .and_downcast::<gtk::Label>()
-        .unwrap();
-    let revealer = header
-        .next_sibling()
-        .and_downcast::<gtk::Revealer>()
-        .unwrap();
-    let description = revealer.child().and_downcast::<gtk::Label>().unwrap();
+    let Some(root) = widget.downcast_ref::<gtk::Box>() else {
+        return;
+    };
+    let Some(header) = root.first_child().and_downcast::<gtk::Box>() else {
+        return;
+    };
+    let Some(key_value) = header.first_child().and_downcast::<gtk::Label>() else {
+        return;
+    };
+    let Some(section) = key_value.next_sibling().and_downcast::<gtk::Label>() else {
+        return;
+    };
+    let Some(revealer) = header.next_sibling().and_downcast::<gtk::Revealer>() else {
+        return;
+    };
+    let Some(description) = revealer.child().and_downcast::<gtk::Label>() else {
+        return;
+    };
 
     key_value.set_label(&format!("{} = {}", row.key.key, row.key.default));
     section.set_label(&row.section);
