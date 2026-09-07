@@ -64,6 +64,93 @@ pub fn transform(markdown: &str) -> Vec<Block> {
     blocks
 }
 
+/// Apply the four inline constructs (bold, code, link) plus Pango-markup
+/// escaping, in one left-to-right pass over the line. Escaping happens
+/// character-by-character as literal text is copied through; the three
+/// constructs below emit their own literal `<...>` tags directly (not
+/// escaped), which is safe because none of their *content* is re-escaped
+/// after being placed inside the tag -- it goes through this same
+/// character loop first.
+fn inline(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '*'
+            && chars.get(i + 1) == Some(&'*')
+            && let Some(end) = find_closing(&chars, i + 2, "**")
+        {
+            let inner: String = chars[i + 2..end].iter().collect();
+            out.push_str("<b>");
+            out.push_str(&inline(&inner));
+            out.push_str("</b>");
+            i = end + 2;
+            continue;
+        }
+        if chars[i] == '`'
+            && let Some(end) = find_closing(&chars, i + 1, "`")
+        {
+            let inner: String = chars[i + 1..end].iter().collect();
+            out.push_str("<tt>");
+            out.push_str(&escape(&inner));
+            out.push_str("</tt>");
+            i = end + 1;
+            continue;
+        }
+        if chars[i] == '['
+            && let Some(close_bracket) = find_char(&chars, i + 1, ']')
+            && chars.get(close_bracket + 1) == Some(&'(')
+            && let Some(close_paren) = find_char(&chars, close_bracket + 2, ')')
+        {
+            let label: String = chars[i + 1..close_bracket].iter().collect();
+            let url: String = chars[close_bracket + 2..close_paren].iter().collect();
+            out.push_str(&format!(
+                "<a href=\"{}\">{}</a>",
+                escape(&url),
+                escape(&label)
+            ));
+            i = close_paren + 1;
+            continue;
+        }
+        escape_char_into(chars[i], &mut out);
+        i += 1;
+    }
+    out
+}
+
+fn find_closing(chars: &[char], from: usize, needle: &str) -> Option<usize> {
+    let needle: Vec<char> = needle.chars().collect();
+    let mut i = from;
+    while i + needle.len() <= chars.len() {
+        if chars[i..i + needle.len()] == needle[..] {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+fn find_char(chars: &[char], from: usize, target: char) -> Option<usize> {
+    (from..chars.len()).find(|&i| chars[i] == target)
+}
+
+fn escape(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        escape_char_into(c, &mut out);
+    }
+    out
+}
+
+fn escape_char_into(c: char, out: &mut String) {
+    match c {
+        '<' => out.push_str("&lt;"),
+        '>' => out.push_str("&gt;"),
+        '&' => out.push_str("&amp;"),
+        _ => out.push(c),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,93 +246,5 @@ mod tests {
                 "Use <tt>&lt;tag&gt;</tt> syntax &amp; such.".to_string()
             )]
         );
-    }
-}
-
-/// Apply the four inline constructs (bold, code, link) plus Pango-markup
-/// escaping, in one left-to-right pass over the line. Escaping happens
-/// character-by-character as literal text is copied through; the three
-/// constructs below emit their own literal `<...>` tags directly (not
-/// escaped), which is safe because none of their *content* is re-escaped
-/// after being placed inside the tag -- it goes through this same
-/// character loop first.
-fn inline(text: &str) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    let mut out = String::new();
-    let mut i = 0;
-    while i < chars.len() {
-        if chars[i] == '*' && chars.get(i + 1) == Some(&'*') {
-            if let Some(end) = find_closing(&chars, i + 2, "**") {
-                let inner: String = chars[i + 2..end].iter().collect();
-                out.push_str("<b>");
-                out.push_str(&inline(&inner));
-                out.push_str("</b>");
-                i = end + 2;
-                continue;
-            }
-        }
-        if chars[i] == '`' {
-            if let Some(end) = find_closing(&chars, i + 1, "`") {
-                let inner: String = chars[i + 1..end].iter().collect();
-                out.push_str("<tt>");
-                out.push_str(&escape(&inner));
-                out.push_str("</tt>");
-                i = end + 1;
-                continue;
-            }
-        }
-        if chars[i] == '[' {
-            if let Some(close_bracket) = find_char(&chars, i + 1, ']') {
-                if chars.get(close_bracket + 1) == Some(&'(') {
-                    if let Some(close_paren) = find_char(&chars, close_bracket + 2, ')') {
-                        let label: String = chars[i + 1..close_bracket].iter().collect();
-                        let url: String = chars[close_bracket + 2..close_paren].iter().collect();
-                        out.push_str(&format!(
-                            "<a href=\"{}\">{}</a>",
-                            escape(&url),
-                            escape(&label)
-                        ));
-                        i = close_paren + 1;
-                        continue;
-                    }
-                }
-            }
-        }
-        escape_char_into(chars[i], &mut out);
-        i += 1;
-    }
-    out
-}
-
-fn find_closing(chars: &[char], from: usize, needle: &str) -> Option<usize> {
-    let needle: Vec<char> = needle.chars().collect();
-    let mut i = from;
-    while i + needle.len() <= chars.len() {
-        if chars[i..i + needle.len()] == needle[..] {
-            return Some(i);
-        }
-        i += 1;
-    }
-    None
-}
-
-fn find_char(chars: &[char], from: usize, target: char) -> Option<usize> {
-    (from..chars.len()).find(|&i| chars[i] == target)
-}
-
-fn escape(text: &str) -> String {
-    let mut out = String::new();
-    for c in text.chars() {
-        escape_char_into(c, &mut out);
-    }
-    out
-}
-
-fn escape_char_into(c: char, out: &mut String) {
-    match c {
-        '<' => out.push_str("&lt;"),
-        '>' => out.push_str("&gt;"),
-        '&' => out.push_str("&amp;"),
-        _ => out.push(c),
     }
 }
