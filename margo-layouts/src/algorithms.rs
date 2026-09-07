@@ -771,19 +771,31 @@ pub fn mosaic_arrange(
         1.0
     };
 
-    // Emit geometry: each row centered horizontally (the article's windows
-    // "open in the center of the screen"), each client sized to its own
-    // (possibly shrunk) height rather than stretched to match row-mates —
-    // a chat window stays narrow-and-tall next to a wide, shorter PDF
-    // reader in the same row.
+    // Row heights first (needed both to emit geometry and to centre the
+    // whole block vertically below), each clamped to its own min height.
+    let row_heights: Vec<i32> = rows
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|s| ((s.h as f32 * shrink) as i32).max(s.min_h))
+                .max()
+                .unwrap_or(0)
+        })
+        .collect();
+
+    // Emit geometry: the whole stack of rows centred vertically when it
+    // doesn't fill the work area — the article's windows "open in the
+    // center of the screen", which for a single row (or a few, on a tall
+    // monitor) means centred top-to-bottom too, not pinned to the top
+    // edge with the leftover space dumped entirely below. Each row is
+    // centred horizontally, and each client sized to its own (possibly
+    // shrunk) height rather than stretched to match row-mates — a chat
+    // window stays narrow-and-tall next to a wide, shorter PDF reader in
+    // the same row.
+    let total_block_h: i32 = row_heights.iter().sum::<i32>() + total_gap_h;
     let mut result = Vec::with_capacity(rows.iter().map(|r| r.len()).sum());
-    let mut y = area.y;
-    for row in &rows {
-        let row_h = row
-            .iter()
-            .map(|s| ((s.h as f32 * shrink) as i32).max(s.min_h))
-            .max()
-            .unwrap_or(0);
+    let mut y = area.y + (area.height - total_block_h).max(0) / 2;
+    for (row, &row_h) in rows.iter().zip(&row_heights) {
         let row_total_w: i32 =
             row.iter().map(|s| s.w).sum::<i32>() + gx * (row.len() as i32 - 1).max(0);
         let mut x = area.x + (area.width - row_total_w).max(0) / 2;

@@ -403,6 +403,30 @@ fn mosaic_one_client_gets_exactly_its_ideal_size() {
 }
 
 #[test]
+fn mosaic_centers_a_short_stack_vertically_not_just_horizontally() {
+    // A lone window (or a couple of short rows) shouldn't pin to the top
+    // edge with all the leftover height dumped below it — the article's
+    // "windows open in the center of the screen" means centered on both
+    // axes. `MOSAIC_GAPS` has zero outer gap, so the packing area is
+    // exactly `WA` and the expected offset is exact arithmetic.
+    let clients = [MosaicClient {
+        index: 0,
+        id: 0_u64,
+        ideal: (400, 300),
+        min: (0, 0),
+        max: (0, 0),
+    }];
+    let result = mosaic_arrange(WA, &MOSAIC_GAPS, &clients);
+    let (_, rect) = result[0];
+    assert_eq!(rect.height, 300);
+    assert_eq!(
+        rect.y,
+        WA.y + (WA.height - rect.height) / 2,
+        "a single short client should be centered top-to-bottom, not pinned to the top"
+    );
+}
+
+#[test]
 fn mosaic_two_clients_that_fit_share_one_row() {
     let clients = [
         MosaicClient {
