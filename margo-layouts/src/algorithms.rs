@@ -582,16 +582,20 @@ pub fn mosaic_arrange(
     //    would overflow the row.
     let gx = gaps.gappih.max(0);
     let gy = gaps.gappiv.max(0);
-    let mut rows: Vec<Vec<&Sized>> = vec![Vec::new()];
+    let mut rows: Vec<Vec<&Sized>> = Vec::new();
+    let mut current_row: Vec<&Sized> = Vec::new();
     let mut row_w = 0;
     for s in &sized {
         let needed = if row_w == 0 { s.w } else { row_w + gx + s.w };
         if needed > work_area.width && row_w > 0 {
-            rows.push(Vec::new());
+            rows.push(std::mem::take(&mut current_row));
             row_w = 0;
         }
-        rows.last_mut().expect("just pushed if empty").push(s);
+        current_row.push(s);
         row_w = if row_w == 0 { s.w } else { row_w + gx + s.w };
+    }
+    if !current_row.is_empty() {
+        rows.push(current_row);
     }
 
     // 3. If the stacked rows don't fit vertically, shrink every row's
