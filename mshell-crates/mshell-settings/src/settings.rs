@@ -20,6 +20,7 @@ use crate::effects_settings::{EffectsInit, EffectsModel};
 use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
 use crate::game_mode_settings::{GameModeSettingsInit, GameModeSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
+use crate::guide_settings::{GuideSettingsInit, GuideSettingsModel};
 use crate::helium_theme_settings::{HeliumThemeSettingsInit, HeliumThemeSettingsModel};
 use crate::hidden_bar_settings::{HiddenBarSettingsInit, HiddenBarSettingsModel};
 use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
@@ -176,6 +177,7 @@ fn build_top_page(route: &str) -> Option<BuiltPage> {
         "setup" => page!(SetupSettingsModel => SetupSettingsInit {}),
         "calendar" => page!(CalendarSettingsModel => CalendarSettingsInit {}),
         "about" => page!(AboutSettingsModel => AboutSettingsInit {}),
+        "guide" => page!(GuideSettingsModel => GuideSettingsInit {}),
         "animations" => page!(AnimationsSettingsModel => AnimationsSettingsInit {}),
         "window_switcher" => page!(WindowSwitcherModel => WindowSwitcherInit {}),
         "appearance" => page!(AppearanceModel => AppearanceInit {}),
@@ -2063,6 +2065,7 @@ const PAGE_KEYWORDS: &[(&str, &str)] = &[
     ("users", "user account password"),
     ("about", "version build info credits"),
     ("setup", "wizard onboarding first-run"),
+    ("guide", "help howto documentation actions binds keybinds config reference tutorial"),
 ];
 
 fn keywords_for(label: &str) -> &'static str {
@@ -2440,6 +2443,16 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "setup",
         icon: "emblem-system-symbolic",
         label: "Setup",
+    },
+    Section {
+        name: "Guide",
+        icon: "help-faq-symbolic",
+        collapsed: false,
+    },
+    Page {
+        route: "guide",
+        icon: "help-faq-symbolic",
+        label: "Guide",
     },
     Section {
         name: "About",
