@@ -211,7 +211,7 @@ b = 2
 
 - [ ] **Step 3: Register the module**
 
-Add `mod guide;` to `mshell-crates/mshell-settings/src/lib.rs`, alongside the other `mod` declarations (alphabetical position among the existing list, e.g. right before `mod general_settings;` or wherever `g` sorts).
+Add `pub mod guide;` to `mshell-crates/mshell-settings/src/lib.rs`, alongside the other `mod` declarations (alphabetical position among the existing list, e.g. right before `mod general_settings;` or wherever `g` sorts). `pub` (not bare `mod`, unlike every page's own `mod xxx_settings;`) is deliberate: `guide/`'s contents are supporting *logic* one step removed from a page, and Step 7 below needs it reachable from an `examples/` binary, which — unlike `guide_settings.rs`'s in-crate `use crate::guide::...` — sees the library crate as an external dependency and therefore needs full `pub` on the whole path, not `pub(crate)`.
 
 - [ ] **Step 4: Run the tests to verify they fail**
 
@@ -320,7 +320,14 @@ fn main() {
 EOF
 ```
 
-This requires `config_parser`'s items to be `pub` (already are) and the crate to expose `pub mod guide;` — if `mod guide;` in `lib.rs` isn't `pub`, temporarily make it `pub mod guide;` for this check, run `cargo run --example parser_smoke` (place the file at `mshell-crates/mshell-settings/examples/parser_smoke.rs` instead of `/tmp` so `cargo run --example` finds it), confirm the printed counts look sane (compare against the ~60 section headers / ~240ish keys estimated in the spec), delete the example file afterward, and revert `mod guide;` to its final intended visibility from Task 3 below.
+Step 3 above already made this `pub mod guide;`, so this needs no
+temporary visibility change. Place the file at
+`mshell-crates/mshell-settings/examples/parser_smoke.rs` (so
+`cargo run --example parser_smoke -p mshell-settings` finds it), run
+it, confirm the printed counts look sane (compare against the ~60
+section headers / ~240ish keys estimated in the spec), then delete the
+example file — it's a one-off manual check, not part of the shipped
+crate.
 
 - [ ] **Step 8: Commit**
 
