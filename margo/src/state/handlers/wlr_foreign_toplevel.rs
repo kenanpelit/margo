@@ -73,6 +73,20 @@ impl MargoState {
         self.focus_surface(Some(FocusTarget::Window(window.clone())));
         self.space.raise_element(&window, true);
         self.enforce_z_order();
+        // Every other focus-changing dispatch (focus_stack, directional
+        // focus, ...) re-arranges after moving focus; this one didn't,
+        // which silently broke `scroller`: `focus_surface` above already
+        // updates real keyboard focus + `monitors[].selected` correctly,
+        // but scroller only scrolls its viewport to reveal the focused
+        // column as a *side effect* of `arrange_monitor` reading that
+        // fresh focus back out (`focused_tiled_pos`). Skipping it here
+        // meant Super+Tab (`mru_next`) changed who had focus without ever
+        // scrolling them into view — most visible with `workspace` scope,
+        // where `already_visible` is always true (candidates never leave
+        // the current tag), so `view_tag` above never ran to arrange as a
+        // side effect of its own. `view_tag` already arranges when it
+        // does run, so this call is a cheap no-op in that case.
+        self.arrange_monitor(mon_idx);
         self.request_repaint();
     }
 }

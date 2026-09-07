@@ -45,6 +45,7 @@ mod groups;
 mod idle;
 mod layer_shell;
 mod mosaic_layout;
+mod mru_switcher;
 mod output_assignment;
 mod output_management;
 mod overview;
