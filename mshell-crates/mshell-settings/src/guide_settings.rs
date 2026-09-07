@@ -8,6 +8,7 @@
 //! the way prose docs elsewhere in this project have drifted before.
 //! See `docs/superpowers/specs/2026-09-07-settings-guide-page-design.md`.
 
+use crate::guide::actions_tab;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
@@ -89,6 +90,9 @@ impl Component for GuideSettingsModel {
     ) -> ComponentParts<Self> {
         let model = GuideSettingsModel::default();
         let widgets = view_output!();
+        widgets
+            .stack
+            .add_titled(&actions_tab::build(), Some("actions"), "Actions");
         let _ = sender;
         ComponentParts { model, widgets }
     }
