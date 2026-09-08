@@ -128,12 +128,25 @@ impl MargoState {
             return;
         };
 
-        mon.pertag.prevtag = mon.pertag.curtag;
-        mon.pertag.curtag = if tagmask.count_ones() == 1 {
-            tagmask.trailing_zeros() as usize + 1
-        } else {
-            0
-        };
+        // Only a single-tag view has one real tag to point `curtag` at.
+        // A multi-tag `toggleview` combo leaves `curtag` exactly where
+        // it was — pointing at whichever real tag was last the sole
+        // selection — instead of collapsing to 0.
+        //
+        // `Pertag::ltidxs`/`mfacts`/`nmasters` reserve index 0 for
+        // Overview ("indexed 0 = overview, 1..=MAXTAGS"). Collapsing
+        // `curtag` to 0 for *any* multi-tag view aliased that same
+        // slot: a layout/mfact/nmaster change made while several tags
+        // were toggled into view landed in that one shared bucket
+        // instead of the tag it was meant for, and every *other*,
+        // unrelated toggleview combo then read the same stale value
+        // back — auto-floating (or re-packing) whichever of *their*
+        // clients happened to be visible, regardless of what layout
+        // those tags were actually set to.
+        if tagmask.count_ones() == 1 {
+            mon.pertag.prevtag = mon.pertag.curtag;
+            mon.pertag.curtag = tagmask.trailing_zeros() as usize + 1;
+        }
     }
 
     /// Reset one tag slot on `mon_idx` back to "fresh, unused tag": the

@@ -133,6 +133,56 @@ fn reconcile_is_idempotent() {
 }
 
 #[test]
+fn layout_switch_during_toggleview_does_not_leak_into_other_tag_combos() {
+    // Reproduces a real user-reported bug: windows overlapping under
+    // tile/center_tile/grid after using `toggleview` to look at more
+    // than one tag at once, then trying a layout switch.
+    //
+    // `Pertag::ltidxs` reserves index 0 for Overview
+    // (`ltidxs: Vec<LayoutId>` doc: "indexed 0 = overview, 1..=MAXTAGS").
+    // `update_pertag_for_tagset` used to collapse `curtag` to 0 for
+    // *any* multi-tag view — not just Overview — so a layout switch
+    // made while a toggleview combo was showing landed in that one
+    // shared slot instead of a real tag. Every *other*, completely
+    // unrelated toggleview combo then read the same slot back, so a
+    // client on a tag that was never touched by hand ended up
+    // auto-floated (and overlapping the tiled windows around it) just
+    // because *some* earlier combo had picked mosaic/floating.
+    let mut fx = Fixture::new();
+    fx.add_keyboard();
+    fx.add_output("DP-1", (1920, 1080));
+
+    // Window 0 on tag 1, window 1 on tag 2.
+    let _w0 = map_window(&mut fx);
+    let _w1 = map_window(&mut fx);
+    fx.server.state.clients[1].tags = 1 << 1; // tag 2
+
+    // Exactly what `super,1` then `super+ctrl,2,toggleview,2` does:
+    // view tag 1 alone, then toggle tag 2 in alongside it.
+    fx.server.state.view_tag(1);
+    fx.server.state.toggle_view_tag(1 << 1);
+
+    // While that combo is showing, the user tries mosaic (or floating —
+    // same bug either way) via a layout-switch bind.
+    fx.server.state.set_layout("mosaic");
+
+    // Leave the combo. Window 2 lives on tag 3, which nothing above
+    // ever touched — its own layout is whatever `Fixture::new()`
+    // defaults to (tile), never mosaic.
+    let _w2 = map_window(&mut fx);
+    fx.server.state.clients[2].tags = 1 << 2; // tag 3
+    fx.server.state.view_tag(1 << 2);
+    // A second, disjoint toggleview combo that shares no tag with the
+    // first one.
+    fx.server.state.toggle_view_tag(1 << 3);
+
+    assert!(
+        !fx.server.state.clients[2].is_floating,
+        "layout switch made during one toggleview combo leaked into an unrelated combo"
+    );
+}
+
+#[test]
 fn floating_layout_dissolves_tabbed_groups() {
     let mut fx = Fixture::new();
     let _ = three_windows(&mut fx);
