@@ -1,0 +1,57 @@
+// Settings → Guide page — bespoke classes only.
+//
+// Shared classes (.settings-page, .settings-hero*) are already styled in
+// _settings.scss — not repeated here. Same settings-list-row idiom as
+// _default_apps_settings.scss / _network_settings.scss: surface-container
+// card, --radius-sm corners, matugen tokens only, no hardcoded colours.
+
+// ── Actions / Settings tab rows (gtk::ListView factory rows) ───────────
+//
+// One row per dispatch action or config key: bold name/key + muted
+// summary/section beside it, an expandable detail label underneath.
+// Shared shape between actions_tab.rs and config_tab.rs.
+
+.guide-row {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    transition: background-color var(--motion-fast) var(--ease-standard);
+
+    &:hover {
+        background-color: unquote("color-mix(in srgb, var(--primary) 10%, transparent)");
+    }
+}
+
+.guide-row-name {
+    font-weight: 600;
+    color: var(--on-surface);
+}
+
+.guide-row-summary {
+    color: var(--on-surface-variant);
+    font-size: 0.92em;
+}
+
+.guide-row-detail {
+    margin-top: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    background-color: var(--surface-container-high);
+    color: var(--on-surface-variant);
+}
+
+// ── List containers (Actions / Settings / Tools) ────────────────────────
+
+.guide-actions-list,
+.guide-config-list,
+.guide-tools-list {
+    background-color: transparent;
+}
+
+// ── Tools tab `--help` output pane ───────────────────────────────────────
+
+.guide-tools-output {
+    padding: var(--space-3);
+    background-color: var(--surface-container-high);
+    border-radius: var(--radius-sm);
+    color: var(--on-surface);
+}

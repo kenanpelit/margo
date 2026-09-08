@@ -2087,6 +2087,10 @@ fn keywords_for(label: &str) -> &'static str {
 const SEARCH_ALIASES: &[(&str, &str)] = &[
     ("general", "general"),
     ("setup", "setup"),
+    ("guide", "guide"),
+    ("help", "guide"),
+    ("documentation", "guide"),
+    ("howto", "guide"),
     ("bar", "bar"),
     ("bluetooth", "bluetooth"),
     ("default apps", "default_apps"),
