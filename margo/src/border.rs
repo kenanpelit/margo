@@ -158,23 +158,17 @@ fn refresh_client(state: &mut MargoState, idx: usize, focused: Option<usize>) {
         // haraket ediyor" mismatch the user sees on Spotify
         // during super+r.
         let snapshot_active = c.resize_snapshot.is_some() || c.snapshot_pending;
-        let mut g = c.geom;
-        let mut border_shrunk_to_actual = false;
-        if !snapshot_active {
-            // Clamp to the visible bounds: a buffer rendered at
-            // c.geom.loc covers (c.geom.loc, geometry.size); the
-            // rest is clipped to the slot anyway. Clipping the
-            // border to `min(actual, slot)` makes the frame hug
-            // whatever the user actually sees.
-            if actual.w > 0 && actual.w < g.width {
-                g.width = actual.w;
-                border_shrunk_to_actual = true;
-            }
-            if actual.h > 0 && actual.h < g.height {
-                g.height = actual.h;
-                border_shrunk_to_actual = true;
-            }
-        }
+        // Clamp to the visible bounds: a buffer rendered at
+        // c.geom.loc covers (c.geom.loc, geometry.size); the
+        // rest is clipped to the slot anyway. Clipping the
+        // border to `min(actual, slot)` makes the frame hug
+        // whatever the user actually sees.
+        let g = if snapshot_active {
+            c.geom
+        } else {
+            c.geom.clamped_to_actual_size(actual.w, actual.h)
+        };
+        let border_shrunk_to_actual = g != c.geom;
 
         // Diagnostic — fires when something interesting is
         // happening (deviation from slot, mid-flight animation,

@@ -785,3 +785,63 @@ fn mosaic_overflow_client_detects_genuine_overflow_and_picks_the_newest() {
     let evicted = mosaic_overflow_client(WA, &MOSAIC_GAPS, &clients);
     assert_eq!(evicted, Some(100), "must evict the highest id, not index 0");
 }
+
+// ── Rect::clamped_to_actual_size — border/shadow follow the client, not
+// just the slot (mtune skin-switch bug: a floating window's slot is
+// pinned by its window rule and doesn't shrink when the client itself
+// does) ─────────────────────────────────────────────────────────────
+
+const FLOAT_SLOT: Rect = Rect {
+    x: 940,
+    y: -70,
+    width: 640,
+    height: 940,
+};
+
+#[test]
+fn a_smaller_actual_size_shrinks_both_axes() {
+    // mtune's mini/strip skin inside a windowrule-pinned float_geom slot.
+    let r = FLOAT_SLOT.clamped_to_actual_size(360, 96);
+    assert_eq!(r.width, 360);
+    assert_eq!(r.height, 96);
+    // Anchored at the slot's own top-left, unchanged.
+    assert_eq!(r.x, FLOAT_SLOT.x);
+    assert_eq!(r.y, FLOAT_SLOT.y);
+}
+
+#[test]
+fn a_larger_actual_size_never_grows_past_the_slot() {
+    // A client whose buffer briefly overshoots the slot (e.g. mid-reflow)
+    // is already being clipped elsewhere -- border/shadow must not grow
+    // past the compositor-assigned slot to "catch up" with it.
+    let r = FLOAT_SLOT.clamped_to_actual_size(2000, 2000);
+    assert_eq!(r, FLOAT_SLOT);
+}
+
+#[test]
+fn a_zero_actual_size_is_ignored_on_both_axes() {
+    // `actual` is 0x0 before a client's first buffer commit (or while a
+    // configure/ack handshake is in flight) -- must not collapse the
+    // border/shadow to nothing for that gap.
+    let r = FLOAT_SLOT.clamped_to_actual_size(0, 0);
+    assert_eq!(r, FLOAT_SLOT);
+}
+
+#[test]
+fn the_two_axes_clamp_independently() {
+    // A skin that's narrower but not shorter (or vice versa) only
+    // shrinks the axis that's actually smaller.
+    let narrower_only = FLOAT_SLOT.clamped_to_actual_size(300, 2000);
+    assert_eq!(narrower_only.width, 300);
+    assert_eq!(narrower_only.height, FLOAT_SLOT.height);
+
+    let shorter_only = FLOAT_SLOT.clamped_to_actual_size(2000, 96);
+    assert_eq!(shorter_only.width, FLOAT_SLOT.width);
+    assert_eq!(shorter_only.height, 96);
+}
+
+#[test]
+fn an_exact_match_is_a_no_op() {
+    let r = FLOAT_SLOT.clamped_to_actual_size(FLOAT_SLOT.width, FLOAT_SLOT.height);
+    assert_eq!(r, FLOAT_SLOT);
+}

@@ -30,6 +30,31 @@ impl Rect {
     pub fn area(&self) -> i32 {
         self.width * self.height
     }
+
+    /// The rect a client's border/shadow should actually be drawn at:
+    /// `self` (the compositor-assigned slot -- `float_geom` for a
+    /// floating window, the tile slot otherwise) shrunk on whichever
+    /// axis `actual` (the client's own live committed buffer size) is
+    /// smaller. Anchored at the slot's own top-left, never grown past
+    /// the slot (a client larger than its slot is already being
+    /// clipped elsewhere).
+    ///
+    /// Exists because a floating window's slot is pinned by its
+    /// window rule and doesn't shrink when the client itself does --
+    /// e.g. mtune switching from its full skin to a much smaller
+    /// mini/strip skin inside a windowrule-fixed float_geom. Border
+    /// already special-cased this inline; shadow used the raw slot
+    /// unconditionally and never followed the client down.
+    pub fn clamped_to_actual_size(&self, actual_width: i32, actual_height: i32) -> Rect {
+        let mut r = *self;
+        if actual_width > 0 && actual_width < r.width {
+            r.width = actual_width;
+        }
+        if actual_height > 0 && actual_height < r.height {
+            r.height = actual_height;
+        }
+        r
+    }
 }
 
 /// Per-tag layout state stored on each monitor.

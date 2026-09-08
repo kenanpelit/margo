@@ -1778,13 +1778,34 @@ fn push_client_elements(
                         && (client.is_floating || !state.config.shadow_only_floating)
                     {
                         if let Some(program) = crate::render::shadow::shader(renderer) {
+                            // Follow the client down to its actual live
+                            // size, same as the border does -- a floating
+                            // window's slot is pinned by its window rule
+                            // and doesn't shrink when the client itself
+                            // does (mtune switching to a much smaller
+                            // mini/strip skin inside a fixed float_geom
+                            // was rendering a shadow sized for the full
+                            // skin around visibly-smaller content).
+                            // Skipped during a resize-snapshot crossfade,
+                            // matching border: the snapshot is scaled to
+                            // the full slot for that transition, so the
+                            // shadow should track the slot too, not the
+                            // not-yet-settled live buffer underneath it.
+                            let snapshot_active =
+                                client.resize_snapshot.is_some() || client.snapshot_pending;
+                            let shadow_geom = if snapshot_active {
+                                client.geom
+                            } else {
+                                let actual = window.geometry().size;
+                                client.geom.clamped_to_actual_size(actual.w, actual.h)
+                            };
                             let win_rect = smithay::utils::Rectangle::new(
                                 (
-                                    client.geom.x - output_geo.loc.x,
-                                    client.geom.y - output_geo.loc.y,
+                                    shadow_geom.x - output_geo.loc.x,
+                                    shadow_geom.y - output_geo.loc.y,
                                 )
                                     .into(),
-                                (client.geom.width.max(1), client.geom.height.max(1)).into(),
+                                (shadow_geom.width.max(1), shadow_geom.height.max(1)).into(),
                             );
                             // Stable id (reused across frames) so an
                             // unchanged shadow reports zero damage instead
