@@ -60,7 +60,9 @@ impl Component for ToolsTabModel {
                     add_css_class: "guide-tools-list",
                     connect_row_selected[sender] => move |_, row| {
                         if let Some(row) = row {
-                            let name = tools::TOOLS[row.index() as usize];
+                            let Some(&name) = tools::TOOLS.get(row.index() as usize) else {
+                                return;
+                            };
                             sender.input(ToolsTabInput::Select(name));
                         }
                     },
