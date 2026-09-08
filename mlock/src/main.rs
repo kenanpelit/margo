@@ -41,7 +41,42 @@ use wayland_client::Connection;
 
 use crate::state::MlockState;
 
+/// What the first CLI argument (if any) asks `main` to do instead of
+/// locking. mlock never had any argument parsing at all -- `mlock --help`
+/// (or any other flag) fell straight through to `run()` and genuinely
+/// locked the session, same as a bare `mlock`. That's surprising and
+/// dangerous CLI behavior on its own, and it's also what let margo's
+/// Settings -> Guide page crash the compositor: its Tools tab runs
+/// `<binary> --help` on every companion tool assuming that's always a
+/// quick, side-effect-free no-op, which was false here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EarlyExit {
+    Help,
+    Version,
+}
+
+fn early_exit_action(args: &[String]) -> Option<EarlyExit> {
+    match args.first().map(String::as_str) {
+        Some("--help" | "-h") => Some(EarlyExit::Help),
+        Some("--version" | "-V") => Some(EarlyExit::Version),
+        _ => None,
+    }
+}
+
 fn main() -> std::process::ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match early_exit_action(&args) {
+        Some(EarlyExit::Help) => {
+            print_usage();
+            return std::process::ExitCode::SUCCESS;
+        }
+        Some(EarlyExit::Version) => {
+            println!("mlock {}", env!("CARGO_PKG_VERSION"));
+            return std::process::ExitCode::SUCCESS;
+        }
+        None => {}
+    }
+
     init_logging();
 
     match run() {
@@ -54,6 +89,13 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::from(1)
         }
     }
+}
+
+fn print_usage() {
+    println!(
+        "mlock {}\nmargo's screen locker.\n\nUSAGE:\n    mlock\n\nTakes no arguments -- running it (with or without flags) locks the\ncurrent session via ext-session-lock-v1. Configuration is via config\nfiles under $XDG_CONFIG_HOME/mlock, not CLI flags.\n\nOPTIONS:\n    -h, --help       Print this message and exit\n    -V, --version    Print version information and exit\n\nENVIRONMENT:\n    MLOCK_LOG        Log filter (default: info)\n    MLOCK_LOG_FILE   Log file path (default: $XDG_RUNTIME_DIR/mlock-debug.log)",
+        env!("CARGO_PKG_VERSION")
+    );
 }
 
 fn init_logging() {
@@ -179,4 +221,50 @@ fn run() -> Result<()> {
 
     info!("mlock unlocked, exiting");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn no_args_does_not_early_exit() {
+        assert_eq!(early_exit_action(&args(&[])), None);
+    }
+
+    #[test]
+    fn help_flags_trigger_help() {
+        assert_eq!(early_exit_action(&args(&["--help"])), Some(EarlyExit::Help));
+        assert_eq!(early_exit_action(&args(&["-h"])), Some(EarlyExit::Help));
+    }
+
+    #[test]
+    fn version_flags_trigger_version() {
+        assert_eq!(
+            early_exit_action(&args(&["--version"])),
+            Some(EarlyExit::Version)
+        );
+        assert_eq!(early_exit_action(&args(&["-V"])), Some(EarlyExit::Version));
+    }
+
+    #[test]
+    fn unrecognized_arg_does_not_early_exit() {
+        // Anything else falls through to the real lock flow -- mlock has no
+        // other flags, so an unknown one is silently ignored rather than
+        // treated as an error (matches the pre-fix behavior for non-help
+        // args, which is the smallest possible change).
+        assert_eq!(early_exit_action(&args(&["--bogus"])), None);
+    }
+
+    #[test]
+    fn only_the_first_argument_is_checked() {
+        // `--help` in a later position doesn't match -- mirrors clap's own
+        // "only recognized in argument position" behavior for a flag this
+        // simple, and keeps the check trivial to reason about.
+        assert_eq!(early_exit_action(&args(&["--foo", "--help"])), None);
+    }
 }
