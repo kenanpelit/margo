@@ -11,11 +11,18 @@
 use crate::guide::actions_tab;
 use crate::guide::config_tab;
 use crate::guide::features_tab;
+use crate::guide::tools_tab::{ToolsTabInit, ToolsTabModel};
 use relm4::gtk::prelude::*;
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentController, ComponentParts, ComponentSender, gtk};
 
-#[derive(Debug, Default)]
-pub(crate) struct GuideSettingsModel {}
+#[derive(Debug)]
+pub(crate) struct GuideSettingsModel {
+    /// Keep-alive anchor for the Tools tab's child controller — it must
+    /// outlive this model or the tab stops updating. Never read — the
+    /// model owning the token is the whole point (`dead_code`).
+    #[allow(dead_code)]
+    tools_tab: Option<relm4::Controller<crate::guide::tools_tab::ToolsTabModel>>,
+}
 
 #[derive(Debug)]
 pub(crate) enum GuideSettingsInput {}
@@ -90,7 +97,6 @@ impl Component for GuideSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = GuideSettingsModel::default();
         let widgets = view_output!();
         widgets
             .stack
@@ -101,7 +107,14 @@ impl Component for GuideSettingsModel {
         widgets
             .stack
             .add_titled(&features_tab::build(), Some("features"), "Features");
+        let tools_tab = ToolsTabModel::builder().launch(ToolsTabInit {}).detach();
+        widgets
+            .stack
+            .add_titled(tools_tab.widget(), Some("tools"), "Tools");
         let _ = sender;
+        let model = GuideSettingsModel {
+            tools_tab: Some(tools_tab),
+        };
         ComponentParts { model, widgets }
     }
 
