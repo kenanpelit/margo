@@ -51,6 +51,7 @@ use wayland_client::protocol::wl_buffer::WlBuffer;
 use wayland_client::protocol::wl_callback::{self, WlCallback};
 use wayland_client::protocol::wl_compositor::WlCompositor;
 use wayland_client::protocol::wl_display::WlDisplay;
+use wayland_client::protocol::wl_output::WlOutput;
 use wayland_client::protocol::wl_pointer::{self, WlPointer};
 use wayland_client::protocol::wl_registry::{self, WlRegistry};
 use wayland_client::protocol::wl_seat::{self, WlSeat};
@@ -381,6 +382,30 @@ impl Client {
         lock
     }
 
+    /// Bind `wl_output` — needed to request a lock surface for a
+    /// specific output via `ExtSessionLockV1::get_lock_surface`.
+    pub fn bind_output(&mut self) -> WlOutput {
+        let output = self.bind_global(4);
+        self.connection.flush().expect("client flush");
+        output
+    }
+
+    /// Request a lock surface for `output` on an already-acquired
+    /// `lock`. The `ExtSessionLockSurfaceV1` dispatch impl below
+    /// auto-acks the compositor's configure, so a roundtrip after
+    /// this call is enough for margo's `new_surface` handler to have
+    /// run and pushed the pair into `state.lock_surfaces`.
+    pub fn create_lock_surface(
+        &mut self,
+        lock: &ExtSessionLockV1,
+        surface: &WlSurface,
+        output: &WlOutput,
+    ) -> ExtSessionLockSurfaceV1 {
+        let lock_surface = lock.get_lock_surface(surface, output, &self.qh, ());
+        self.connection.flush().expect("client flush");
+        lock_surface
+    }
+
     /// Bind `wl_seat` and obtain a pointer object from it. Returns
     /// the pointer; tests use this to request pointer-constraints
     /// (the manager rejects requests on free-floating proxies).
@@ -540,6 +565,18 @@ impl Dispatch<WlSurface, ()> for ClientState {
         // but we accept them silently if the harness later adds an
         // Output via MargoState.
         let _ = event;
+    }
+}
+
+impl Dispatch<WlOutput, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WlOutput,
+        _: <WlOutput as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
     }
 }
 

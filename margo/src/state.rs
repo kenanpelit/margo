@@ -2504,6 +2504,21 @@ impl MargoState {
             }
         }
 
+        // A locker (mlock) that dies without calling unlock_and_destroy --
+        // killed, crashed, SIGKILLed -- leaves session_locked deliberately
+        // true (see `SessionLockHandler::lock`'s doc comment: staying
+        // locked is the correct security behavior, since auto-unlocking on
+        // a dead locker would let anyone bypass the lock by killing it).
+        // But `ClientData::disconnected` never runs cleanup, so the dead
+        // client's LockSurface would otherwise sit in `lock_surfaces`
+        // forever, and this function (along with the udev render path)
+        // touches it every frame. `LockSurface::alive()` reflects whether
+        // the underlying wl_surface resource still exists server-side --
+        // false once the owning client is gone -- so prune here, the one
+        // place documented to run exactly once per present cycle, before
+        // anything below reads the list.
+        self.lock_surfaces.retain(|(_, ls)| ls.alive());
+
         for (lock_output, lock_surface) in &self.lock_surfaces {
             if lock_output == output {
                 send_frames_surface_tree(

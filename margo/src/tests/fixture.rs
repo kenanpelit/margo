@@ -217,6 +217,17 @@ impl Fixture {
             .expect("client by id")
     }
 
+    /// Simulate the client process dying without a clean protocol
+    /// shutdown (SIGKILL, crash) rather than a graceful disconnect:
+    /// drop its `UnixStream` (closing the socket out from under the
+    /// server, no `wl_display.sync`/destroy requests sent) and run
+    /// one server dispatch so `dispatch_clients` notices the closed
+    /// fd and tears down every resource that client owned.
+    pub fn kill_client(&mut self, id: ClientId) {
+        self.clients.retain(|c| c.id != id);
+        self.server.dispatch();
+    }
+
     /// Round-trip via `wl_display.sync` — drive the loop until the
     /// callback fires on the client. Cap iterations to avoid
     /// hanging a broken test forever.
