@@ -1776,6 +1776,17 @@ fn push_client_elements(
                         && !client.is_fullscreen
                         && !client.is_in_scratchpad
                         && (client.is_floating || !state.config.shadow_only_floating)
+                        // Hide the shadow for the duration of an open
+                        // transition, same as border.rs's refresh_client
+                        // already does for the border and for the same
+                        // reason: OpenCloseRenderElement draws the
+                        // content scaled around c.geom's centre from
+                        // `extreme_scale`, so a full-slot shadow around
+                        // it would visibly precede the window into
+                        // existence for the whole animation instead of
+                        // popping in together with the settled content
+                        // at the end, the way border already does.
+                        && client.opening_animation.is_none()
                     {
                         if let Some(program) = crate::render::shadow::shader(renderer) {
                             // Follow the client down to its actual live
