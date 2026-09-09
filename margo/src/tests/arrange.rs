@@ -995,3 +995,290 @@ fn dwindle_min_height_floor_on_a_leaf_does_not_leave_its_uncle_overlapping() {
         }
     }
 }
+
+#[test]
+fn dwindle_with_both_a_min_width_and_min_height_floor_on_the_last_leaf() {
+    // Reproduced live on the real desktop: 5 real windows on dwindle,
+    // Discord as the deepest leaf declaring BOTH a real min_width
+    // (~940, its chat UI) and a real min_height (~500) at once -- the
+    // two single-axis tests above each pass declaring only one floor,
+    // but Discord genuinely declares both simultaneously, and that
+    // combination still overlapped "left" (ai) by 292x500px live.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_output("DP-1", (1920, 1080));
+
+    for (app, title) in [
+        ("kitty", "master"),
+        ("kitty", "top-right"),
+        ("kitty", "left"),
+        ("kitty", "top-right-2"),
+        ("discord", "bottom-right-2"),
+    ] {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id(app.into());
+        toplevel.set_title(title.into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+
+    fx.server.state.monitors[0].pertag.ltidxs[1] = crate::layout::LayoutId::Dwindle;
+    fx.server.state.monitors[0].pertag.user_picked_layout[1] = true;
+
+    let (natural_width, natural_height) = {
+        fx.server.state.arrange_monitor(0);
+        let g = fx.server.state.clients[4].geom;
+        (g.width, g.height)
+    };
+    fx.server.state.clients[4].min_width = natural_width + 300;
+    fx.server.state.clients[4].min_height = natural_height + 150;
+
+    fx.server.state.arrange_monitor(0);
+
+    let geoms: Vec<_> = fx.server.state.clients.iter().map(|c| c.geom).collect();
+
+    assert!(
+        geoms[4].width >= natural_width + 300,
+        "min_width not honoured: {:?}",
+        geoms[4]
+    );
+    assert!(
+        geoms[4].height >= natural_height + 150,
+        "min_height not honoured: {:?}",
+        geoms[4]
+    );
+
+    for i in 0..geoms.len() {
+        for j in (i + 1)..geoms.len() {
+            let a = geoms[i];
+            let b = geoms[j];
+            let overlap_x = a.x < b.x + b.width && b.x < a.x + a.width;
+            let overlap_y = a.y < b.y + b.height && b.y < a.y + a.height;
+            assert!(
+                !(overlap_x && overlap_y),
+                "clients {i} and {j} overlap: {a:?} vs {b:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn dwindle_with_both_floors_on_the_earlier_leaf_of_the_final_pair() {
+    // Same as the test above but with the roles of the final pair
+    // swapped: Discord is "top-right-2" (index 3, the earlier leaf),
+    // not "bottom-right-2" (index 4, the last one) -- checking whether
+    // which of the two final siblings declares the combined floor
+    // changes the outcome.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_output("DP-1", (1920, 1080));
+
+    for (app, title) in [
+        ("kitty", "master"),
+        ("kitty", "top-right"),
+        ("kitty", "left"),
+        ("discord", "top-right-2"),
+        ("kitty", "bottom-right-2"),
+    ] {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id(app.into());
+        toplevel.set_title(title.into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+
+    fx.server.state.monitors[0].pertag.ltidxs[1] = crate::layout::LayoutId::Dwindle;
+    fx.server.state.monitors[0].pertag.user_picked_layout[1] = true;
+
+    let (natural_width, natural_height) = {
+        fx.server.state.arrange_monitor(0);
+        let g = fx.server.state.clients[3].geom;
+        (g.width, g.height)
+    };
+    fx.server.state.clients[3].min_width = natural_width + 300;
+    fx.server.state.clients[3].min_height = natural_height + 150;
+
+    fx.server.state.arrange_monitor(0);
+
+    let geoms: Vec<_> = fx.server.state.clients.iter().map(|c| c.geom).collect();
+
+    assert!(
+        geoms[3].width >= natural_width + 300,
+        "min_width not honoured: {:?}",
+        geoms[3]
+    );
+    assert!(
+        geoms[3].height >= natural_height + 150,
+        "min_height not honoured: {:?}",
+        geoms[3]
+    );
+
+    for i in 0..geoms.len() {
+        for j in (i + 1)..geoms.len() {
+            let a = geoms[i];
+            let b = geoms[j];
+            let overlap_x = a.x < b.x + b.width && b.x < a.x + a.width;
+            let overlap_y = a.y < b.y + b.height && b.y < a.y + a.height;
+            assert!(
+                !(overlap_x && overlap_y),
+                "clients {i} and {j} overlap: {a:?} vs {b:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn dwindle_with_a_large_min_width_floor_that_exceeds_its_own_column() {
+    // Discord's real min_width (~940) is bigger than the natural width
+    // of its own column in dwindle's deep spiral (~624 on a 1920-wide
+    // test monitor) -- not just bigger than its own fair share within
+    // an already-generous span, but bigger than the *entire* column
+    // its natural geometry gives it, before any redistribution. This
+    // is a much larger floor than the earlier width test used.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_output("DP-1", (2560, 1440));
+
+    for (app, title) in [
+        ("kitty", "master"),
+        ("kitty", "top-right"),
+        ("kitty", "left"),
+        ("kitty", "top-right-2"),
+        ("discord", "bottom-right-2"),
+    ] {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id(app.into());
+        toplevel.set_title(title.into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+
+    fx.server.state.monitors[0].pertag.ltidxs[1] = crate::layout::LayoutId::Dwindle;
+    fx.server.state.monitors[0].pertag.user_picked_layout[1] = true;
+
+    fx.server.state.clients[4].min_width = 940;
+    fx.server.state.clients[4].min_height = 500;
+
+    fx.server.state.arrange_monitor(0);
+
+    let geoms: Vec<_> = fx.server.state.clients.iter().map(|c| c.geom).collect();
+
+    for i in 0..geoms.len() {
+        for j in (i + 1)..geoms.len() {
+            let a = geoms[i];
+            let b = geoms[j];
+            let overlap_x = a.x < b.x + b.width && b.x < a.x + a.width;
+            let overlap_y = a.y < b.y + b.height && b.y < a.y + a.height;
+            assert!(
+                !(overlap_x && overlap_y),
+                "clients {i} and {j} overlap: {a:?} vs {b:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn dwindle_two_real_floors_that_cannot_both_fit_leave_an_honest_residual_overlap() {
+    // Reproduced live on the real desktop and root-caused: with 5 real
+    // windows tagall'd onto one dwindle view, "ai" (a real Chrome
+    // window) declares its own real min_width -- close to what
+    // dwindle's deep spiral naturally gives it at that depth -- at the
+    // same time as "discord"'s own real min_width/min_height. Every
+    // earlier dwindle regression test in this file used a `kitty`
+    // stand-in with no floor of its own for "ai"'s role, so the
+    // shrink-the-margin fix always had somewhere to put the excess;
+    // this is the first case where BOTH sides of the pair are already
+    // pinned to their own declared minimums, with nothing left to give.
+    //
+    // This is not a redistribution bug: two real applications each
+    // refuse to go below their own declared minimum size, and dwindle's
+    // spiral has already handed this branch less combined width than
+    // both minimums add up to. No reshuffling of *this* branch can
+    // create width that was never allocated to it -- only pulling from
+    // an ancestor several levels up (effectively re-deriving the whole
+    // spiral around the floors instead of after them) could, and nothing
+    // in this file claims to do that. `resolve_residual_overlaps` still
+    // does the right thing here: it honours both declared floors in
+    // full and leaves the two flush against each other rather than
+    // crushing either below what its own client demands -- the same
+    // accepted last resort documented on `clamp_to_work_area` and
+    // `resolve_residual_overlaps` themselves.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_output("DP-1", (2560, 1440));
+
+    for (app, title) in [
+        ("kitty", "master"),
+        ("kitty", "top-right"),
+        ("chrome", "left"),
+        ("kitty", "top-right-2"),
+        ("discord", "bottom-right-2"),
+    ] {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id(app.into());
+        toplevel.set_title(title.into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+
+    fx.server.state.monitors[0].pertag.ltidxs[1] = crate::layout::LayoutId::Dwindle;
+    fx.server.state.monitors[0].pertag.user_picked_layout[1] = true;
+
+    let natural_left_width = {
+        fx.server.state.arrange_monitor(0);
+        fx.server.state.clients[2].geom.width
+    };
+    // "left"'s own declared minimum leaves it no real margin to shrink.
+    fx.server.state.clients[2].min_width = natural_left_width;
+    fx.server.state.clients[4].min_width = 940;
+    fx.server.state.clients[4].min_height = 500;
+
+    fx.server.state.arrange_monitor(0);
+
+    let left = fx.server.state.clients[2].geom;
+    let discord = fx.server.state.clients[4].geom;
+
+    // Both declared floors are still fully honoured -- neither was
+    // crushed below what its own client demands to force a fit.
+    assert!(
+        left.width >= natural_left_width,
+        "left's own min_width not honoured: {left:?}"
+    );
+    assert!(
+        discord.width >= 940 && discord.height >= 500,
+        "discord's own floor not honoured: {discord:?}"
+    );
+
+    // No other client on the monitor is dragged into this: only the
+    // two mutually-irreducible windows may still touch.
+    let others: Vec<_> = fx.server.state.clients[0..4]
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != 2)
+        .map(|(i, c)| (i, c.geom))
+        .collect();
+    for (i, g) in &others {
+        let overlap_x = g.x < discord.x + discord.width && discord.x < g.x + g.width;
+        let overlap_y = g.y < discord.y + discord.height && discord.y < g.y + g.height;
+        assert!(
+            !(overlap_x && overlap_y),
+            "client {i} unexpectedly overlaps discord: {g:?} vs {discord:?}"
+        );
+    }
+}
