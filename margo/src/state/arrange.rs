@@ -8,6 +8,109 @@
 
 use super::*;
 
+/// Keeps every member of the same on-screen column at one shared width
+/// before the row/column floor passes below ever run.
+///
+/// `apply_min_width_floors` finds "the same row" via `stack_rows`, which
+/// groups by *y-range overlap* — the right test for members genuinely
+/// side by side sharing a width budget. But a real vertical column
+/// (`center_tile`/`tile`/`right_tile`'s side stack: same `x`, same
+/// width, stacked top to bottom) has members whose `y` ranges don't
+/// overlap at all — they're separated by the layout's own inner gap, or
+/// (`center_tile`'s stack loops specifically) not separated by any gap
+/// at all, sitting exactly edge to edge. Either way `stack_rows` never
+/// groups them, so a member with its own oversized `min_width` (an
+/// Electron app like Discord commonly declares one) grew alone, leaving
+/// its column-mates at their old, narrower width — the column stopped
+/// being one consistent width, opening a gap next to whatever sits
+/// beside it.
+///
+/// Column membership here is deliberately the strictest possible test —
+/// exact same `x` *and* exact same `width` — since that's precisely what
+/// "one visual column" means; two rects that only coincidentally share a
+/// width without sharing an `x` are never touched.
+///
+/// Skipped for `Deck` (its stack is *deliberately* one shared slot — only
+/// the top member is ever shown, and each keeps its own independent
+/// floor, never synced to a sibling it's never simultaneously visible
+/// with — see `apply_min_width_floors`'s coincident-rect case) and
+/// `Monocle` (every window shares the exact same rect on purpose), for
+/// the same reason `resolve_residual_overlaps` skips them.
+fn sync_column_min_widths(
+    geometries: &mut [(usize, crate::layout::Rect)],
+    clients: &[MargoClient],
+    layout: crate::layout::LayoutId,
+) {
+    use crate::layout::LayoutId;
+    if matches!(layout, LayoutId::Deck | LayoutId::Monocle) {
+        return;
+    }
+    let mut groups: std::collections::HashMap<(i32, i32), Vec<usize>> =
+        std::collections::HashMap::new();
+    for (i, (_, rect)) in geometries.iter().enumerate() {
+        groups.entry((rect.x, rect.width)).or_default().push(i);
+    }
+    for members in groups.values() {
+        if members.len() < 2 {
+            continue;
+        }
+        let max_floor = members
+            .iter()
+            .map(|&i| clients[geometries[i].0].min_width.max(0))
+            .max()
+            .unwrap_or(0);
+        if max_floor <= geometries[members[0]].1.width {
+            continue;
+        }
+        for &i in members {
+            geometries[i].1.width = max_floor;
+        }
+    }
+}
+
+/// [`sync_column_min_widths`]'s transpose: keeps every member of the same
+/// on-screen row at one shared height before the floor passes below run,
+/// for the mirrored reason — `apply_min_height_floors` finds "the same
+/// column" via `stack_columns`'s *x-range overlap*, which a real row's
+/// side-by-side, non-overlapping members never satisfy.
+///
+/// Skipped for `Deck`/`Monocle`, same as [`sync_column_min_widths`] —
+/// see its doc comment. `deck_stack_members_with_a_large_min_height_do_not_shrink_each_other`
+/// is exactly the contract this exclusion protects: deck's other stack
+/// members must stay at their own natural height, never synced up to
+/// match one sibling's inflated floor.
+fn sync_row_min_heights(
+    geometries: &mut [(usize, crate::layout::Rect)],
+    clients: &[MargoClient],
+    layout: crate::layout::LayoutId,
+) {
+    use crate::layout::LayoutId;
+    if matches!(layout, LayoutId::Deck | LayoutId::Monocle) {
+        return;
+    }
+    let mut groups: std::collections::HashMap<(i32, i32), Vec<usize>> =
+        std::collections::HashMap::new();
+    for (i, (_, rect)) in geometries.iter().enumerate() {
+        groups.entry((rect.y, rect.height)).or_default().push(i);
+    }
+    for members in groups.values() {
+        if members.len() < 2 {
+            continue;
+        }
+        let max_floor = members
+            .iter()
+            .map(|&i| clients[geometries[i].0].min_height.max(0))
+            .max()
+            .unwrap_or(0);
+        if max_floor <= geometries[members[0]].1.height {
+            continue;
+        }
+        for &i in members {
+            geometries[i].1.height = max_floor;
+        }
+    }
+}
+
 /// Grow each client's rect to its own `min_height` (from a window rule
 /// or its own xdg_toplevel request), but never past what its column
 /// can actually hold.
@@ -51,21 +154,50 @@ fn apply_min_height_floors(
         // `deck`'s stack members deliberately share one identical rect
         // (a tabbed "deck of cards" — only one is ever shown at a
         // time), so every member in this group can land at the exact
-        // same `y`. They aren't dividing a shared span the way a real
-        // vertical stack does, so there's nothing to redistribute:
-        // each just takes its own floor, independently, same as a
-        // group of one.
+        // same `y`.
         let distinct_y = ordered
             .iter()
             .map(|&gi| geometries[gi].1.y)
             .collect::<std::collections::BTreeSet<_>>()
             .len();
         if distinct_y <= 1 {
-            for &gi in &ordered {
-                let (client_idx, rect) = &mut geometries[gi];
-                let min_h = clients[*client_idx].min_height;
-                if min_h > rect.height {
-                    rect.height = min_h;
+            // Same `y` alone isn't proof of `deck`'s literal same-rect
+            // stack — `stack_columns` groups by "same width and *any*
+            // x-overlap", and a real row (grid/tgmix/center_tile: same
+            // y, same height, laid out side by side) can register a
+            // sliver of x-overlap right at a shared gap boundary, or
+            // via the odd-row centring `stack_columns`'s own doc
+            // comment describes. Only when `x` is *also* shared (a
+            // true single-point stack, or a group of one) is there
+            // nothing to keep in sync — each takes its own floor
+            // independently. Otherwise this is a real row that
+            // `stack_columns` mis-caught: every member must stay the
+            // same height, so every member grows to match whichever
+            // one's floor is biggest, instead of just that one.
+            let distinct_x = ordered
+                .iter()
+                .map(|&gi| geometries[gi].1.x)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len();
+            if distinct_x <= 1 {
+                for &gi in &ordered {
+                    let (client_idx, rect) = &mut geometries[gi];
+                    let min_h = clients[*client_idx].min_height;
+                    if min_h > rect.height {
+                        rect.height = min_h;
+                    }
+                }
+            } else {
+                let max_floor = ordered
+                    .iter()
+                    .map(|&gi| clients[geometries[gi].0].min_height.max(0))
+                    .max()
+                    .unwrap_or(0);
+                for &gi in &ordered {
+                    let rect = &mut geometries[gi].1;
+                    if max_floor > rect.height {
+                        rect.height = max_floor;
+                    }
                 }
             }
             continue;
@@ -159,18 +291,52 @@ fn apply_min_width_floors(
         // Mirrors `deck`'s coincident-rect case in
         // `apply_min_height_floors`: members that all share the same
         // `x` aren't dividing a row between them, so there's nothing
-        // to redistribute — each just takes its own floor.
+        // to redistribute.
         let distinct_x = ordered
             .iter()
             .map(|&gi| geometries[gi].1.x)
             .collect::<std::collections::BTreeSet<_>>()
             .len();
         if distinct_x <= 1 {
-            for &gi in &ordered {
-                let (client_idx, rect) = &mut geometries[gi];
-                let min_w = clients[*client_idx].min_width;
-                if min_w > rect.width {
-                    rect.width = min_w;
+            // Same `x` alone isn't proof they're `deck`'s literal
+            // same-rect stack — `stack_rows` groups by "same height and
+            // *any* y-overlap", and two members of a real vertical
+            // column (center_tile/tile/right_tile's side stack: same x,
+            // same width, stacked with a real gap) can register a
+            // sliver of y-overlap right at that gap's boundary. Only
+            // when `y` is *also* shared by every member (deck's actual
+            // coincident rect, or a group of one) is there truly
+            // nothing to keep in sync — each takes its own floor
+            // independently, as before. Otherwise this is a real
+            // column that `stack_rows` mis-caught: every member must
+            // stay the same width, so instead of growing just the one
+            // whose floor is biggest, every member grows to match it —
+            // the same shape a genuinely mixed floor produced within a
+            // real column when the members' `y` truly differ.
+            let distinct_y = ordered
+                .iter()
+                .map(|&gi| geometries[gi].1.y)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len();
+            if distinct_y <= 1 {
+                for &gi in &ordered {
+                    let (client_idx, rect) = &mut geometries[gi];
+                    let min_w = clients[*client_idx].min_width;
+                    if min_w > rect.width {
+                        rect.width = min_w;
+                    }
+                }
+            } else {
+                let max_floor = ordered
+                    .iter()
+                    .map(|&gi| clients[geometries[gi].0].min_width.max(0))
+                    .max()
+                    .unwrap_or(0);
+                for &gi in &ordered {
+                    let rect = &mut geometries[gi].1;
+                    if max_floor > rect.width {
+                        rect.width = max_floor;
+                    }
                 }
             }
             continue;
@@ -1097,6 +1263,8 @@ impl MargoState {
                 );
             }
         }
+        sync_column_min_widths(&mut geometries, &self.clients, layout);
+        sync_row_min_heights(&mut geometries, &self.clients, layout);
         apply_min_height_floors(&mut geometries, &self.clients);
         // Scroller's columns are *meant* to grow past their neighbours —
         // a wider member reflows the strip via panning, exactly what the

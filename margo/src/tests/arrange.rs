@@ -853,3 +853,75 @@ fn dwindle_min_width_floor_shrinks_its_true_sibling_instead_of_overlapping_it() 
         }
     }
 }
+
+#[test]
+fn center_tile_side_column_stays_one_width_when_one_member_has_a_min_width_floor() {
+    // Reproduced live: center_tile's left stack has two members stacked
+    // vertically (same x, same width, different y) -- a real column, the
+    // same shape `apply_min_height_floors` already redistributes on the
+    // height axis. But on the *width* axis, `apply_min_width_floors`
+    // groups by `stack_rows` ("same height and y-ranges overlap"): two
+    // column members with equal height happen to have y-ranges that
+    // touch right at their shared gap, which registers as "overlap", so
+    // they get merged into a fake "row" -- then, since they also share
+    // the same x, the coincident-rect shortcut (meant for `deck`'s truly
+    // identical-rect stack) kicks in and grows each one to its own floor
+    // *independently*, with nothing keeping them in sync. Discord's own
+    // min_width grew it alone, leaving its column-mate at its old
+    // (narrower) width: the column is no longer one consistent width,
+    // and a gap opens up between the narrower member and the master
+    // column beside it.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_output("DP-1", (1920, 1080));
+
+    for (app, title) in [
+        ("kitty", "master"),
+        ("discord", "left-top"),
+        ("kitty", "left-bottom"),
+        ("kitty", "right-top"),
+        ("kitty", "right-bottom"),
+    ] {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id(app.into());
+        toplevel.set_title(title.into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+
+    fx.server.state.monitors[0].pertag.ltidxs[1] = crate::layout::LayoutId::CenterTile;
+    fx.server.state.monitors[0].pertag.user_picked_layout[1] = true;
+
+    let natural_side_width = {
+        fx.server.state.arrange_monitor(0);
+        fx.server.state.clients[1].geom.width
+    };
+    fx.server.state.clients[1].min_width = natural_side_width + 300;
+
+    fx.server.state.arrange_monitor(0);
+
+    let left_top = fx.server.state.clients[1].geom;
+    let left_bottom = fx.server.state.clients[2].geom;
+    let master = fx.server.state.clients[0].geom;
+
+    assert!(
+        left_top.width >= natural_side_width + 300,
+        "min_width not honoured: {left_top:?}"
+    );
+    assert_eq!(
+        left_top.width, left_bottom.width,
+        "left column members disagree on width: {left_top:?} vs {left_bottom:?}"
+    );
+    assert_eq!(
+        left_top.x, left_bottom.x,
+        "left column members disagree on x: {left_top:?} vs {left_bottom:?}"
+    );
+    assert!(
+        left_top.x + left_top.width <= master.x,
+        "left column overlaps the master column: left={left_top:?} master={master:?}"
+    );
+}
