@@ -271,6 +271,12 @@ impl MargoState {
             "outputs": outputs,
             "clients": clients,
             "layouts": layout_names,
+            // The user's `circle_layout` order, verbatim (empty when the
+            // knob is unset). `layouts` above stays in canonical
+            // `LayoutId` order — the index `mctl layout <N>` wants — while
+            // this is purely a *display/cycle* ordering hint for clients
+            // like mshell's layout menu.
+            "circle_layouts": self.config.circle_layouts,
             "config_errors": config_errors,
             "twilight": {
                 "enabled": self.config.twilight,

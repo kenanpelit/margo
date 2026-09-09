@@ -26,6 +26,13 @@ pub struct StateJson {
     #[serde(default, deserialize_with = "deserialize_focused_idx")]
     pub focused_idx: Option<i64>,
     pub layouts: Vec<String>,
+    /// The user's `circle_layout` order from the compositor config
+    /// (empty when unset). `layouts` stays in canonical order — the
+    /// index `mctl layout <N>` expects — and this is a display/cycle
+    /// ordering hint the layout menu applies on top. `#[serde(default)]`
+    /// for forward-compat with margo builds that don't emit it.
+    #[serde(default)]
+    pub circle_layouts: Vec<String>,
     pub outputs: Vec<RawOutput>,
     pub clients: Vec<RawClient>,
     pub tag_count: u32,
@@ -267,7 +274,20 @@ mod tests {
             s.keyboard_layout, "",
             "absent keyboard_layout defaults empty"
         );
+        assert!(
+            s.circle_layouts.is_empty(),
+            "absent circle_layouts defaults empty"
+        );
         assert_eq!(s.tag_count, 9);
+    }
+
+    #[test]
+    fn parses_circle_layouts_when_present() {
+        let json = r#"{"active_output":"DP-1","layouts":["tile","scroller","grid"],
+            "circle_layouts":["grid","tile"],
+            "outputs":[],"clients":[],"tag_count":9}"#;
+        let s: StateJson = serde_json::from_str(json).expect("doc with circle_layouts parses");
+        assert_eq!(s.circle_layouts, vec!["grid", "tile"]);
     }
 
     #[test]

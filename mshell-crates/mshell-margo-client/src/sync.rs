@@ -741,6 +741,7 @@ mod tests {
             active_output: "DP-1".into(),
             focused_idx: None,
             layouts: Vec::new(),
+            circle_layouts: Vec::new(),
             outputs: vec![output],
             clients,
             tag_count: 9,

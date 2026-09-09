@@ -34,6 +34,11 @@ pub(crate) struct MargoLayoutMenuWidgetModel {
     /// Bare button refs so the poll-tick handler can flip CSS
     /// classes by index without walking the GTK widget tree.
     buttons: Rc<RefCell<Vec<gtk::Button>>>,
+    /// `buttons[i]`'s canonical layout index (its position in
+    /// `state.layouts` — what `mctl layout <N>` wants). Rows are
+    /// displayed in `circle_layout` order, so a row's screen position
+    /// no longer equals its layout index.
+    row_canonical: Vec<usize>,
     /// Last-seen active layout index. Kept across ticks so the
     /// poller only fires a re-render when the value actually
     /// changes (avoids per-frame churn while the menu is open).
@@ -50,8 +55,10 @@ pub(crate) struct MargoLayoutMenuWidgetModel {
 
 #[derive(Debug)]
 pub(crate) enum MargoLayoutMenuWidgetInput {
-    /// Set the layout on the focused output via `mctl layout
-    /// <idx>`. Triggered by a row click.
+    /// Set the layout on the focused output via `mctl layout <idx>`,
+    /// where `idx` is the *canonical* layout index (`state.layouts`
+    /// position), not the row's on-screen position. Triggered by a
+    /// row click.
     Activate(usize),
     /// Live update from the poll-tick — refresh the `.selected`
     /// class on each row based on the new index.
@@ -130,18 +137,22 @@ impl Component for MargoLayoutMenuWidgetModel {
         let last_active_cell: Rc<RefCell<Option<usize>>> = Rc::new(RefCell::new(None));
 
         // Build the row list from state.json so user-customised
-        // layout vectors are honoured. Falls back to the wired-in
-        // default list when margo hasn't started writing
-        // state.json yet (transient on cold session start).
-        let layout_names: Vec<String> = read_state_json()
-            .map(|s| s.layouts)
-            .filter(|v| !v.is_empty())
-            .unwrap_or_else(default_layout_names);
+        // layout vectors are honoured, ordered by the compositor's
+        // `circle_layout` so the menu matches the layout-cycle
+        // keybind. Falls back to the wired-in default list (canonical
+        // order) when margo hasn't answered `get state` yet —
+        // transient on cold session start.
+        let (layout_names, circle) = read_state_json()
+            .map(|s| (s.layouts, s.circle_layouts))
+            .filter(|(v, _)| !v.is_empty())
+            .unwrap_or_else(|| (default_layout_names(), Vec::new()));
+        let ordered = ordered_layouts(&layout_names, &circle);
 
         let widgets = view_output!();
 
-        let mut button_vec: Vec<gtk::Button> = Vec::with_capacity(layout_names.len());
-        for (idx, name) in layout_names.iter().enumerate() {
+        let mut button_vec: Vec<gtk::Button> = Vec::with_capacity(ordered.len());
+        let mut row_canonical: Vec<usize> = Vec::with_capacity(ordered.len());
+        for (name, canonical_idx) in &ordered {
             let pretty = pretty_layout_name(name);
             let icon_name = icon_for_layout(name);
             let row = gtk::Box::builder()
@@ -162,18 +173,20 @@ impl Component for MargoLayoutMenuWidgetModel {
                 .css_classes(["margo-layout-menu-row"])
                 .build();
             let s = sender.clone();
+            let ci = *canonical_idx;
             btn.connect_clicked(move |_| {
-                s.input(MargoLayoutMenuWidgetInput::Activate(idx));
+                s.input(MargoLayoutMenuWidgetInput::Activate(ci));
             });
             widgets.row_box.append(&btn);
             button_vec.push(btn);
+            row_canonical.push(*canonical_idx);
         }
         *buttons_cell.borrow_mut() = button_vec;
 
         // Initial highlight + poll tick.
         let initial = current_active_layout_idx();
         *last_active_cell.borrow_mut() = initial;
-        apply_active_class(&buttons_cell.borrow(), initial);
+        apply_active_class(&buttons_cell.borrow(), &row_canonical, initial);
 
         // The send must be fallible and must stop the source on failure.
         // Holding the `SourceId` only stops the timer when the model is
@@ -246,6 +259,7 @@ impl Component for MargoLayoutMenuWidgetModel {
 
         let model = MargoLayoutMenuWidgetModel {
             buttons: buttons_cell,
+            row_canonical,
             last_active: last_active_cell,
             _timeout: Some(timeout),
             focused: 0,
@@ -257,11 +271,13 @@ impl Component for MargoLayoutMenuWidgetModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             MargoLayoutMenuWidgetInput::Activate(idx) => {
-                // Optimistic highlight: paint the new row selected
-                // immediately so the click feels snappy. The poll
-                // tick will reconcile if margo rejects the dispatch.
+                // `idx` is the canonical layout index — what `mctl
+                // layout` wants, and what the poll tick reports back.
+                // Optimistic highlight: paint the matching row selected
+                // immediately so the click feels snappy. The poll tick
+                // will reconcile if margo rejects the dispatch.
                 *self.last_active.borrow_mut() = Some(idx);
-                apply_active_class(&self.buttons.borrow(), Some(idx));
+                apply_active_class(&self.buttons.borrow(), &self.row_canonical, Some(idx));
                 tokio::spawn(async move {
                     let mut command = tokio::process::Command::new("mctl");
                     command.arg("layout").arg(idx.to_string());
@@ -274,7 +290,7 @@ impl Component for MargoLayoutMenuWidgetModel {
                 let _ = sender.output(MargoLayoutMenuWidgetOutput::CloseMenu);
             }
             MargoLayoutMenuWidgetInput::LayoutChanged(idx) => {
-                apply_active_class(&self.buttons.borrow(), idx);
+                apply_active_class(&self.buttons.borrow(), &self.row_canonical, idx);
             }
             MargoLayoutMenuWidgetInput::FocusNext => {
                 let buttons = self.buttons.borrow();
@@ -328,14 +344,42 @@ fn current_active_layout_idx() -> Option<usize> {
     }
 }
 
-fn apply_active_class(buttons: &[gtk::Button], active: Option<usize>) {
+/// Highlight the row whose *canonical* layout index matches `active`.
+/// Rows are shown in `circle_layout` order, so `row_canonical[i]` — not
+/// `i` — is the layout each row stands for.
+fn apply_active_class(buttons: &[gtk::Button], row_canonical: &[usize], active: Option<usize>) {
     for (i, button) in buttons.iter().enumerate() {
-        if Some(i) == active {
+        if active.is_some() && row_canonical.get(i).copied() == active {
             button.add_css_class("selected");
         } else {
             button.remove_css_class("selected");
         }
     }
+}
+
+/// Row order for the menu: `circle_layout` order first — each layout name
+/// paired with its canonical index in `layouts` (the number `mctl layout
+/// <N>` expects) — then any layout not named in `circle_layout`, in
+/// canonical order. An empty `circle` (the knob unset) leaves the
+/// canonical order untouched. A `circle` entry naming a layout that
+/// doesn't exist is skipped.
+fn ordered_layouts(layouts: &[String], circle: &[String]) -> Vec<(String, usize)> {
+    let mut out: Vec<(String, usize)> = Vec::with_capacity(layouts.len());
+    let mut placed = vec![false; layouts.len()];
+    for name in circle {
+        if let Some(idx) = layouts.iter().position(|l| l == name)
+            && !placed[idx]
+        {
+            placed[idx] = true;
+            out.push((layouts[idx].clone(), idx));
+        }
+    }
+    for (idx, name) in layouts.iter().enumerate() {
+        if !placed[idx] {
+            out.push((name.clone(), idx));
+        }
+    }
+    out
 }
 
 /// Wired-in fallback for when `read_state_json()` returns `None`
@@ -394,5 +438,68 @@ fn icon_for_layout(id: &str) -> &'static str {
         // No dedicated icon packaged for "floating" or "mosaic" yet —
         // both fall through to the generic fallback above.
         _ => "view-list-symbolic",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ordered_layouts;
+
+    fn v(names: &[&str]) -> Vec<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn empty_circle_keeps_canonical_order() {
+        let layouts = v(&["tile", "scroller", "grid"]);
+        assert_eq!(
+            ordered_layouts(&layouts, &[]),
+            vec![
+                ("tile".into(), 0),
+                ("scroller".into(), 1),
+                ("grid".into(), 2)
+            ]
+        );
+    }
+
+    #[test]
+    fn circle_order_wins_and_carries_the_canonical_index() {
+        let layouts = v(&["tile", "scroller", "grid", "monocle"]);
+        let circle = v(&["grid", "tile", "monocle", "scroller"]);
+        assert_eq!(
+            ordered_layouts(&layouts, &circle),
+            vec![
+                ("grid".into(), 2),
+                ("tile".into(), 0),
+                ("monocle".into(), 3),
+                ("scroller".into(), 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn layouts_missing_from_circle_are_appended_in_canonical_order() {
+        let layouts = v(&["tile", "scroller", "grid", "monocle", "deck"]);
+        let circle = v(&["deck", "tile"]);
+        assert_eq!(
+            ordered_layouts(&layouts, &circle),
+            vec![
+                ("deck".into(), 4),
+                ("tile".into(), 0),
+                ("scroller".into(), 1),
+                ("grid".into(), 2),
+                ("monocle".into(), 3),
+            ]
+        );
+    }
+
+    #[test]
+    fn unknown_or_duplicate_circle_entries_are_ignored() {
+        let layouts = v(&["tile", "scroller"]);
+        let circle = v(&["bogus", "scroller", "scroller", "tile"]);
+        assert_eq!(
+            ordered_layouts(&layouts, &circle),
+            vec![("scroller".into(), 1), ("tile".into(), 0)]
+        );
     }
 }
