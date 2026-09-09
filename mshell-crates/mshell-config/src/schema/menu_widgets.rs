@@ -46,7 +46,7 @@ pub enum MenuWidget {
     /// `cpu_dashboard` bar pill.
     CpuDashboard,
     Divider,
-    /// Margo layout switcher — a vertical list of the 14 layouts
+    /// Margo layout switcher — a vertical list of the 13 layouts
     /// the compositor knows about (tile / scroller / grid /
     /// monocle / deck / dwindle / etc.) with the currently-active
     /// row highlighted. Lives in the LayoutMenu surface so it

@@ -5,7 +5,7 @@
 //! directory — visual / structural regressions get caught at PR time,
 //! not at user-reload time.
 //!
-//! Margo's 14 layout algorithms are pure functions:
+//! Margo's 13 layout algorithms are pure functions:
 //!
 //! ```ignore
 //! fn tile(ctx: &ArrangeCtx) -> Vec<(usize, Rect)>
@@ -172,7 +172,6 @@ impl<'a> ArrangeCtxBuilder<'a> {
             scroller_focus_center: self.scroller_focus_center,
             scroller_prefer_center: self.scroller_prefer_center,
             scroller_prefer_overspread: self.scroller_prefer_overspread,
-            canvas_pan: (0.0, 0.0),
         }
     }
 }
@@ -392,22 +391,6 @@ fn dwindle_four_windows() {
     assert_snapshot!(format_arranged(&dwindle(&ctx)));
 }
 
-// ── canvas (free-form, panless) ────────────────────────────────────────────
-
-#[test]
-fn canvas_does_not_arrange() {
-    // canvas is a no-op layout — clients keep their canvas_geom.
-    // The function returns an empty result; arrange() short-circuits
-    // and the live render path consults `client.canvas_geom` direct.
-    let f = Fixture::with_windows(HD_1080P, 3);
-    let ctx = f.ctx().build();
-    let arranged = canvas(&ctx);
-    assert!(
-        arranged.is_empty(),
-        "canvas should return empty (no auto-arrange)"
-    );
-}
-
 // ── Cross-cutting: every layout stays inside work area for SDR cases ──────
 //
 // Property test: across `tile`, `monocle`, `grid`, `deck`,
@@ -468,13 +451,11 @@ fn arrange_dispatcher_matches_direct_call() {
 //
 // Property tests for the full 10-layout catalogue × {1, 2, 3, 5} window
 // counts × focus shift. Each `LayoutId` variant should satisfy the
-// invariants below. Canvas is the panless free-form layout — it
-// returns an empty vec by design and is excluded from cardinality /
-// rect-validity properties (the live render path consults
-// `client.canvas_geom` directly).
+// invariants below.
 
-/// Every `LayoutId` variant except Canvas (no-op by design).
-const ALL_LAYOUTS_EXCEPT_CANVAS: &[LayoutId] = &[
+/// Every `LayoutId` variant tested by this catalogue (Floating/Mosaic are
+/// filtered out of the test loop below — they're covered elsewhere).
+const ALL_LAYOUTS: &[LayoutId] = &[
     LayoutId::Tile,
     LayoutId::Scroller,
     LayoutId::Grid,
@@ -489,7 +470,7 @@ const ALL_LAYOUTS_EXCEPT_CANVAS: &[LayoutId] = &[
 
 /// Layouts whose master/stack rects should not overlap one another.
 /// Excludes monocle/deck (intentional overlap), scroller variants
-/// (off-screen by design), canvas (empty), overview (== monocle).
+/// (off-screen by design), overview (== monocle).
 const TILE_CLASS_LAYOUTS: &[LayoutId] = &[
     LayoutId::Tile,
     LayoutId::RightTile,
@@ -504,10 +485,10 @@ fn arrange_dispatcher_matches_direct_call_all_layouts() {
     // Property test: the `arrange()` dispatcher must agree with the
     // direct function call for *every* `LayoutId` variant. The narrow
     // version of this test (above) only spot-checks 7; this one
-    // covers all 11 (Canvas + Overview included).
+    // covers all 10 (Overview included).
     let f = Fixture::with_windows(HD_1080P, 4);
     let ctx = f.ctx().build();
-    for &layout in ALL_LAYOUTS_EXCEPT_CANVAS {
+    for &layout in ALL_LAYOUTS {
         let direct: ArrangeResult = match layout {
             LayoutId::Tile => tile(&ctx),
             LayoutId::Scroller => scroller(&ctx),
@@ -519,8 +500,8 @@ fn arrange_dispatcher_matches_direct_call_all_layouts() {
             LayoutId::TgMix => tgmix(&ctx),
             LayoutId::Dwindle => dwindle(&ctx),
             LayoutId::Overview => monocle(&ctx),
-            LayoutId::Canvas | LayoutId::Floating | LayoutId::Mosaic => {
-                unreachable!("Canvas / Floating / Mosaic are filtered out of the test loop earlier")
+            LayoutId::Floating | LayoutId::Mosaic => {
+                unreachable!("Floating / Mosaic are filtered out of the test loop earlier")
             }
         };
         assert_eq!(
@@ -529,16 +510,14 @@ fn arrange_dispatcher_matches_direct_call_all_layouts() {
             "arrange({layout:?}) diverged from direct call",
         );
     }
-    // Canvas is a no-op separately.
-    assert!(arrange(LayoutId::Canvas, &ctx).is_empty());
 }
 
 #[test]
-fn cardinality_matches_input_for_non_canvas_layouts() {
-    // Every non-canvas layout returns exactly one rect per input
-    // client. Empty input → empty output. Caught a real regression
-    // when an early `dwindle` impl dropped the last leaf for n>=8.
-    for &layout in ALL_LAYOUTS_EXCEPT_CANVAS {
+fn cardinality_matches_input_for_all_layouts() {
+    // Every layout returns exactly one rect per input client. Empty
+    // input → empty output. Caught a real regression when an early
+    // `dwindle` impl dropped the last leaf for n>=8.
+    for &layout in ALL_LAYOUTS {
         for n in [0, 1, 2, 3, 5, 8] {
             let f = Fixture::with_windows(HD_1080P, n);
             let ctx = f.ctx().build();
@@ -560,7 +539,7 @@ fn no_degenerate_rects_across_full_catalogue() {
     // off-screen — invisible bug at runtime, easy to catch here.
     // Scroller variants intentionally exceed work_area off-screen,
     // so we don't constrain x/y here — just the size invariant.
-    for &layout in ALL_LAYOUTS_EXCEPT_CANVAS {
+    for &layout in ALL_LAYOUTS {
         for n in 1..=6 {
             let f = Fixture::with_windows(HD_1080P, n);
             let ctx = f.ctx().build();
@@ -696,17 +675,16 @@ fn overview_aliases_monocle() {
 
 #[test]
 fn empty_input_yields_empty_output_for_every_layout() {
-    // Edge case: zero-window tag. Every layout (canvas included)
-    // must return an empty vec — no panics, no synthetic rects.
+    // Edge case: zero-window tag. Every layout must return an empty
+    // vec — no panics, no synthetic rects.
     let f = Fixture::with_windows(HD_1080P, 0);
     let ctx = f.ctx().build();
-    for &layout in ALL_LAYOUTS_EXCEPT_CANVAS {
+    for &layout in ALL_LAYOUTS {
         assert!(
             arrange(layout, &ctx).is_empty(),
             "{layout:?}: empty input should produce empty output",
         );
     }
-    assert!(arrange(LayoutId::Canvas, &ctx).is_empty());
     assert!(arrange(LayoutId::Floating, &ctx).is_empty());
 }
 

@@ -21,7 +21,6 @@ use smithay::{
 };
 
 use crate::{
-    MAX_TAGS,
     animation::{ClientAnimation, OpacityAnimation},
     layout::{LayoutId, Pertag, Rect},
     protocols::foreign_toplevel::ForeignToplevelHandle,
@@ -120,7 +119,6 @@ pub struct MargoClient {
     pub geom: Rect,
     pub pending: Rect,
     pub float_geom: Rect,
-    pub canvas_geom: [Rect; MAX_TAGS],
     pub tags: u32,
     pub old_tags: u32,
     /// MRU recency key (monotonic `focus_counter` at last focus). 0 = never
@@ -205,7 +203,6 @@ pub struct MargoClient {
     /// its packed slot, fighting the user's own grab. Set when a grab
     /// starts, cleared unconditionally when it ends.
     pub interactive_grab: bool,
-    pub canvas_no_tile: bool,
     /// Set by a window rule. When true, screen-capture clients see
     /// solid black for this window's region.
     pub block_out_from_screencast: bool,
@@ -222,7 +219,6 @@ pub struct MargoClient {
     /// `mosaic_overflow_stack` is off; reset whenever the tag leaves
     /// `Mosaic` entirely, same as `floated_by_layout`/`auto_float_owner`.
     pub is_mosaic_stacked: bool,
-    pub canvas_floating: bool,
     pub force_fake_maximize: bool,
     pub force_tiled_state: bool,
     pub is_master: bool,
@@ -263,7 +259,6 @@ pub struct MargoClient {
     pub monitor: usize,
     pub swallowing: Option<usize>,
     pub swallowed_by: Option<usize>,
-    pub canvas_tag_geom: Vec<Rect>,
     pub window: Window,
     pub foreign_toplevel_handle: Option<ForeignToplevelHandle>,
     pub border: crate::border::ClientBorder,
@@ -280,7 +275,6 @@ impl MargoClient {
             geom: Rect::default(),
             pending: Rect::default(),
             float_geom: Rect::default(),
-            canvas_geom: [Rect::default(); MAX_TAGS],
             tags,
             old_tags: 0,
             last_focus_serial: 0,
@@ -319,14 +313,12 @@ impl MargoClient {
             floated_by_layout: false,
             auto_float_owner: None,
             interactive_grab: false,
-            canvas_no_tile: false,
             block_out_from_screencast: false,
             min_width: 0,
             min_height: 0,
             max_width: 0,
             max_height: 0,
             is_mosaic_stacked: false,
-            canvas_floating: false,
             force_fake_maximize: false,
             force_tiled_state: false,
             is_master: false,
@@ -355,7 +347,6 @@ impl MargoClient {
             monitor,
             swallowing: None,
             swallowed_by: None,
-            canvas_tag_geom: Vec::new(),
             window,
             foreign_toplevel_handle: None,
             border: crate::border::ClientBorder::default(),
@@ -566,11 +557,6 @@ pub struct MargoMonitor {
     pub prev_selected: Option<usize>,
     pub is_overview: bool,
     pub overview_backup_tagset: u32,
-    pub canvas_overview_visible: bool,
-    pub canvas_in_overview: bool,
-    pub canvas_saved_pan_x: f32,
-    pub canvas_saved_pan_y: f32,
-    pub canvas_saved_zoom: f32,
     pub minimap_visible: bool,
     pub scale: f32,
     pub transform: i32,

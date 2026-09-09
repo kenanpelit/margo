@@ -37,7 +37,6 @@ fn ctx<'a>(
         scroller_focus_center: true,
         scroller_prefer_center: true,
         scroller_prefer_overspread: false,
-        canvas_pan: (0.0, 0.0),
     }
 }
 
@@ -51,15 +50,13 @@ const ALL_LAYOUTS: &[LayoutId] = &[
     LayoutId::CenterTile,
     LayoutId::RightTile,
     LayoutId::TgMix,
-    LayoutId::Canvas,
     LayoutId::Dwindle,
     LayoutId::Floating,
     LayoutId::Overview,
 ];
 
 /// Layouts that fit every client inside the work area. Excludes the
-/// scrollers (which intentionally push clients off-screen) and Canvas
-/// (which arranges via a separate render-time path and returns nothing).
+/// scrollers (which intentionally push clients off-screen).
 const CONTAINED: &[LayoutId] = &[
     LayoutId::Tile,
     LayoutId::RightTile,
@@ -97,9 +94,9 @@ fn each_layout_places_every_client_exactly_once() {
     let c = ctx(&tiled, &gaps, &props, 1, 0.55);
 
     for &layout in ALL_LAYOUTS {
-        // Canvas and Floating are the exceptions — they position clients
-        // outside the arrange path and return nothing.
-        if layout == LayoutId::Canvas || layout == LayoutId::Floating {
+        // Floating is the exception — it positions clients outside the
+        // arrange path and returns nothing.
+        if layout == LayoutId::Floating {
             assert!(arrange(layout, &c).is_empty());
             continue;
         }
@@ -217,14 +214,6 @@ fn outer_gaps_inset_the_monocle_rect() {
 }
 
 #[test]
-fn canvas_arranges_nothing_through_the_normal_path() {
-    let gaps = GapConfig::default();
-    let tiled = [1usize, 2, 3];
-    let props = props_for(&tiled);
-    assert!(arrange(LayoutId::Canvas, &ctx(&tiled, &gaps, &props, 1, 0.55)).is_empty());
-}
-
-#[test]
 fn nmaster_at_least_client_count_makes_one_column() {
     // With nmaster >= n, every client is a master → a single column,
     // so all rects share the same x and width.
@@ -267,9 +256,9 @@ fn layout_symbols_round_trip() {
 }
 
 #[test]
-fn all_tileable_has_12_entries_and_excludes_overview() {
+fn all_tileable_has_11_entries_and_excludes_overview() {
     let tileable = LayoutId::all_tileable();
-    assert_eq!(tileable.len(), 12);
+    assert_eq!(tileable.len(), 11);
     assert!(!tileable.contains(&LayoutId::Overview));
     assert!(tileable.contains(&LayoutId::Floating));
     assert!(tileable.contains(&LayoutId::Mosaic));

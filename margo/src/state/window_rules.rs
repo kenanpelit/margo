@@ -151,7 +151,7 @@ impl MargoState {
 
     /// Reset one tag slot on `mon_idx` back to "fresh, unused tag": the
     /// global layout/mfact/nmaster defaults, no gap override, no
-    /// user-picked-layout sticky bit, no canvas pan, no wallpaper — then
+    /// user-picked-layout sticky bit, no wallpaper — then
     /// re-seeds it from `taglayout`/`tagrule` config so it immediately
     /// picks up whatever's configured for its (possibly new) tag number,
     /// matching the precedence `reload_config` uses (taglayout > tagrule >
@@ -166,8 +166,6 @@ impl MargoState {
             mon.pertag.nmasters[tag] = default_nmaster;
             mon.pertag.gaps[tag] = crate::layout::GapConfig::default();
             mon.pertag.user_picked_layout[tag] = false;
-            mon.pertag.canvas_pan_x[tag] = 0.0;
-            mon.pertag.canvas_pan_y[tag] = 0.0;
             mon.pertag.wallpapers[tag].clear();
         }
         let taglayouts = self.config.taglayouts.clone();
@@ -245,8 +243,6 @@ impl MargoState {
             mon.pertag.nmasters[dst] = old_pertag.nmasters[i];
             mon.pertag.gaps[dst] = old_pertag.gaps[i];
             mon.pertag.user_picked_layout[dst] = old_pertag.user_picked_layout[i];
-            mon.pertag.canvas_pan_x[dst] = old_pertag.canvas_pan_x[i];
-            mon.pertag.canvas_pan_y[dst] = old_pertag.canvas_pan_y[i];
             mon.pertag.wallpapers[dst] = old_pertag.wallpapers[i].clone();
         }
 
@@ -402,9 +398,6 @@ impl MargoState {
             }
             if let Some(value) = rule.no_blur {
                 client.no_blur = value;
-            }
-            if let Some(value) = rule.canvas_no_tile {
-                client.canvas_no_tile = value;
             }
             if let Some(value) = rule.scroller_proportion {
                 client.scroller_proportion = value.clamp(0.1, 1.0);

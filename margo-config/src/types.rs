@@ -426,7 +426,6 @@ pub struct WindowRule {
     /// the same group. `None`/`Some(false)` leaves the window
     /// ungrouped (the default).
     pub group: Option<bool>,
-    pub canvas_no_tile: Option<bool>,
     pub focused_opacity: Option<f32>,
     pub unfocused_opacity: Option<f32>,
     pub scroller_proportion_single: Option<f32>,
@@ -598,10 +597,6 @@ pub struct Config {
     pub animation_curve_focus: BezierCurve,
     pub animation_curve_opafadein: BezierCurve,
     pub animation_curve_opafadeout: BezierCurve,
-    pub animation_duration_canvas_pan: u32,
-    pub animation_curve_canvas_pan: BezierCurve,
-    pub animation_duration_canvas_zoom: u32,
-    pub animation_curve_canvas_zoom: BezierCurve,
     /// Animation engine for the move/tile transition. `"bezier"` (default)
     /// drives the existing baked-curve + fixed-duration model; `"spring"`
     /// switches to a critically-damped harmonic oscillator that
@@ -881,12 +876,6 @@ pub struct Config {
     pub gappov: u32,
     pub borderpx: u32,
 
-    // canvas
-    pub canvas_tiling: bool,
-    pub canvas_tiling_gap: i32,
-    pub canvas_pan_on_kill: bool,
-    pub canvas_anchor_animate: bool,
-
     // tags
     pub tag_carousel: bool,
     /// Compact this monitor's occupied tags to consecutive numbers
@@ -1118,10 +1107,6 @@ impl Default for Config {
             animation_curve_focus: BezierCurve::default(),
             animation_curve_opafadein: BezierCurve::default(),
             animation_curve_opafadeout: BezierCurve([0.5, 0.5, 0.5, 0.5]),
-            animation_duration_canvas_pan: 300,
-            animation_curve_canvas_pan: BezierCurve::default(),
-            animation_duration_canvas_zoom: 300,
-            animation_curve_canvas_zoom: BezierCurve::default(),
             animation_clock_move: "bezier".into(),
             animation_clock_open: "bezier".into(),
             animation_clock_close: "bezier".into(),
@@ -1231,11 +1216,6 @@ impl Default for Config {
             gappoh: 10,
             gappov: 10,
             borderpx: 4,
-
-            canvas_tiling: false,
-            canvas_tiling_gap: 10,
-            canvas_pan_on_kill: true,
-            canvas_anchor_animate: false,
 
             tag_carousel: false,
             tag_gather: false,

@@ -3,9 +3,7 @@
 //! Randomised inputs across the whole catalogue, checking the
 //! invariants no example-based test can pin down exhaustively:
 //!
-//! 1. cardinality — one rect per tiled client, always (Canvas excepted:
-//!    it arranges via the render-time `canvas_geom` path and returns
-//!    nothing by design);
+//! 1. cardinality — one rect per tiled client, always;
 //! 2. no degenerate rects — every emitted rect has positive size;
 //! 3. containment — non-scroller layouts stay inside the work area;
 //! 4. no overlap — strict tile-class layouts never stack two clients
@@ -25,8 +23,8 @@
 use margo_layouts::{ArrangeCtx, GapConfig, LayoutId, Rect, arrange};
 use proptest::prelude::*;
 
-/// Every layout the dispatcher knows about except Canvas (no-op).
-const ALL_EXCEPT_CANVAS: &[LayoutId] = &[
+/// Every layout the dispatcher knows about.
+const ALL_LAYOUTS: &[LayoutId] = &[
     LayoutId::Tile,
     LayoutId::Scroller,
     LayoutId::Grid,
@@ -40,7 +38,7 @@ const ALL_EXCEPT_CANVAS: &[LayoutId] = &[
 ];
 
 /// Layouts that must keep every client inside the work area
-/// (scrollers overspill by design, Canvas returns nothing).
+/// (scrollers overspill by design).
 const CONTAINED: &[LayoutId] = &[
     LayoutId::Tile,
     LayoutId::RightTile,
@@ -155,7 +153,6 @@ fn ctx_of<'a>(p: &'a Params, tiled: &'a [usize]) -> ArrangeCtx<'a> {
         scroller_focus_center: p.focus_center,
         scroller_prefer_center: p.prefer_center,
         scroller_prefer_overspread: p.prefer_overspread,
-        canvas_pan: (0.0, 0.0),
     }
 }
 
@@ -173,7 +170,7 @@ proptest! {
     #[test]
     fn cardinality_and_positive_sizes(p in params()) {
         let tiled: Vec<usize> = (0..p.n).collect();
-        for &layout in ALL_EXCEPT_CANVAS {
+        for &layout in ALL_LAYOUTS {
             let ctx = ctx_of(&p, &tiled);
             let arranged = arrange(layout, &ctx);
             prop_assert_eq!(
@@ -188,9 +185,6 @@ proptest! {
                 );
             }
         }
-        // Canvas is a render-time layout: always empty here.
-        let ctx = ctx_of(&p, &tiled);
-        prop_assert!(arrange(LayoutId::Canvas, &ctx).is_empty());
     }
 
     #[test]
@@ -251,7 +245,7 @@ proptest! {
     #[test]
     fn arrange_is_deterministic(p in params()) {
         let tiled: Vec<usize> = (0..p.n).collect();
-        for &layout in ALL_EXCEPT_CANVAS {
+        for &layout in ALL_LAYOUTS {
             let ctx = ctx_of(&p, &tiled);
             let a = arrange(layout, &ctx);
             let b = arrange(layout, &ctx);

@@ -446,7 +446,6 @@ pub fn tgmix(ctx: &ArrangeCtx) -> ArrangeResult {
         scroller_focus_center: ctx.scroller_focus_center,
         scroller_prefer_center: ctx.scroller_prefer_center,
         scroller_prefer_overspread: ctx.scroller_prefer_overspread,
-        canvas_pan: ctx.canvas_pan,
     };
     let stack_ctx = ArrangeCtx {
         work_area: stack_wa,
@@ -461,22 +460,11 @@ pub fn tgmix(ctx: &ArrangeCtx) -> ArrangeResult {
         scroller_focus_center: ctx.scroller_focus_center,
         scroller_prefer_center: ctx.scroller_prefer_center,
         scroller_prefer_overspread: ctx.scroller_prefer_overspread,
-        canvas_pan: ctx.canvas_pan,
     };
 
     let mut result = tile(&master_ctx);
     result.extend(grid(&stack_ctx));
     result
-}
-
-// ── Canvas (infinite canvas — positions set externally) ──────────────────────
-
-/// For canvas layout, this just returns each client in its current canvas_geom.
-/// The actual pan/zoom transforms are applied at render time by the compositor.
-pub fn canvas(_ctx: &ArrangeCtx) -> ArrangeResult {
-    // Canvas layout does not reposition clients through the normal arrange path;
-    // each client retains its canvas_geom position set by pan/zoom operations.
-    vec![]
 }
 
 // ── Floating (stacking desktop — positions set by the compositor) ────────────
@@ -932,7 +920,6 @@ pub fn arrange(layout: LayoutId, ctx: &ArrangeCtx) -> ArrangeResult {
         LayoutId::CenterTile => center_tile(ctx),
         LayoutId::Scroller => scroller(ctx),
         LayoutId::TgMix => tgmix(ctx),
-        LayoutId::Canvas => canvas(ctx),
         LayoutId::Dwindle => dwindle(ctx),
         LayoutId::Floating => floating(ctx),
         LayoutId::Mosaic => mosaic(ctx),
@@ -968,7 +955,6 @@ mod tests {
             scroller_focus_center: true,
             scroller_prefer_center: true,
             scroller_prefer_overspread: false,
-            canvas_pan: (0.0, 0.0),
         };
 
         let arranged = scroller(&ctx);
@@ -1002,7 +988,6 @@ mod tests {
             scroller_focus_center: false,
             scroller_prefer_center: false,
             scroller_prefer_overspread: false,
-            canvas_pan: (0.0, 0.0),
         }
     }
 

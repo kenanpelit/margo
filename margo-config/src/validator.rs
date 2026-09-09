@@ -590,9 +590,6 @@ const BOOL_KEYS: &[&str] = &[
     "blur",
     "blur_layer",
     "blur_optimized",
-    "canvas_anchor_animate",
-    "canvas_pan_on_kill",
-    "canvas_tiling",
     "capslock",
     "center_master_overspread",
     "center_when_single_stack",
@@ -656,7 +653,6 @@ const INT_KEYS: &[&str] = &[
     "blur_params_num_passes",
     "blur_params_radius",
     "border_radius",
-    "canvas_tiling_gap",
     "drag_corner",
     "log_level",
     "overviewgappi",
@@ -672,8 +668,6 @@ const INT_KEYS: &[&str] = &[
 ];
 
 const UINT_KEYS: &[&str] = &[
-    "animation_duration_canvas_pan",
-    "animation_duration_canvas_zoom",
     "animation_duration_close",
     "animation_duration_focus",
     "animation_duration_move",

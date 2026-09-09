@@ -912,21 +912,6 @@ impl MargoState {
             layout = crate::layout::LayoutId::Monocle;
         }
 
-        let curtag = self.monitors[mon_idx].pertag.curtag;
-        let canvas_pan = (
-            self.monitors[mon_idx]
-                .pertag
-                .canvas_pan_x
-                .get(curtag)
-                .copied()
-                .unwrap_or(0.0),
-            self.monitors[mon_idx]
-                .pertag
-                .canvas_pan_y
-                .get(curtag)
-                .copied()
-                .unwrap_or(0.0),
-        );
         let ctx = layout::ArrangeCtx {
             work_area,
             tiled: &tiled,
@@ -940,7 +925,6 @@ impl MargoState {
             scroller_focus_center: self.config.scroller_focus_center,
             scroller_prefer_center: self.config.scroller_prefer_center,
             scroller_prefer_overspread: self.config.scroller_prefer_overspread,
-            canvas_pan,
         };
 
         // Overview path — mango-ext pattern (`overview(m) { grid(m); }`).
@@ -958,7 +942,7 @@ impl MargoState {
         // size is a protocol error at xdg configure (and corrupts
         // border/hit-test math), while the window-rule clamp below only
         // runs for clients that declare min/max. This is the single
-        // choke-point every one of the 14 layouts flows through.
+        // choke-point every one of the 13 layouts flows through.
         //
         // Apply per-client size constraints from window rules / the
         // client's own xdg_toplevel min/max request. The layout algorithm
@@ -1433,10 +1417,6 @@ impl MargoState {
         let mfact = mon.pertag.mfacts.get(tag).copied().unwrap_or(0.55);
         let work_area = mon.work_area;
         let monitor_area = mon.monitor_area;
-        let canvas_pan = (
-            mon.pertag.canvas_pan_x.get(tag).copied().unwrap_or(0.0),
-            mon.pertag.canvas_pan_y.get(tag).copied().unwrap_or(0.0),
-        );
         let mut gaps = layout::GapConfig {
             gappih: if self.enable_gaps { mon.gappih } else { 0 },
             gappiv: if self.enable_gaps { mon.gappiv } else { 0 },
@@ -1488,7 +1468,6 @@ impl MargoState {
             scroller_focus_center: self.config.scroller_focus_center,
             scroller_prefer_center: self.config.scroller_prefer_center,
             scroller_prefer_overspread: self.config.scroller_prefer_overspread,
-            canvas_pan,
         };
 
         for (client_idx, mut rect) in layout::arrange(layout, &ctx) {

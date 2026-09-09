@@ -8,8 +8,8 @@
 //!
 //! Everything in here is an inherent method on `MargoState`; the lift
 //! is signature-preserving so call sites (binds, mctl, scripting) are
-//! unchanged. Tag-switching adaptive layouts, canvas pan/reset,
-//! per-monitor focus warp, exclusive-fullscreen suppression — all live
+//! unchanged. Tag-switching adaptive layouts, per-monitor focus warp,
+//! exclusive-fullscreen suppression — all live
 //! here together because they share the same "mutate state then
 //! arrange + broadcast" idiom, and grouping them keeps the touch
 //! surface for adding a new dispatch action confined to one file.
@@ -750,43 +750,6 @@ impl MargoState {
             );
             self.monitors[mon_idx].pertag.ltidxs[curtag] = chosen;
         }
-    }
-
-    /// Spatial-canvas pan: shift the *viewport* on the active tag by
-    /// (dx, dy) logical pixels. Stored per-tag so each tag remembers
-    /// where the user had been "looking" in the canvas. The
-    /// `Canvas` layout reads the offset on every arrange and
-    /// translates each client's `canvas_geom` by it — clients stay
-    /// anchored on the canvas, the viewport moves.
-    pub fn canvas_pan(&mut self, dx: i32, dy: i32) {
-        let mon_idx = self.focused_monitor();
-        if mon_idx >= self.monitors.len() {
-            return;
-        }
-        let curtag = self.monitors[mon_idx].pertag.curtag;
-        if let Some(slot) = self.monitors[mon_idx].pertag.canvas_pan_x.get_mut(curtag) {
-            *slot += dx as f64;
-        }
-        if let Some(slot) = self.monitors[mon_idx].pertag.canvas_pan_y.get_mut(curtag) {
-            *slot += dy as f64;
-        }
-        self.arrange_monitor(mon_idx);
-    }
-
-    /// Reset the active tag's canvas viewport to the origin (0, 0).
-    pub fn canvas_reset(&mut self) {
-        let mon_idx = self.focused_monitor();
-        if mon_idx >= self.monitors.len() {
-            return;
-        }
-        let curtag = self.monitors[mon_idx].pertag.curtag;
-        if let Some(slot) = self.monitors[mon_idx].pertag.canvas_pan_x.get_mut(curtag) {
-            *slot = 0.0;
-        }
-        if let Some(slot) = self.monitors[mon_idx].pertag.canvas_pan_y.get_mut(curtag) {
-            *slot = 0.0;
-        }
-        self.arrange_monitor(mon_idx);
     }
 
     pub fn switch_layout(&mut self) {

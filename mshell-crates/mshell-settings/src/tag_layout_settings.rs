@@ -14,7 +14,7 @@ use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
 
-/// The 12 layouts offered per-tag, in `LayoutId` order. The last two,
+/// The 11 layouts offered per-tag, in `LayoutId` order. The last two,
 /// `floating` and `mosaic`, are stacking layouts — the compositor bypasses
 /// the tiler for them and auto-floats the tag's windows (`mosaic` packs
 /// them by their own requested size instead of just cascading).
@@ -27,7 +27,6 @@ const LAYOUTS: &[&str] = &[
     "center_tile",
     "right_tile",
     "tgmix",
-    "canvas",
     "dwindle",
     "floating",
     "mosaic",
@@ -290,7 +289,7 @@ fn rebuild_rows(
         });
         row.append(&tag_dd);
 
-        // Layout picker (14 layouts).
+        // Layout picker (11 layouts).
         let lay_dd = gtk::DropDown::from_strings(LAYOUTS);
         lay_dd.set_valign(gtk::Align::Center);
         lay_dd.set_hexpand(true);

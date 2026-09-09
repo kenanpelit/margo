@@ -166,17 +166,6 @@ pub struct Pertag {
     /// tags so a deliberate user choice is never overridden by a
     /// heuristic.
     pub user_picked_layout: Vec<bool>,
-    /// Spatial-canvas pan offset per tag, in logical pixels. Applied
-    /// as a translate to every client's `canvas_geom` when the tag
-    /// uses the `Canvas` layout — pan moves the *viewport* over the
-    /// canvas, the clients themselves stay anchored. Stored per-tag
-    /// so each tag can hold a different "spatial focus" (a sketch
-    /// canvas on tag 3 keeps its zoomed-in view of the corner the
-    /// user was working on, even after they tab through other tags
-    /// and back). `canvas_pan` / `canvas_reset` dispatch actions
-    /// mutate these.
-    pub canvas_pan_x: Vec<f64>,
-    pub canvas_pan_y: Vec<f64>,
     /// Per-tag wallpaper hint set by `tagrule = id:N, wallpaper:path`
     /// (W3.6). Compositor stores the string verbatim; wallpaper
     /// daemons (swaybg / noctalia / custom) read it from the
@@ -206,8 +195,6 @@ impl Pertag {
             nmasters: vec![default_nmaster; MAX_TAGS + 1],
             gaps: vec![GapConfig::default(); MAX_TAGS + 1],
             user_picked_layout: vec![false; MAX_TAGS + 1],
-            canvas_pan_x: vec![0.0; MAX_TAGS + 1],
-            canvas_pan_y: vec![0.0; MAX_TAGS + 1],
             wallpapers: vec![String::new(); MAX_TAGS + 1],
         }
     }
@@ -244,7 +231,6 @@ pub enum LayoutId {
     CenterTile,
     RightTile,
     TgMix,
-    Canvas,
     Dwindle,
     /// Stacking / floating desktop — the tiler produces no geometry;
     /// every client keeps its own `float_geom`. The compositor
@@ -272,7 +258,6 @@ impl LayoutId {
             LayoutId::CenterTile => "CT",
             LayoutId::RightTile => "RT",
             LayoutId::TgMix => "TG",
-            LayoutId::Canvas => "CV",
             LayoutId::Dwindle => "DW",
             LayoutId::Floating => "F",
             LayoutId::Mosaic => "MO",
@@ -290,7 +275,6 @@ impl LayoutId {
             LayoutId::CenterTile => "center_tile",
             LayoutId::RightTile => "right_tile",
             LayoutId::TgMix => "tgmix",
-            LayoutId::Canvas => "canvas",
             LayoutId::Dwindle => "dwindle",
             LayoutId::Floating => "floating",
             LayoutId::Mosaic => "mosaic",
@@ -308,7 +292,6 @@ impl LayoutId {
             LayoutId::CenterTile,
             LayoutId::RightTile,
             LayoutId::TgMix,
-            LayoutId::Canvas,
             LayoutId::Dwindle,
             LayoutId::Floating,
             LayoutId::Mosaic,
@@ -326,7 +309,6 @@ impl LayoutId {
             LayoutId::CenterTile,
             LayoutId::RightTile,
             LayoutId::TgMix,
-            LayoutId::Canvas,
             LayoutId::Dwindle,
             LayoutId::Floating,
             LayoutId::Mosaic,
@@ -336,9 +318,9 @@ impl LayoutId {
 
     /// All layouts offered in catalogues / pickers (excludes
     /// `Overview`, which is rendered via a separate code path).
-    /// "Tileable" is historical — the list includes `Canvas` and
-    /// `Floating`, which produce no tiled geometry. Useful for
-    /// `mvisual` and any catalogue UI.
+    /// "Tileable" is historical — the list includes `Floating`, which
+    /// produces no tiled geometry. Useful for `mvisual` and any
+    /// catalogue UI.
     pub fn all_tileable() -> &'static [LayoutId] {
         &[
             LayoutId::Tile,
@@ -349,7 +331,6 @@ impl LayoutId {
             LayoutId::CenterTile,
             LayoutId::RightTile,
             LayoutId::TgMix,
-            LayoutId::Canvas,
             LayoutId::Dwindle,
             LayoutId::Floating,
             LayoutId::Mosaic,
@@ -386,9 +367,4 @@ pub struct ArrangeCtx<'a> {
     pub scroller_prefer_center: bool,
     /// Prefer edge overspread for first/last scroller clients.
     pub scroller_prefer_overspread: bool,
-    /// Active tag's spatial-canvas pan offset (logical pixels).
-    /// Only meaningful for the `Canvas` layout — translates every
-    /// client's `canvas_geom` so the viewport moves over a fixed
-    /// canvas. Zero for non-canvas layouts.
-    pub canvas_pan: (f64, f64),
 }

@@ -351,7 +351,6 @@ fn default_layout_names() -> Vec<String> {
         "center_tile",
         "right_tile",
         "tgmix",
-        "canvas",
         "dwindle",
         "floating",
         "mosaic",
@@ -391,7 +390,6 @@ fn icon_for_layout(id: &str) -> &'static str {
         "center_tile" => "layout-center-symbolic",
         "right_tile" => "layout-right-symbolic",
         "tgmix" => "layout-mix-symbolic",
-        "canvas" => "layout-canvas-symbolic",
         "dwindle" => "layout-dwindle-symbolic",
         // No dedicated icon packaged for "floating" or "mosaic" yet —
         // both fall through to the generic fallback above.

@@ -92,8 +92,6 @@ pub struct PertagSnapshot {
     pub ltidxs: Vec<String>,
     pub mfacts: Vec<f32>,
     pub nmasters: Vec<u32>,
-    pub canvas_pan_x: Vec<f64>,
-    pub canvas_pan_y: Vec<f64>,
 }
 
 pub const CURRENT_VERSION: u32 = 1;
@@ -140,8 +138,6 @@ impl SessionSnapshot {
                         .collect(),
                     mfacts: m.pertag.mfacts.clone(),
                     nmasters: m.pertag.nmasters.clone(),
-                    canvas_pan_x: m.pertag.canvas_pan_x.clone(),
-                    canvas_pan_y: m.pertag.canvas_pan_y.clone(),
                 },
             })
             .collect();
@@ -262,18 +258,6 @@ pub fn apply_to_state(state: &mut MargoState, snap: &SessionSnapshot) -> usize {
         m.pertag.mfacts[..n].copy_from_slice(&ms.pertag.mfacts[..n]);
         let n = m.pertag.nmasters.len().min(ms.pertag.nmasters.len());
         m.pertag.nmasters[..n].copy_from_slice(&ms.pertag.nmasters[..n]);
-        let n = m
-            .pertag
-            .canvas_pan_x
-            .len()
-            .min(ms.pertag.canvas_pan_x.len());
-        m.pertag.canvas_pan_x[..n].copy_from_slice(&ms.pertag.canvas_pan_x[..n]);
-        let n = m
-            .pertag
-            .canvas_pan_y
-            .len()
-            .min(ms.pertag.canvas_pan_y.len());
-        m.pertag.canvas_pan_y[..n].copy_from_slice(&ms.pertag.canvas_pan_y[..n]);
 
         m.pertag.curtag = ms.pertag.curtag;
         m.pertag.prevtag = ms.pertag.prevtag;
@@ -380,8 +364,6 @@ mod tests {
                     ],
                     mfacts: vec![0.55, 0.6, 0.5],
                     nmasters: vec![1, 2, 1],
-                    canvas_pan_x: vec![0.0, 100.0, 0.0],
-                    canvas_pan_y: vec![0.0, 50.0, 0.0],
                 },
             }],
         };
@@ -457,13 +439,11 @@ mod tests {
                             "deck".to_string(),
                             "center_tile".to_string(),
                             "dwindle".to_string(),
-                            "canvas".to_string(),
+                            "tgmix".to_string(),
                             "right_tile".to_string(),
                         ],
                         mfacts: vec![0.55, 0.50, 0.65, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55],
                         nmasters: vec![1, 1, 1, 2, 1, 1, 1, 1, 1],
-                        canvas_pan_x: vec![0.0; 9],
-                        canvas_pan_y: vec![0.0; 9],
                     },
                 },
                 MonitorSnapshot {
@@ -476,8 +456,6 @@ mod tests {
                         ltidxs: vec!["tile".to_string()],
                         mfacts: vec![0.55],
                         nmasters: vec![1],
-                        canvas_pan_x: vec![0.0],
-                        canvas_pan_y: vec![0.0],
                     },
                 },
             ],
@@ -507,8 +485,6 @@ mod tests {
             for (lm, om) in l.pertag.mfacts.iter().zip(o.pertag.mfacts.iter()) {
                 assert!((lm - om).abs() < 1e-6, "mfact drift {lm} vs {om}");
             }
-            assert_eq!(l.pertag.canvas_pan_x, o.pertag.canvas_pan_x);
-            assert_eq!(l.pertag.canvas_pan_y, o.pertag.canvas_pan_y);
         }
         for (l, o) in loaded.scratchpads.iter().zip(original.scratchpads.iter()) {
             assert_eq!(l.app_id, o.app_id);
@@ -597,8 +573,6 @@ mod tests {
                     ltidxs: vec!["tile".to_string()],
                     mfacts: vec![0.55],
                     nmasters: vec![1],
-                    canvas_pan_x: vec![0.0],
-                    canvas_pan_y: vec![0.0],
                 },
             }],
         };
@@ -622,8 +596,6 @@ mod tests {
                     ltidxs: (0..15).map(|_| "tile".to_string()).collect(),
                     mfacts: vec![0.55; 15],
                     nmasters: vec![1; 15],
-                    canvas_pan_x: vec![0.0; 15],
-                    canvas_pan_y: vec![0.0; 15],
                 },
             }],
         };
@@ -652,8 +624,6 @@ mod tests {
                     ltidxs: vec!["xenomorph_v2_inferno".to_string()],
                     mfacts: vec![0.55],
                     nmasters: vec![1],
-                    canvas_pan_x: vec![0.0],
-                    canvas_pan_y: vec![0.0],
                 },
             }],
         };
@@ -699,8 +669,6 @@ mod tests {
                     ltidxs: vec!["tile".to_string()],
                     mfacts: vec![0.55],
                     nmasters: vec![1],
-                    canvas_pan_x: vec![0.0],
-                    canvas_pan_y: vec![0.0],
                 },
             }],
         };

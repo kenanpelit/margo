@@ -17,8 +17,6 @@ pub enum AnimationType {
     Focus,
     OpaFadeIn,
     OpaFadeOut,
-    CanvasPan,
-    CanvasZoom,
 }
 
 /// A baked lookup table for one animation type.
@@ -139,8 +137,6 @@ pub struct AnimationCurves {
     pub focus_curve: BakedCurve,
     pub opafadein_curve: BakedCurve,
     pub opafadeout_curve: BakedCurve,
-    pub canvas_pan_curve: BakedCurve,
-    pub canvas_zoom_curve: BakedCurve,
 }
 
 impl AnimationCurves {
@@ -175,14 +171,10 @@ impl AnimationCurves {
             tag_curve: bake_one(&config.animation_clock_tag, &config.animation_curve_tag),
             close_curve: bake_one(&config.animation_clock_close, &config.animation_curve_close),
             focus_curve: bake_one(&config.animation_clock_focus, &config.animation_curve_focus),
-            // OpaFadeIn / OpaFadeOut and canvas pan / zoom intentionally
-            // stay on bezier — opacity blends look unnatural with
-            // overshoot, and the canvas pan/zoom uses a hand-tuned
-            // curve where spring physics would feel uncontrolled.
+            // OpaFadeIn / OpaFadeOut intentionally stay on bezier —
+            // opacity blends look unnatural with overshoot.
             opafadein_curve: BakedCurve::bake(&config.animation_curve_opafadein),
             opafadeout_curve: BakedCurve::bake(&config.animation_curve_opafadeout),
-            canvas_pan_curve: BakedCurve::bake(&config.animation_curve_canvas_pan),
-            canvas_zoom_curve: BakedCurve::bake(&config.animation_curve_canvas_zoom),
         }
     }
 
@@ -195,8 +187,6 @@ impl AnimationCurves {
             AnimationType::Focus => &self.focus_curve,
             AnimationType::OpaFadeIn => &self.opafadein_curve,
             AnimationType::OpaFadeOut => &self.opafadeout_curve,
-            AnimationType::CanvasPan => &self.canvas_pan_curve,
-            AnimationType::CanvasZoom => &self.canvas_zoom_curve,
         };
         curve.sample(t)
     }
@@ -479,8 +469,6 @@ mod tests {
             AnimationType::Focus,
             AnimationType::OpaFadeIn,
             AnimationType::OpaFadeOut,
-            AnimationType::CanvasPan,
-            AnimationType::CanvasZoom,
         ] {
             let v = curves.sample(0.5, ty);
             assert!(

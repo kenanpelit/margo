@@ -11,8 +11,9 @@
 //!
 //! Mirrors mango-ext's `toggle_named_scratchpad` +
 //! `apply_named_scratchpad` + `switch_scratchpad_client_state` +
-//! `show_scratchpad` chain, simplified by skipping canvas-layout
-//! per-tag offsets (margo doesn't carry those on `MargoClient` yet).
+//! `show_scratchpad` chain, simplified by skipping mango-ext's
+//! canvas-layout per-tag offsets (margo never carried those on
+//! `MargoClient`, and dropped its own incomplete Canvas layout stub).
 //!
 //! The `summon` action — bring a window to the active monitor's
 //! current tag, launching it if missing — lives here too because it

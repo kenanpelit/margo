@@ -1,4 +1,4 @@
-//! mvisual — interactive GTK4 design tool for margo's 14 tiling
+//! mvisual — interactive GTK4 design tool for margo's 13 tiling
 //! layouts × per-tag layout pinning.
 //!
 //! niri ships `niri-visual-tests` to inspect a single layout under a
@@ -157,7 +157,6 @@ fn render_layout(cr: &cairo::Context, w: i32, h: i32, p: &LayoutParams, big: boo
         scroller_focus_center: true,
         scroller_prefer_center: true,
         scroller_prefer_overspread: false,
-        canvas_pan: (0.0, 0.0),
     };
     let result = arrange(p.layout, &ctx);
 
@@ -707,14 +706,14 @@ mod tests {
     fn current_tag_round_trips_layout_changes() {
         let mut s = AppState::new();
         s.current_tag = 4;
-        s.current_mut().layout = LayoutId::Canvas;
+        s.current_mut().layout = LayoutId::Dwindle;
         s.current_mut().mfact = 0.42;
         // Other tags untouched.
         assert_eq!(s.pertag[3].layout, LayoutId::all_tileable()[2]);
         // Switch away and back — pinned values survive.
         s.current_tag = 1;
         s.current_tag = 4;
-        assert_eq!(s.current().layout, LayoutId::Canvas);
+        assert_eq!(s.current().layout, LayoutId::Dwindle);
         assert_eq!(s.current().mfact, 0.42);
     }
 

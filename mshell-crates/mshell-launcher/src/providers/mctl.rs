@@ -18,7 +18,7 @@
 //! |---|---|
 //! | Twilight | toggle · reset · day (6500K) · evening (4500K) · night (3500K) · midnight (2700K) |
 //! | Wallpaper | next · previous · random |
-//! | Layout | switch to each of the 10 named layouts (tile / scroller / grid / monocle / deck / center_tile / right_tile / tgmix / canvas / dwindle) |
+//! | Layout | switch to each of the 9 named layouts (tile / scroller / grid / monocle / deck / center_tile / right_tile / tgmix / dwindle) |
 //! | Screenshot | region · full · window |
 //! | Compositor | reload config |
 
@@ -169,8 +169,7 @@ const LAYOUTS: &[(usize, &str, &str)] = &[
     (5, "Center tile", "Master in centre, stacks left+right"),
     (6, "Right tile", "Master on right, stack left"),
     (7, "Tgmix", "Tile-grid hybrid"),
-    (8, "Canvas", "Free-form spatial canvas"),
-    (9, "Dwindle", "BSP-style recursive split"),
+    (8, "Dwindle", "BSP-style recursive split"),
 ];
 
 pub struct MctlProvider;
@@ -333,7 +332,6 @@ fn icon_for_layout(canonical: &str) -> &'static str {
         "center_tile" => "layout-center-symbolic",
         "right_tile" => "layout-right-symbolic",
         "tgmix" => "layout-mix-symbolic",
-        "canvas" => "layout-canvas-symbolic",
         "dwindle" => "layout-dwindle-symbolic",
         _ => "view-list-symbolic",
     }
@@ -377,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn layout_keyword_lists_all_10() {
+    fn layout_keyword_lists_all_9() {
         let p = MctlProvider::new();
         let items = p.search("layout");
         let layout_count = items
@@ -385,7 +383,7 @@ mod tests {
             .filter(|i| i.id.starts_with("mctl:layout:"))
             .count();
         assert_eq!(layout_count, LAYOUTS.len());
-        assert_eq!(layout_count, 10);
+        assert_eq!(layout_count, 9);
     }
 
     #[test]

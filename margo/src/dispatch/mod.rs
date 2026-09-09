@@ -60,7 +60,6 @@ const ALL_LAYOUTS: &[LayoutId] = &[
     LayoutId::CenterTile,
     LayoutId::RightTile,
     LayoutId::TgMix,
-    LayoutId::Canvas,
     LayoutId::Dwindle,
     LayoutId::Floating,
 ];
@@ -787,11 +786,6 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "scroller_overview_focus_next" => state.scroller_overview_select(1),
         "scroller_overview_focus_prev" => state.scroller_overview_select(-1),
         "scroller_overview_activate" => state.scroller_overview_activate(),
-        // Spatial-canvas pan (PaperWM-ish). Two integer args:
-        // dx and dy logical-pixel deltas. Stored per-tag so each
-        // tag remembers its viewport offset.
-        "canvas_pan" => state.canvas_pan(arg.i, arg.i2),
-        "canvas_reset" => state.canvas_reset(),
         _ => debug!("unhandled action: {action}"),
     }
 }
