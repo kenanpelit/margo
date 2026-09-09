@@ -2337,6 +2337,13 @@ impl MargoState {
         // fire. mango broadcasts on every focus change too — this
         // is straight parity.
         if prev_focus_idx != new_focus_idx {
+            // Raise the newly-focused window in the scene z-order (dwl's
+            // `focusclient` does the same). Invisible for non-overlapping
+            // layouts; for `deck` it's what actually brings the focused
+            // stack card to the front. `focus_stack` re-arranges anyway,
+            // but `exchange_stack`, `focuswindow` over IPC and pointer
+            // focus don't — so do it here, where every focus change lands.
+            self.enforce_z_order();
             self.mark_state_dirty();
             // Phase 3 scripting: invoke any `on_focus_change`
             // handlers the user registered in init.rhai. Hooks

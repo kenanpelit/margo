@@ -13,10 +13,14 @@
 //! own `xdg_toplevel` min/max-size request never grows it past that slot
 //! or eats the gaps around it (regression: Discord's 940×~500 minimum
 //! collapsed center_tile / tgmix / dwindle to edge-to-edge).
+//!
+//! Deck z-order — the focused stack card is raised to the front of the
+//! scene, since every deck card shares one rect.
 
 use margo_config::Config;
 
 use super::fixture::Fixture;
+use crate::state::FocusTarget;
 
 /// Two mapped clients on one 1080p output. Returns the fixture and the two
 /// windows' stable `MargoClient::id`s (clients land at state indices 0, 1).
@@ -146,4 +150,66 @@ fn a_tiled_clients_min_size_is_ignored_and_the_gaps_survive() {
     let gap_after = fx.server.state.clients[2].geom.y
         - (fx.server.state.clients[1].geom.y + fx.server.state.clients[1].geom.height);
     assert_eq!(gap_after, gap_before, "the inter-window gap was eaten");
+}
+
+#[test]
+fn deck_raises_the_focused_stack_card_to_the_front() {
+    // `deck` gives every stack member the one identical rect, so the
+    // card you actually see is whichever sits on top of the scene
+    // z-order. Cycling focus through the stack must bring the focused
+    // card to the front, not just move the border highlight.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_keyboard();
+    fx.add_output("DP-1", (1920, 1080));
+    let curtag = fx.server.state.monitors[0].pertag.curtag;
+    fx.server.state.monitors[0].pertag.ltidxs[curtag] = crate::layout::LayoutId::Deck;
+    fx.server.state.monitors[0].pertag.user_picked_layout[curtag] = true;
+
+    // 1 master + 2 stack cards.
+    for _ in 0..3 {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id("kitty".into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+    fx.server.state.arrange_monitor(0);
+
+    assert_eq!(
+        fx.server.state.clients[1].geom, fx.server.state.clients[2].geom,
+        "deck stack cards should share one rect"
+    );
+
+    let stack_a = fx.server.state.clients[1].window.clone();
+    let stack_b = fx.server.state.clients[2].window.clone();
+
+    fx.server
+        .state
+        .focus_surface(Some(FocusTarget::Window(stack_a.clone())));
+    {
+        let els: Vec<_> = fx.server.state.space.elements().collect();
+        let pa = els.iter().position(|&e| *e == stack_a);
+        let pb = els.iter().position(|&e| *e == stack_b);
+        assert!(
+            pa > pb && pa.is_some(),
+            "focusing stack card A must raise it above B (a={pa:?} b={pb:?})"
+        );
+    }
+
+    fx.server
+        .state
+        .focus_surface(Some(FocusTarget::Window(stack_b.clone())));
+    {
+        let els: Vec<_> = fx.server.state.space.elements().collect();
+        let pa = els.iter().position(|&e| *e == stack_a);
+        let pb = els.iter().position(|&e| *e == stack_b);
+        assert!(
+            pb > pa && pb.is_some(),
+            "focusing stack card B must raise it above A (a={pa:?} b={pb:?})"
+        );
+    }
 }

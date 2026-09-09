@@ -215,6 +215,7 @@ pub fn deck(ctx: &ArrangeCtx) -> ArrangeResult {
     let oh = g.gappoh;
     let ov = g.gappov;
     let ih = g.gappih;
+    let iv = g.gappiv;
 
     let nm = (ctx.nmaster as usize).min(n);
     let stack_count = n.saturating_sub(nm);
@@ -232,15 +233,19 @@ pub fn deck(ctx: &ArrangeCtx) -> ArrangeResult {
     let stack_rect = Rect::new(wa.x + oh + mw + ih, wa.y + ov, sw, total_h);
 
     let mut result = Vec::with_capacity(n);
-    let mut my = 0;
-    for (i, &idx) in ctx.tiled.iter().enumerate() {
-        if i < nm {
-            let h = (total_h - my) / (nm - i) as i32;
-            result.push((idx, Rect::new(wa.x + oh, wa.y + ov + my, mw, h)));
-            my += h;
-        } else {
-            result.push((idx, stack_rect));
-        }
+    // Masters stack vertically with the inner gap between them (same as
+    // `tile`); every stack member shares the one deck rect.
+    stack_evenly(
+        &ctx.tiled[..nm],
+        wa.x + oh,
+        wa.y + ov,
+        mw,
+        total_h,
+        iv,
+        &mut result,
+    );
+    for &idx in &ctx.tiled[nm..] {
+        result.push((idx, stack_rect));
     }
     result
 }

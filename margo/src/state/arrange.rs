@@ -1194,7 +1194,23 @@ impl MargoState {
     /// last raise per band wins, which means the most-recently-
     /// created float of each band ends up at the top of its band
     /// (sane default for "newly opened picker shows on top").
+    ///
+    /// Before any of that, the focused window is raised above its
+    /// fellow tiled windows. Most layouts never overlap so this is
+    /// invisible, but `deck` gives every stack card the one identical
+    /// rect — without this the focused card stays buried behind
+    /// whichever sibling `map_element` touched last, and cycling the
+    /// deck changes the border colour but not what you see. The float
+    /// / grab / overlay bands still layer on top, so a focused float
+    /// is unaffected (it gets re-raised within its own band just
+    /// below).
     pub fn enforce_z_order(&mut self) {
+        if let Some(w) = self
+            .focused_client_idx()
+            .map(|idx| self.clients[idx].window.clone())
+        {
+            self.space.raise_element(&w, false);
+        }
         let floats: Vec<smithay::desktop::Window> = self
             .clients
             .iter()
