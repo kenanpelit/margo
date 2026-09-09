@@ -13,7 +13,7 @@ use super::*;
 /// can actually hold.
 ///
 /// `layout::arrange` hands every tile-family layout's master/stack
-/// column a set of rects that share the same `(x, width)` and sum,
+/// column a set of rects that share a horizontal territory and sum,
 /// with the gaps between them, to exactly the column's span. A single
 /// client's own declared minimum height can be bigger than its fair
 /// share of that column (an Electron app like Discord commonly
@@ -23,25 +23,18 @@ use super::*;
 /// of the screen in `tile`, or into a neighbouring column's territory
 /// in `center_tile`/`right_tile`, since nothing shrank to make room.
 ///
-/// Groups `geometries` by `(x, width)` — every rect sharing both is a
-/// vertical stack in the layout that produced them — and hands each
-/// group with more than one member to [`layout::repack_1d`], which
-/// grows the min-height member(s) exactly to their floor and shrinks
-/// the rest to compensate, keeping the group's total unchanged. A
-/// group of one has no sibling to shrink; it just takes its floor
-/// directly, same as the old per-client-only clamp did.
+/// Groups `geometries` into vertical-stack columns (see
+/// [`stack_columns`]) and hands each group with more than one member
+/// to [`layout::repack_1d`], which grows the min-height member(s)
+/// exactly to their floor and shrinks the rest to compensate, keeping
+/// the group's total unchanged. A group of one has no sibling to
+/// shrink; it just takes its floor directly, same as the old
+/// per-client-only clamp did.
 fn apply_min_height_floors(
     geometries: &mut [(usize, crate::layout::Rect)],
     clients: &[MargoClient],
 ) {
-    use std::collections::BTreeMap;
-
-    let mut groups: BTreeMap<(i32, i32), Vec<usize>> = BTreeMap::new();
-    for (gi, (_, rect)) in geometries.iter().enumerate() {
-        groups.entry((rect.x, rect.width)).or_default().push(gi);
-    }
-
-    for members in groups.values() {
+    for members in stack_columns(geometries).values() {
         if members.len() == 1 {
             let gi = members[0];
             let (client_idx, rect) = &mut geometries[gi];
@@ -54,6 +47,29 @@ fn apply_min_height_floors(
 
         let mut ordered = members.clone();
         ordered.sort_by_key(|&gi| geometries[gi].1.y);
+
+        // `deck`'s stack members deliberately share one identical rect
+        // (a tabbed "deck of cards" — only one is ever shown at a
+        // time), so every member in this group can land at the exact
+        // same `y`. They aren't dividing a shared span the way a real
+        // vertical stack does, so there's nothing to redistribute:
+        // each just takes its own floor, independently, same as a
+        // group of one.
+        let distinct_y = ordered
+            .iter()
+            .map(|&gi| geometries[gi].1.y)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len();
+        if distinct_y <= 1 {
+            for &gi in &ordered {
+                let (client_idx, rect) = &mut geometries[gi];
+                let min_h = clients[*client_idx].min_height;
+                if min_h > rect.height {
+                    rect.height = min_h;
+                }
+            }
+            continue;
+        }
 
         let sizes: Vec<i32> = ordered.iter().map(|&gi| geometries[gi].1.height).collect();
         let floors: Vec<i32> = ordered
@@ -92,6 +108,107 @@ fn apply_min_height_floors(
             y += h + gaps.get(n).copied().unwrap_or(0);
         }
     }
+}
+
+/// Last-resort safety net after [`apply_min_height_floors`]: nudges any
+/// rect that still spills past `work_area`'s edges back on-screen by
+/// repositioning it (never by shrinking — a min-size floor stays
+/// honoured), for every layout whose own contract already promises
+/// every client fits inside the work area.
+///
+/// Column-based redistribution fixes the common shape (a simple
+/// master/stack column, or a grid column reached through `tgmix`) with
+/// no overlap at all. But `dwindle`'s spiral splits the work area on
+/// an *alternating* axis each step, so a stack member's "column mate"
+/// for a height overflow can be a sibling it shares *width* with, not
+/// height — outside what column-grouping can redistribute into. Rather
+/// than leave that case hanging off the bottom of the screen (content
+/// no key or click can ever reach), reposition it fully on-screen; in
+/// the rare case that still means overlapping one immediate neighbour,
+/// that is strictly better than being partly invisible and dead to
+/// input.
+///
+/// Skips `Scroller`, whose columns intentionally extend past the work
+/// area (horizontal panning is the point) — every other layout this
+/// runs on already guarantees full containment by design (see
+/// `contained_layouts_keep_every_rect_inside_the_work_area` in
+/// `margo-layouts`), so clamping here restores that guarantee rather
+/// than fighting it.
+fn clamp_to_work_area(
+    geometries: &mut [(usize, crate::layout::Rect)],
+    work_area: crate::layout::Rect,
+    layout: crate::layout::LayoutId,
+) {
+    if layout == crate::layout::LayoutId::Scroller {
+        return;
+    }
+    for (_, rect) in geometries.iter_mut() {
+        if rect.width < work_area.width {
+            rect.x = rect
+                .x
+                .clamp(work_area.x, work_area.x + work_area.width - rect.width);
+        } else {
+            rect.x = work_area.x;
+        }
+        if rect.height < work_area.height {
+            rect.y = rect
+                .y
+                .clamp(work_area.y, work_area.y + work_area.height - rect.height);
+        } else {
+            rect.y = work_area.y;
+        }
+    }
+}
+
+/// Partitions `geometries` into the vertical-stack columns a tile-family
+/// layout produced them in: rects belong to the same column when they
+/// share a width and their x-ranges overlap. Returns each column's
+/// member indices (into `geometries`), keyed by an arbitrary but stable
+/// group id.
+///
+/// An exact `x` match would miss a real column: `grid` centres the one
+/// odd cell of an incomplete last row across the whole work area
+/// (`tgmix`'s stack half hands its clients straight to `grid`), which
+/// nudges that cell a few pixels sideways from the column above it —
+/// same width, still clearly the same column visually, but no longer
+/// the same `x`. Overlap is transitive (grouped via union-find) so a
+/// column of 3+ rects still merges correctly even if only consecutive
+/// rows overlap pairwise.
+fn stack_columns(
+    geometries: &[(usize, crate::layout::Rect)],
+) -> std::collections::BTreeMap<usize, Vec<usize>> {
+    let n = geometries.len();
+    let mut parent: Vec<usize> = (0..n).collect();
+
+    fn find(parent: &mut [usize], i: usize) -> usize {
+        if parent[i] != i {
+            parent[i] = find(parent, parent[i]);
+        }
+        parent[i]
+    }
+
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let a = geometries[i].1;
+            let b = geometries[j].1;
+            let same_width = a.width == b.width;
+            let x_overlaps = a.x < b.x + b.width && b.x < a.x + a.width;
+            if same_width && x_overlaps {
+                let (ri, rj) = (find(&mut parent, i), find(&mut parent, j));
+                if ri != rj {
+                    parent[ri] = rj;
+                }
+            }
+        }
+    }
+
+    let mut groups: std::collections::BTreeMap<usize, Vec<usize>> =
+        std::collections::BTreeMap::new();
+    for i in 0..n {
+        let root = find(&mut parent, i);
+        groups.entry(root).or_default().push(i);
+    }
+    groups
 }
 
 impl MargoState {
@@ -746,6 +863,7 @@ impl MargoState {
             }
         }
         apply_min_height_floors(&mut geometries, &self.clients);
+        clamp_to_work_area(&mut geometries, work_area, layout);
 
         let now = crate::utils::now_ms();
         // gid → active group member's TARGET slot rect, filled during the
