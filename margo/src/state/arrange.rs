@@ -110,6 +110,90 @@ fn apply_min_height_floors(
     }
 }
 
+/// Width's twin of [`apply_min_height_floors`]: grows each client's
+/// rect to its own `min_width`, redistributing within its row (see
+/// [`stack_rows`]) instead of spilling past whatever's next to it.
+///
+/// The same shape that motivated the height version shows up on this
+/// axis too: `grid` (reached directly, or through `tgmix`'s stack
+/// half) lays cells out in genuine rows, and a cell whose client
+/// declares a real minimum width (Discord's chat UI needs real
+/// horizontal room, not just vertical) grew past its column boundary
+/// in place, riding straight over its row-mate instead of shrinking it
+/// to make room.
+fn apply_min_width_floors(
+    geometries: &mut [(usize, crate::layout::Rect)],
+    clients: &[MargoClient],
+) {
+    for members in stack_rows(geometries).values() {
+        if members.len() == 1 {
+            let gi = members[0];
+            let (client_idx, rect) = &mut geometries[gi];
+            let min_w = clients[*client_idx].min_width;
+            if min_w > rect.width {
+                rect.width = min_w;
+            }
+            continue;
+        }
+
+        let mut ordered = members.clone();
+        ordered.sort_by_key(|&gi| geometries[gi].1.x);
+
+        // Mirrors `deck`'s coincident-rect case in
+        // `apply_min_height_floors`: members that all share the same
+        // `x` aren't dividing a row between them, so there's nothing
+        // to redistribute — each just takes its own floor.
+        let distinct_x = ordered
+            .iter()
+            .map(|&gi| geometries[gi].1.x)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len();
+        if distinct_x <= 1 {
+            for &gi in &ordered {
+                let (client_idx, rect) = &mut geometries[gi];
+                let min_w = clients[*client_idx].min_width;
+                if min_w > rect.width {
+                    rect.width = min_w;
+                }
+            }
+            continue;
+        }
+
+        let sizes: Vec<i32> = ordered.iter().map(|&gi| geometries[gi].1.width).collect();
+        let floors: Vec<i32> = ordered
+            .iter()
+            .map(|&gi| clients[geometries[gi].0].min_width.max(0))
+            .collect();
+        let gaps: Vec<i32> = ordered
+            .windows(2)
+            .map(|w| {
+                let prev = geometries[w[0]].1;
+                let next = geometries[w[1]].1;
+                (next.x - (prev.x + prev.width)).max(0)
+            })
+            .collect();
+        let Some(&last_gi) = ordered.last() else {
+            continue;
+        };
+        let left = geometries[ordered[0]].1.x;
+        let right = {
+            let last = geometries[last_gi].1;
+            last.x + last.width
+        };
+        let span = right - left;
+
+        let repacked = layout::repack_1d(&sizes, &floors, &gaps, span);
+
+        let mut x = left;
+        for (n, &gi) in ordered.iter().enumerate() {
+            let w = repacked[n];
+            geometries[gi].1.x = x;
+            geometries[gi].1.width = w;
+            x += w + gaps.get(n).copied().unwrap_or(0);
+        }
+    }
+}
+
 /// Last-resort safety net after [`apply_min_height_floors`]: nudges any
 /// rect that still spills past `work_area`'s edges back on-screen by
 /// repositioning it (never by shrinking — a min-size floor stays
@@ -194,6 +278,46 @@ fn stack_columns(
             let same_width = a.width == b.width;
             let x_overlaps = a.x < b.x + b.width && b.x < a.x + a.width;
             if same_width && x_overlaps {
+                let (ri, rj) = (find(&mut parent, i), find(&mut parent, j));
+                if ri != rj {
+                    parent[ri] = rj;
+                }
+            }
+        }
+    }
+
+    let mut groups: std::collections::BTreeMap<usize, Vec<usize>> =
+        std::collections::BTreeMap::new();
+    for i in 0..n {
+        let root = find(&mut parent, i);
+        groups.entry(root).or_default().push(i);
+    }
+    groups
+}
+
+/// [`stack_columns`]'s transpose: partitions `geometries` into the
+/// horizontal rows a layout produced them in — rects belong to the same
+/// row when they share a height and their y-ranges overlap.
+fn stack_rows(
+    geometries: &[(usize, crate::layout::Rect)],
+) -> std::collections::BTreeMap<usize, Vec<usize>> {
+    let n = geometries.len();
+    let mut parent: Vec<usize> = (0..n).collect();
+
+    fn find(parent: &mut [usize], i: usize) -> usize {
+        if parent[i] != i {
+            parent[i] = find(parent, parent[i]);
+        }
+        parent[i]
+    }
+
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let a = geometries[i].1;
+            let b = geometries[j].1;
+            let same_height = a.height == b.height;
+            let y_overlaps = a.y < b.y + b.height && b.y < a.y + a.height;
+            if same_height && y_overlaps {
                 let (ri, rj) = (find(&mut parent, i), find(&mut parent, j));
                 if ri != rj {
                     parent[ri] = rj;
@@ -838,24 +962,22 @@ impl MargoState {
         //
         // Apply per-client size constraints from window rules / the
         // client's own xdg_toplevel min/max request. The layout algorithm
-        // is constraint-agnostic; we clamp post-hoc so that e.g.
-        // picture-in-picture players keep their pinned dimensions even
-        // when the surrounding scroller column would prefer wider. Width
-        // (min and max) and max-height only ever grow/shrink a single
-        // client in place — safe everywhere, including scroller, whose
-        // columns are meant to reflow around a wider member. min_height
-        // is handled separately, right below: growing one stacked
-        // client's height to satisfy its own minimum must not silently
-        // grow the whole column past the span the layout gave it.
+        // is constraint-agnostic; we clamp post-hoc. max_width/max_height
+        // only ever shrink a single client in place — shrinking never
+        // creates room another client needs, so there's nothing to
+        // redistribute. min_width/min_height are handled separately,
+        // right below: growing one client to satisfy its own minimum
+        // must not silently grow its whole row/column past the span the
+        // layout gave it as a whole.
         for (client_idx, rect) in &mut geometries {
             rect.width = rect.width.max(1);
             rect.height = rect.height.max(1);
             let c = &self.clients[*client_idx];
-            if c.min_width > 0 || c.max_width > 0 || c.max_height > 0 {
+            if c.max_width > 0 || c.max_height > 0 {
                 clamp_size(
                     &mut rect.width,
                     &mut rect.height,
-                    c.min_width,
+                    0,
                     0,
                     c.max_width,
                     c.max_height,
@@ -863,6 +985,22 @@ impl MargoState {
             }
         }
         apply_min_height_floors(&mut geometries, &self.clients);
+        // Scroller's columns are *meant* to grow past their neighbours —
+        // a wider member reflows the strip via panning, exactly what the
+        // pre-existing width clamp (now folded into `apply_min_width_floors`
+        // for every other layout) always allowed. Redistributing width
+        // there would fight that design, shrinking every other column to
+        // keep a wide one on-screen instead of letting the strip pan.
+        if layout != crate::layout::LayoutId::Scroller {
+            apply_min_width_floors(&mut geometries, &self.clients);
+        } else {
+            for (client_idx, rect) in &mut geometries {
+                let min_w = self.clients[*client_idx].min_width;
+                if min_w > rect.width {
+                    rect.width = min_w;
+                }
+            }
+        }
         clamp_to_work_area(&mut geometries, work_area, layout);
 
         let now = crate::utils::now_ms();

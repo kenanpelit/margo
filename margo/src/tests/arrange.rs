@@ -499,3 +499,131 @@ fn deck_stack_members_with_a_large_min_height_do_not_shrink_each_other() {
         fx.server.state.clients[3].geom
     );
 }
+
+#[test]
+fn tgmix_grid_cell_with_a_large_min_width_no_longer_overlaps_its_row_mate() {
+    // Width's twin of the height bug, reproduced from a real overlap:
+    // Discord's own declared minimum WIDTH (its chat UI needs real
+    // horizontal room) grew its grid cell past its column boundary in
+    // place, riding over the cell next to it in the same row — while
+    // the master column and the row below were untouched, so it read
+    // as "some windows overlap, others don't" rather than an obvious
+    // uniform bug.
+    //
+    // 1 master + 4 stack clients -> grid arranges the stack as a clean
+    // 2x2 matrix: "top-left"/"top-right" share row 0, "bottom-left"/
+    // "bottom-right" share row 1. Force top-left's min_width past its
+    // column's natural share, but well within what the row can still
+    // provide once its row-mate shrinks to make room — see
+    // `apply_min_width_floors`'s doc comment for the separate,
+    // genuinely irreducible case (a floor bigger than the *entire*
+    // row) that this test isn't about.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_output("DP-1", (1920, 1080));
+
+    for (app, title) in [
+        ("kitty", "master"),
+        ("discord", "top-left"),
+        ("kitty", "top-right"),
+        ("kitty", "bottom-left"),
+        ("kitty", "bottom-right"),
+    ] {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id(app.into());
+        toplevel.set_title(title.into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+
+    fx.server.state.monitors[0].pertag.ltidxs[1] = crate::layout::LayoutId::TgMix;
+    fx.server.state.monitors[0].pertag.user_picked_layout[1] = true;
+
+    // "top-left" declares a minimum far bigger than its column's fair
+    // share of the stack half's width — comfortably less than the
+    // row's whole span, so its row-mate has room to shrink and make
+    // way for it.
+    fx.server.state.clients[1].min_width = 700;
+
+    fx.server.state.arrange_monitor(0);
+
+    let work_area = fx.server.state.monitors[0].work_area;
+    for c in &fx.server.state.clients {
+        assert!(
+            c.geom.x + c.geom.width <= work_area.x + work_area.width,
+            "{} overflowed the right edge of the screen: {:?}",
+            c.app_id,
+            c.geom
+        );
+    }
+    assert!(
+        fx.server.state.clients[1].geom.width >= 700,
+        "min_width not honoured: {}",
+        fx.server.state.clients[1].geom.width
+    );
+
+    for i in 0..fx.server.state.clients.len() {
+        for j in (i + 1)..fx.server.state.clients.len() {
+            let a = fx.server.state.clients[i].geom;
+            let b = fx.server.state.clients[j].geom;
+            let overlap_x = a.x < b.x + b.width && b.x < a.x + a.width;
+            let overlap_y = a.y < b.y + b.height && b.y < a.y + a.height;
+            assert!(
+                !(overlap_x && overlap_y),
+                "clients {i} and {j} overlap: {a:?} vs {b:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn scroller_ignores_min_width_row_redistribution() {
+    // Scroller's whole point is that a column can grow past its
+    // neighbours (the strip pans horizontally) -- unlike every other
+    // contained layout, a min-width member here must NOT shrink its
+    // row-mates to make room. All three tiled clients naturally share
+    // the same y/height in scroller (one full-height row), which is
+    // exactly the shape `apply_min_width_floors` would otherwise
+    // redistribute -- confirming the Scroller exception actually
+    // takes effect, not just that it compiles.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_output("DP-1", (1920, 1080));
+
+    for (app, title) in [("kitty", "one"), ("discord", "two"), ("kitty", "three")] {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id(app.into());
+        toplevel.set_title(title.into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+
+    fx.server.state.monitors[0].pertag.ltidxs[1] = crate::layout::LayoutId::Scroller;
+    fx.server.state.monitors[0].pertag.user_picked_layout[1] = true;
+
+    let natural_width = {
+        fx.server.state.arrange_monitor(0);
+        fx.server.state.clients[0].geom.width
+    };
+
+    fx.server.state.clients[1].min_width = 1800;
+    fx.server.state.arrange_monitor(0);
+
+    assert_eq!(
+        fx.server.state.clients[0].geom.width, natural_width,
+        "scroller column 'one' shrank to make room for a wider neighbour"
+    );
+    assert_eq!(
+        fx.server.state.clients[2].geom.width, natural_width,
+        "scroller column 'three' shrank to make room for a wider neighbour"
+    );
+    assert!(fx.server.state.clients[1].geom.width >= 1800);
+}
