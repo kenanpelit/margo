@@ -76,6 +76,23 @@ fn apply_min_height_floors(
             .iter()
             .map(|&gi| clients[geometries[gi].0].min_height.max(0))
             .collect();
+
+        // Nobody in this group actually needs to grow: leave every member
+        // exactly where `layout::arrange` put it. `stack_columns` groups
+        // rects by "same width and x-ranges overlap", which is a good
+        // enough proxy for "real column" most of the time but isn't
+        // precise — a centred odd cell in an incomplete grid row can
+        // straddle two real columns and get transitively unioned into
+        // one group with both of them (see
+        // `grid_with_an_incomplete_last_row_does_not_collapse_into_a_diagonal_cascade`).
+        // Re-flowing positions below is only safe (and only intended) when
+        // there's an actual floor to make room for; without one, this
+        // guard is what keeps a mis-grouped column from being flattened
+        // into a stack that was never really there.
+        if floors.iter().zip(&sizes).all(|(f, s)| f <= s) {
+            continue;
+        }
+
         let gaps: Vec<i32> = ordered
             .windows(2)
             .map(|w| {
@@ -164,6 +181,22 @@ fn apply_min_width_floors(
             .iter()
             .map(|&gi| clients[geometries[gi].0].min_width.max(0))
             .collect();
+
+        // Width's twin of the height guard above: nobody in this group
+        // needs to grow, so leave every member exactly where
+        // `layout::arrange` put it. `stack_rows` groups rects by "same
+        // height and y-ranges overlap" — with `deck`'s default nmaster=1,
+        // the single master column is exactly as tall as the coincident
+        // stack rect beside it, so that heuristic alone would merge the
+        // master into the stack's group. Re-flowing positions below is
+        // only safe (and only intended) when there's an actual floor to
+        // make room for; without one, this guard is what stops that
+        // false merge from splitting `deck` into a row of columns (see
+        // `deck_stack_stays_one_coincident_rect_not_a_row_of_columns`).
+        if floors.iter().zip(&sizes).all(|(f, s)| f <= s) {
+            continue;
+        }
+
         let gaps: Vec<i32> = ordered
             .windows(2)
             .map(|w| {

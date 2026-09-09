@@ -627,3 +627,158 @@ fn scroller_ignores_min_width_row_redistribution() {
     );
     assert!(fx.server.state.clients[1].geom.width >= 1800);
 }
+
+#[test]
+fn grid_with_an_incomplete_last_row_does_not_collapse_into_a_diagonal_cascade() {
+    // 5 windows on `grid` -> 3 columns, 2 rows, with the last row's 2 cells
+    // centred (dwindle/tgmix-style "odd row" centring). None of these
+    // clients declare an oversized min_width/min_height, so
+    // `apply_min_height_floors`/`apply_min_width_floors` have nothing to
+    // grow -- they must leave the grid's own geometry alone.
+    //
+    // The centred last-row cells straddle the x-range of *two* columns
+    // above them (they're centred across the whole row, not aligned under
+    // either neighbour), which used to make `stack_columns`'s "same width
+    // + x-overlap" union-find transitively merge all 5 cells into one
+    // fake vertical stack -- and the unconditional re-flow inside
+    // `apply_min_height_floors` then restacked all 5 windows into a
+    // diagonal cascade (each one shifted down *and* right of the last),
+    // even though nothing needed to grow.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_output("DP-1", (1920, 1080));
+
+    for (app, title) in [
+        ("kitty", "one"),
+        ("kitty", "two"),
+        ("kitty", "three"),
+        ("kitty", "four"),
+        ("kitty", "five"),
+    ] {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id(app.into());
+        toplevel.set_title(title.into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+
+    fx.server.state.monitors[0].pertag.ltidxs[1] = crate::layout::LayoutId::Grid;
+    fx.server.state.monitors[0].pertag.user_picked_layout[1] = true;
+
+    fx.server.state.arrange_monitor(0);
+
+    let geoms: Vec<_> = fx.server.state.clients.iter().map(|c| c.geom).collect();
+
+    // Row 0 (windows 0, 1, 2) must share one y and one height -- a real
+    // grid row, not five different heights stacked one after another.
+    assert_eq!(
+        geoms[0].y, geoms[1].y,
+        "row 0 members don't share a y: {geoms:?}"
+    );
+    assert_eq!(
+        geoms[1].y, geoms[2].y,
+        "row 0 members don't share a y: {geoms:?}"
+    );
+    assert_eq!(geoms[0].height, geoms[1].height);
+    assert_eq!(geoms[1].height, geoms[2].height);
+
+    // Row 1 (windows 3, 4) must share one y, strictly below row 0.
+    assert_eq!(
+        geoms[3].y, geoms[4].y,
+        "row 1 members don't share a y: {geoms:?}"
+    );
+    assert!(
+        geoms[3].y > geoms[0].y,
+        "row 1 isn't below row 0: {geoms:?}"
+    );
+
+    // A real grid row is far taller than the 1/5-of-the-screen sliver the
+    // cascade bug produced.
+    let work_area = fx.server.state.monitors[0].work_area;
+    assert!(
+        geoms[0].height > work_area.height / 3,
+        "row height collapsed to a cascade sliver: {geoms:?}"
+    );
+
+    // No two windows overlap.
+    for i in 0..geoms.len() {
+        for j in (i + 1)..geoms.len() {
+            let a = geoms[i];
+            let b = geoms[j];
+            let overlap_x = a.x < b.x + b.width && b.x < a.x + a.width;
+            let overlap_y = a.y < b.y + b.height && b.y < a.y + a.height;
+            assert!(
+                !(overlap_x && overlap_y),
+                "clients {i} and {j} overlap: {a:?} vs {b:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn deck_stack_stays_one_coincident_rect_not_a_row_of_columns() {
+    // deck with the default nmaster=1: one master client on the left, and
+    // every other client sharing the exact same "stack" rect on the right
+    // (a tabbed deck of cards -- only the top one is ever visible). None
+    // of these clients declare an oversized min_width, so
+    // `apply_min_width_floors` has nothing to grow.
+    //
+    // With nmaster=1 the single master's rect is exactly as tall as the
+    // stack rect (both span the whole work area height), so `stack_rows`
+    // ("same height + y-overlap") used to merge the master together with
+    // the whole coincident stack blob into one fake "row" and the
+    // unconditional re-flow inside `apply_min_width_floors` split them
+    // into distinct side-by-side columns -- turning deck into a second
+    // `tile`, master included.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_output("DP-1", (1920, 1080));
+
+    for (app, title) in [
+        ("kitty", "master"),
+        ("kitty", "stack-a"),
+        ("kitty", "stack-b"),
+        ("kitty", "stack-c"),
+        ("kitty", "stack-d"),
+    ] {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id(app.into());
+        toplevel.set_title(title.into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+
+    fx.server.state.monitors[0].pertag.ltidxs[1] = crate::layout::LayoutId::Deck;
+    fx.server.state.monitors[0].pertag.user_picked_layout[1] = true;
+
+    fx.server.state.arrange_monitor(0);
+
+    let master = fx.server.state.clients[0].geom;
+    let stack: Vec<_> = fx.server.state.clients[1..5]
+        .iter()
+        .map(|c| c.geom)
+        .collect();
+
+    // Every stack member keeps the exact same rect as its neighbours.
+    for (n, g) in stack.iter().enumerate() {
+        assert_eq!(
+            *g, stack[0],
+            "stack member {n} was split into its own column: {stack:?}"
+        );
+    }
+    // The stack rect sits to the right of, and does not touch, the
+    // master's own x-range.
+    assert!(
+        stack[0].x >= master.x + master.width,
+        "stack rect overlaps the master column: master={master:?} stack={:?}",
+        stack[0]
+    );
+}
