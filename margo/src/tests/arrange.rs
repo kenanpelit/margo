@@ -86,3 +86,76 @@ fn out_of_range_monitor_is_none_not_panic() {
     let tiled = [0usize, 1];
     assert_eq!(fx.server.state.focused_tiled_pos(99, &tiled, None), None);
 }
+
+#[test]
+fn tile_stack_member_with_a_large_min_height_no_longer_overflows_the_screen() {
+    // A stacked client can declare its own xdg_toplevel minimum size (an
+    // Electron app like Discord commonly does). Before this fix, the
+    // per-client min-size clamp in `arrange_monitor` grew that client's
+    // rect straight past its neighbours without shrinking anything else
+    // to compensate — so it hung off the bottom of the work area
+    // ("ekrandan çıkmış"), and in layouts with side-by-side columns
+    // (center_tile) could overlap a neighbour outright.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_output("DP-1", (1920, 1080));
+
+    // One master + two stacked clients.
+    for (app, title) in [
+        ("kitty", "master"),
+        ("kitty", "stack-a"),
+        ("discord", "stack-b"),
+    ] {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id(app.into());
+        toplevel.set_title(title.into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+
+    // Force Tile explicitly (it's already the default — be explicit anyway).
+    fx.server.state.monitors[0].pertag.ltidxs[1] = crate::layout::LayoutId::Tile;
+    fx.server.state.monitors[0].pertag.user_picked_layout[1] = true;
+
+    // The bottom stack member declares a minimum height far bigger than
+    // its fair-share slot (1080 split two ways ≈ 540 each).
+    fx.server.state.clients[2].min_height = 900;
+
+    fx.server.state.arrange_monitor(0);
+
+    let work_area = fx.server.state.monitors[0].work_area;
+    for c in &fx.server.state.clients {
+        assert!(
+            c.geom.y + c.geom.height <= work_area.y + work_area.height,
+            "{} overflowed the bottom of the screen: y={} height={} work_area_bottom={}",
+            c.app_id,
+            c.geom.y,
+            c.geom.height,
+            work_area.y + work_area.height
+        );
+    }
+    // The min-height client still got at least its declared minimum.
+    assert!(
+        fx.server.state.clients[2].geom.height >= 900,
+        "min_height not honoured: {}",
+        fx.server.state.clients[2].geom.height
+    );
+
+    // No two clients overlap.
+    for i in 0..fx.server.state.clients.len() {
+        for j in (i + 1)..fx.server.state.clients.len() {
+            let a = fx.server.state.clients[i].geom;
+            let b = fx.server.state.clients[j].geom;
+            let overlap_x = a.x < b.x + b.width && b.x < a.x + a.width;
+            let overlap_y = a.y < b.y + b.height && b.y < a.y + a.height;
+            assert!(
+                !(overlap_x && overlap_y),
+                "clients {i} and {j} overlap: {a:?} vs {b:?}"
+            );
+        }
+    }
+}

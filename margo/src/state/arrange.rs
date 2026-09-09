@@ -8,6 +8,92 @@
 
 use super::*;
 
+/// Grow each client's rect to its own `min_height` (from a window rule
+/// or its own xdg_toplevel request), but never past what its column
+/// can actually hold.
+///
+/// `layout::arrange` hands every tile-family layout's master/stack
+/// column a set of rects that share the same `(x, width)` and sum,
+/// with the gaps between them, to exactly the column's span. A single
+/// client's own declared minimum height can be bigger than its fair
+/// share of that column (an Electron app like Discord commonly
+/// declares one) — growing just that client, as the old code did,
+/// left its neighbours untouched and let the grown client (and every
+/// sibling below it) spill past the column's own span: off the bottom
+/// of the screen in `tile`, or into a neighbouring column's territory
+/// in `center_tile`/`right_tile`, since nothing shrank to make room.
+///
+/// Groups `geometries` by `(x, width)` — every rect sharing both is a
+/// vertical stack in the layout that produced them — and hands each
+/// group with more than one member to [`layout::repack_1d`], which
+/// grows the min-height member(s) exactly to their floor and shrinks
+/// the rest to compensate, keeping the group's total unchanged. A
+/// group of one has no sibling to shrink; it just takes its floor
+/// directly, same as the old per-client-only clamp did.
+fn apply_min_height_floors(
+    geometries: &mut [(usize, crate::layout::Rect)],
+    clients: &[MargoClient],
+) {
+    use std::collections::BTreeMap;
+
+    let mut groups: BTreeMap<(i32, i32), Vec<usize>> = BTreeMap::new();
+    for (gi, (_, rect)) in geometries.iter().enumerate() {
+        groups.entry((rect.x, rect.width)).or_default().push(gi);
+    }
+
+    for members in groups.values() {
+        if members.len() == 1 {
+            let gi = members[0];
+            let (client_idx, rect) = &mut geometries[gi];
+            let min_h = clients[*client_idx].min_height;
+            if min_h > rect.height {
+                rect.height = min_h;
+            }
+            continue;
+        }
+
+        let mut ordered = members.clone();
+        ordered.sort_by_key(|&gi| geometries[gi].1.y);
+
+        let sizes: Vec<i32> = ordered.iter().map(|&gi| geometries[gi].1.height).collect();
+        let floors: Vec<i32> = ordered
+            .iter()
+            .map(|&gi| clients[geometries[gi].0].min_height.max(0))
+            .collect();
+        let gaps: Vec<i32> = ordered
+            .windows(2)
+            .map(|w| {
+                let prev = geometries[w[0]].1;
+                let next = geometries[w[1]].1;
+                (next.y - (prev.y + prev.height)).max(0)
+            })
+            .collect();
+        let Some(&last_gi) = ordered.last() else {
+            // `ordered` mirrors `members`, and we're past the
+            // `members.len() == 1` early-continue above, so this is
+            // unreachable — but a group that somehow came in empty is
+            // simply nothing to repack, not a crash.
+            continue;
+        };
+        let top = geometries[ordered[0]].1.y;
+        let bottom = {
+            let last = geometries[last_gi].1;
+            last.y + last.height
+        };
+        let span = bottom - top;
+
+        let repacked = layout::repack_1d(&sizes, &floors, &gaps, span);
+
+        let mut y = top;
+        for (n, &gi) in ordered.iter().enumerate() {
+            let h = repacked[n];
+            geometries[gi].1.y = y;
+            geometries[gi].1.height = h;
+            y += h + gaps.get(n).copied().unwrap_or(0);
+        }
+    }
+}
+
 impl MargoState {
     pub fn arrange_all(&mut self) {
         for mon_idx in 0..self.monitors.len() {
@@ -624,7 +710,43 @@ impl MargoState {
         // ≈ 90%×90% centred, 2 → side-by-side halves, 4 → 2×2 quarters,
         // 9 → 3×3 evenly. Cells shrink as window count grows, which is
         // the natural Mango/Hypr feel — no fixed 3×3 per-tag thumbnails.
-        let geometries = layout::arrange(layout, &ctx);
+        let mut geometries: Vec<(usize, crate::layout::Rect)> = layout::arrange(layout, &ctx);
+        // Floor every layout rect to a positive size. A pathological gap
+        // config (e.g. a large `gappov` on a short work area) can drive a
+        // master-stack layout's computed width/height negative; a negative
+        // size is a protocol error at xdg configure (and corrupts
+        // border/hit-test math), while the window-rule clamp below only
+        // runs for clients that declare min/max. This is the single
+        // choke-point every one of the 14 layouts flows through.
+        //
+        // Apply per-client size constraints from window rules / the
+        // client's own xdg_toplevel min/max request. The layout algorithm
+        // is constraint-agnostic; we clamp post-hoc so that e.g.
+        // picture-in-picture players keep their pinned dimensions even
+        // when the surrounding scroller column would prefer wider. Width
+        // (min and max) and max-height only ever grow/shrink a single
+        // client in place — safe everywhere, including scroller, whose
+        // columns are meant to reflow around a wider member. min_height
+        // is handled separately, right below: growing one stacked
+        // client's height to satisfy its own minimum must not silently
+        // grow the whole column past the span the layout gave it.
+        for (client_idx, rect) in &mut geometries {
+            rect.width = rect.width.max(1);
+            rect.height = rect.height.max(1);
+            let c = &self.clients[*client_idx];
+            if c.min_width > 0 || c.max_width > 0 || c.max_height > 0 {
+                clamp_size(
+                    &mut rect.width,
+                    &mut rect.height,
+                    c.min_width,
+                    0,
+                    c.max_width,
+                    c.max_height,
+                );
+            }
+        }
+        apply_min_height_floors(&mut geometries, &self.clients);
+
         let now = crate::utils::now_ms();
         // gid → active group member's TARGET slot rect, filled during the
         // loop below and consumed by the hidden-member pre-size pass after
@@ -632,30 +754,6 @@ impl MargoState {
         let mut group_slots: std::collections::HashMap<u32, crate::layout::Rect> =
             std::collections::HashMap::new();
         for (client_idx, mut rect) in geometries {
-            // Floor every layout rect to a positive size. A pathological gap
-            // config (e.g. a large `gappov` on a short work area) can drive a
-            // master-stack layout's computed width/height negative; a negative
-            // size is a protocol error at xdg configure (and corrupts
-            // border/hit-test math), while the window-rule clamp below only
-            // runs for clients that declare min/max. This is the single
-            // choke-point every one of the 14 layouts flows through.
-            rect.width = rect.width.max(1);
-            rect.height = rect.height.max(1);
-            // Apply per-client size constraints from window rules. The layout
-            // algorithm is constraint-agnostic; we clamp post-hoc so that
-            // e.g. picture-in-picture players keep their pinned dimensions
-            // even when the surrounding scroller column would prefer wider.
-            let c = &self.clients[client_idx];
-            if c.min_width > 0 || c.min_height > 0 || c.max_width > 0 || c.max_height > 0 {
-                clamp_size(
-                    &mut rect.width,
-                    &mut rect.height,
-                    c.min_width,
-                    c.min_height,
-                    c.max_width,
-                    c.max_height,
-                );
-            }
             // Tabbed group: reserve the tab strip's height at the TOP of the
             // tile and shrink the window content to match, so the strip sits
             // INSIDE the window's allocation (a title-bar band above the
