@@ -8,27 +8,31 @@
 
 use super::*;
 
-/// Keeps every member of the same on-screen column at one shared width
-/// before the row/column floor passes below ever run.
+/// Every column-mate's *effective* min-width floor: each member's own
+/// declared minimum, boosted to the largest declared minimum anywhere
+/// in its [`stack_columns`] group.
 ///
-/// `apply_min_width_floors` finds "the same row" via `stack_rows`, which
-/// groups by *y-range overlap* — the right test for members genuinely
-/// side by side sharing a width budget. But a real vertical column
-/// (`center_tile`/`tile`/`right_tile`'s side stack: same `x`, same
-/// width, stacked top to bottom) has members whose `y` ranges don't
-/// overlap at all — they're separated by the layout's own inner gap, or
-/// (`center_tile`'s stack loops specifically) not separated by any gap
-/// at all, sitting exactly edge to edge. Either way `stack_rows` never
-/// groups them, so a member with its own oversized `min_width` (an
-/// Electron app like Discord commonly declares one) grew alone, leaving
-/// its column-mates at their old, narrower width — the column stopped
-/// being one consistent width, opening a gap next to whatever sits
-/// beside it.
+/// A real vertical column (`center_tile`/`tile`/`right_tile`'s side
+/// stack: same `x`, same width, stacked top to bottom) must stay one
+/// consistent width — but `apply_min_width_floors` only ever redistributes
+/// within a [`stack_rows`] group (members genuinely side by side sharing a
+/// width budget), and a column's own members have `y` ranges that don't
+/// overlap at all (separated by the layout's own inner gap, or, in
+/// `center_tile`'s stack loops specifically, not separated by any gap at
+/// all) — so `stack_rows` never groups them together, and a member with
+/// its own oversized `min_width` (an Electron app like Discord commonly
+/// declares one) grew alone, leaving its column-mates at their old,
+/// narrower width: the column stopped being one consistent width, opening
+/// a gap next to whatever sits beside it.
 ///
-/// Column membership here is deliberately the strictest possible test —
-/// exact same `x` *and* exact same `width` — since that's precisely what
-/// "one visual column" means; two rects that only coincidentally share a
-/// width without sharing an `x` are never touched.
+/// Boosting every column-mate's floor *before* `apply_min_width_floors`
+/// runs means its normal per-row redistribution does the rest on its
+/// own — including shrinking a column-mate's own *row*-mate to make
+/// room, something a separate sync pass run before or after that
+/// redistribution couldn't do without either being skipped by it (too
+/// early: the no-op guard sees a floor `apply_min_width_floors` didn't
+/// know was already met) or leaving a row it never got to revisit stuck
+/// with the new floor unhandled (too late).
 ///
 /// Skipped for `Deck` (its stack is *deliberately* one shared slot — only
 /// the top member is ever shown, and each keeps its own independent
@@ -36,79 +40,30 @@ use super::*;
 /// with — see `apply_min_width_floors`'s coincident-rect case) and
 /// `Monocle` (every window shares the exact same rect on purpose), for
 /// the same reason `resolve_residual_overlaps` skips them.
-fn sync_column_min_widths(
-    geometries: &mut [(usize, crate::layout::Rect)],
+fn effective_min_widths(
+    geometries: &[(usize, crate::layout::Rect)],
     clients: &[MargoClient],
     layout: crate::layout::LayoutId,
-) {
+    column_groups: &std::collections::BTreeMap<usize, Vec<usize>>,
+) -> Vec<i32> {
+    let mut floors: Vec<i32> = geometries
+        .iter()
+        .map(|&(ci, _)| clients[ci].min_width.max(0))
+        .collect();
     use crate::layout::LayoutId;
     if matches!(layout, LayoutId::Deck | LayoutId::Monocle) {
-        return;
+        return floors;
     }
-    let mut groups: std::collections::HashMap<(i32, i32), Vec<usize>> =
-        std::collections::HashMap::new();
-    for (i, (_, rect)) in geometries.iter().enumerate() {
-        groups.entry((rect.x, rect.width)).or_default().push(i);
-    }
-    for members in groups.values() {
+    for members in column_groups.values() {
         if members.len() < 2 {
             continue;
         }
-        let max_floor = members
-            .iter()
-            .map(|&i| clients[geometries[i].0].min_width.max(0))
-            .max()
-            .unwrap_or(0);
-        if max_floor <= geometries[members[0]].1.width {
-            continue;
-        }
+        let max_floor = members.iter().map(|&i| floors[i]).max().unwrap_or(0);
         for &i in members {
-            geometries[i].1.width = max_floor;
+            floors[i] = max_floor;
         }
     }
-}
-
-/// [`sync_column_min_widths`]'s transpose: keeps every member of the same
-/// on-screen row at one shared height before the floor passes below run,
-/// for the mirrored reason — `apply_min_height_floors` finds "the same
-/// column" via `stack_columns`'s *x-range overlap*, which a real row's
-/// side-by-side, non-overlapping members never satisfy.
-///
-/// Skipped for `Deck`/`Monocle`, same as [`sync_column_min_widths`] —
-/// see its doc comment. `deck_stack_members_with_a_large_min_height_do_not_shrink_each_other`
-/// is exactly the contract this exclusion protects: deck's other stack
-/// members must stay at their own natural height, never synced up to
-/// match one sibling's inflated floor.
-fn sync_row_min_heights(
-    geometries: &mut [(usize, crate::layout::Rect)],
-    clients: &[MargoClient],
-    layout: crate::layout::LayoutId,
-) {
-    use crate::layout::LayoutId;
-    if matches!(layout, LayoutId::Deck | LayoutId::Monocle) {
-        return;
-    }
-    let mut groups: std::collections::HashMap<(i32, i32), Vec<usize>> =
-        std::collections::HashMap::new();
-    for (i, (_, rect)) in geometries.iter().enumerate() {
-        groups.entry((rect.y, rect.height)).or_default().push(i);
-    }
-    for members in groups.values() {
-        if members.len() < 2 {
-            continue;
-        }
-        let max_floor = members
-            .iter()
-            .map(|&i| clients[geometries[i].0].min_height.max(0))
-            .max()
-            .unwrap_or(0);
-        if max_floor <= geometries[members[0]].1.height {
-            continue;
-        }
-        for &i in members {
-            geometries[i].1.height = max_floor;
-        }
-    }
+    floors
 }
 
 /// Grow each client's rect to its own `min_height` (from a window rule
@@ -136,8 +91,9 @@ fn sync_row_min_heights(
 fn apply_min_height_floors(
     geometries: &mut [(usize, crate::layout::Rect)],
     clients: &[MargoClient],
+    column_groups: &std::collections::BTreeMap<usize, Vec<usize>>,
 ) {
-    for members in stack_columns(geometries).values() {
+    for members in column_groups.values() {
         if members.len() == 1 {
             let gi = members[0];
             let (client_idx, rect) = &mut geometries[gi];
@@ -272,13 +228,14 @@ fn apply_min_height_floors(
 /// to make room.
 fn apply_min_width_floors(
     geometries: &mut [(usize, crate::layout::Rect)],
-    clients: &[MargoClient],
+    effective_min_width: &[i32],
+    row_groups: &std::collections::BTreeMap<usize, Vec<usize>>,
 ) {
-    for members in stack_rows(geometries).values() {
+    for members in row_groups.values() {
         if members.len() == 1 {
             let gi = members[0];
-            let (client_idx, rect) = &mut geometries[gi];
-            let min_w = clients[*client_idx].min_width;
+            let min_w = effective_min_width[gi];
+            let rect = &mut geometries[gi].1;
             if min_w > rect.width {
                 rect.width = min_w;
             }
@@ -320,8 +277,8 @@ fn apply_min_width_floors(
                 .len();
             if distinct_y <= 1 {
                 for &gi in &ordered {
-                    let (client_idx, rect) = &mut geometries[gi];
-                    let min_w = clients[*client_idx].min_width;
+                    let min_w = effective_min_width[gi];
+                    let rect = &mut geometries[gi].1;
                     if min_w > rect.width {
                         rect.width = min_w;
                     }
@@ -329,7 +286,7 @@ fn apply_min_width_floors(
             } else {
                 let max_floor = ordered
                     .iter()
-                    .map(|&gi| clients[geometries[gi].0].min_width.max(0))
+                    .map(|&gi| effective_min_width[gi])
                     .max()
                     .unwrap_or(0);
                 for &gi in &ordered {
@@ -343,10 +300,7 @@ fn apply_min_width_floors(
         }
 
         let sizes: Vec<i32> = ordered.iter().map(|&gi| geometries[gi].1.width).collect();
-        let floors: Vec<i32> = ordered
-            .iter()
-            .map(|&gi| clients[geometries[gi].0].min_width.max(0))
-            .collect();
+        let floors: Vec<i32> = ordered.iter().map(|&gi| effective_min_width[gi]).collect();
 
         // Width's twin of the height guard above: nobody in this group
         // needs to grow, so leave every member exactly where
@@ -417,28 +371,122 @@ fn apply_min_width_floors(
 /// `contained_layouts_keep_every_rect_inside_the_work_area` in
 /// `margo-layouts`), so clamping here restores that guarantee rather
 /// than fighting it.
+///
+/// A member of a real multi-member [`stack_columns`] / [`stack_rows`]
+/// group is repositioned as part of that whole group, sliding every
+/// member by the same offset, rather than independently — clamping a
+/// single grown member back on-screen on its own can push it past
+/// where its own column-mate already sits (dwindle's spiral hands a
+/// deep leaf a floor bigger than its entire column can hold; nudging
+/// just that leaf up to fit the work area rides straight over the
+/// sibling directly above it, which was already correctly positioned).
+/// Sliding the whole group preserves every member's relative order and
+/// gap — the group may still hang off the work area's edge afterwards
+/// if its combined size genuinely doesn't fit, the same honest,
+/// accepted overflow a lone oversized member already had before this
+/// existed; it just never trades that overflow for a new overlap with
+/// a sibling that was already fine. Singleton groups fall through to
+/// the plain independent clamp below, unchanged.
 fn clamp_to_work_area(
     geometries: &mut [(usize, crate::layout::Rect)],
     work_area: crate::layout::Rect,
     layout: crate::layout::LayoutId,
+    column_groups: &std::collections::BTreeMap<usize, Vec<usize>>,
+    row_groups: &std::collections::BTreeMap<usize, Vec<usize>>,
 ) {
     if layout == crate::layout::LayoutId::Scroller {
         return;
     }
-    for (_, rect) in geometries.iter_mut() {
-        if rect.width < work_area.width {
-            rect.x = rect
-                .x
-                .clamp(work_area.x, work_area.x + work_area.width - rect.width);
-        } else {
-            rect.x = work_area.x;
+
+    let mut in_column_group: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    for members in column_groups.values() {
+        if members.len() < 2 {
+            continue;
         }
-        if rect.height < work_area.height {
-            rect.y = rect
-                .y
-                .clamp(work_area.y, work_area.y + work_area.height - rect.height);
+        // `members.len() >= 2` was just checked above, so this group is
+        // never empty — `.min()`/`.max()` would only return `None` on an
+        // empty iterator, which can't happen here, but `unwrap_or` keeps
+        // this a graceful fallback rather than a panic-prone call.
+        let top = members
+            .iter()
+            .map(|&i| geometries[i].1.y)
+            .min()
+            .unwrap_or(work_area.y);
+        let bottom = members
+            .iter()
+            .map(|&i| geometries[i].1.y + geometries[i].1.height)
+            .max()
+            .unwrap_or(work_area.y + work_area.height);
+        let wa_top = work_area.y;
+        let wa_bottom = work_area.y + work_area.height;
+        let mut shift = if bottom > wa_bottom {
+            wa_bottom - bottom
         } else {
-            rect.y = work_area.y;
+            0
+        };
+        if top + shift < wa_top {
+            shift += wa_top - (top + shift);
+        }
+        if shift != 0 {
+            for &i in members {
+                geometries[i].1.y += shift;
+            }
+        }
+        in_column_group.extend(members.iter().copied());
+    }
+
+    let mut in_row_group: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    for members in row_groups.values() {
+        if members.len() < 2 {
+            continue;
+        }
+        // Same graceful fallback as the column-group branch above.
+        let left = members
+            .iter()
+            .map(|&i| geometries[i].1.x)
+            .min()
+            .unwrap_or(work_area.x);
+        let right = members
+            .iter()
+            .map(|&i| geometries[i].1.x + geometries[i].1.width)
+            .max()
+            .unwrap_or(work_area.x + work_area.width);
+        let wa_left = work_area.x;
+        let wa_right = work_area.x + work_area.width;
+        let mut shift = if right > wa_right {
+            wa_right - right
+        } else {
+            0
+        };
+        if left + shift < wa_left {
+            shift += wa_left - (left + shift);
+        }
+        if shift != 0 {
+            for &i in members {
+                geometries[i].1.x += shift;
+            }
+        }
+        in_row_group.extend(members.iter().copied());
+    }
+
+    for (i, (_, rect)) in geometries.iter_mut().enumerate() {
+        if !in_row_group.contains(&i) {
+            if rect.width < work_area.width {
+                rect.x = rect
+                    .x
+                    .clamp(work_area.x, work_area.x + work_area.width - rect.width);
+            } else {
+                rect.x = work_area.x;
+            }
+        }
+        if !in_column_group.contains(&i) {
+            if rect.height < work_area.height {
+                rect.y = rect
+                    .y
+                    .clamp(work_area.y, work_area.y + work_area.height - rect.height);
+            } else {
+                rect.y = work_area.y;
+            }
         }
     }
 }
@@ -472,6 +520,8 @@ fn resolve_residual_overlaps(
     geometries: &mut [(usize, crate::layout::Rect)],
     clients: &[MargoClient],
     layout: crate::layout::LayoutId,
+    column_groups: &std::collections::BTreeMap<usize, Vec<usize>>,
+    row_groups: &std::collections::BTreeMap<usize, Vec<usize>>,
 ) {
     use crate::layout::LayoutId;
     if matches!(
@@ -481,6 +531,30 @@ fn resolve_residual_overlaps(
         return;
     }
     let n = geometries.len();
+    // A pair `apply_min_height_floors`/`apply_min_width_floors` already
+    // grouped and correctly redistributed (real column/row siblings,
+    // like a dwindle leaf and its direct column-mate) must never be
+    // re-touched here — this pass only owns relationships neither of
+    // those recognises, like a dwindle "uncle" and the nephews one
+    // level down. Touching an already-settled column/row pair a second
+    // time, blind to the fact it's already balanced, is what corrupted
+    // it: shrinking one member here to fix an unrelated overlap
+    // elsewhere left its real column-mate's own redistribution
+    // inconsistent. Membership comes from the same natural-geometry
+    // `column_groups`/`row_groups` every other pass uses — fixed once,
+    // not recomputed from whatever this function has already reshaped.
+    let mut column_of = vec![usize::MAX; n];
+    for (gid, members) in column_groups.values().enumerate() {
+        for &m in members {
+            column_of[m] = gid;
+        }
+    }
+    let mut row_of = vec![usize::MAX; n];
+    for (gid, members) in row_groups.values().enumerate() {
+        for &m in members {
+            row_of[m] = gid;
+        }
+    }
     // A handful of passes lets a chain of overlaps (A pushes into B,
     // B's shrink then reveals it still overlaps C) settle instead of
     // stopping after resolving only the first link.
@@ -488,6 +562,9 @@ fn resolve_residual_overlaps(
         let mut any_resolved = false;
         for i in 0..n {
             for j in (i + 1)..n {
+                if column_of[i] == column_of[j] || row_of[i] == row_of[j] {
+                    continue;
+                }
                 let a = geometries[i].1;
                 let b = geometries[j].1;
                 let ox = a.x.max(b.x);
@@ -500,12 +577,52 @@ fn resolve_residual_overlaps(
                     continue;
                 }
                 any_resolved = true;
-                if overlap_w <= overlap_h {
+                // Which axis actually separates this pair? A straddle —
+                // neither rect's extent is fully swallowed by the
+                // overlap — is the signature of two things meant to sit
+                // side by side on that axis, one having grown into the
+                // other. Full containment on an axis (the overlap covers
+                // one rect's *entire* extent there) means that axis was
+                // never the dividing line — a dwindle "uncle" naturally
+                // spans its nephews' whole combined height, so height
+                // nests without ever being the axis they're actually
+                // split on. Prefer resolving on the straddling axis;
+                // only fall back to "whichever overlap is smaller" when
+                // both axes straddle (or both fully nest) and there's no
+                // such signal to go on.
+                let x_nested = overlap_w >= a.width.min(b.width);
+                let y_nested = overlap_h >= a.height.min(b.height);
+                // X being nested means X was never the dividing line (the
+                // overlap swallows one rect's whole width there), so the
+                // pair must be separated on the *other* axis instead —
+                // resolve on Y. Symmetrically, Y nested means resolve on
+                // X. Only fall back to "whichever overlap is smaller"
+                // when both axes agree (both straddle or both nest) and
+                // there's no such signal to go on.
+                let resolve_on_y = if x_nested != y_nested {
+                    x_nested
+                } else {
+                    overlap_w > overlap_h
+                };
+                if !resolve_on_y {
                     let (left, right) = if a.x <= b.x { (i, j) } else { (j, i) };
+                    // The real penetration depth on this axis — how far
+                    // left's right edge extends past right's left edge —
+                    // not `overlap_w`. They agree in the ordinary partial
+                    // straddle, but when right is nested entirely inside
+                    // left's own extent (the dwindle "uncle" shape),
+                    // `overlap_w` collapses to right's own width, which
+                    // undershoots badly: shrinking left by only that much
+                    // barely dents a gap left's edge is still nowhere
+                    // near closing, so the "overlap" barely shrinks pass
+                    // after pass instead of resolving.
+                    let depth = (geometries[left].1.x + geometries[left].1.width
+                        - geometries[right].1.x)
+                        .max(0);
                     let left_min = clients[geometries[left].0].min_width.max(0);
                     let right_min = clients[geometries[right].0].min_width.max(0);
                     let left_margin = (geometries[left].1.width - left_min).max(0);
-                    let mut remaining = overlap_w;
+                    let mut remaining = depth;
                     let shrink_left = remaining.min(left_margin);
                     geometries[left].1.width -= shrink_left;
                     remaining -= shrink_left;
@@ -517,10 +634,17 @@ fn resolve_residual_overlaps(
                     }
                 } else {
                     let (top, bottom) = if a.y <= b.y { (i, j) } else { (j, i) };
+                    // See the X-axis branch's comment: the true
+                    // penetration depth, not `overlap_h`, which
+                    // undershoots the same way when bottom nests
+                    // entirely inside top's own extent.
+                    let depth = (geometries[top].1.y + geometries[top].1.height
+                        - geometries[bottom].1.y)
+                        .max(0);
                     let top_min = clients[geometries[top].0].min_height.max(0);
                     let bottom_min = clients[geometries[bottom].0].min_height.max(0);
                     let top_margin = (geometries[top].1.height - top_min).max(0);
-                    let mut remaining = overlap_h;
+                    let mut remaining = depth;
                     let shrink_top = remaining.min(top_margin);
                     geometries[top].1.height -= shrink_top;
                     remaining -= shrink_top;
@@ -553,6 +677,19 @@ fn resolve_residual_overlaps(
 /// the same `x`. Overlap is transitive (grouped via union-find) so a
 /// column of 3+ rects still merges correctly even if only consecutive
 /// rows overlap pairwise.
+///
+/// Same width and *any* x-overlap alone isn't enough: `center_tile`'s
+/// left and right stacks routinely land at the exact same height by
+/// simple 50/50 arithmetic (splitting a monitor's height two equal
+/// ways twice gives the same numbers both times), which would satisfy
+/// [`stack_rows`]'s own "same height, y-overlaps" test despite an
+/// entire master column sitting between them — two completely
+/// unrelated stacks, not a row. A real column's members are adjacent —
+/// separated by nothing wider than a normal inner gap — so this also
+/// requires the y-gap between the two rects (0 when their y-ranges
+/// already overlap) to be no more than the larger of their two
+/// heights, ruling out two rects that only coincidentally share a
+/// width with an unrelated block of on-screen space between them.
 fn stack_columns(
     geometries: &[(usize, crate::layout::Rect)],
 ) -> std::collections::BTreeMap<usize, Vec<usize>> {
@@ -572,7 +709,15 @@ fn stack_columns(
             let b = geometries[j].1;
             let same_width = a.width == b.width;
             let x_overlaps = a.x < b.x + b.width && b.x < a.x + a.width;
-            if same_width && x_overlaps {
+            let y_gap = if a.y + a.height <= b.y {
+                b.y - (a.y + a.height)
+            } else if b.y + b.height <= a.y {
+                a.y - (b.y + b.height)
+            } else {
+                0
+            };
+            let adjacent = y_gap <= a.height.max(b.height);
+            if same_width && x_overlaps && adjacent {
                 let (ri, rj) = (find(&mut parent, i), find(&mut parent, j));
                 if ri != rj {
                     parent[ri] = rj;
@@ -592,7 +737,13 @@ fn stack_columns(
 
 /// [`stack_columns`]'s transpose: partitions `geometries` into the
 /// horizontal rows a layout produced them in — rects belong to the same
-/// row when they share a height and their y-ranges overlap.
+/// row when they share a height, their y-ranges overlap, and (the same
+/// adjacency requirement `stack_columns` needs — see its doc comment)
+/// the x-gap between them is no more than the larger of their two
+/// widths, so two rects that only coincidentally share a height with an
+/// unrelated block of on-screen space between them — `center_tile`'s
+/// left and right stacks, mirrored to the same heights by construction
+/// — are never treated as one row.
 fn stack_rows(
     geometries: &[(usize, crate::layout::Rect)],
 ) -> std::collections::BTreeMap<usize, Vec<usize>> {
@@ -612,7 +763,15 @@ fn stack_rows(
             let b = geometries[j].1;
             let same_height = a.height == b.height;
             let y_overlaps = a.y < b.y + b.height && b.y < a.y + a.height;
-            if same_height && y_overlaps {
+            let x_gap = if a.x + a.width <= b.x {
+                b.x - (a.x + a.width)
+            } else if b.x + b.width <= a.x {
+                a.x - (b.x + b.width)
+            } else {
+                0
+            };
+            let adjacent = x_gap <= a.width.max(b.width);
+            if same_height && y_overlaps && adjacent {
                 let (ri, rj) = (find(&mut parent, i), find(&mut parent, j));
                 if ri != rj {
                     parent[ri] = rj;
@@ -1263,9 +1422,18 @@ impl MargoState {
                 );
             }
         }
-        sync_column_min_widths(&mut geometries, &self.clients, layout);
-        sync_row_min_heights(&mut geometries, &self.clients, layout);
-        apply_min_height_floors(&mut geometries, &self.clients);
+        // Column/row membership is a structural fact about the layout
+        // algorithm's own pristine output, computed once here and
+        // threaded through every pass below (sync, both floor passes,
+        // the work-area clamp, and the final overlap resolver). Letting
+        // each pass instead recompute `stack_columns`/`stack_rows` from
+        // whatever the *previous* pass had already changed made them
+        // disagree about who's even in the same column/row — a member
+        // one pass grew broke the exact-match another pass needed to
+        // recognise its group at all.
+        let column_groups = stack_columns(&geometries);
+        let row_groups = stack_rows(&geometries);
+        apply_min_height_floors(&mut geometries, &self.clients, &column_groups);
         // Scroller's columns are *meant* to grow past their neighbours —
         // a wider member reflows the strip via panning, exactly what the
         // pre-existing width clamp (now folded into `apply_min_width_floors`
@@ -1273,7 +1441,9 @@ impl MargoState {
         // there would fight that design, shrinking every other column to
         // keep a wide one on-screen instead of letting the strip pan.
         if layout != crate::layout::LayoutId::Scroller {
-            apply_min_width_floors(&mut geometries, &self.clients);
+            let effective_min_width =
+                effective_min_widths(&geometries, &self.clients, layout, &column_groups);
+            apply_min_width_floors(&mut geometries, &effective_min_width, &row_groups);
         } else {
             for (client_idx, rect) in &mut geometries {
                 let min_w = self.clients[*client_idx].min_width;
@@ -1282,8 +1452,20 @@ impl MargoState {
                 }
             }
         }
-        clamp_to_work_area(&mut geometries, work_area, layout);
-        resolve_residual_overlaps(&mut geometries, &self.clients, layout);
+        clamp_to_work_area(
+            &mut geometries,
+            work_area,
+            layout,
+            &column_groups,
+            &row_groups,
+        );
+        resolve_residual_overlaps(
+            &mut geometries,
+            &self.clients,
+            layout,
+            &column_groups,
+            &row_groups,
+        );
 
         let now = crate::utils::now_ms();
         // gid → active group member's TARGET slot rect, filled during the

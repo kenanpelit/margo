@@ -925,3 +925,73 @@ fn center_tile_side_column_stays_one_width_when_one_member_has_a_min_width_floor
         "left column overlaps the master column: left={left_top:?} master={master:?}"
     );
 }
+
+#[test]
+fn dwindle_min_height_floor_on_a_leaf_does_not_leave_its_uncle_overlapping() {
+    // Reproduced live with 5 real windows: master | top-right / (left |
+    // (top-right-2 / bottom-right-2)). "bottom-right-2"'s real min_height
+    // (Discord's chat UI) is bigger than its natural share, so
+    // `apply_min_height_floors` correctly grows it and shrinks its real
+    // column-mate "top-right-2" to compensate -- both share `x`, a real
+    // column, exactly as tested elsewhere. But "left" (index 2) isn't in
+    // that column at all: it's the *other* child of the split one level
+    // up, whose natural height equals "top-right-2" + "bottom-right-2"
+    // combined. Once their combined shape changes, "left" -- untouched by
+    // the column-local redistribution -- must shrink to stay clear of
+    // both, not just the near one: `resolve_residual_overlaps` needs to
+    // converge against *two* overlapping neighbours from one shrink, not
+    // leave a residual overlap against either.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_output("DP-1", (1920, 1080));
+
+    for (app, title) in [
+        ("kitty", "master"),
+        ("kitty", "top-right"),
+        ("kitty", "left"),
+        ("kitty", "top-right-2"),
+        ("discord", "bottom-right-2"),
+    ] {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id(app.into());
+        toplevel.set_title(title.into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+
+    fx.server.state.monitors[0].pertag.ltidxs[1] = crate::layout::LayoutId::Dwindle;
+    fx.server.state.monitors[0].pertag.user_picked_layout[1] = true;
+
+    let natural_height = {
+        fx.server.state.arrange_monitor(0);
+        fx.server.state.clients[4].geom.height
+    };
+    fx.server.state.clients[4].min_height = natural_height + 300;
+
+    fx.server.state.arrange_monitor(0);
+
+    let geoms: Vec<_> = fx.server.state.clients.iter().map(|c| c.geom).collect();
+
+    assert!(
+        geoms[4].height >= natural_height + 300,
+        "min_height not honoured: {:?}",
+        geoms[4]
+    );
+
+    for i in 0..geoms.len() {
+        for j in (i + 1)..geoms.len() {
+            let a = geoms[i];
+            let b = geoms[j];
+            let overlap_x = a.x < b.x + b.width && b.x < a.x + a.width;
+            let overlap_y = a.y < b.y + b.height && b.y < a.y + a.height;
+            assert!(
+                !(overlap_x && overlap_y),
+                "clients {i} and {j} overlap: {a:?} vs {b:?}"
+            );
+        }
+    }
+}
