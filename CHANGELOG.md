@@ -5,6 +5,38 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.1] – 2026-09-09
+
+**Tiling gap fixes — layouts stop collapsing around Discord-shaped windows,
+and the deck layout finally shows the card you focused.**
+
+### Fixed
+
+- **A tiled window no longer collapses the layout to make room for its own
+  minimum size.** An app that declares a large `xdg_toplevel` minimum
+  (Discord and other Electron apps ask for ~940×500) was grown past its
+  slot, and a redistribute-and-resolve pass then shrank its neighbours and
+  spent every inter-window and outer gap to fit it — so `center_tile`,
+  `tgmix` and `dwindle` snapped to edge-to-edge the instant such a window
+  landed on the tag. A tiled window now gets exactly the slot its layout
+  computed, the same as every other tiling WM; the client reflows its own
+  content. A window that genuinely needs a minimum size can float (floating
+  windows still honour min/max).
+- **`center_tile`: vertically stacked windows now have the inner gap
+  (`gappiv`) between them.** The master, left-stack and right-stack columns
+  divided their height with no gap, so stacked tiles touched edge to edge.
+- **`tgmix`: the seam between the master column and the stack grid is one
+  gap wide, not two.** The stack half was inset by the outer gap once by
+  `tgmix` and again by the grid it delegates to, so the master/stack seam
+  came out `gappoh + gappih` wide.
+- **`deck`: the focused stack card is raised to the front.** Every deck
+  card shares one rect, so the card you see is whichever sits on top of
+  the z-order — and nothing raised the focused one, so cycling the deck
+  moved the border highlight but not what was visible. The focused window
+  is now raised on every focus change (matching dwl).
+- **`deck`: stacked masters (`nmaster >= 2`) now have the inner gap between
+  them** — same missing-`gappiv` bug as `center_tile`.
+
 ## [3.4.0] – 2026-09-08
 
 **A live Guide page in Settings, and four real bugfixes.**
