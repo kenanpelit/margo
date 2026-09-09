@@ -247,6 +247,37 @@ pub fn deck(ctx: &ArrangeCtx) -> ArrangeResult {
 
 // ── Center tile ───────────────────────────────────────────────────────────────
 
+/// Stack `idxs` top to bottom inside one column: horizontal position
+/// (`x`, width `w`), vertical span `total_h` starting at `y0`, with `iv`
+/// between consecutive windows. Running-remainder split so the last
+/// window absorbs any rounding drift — the same inner-gap convention
+/// `tile()` uses for its own columns. A no-op for an empty slice.
+fn stack_evenly(
+    idxs: &[usize],
+    x: i32,
+    y0: i32,
+    w: i32,
+    total_h: i32,
+    iv: i32,
+    out: &mut ArrangeResult,
+) {
+    let count = idxs.len();
+    if count == 0 {
+        return;
+    }
+    // Reserve the inter-window gaps up front, then split what's left.
+    // `.max(count)` keeps at least 1px per window even under a
+    // pathological gap config, matching the positive-size floor every
+    // `arrange` caller already relies on.
+    let avail = (total_h - (count as i32 - 1) * iv).max(count as i32);
+    let mut consumed = 0;
+    for (i, &idx) in idxs.iter().enumerate() {
+        let h = ((avail - consumed) / (count - i) as i32).max(1);
+        out.push((idx, Rect::new(x, y0 + consumed + i as i32 * iv, w, h)));
+        consumed += h;
+    }
+}
+
 pub fn center_tile(ctx: &ArrangeCtx) -> ArrangeResult {
     let n = ctx.tiled.len();
     if n == 0 {
@@ -258,6 +289,7 @@ pub fn center_tile(ctx: &ArrangeCtx) -> ArrangeResult {
     let oh = g.gappoh;
     let ov = g.gappov;
     let ih = g.gappih;
+    let iv = g.gappiv;
 
     let nm = (ctx.nmaster as usize).min(n);
     let stack_count = n.saturating_sub(nm);
@@ -280,28 +312,31 @@ pub fn center_tile(ctx: &ArrangeCtx) -> ArrangeResult {
     };
 
     let left_count = stack_count / 2;
-    let right_count = stack_count - left_count;
 
     let mut result = Vec::with_capacity(n);
 
     // master column (center)
     let master_x = wa.x + oh + if stack_count >= 2 { side_w + ih } else { 0 };
-    let mut my = 0;
-    for i in 0..nm {
-        let idx = ctx.tiled[i];
-        let h = (total_h - my) / (nm - i) as i32;
-        result.push((idx, Rect::new(master_x, wa.y + ov + my, master_w, h)));
-        my += h;
-    }
+    stack_evenly(
+        &ctx.tiled[..nm],
+        master_x,
+        wa.y + ov,
+        master_w,
+        total_h,
+        iv,
+        &mut result,
+    );
 
     // left stack
-    let mut ly = 0;
-    for i in 0..left_count {
-        let idx = ctx.tiled[nm + i];
-        let h = (total_h - ly) / (left_count - i) as i32;
-        result.push((idx, Rect::new(wa.x + oh, wa.y + ov + ly, side_w, h)));
-        ly += h;
-    }
+    stack_evenly(
+        &ctx.tiled[nm..nm + left_count],
+        wa.x + oh,
+        wa.y + ov,
+        side_w,
+        total_h,
+        iv,
+        &mut result,
+    );
 
     // right stack
     let rx = wa.x
@@ -311,13 +346,15 @@ pub fn center_tile(ctx: &ArrangeCtx) -> ArrangeResult {
         } else {
             master_w + ih
         };
-    let mut ry = 0;
-    for i in 0..right_count {
-        let idx = ctx.tiled[nm + left_count + i];
-        let h = (total_h - ry) / (right_count - i) as i32;
-        result.push((idx, Rect::new(rx, wa.y + ov + ry, side_w, h)));
-        ry += h;
-    }
+    stack_evenly(
+        &ctx.tiled[nm + left_count..],
+        rx,
+        wa.y + ov,
+        side_w,
+        total_h,
+        iv,
+        &mut result,
+    );
 
     result
 }
@@ -412,11 +449,16 @@ pub fn tgmix(ctx: &ArrangeCtx) -> ArrangeResult {
     let oh = g.gappoh;
     let master_w = ((wa.width - 2 * oh) as f32 * ctx.mfact) as i32;
 
+    // Each half re-insets its own outer gap (`tile` and `grid` both do,
+    // from `oh`/`ov`), so the sub-areas handed to them must span the
+    // *full* region including where that outer gap lands — otherwise the
+    // seam between master and stack gets the outer gap applied twice
+    // (`oh + gappih` instead of a single `gappih`).
     let master_wa = Rect::new(wa.x, wa.y, master_w + 2 * oh, wa.height);
     let stack_wa = Rect::new(
-        wa.x + oh + master_w + g.gappih,
+        wa.x + master_w + g.gappih,
         wa.y,
-        wa.width - oh - master_w - g.gappih,
+        wa.width - master_w - g.gappih,
         wa.height,
     );
 
@@ -994,12 +1036,13 @@ mod tests {
     /// Regression, found by the 200k-case proptest soak on 2026-07-20.
     ///
     /// `tgmix` hands `grid` whatever the master column leaves over. At
-    /// mfact 0.89 on an 800px-wide area that stack is 87px, and grid then
-    /// lays 7 clients out in 3 columns: the 23px outer gaps plus two 20px
-    /// inner gaps consume every pixel, so `(41 - 40) / 3` truncated the cell
-    /// width to **zero** and the windows became invisible and unclickable.
-    ///
-    /// Cells are now clamped to 1px — cramped, but real.
+    /// mfact 0.89 on an 800px-wide area that stack is a sliver, and grid
+    /// then lays 7 clients out in 3 columns: with the outer + inner gaps
+    /// eating nearly every pixel, an off-by-one in the cell-width maths
+    /// truncated the cell to **zero** and the windows became invisible and
+    /// unclickable. `grid` now clamps every cell dimension to at least 1px,
+    /// and `tgmix` no longer double-applies the outer gap at the seam — so
+    /// even a squeezed stack lands real, clickable cells.
     #[test]
     fn grid_cells_stay_positive_when_gaps_exceed_a_narrow_area() {
         let gaps = GapConfig {
