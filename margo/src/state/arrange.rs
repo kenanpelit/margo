@@ -505,11 +505,18 @@ fn clamp_to_work_area(
 ///
 /// Sweeps every pair still overlapping after everything above and shrinks
 /// whichever one has room to give — on whichever axis needs the smaller
-/// correction, from the shared edge inward — without ever shrinking a
-/// rect past its own client's declared minimum. When neither side has
-/// enough room, the residual overlap is left in place: the same accepted
-/// last resort `clamp_to_work_area`'s own doc comment describes, and here
-/// too neither client's floor can honestly give any further.
+/// correction, from the shared edge inward. Declared minimums are
+/// respected first (each side's own margin above its floor), but an
+/// overlap is never left in place just because both floors are already
+/// satisfied: two real clients can each legitimately refuse to shrink
+/// below their own declared minimum while dwindle's spiral still hands
+/// their branch less combined space than both minimums add up to, and a
+/// visible overlap — one window silently lying about where its
+/// neighbour's edge actually is — is worse than either briefly reading
+/// uncomfortably narrow. So once both margins are exhausted, the last
+/// resort takes the remainder past whichever floor it must (clamped to
+/// staying at least 1px), left/top first then right/bottom, rather than
+/// leave the two touching wrongly.
 ///
 /// Skipped for layouts whose members are *meant* to occupy the same
 /// space: `Deck`'s stack (a tabbed "deck of cards", only the top one
@@ -631,6 +638,28 @@ fn resolve_residual_overlaps(
                         let shrink_right = remaining.min(right_margin);
                         geometries[right].1.x += shrink_right;
                         geometries[right].1.width -= shrink_right;
+                        remaining -= shrink_right;
+                    }
+                    if remaining > 0 {
+                        // Genuinely irreducible: both declared floors are
+                        // already fully honoured and the pair still
+                        // doesn't fit side by side -- the layout simply
+                        // didn't allocate this branch enough combined
+                        // width for both floors at once. Take the rest
+                        // from left first, then right, past either's own
+                        // floor if it comes to that (clamped to stay at
+                        // least 1px): a window uncomfortably below its
+                        // own declared minimum is still usable, and
+                        // never lies about where its neighbour's edge
+                        // actually is the way a silent overlap does.
+                        let extra_left = remaining.min((geometries[left].1.width - 1).max(0));
+                        geometries[left].1.width -= extra_left;
+                        remaining -= extra_left;
+                        if remaining > 0 {
+                            let extra_right = remaining.min((geometries[right].1.width - 1).max(0));
+                            geometries[right].1.x += extra_right;
+                            geometries[right].1.width -= extra_right;
+                        }
                     }
                 } else {
                     let (top, bottom) = if a.y <= b.y { (i, j) } else { (j, i) };
@@ -653,6 +682,21 @@ fn resolve_residual_overlaps(
                         let shrink_bottom = remaining.min(bottom_margin);
                         geometries[bottom].1.y += shrink_bottom;
                         geometries[bottom].1.height -= shrink_bottom;
+                        remaining -= shrink_bottom;
+                    }
+                    if remaining > 0 {
+                        // See the X-axis branch's comment: genuinely
+                        // irreducible, so take the rest past either
+                        // floor rather than leave an overlap.
+                        let extra_top = remaining.min((geometries[top].1.height - 1).max(0));
+                        geometries[top].1.height -= extra_top;
+                        remaining -= extra_top;
+                        if remaining > 0 {
+                            let extra_bottom =
+                                remaining.min((geometries[bottom].1.height - 1).max(0));
+                            geometries[bottom].1.y += extra_bottom;
+                            geometries[bottom].1.height -= extra_bottom;
+                        }
                     }
                 }
             }

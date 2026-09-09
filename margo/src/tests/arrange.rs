@@ -1190,7 +1190,7 @@ fn dwindle_with_a_large_min_width_floor_that_exceeds_its_own_column() {
 }
 
 #[test]
-fn dwindle_two_real_floors_that_cannot_both_fit_leave_an_honest_residual_overlap() {
+fn dwindle_two_real_floors_that_cannot_both_fit_never_overlap_even_below_floor() {
     // Reproduced live on the real desktop and root-caused: with 5 real
     // windows tagall'd onto one dwindle view, "ai" (a real Chrome
     // window) declares its own real min_width -- close to what
@@ -1200,21 +1200,20 @@ fn dwindle_two_real_floors_that_cannot_both_fit_leave_an_honest_residual_overlap
     // stand-in with no floor of its own for "ai"'s role, so the
     // shrink-the-margin fix always had somewhere to put the excess;
     // this is the first case where BOTH sides of the pair are already
-    // pinned to their own declared minimums, with nothing left to give.
+    // pinned to their own declared minimums, with nothing left to give
+    // by that rule alone.
     //
-    // This is not a redistribution bug: two real applications each
-    // refuse to go below their own declared minimum size, and dwindle's
-    // spiral has already handed this branch less combined width than
-    // both minimums add up to. No reshuffling of *this* branch can
-    // create width that was never allocated to it -- only pulling from
-    // an ancestor several levels up (effectively re-deriving the whole
-    // spiral around the floors instead of after them) could, and nothing
-    // in this file claims to do that. `resolve_residual_overlaps` still
-    // does the right thing here: it honours both declared floors in
-    // full and leaves the two flush against each other rather than
-    // crushing either below what its own client demands -- the same
-    // accepted last resort documented on `clamp_to_work_area` and
-    // `resolve_residual_overlaps` themselves.
+    // The first fix for this landed on "honour both floors in full and
+    // leave the two touching" -- which is *never* what actually
+    // happened before either floor was enforced (dwindle just handed
+    // both whatever cramped share its spiral gave them, no minimum
+    // respected, but never overlapping). Leaving a genuine overlap here
+    // was a regression relative to that, not an improvement: a window
+    // silently overlapping its neighbour is worse than one reading
+    // uncomfortably narrow. So the real contract is: never leave an
+    // overlap, even if honouring every declared floor turns out to be
+    // impossible for this branch -- take the remainder past a floor
+    // (clamped to at least 1px) rather than let two rects touch wrongly.
     let mut fx = Fixture::with_config(Config {
         animations: false,
         ..Config::default()
@@ -1251,34 +1250,29 @@ fn dwindle_two_real_floors_that_cannot_both_fit_leave_an_honest_residual_overlap
 
     fx.server.state.arrange_monitor(0);
 
-    let left = fx.server.state.clients[2].geom;
-    let discord = fx.server.state.clients[4].geom;
+    let geoms: Vec<_> = fx.server.state.clients.iter().map(|c| c.geom).collect();
 
-    // Both declared floors are still fully honoured -- neither was
-    // crushed below what its own client demands to force a fit.
-    assert!(
-        left.width >= natural_left_width,
-        "left's own min_width not honoured: {left:?}"
-    );
-    assert!(
-        discord.width >= 940 && discord.height >= 500,
-        "discord's own floor not honoured: {discord:?}"
-    );
-
-    // No other client on the monitor is dragged into this: only the
-    // two mutually-irreducible windows may still touch.
-    let others: Vec<_> = fx.server.state.clients[0..4]
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| *i != 2)
-        .map(|(i, c)| (i, c.geom))
-        .collect();
-    for (i, g) in &others {
-        let overlap_x = g.x < discord.x + discord.width && discord.x < g.x + g.width;
-        let overlap_y = g.y < discord.y + discord.height && discord.y < g.y + g.height;
-        assert!(
-            !(overlap_x && overlap_y),
-            "client {i} unexpectedly overlaps discord: {g:?} vs {discord:?}"
-        );
+    // Above all else: nothing overlaps anything, anywhere on the
+    // monitor -- including the two mutually-irreducible windows.
+    for i in 0..geoms.len() {
+        for j in (i + 1)..geoms.len() {
+            let a = geoms[i];
+            let b = geoms[j];
+            let overlap_x = a.x < b.x + b.width && b.x < a.x + a.width;
+            let overlap_y = a.y < b.y + b.height && b.y < a.y + a.height;
+            assert!(
+                !(overlap_x && overlap_y),
+                "clients {i} and {j} overlap: {a:?} vs {b:?}"
+            );
+        }
     }
+
+    // Both rects still have a sane, positive size -- reading narrow is
+    // fine, reading zero or negative is not.
+    assert!(geoms[2].width > 0, "left collapsed: {:?}", geoms[2]);
+    assert!(
+        geoms[4].width > 0 && geoms[4].height > 0,
+        "discord collapsed: {:?}",
+        geoms[4]
+    );
 }
