@@ -782,3 +782,74 @@ fn deck_stack_stays_one_coincident_rect_not_a_row_of_columns() {
         stack[0]
     );
 }
+
+#[test]
+fn dwindle_min_width_floor_shrinks_its_true_sibling_instead_of_overlapping_it() {
+    // Reproduced from a real overlap: 5 windows on `dwindle` spirals as
+    // master | top-right / (left | (top-right-2 / bottom-right-2)) — so
+    // "left" (index 2) and the pair "top-right-2" + "bottom-right-2"
+    // (indices 3, 4) are the two direct children of the *same* split:
+    // "left"'s height naturally equals their combined height, but
+    // "left" and "top-right-2" alone don't share a height (that belongs
+    // to "left" and the *pair*). `apply_min_width_floors`'s `stack_rows`
+    // groups strictly by "same height", so it never recognised "left"
+    // and "top-right-2" as needing to trade width at all -- growing
+    // "top-right-2" to its floor rode straight over "left" in place,
+    // fully on-screen (nothing for `clamp_to_work_area` to catch)
+    // rather than shrinking its true sibling to make room.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_output("DP-1", (1920, 1080));
+
+    for (app, title) in [
+        ("kitty", "master"),
+        ("kitty", "top-right"),
+        ("kitty", "left"),
+        ("discord", "top-right-2"),
+        ("kitty", "bottom-right-2"),
+    ] {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id(app.into());
+        toplevel.set_title(title.into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+
+    fx.server.state.monitors[0].pertag.ltidxs[1] = crate::layout::LayoutId::Dwindle;
+    fx.server.state.monitors[0].pertag.user_picked_layout[1] = true;
+
+    // "top-right-2"'s natural width share of its split, so the floor
+    // below is comfortably inside what "left" can still give up.
+    let natural_width = {
+        fx.server.state.arrange_monitor(0);
+        fx.server.state.clients[3].geom.width
+    };
+    fx.server.state.clients[3].min_width = natural_width + 300;
+
+    fx.server.state.arrange_monitor(0);
+
+    let geoms: Vec<_> = fx.server.state.clients.iter().map(|c| c.geom).collect();
+
+    assert!(
+        geoms[3].width >= natural_width + 300,
+        "min_width not honoured: {:?}",
+        geoms[3]
+    );
+
+    for i in 0..geoms.len() {
+        for j in (i + 1)..geoms.len() {
+            let a = geoms[i];
+            let b = geoms[j];
+            let overlap_x = a.x < b.x + b.width && b.x < a.x + a.width;
+            let overlap_y = a.y < b.y + b.height && b.y < a.y + a.height;
+            assert!(
+                !(overlap_x && overlap_y),
+                "clients {i} and {j} overlap: {a:?} vs {b:?}"
+            );
+        }
+    }
+}

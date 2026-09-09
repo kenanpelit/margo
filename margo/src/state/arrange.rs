@@ -277,6 +277,102 @@ fn clamp_to_work_area(
     }
 }
 
+/// Final safety net after [`clamp_to_work_area`]: a min-size floor grew a
+/// client's rect exactly the way [`apply_min_height_floors`] /
+/// [`apply_min_width_floors`] intend, but the group it landed in
+/// ([`stack_columns`] / [`stack_rows`]) only recognises rects that share a
+/// dimension outright. `dwindle`'s alternating-axis spiral routinely
+/// produces direct siblings — one leaf, and the recursively-split branch
+/// beside it — whose *combined* span matches the leaf's but whose
+/// individual height (or width) doesn't, so a floor grew one of them
+/// straight into its true sibling's territory without either ever being
+/// grouped for redistribution, and nothing was off-screen for
+/// `clamp_to_work_area` to catch.
+///
+/// Sweeps every pair still overlapping after everything above and shrinks
+/// whichever one has room to give — on whichever axis needs the smaller
+/// correction, from the shared edge inward — without ever shrinking a
+/// rect past its own client's declared minimum. When neither side has
+/// enough room, the residual overlap is left in place: the same accepted
+/// last resort `clamp_to_work_area`'s own doc comment describes, and here
+/// too neither client's floor can honestly give any further.
+///
+/// Skipped for layouts whose members are *meant* to occupy the same
+/// space: `Deck`'s stack (a tabbed "deck of cards", only the top one
+/// shown) and `Monocle` (every window maximised to the same rect), and
+/// for `Scroller`, whose columns intentionally grow past their
+/// neighbours (see `clamp_to_work_area`).
+fn resolve_residual_overlaps(
+    geometries: &mut [(usize, crate::layout::Rect)],
+    clients: &[MargoClient],
+    layout: crate::layout::LayoutId,
+) {
+    use crate::layout::LayoutId;
+    if matches!(
+        layout,
+        LayoutId::Scroller | LayoutId::Deck | LayoutId::Monocle
+    ) {
+        return;
+    }
+    let n = geometries.len();
+    // A handful of passes lets a chain of overlaps (A pushes into B,
+    // B's shrink then reveals it still overlaps C) settle instead of
+    // stopping after resolving only the first link.
+    for _ in 0..3 {
+        let mut any_resolved = false;
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let a = geometries[i].1;
+                let b = geometries[j].1;
+                let ox = a.x.max(b.x);
+                let ox_end = (a.x + a.width).min(b.x + b.width);
+                let oy = a.y.max(b.y);
+                let oy_end = (a.y + a.height).min(b.y + b.height);
+                let overlap_w = ox_end - ox;
+                let overlap_h = oy_end - oy;
+                if overlap_w <= 0 || overlap_h <= 0 {
+                    continue;
+                }
+                any_resolved = true;
+                if overlap_w <= overlap_h {
+                    let (left, right) = if a.x <= b.x { (i, j) } else { (j, i) };
+                    let left_min = clients[geometries[left].0].min_width.max(0);
+                    let right_min = clients[geometries[right].0].min_width.max(0);
+                    let left_margin = (geometries[left].1.width - left_min).max(0);
+                    let mut remaining = overlap_w;
+                    let shrink_left = remaining.min(left_margin);
+                    geometries[left].1.width -= shrink_left;
+                    remaining -= shrink_left;
+                    if remaining > 0 {
+                        let right_margin = (geometries[right].1.width - right_min).max(0);
+                        let shrink_right = remaining.min(right_margin);
+                        geometries[right].1.x += shrink_right;
+                        geometries[right].1.width -= shrink_right;
+                    }
+                } else {
+                    let (top, bottom) = if a.y <= b.y { (i, j) } else { (j, i) };
+                    let top_min = clients[geometries[top].0].min_height.max(0);
+                    let bottom_min = clients[geometries[bottom].0].min_height.max(0);
+                    let top_margin = (geometries[top].1.height - top_min).max(0);
+                    let mut remaining = overlap_h;
+                    let shrink_top = remaining.min(top_margin);
+                    geometries[top].1.height -= shrink_top;
+                    remaining -= shrink_top;
+                    if remaining > 0 {
+                        let bottom_margin = (geometries[bottom].1.height - bottom_min).max(0);
+                        let shrink_bottom = remaining.min(bottom_margin);
+                        geometries[bottom].1.y += shrink_bottom;
+                        geometries[bottom].1.height -= shrink_bottom;
+                    }
+                }
+            }
+        }
+        if !any_resolved {
+            break;
+        }
+    }
+}
+
 /// Partitions `geometries` into the vertical-stack columns a tile-family
 /// layout produced them in: rects belong to the same column when they
 /// share a width and their x-ranges overlap. Returns each column's
@@ -1019,6 +1115,7 @@ impl MargoState {
             }
         }
         clamp_to_work_area(&mut geometries, work_area, layout);
+        resolve_residual_overlaps(&mut geometries, &self.clients, layout);
 
         let now = crate::utils::now_ms();
         // gid → active group member's TARGET slot rect, filled during the
