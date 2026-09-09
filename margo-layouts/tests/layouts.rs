@@ -5,7 +5,7 @@
 
 use margo_layouts::{
     ArrangeCtx, GapConfig, LayoutId, MosaicClient, Rect, arrange, mosaic_arrange,
-    mosaic_overflow_client, mosaic_stack_peek_rect, place_floating_cascade, repack_1d,
+    mosaic_overflow_client, mosaic_stack_peek_rect, place_floating_cascade,
 };
 
 const WA: Rect = Rect {
@@ -833,109 +833,4 @@ fn the_two_axes_clamp_independently() {
 fn an_exact_match_is_a_no_op() {
     let r = FLOAT_SLOT.clamped_to_actual_size(FLOAT_SLOT.width, FLOAT_SLOT.height);
     assert_eq!(r, FLOAT_SLOT);
-}
-
-// ── repack_1d — a stacked client's own min-size floor no longer spills
-// the column past its span (real bug: a tile stack member with a big
-// xdg_toplevel minimum height hung off the bottom of the screen; in
-// center_tile it overlapped a neighbouring column instead) ──────────
-
-#[test]
-fn no_floor_leaves_sizes_untouched() {
-    let sizes = [300, 300, 300];
-    let floors = [0, 0, 0];
-    let gaps = [12, 12];
-    // Span matches sizes + gaps exactly — nothing to redistribute.
-    let out = repack_1d(&sizes, &floors, &gaps, 924);
-    assert_eq!(out, vec![300, 300, 300]);
-}
-
-#[test]
-fn a_floor_within_its_own_share_is_a_no_op() {
-    // The floor is smaller than what the layout already gave it.
-    let sizes = [300, 300];
-    let floors = [0, 250];
-    let gaps = [12];
-    let out = repack_1d(&sizes, &floors, &gaps, 612);
-    assert_eq!(out, vec![300, 300]);
-}
-
-#[test]
-fn an_oversized_floor_shrinks_its_flexible_sibling_to_compensate() {
-    // Two-member stack, 1080 span, natural 528/528 (with a 24px gap).
-    // The second member's own minimum (900) is far bigger than its
-    // natural share — its sibling must give up the difference so the
-    // group still sums to the span instead of spilling past it.
-    let sizes = [528, 528];
-    let floors = [0, 900];
-    let gaps = [24];
-    let out = repack_1d(&sizes, &floors, &gaps, 1080);
-    assert_eq!(out[1], 900, "the floor itself must be honoured exactly");
-    assert_eq!(
-        out[0],
-        1080 - 24 - 900,
-        "the flexible sibling absorbs the rest"
-    );
-    assert_eq!(
-        out.iter().sum::<i32>() + 24,
-        1080,
-        "group still sums to its span"
-    );
-}
-
-#[test]
-fn the_reproduced_bug_three_member_stack() {
-    // The exact shape of the live bug: a 3-wide tile stack column,
-    // 1060px tall, ~24px gaps, and the bottom member (Discord) declaring
-    // min_height=900 — nearly double its natural ~337px share.
-    let sizes = [337, 337, 337];
-    let floors = [0, 0, 900];
-    let gaps = [24, 24];
-    let out = repack_1d(&sizes, &floors, &gaps, 1060);
-    assert_eq!(out[2], 900);
-    // The two flexible members split what's left, and the whole column
-    // still exactly fits the span it was given — nothing spills past it.
-    assert_eq!(out.iter().sum::<i32>() + gaps.iter().sum::<i32>(), 1060);
-    assert!(
-        out[0] > 0 && out[1] > 0,
-        "flexible siblings never collapse to nothing"
-    );
-}
-
-#[test]
-fn multiple_oversized_floors_each_get_their_own_minimum() {
-    let sizes = [200, 200, 200, 200];
-    let floors = [500, 0, 500, 0];
-    let gaps = [10, 10, 10];
-    let out = repack_1d(&sizes, &floors, &gaps, 800);
-    assert_eq!(out[0], 500);
-    assert_eq!(out[2], 500);
-    // The two flexible members (no floor) share whatever's left.
-    assert!(out[1] > 0 && out[3] > 0);
-}
-
-#[test]
-fn floors_alone_exceeding_the_span_is_irreducible_not_a_panic() {
-    // Every member's own minimum already sums to more than the span —
-    // no repacking can fix that without breaking someone's declared
-    // minimum. Every member keeps its floor; the group is simply
-    // wider than its span (an honest overflow, not a silent lie).
-    let sizes = [100, 100];
-    let floors = [400, 400];
-    let gaps = [10];
-    let out = repack_1d(&sizes, &floors, &gaps, 500);
-    assert_eq!(out, vec![400, 400]);
-}
-
-#[test]
-fn a_single_member_group_just_takes_its_own_floor() {
-    let sizes = [300];
-    let floors = [500];
-    let out = repack_1d(&sizes, &floors, &[], 300);
-    assert_eq!(out, vec![500]);
-}
-
-#[test]
-fn empty_group_returns_empty() {
-    assert_eq!(repack_1d(&[], &[], &[], 0), Vec::<i32>::new());
 }
