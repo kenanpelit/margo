@@ -280,10 +280,10 @@ enum Command {
     ///
     /// Writes to `$XDG_STATE_HOME/margo/session.json` (defaults to
     /// `~/.local/state/margo/session.json`). Captures every
-    /// monitor's seltags, tagset, per-tag layout/mfact/nmaster,
-    /// canvas-pan, and currently-parked scratchpad entries. Open
-    /// windows are not captured — clients are bound to processes,
-    /// the spawn line lives in user-space.
+    /// monitor's seltags, tagset, per-tag layout/mfact/nmaster, and
+    /// currently-parked scratchpad entries. Open windows are not
+    /// captured — clients are bound to processes, the spawn line
+    /// lives in user-space.
     #[command(name = "session-save", display_order = 33, alias = "session_save")]
     SessionSave,
 

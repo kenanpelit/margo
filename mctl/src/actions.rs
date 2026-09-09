@@ -219,7 +219,7 @@ pub const ACTIONS: &[Action] = &[
         group: Group::Layout,
         summary: "Switch the current tag's layout by name.",
         detail: "Names: tile, scroller, grid, monocle, deck, center_tile, \
-                 right_tile, tgmix, canvas, dwindle, floating.",
+                 right_tile, tgmix, dwindle, floating, mosaic.",
     },
     Action {
         name: "switch_layout",
@@ -636,7 +636,7 @@ pub const ACTIONS: &[Action] = &[
         args: "",
         group: Group::System,
         summary: "Save per-monitor tag/layout state to disk.",
-        detail: "Writes a JSON snapshot to `$XDG_STATE_HOME/margo/session.json` (defaults to `~/.local/state/margo/session.json`). Captures every monitor's seltags, tagset, and per-tag layout/mfact/nmaster/canvas-pan. Open windows are NOT captured — those belong to user-space spawn lines.",
+        detail: "Writes a JSON snapshot to `$XDG_STATE_HOME/margo/session.json` (defaults to `~/.local/state/margo/session.json`). Captures every monitor's seltags, tagset, and per-tag layout/mfact/nmaster. Open windows are NOT captured — those belong to user-space spawn lines.",
     },
     Action {
         name: "session_load",
@@ -719,7 +719,7 @@ pub const LAYOUT_NAMES: &[&str] = &[
     "center_tile",
     "right_tile",
     "tgmix",
-    "canvas",
     "dwindle",
     "floating",
+    "mosaic",
 ];

@@ -77,7 +77,7 @@ warmup_hidden_ms = 10000
 
 ## Layouts
 
-margo ships **12 layouts** — 10 partition-style tiling algorithms plus **floating** and **mosaic** for non-partition desktops — and a separate zoom-out **overview** mode. Each tag remembers its own layout choice. Set one by name with the `setlayout` action, or cycle with `switch_layout`.
+margo ships **11 layouts** — 9 partition-style tiling algorithms plus **floating** and **mosaic** for non-partition desktops — and a separate zoom-out **overview** mode. Each tag remembers its own layout choice. Set one by name with the `setlayout` action, or cycle with `switch_layout`.
 
 | `setlayout` name | Layout | Description |
 | --- | --- | --- |
@@ -89,7 +89,6 @@ margo ships **12 layouts** — 10 partition-style tiling algorithms plus **float
 | `center_tile` | Center tile | master centred, stacks to the left + right |
 | `right_tile` | Right tile | master pane on the right |
 | `tgmix` | TG-mix | tile / grid hybrid |
-| `canvas` | Canvas | free-form pan/zoom canvas (PaperWM-meets-Excalidraw) |
 | `dwindle` | Dwindle | recursive split (Hyprland default) |
 | `floating` | Floating | classic stacking desktop — windows auto-float with a cascade |
 | `mosaic` | Mosaic | [GNOME's content-aware self-arranging concept](https://blogs.gnome.org/tbernard/2023/07/26/rethinking-window-management/) — windows keep their own size, drag one onto another to swap, overflow moves to an empty tag (or stacks in the corner, see below) |
@@ -202,15 +201,6 @@ The scroller is the most option-heavy layout, so it has its own block:
 bind = super, r, set_proportion, 0.618        # set the focused column's width ratio
 bind = super, p, switch_proportion_preset     # cycle scroller_proportion_preset
 ```
-
-### Canvas options
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `canvas_tiling` | `0` | `1` = auto-arrange new windows in a grid |
-| `canvas_tiling_gap` | `10` | gap between auto-arranged windows |
-| `canvas_pan_on_kill` | `1` | re-centre after closing a window |
-| `canvas_anchor_animate` | `0` | animate manual anchor changes |
 
 ## Window rules
 

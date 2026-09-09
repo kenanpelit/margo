@@ -6,7 +6,7 @@
 >
 > *Sections §1–§13 are per-capability archaeology and intentionally describe the state at the time each capability shipped (e.g. §8 still documents the removed dwl-ipc wire); trust this header, the TL;DR table, and `CHANGELOG.md` for current status.*
 
-Margo is a Rust + Smithay Wayland compositor with a dwm/dwl-style tag workflow, 14 layout algorithms, niri-grade animations + spring physics, on-demand redraw, runtime DRM mode change, an embedded Rhai scripting engine with mid-event-loop hooks, full `wp_color_management_v1` HDR scaffolding (Phase 1 shipped, Phase 2/3/4 staged for upstream activation), a built-in xdp-gnome screencast backend, and a GTK4 design tool (`mvisual`) that previews the full 14-layout catalogue × per-tag pinning matrix.
+Margo is a Rust + Smithay Wayland compositor with a dwm/dwl-style tag workflow, 11 layout algorithms, niri-grade animations + spring physics, on-demand redraw, runtime DRM mode change, an embedded Rhai scripting engine with mid-event-loop hooks, full `wp_color_management_v1` HDR scaffolding (Phase 1 shipped, Phase 2/3/4 staged for upstream activation), a built-in xdp-gnome screencast backend, and a GTK4 design tool (`mvisual`) that previews the full 11-layout catalogue × per-tag pinning matrix.
 
 This document is the **source of truth** for what's shipped, what's queued, and what's worth a second pass. **§1–§13** preserve per-capability detail (archaeology); **§14** ledgers Phase 1 cross-cuttingly; **§15** runs Phase 2's five work streams (engineering goals now met — §15.8) and opens **Phase 3 (polish + ecosystem)** at **§15.11**, where the desktop layer — shell (`mshell`), setup wizard, and the first-party `mlogind` login manager — is ledgered.
 
@@ -22,7 +22,7 @@ This document is the **source of truth** for what's shipped, what's queued, and 
 | Frame clock + animations (P2) | on-demand redraw, spring engine, open/close/tag/focus/layer animations (bezier + opt-in spring), hw cursor, direct scanout (+ observability), damage opt | ✅ 6/6 |
 | Window management v2 (P3) | scratchpad+named, mango/layerrule parity, CSD/SSD policy, IPC parity, XWayland HiDPI env, popup focus, **xdg fullscreen request honoured** | ✅ 7/7 |
 | Tooling & packaging (P4) | smoke-winit, manual checklist, mctl JSON/rules/check-config, post-install smoke, shell completions, GitHub Actions CI, smoke-in-CI | ✅ 7/7 |
-| Long-term goals (P5/P6) | spatial canvas ✓, adaptive layout ✓, drop shadow ✓, scripting Phase 3 ✓, HDR Phase 1 ✓ | ✅ 5/5 |
+| Long-term goals (P5/P6) | adaptive layout ✓, drop shadow ✓, scripting Phase 3 ✓, HDR Phase 1 ✓, spatial canvas ✗ removed 2026-09-09 (dead code, never wired up) | ✅ 4/5 |
 | Built-in screencast portal (P7) | 5 Mutter D-Bus shims, PipeWire pipeline, frame pacing, damage, cursor (embedded + metadata), full-decoration casts, HiDPI, windows_changed signal | ✅ 9/9 phases |
 | Catch-and-surpass-niri sweep (W1–W4) | snapshot tests, clippy gate, CONTRIBUTING, screenshot region UI, EGL graceful fallback, AccessKit, xwayland-satellite, cargo features, tracy, HDR Phase 3 metadata, mctl run, plugin packaging, dwl-ipc state extension, layout-cycle notify, per-tag wallpaper, mctl migrate, mvisual design tool, HDR Phase 4 ICC LUT, **udev backend split** | ✅ 19/22 (5 deferred / upstream-blocked) |
 | Desktop shell (mshell) | GTK4+relm4 bar/menu stack: top+bottom bars, 50-plus widgets, dashboard, control center, AI assistant, launcher (15 providers), notifications, OSD, embedded Settings (incl. compositor-config pages + keybinds editor), twilight, **first-launch setup wizard**, WASM plugin tier, matugen→border sync | ✅ mature (v3.1.x) |
@@ -49,7 +49,7 @@ The floor everything else stands on. Behaviour-stable for the lifetime of the pr
 - **Screencopy.** SHM target for grim / wf-recorder / OBS; dmabuf path landed in P1.
 - **Winit nested mode** for fast dev iteration.
 
-**Strengths to preserve.** State surface centralised in `MargoState`, split along natural seams (`backend/`, `layout/`, `dispatch/`, `render/`); don't fragment further. Per-tag state via `Pertag` (layout, mfact, client count, `user_picked_layout`, `canvas_pan_x/y`) keeps every tag self-contained — resist the urge to lift this onto `Monitor` "for simplicity".
+**Strengths to preserve.** State surface centralised in `MargoState`, split along natural seams (`backend/`, `layout/`, `dispatch/`, `render/`); don't fragment further. Per-tag state via `Pertag` (layout, mfact, client count, `user_picked_layout`) keeps every tag self-contained — resist the urge to lift this onto `Monitor` "for simplicity".
 
 **Worth revisiting.** A second-pass config parser with a real grammar (pest / nom / chumsky) would give better error messages and let the duplicate-bind detector live inside the parser instead of as a separate `mctl check-config` pass.
 
@@ -58,9 +58,9 @@ The floor everything else stands on. Behaviour-stable for the lifetime of the pr
 ## 2. Window management
 
 ### Layouts & tags
-- 14 layout algorithms: tile, scroller, grid, monocle, deck, center / right / vertical variants, canvas, dwindle — plus a **floating** (stacking) layout: no tiler, every window keeps its own geometry, cascaded on first show (issue #1).
+- 11 layout algorithms: tile, scroller, grid, monocle, deck, center / right tile, tgmix, dwindle — plus **floating** and **mosaic** (stacking layouts: no tiler, every window keeps its own geometry).
 - **Adaptive layout engine** (`b19b5d6`) — `Pertag::user_picked_layout: Vec<bool>` sticky bit + `maybe_apply_adaptive_layout()` heuristic (window count + monitor aspect ratio). User's `setlayout` pins the choice; heuristic never overrides.
-- **Spatial canvas** (`1c2bed1`) — per-tag pan via `Pertag::canvas_pan_x/y`, `canvas_pan` and `canvas_reset` actions, threaded into 5 layout algorithms via `ArrangeCtx::canvas_pan`. PaperWM-style — each tag remembers its viewport.
+- **Spatial canvas — removed (2026-09-09).** `LayoutId::Canvas` (`1c2bed1`) shipped `Pertag::canvas_pan_x/y`, `canvas_pan`/`canvas_reset` actions, and `ArrangeCtx::canvas_pan` threaded into the layout algorithms, but the arrange fn itself was always a no-op (`vec![]`) — the pan offset was computed and passed around every arrange pass and never once read. The whole thing, plus a cluster of never-consumed `margo-config` knobs it had grown since (`canvas_tiling`, `canvas_pan_on_kill`, `canvas_anchor_animate`, `animation_*_canvas_pan/zoom`), was dead code from day one. Deleted rather than finished — see `CHANGELOG.md`.
 
 ### Toplevel handling
 - **Scratchpad + named scratchpad.** `toggle_scratchpad`, `toggle_named_scratchpad <appid> <title> <spawn>`, `single_scratchpad`, `scratchpad_cross_monitor`. Window-rule `isnamedscratchpad:1` flag. Recovery via `unscratchpad_focused`; full-state reset on `super+ctrl+Escape`.
@@ -973,7 +973,7 @@ For archaeology only; capability detail lives in §1–§13.
 | **P2** | frame_clock, spring engine, open/close/tag/focus/layer animations, hw cursor, direct scanout, damage opt | `71b95a1 → bcb6fb4` (6/6) ✅ |
 | **P3** | scratchpad+named, mango/layerrule parity, CSD/SSD policy, IPC parity, XWayland HiDPI env, popup focus, **xdg fullscreen request** | (7/7) ✅ |
 | **P4** | smoke-winit, manual checklist, mctl JSON/rules/check-config, post-install smoke, shell completions, GitHub Actions CI | `f5b8d71`, `d2daba0`, `b3c5ba1`, `2910567` (7/7) ✅ |
-| **P5/P6** | spatial canvas (`1c2bed1`), adaptive layout (`b19b5d6`), drop shadow (`45cfc74`), scripting Phase 3 (`562b5f7 → 13bdd57 → 769141e`), HDR Phase 1 (`25255a9`) | (5/5) ✅ |
+| **P5/P6** | adaptive layout (`b19b5d6`), drop shadow (`45cfc74`), scripting Phase 3 (`562b5f7 → 13bdd57 → 769141e`), HDR Phase 1 (`25255a9`); spatial canvas (`1c2bed1`) removed 2026-09-09 — never actually wired up, see CHANGELOG | (4/5) ✅ |
 | **P7** | 5 Mutter D-Bus shims, PipeWire pipeline, frame pacing, damage, cursor (embedded + metadata), full-decoration casts, HiDPI, windows_changed signal | `a4f6ed6 → bf7e579 → 0c2f5d5 → f8f7a9a → 0455b4e → 81a6487` (9/9) ✅ |
 | **W1–W4** | catch-and-surpass-niri sweep | 19/22 shipped, 5 deferred / upstream-blocked |
 

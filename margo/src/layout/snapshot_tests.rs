@@ -5,7 +5,7 @@
 //! directory — visual / structural regressions get caught at PR time,
 //! not at user-reload time.
 //!
-//! Margo's 13 layout algorithms are pure functions:
+//! Margo's 11 layout algorithms are pure functions:
 //!
 //! ```ignore
 //! fn tile(ctx: &ArrangeCtx) -> Vec<(usize, Rect)>

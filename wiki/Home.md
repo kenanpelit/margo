@@ -1,8 +1,8 @@
 # margo wiki
 
 **margo** is a Rust + [Smithay](https://github.com/Smithay/smithay) Wayland
-tiling compositor in the dwl/mango tradition — tags instead of workspaces, a
-15-layout catalogue, spring/bezier animations, and a complete first-party
+tiling compositor in the dwl/mango tradition — tags instead of workspaces, an
+11-layout catalogue, spring/bezier animations, and a complete first-party
 desktop stack (shell, locker, login manager, screenshot, power manager).
 
 ## Start here

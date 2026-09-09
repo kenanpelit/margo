@@ -29,7 +29,9 @@ source  = ~/.config/margo/conf.d/*.conf # glob, lex order
 
 ## Layouts
 
-margo ships **11 tiling layouts**; each tag remembers its own. Set one with
+margo ships **11 layouts** — 9 partition-style tiling algorithms plus
+**floating** and **mosaic** for non-partition desktops — and a separate
+zoom-out **overview** mode; each tag remembers its own choice. Set one with
 `setlayout <name>`, or cycle with `switch_layout`.
 
 | `setlayout` name | Layout | Description |
@@ -42,8 +44,9 @@ margo ships **11 tiling layouts**; each tag remembers its own. Set one with
 | `center_tile` | Center tile | master centred, stacks left + right |
 | `right_tile` | Right tile | master pane on the right |
 | `tgmix` | TG-mix | tile / grid hybrid |
-| `canvas` | Canvas | free-form pan/zoom canvas (PaperWM-meets-Excalidraw) |
 | `dwindle` | Dwindle | recursive split (Hyprland default) |
+| `floating` | Floating | classic stacking desktop — windows auto-float with a cascade |
+| `mosaic` | Mosaic | [GNOME's content-aware self-arranging concept](https://blogs.gnome.org/tbernard/2023/07/26/rethinking-window-management/) — windows keep their own size, drag one onto another to swap, overflow moves to an empty tag |
 | `overview` | Overview | zoom-out of all tags — usually via `toggle_overview` |
 
 ```ini
@@ -94,15 +97,6 @@ bind = super+shift, g, incgaps,    +4
 bind = super, r, set_proportion, 0.618
 bind = super, p, switch_proportion_preset
 ```
-
-### Canvas options
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `canvas_tiling` | `0` | `1` = auto-arrange new windows in a grid |
-| `canvas_tiling_gap` | `10` | gap between auto-arranged windows |
-| `canvas_pan_on_kill` | `1` | re-centre after closing a window |
-| `canvas_anchor_animate` | `0` | animate manual anchor changes |
 
 ## Dispatch actions
 

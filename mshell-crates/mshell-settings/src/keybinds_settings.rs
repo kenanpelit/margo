@@ -77,8 +77,6 @@ const ACTIONS: &[(&str, &str)] = &[
     ("overview_focus_next", "no arguments"),
     ("overview_focus_prev", "no arguments"),
     ("overview_activate", "no arguments"),
-    ("canvas_pan", "Direction — left | right | up | down"),
-    ("canvas_reset", "no arguments"),
     ("screenshot", "no arguments"),
     ("screenshot-window", "no arguments"),
     ("screenshot-region", "no arguments"),
@@ -635,9 +633,7 @@ fn categorise(action: &str, args: &str) -> &'static str {
         | "set_proportion"
         | "switch_proportion_preset"
         | "incgaps"
-        | "togglegaps"
-        | "canvas_pan"
-        | "canvas_reset" => "Layout",
+        | "togglegaps" => "Layout",
         "killclient"
         | "togglefloating"
         | "togglefullscreen"

@@ -1,4 +1,4 @@
-//! mvisual — interactive GTK4 design tool for margo's 13 tiling
+//! mvisual — interactive GTK4 design tool for margo's 11 tiling
 //! layouts × per-tag layout pinning.
 //!
 //! niri ships `niri-visual-tests` to inspect a single layout under a

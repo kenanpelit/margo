@@ -942,7 +942,7 @@ impl MargoState {
         // size is a protocol error at xdg configure (and corrupts
         // border/hit-test math), while the window-rule clamp below only
         // runs for clients that declare min/max. This is the single
-        // choke-point every one of the 13 layouts flows through.
+        // choke-point every one of the 11 layouts flows through.
         //
         // Apply per-client size constraints from window rules / the
         // client's own xdg_toplevel min/max request. The layout algorithm

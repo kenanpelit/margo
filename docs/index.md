@@ -207,7 +207,7 @@ scripts. The whole shell recolours itself from your wallpaper.
 
 <div class="grid" markdown>
 
-![Tiling layouts — 12 layouts, remembered per tag](assets/layout.webp){ loading=lazy }
+![Tiling layouts — 11 layouts, remembered per tag](assets/layout.webp){ loading=lazy }
 
 ![System monitor — CPU, memory, and the top processes](assets/cpu.webp){ loading=lazy }
 

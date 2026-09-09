@@ -43,7 +43,7 @@ itself from your wallpaper with Material You.
 
 <table>
 <tr>
-<td align="center" width="25%"><img src="docs/assets/layout.webp" alt="Tiling layouts"><br><sub><b>Tiling layouts</b><br>12 layouts, per-tag</sub></td>
+<td align="center" width="25%"><img src="docs/assets/layout.webp" alt="Tiling layouts"><br><sub><b>Tiling layouts</b><br>11 layouts, per-tag</sub></td>
 <td align="center" width="25%"><img src="docs/assets/cpu.webp" alt="System monitor"><br><sub><b>System monitor</b><br>CPU · memory · top processes</sub></td>
 <td align="center" width="25%"><img src="docs/assets/dnsvpn.webp" alt="DNS / VPN"><br><sub><b>DNS / VPN</b><br>one-tap preset switching</sub></td>
 <td align="center" width="25%"><img src="docs/assets/lyrics.webp" alt="Lyrics"><br><sub><b>Lyrics</b><br>synced, scrolling</sub></td>

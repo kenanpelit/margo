@@ -178,8 +178,8 @@ mobile setup is a separate matrix entry. Every HDR-emitting client
 
 ## Why the placeholder is `[ ]`
 
-The smaller P5 items (adaptive layout, spatial canvas, drop shadow)
-fit in single sprints because their state machines are local. HDR
+The smaller P5 items (adaptive layout, drop shadow) fit in single
+sprints because their state machines are local. HDR
 is end-to-end: Wayland protocol → render path → KMS → output
 metadata. The four phases above are real work blocks, each measured
 in weeks not days. Until they all land, the user sees no benefit.

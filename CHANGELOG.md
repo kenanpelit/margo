@@ -5,6 +5,186 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] – 2026-09-08
+
+**A live Guide page in Settings, and four real bugfixes.**
+
+### Added
+
+- **Settings → Guide page.** A new, browsable/searchable reference page under
+  Settings, with four tabs — every one sourced live from an existing
+  single-source-of-truth rather than hand-copied text:
+  - **Actions** — every compositor dispatch action (`mctl actions`), grouped,
+    searchable, click-to-expand for args/detail.
+  - **Settings** — every `config.conf` key, parsed live from
+    `config.example.conf`, grouped by its own section headers, searchable.
+  - **Features** — a curated tour sliced straight from `docs/features.md`'s
+    Compositor / Desktop-shell sections.
+  - **Tools** — live `--help` output for 14 companion binaries (`mctl`,
+    `mshellctl`, `mlock`, `mlogind`, `mvpn`, `mtune`, …), run off-thread with
+    a timeout.
+
+### Fixed
+
+- **`mlock`: running `--help` (or any flag) no longer locks your screen.**
+  It never parsed arguments at all — anything on the command line fell
+  straight through to the real lock flow. This is what let the new Guide
+  page's Tools tab (which probes every tool with `--help`) trigger a real,
+  unattended lock.
+- **margo no longer crashes if a session-lock client dies while the screen
+  is locked** (e.g. mlock killed mid-lock, as above). The screen correctly
+  stays locked either way — margo just stops touching the dead client's
+  now-invalid resources every frame instead of crashing on them.
+- **A floating window's shadow now follows its actual size, not just its
+  window-rule slot.** `mtune` switching between its full / mini / strip
+  skins left the shadow pinned to the full-size slot around visibly
+  smaller content; it now shrinks together with the border, which already
+  did this correctly.
+- **A floating window's shadow no longer pops in ahead of its content when
+  it opens.** The border already hid itself for the duration of the open
+  animation; the shadow now does too, so a window's frame and its content
+  appear together instead of the open looking like two separate steps.
+
+## [3.3.1] – 2026-09-07
+
+**Two real bugfixes, and doc/site cleanup.**
+
+### Fixed
+
+- **`mosaic` layout: the whole stack now centers vertically too, not just
+  horizontally.** Rows were stacked starting from the work area's top edge,
+  so a mosaic that didn't fill the full height — a single window, or a
+  couple of short rows on a tall monitor — dumped 100% of the leftover
+  space below it instead of splitting it top and bottom. GNOME's Mosaic
+  article is explicit that a new window "opens centered on the screen" —
+  that's both axes, not just the per-row horizontal centering it already
+  had.
+- **`mtune`: "Restore Playlist" now actually resumes where you left off.**
+  The empty-state button restored the cached queue's *song list* but never
+  looked at *where you were in it* — it bypassed the same resume mechanism
+  `[playback] on_start = "resume"` already uses correctly on every normal
+  startup (`resume-uri` / `resume-position`), so it always silently
+  restarted from track 1. Now it reuses that exact mechanism.
+
+### Docs
+
+- `config-reference.md` (rendered from `margo/src/config.example.conf`)
+  gained five real, previously-undocumented features: the MRU window
+  switcher (`mru_next`/`mru_prev`, niri-style Super+Tab) and its 9 tuning
+  keys, `focus_window_or_workspace`, `togglefullscreen_exclusive`,
+  `movegroupwindow`, and `dpms`.
+- README, the site, and the wiki now say **12 layouts** (mosaic included)
+  instead of a stale "15" left over from before some were consolidated,
+  and mention `mosaic` explicitly. The wiki's Companion binaries table
+  also had `mplay` where `mtune` belongs — fixed.
+
+## [3.3.0] – 2026-09-07
+
+**A GNOME-style Mosaic layout.**
+
+### Added
+
+- **Mosaic layout.** GNOME's ["Mosaic" concept](https://blogs.gnome.org/tbernard/2023/07/26/rethinking-window-management/)
+  — a middle ground between tiling and floating — landed in three phases:
+  windows auto-arrange into a content-aware grid as you open/close them,
+  dragging one window onto another swaps their spot in the packing order
+  (`drag_tile_to_tile`), and a window that doesn't fit even at its own
+  minimum size automatically moves to the first empty tag
+  (`mosaic_auto_overflow_tag`) — or, if you'd rather it stay put, shrinks
+  to a small always-visible "peek" in the corner instead
+  (`mosaic_overflow_stack`). Select it like any other layout
+  (`setlayout mosaic`, or pin it per-tag with `taglayout`).
+  - **Masonry-style packing**: each window joins whichever already-open
+    row has the most room while still fitting it, instead of only ever
+    considering the row currently being filled — inspired by
+    tilingshell's `MasonryLayoutManager`.
+  - **Drop-target highlight**: dragging a tiled/Mosaic window onto
+    another now shows a translucent highlight (in the theme's accent
+    colour) over the current valid swap target, so it's no longer a
+    guessing game where exactly to drop — inspired by tilingshell's
+    `tilePreview`/`snapAssist`.
+  - Placement is now a pure function of the work area and each window's
+    own min/max size hints — it no longer depends on whatever layout
+    (tile, scroller, ...) happened to be active on the tag right before
+    switching to Mosaic.
+
+- **One Margo theme.** A variant of the Margo palette with One Dark's
+  text colour (`#ABB2BF` instead of `#CDD6F4`) — backgrounds, surfaces,
+  and accents unchanged.
+
+- **Tune bar pill — transport controls + queue progress.** Visible
+  prev/play-pause/next buttons, a playback-position line, and a compact
+  queue-remaining badge, all individually toggleable from a new
+  Settings → Widgets → Tune page. The repeat badge now shows the live
+  "2/3" iteration count instead of a static `×N` (new `RepeatPlays`
+  D-Bus property, surfaced in mtune's own window too).
+
+### Changed
+
+- **Settings sidebar** visual refresh: the selected row now reads as a
+  `--surface-container-high` tile with a `--primary` inset-shadow
+  leading bar instead of a solid `--primary` fill; section headers
+  become uppercase eyebrow labels in `--primary`; every row gets a
+  unique icon; a couple of groups (Advanced, Locale & Accounts) start
+  collapsed.
+
+### Fixed
+
+- Three real Mosaic usability bugs found through actual use: a resized
+  Mosaic window could render *underneath* an overlapping neighbour
+  (z-order didn't account for an active interactive grab); the
+  drag-to-swap target could silently fail depending on window creation
+  order (it was hit-testing through the dragged thumbnail itself);
+  many windows on `scroller` before switching to Mosaic packed into a
+  single wasteful column with some pushed off-screen.
+- **Super+Tab (MRU switcher)** on `scroller`: cycling looked like it
+  worked, but releasing the modifier could commit focus to a window
+  without ever scrolling it into view. `activate_window_idx` now
+  re-arranges after moving focus, same as every other focus-changing
+  dispatch already did.
+
+## [3.2.0] – 2026-09-05
+
+**mtune gets embedded lyrics, repeat-each, and playlist resume.**
+
+### Added
+
+- **mtune — embedded lyrics.** mtune reads synced/unsynced lyrics straight
+  from the audio file's own tags and publishes them on `org.margo.Tune`
+  (`EmbeddedLyrics`). The shell's Lyrics pill/menu prefer the file's own
+  lyrics over an lrclib lookup whenever the active player is mtune.
+
+- **mtune — "repeat each" mode.** A fourth repeat mode alongside off / all /
+  one: replay the current track a set number of times before moving on. The
+  count is persisted in `mtune.toml`, adjustable from a `[-] N [+]` stepper
+  in both the player window and the shell's Tune menu, and shown as a `×N`
+  badge on the bar pill. New `RepeatCount` on `org.margo.Tune` (mirrored
+  into mshell), plus `mshellctl mtune repeat each` / `repeat-count [N]`.
+
+- **mtune — playlists resume where you left off.** A saved playlist records
+  the last-played track index in a `#TUNE-RESUME:` comment line (kept up to
+  date as you listen) and starts there next load. Standard m3u readers
+  ignore the line.
+
+- **Tune menu — browsable queue.** A §12 panel header with larger cover art
+  and a scrollable, filterable list of the whole queue (new `QueueEntries`
+  D-Bus property; rows removable in place).
+
+### Changed
+
+- The Lyrics menu's **Maximum Height** setting now actually caps the menu.
+- **smithay** bumped to master HEAD (`28c8e0fa`) — an `InputTime`
+  timestamp-wrapper migration across margo's input path — and
+  **wayland-backend** 0.3.15 → 0.3.17, which carries a fix to a
+  `wl_client_destroy` race that could abort the compositor during rapid
+  client teardown.
+- `install.sh` now builds `mtune` on the Debian / Ubuntu path.
+
+### Notes
+
+- The compositor binary changed (smithay / wayland-backend): rebuild and
+  re-login to pick it up.
+
 ## [3.1.0] – 2026-09-04
 
 **A native music player, and a floating layout.**

@@ -1,4 +1,4 @@
-//! Layout arithmetic for margo's 14 tiling algorithms.
+//! Layout arithmetic for margo's 11 tiling algorithms.
 //!
 //! Pure functions — no Wayland, smithay, or wlroots dependencies. The
 //! compositor binary re-exports this crate via `crate::layout::*`; the
