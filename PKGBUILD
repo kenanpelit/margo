@@ -10,7 +10,12 @@
 #     frozen screencap + zoom lens, drops the hyprpicker dep),
 #     `mvpn` (native Mullvad VPN control — full CLI + GTK4 layer-shell
 #     panel; drives the `mullvad` daemon, optional), `mcal` (read-only
-#     calendar CLI over local .ics + remote iCal subscriptions)
+#     calendar CLI over local .ics + remote iCal subscriptions), `mtm`
+#     (native tmux session/layout/buffer/clipboard/plugin manager,
+#     Rust port of a bash tmux toolkit — also wired into the app
+#     launcher as the `mtm <session>` provider), `mtune` (folder-first
+#     music player — GTK4 + libadwaita + GStreamer; point it at a music
+#     folder and it recursively scans + watches it, MPRIS-exposed)
 #   * `mshell` first-party desktop shell (GTK4 + relm4 + layer-shell)
 #     and its `mshellctl` / `mshellshare` IPC siblings
 #   * `mwizard` first-launch setup wizard (writes the shell profile
@@ -29,7 +34,7 @@
 # simply not run `mshell`; the helper binaries are still useful.
 
 pkgname=margo-git
-pkgver=r2115.24455f9d
+pkgver=r2297.edbe9109
 pkgrel=1
 pkgdesc="Rust/Smithay Wayland tiling compositor with a first-party GTK4 desktop shell (mshell)"
 url="https://github.com/kenanpelit/margo"
@@ -80,15 +85,17 @@ depends=(
   grim            # `mscreenshot` capture pipeline
   slurp
   wl-clipboard
-  mpv             # `mplay`: window control + libmpv.so for the wallpaper engine
-  # ── mshell (gtk4 + relm4) ───────────────────────────────────────
+  mpv             # `mshellctl play`: mpv companion window control + libmpv.so for the wallpaper engine
+  # ── mshell (gtk4 + relm4) + mtune (gtk4 + libadwaita) ───────────
   gtk4
   gtk4-layer-shell
+  libadwaita      # `mtune` music-player window chrome (Adw split-view, etc.)
   gdk-pixbuf2
   graphene
   fontconfig
   freetype2
-  # GStreamer playback — media widget (album art, sound previews)
+  # GStreamer playback — mshell media widget (album art, sound previews)
+  # + `mtune`'s audio engine (gstreamer-play).
   gstreamer
   gst-plugins-base
   gst-plugins-base-libs
@@ -108,6 +115,8 @@ makedepends=(
   # Headers needed at build time even though the linked libs come
   # from the runtime `depends` set above.
   gtk4-layer-shell
+  libadwaita      # `mtune` links libadwaita-1
+  mpv             # mshellctl links libmpv directly (build.rs -lmpv) for the wallpaper engine
 )
 optdepends=(
   # Sessions & XDG plumbing
@@ -119,9 +128,7 @@ optdepends=(
   "swappy: post-capture annotation editor for mscreenshot"
   "satty: alternative annotation editor for mscreenshot"
   "wf-recorder: screen recording via wlr-screencopy"
-  "yt-dlp: \`mplay play\`/\`download\` of YouTube + other streaming URLs"
-  "playerctl: MPRIS media control for \`mplay media\` (Spotify/VLC/browsers)"
-  "mpc: MPD control for \`mplay media\`"
+  "yt-dlp: \`mshellctl play play\`/\`download\` of YouTube + other streaming URLs"
   # Clipboard managers — mshell clipboard widget + mshellshare paste
   "copyq: clipboard manager via wlr-data-control"
   "wl-clip-persist: keep clipboard alive after the producer exits"
@@ -141,6 +148,15 @@ optdepends=(
   "curl: used by the nip public-IP widget (already pulled by base)"
   # mlogind (TUI login manager)
   "fprintd: opt-in fingerprint login for mlogind (pam_fprintd)"
+  # mtm (native tmux manager)
+  "tmux: required by mtm's session/layout/buffer/kenp commands"
+  "fzf: interactive picker for mtm buffer/clip/speed"
+  "cliphist: mtm clip's clipboard-history backend"
+  # mtune (music player) — gst-plugins-good already covers
+  # MP3 / Ogg / Opus / FLAC / WAV; these add the rest of a
+  # typical library.
+  "gst-libav: mtune playback of AAC / M4A / ALAC / WMA and other ffmpeg-only codecs"
+  "gst-plugins-bad: mtune playback of extra containers / codecs (M4A via faad, etc.)"
 )
 # `provides` exposes the legacy compositor- and mshell-only package
 # names that older AUR helpers may pin. `conflicts` makes the
@@ -175,6 +191,10 @@ backup=(
 # render aborts. The Cargo release profile sets `strip = "none"`;
 # this line keeps makepkg's outer strip from overriding it.
 options=(!lto !strip)
+# Compiles the mtune GSettings schema and refreshes the desktop /
+# icon-cache databases on install/upgrade/remove (mtune ships a
+# /usr/share/applications entry + a load-bearing gschema).
+install=margo-git.install
 source=("git+${url}.git#branch=main")
 sha256sums=("SKIP")
 
@@ -197,7 +217,6 @@ build() {
   cd "$srcdir/margo"
 
   export RUSTUP_TOOLCHAIN=stable
-  export CARGO_TARGET_DIR="$srcdir/target"
 
   # `--remap-path-prefix` rewrites the build dir to `/build` in
   # the embedded debug strings; otherwise pacman warns about a
@@ -239,10 +258,12 @@ build() {
   # margo's zbus(async-io) artifact via feature unification.
   # mpower likewise: it's a tiny poller (serde + toml + anyhow, shells
   # out to powerprofilesctl) with no zbus/tokio, so it's safe here too.
+  # mtm (native tmux manager) is the same shape — clap + serde + toml +
+  # anyhow, shells out to tmux/fzf/git/tar, no zbus/tokio/gtk — safe here.
   cargo build --frozen --release \
     -p margo -p start-margo \
-    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay \
-    -p mdots -p mcal
+    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower \
+    -p mdots -p mcal -p mtm
 
   # mshell trio + mpicker + mwizard. mpicker pulls
   # mshell-screenshot (→ wayle-* → zbus/tokio), so it has to
@@ -265,11 +286,27 @@ build() {
   # mlogind's `[display] host = "gui"`) builds here too — it links the same
   # gtk4/gtk4-layer-shell stack as the shell, so it shares that resolution
   # rather than leaking GTK into margo's (zbus-only, no-tokio) graph.
+  # mshellctl also links libmpv directly now (its native mpv-companion +
+  # video-wallpaper engine, formerly the separate `mplay` binary — see
+  # the `mpv` makedepends/depends entries above) and pulls in
+  # wayland-client/khronos-egl/wayland-egl for the wallpaper engine's own
+  # EGL context; it already lives in this tokio/GTK group, so nothing
+  # else changes here.
   cargo build --frozen --release \
     --features mshell/wasm-plugins \
     -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard \
     -p mkeys -p mvpn -p mgreet \
     -p margo-portal
+
+  # mtune (folder-first music player) gets its OWN invocation. Its
+  # `mpris-server` dep pulls zbus on the `async-io` executor (same as
+  # margo, NOT the shell group's tokio), and it's the only consumer of
+  # libadwaita + gstreamer-play in the tree — so isolating it keeps its
+  # feature graph from unifying with either the compositor's zbus rlib
+  # or the shell's tokio one. Shared crates (gtk4, glib, …) are already
+  # in target/ from the invocations above, so this is mostly the
+  # mtune-unique stack (libadwaita, gstreamer, lofty, mpris-server).
+  cargo build --frozen --release -p mtune
 }
 
 check() {
@@ -285,7 +322,8 @@ check() {
     --package mctl \
     --package mlayout \
     --package mdots \
-    --package mcal ||
+    --package mcal \
+    --package mtune ||
     echo "::: margo: test suite reported failures (non-blocking)"
 }
 
@@ -301,12 +339,21 @@ package() {
   # without overwriting the first invocation's zbus(async-io)
   # rlib — both coexist in target/release/deps under different
   # hashes, and each binary links against the right one.
+  #
+  # Deliberately cargo's *default* target dir (relative to the `cd`
+  # above), not a `CARGO_TARGET_DIR` override: some builders (e.g.
+  # Shelly) run build()/check() without re-sourcing the PKGBUILD's
+  # top-level statements, so an export made outside a function body
+  # never reaches the actual `cargo build` calls — the binaries end
+  # up here regardless of what any such override claims, so this is
+  # the one path every builder agrees on.
   local bin
   for bin in \
       margo start-margo \
-      mctl mlock mlayout mscreenshot mvisual mlogind mgreet mpower mplay \
-      mshell mshellctl mshellshare mpicker mwizard mkeys mvpn mdots mcal; do
-    install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
+      mctl mlock mlayout mscreenshot mvisual mlogind mgreet mpower \
+      mshell mshellctl mshellshare mpicker mwizard mkeys mvpn mdots mcal mtm \
+      mtune; do
+    install -Dm755 "target/release/$bin" "$pkgdir/usr/bin/$bin"
   done
 
   # ── Wayland session entries ────────────────────────────────────
@@ -374,6 +421,26 @@ package() {
     install -d "$pkgdir/usr/share/icons/MargoMaterial"
     cp -a assets/icons/MargoMaterial/. \
       "$pkgdir/usr/share/icons/MargoMaterial/"
+  fi
+
+  # ── mtune (music player) data files ────────────────────────────
+  # Desktop entry, AppStream metainfo, D-Bus activation service,
+  # GSettings schema (compiled by the .install scriptlet), and the
+  # hicolor app icons. The schema is load-bearing: mtune calls
+  # `gio::Settings::new("org.margo.Tune")` at startup.
+  if [[ -f "mtune/data/org.margo.Tune.desktop.in" ]]; then
+    install -Dm644 "mtune/data/org.margo.Tune.desktop.in" \
+      "$pkgdir/usr/share/applications/org.margo.Tune.desktop"
+    install -Dm644 "mtune/data/org.margo.Tune.metainfo.xml" \
+      "$pkgdir/usr/share/metainfo/org.margo.Tune.metainfo.xml"
+    install -Dm644 "mtune/data/org.margo.Tune.service" \
+      "$pkgdir/usr/share/dbus-1/services/org.margo.Tune.service"
+    install -Dm644 "mtune/data/org.margo.Tune.gschema.xml" \
+      "$pkgdir/usr/share/glib-2.0/schemas/org.margo.Tune.gschema.xml"
+    install -Dm644 "mtune/data/icons/hicolor/scalable/apps/org.margo.Tune.svg" \
+      "$pkgdir/usr/share/icons/hicolor/scalable/apps/org.margo.Tune.svg"
+    install -Dm644 "mtune/data/icons/hicolor/symbolic/apps/org.margo.Tune-symbolic.svg" \
+      "$pkgdir/usr/share/icons/hicolor/symbolic/apps/org.margo.Tune-symbolic.svg"
   fi
 
   # ── Man pages ──────────────────────────────────────────────────
@@ -454,7 +521,7 @@ package() {
   # → PipeWire / PNG). Binary lives under /usr/lib (D-Bus-activated,
   # not a user-facing CLI); ships its `.portal` registration, D-Bus
   # activation service, and systemd user unit.
-  install -Dm755 "$CARGO_TARGET_DIR/release/margo-portal" \
+  install -Dm755 "target/release/margo-portal" \
     "$pkgdir/usr/lib/margo/margo-portal"
   install -Dm644 "assets/margo.portal" \
     "$pkgdir/usr/share/xdg-desktop-portal/portals/margo.portal"
@@ -693,6 +760,13 @@ package() {
     [[ -f "$lic" ]] || continue
     install -Dm644 "$lic" \
       "$pkgdir/usr/share/licenses/$pkgname/mlogind-$(basename "$lic")"
+  done
+  # mtune is a fork of a GPL-3.0-or-later GTK music player; ship its
+  # GPL text + the name-free upstream-attribution notice.
+  for lic in mtune/licenses/*; do
+    [[ -f "$lic" ]] || continue
+    install -Dm644 "$lic" \
+      "$pkgdir/usr/share/licenses/$pkgname/mtune-$(basename "$lic")"
   done
 }
 
