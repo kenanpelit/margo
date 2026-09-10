@@ -130,39 +130,72 @@ pub fn insert_ipc_source(handle: &LoopHandle<'static, MargoState>) {
     }
 }
 
-/// Map dispatch args onto margo's `Arg`. margo's actions come in two
-/// shapes and never mix them, so we branch on the first token:
+/// Actions whose trailing tokens are one free-text payload — a shell
+/// command line, a rhai script/path — that must survive the line
+/// protocol's whitespace split intact (`spawn kitty -e htop`). Every
+/// other action takes positional slots, exactly like a config bind's
+/// comma-separated fields.
+const FREE_TEXT_TAIL_ACTIONS: &[&str] = &[
+    "spawn",
+    "run_script",
+    "run-script",
+    "rhai-eval",
+    // Theme names can contain spaces ("Rosé Pine Moon") — the whole
+    // tail is the one name.
+    "theme",
+    "set_theme",
+];
+
+/// Map dispatch args onto margo's `Arg`, keyed off the action so the
+/// same command from a `bind =` line and from `mctl dispatch` builds
+/// the same `Arg`:
 ///
-/// * **String-payload** (spawn / theme / run_script / twilight_set): the
-///   first token is non-numeric. The line protocol is whitespace-split,
-///   so the *whole* remainder is rejoined into `v` — otherwise a command
-///   like `spawn kitty -e htop` would drop everything past `kitty`.
-/// * **Numeric/positional** (view / settagset / twilight_preview / …):
-///   slots 1-3 parse as numbers (i / i2 / f), slots 4-5 are strings
-///   (`v` / `v2`), mirroring the old dwl-ipc dispatch slot semantics.
-pub fn args_to_dispatch_arg(args: &[String]) -> Arg {
+/// * **Numeric-first** (`view 4`, `settagset 256 1`, `twilight_preview
+///   4000 80`): slots 1-3 parse as numbers (`i` / `i2` / `f`), slots
+///   4-5 are strings (`v` / `v2`) — the dwl-ipc slot layout.
+/// * **Free-text tail** ([`FREE_TEXT_TAIL_ACTIONS`]): the whole
+///   remainder is rejoined into `v`.
+/// * **Everything else** (`dpms off eDP-1`, `mru_next workspace appid`,
+///   `set_proportion 0.5`): one token per positional string slot
+///   (`v` / `v2`); a leading decimal also lands in `f`. Before this,
+///   the non-numeric branch rejoined *every* token into `v`, so
+///   `dpms off eDP-1` became `v = "off eDP-1"` — the mode unmatched
+///   (silent toggle) and the output lost.
+pub fn args_to_dispatch_arg(action: &str, args: &[String]) -> Arg {
     let mut arg = Arg::default();
-    let first_numeric = args.first().is_some_and(|s| s.parse::<i64>().is_ok());
-    if !first_numeric {
-        if !args.is_empty() {
-            arg.v = Some(args.join(" "));
+
+    if args.first().is_some_and(|s| s.parse::<i64>().is_ok()) {
+        if let Some(a) = args.first().and_then(|s| s.parse::<i32>().ok()) {
+            arg.i = a;
+        }
+        if let Some(a) = args.get(1).and_then(|s| s.parse::<i32>().ok()) {
+            arg.i2 = a;
+        }
+        if let Some(a) = args.get(2).and_then(|s| s.parse::<f32>().ok()) {
+            arg.f = a;
+        }
+        if let Some(s) = args.get(3) {
+            arg.v = Some(s.clone());
+        }
+        if let Some(s) = args.get(4) {
+            arg.v2 = Some(s.clone());
         }
         return arg;
     }
-    if let Some(a) = args.first().and_then(|s| s.parse::<i32>().ok()) {
-        arg.i = a;
+
+    if args.is_empty() {
+        return arg;
     }
-    if let Some(a) = args.get(1).and_then(|s| s.parse::<i32>().ok()) {
-        arg.i2 = a;
+
+    if FREE_TEXT_TAIL_ACTIONS.contains(&action) {
+        arg.v = Some(args.join(" "));
+        return arg;
     }
-    if let Some(a) = args.get(2).and_then(|s| s.parse::<f32>().ok()) {
-        arg.f = a;
-    }
-    if let Some(s) = args.get(3) {
-        arg.v = Some(s.clone());
-    }
-    if let Some(s) = args.get(4) {
-        arg.v2 = Some(s.clone());
+
+    arg.v = args.first().cloned();
+    arg.v2 = args.get(1).cloned();
+    if let Some(x) = args.first().and_then(|s| s.parse::<f32>().ok()) {
+        arg.f = x;
     }
     arg
 }
@@ -279,7 +312,7 @@ impl MargoState {
                 self.ipc_send(token, &payload);
             }
             Verb::Dispatch => {
-                let arg = args_to_dispatch_arg(&req.args);
+                let arg = args_to_dispatch_arg(&req.head, &req.args);
                 crate::dispatch::dispatch_action(self, &req.head, &arg);
                 self.ipc_send(token, &serde_json::json!({ "ok": true }));
             }
@@ -534,7 +567,7 @@ mod tests {
     #[test]
     fn numeric_first_maps_positional_slots() {
         // `dispatch settagset 256 1`
-        let a = args_to_dispatch_arg(&args(&["256", "1"]));
+        let a = args_to_dispatch_arg("settagset", &args(&["256", "1"]));
         assert_eq!(a.i, 256);
         assert_eq!(a.i2, 1);
         assert_eq!(a.f, 0.0);
@@ -543,7 +576,7 @@ mod tests {
 
     #[test]
     fn numeric_first_parses_float_third_slot() {
-        let a = args_to_dispatch_arg(&args(&["1", "2", "0.5"]));
+        let a = args_to_dispatch_arg("twilight_preview", &args(&["1", "2", "0.5"]));
         assert_eq!(a.i, 1);
         assert_eq!(a.i2, 2);
         assert_eq!(a.f, 0.5);
@@ -552,7 +585,7 @@ mod tests {
     #[test]
     fn single_numeric_arg() {
         // `dispatch view 4`
-        let a = args_to_dispatch_arg(&args(&["4"]));
+        let a = args_to_dispatch_arg("view", &args(&["4"]));
         assert_eq!(a.i, 4);
         assert!(a.v.is_none());
     }
@@ -560,34 +593,48 @@ mod tests {
     #[test]
     fn string_payload_single_word() {
         // `dispatch theme default`
-        let a = args_to_dispatch_arg(&args(&["default"]));
+        let a = args_to_dispatch_arg("theme", &args(&["default"]));
         assert_eq!(a.v.as_deref(), Some("default"));
         assert_eq!(a.i, 0);
     }
 
     #[test]
-    fn string_payload_rejoins_multiword_command() {
+    fn spawn_rejoins_the_whole_command_line() {
         // `dispatch spawn kitty -e htop` — regression: must not drop
         // everything past the first token.
-        let a = args_to_dispatch_arg(&args(&["kitty", "-e", "htop"]));
+        let a = args_to_dispatch_arg("spawn", &args(&["kitty", "-e", "htop"]));
         assert_eq!(a.v.as_deref(), Some("kitty -e htop"));
         assert_eq!(a.i, 0);
         assert_eq!(a.i2, 0);
     }
 
     #[test]
-    fn string_payload_preserves_flags_and_paths() {
-        let a = args_to_dispatch_arg(&args(&["run_helper", "--flag", "/abs/path with space"]));
-        assert_eq!(
-            a.v.as_deref(),
-            Some("run_helper --flag /abs/path with space")
-        );
+    fn non_free_text_action_splits_positional_string_slots() {
+        // `dispatch dpms off eDP-1` — regression: the mode and the
+        // target output land in separate slots, not one joined string.
+        let a = args_to_dispatch_arg("dpms", &args(&["off", "eDP-1"]));
+        assert_eq!(a.v.as_deref(), Some("off"));
+        assert_eq!(a.v2.as_deref(), Some("eDP-1"));
+
+        // `dispatch mru_next workspace appid`
+        let m = args_to_dispatch_arg("mru_next", &args(&["workspace", "appid"]));
+        assert_eq!(m.v.as_deref(), Some("workspace"));
+        assert_eq!(m.v2.as_deref(), Some("appid"));
+    }
+
+    #[test]
+    fn leading_decimal_lands_in_f() {
+        // `dispatch set_proportion 0.5` — not an integer, so it isn't
+        // numeric-first; still needs to reach `arg.f`.
+        let a = args_to_dispatch_arg("set_proportion", &args(&["0.5"]));
+        assert_eq!(a.f, 0.5);
+        assert_eq!(a.v.as_deref(), Some("0.5"));
     }
 
     #[test]
     fn no_args_is_default() {
         // `dispatch reload`
-        let a = args_to_dispatch_arg(&[]);
+        let a = args_to_dispatch_arg("reload", &[]);
         assert_eq!(a.i, 0);
         assert!(a.v.is_none());
     }
@@ -595,7 +642,7 @@ mod tests {
     #[test]
     fn positional_string_slots_for_numeric_action() {
         // numeric-first action that also carries string slots 4/5
-        let a = args_to_dispatch_arg(&args(&["1", "2", "3", "slot4", "slot5"]));
+        let a = args_to_dispatch_arg("some_action", &args(&["1", "2", "3", "slot4", "slot5"]));
         assert_eq!(a.i, 1);
         assert_eq!(a.v.as_deref(), Some("slot4"));
         assert_eq!(a.v2.as_deref(), Some("slot5"));
