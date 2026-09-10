@@ -1,6 +1,7 @@
 mod parser;
 mod types;
 
+pub mod actions;
 pub mod diagnostics;
 pub mod generations;
 pub mod validator;
