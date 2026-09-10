@@ -104,6 +104,21 @@ files, and overlapping feature mechanisms.**
   production code after it). The screencast pod-parsing path (`pw_utils.rs`,
   `mutter_screen_cast.rs`) was swept to `stop_cast()`/warn instead of panicking
   the compositor on malformed PipeWire input.
+- [ ] **Plugin host must not block the GTK main loop, and must bound plugin
+  resources.** From the 2026-09-10 review (#6/#7). `mshell-plugin-ui`'s
+  `panel.rs::dispatch` runs the guest `update()` synchronously on the GTK
+  thread, and the host functions it can call (`mshell-plugin-host/src/runtime.rs`)
+  do synchronous `std::process::Command::output()`, blocking HTTP, and
+  `child.wait()` — the WASM fuel limit caps guest instructions, not the
+  wall-clock time spent inside a host call. One plugin with a slow subprocess
+  freezes the whole shell. Separately, `runtime.rs::stream` spawns a fresh
+  thread per streaming request into an unbounded channel, and the plugin
+  panel's timer holds the instance alive for the life of a stream. Work:
+  (a) run host I/O on a worker with a timeout + cancellation + output-size cap;
+  (b) per-plugin concurrent-work limit, bounded channels, WASM memory cap,
+  cancellable task group; (c) on plugin unload/reload, join/kill the workers,
+  timers and subprocesses. Deferred pending a call on how ship-critical the
+  plugin tier is (it's WASM/experimental today).
 
 ## Low priority / quick wins
 
