@@ -1,19 +1,26 @@
 //! Path sandbox for the plugin `read-file` / `write-file` capabilities.
 //!
 //! THE security boundary of the WASM tier's filesystem surface: a guest may
-//! only ever touch its own per-plugin data dir, and the only thing standing
-//! between a hostile `rel_path` and the rest of `$HOME` is [`resolve_scoped`].
+//! only ever touch its own per-plugin data dir. [`resolve_scoped`] is the
+//! lexical gate (no `..`, no absolute); [`resolve_inside_root`] adds the
+//! symlink check so a link planted inside the data dir can't redirect a
+//! read/write out of it.
 //! Deliberately wasmtime-free and compiled unconditionally (the `wasm`
 //! feature only gates the runtime), so the unit tests below run on every
 //! `cargo test --workspace` — CI exercises the boundary even in builds that
 //! never link wasmtime.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// Resolve `rel_path` against `root` and reject any traversal: rejects empty,
 /// absolute, or `..`-bearing paths (every component must be a plain name —
 /// `.` / `..` / prefixes / root markers all fail). The returned path is
-/// always inside `root`.
+/// lexically inside `root`.
+///
+/// This is only the *lexical* gate — [`resolve_inside_root`] adds the
+/// symlink check that stops a link planted inside `root` (a hostile
+/// plugin bundle could ship one; the write API itself can't create one)
+/// from redirecting a read/write out of the sandbox.
 #[cfg_attr(not(feature = "wasm"), allow(dead_code))]
 pub(crate) fn resolve_scoped(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
     if rel_path.is_empty() {
@@ -25,17 +32,54 @@ pub(crate) fn resolve_scoped(root: &Path, rel_path: &str) -> Result<PathBuf, Str
     }
     for component in candidate.components() {
         match component {
-            std::path::Component::Normal(_) => {}
+            Component::Normal(_) => {}
             _ => return Err(format!("disallowed path component in `{rel_path}`")),
         }
     }
     Ok(root.join(candidate))
 }
 
-/// Scoped read: resolve under `root`, then read the file.
+/// The real canonical location of `root`'s deepest ancestor of `resolved`
+/// that exists on disk. Following symlinks. `None` when `root` itself
+/// doesn't resolve (a fresh plugin whose data dir hasn't been created —
+/// the caller's own read / `create_dir_all` handles that; there's no
+/// link to chase yet).
+fn existing_canonical_anchor(root: &Path, resolved: &Path) -> Option<PathBuf> {
+    let mut anchor: &Path = resolved;
+    loop {
+        if let Ok(c) = anchor.canonicalize() {
+            return Some(c);
+        }
+        if anchor == root {
+            return None;
+        }
+        anchor = anchor.parent()?;
+    }
+}
+
+/// [`resolve_scoped`] plus the symlink check: the resolved path's
+/// existing prefix, canonicalised, must still sit inside the canonical
+/// `root`. Guards against a symlink component pointing out of the
+/// sandbox — an interior symlink that stays inside `root` is fine.
+#[cfg_attr(not(feature = "wasm"), allow(dead_code))]
+pub(crate) fn resolve_inside_root(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
+    let resolved = resolve_scoped(root, rel_path)?;
+    if let Ok(canon_root) = root.canonicalize()
+        && let Some(anchor) = existing_canonical_anchor(root, &resolved)
+        && !anchor.starts_with(&canon_root)
+    {
+        return Err(format!(
+            "`{rel_path}` escapes the plugin data dir through a symlink"
+        ));
+    }
+    Ok(resolved)
+}
+
+/// Scoped read: resolve under `root` (traversal + symlink checked), then
+/// read the file.
 #[cfg_attr(not(feature = "wasm"), allow(dead_code))]
 pub(crate) fn read_scoped(root: &Path, rel_path: &str) -> Result<Vec<u8>, String> {
-    let path = resolve_scoped(root, rel_path)?;
+    let path = resolve_inside_root(root, rel_path)?;
     std::fs::read(&path).map_err(|e| e.to_string())
 }
 
@@ -44,9 +88,28 @@ pub(crate) fn read_scoped(root: &Path, rel_path: &str) -> Result<Vec<u8>, String
 /// existing file.
 #[cfg_attr(not(feature = "wasm"), allow(dead_code))]
 pub(crate) fn write_scoped(root: &Path, rel_path: &str, bytes: &[u8]) -> Result<(), String> {
-    let path = resolve_scoped(root, rel_path)?;
+    // Materialise `root` first (a fixed, host-controlled path — every
+    // segment is a plain name) so the symlink check below has a real
+    // directory to canonicalise against.
+    std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
+
+    let path = resolve_inside_root(root, rel_path)?;
+    let canon_root = root.canonicalize().map_err(|e| e.to_string())?;
+
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        // Re-check after creating: the parent chain is now real, so its
+        // canonical form is authoritative — a pre-existing symlink dir
+        // in the chain shows up here even if it didn't resolve before.
+        if !parent
+            .canonicalize()
+            .map_err(|e| e.to_string())?
+            .starts_with(&canon_root)
+        {
+            return Err(format!(
+                "`{rel_path}` escapes the plugin data dir through a symlink"
+            ));
+        }
     }
     let tmp = path.with_extension("mplugin-tmp");
     std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
@@ -188,5 +251,46 @@ mod tests {
     fn read_of_missing_file_is_an_error_not_a_panic() {
         let s = Scratch::new("missing");
         assert!(read_scoped(&s.0, "nope.txt").is_err());
+    }
+
+    // ── symlink escape ────────────────────────────────────────────────
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_out_of_root_is_refused_for_read_and_write() {
+        use std::os::unix::fs::symlink;
+        let inside = Scratch::new("symlink-in");
+        let outside = Scratch::new("symlink-out");
+        std::fs::write(outside.0.join("secret"), b"top secret").unwrap();
+
+        // A hostile plugin bundle plants `escape -> <somewhere else>`
+        // inside its own data dir.
+        symlink(&outside.0, inside.0.join("escape")).unwrap();
+
+        assert!(
+            read_scoped(&inside.0, "escape/secret").is_err(),
+            "read through an escaping symlink must be refused"
+        );
+        assert!(
+            write_scoped(&inside.0, "escape/pwned.txt", b"x").is_err(),
+            "write through an escaping symlink must be refused"
+        );
+        assert!(
+            !outside.0.join("pwned.txt").exists(),
+            "the refused write must not have touched the link target"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_interior_symlink_that_stays_inside_root_is_allowed() {
+        use std::os::unix::fs::symlink;
+        let s = Scratch::new("symlink-interior");
+        std::fs::create_dir_all(s.0.join("real")).unwrap();
+        symlink(s.0.join("real"), s.0.join("link")).unwrap();
+
+        write_scoped(&s.0, "link/x.txt", b"ok").unwrap();
+        assert_eq!(std::fs::read(s.0.join("real/x.txt")).unwrap(), b"ok");
+        assert_eq!(read_scoped(&s.0, "link/x.txt").unwrap(), b"ok");
     }
 }
