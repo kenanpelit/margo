@@ -268,6 +268,38 @@ fn validate_text(
                 off += token.len() + 1; // +1 for the consumed '+'
             }
 
+            // W005: the ACTION field (3rd) names no dispatch action.
+            // margo's dispatcher silently no-ops an unknown action
+            // (`_ => "unhandled action"`), so a typo'd bind just does
+            // nothing with no feedback. Checked against the `actions`
+            // catalogue every other tool renders; a test in `margo`
+            // keeps that catalogue in lock-step with the dispatcher.
+            if val.split(',').count() >= 3 {
+                let mut fields = val.splitn(4, ',');
+                let mods_raw = fields.next().unwrap_or("");
+                let key_raw = fields.next().unwrap_or("");
+                let action_raw = fields.next().unwrap_or("");
+                let action = action_raw.trim();
+                if !action.is_empty() && !crate::actions::is_known(action) {
+                    let lead = action_raw.len() - action_raw.trim_start().len();
+                    let col = val_start + mods_raw.len() + 1 + key_raw.len() + 1 + lead;
+                    let hint = match closest(action, crate::actions::all_names().into_iter()) {
+                        Some(s) => format!(" — did you mean `{s}`?"),
+                        None => String::new(),
+                    };
+                    report.push(ConfigDiagnostic {
+                        path: path.to_path_buf(),
+                        line: lineno,
+                        col,
+                        end_col: col + action.len(),
+                        severity: Severity::Warning,
+                        code: "W005".into(),
+                        message: format!("unknown bind action `{action}`{hint}"),
+                        line_text: raw.to_string(),
+                    });
+                }
+            }
+
             // W004 input: only collect combos from arity-clean binds —
             // an E004/E001 line's MODS/KEY fields aren't trustworthy.
             if val.split(',').count() >= 3 {
@@ -845,6 +877,42 @@ mod tests {
     fn valid_compound_modifiers_are_clean() {
         let r = validate_str("bind = super+shift,Return,spawn,kitty\n");
         assert!(!r.has_errors() && !r.has_warnings());
+    }
+
+    #[test]
+    fn unknown_bind_action_is_a_warning() {
+        let r = validate_str("bind = super+ctrl,Tab,focuslsat\n");
+        let w = r
+            .warnings()
+            .find(|w| w.code == "W005")
+            .expect("W005 expected for a typo'd action");
+        assert!(
+            w.message.contains("focuslsat") && w.message.contains("focuslast"),
+            "should flag `focuslsat` and suggest `focuslast`, got: {}",
+            w.message
+        );
+        assert!(!r.has_errors());
+    }
+
+    #[test]
+    fn known_bind_actions_are_clean() {
+        // Canonical names, aliases, and the once-uncatalogued verbs
+        // (`dpms`, `mru_next`, `twilight_toggle`) must all pass.
+        for line in [
+            "bind = super,z,zoom\n",
+            "bind = super+ctrl,Tab,focuslast\n",
+            "bind = super+ctrl,Tab,focus-last\n", // alias
+            "bind = super,Return,spawn,kitty -e htop\n",
+            "bind = super,F10,dpms,off\n",
+            "bind = super,Tab,mru_next,workspace,appid\n",
+            "bind = super,n,twilight_toggle\n",
+        ] {
+            let r = validate_str(line);
+            assert!(
+                r.warnings().all(|w| w.code != "W005"),
+                "`{line}` names a real action, no W005 expected"
+            );
+        }
     }
 
     #[test]

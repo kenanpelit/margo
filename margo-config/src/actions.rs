@@ -162,6 +162,25 @@ pub const ACTIONS: &[Action] = &[
         summary: "Move the focused window to the next tag.",
         detail: "",
     },
+    Action {
+        name: "settagset",
+        aliases: &[],
+        args: "<MASK>",
+        group: Group::Tag,
+        summary: "Set the focused monitor's active tagset to a raw bitmask (arg 1).",
+        detail: "Tag N is bit `1 << (N-1)`. Arg 2 nonzero writes the \
+                 *inactive* tagset slot instead. Low-level — `view` / \
+                 `toggleview` are the usual verbs.",
+    },
+    Action {
+        name: "setclienttags",
+        aliases: &[],
+        args: "<AND-MASK> <XOR-MASK>",
+        group: Group::Tag,
+        summary: "Rewrite the focused window's tags as `(tags & arg1) ^ arg2`.",
+        detail: "Low-level bit surgery behind `tag` / `toggletag`. No-op if \
+                 the result would be 0 (a window on no tag).",
+    },
     // ── Focus ───────────────────────────────────────────────────────
     Action {
         name: "focusstack",
@@ -185,7 +204,7 @@ pub const ACTIONS: &[Action] = &[
     },
     Action {
         name: "focus_window_or_workspace",
-        aliases: &[],
+        aliases: &["focuswindoworworkspace"],
         args: "<DIRECTION>",
         group: Group::Focus,
         summary: "Focus the window in a direction, or switch to the adjacent workspace if there is none that way.",
@@ -220,6 +239,43 @@ pub const ACTIONS: &[Action] = &[
         summary: "Promote the focused window to the layout's master slot (dwm zoom).",
         detail: "",
     },
+    Action {
+        name: "focuswindow",
+        aliases: &["activatewindow", "focusclient"],
+        args: "<INDEX>",
+        group: Group::Focus,
+        summary: "Focus a window by its positional index (arg 1).",
+        detail: "The index is the client's slot in the state snapshot's \
+                 `clients` array. Racy if a window closes between the \
+                 snapshot and the dispatch — prefer `focuswindowid`.",
+    },
+    Action {
+        name: "focuswindowid",
+        aliases: &[],
+        args: "<ID>",
+        group: Group::Focus,
+        summary: "Focus a window by its stable, session-monotonic id (arg 1).",
+        detail: "Race-free variant of `focuswindow` — the id doesn't shift \
+                 when another window closes.",
+    },
+    Action {
+        name: "mru_next",
+        aliases: &["mruwindow"],
+        args: "<SCOPE> <FILTER>",
+        group: Group::Focus,
+        summary: "Cycle forward through the most-recently-used window stack (niri Super+Tab).",
+        detail: "Arg 1 = scope (`all` / `output` / `workspace`), arg 2 = \
+                 filter (`all` / `appid`). Release the modifier to commit \
+                 the pick.",
+    },
+    Action {
+        name: "mru_prev",
+        aliases: &[],
+        args: "<SCOPE> <FILTER>",
+        group: Group::Focus,
+        summary: "Cycle backward through the most-recently-used window stack.",
+        detail: "Same scope / filter args as `mru_next`.",
+    },
     // ── Layout ──────────────────────────────────────────────────────
     Action {
         name: "setlayout",
@@ -237,6 +293,16 @@ pub const ACTIONS: &[Action] = &[
         group: Group::Layout,
         summary: "Cycle through the `circle_layout` config list.",
         detail: "",
+    },
+    Action {
+        name: "setlayoutindex",
+        aliases: &[],
+        args: "<INDEX>",
+        group: Group::Layout,
+        summary: "Switch the current tag's layout by 0-based index (arg 1).",
+        detail: "Same index space as `mctl layout <N>` and the `layouts` \
+                 array in the state snapshot. `setlayout <name>` is more \
+                 stable across config changes.",
     },
     Action {
         name: "incnmaster",
@@ -545,6 +611,90 @@ pub const ACTIONS: &[Action] = &[
         summary: "Close overview keeping the currently-selected thumbnail focused.",
         detail: "Bind to Enter (or Esc) to commit the keyboard-cycle's selection. Without a hover/focus target, falls through to `close_overview(None)` and restores the pre-overview tag.",
     },
+    Action {
+        name: "toggle_grid_overview",
+        aliases: &[],
+        args: "",
+        group: Group::Overview,
+        summary: "Enter / leave the grid overview specifically (ignores `overview_style`).",
+        detail: "`toggle_overview` picks grid or scroller per the config; \
+                 this always drives the grid one. The `grid_overview_*` \
+                 navigation verbs pair with it.",
+    },
+    Action {
+        name: "grid_overview_focus_next",
+        aliases: &[],
+        args: "",
+        group: Group::Overview,
+        summary: "Grid overview: cycle to the next thumbnail.",
+        detail: "Grid-only counterpart of `overview_focus_next`.",
+    },
+    Action {
+        name: "grid_overview_focus_prev",
+        aliases: &[],
+        args: "",
+        group: Group::Overview,
+        summary: "Grid overview: cycle to the previous thumbnail.",
+        detail: "Grid-only counterpart of `overview_focus_prev`.",
+    },
+    Action {
+        name: "grid_overview_activate",
+        aliases: &[],
+        args: "",
+        group: Group::Overview,
+        summary: "Grid overview: commit the selected thumbnail and close.",
+        detail: "Grid-only counterpart of `overview_activate`.",
+    },
+    Action {
+        name: "toggle_scroller_overview",
+        aliases: &[],
+        args: "",
+        group: Group::Overview,
+        summary: "Enter / leave the niri-style scroller overview.",
+        detail: "Separate surface from the grid overview. `open_scroller_overview` \
+                 / `close_scroller_overview` are the one-shot halves for \
+                 press-to-open / Esc-to-close binds.",
+    },
+    Action {
+        name: "open_scroller_overview",
+        aliases: &[],
+        args: "",
+        group: Group::Overview,
+        summary: "Open the scroller overview (no-op if already open).",
+        detail: "",
+    },
+    Action {
+        name: "close_scroller_overview",
+        aliases: &[],
+        args: "",
+        group: Group::Overview,
+        summary: "Close the scroller overview (no-op if already closed).",
+        detail: "",
+    },
+    Action {
+        name: "scroller_overview_focus_next",
+        aliases: &[],
+        args: "",
+        group: Group::Overview,
+        summary: "Scroller overview: select the next column.",
+        detail: "",
+    },
+    Action {
+        name: "scroller_overview_focus_prev",
+        aliases: &[],
+        args: "",
+        group: Group::Overview,
+        summary: "Scroller overview: select the previous column.",
+        detail: "",
+    },
+    Action {
+        name: "scroller_overview_activate",
+        aliases: &[],
+        args: "",
+        group: Group::Overview,
+        summary: "Scroller overview: commit the selected column and close.",
+        detail: "",
+    },
     // ── System ──────────────────────────────────────────────────────
     Action {
         name: "spawn",
@@ -579,6 +729,93 @@ pub const ACTIONS: &[Action] = &[
                  works whether or not init.rhai exists. Hooks registered \
                  inside the script persist after the run. User-facing \
                  wrapper: `mctl run <file>`.",
+    },
+    Action {
+        name: "dpms",
+        aliases: &[],
+        args: "<on|off|toggle> [OUTPUT]",
+        group: Group::System,
+        summary: "Real panel power off / on via DPMS.",
+        detail: "Arg 1 defaults to `toggle`; arg 2 is an optional connector \
+                 name (`eDP-1`), otherwise all outputs. Any input afterwards \
+                 wakes the screen, so an off is always recoverable. \
+                 `mctl dispatch dpms off eDP-1`.",
+    },
+    Action {
+        name: "loglevel",
+        aliases: &["log_level"],
+        args: "<LEVEL>",
+        group: Group::System,
+        summary: "Set the file-log level live (error / warn / info / debug / trace).",
+        detail: "Wrapper: `mctl log level <lvl>`. Defaults to `info`.",
+    },
+    Action {
+        name: "logenabled",
+        aliases: &["log_enabled"],
+        args: "<BOOL>",
+        group: Group::System,
+        summary: "Turn file logging on / off live.",
+        detail: "Accepts 1/true/on/yes/enable(d) or their negatives. \
+                 Wrapper: `mctl log enable` / `mctl log disable`.",
+    },
+    Action {
+        name: "twilight_toggle",
+        aliases: &[],
+        args: "",
+        group: Group::System,
+        summary: "Toggle the built-in blue-light filter (twilight) on / off.",
+        detail: "Resets to the configured schedule and resamples on the \
+                 next frame.",
+    },
+    Action {
+        name: "twilight_preview",
+        aliases: &[],
+        args: "<KELVIN> [GAMMA%]",
+        group: Group::System,
+        summary: "Preview a fixed twilight colour temperature until reset.",
+        detail: "Arg 1 = Kelvin (default 4000), arg 2 = gamma % (default \
+                 keep current).",
+    },
+    Action {
+        name: "twilight_test",
+        aliases: &[],
+        args: "[SECONDS]",
+        group: Group::System,
+        summary: "Sweep twilight day→night over a few seconds, then restore.",
+        detail: "Arg 1 = duration in seconds (default 5, CLI clamps 1–60).",
+    },
+    Action {
+        name: "twilight_reset",
+        aliases: &[],
+        args: "",
+        group: Group::System,
+        summary: "Drop any twilight preview/test and return to the schedule.",
+        detail: "",
+    },
+    Action {
+        name: "twilight_set",
+        aliases: &[],
+        args: "<field=value>",
+        group: Group::System,
+        summary: "Live-tweak a twilight config field (e.g. `day_temp=5500`).",
+        detail: "Not persisted — lasts until the next `mctl reload`.",
+    },
+    Action {
+        name: "global_shortcuts_bind",
+        aliases: &[],
+        args: "<SPEC>",
+        group: Group::System,
+        summary: "Register an xdg-desktop-portal GlobalShortcuts binding.",
+        detail: "Sent by margo-portal over the control socket — not meant \
+                 for a `bind =` line.",
+    },
+    Action {
+        name: "global_shortcuts_unbind",
+        aliases: &[],
+        args: "<SPEC>",
+        group: Group::System,
+        summary: "Drop an xdg-desktop-portal GlobalShortcuts binding.",
+        detail: "Portal-internal, like `global_shortcuts_bind`.",
     },
     // ── Screenshot ──────────────────────────────────────────────────
     // All screenshot actions delegate to the `mscreenshot`
