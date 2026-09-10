@@ -36,6 +36,7 @@ mod active_output;
 mod arrange;
 mod bootstrap;
 mod color_management;
+mod dispatch;
 mod dmabuf;
 mod floating_layout;
 mod focus_mon;

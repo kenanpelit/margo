@@ -64,7 +64,20 @@ const ALL_LAYOUTS: &[LayoutId] = &[
     LayoutId::Floating,
 ];
 
-pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
+/// What `dispatch_action` did with a request. The IPC layer must not
+/// paper `Unknown` over as `{"ok":true}` — it's a caller typo
+/// (`mctl dispatch focuslsat`), and the CLI should exit non-zero so
+/// scripts notice. A recognised action whose handler hit its own
+/// internal error (missing target window, bad value) still reports
+/// `Handled` for now — it logged that error itself; splitting those
+/// out is a separate pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DispatchOutcome {
+    Handled,
+    Unknown,
+}
+
+pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> DispatchOutcome {
     debug!(action = %action, "dispatch");
     match action {
         "quit" => state.should_quit = true,
@@ -105,7 +118,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 Ok(p) => p,
                 Err(e) => {
                     tracing::error!(error = ?e, "session_save: resolve path");
-                    return;
+                    return DispatchOutcome::Handled;
                 }
             };
             let snap = crate::session::SessionSnapshot::capture(state);
@@ -146,7 +159,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 Ok(p) => p,
                 Err(e) => {
                     tracing::error!(error = ?e, "session_load: resolve path");
-                    return;
+                    return DispatchOutcome::Handled;
                 }
             };
             let snap = match crate::session::load_from(&path) {
@@ -164,7 +177,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                         "Margo session load failed",
                         &format!("{e}"),
                     ]);
-                    return;
+                    return DispatchOutcome::Handled;
                 }
             };
             let applied = crate::session::apply_to_state(state, &snap);
@@ -789,8 +802,12 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "scroller_overview_focus_next" => state.scroller_overview_select(1),
         "scroller_overview_focus_prev" => state.scroller_overview_select(-1),
         "scroller_overview_activate" => state.scroller_overview_activate(),
-        _ => debug!("unhandled action: {action}"),
+        _ => {
+            debug!("unhandled action: {action}");
+            return DispatchOutcome::Unknown;
+        }
     }
+    DispatchOutcome::Handled
 }
 
 fn tag_arg(arg: &Arg) -> u32 {

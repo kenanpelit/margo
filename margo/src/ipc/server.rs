@@ -313,8 +313,15 @@ impl MargoState {
             }
             Verb::Dispatch => {
                 let arg = args_to_dispatch_arg(&req.head, &req.args);
-                crate::dispatch::dispatch_action(self, &req.head, &arg);
-                self.ipc_send(token, &serde_json::json!({ "ok": true }));
+                let reply = match crate::dispatch::dispatch_action(self, &req.head, &arg) {
+                    crate::dispatch::DispatchOutcome::Handled => {
+                        serde_json::json!({ "ok": true })
+                    }
+                    crate::dispatch::DispatchOutcome::Unknown => {
+                        serde_json::json!({ "error": format!("unknown action: {}", req.head) })
+                    }
+                };
+                self.ipc_send(token, &reply);
             }
             Verb::Watch => {
                 if let Some(c) = self.ipc_conns.get_mut(&token) {
