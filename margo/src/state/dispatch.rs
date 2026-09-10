@@ -73,6 +73,32 @@ impl MargoState {
         self.arrange_monitor(mon_idx);
     }
 
+    /// Toggle focus back to the previously-focused window on this
+    /// monitor (dwl's `focuslast`). `prev_selected` is kept current by
+    /// every focus change, and `focus_surface` swaps `selected` /
+    /// `prev_selected` as it moves focus — so pressing the bind again
+    /// returns you to where you were. No-op when there's no prior
+    /// window, or it has since closed or moved off the current tagset.
+    pub fn focus_last(&mut self) {
+        let mon_idx = self.focused_monitor();
+        let Some(mon) = self.monitors.get(mon_idx) else {
+            return;
+        };
+        let tagset = mon.current_tagset();
+        let Some(prev) = mon.prev_selected else {
+            return;
+        };
+        if prev >= self.clients.len()
+            || Some(prev) == mon.selected
+            || !self.clients[prev].is_visible_on(mon_idx, tagset)
+        {
+            return;
+        }
+        let window = self.clients[prev].window.clone();
+        self.focus_surface(Some(FocusTarget::Window(window)));
+        self.arrange_monitor(mon_idx);
+    }
+
     pub fn exchange_stack(&mut self, direction: i32) {
         let mon_idx = self.focused_monitor();
         if mon_idx >= self.monitors.len() {

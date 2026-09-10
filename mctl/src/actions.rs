@@ -175,6 +175,16 @@ pub const ACTIONS: &[Action] = &[
                  `left right up down prev next`.",
     },
     Action {
+        name: "focuslast",
+        aliases: &["focus_last", "focus-last"],
+        args: "",
+        group: Group::Focus,
+        summary: "Toggle focus back to the previously-focused window on this monitor.",
+        detail: "dwl's `focuslast`: jumps to the window you were on before \
+                 the current one; press again to return. No-op when there is \
+                 no prior window, or it has since closed or left the tag.",
+    },
+    Action {
         name: "focus_window_or_workspace",
         aliases: &[],
         args: "<DIRECTION>",

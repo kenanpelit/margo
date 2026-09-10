@@ -213,3 +213,76 @@ fn deck_raises_the_focused_stack_card_to_the_front() {
         );
     }
 }
+
+#[test]
+fn focus_last_toggles_between_the_two_most_recent_windows() {
+    // `focuslast` (dwl): jump back to the window focused before the
+    // current one; press again to return.
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_keyboard();
+    fx.add_output("DP-1", (1920, 1080));
+
+    for title in ["a", "b", "c"] {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id("kitty".into());
+        toplevel.set_title(title.into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+    fx.server.state.arrange_monitor(0);
+
+    let win_a = fx.server.state.clients[0].window.clone();
+    let win_c = fx.server.state.clients[2].window.clone();
+
+    fx.server
+        .state
+        .focus_surface(Some(FocusTarget::Window(win_a)));
+    fx.server
+        .state
+        .focus_surface(Some(FocusTarget::Window(win_c)));
+    assert_eq!(fx.server.state.focused_client_idx(), Some(2));
+
+    fx.server.state.focus_last();
+    assert_eq!(
+        fx.server.state.focused_client_idx(),
+        Some(0),
+        "focus_last returns to the prior window"
+    );
+
+    fx.server.state.focus_last();
+    assert_eq!(
+        fx.server.state.focused_client_idx(),
+        Some(2),
+        "focus_last again toggles back"
+    );
+}
+
+#[test]
+fn focus_last_is_a_noop_with_no_prior_window() {
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_keyboard();
+    fx.add_output("DP-1", (1920, 1080));
+    let id = fx.add_client();
+    let (toplevel, surface) = fx.client(id).create_toplevel();
+    toplevel.set_app_id("kitty".into());
+    surface.commit();
+    fx.client(id).flush();
+    fx.roundtrip(id);
+    fx.server.state.arrange_monitor(0);
+
+    let win = fx.server.state.clients[0].window.clone();
+    fx.server
+        .state
+        .focus_surface(Some(FocusTarget::Window(win)));
+    let before = fx.server.state.focused_client_idx();
+    fx.server.state.focus_last();
+    assert_eq!(fx.server.state.focused_client_idx(), before);
+}

@@ -491,6 +491,9 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             }
         }
         "focusstack" | "focusdir" => state.focus_stack(direction_arg(arg)),
+        // dwl's `focuslast` — jump back to the window you were on before
+        // the current one; press again to return.
+        "focuslast" | "focus_last" | "focus-last" => state.focus_last(),
         // Spatial directional focus with a workspace-switch fallback (mango
         // 0.15.5): focus the window left/right/up/down, or — if there's none
         // that way — view the adjacent tag instead. Needs the true 4-way
