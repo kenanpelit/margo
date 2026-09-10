@@ -19,6 +19,7 @@ use crate::mutter::{MutterScreenCastProxy, MutterSessionProxy, MutterStreamProxy
 use crate::picker::{self, Source};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tracing::{debug, info, warn};
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
@@ -28,6 +29,12 @@ use zbus::{Connection, interface};
 const RESPONSE_SUCCESS: u32 = 0;
 const RESPONSE_CANCELLED: u32 = 1;
 const RESPONSE_ERROR: u32 = 2;
+
+/// How long `capture` waits for margo's Mutter shim to emit
+/// `PipeWireStreamAdded` after `Session.Start`. A healthy compositor
+/// answers in milliseconds; without a bound a wedged one hangs the
+/// `Start` D-Bus call — and the calling app — forever.
+const NODE_ADDED_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// SourceType bitmask (org.freedesktop.impl.portal.ScreenCast).
 const SOURCE_MONITOR: u32 = 1;
@@ -68,6 +75,11 @@ impl ScreenCastBackend {
 
     /// Drive margo's Mutter shim to start capturing `source`, returning
     /// the PipeWire node id once the stream is live.
+    ///
+    /// The compositor-side session is created here; if any later step
+    /// fails (or times out) it is `Stop`ped again before returning the
+    /// error, so a failed `Start` never leaks a live Cast + PipeWire
+    /// stream inside margo.
     async fn capture(
         &self,
         source: &Source,
@@ -80,6 +92,28 @@ impl ScreenCastBackend {
             .build()
             .await?;
 
+        match Self::drive_capture(&self.conn, &session, source, cursor_mode).await {
+            Ok(node_id) => {
+                info!(node_id, ?source, "margo-portal: capture started");
+                Ok((node_id, mutter_session_path))
+            }
+            Err(e) => {
+                if let Err(stop_err) = session.stop().await {
+                    warn!(error = %stop_err, "capture: failed to stop the session after an error");
+                }
+                Err(e)
+            }
+        }
+    }
+
+    /// The fallible half of [`capture`], split out so [`capture`] can
+    /// tear the session down on any failure in here.
+    async fn drive_capture(
+        conn: &Connection,
+        session: &MutterSessionProxy<'_>,
+        source: &Source,
+        cursor_mode: u32,
+    ) -> anyhow::Result<u32> {
         // Cursor mode → Mutter's enum (Hidden=0, Embedded=1, Metadata=2).
         let mutter_cursor: u32 = if cursor_mode & CURSOR_METADATA != 0 {
             2
@@ -102,7 +136,7 @@ impl ScreenCastBackend {
 
         // Subscribe to the node-added signal *before* starting so we
         // don't miss it.
-        let stream = MutterStreamProxy::builder(&self.conn)
+        let stream = MutterStreamProxy::builder(conn)
             .path(stream_path)?
             .build()
             .await?;
@@ -111,12 +145,32 @@ impl ScreenCastBackend {
         session.start().await?;
 
         use futures_util::StreamExt as _;
-        let node_id = match added.next().await {
-            Some(sig) => sig.args()?.node_id,
-            None => anyhow::bail!("Mutter stream closed before PipeWireStreamAdded"),
+        let node_id = match tokio::time::timeout(NODE_ADDED_TIMEOUT, added.next()).await {
+            Ok(Some(sig)) => sig.args()?.node_id,
+            Ok(None) => anyhow::bail!("Mutter stream closed before PipeWireStreamAdded"),
+            Err(_) => anyhow::bail!(
+                "timed out after {}s waiting for PipeWireStreamAdded",
+                NODE_ADDED_TIMEOUT.as_secs()
+            ),
         };
-        info!(node_id, ?source, "margo-portal: capture started");
-        Ok((node_id, mutter_session_path))
+        Ok(node_id)
+    }
+}
+
+/// `Stop` a live Mutter-shim session by path, logging (not propagating)
+/// any failure. Shared by `PortalSession::close` and `start`'s
+/// concurrent-close cleanup.
+async fn stop_mutter_session(conn: &Connection, path: OwnedObjectPath) {
+    match MutterSessionProxy::builder(conn).path(path) {
+        Ok(builder) => match builder.build().await {
+            Ok(proxy) => {
+                if let Err(e) = proxy.stop().await {
+                    warn!(error = %e, "Mutter session stop failed");
+                }
+            }
+            Err(e) => warn!(error = %e, "Mutter session proxy build failed"),
+        },
+        Err(e) => warn!(error = %e, "bad Mutter session path"),
     }
 }
 
@@ -205,11 +259,19 @@ impl ScreenCastBackend {
         let key = session_handle.to_string();
         let (types, cursor) = {
             let map = self.sessions.lock().unwrap();
-            let s = map.get(&key);
-            (
-                s.map(|s| s.requested_types).unwrap_or(SOURCE_WINDOW),
-                s.map(|s| s.cursor_mode).unwrap_or(CURSOR_HIDDEN),
-            )
+            match map.get(&key) {
+                // `types` 0 means the app called Start without a
+                // preceding SelectSources — offer both kinds.
+                Some(s) if s.requested_types != 0 => (s.requested_types, s.cursor_mode),
+                Some(s) => (SOURCE_MONITOR | SOURCE_WINDOW, s.cursor_mode),
+                // No such session — never created, or already closed.
+                // Don't pop a picker for a session that can't receive
+                // the result.
+                None => {
+                    warn!(session = %key, "start: unknown session");
+                    return (RESPONSE_ERROR, HashMap::new());
+                }
+            }
         };
 
         // Ask the user which window / output to share.
@@ -232,9 +294,24 @@ impl ScreenCastBackend {
                 return (RESPONSE_ERROR, HashMap::new());
             }
         };
-        // Remember the live Mutter session so Close can stop it.
-        if let Some(s) = self.sessions.lock().unwrap().get_mut(&key) {
-            s.mutter_session_path = Some(mutter_path);
+        // Remember the live Mutter session so Close can stop it — unless
+        // the frontend already Closed this session while we were awaiting
+        // the picker / the compositor (the entry is gone from the map).
+        // In that race `close` ran before we stored the path, so the
+        // capture we just started would leak: stop it here instead.
+        let orphaned = {
+            let mut map = self.sessions.lock().unwrap();
+            if let Some(s) = map.get_mut(&key) {
+                s.mutter_session_path = Some(mutter_path);
+                None
+            } else {
+                Some(mutter_path)
+            }
+        };
+        if let Some(path) = orphaned {
+            info!(session = %key, "start: session closed mid-start, stopping the orphaned capture");
+            stop_mutter_session(&self.conn, path).await;
+            return (RESPONSE_CANCELLED, HashMap::new());
         }
 
         // results = { streams: a(ua{sv}) } — one (node_id, props).
@@ -278,17 +355,7 @@ impl PortalSession {
             .remove(&self.handle)
             .and_then(|s| s.mutter_session_path);
         if let Some(path) = mutter_path {
-            match MutterSessionProxy::builder(&self.conn).path(path) {
-                Ok(builder) => match builder.build().await {
-                    Ok(proxy) => {
-                        if let Err(e) = proxy.stop().await {
-                            warn!(error = %e, "close: Mutter session stop failed");
-                        }
-                    }
-                    Err(e) => warn!(error = %e, "close: Mutter session proxy build failed"),
-                },
-                Err(e) => warn!(error = %e, "close: bad Mutter session path"),
-            }
+            stop_mutter_session(&self.conn, path).await;
         }
         debug!(session = %self.handle, "session closed");
     }
