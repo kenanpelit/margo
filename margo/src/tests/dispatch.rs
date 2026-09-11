@@ -5,10 +5,11 @@
 //! an unrecognised one reports `Unknown` so the IPC layer can answer
 //! `{"error": …}` instead of a lying `{"ok": true}`.
 
-use margo_config::Arg;
+use margo_config::{Arg, Config};
 
 use super::fixture::Fixture;
 use crate::dispatch::{DispatchOutcome, dispatch_action};
+use crate::state::FocusTarget;
 
 fn state_with_one_window() -> Fixture {
     let mut fx = Fixture::new();
@@ -136,4 +137,121 @@ fn every_dispatch_action_is_in_the_catalogue() {
         uncatalogued.is_empty(),
         "dispatch_action arms missing from the margo-config catalogue: {uncatalogued:?}"
     );
+}
+
+// ── move_focused / resize_focused / toggle_floating: float_geom staleness ──
+//
+// Regression coverage: `movewin` / `resizewin` / `togglefloating` always
+// float the focused window, seeding `float_geom` from the current tiled
+// `geom` only the *first* time (the old guard was `float_geom.width ==
+// 0`). A window once shrunk to a sliver by `resizewin`, tiled again
+// (looking perfectly normal), then floated a second time by any of the
+// three actions silently snapped back to that invisible sliver — the
+// stale, nonzero `float_geom` from the earlier episode was never
+// invalidated. Reported live: a browser window `super+ctrl+shift,h/j/k/l`
+// had been resized down to 1x1, `togglefloating` correctly re-tiled it
+// (visible again), but a later `movewin` on the same client made it
+// vanish again.
+
+fn tiled_two_window_fixture() -> Fixture {
+    let mut fx = Fixture::with_config(Config {
+        animations: false,
+        ..Config::default()
+    });
+    fx.add_keyboard();
+    fx.add_output("DP-1", (1920, 1080));
+    for _ in 0..2 {
+        let id = fx.add_client();
+        let (toplevel, surface) = fx.client(id).create_toplevel();
+        toplevel.set_app_id("kitty".into());
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+    fx.server.state.monitors[0].pertag.ltidxs[1] = crate::layout::LayoutId::Tile;
+    fx.server.state.monitors[0].pertag.user_picked_layout[1] = true;
+    fx.server.state.arrange_monitor(0);
+    let win = fx.server.state.clients[0].window.clone();
+    fx.server
+        .state
+        .focus_surface(Some(FocusTarget::Window(win)));
+    fx
+}
+
+/// Poke a degenerate `float_geom` onto client 0 as if a much earlier
+/// floating episode had shrunk it there, without touching `is_floating`
+/// (the client is still tiled, exactly as observed live).
+fn leave_a_stale_sliver_float_geom(fx: &mut Fixture) {
+    fx.server.state.clients[0].float_geom = crate::layout::Rect::new(-999, -999, 1, 1);
+    assert!(!fx.server.state.clients[0].is_floating);
+}
+
+#[test]
+fn move_focused_reseeds_a_stale_float_geom_from_the_tiled_slot() {
+    let mut fx = tiled_two_window_fixture();
+    let tiled = fx.server.state.clients[0].geom;
+    leave_a_stale_sliver_float_geom(&mut fx);
+
+    fx.server.state.move_focused(10, 20);
+
+    let c = &fx.server.state.clients[0];
+    assert!(c.is_floating);
+    assert_eq!(
+        (c.float_geom.width, c.float_geom.height),
+        (tiled.width, tiled.height),
+        "must reseed from the tiled slot's real size, not the stale 1x1"
+    );
+    assert_eq!(
+        (c.float_geom.x, c.float_geom.y),
+        (tiled.x + 10, tiled.y + 20)
+    );
+}
+
+#[test]
+fn resize_focused_reseeds_a_stale_float_geom_from_the_tiled_slot() {
+    let mut fx = tiled_two_window_fixture();
+    let tiled = fx.server.state.clients[0].geom;
+    leave_a_stale_sliver_float_geom(&mut fx);
+
+    fx.server.state.resize_focused(100, 50);
+
+    let c = &fx.server.state.clients[0];
+    assert!(c.is_floating);
+    assert_eq!(
+        (c.float_geom.width, c.float_geom.height),
+        (tiled.width + 100, tiled.height + 50),
+        "must grow from the tiled slot's real size, not 1x1 + delta"
+    );
+}
+
+#[test]
+fn toggle_floating_reseeds_a_stale_float_geom_from_the_tiled_slot() {
+    let mut fx = tiled_two_window_fixture();
+    let tiled = fx.server.state.clients[0].geom;
+    leave_a_stale_sliver_float_geom(&mut fx);
+
+    fx.server.state.toggle_floating();
+
+    assert!(fx.server.state.clients[0].is_floating);
+    assert_eq!(
+        fx.server.state.clients[0].geom, tiled,
+        "floating on the real tiled size must render at that size, not 1x1"
+    );
+}
+
+#[test]
+fn move_focused_preserves_an_already_floating_windows_real_geometry() {
+    // No-regression: a window the user deliberately floated and placed
+    // (not a stale/degenerate leftover) must not get snapped back to its
+    // tiled slot just because it's being nudged.
+    let mut fx = tiled_two_window_fixture();
+    let placed = crate::layout::Rect::new(300, 250, 640, 480);
+    fx.server.state.clients[0].is_floating = true;
+    fx.server.state.clients[0].float_geom = placed;
+
+    fx.server.state.move_focused(10, 20);
+
+    let c = &fx.server.state.clients[0];
+    assert_eq!((c.float_geom.width, c.float_geom.height), (640, 480));
+    assert_eq!((c.float_geom.x, c.float_geom.y), (310, 270));
 }

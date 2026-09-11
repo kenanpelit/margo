@@ -22,8 +22,43 @@ use super::{
 };
 use crate::layout::LayoutId;
 
+/// Floor for a floating window's width/height (px). `resize_focused`
+/// already clamped its own deltas here; `reseed_float_geom_if_stale`
+/// reuses it as "small enough that this remembered geometry can't be
+/// trusted" — see its doc comment.
+const MIN_FLOAT_SIZE: i32 = 50;
+
 impl MargoState {
     // ── Actions ───────────────────────────────────────────────────────────────
+
+    /// Refresh `clients[idx].float_geom` from its current (tiled) `geom`
+    /// before it's used as the base for a move / resize / float-toggle,
+    /// when the stored value can't be trusted: the window wasn't already
+    /// floating — whatever `float_geom` holds could be left over from an
+    /// unrelated, possibly long-past floating episode — or it *is*
+    /// floating but the remembered size has collapsed below
+    /// [`MIN_FLOAT_SIZE`].
+    ///
+    /// That second case is the exact shape of a real bug: `movewin` /
+    /// `resizewin` always floated the focused window and only seeded
+    /// `float_geom` from `geom` when `float_geom.width == 0` — so a
+    /// window once shrunk to a sliver by `resizewin`, then tiled again
+    /// (looking perfectly normal), silently snapped back to that
+    /// invisible sliver the next time *any* of `movewin` / `resizewin` /
+    /// `togglefloating` floated it, because the stale-but-nonzero
+    /// `float_geom` was never invalidated. A window currently floating
+    /// with a sane, user-placed `float_geom` is left alone — only a
+    /// tiled window (whose `float_geom` is irrelevant history) or a
+    /// genuinely broken one gets reseeded.
+    fn reseed_float_geom_if_stale(&mut self, idx: usize) {
+        let c = &self.clients[idx];
+        let stale = !c.is_floating
+            || c.float_geom.width < MIN_FLOAT_SIZE
+            || c.float_geom.height < MIN_FLOAT_SIZE;
+        if stale {
+            self.clients[idx].float_geom = self.clients[idx].geom;
+        }
+    }
 
     pub fn kill_focused(&mut self) {
         if let Some(idx) = self.focused_client_idx() {
@@ -917,10 +952,13 @@ impl MargoState {
 
     pub fn toggle_floating(&mut self) {
         if let Some(idx) = self.focused_client_idx() {
-            self.clients[idx].is_floating = !self.clients[idx].is_floating;
-            if self.clients[idx].is_floating && self.clients[idx].float_geom.width == 0 {
-                self.clients[idx].float_geom = self.clients[idx].geom;
+            let will_float = !self.clients[idx].is_floating;
+            if will_float {
+                // Transitioning tiled -> floating: the tiled slot is the
+                // only geometry guaranteed sane right now.
+                self.reseed_float_geom_if_stale(idx);
             }
+            self.clients[idx].is_floating = will_float;
             let mon_idx = self.clients[idx].monitor;
             self.arrange_monitor(mon_idx);
             // the snapshot reports `floating` per client; the old per-output focused
@@ -1154,9 +1192,7 @@ impl MargoState {
 
     pub fn move_focused(&mut self, dx: i32, dy: i32) {
         if let Some(idx) = self.focused_client_idx() {
-            if self.clients[idx].float_geom.width == 0 {
-                self.clients[idx].float_geom = self.clients[idx].geom;
-            }
+            self.reseed_float_geom_if_stale(idx);
             self.clients[idx].is_floating = true;
             self.clients[idx].float_geom.x += dx;
             self.clients[idx].float_geom.y += dy;
@@ -1167,13 +1203,12 @@ impl MargoState {
 
     pub fn resize_focused(&mut self, dw: i32, dh: i32) {
         if let Some(idx) = self.focused_client_idx() {
-            if self.clients[idx].float_geom.width == 0 {
-                self.clients[idx].float_geom = self.clients[idx].geom;
-            }
+            self.reseed_float_geom_if_stale(idx);
             self.clients[idx].is_floating = true;
-            self.clients[idx].float_geom.width = (self.clients[idx].float_geom.width + dw).max(50);
+            self.clients[idx].float_geom.width =
+                (self.clients[idx].float_geom.width + dw).max(MIN_FLOAT_SIZE);
             self.clients[idx].float_geom.height =
-                (self.clients[idx].float_geom.height + dh).max(50);
+                (self.clients[idx].float_geom.height + dh).max(MIN_FLOAT_SIZE);
             let mon_idx = self.clients[idx].monitor;
             self.arrange_monitor(mon_idx);
         }
