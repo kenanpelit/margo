@@ -2787,7 +2787,11 @@ impl MargoState {
     /// Matched rules paired with their position in `config.window_rules`
     /// — `apply_matched_window_rules` needs the index to key
     /// `rule_once_consumed` for `windowrule-once`.
-    pub(crate) fn matching_window_rules(&self, app_id: &str, title: &str) -> Vec<(usize, WindowRule)> {
+    pub(crate) fn matching_window_rules(
+        &self,
+        app_id: &str,
+        title: &str,
+    ) -> Vec<(usize, WindowRule)> {
         self.config
             .window_rules
             .iter()

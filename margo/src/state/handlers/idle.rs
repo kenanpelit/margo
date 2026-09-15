@@ -83,7 +83,8 @@ impl MargoState {
 
         let focused = self.focused_client_idx().map(|idx| &self.clients[idx]);
         let heuristic_inhibited = focused.is_some_and(|c| {
-            c.idle_inhibit_when_focus || (self.config.idle_inhibit_when_fullscreen && c.is_fullscreen)
+            c.idle_inhibit_when_focus
+                || (self.config.idle_inhibit_when_fullscreen && c.is_fullscreen)
         });
 
         self.idle_notifier_state
