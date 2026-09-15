@@ -1003,6 +1003,11 @@ impl MargoState {
         if self.config.tag_gather {
             self.tag_gather_apply(mon_idx);
         }
+        // Covers the two idle-inhibit inputs a focus change alone
+        // doesn't: a fullscreen toggle on the already-focused client,
+        // and a tag switch changing which protocol inhibitors are
+        // currently visible.
+        self.recompute_idle_inhibit();
         // Refresh the IPC channels so `mctl clients`/`focused`/`status`
         // and any IPC `watch state` subscriber sees the new
         // windows the moment they're laid out. arrange_all already

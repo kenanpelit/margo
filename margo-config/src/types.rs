@@ -1029,6 +1029,10 @@ pub struct Config {
     pub cursor_size: u32,
     pub focus_on_activate: bool,
     pub idleinhibit_ignore_visible: bool,
+    /// Keep idle timers inhibited while the focused window is fullscreen —
+    /// covers fullscreen video apps that never request idle-inhibit
+    /// themselves. See `MargoState::recompute_idle_inhibit`.
+    pub idle_inhibit_when_fullscreen: bool,
     pub log_level: i32,
     pub xwayland_persistence: bool,
     pub syncobj_enable: bool,
@@ -1359,6 +1363,7 @@ impl Default for Config {
             cursor_size: 24,
             focus_on_activate: true,
             idleinhibit_ignore_visible: false,
+            idle_inhibit_when_fullscreen: false,
             log_level: 0,
             xwayland_persistence: true,
             syncobj_enable: false,

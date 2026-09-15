@@ -2344,6 +2344,7 @@ impl MargoState {
             // but `exchange_stack`, `focuswindow` over IPC and pointer
             // focus don't — so do it here, where every focus change lands.
             self.enforce_z_order();
+            self.recompute_idle_inhibit();
             self.mark_state_dirty();
             // Phase 3 scripting: invoke any `on_focus_change`
             // handlers the user registered in init.rhai. Hooks

@@ -643,6 +643,7 @@ const BOOL_KEYS: &[&str] = &[
     "gaps_enabled",
     "hot_corner_disable_on_fullscreen",
     "idleinhibit_ignore_visible",
+    "idle_inhibit_when_fullscreen",
     "layer_animations",
     "layer_shadows",
     "left_handed",

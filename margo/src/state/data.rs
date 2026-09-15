@@ -154,6 +154,11 @@ pub struct MargoClient {
     pub no_animation: bool,
     pub open_silent: bool,
     pub tag_silent: bool,
+    /// Window-rule `idle_inhibit_when_focus`: keep idle timers inhibited
+    /// while this client has focus, independent of whether it holds a
+    /// protocol-level `zwp_idle_inhibit_manager_v1` request. See
+    /// `MargoState::recompute_idle_inhibit`.
+    pub idle_inhibit_when_focus: bool,
     /// A window-rule has already placed this client (`tags` / `monitor`).
     /// Placement is one-time: later reapplies (e.g. a browser changing its
     /// title) must not re-assert the rule tag and yank a window the user has
@@ -302,6 +307,7 @@ impl MargoClient {
             no_animation: false,
             open_silent: false,
             tag_silent: false,
+            idle_inhibit_when_focus: false,
             rule_placement_done: false,
             allow_csd: false,
             no_focus: false,

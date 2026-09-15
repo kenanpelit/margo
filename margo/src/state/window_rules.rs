@@ -357,6 +357,9 @@ impl MargoState {
             if let Some(value) = rule.tag_silent {
                 client.tag_silent = value;
             }
+            if let Some(value) = rule.idle_inhibit_when_focus {
+                client.idle_inhibit_when_focus = value;
+            }
             if let Some(value) = rule.is_named_scratchpad {
                 client.is_named_scratchpad = value;
             }

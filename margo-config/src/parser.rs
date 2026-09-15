@@ -688,6 +688,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "cursor_size" => cfg.cursor_size = parse_u32(val),
         "focus_on_activate" => cfg.focus_on_activate = parse_bool(val),
         "idleinhibit_ignore_visible" => cfg.idleinhibit_ignore_visible = parse_bool(val),
+        "idle_inhibit_when_fullscreen" => cfg.idle_inhibit_when_fullscreen = parse_bool(val),
         "log_level" => cfg.log_level = parse_i32(val),
         "xwayland_persistence" => cfg.xwayland_persistence = parse_bool(val),
         "syncobj_enable" => cfg.syncobj_enable = parse_bool(val),
@@ -968,7 +969,12 @@ fn parse_windowrule(cfg: &mut Config, val: &str) -> Result<()> {
             "ignore_maximize" => rule.ignore_maximize = Some(parse_bool_s(&v)),
             "ignore_minimize" => rule.ignore_minimize = Some(parse_bool_s(&v)),
             "isnosizehint" => rule.no_size_hint = Some(parse_bool_s(&v)),
-            "indleinhibit_when_focus" => rule.idle_inhibit_when_focus = Some(parse_bool_s(&v)),
+            // "indleinhibit_when_focus" was a typo'd key from the original
+            // port that nothing ever consumed (MargoClient had no matching
+            // field) — kept as a legacy alias now that it does something.
+            "idle_inhibit_when_focus" | "indleinhibit_when_focus" => {
+                rule.idle_inhibit_when_focus = Some(parse_bool_s(&v))
+            }
             "nofocus" => rule.no_focus = Some(parse_bool_s(&v)),
             "nofadein" => rule.no_fade_in = Some(parse_bool_s(&v)),
             "nofadeout" => rule.no_fade_out = Some(parse_bool_s(&v)),
@@ -1651,6 +1657,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "hot_corner_top_left",
     "hot_corner_top_right",
     "idleinhibit_ignore_visible",
+    "idle_inhibit_when_fullscreen",
     "keymode",
     "layer_animations",
     "layer_animation_type_close",
@@ -2232,6 +2239,25 @@ mod tests {
         );
         assert_eq!(cfg.window_rules[0].monitor.as_deref(), Some("DP-3"));
         assert_eq!(cfg.window_rules[1].monitor.as_deref(), Some("eDP-1"));
+    }
+
+    #[test]
+    fn windowrule_idle_inhibit_when_focus_aliases() {
+        // The correct spelling and the original typo'd key (never
+        // consumed until MargoClient grew the matching field) both work.
+        let cfg = parse_conf(
+            "idl",
+            "windowrule = idle_inhibit_when_focus:1,appid:^a$\nwindowrule = indleinhibit_when_focus:1,appid:^b$\n",
+        );
+        assert_eq!(cfg.window_rules.len(), 2);
+        for r in &cfg.window_rules {
+            assert_eq!(
+                r.idle_inhibit_when_focus,
+                Some(true),
+                "idle_inhibit_when_focus not set for {:?}",
+                r.id
+            );
+        }
     }
 
     #[test]
