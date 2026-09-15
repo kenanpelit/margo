@@ -289,21 +289,28 @@ impl MargoState {
     /// reapply path log meaningfully and (in future) skip rule subsets
     /// that don't make sense for a given trigger (e.g. `tags:`
     /// shouldn't move a client on `Reload`).
-    pub(crate) fn apply_window_rules(&self, client: &mut MargoClient) {
+    pub(crate) fn apply_window_rules(&mut self, client: &mut MargoClient) {
         // Pre-mount path (X11 + initial XDG before the client is in
         // `self.clients`). The post-mount equivalent is
         // [`reapply_rules`].
         let rules = self.matching_window_rules(&client.app_id, &client.title);
         // Pre-mount clients aren't in `self.clients` yet, so there is no
         // "focused window" to anchor a dialog over — centre on the work area.
-        Self::apply_matched_window_rules(&self.monitors, client, &rules, None);
+        Self::apply_matched_window_rules(
+            &self.monitors,
+            client,
+            &rules,
+            None,
+            &mut self.rule_once_consumed,
+        );
     }
 
     pub(crate) fn apply_matched_window_rules(
         monitors: &[MargoMonitor],
         client: &mut MargoClient,
-        rules: &[WindowRule],
+        rules: &[(usize, WindowRule)],
         focus_anchor: Option<Rect>,
+        once_consumed: &mut std::collections::HashSet<usize>,
     ) {
         // Placement (`tags` / `monitor`) is a *one-time* decision, applied the
         // first time a rule matches (initial map, or the first time a late
@@ -314,7 +321,13 @@ impl MargoState {
         // Visual rules below keep applying on every reapply.
         let place = !client.rule_placement_done;
         let mut placed = false;
-        for rule in rules {
+        for (rule_idx, rule) in rules {
+            // `windowrule-once`: this rule applies to the first client
+            // that ever matches it, then is consumed for the rest of
+            // the session (mango 0.17 port, 8c2ce916).
+            if rule.once && once_consumed.contains(rule_idx) {
+                continue;
+            }
             if place && rule.tags != 0 {
                 client.tags = rule.tags;
                 placed = true;
@@ -456,6 +469,9 @@ impl MargoState {
                 client.is_floating = true;
                 client.float_geom =
                     Self::rule_float_geometry_for(monitors, client.monitor, rule, focus_anchor);
+            }
+            if rule.once {
+                once_consumed.insert(*rule_idx);
             }
         }
         // Lock placement after the first time a rule actually set a tag /

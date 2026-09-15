@@ -242,7 +242,8 @@ fn parse_line(
         "switchbind" => return parse_switchbind(cfg, val),
         "gesturebind" => return parse_gesturebind(cfg, val),
         "touchgesturebind" => return parse_touchgesturebind(cfg, val),
-        "windowrule" => return parse_windowrule(cfg, val),
+        "windowrule" => return parse_windowrule(cfg, val, false),
+        "windowrule-once" => return parse_windowrule(cfg, val, true),
         "monitorrule" => return parse_monitorrule(cfg, val),
         "tagrule" => return parse_tagrule(cfg, val),
         "layerrule" => return parse_layerrule(cfg, val),
@@ -886,8 +887,11 @@ fn parse_touchgesturebind(cfg: &mut Config, val: &str) -> Result<()> {
 
 // ── Rule parsing ─────────────────────────────────────────────────────────────
 
-fn parse_windowrule(cfg: &mut Config, val: &str) -> Result<()> {
-    let mut rule = WindowRule::default();
+fn parse_windowrule(cfg: &mut Config, val: &str, once: bool) -> Result<()> {
+    let mut rule = WindowRule {
+        once,
+        ..WindowRule::default()
+    };
     for part in split_csv_colon(val) {
         let (k, v) = part;
         match k.as_str() {

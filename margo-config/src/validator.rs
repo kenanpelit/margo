@@ -532,6 +532,7 @@ const CSV_SHAPED_KEYS: &[&str] = &[
     "gesturebind",
     "touchgesturebind",
     "windowrule",
+    "windowrule-once",
     "monitorrule",
     "tagrule",
     "taglayout",

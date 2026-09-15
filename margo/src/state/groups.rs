@@ -339,7 +339,7 @@ impl MargoState {
         let wants_group = self
             .matching_window_rules(&self.clients[idx].app_id, &self.clients[idx].title)
             .iter()
-            .any(|r| r.group == Some(true));
+            .any(|(_, r)| r.group == Some(true));
         if !wants_group {
             return;
         }

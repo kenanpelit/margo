@@ -396,6 +396,14 @@ pub struct WindowRule {
     pub ignore_minimize: Option<bool>,
     pub no_size_hint: Option<bool>,
     pub idle_inhibit_when_focus: Option<bool>,
+    /// Set by `windowrule-once = ...` instead of `windowrule = ...`:
+    /// this rule applies to the first client that ever matches it, then
+    /// is consumed for the rest of the compositor session (until the
+    /// next `mctl reload` re-parses the rulebook). Consumption is
+    /// tracked in `MargoState::rule_once_consumed`, keyed by this
+    /// rule's position in `Config::window_rules` — mango 0.17 port
+    /// (8c2ce916).
+    pub once: bool,
     pub monitor: Option<String>,
     pub offset_x: i32,
     pub offset_y: i32,

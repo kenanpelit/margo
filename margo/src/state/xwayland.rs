@@ -52,7 +52,7 @@ impl MargoState {
         let no_explicit_monitor = !self
             .matching_window_rules(&client.app_id, &client.title)
             .iter()
-            .any(|r| r.monitor.is_some());
+            .any(|(_, r)| r.monitor.is_some());
         if no_explicit_monitor {
             if let Some(home) = self.tag_home_monitor(client.tags) {
                 client.monitor = home;

@@ -542,6 +542,11 @@ pub struct MargoState {
     pub idle_inhibitors: std::collections::HashSet<
         smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     >,
+    /// Indices into `config.window_rules` of `windowrule-once` rules
+    /// that have already fired for some client. Consulted (and grown)
+    /// in `apply_matched_window_rules`; cleared on `mctl reload` so
+    /// editing the rulebook gets a clean slate.
+    pub(crate) rule_once_consumed: std::collections::HashSet<usize>,
     /// Hash of the layout-affecting cached state per layer surface
     /// (size, anchor, exclusive_zone, exclusive_edge, margin, layer,
     /// keyboard_interactivity). Mirrors Hyprland's
@@ -1293,6 +1298,7 @@ impl MargoState {
             pointer_warp_state,
             xdg_toplevel_tag_state,
             idle_inhibitors: std::collections::HashSet::new(),
+            rule_once_consumed: std::collections::HashSet::new(),
             layer_layout_hashes: std::collections::HashMap::new(),
             layer_kb_interactivity_hashes: std::collections::HashMap::new(),
             frame_callback_sequence: std::collections::HashMap::new(),
@@ -1959,6 +1965,9 @@ impl MargoState {
         // last_reload_diagnostics, intentionally; the user can still
         // query them via mctl config-errors).
         self.config_error_overlay_until = None;
+        // A reload re-parses the rulebook from scratch — a `windowrule-once`
+        // the user is actively iterating on should be able to fire again.
+        self.rule_once_consumed.clear();
 
         if let Some(keyboard) = self.seat.get_keyboard() {
             let xkb_options = if new_config.xkb_rules.options.is_empty() {
@@ -2761,6 +2770,7 @@ impl MargoState {
             &mut self.clients[idx],
             &rules,
             focus_anchor,
+            &mut self.rule_once_consumed,
         );
         tracing::debug!(
             target: "windowrule",
@@ -2774,12 +2784,16 @@ impl MargoState {
         true
     }
 
-    pub(crate) fn matching_window_rules(&self, app_id: &str, title: &str) -> Vec<WindowRule> {
+    /// Matched rules paired with their position in `config.window_rules`
+    /// — `apply_matched_window_rules` needs the index to key
+    /// `rule_once_consumed` for `windowrule-once`.
+    pub(crate) fn matching_window_rules(&self, app_id: &str, title: &str) -> Vec<(usize, WindowRule)> {
         self.config
             .window_rules
             .iter()
-            .filter(|rule| self.window_rule_matches(rule, app_id, title))
-            .cloned()
+            .enumerate()
+            .filter(|(_, rule)| self.window_rule_matches(rule, app_id, title))
+            .map(|(i, rule)| (i, rule.clone()))
             .collect()
     }
 

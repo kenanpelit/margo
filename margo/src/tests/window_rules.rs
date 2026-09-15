@@ -243,6 +243,48 @@ fn window_rule_application_via_xdg_shell_flow() {
     assert_snapshot!(report);
 }
 
+/// `windowrule-once` (mango 0.17 port, 8c2ce916): the rule applies to
+/// the first client that ever matches it, then is consumed for the
+/// rest of the session — a second `kitty` opening later must NOT get
+/// floated too.
+#[test]
+fn windowrule_once_applies_to_the_first_matching_client_only() {
+    let config = Config {
+        window_rules: vec![WindowRule {
+            id: Some("^kitty$".into()),
+            is_floating: Some(true),
+            once: true,
+            ..Default::default()
+        }],
+        ..Config::default()
+    };
+
+    let mut fx = Fixture::with_config(config);
+    fx.add_output("DP-1", (1920, 1080));
+
+    let id1 = fx.add_client();
+    let (toplevel1, surface1) = fx.client(id1).create_toplevel();
+    toplevel1.set_app_id("kitty".into());
+    surface1.commit();
+    fx.client(id1).flush();
+    fx.roundtrip(id1);
+    assert!(
+        fx.server.state.clients[0].is_floating,
+        "the first matching client must get the once-rule"
+    );
+
+    let id2 = fx.add_client();
+    let (toplevel2, surface2) = fx.client(id2).create_toplevel();
+    toplevel2.set_app_id("kitty".into());
+    surface2.commit();
+    fx.client(id2).flush();
+    fx.roundtrip(id2);
+    assert!(
+        !fx.server.state.clients[1].is_floating,
+        "a second match must not get an already-consumed once-rule"
+    );
+}
+
 // ── T1 expansion: matcher edge-case unit tests ───────────────────────────────
 //
 // Focused on `matches_rule_text` + `window_rule_matches`'s positive /

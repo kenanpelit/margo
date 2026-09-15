@@ -1418,7 +1418,7 @@ impl MargoState {
         let no_explicit_monitor = !self
             .matching_window_rules(&self.clients[idx].app_id, &self.clients[idx].title)
             .iter()
-            .any(|r| r.monitor.is_some());
+            .any(|(_, r)| r.monitor.is_some());
         if no_explicit_monitor {
             if let Some(home) = self.tag_home_monitor(self.clients[idx].tags) {
                 self.clients[idx].monitor = home;
