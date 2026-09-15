@@ -119,6 +119,16 @@ files, and overlapping feature mechanisms.**
   cancellable task group; (c) on plugin unload/reload, join/kill the workers,
   timers and subprocesses. Deferred pending a call on how ship-critical the
   plugin tier is (it's WASM/experimental today).
+- [ ] **Dwindle "smart focusdir"** (mango 0.17, `4cf6e1cd`). mango remembers
+  the most-recently-focused window within the split branch you enter, via a
+  persistent per-tag binary split tree (`pertag->dwindle_root`). Margo's
+  `dwindle()` (`margo-layouts/src/algorithms.rs`) is a stateless pure
+  function recomputed from client order on every arrange — there's no tree
+  to hang "which branch was last focused" on. Doing this properly means
+  giving dwindle a persistent per-tag split-tree state (insertion/removal
+  order tracking, not just a recursive halving of the current client list),
+  which is a real architecture addition, not a small port. Deferred pending
+  a call on whether dwindle's UX gap is worth that redesign.
 
 ## Low priority / quick wins
 
