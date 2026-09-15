@@ -523,6 +523,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
             state.mru_advance_args(arg.v.as_deref(), arg.v2.as_deref(), MruDirection::Backward)
         }
         "exchange_client" | "smartmovewin" => state.exchange_stack(direction_arg(arg)),
+        "move_client" => state.move_client(direction4(arg)),
         "view" => state.view_tag(tag_arg(arg)),
         "toggleview" => state.toggle_view_tag(tag_arg(arg)),
         "tag" | "tagsilent" => state.tag_focused(tag_arg(arg)),

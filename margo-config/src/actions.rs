@@ -220,8 +220,31 @@ pub const ACTIONS: &[Action] = &[
         aliases: &["smartmovewin"],
         args: "<DIRECTION>",
         group: Group::Focus,
-        summary: "Swap the focused window with its neighbour in the given direction.",
-        detail: "",
+        summary: "Swap the focused window with the next/previous one in stacking order.",
+        detail: "Despite the `<DIRECTION>` argument this is list-order \
+                 cycling (`direction_arg` collapses left/up to prev, \
+                 right/down to next), not true spatial neighbour \
+                 selection — see `move_client` for that.",
+    },
+    Action {
+        name: "move_client",
+        aliases: &[],
+        args: "<DIRECTION>",
+        group: Group::Focus,
+        summary: "Move the focused window toward a direction, displacing its neighbour.",
+        detail: "True spatial neighbour selection (same geometry \
+                 `focus_window_or_workspace` uses), unlike \
+                 `exchange_client`'s list-order cycling. Removes the \
+                 focused window from its slot in the layout's client \
+                 order and re-inserts it next to the neighbour in that \
+                 direction, shifting whatever was in between — every \
+                 margo layout (dwindle included) derives its geometry \
+                 purely from that order, so one reorder covers all of \
+                 them. No-op on a floating/fullscreen focus or when \
+                 there's no neighbour that way (mango 0.17 port, \
+                 c844a107; no cross-monitor edge case — margo has no \
+                 directional monitor-selection primitive to jump \
+                 through).",
     },
     Action {
         name: "focusmon",

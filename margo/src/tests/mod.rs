@@ -47,6 +47,7 @@ mod hot_corner;
 mod idle;
 mod layer_shell;
 mod mosaic_layout;
+mod move_client;
 mod mru_switcher;
 mod output_assignment;
 mod output_management;

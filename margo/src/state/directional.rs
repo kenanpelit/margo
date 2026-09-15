@@ -176,6 +176,62 @@ impl MargoState {
             Direction::None => {}
         }
     }
+
+    /// Move the focused window one step toward `dir`, displacing its
+    /// neighbour rather than swapping with it (`exchange_client`'s
+    /// `exchange_stack` already covers the swap). Ports mango's
+    /// `move_client` (c844a107).
+    ///
+    /// Every margo layout — dwindle included — is a pure function of
+    /// `self.clients`' order (see `margo-layouts::algorithms`), so
+    /// "move next to that neighbour, shift whatever's between" is one
+    /// generic list operation: remove the focused client and
+    /// re-insert it at the neighbour's *pre-removal* index. That lands
+    /// it immediately adjacent to the neighbour on the side it
+    /// approached from, in every layout, with no per-layout branching
+    /// mango's C version needs. A plain two-element swap would leave
+    /// windows in between untouched instead of shifting them, which is
+    /// the actual "push aside" mango describes.
+    ///
+    /// No-ops on a floating/fullscreen/minimized focus (`!is_tiled()`)
+    /// and when there's no neighbour that way. Unlike
+    /// `focus_window_or_workspace`, an edge doesn't fall through to a
+    /// tag/monitor jump — margo has no directional (as opposed to
+    /// cyclic) monitor-selection primitive to jump through, and this
+    /// stays a same-tag reorder.
+    pub fn move_client(&mut self, dir: Direction) {
+        let Some(focused_idx) = self.focused_client_idx() else {
+            return;
+        };
+        if !self.clients[focused_idx].is_tiled() {
+            return;
+        }
+        let mon_idx = self.clients[focused_idx].monitor;
+        if mon_idx >= self.monitors.len() {
+            return;
+        }
+        let tagset = self.monitors[mon_idx].current_tagset();
+        let focused_geom = self.clients[focused_idx].geom;
+
+        let candidates: Vec<(usize, Rect)> = self
+            .clients
+            .iter()
+            .enumerate()
+            .filter(|(i, c)| *i != focused_idx && c.is_visible_on(mon_idx, tagset))
+            .map(|(i, c)| (i, c.geom))
+            .collect();
+
+        let Some(target_idx) = spatial_neighbor(focused_geom, &candidates, dir) else {
+            return;
+        };
+
+        let window = self.clients[focused_idx].window.clone();
+        let moved = self.clients.remove(focused_idx);
+        self.clients.insert(target_idx, moved);
+
+        self.arrange_monitor(mon_idx);
+        self.focus_surface(Some(FocusTarget::Window(window)));
+    }
 }
 
 #[cfg(test)]
