@@ -7,6 +7,7 @@
 //! a future "perf" pass can't silently drop them.
 
 use super::fixture::Fixture;
+use crate::dispatch::dispatch_action;
 
 /// open_overview must flip every monitor's `is_overview` flag to
 /// true and remember the pre-overview tagset. This is the contract
@@ -142,5 +143,28 @@ fn overview_focus_next_is_noop_when_closed() {
     fx.server.state.overview_focus_next();
     fx.server.state.overview_focus_prev();
     fx.server.state.overview_activate();
+    assert!(!fx.server.state.is_overview_open());
+}
+
+/// mango-port: `enteroverview`/`leaveoverview` (one-shot, non-toggle
+/// enter/leave). Margo's `open_overview`/`close_overview` already
+/// existed as separate methods — these just wire dedicated dispatch
+/// strings to them, mirroring `open_scroller_overview` /
+/// `close_scroller_overview`'s naming for the grid overview.
+#[test]
+fn open_and_close_grid_overview_dispatch_to_the_right_halves() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    let arg = margo_config::Arg::default();
+
+    dispatch_action(&mut fx.server.state, "open_grid_overview", &arg);
+    assert!(fx.server.state.is_overview_open());
+
+    // Re-opening an already-open overview must stay a no-op (matches
+    // open_overview's own contract — see the flipped-monitors test).
+    dispatch_action(&mut fx.server.state, "open_grid_overview", &arg);
+    assert!(fx.server.state.is_overview_open());
+
+    dispatch_action(&mut fx.server.state, "close_grid_overview", &arg);
     assert!(!fx.server.state.is_overview_open());
 }

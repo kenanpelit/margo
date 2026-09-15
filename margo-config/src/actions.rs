@@ -622,6 +622,22 @@ pub const ACTIONS: &[Action] = &[
                  navigation verbs pair with it.",
     },
     Action {
+        name: "open_grid_overview",
+        aliases: &[],
+        args: "",
+        group: Group::Overview,
+        summary: "Open the grid overview (no-op if already open).",
+        detail: "",
+    },
+    Action {
+        name: "close_grid_overview",
+        aliases: &[],
+        args: "",
+        group: Group::Overview,
+        summary: "Close the grid overview (no-op if already closed).",
+        detail: "",
+    },
+    Action {
         name: "grid_overview_focus_next",
         aliases: &[],
         args: "",
