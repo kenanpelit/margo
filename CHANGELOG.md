@@ -5,6 +5,70 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] – 2026-09-15
+
+**Five features ported from mango 0.17, a real floating-window bug fix,
+and a code-review batch: IPC honesty, a complete action catalogue, and
+two security-relevant fixes.**
+
+### Added
+
+- **`move_client`** — move the focused window toward a direction,
+  displacing whatever neighbour is there, instead of swapping with it
+  (`exchange_client` already covers the swap). Works uniformly across
+  every layout, dwindle included, since they're all pure functions of
+  client order.
+- **`windowrule-once`** — a window rule that applies to the first
+  client that ever matches it, then is consumed for the rest of the
+  session (`mctl reload` resets it).
+- **Real idle-inhibit heuristics.** `idleinhibit_ignore_visible` and
+  the window-rule `idle_inhibit_when_focus` now actually do something —
+  both were parsed and exposed in Settings but never consumed by the
+  compositor. New `idle_inhibit_when_fullscreen` keeps the screen awake
+  for fullscreen apps that never request idle-inhibit themselves.
+- **`hot_corner_disable_on_fullscreen`** (default on) — a hot corner no
+  longer triggers while the focused window is fullscreen.
+- **`open_grid_overview` / `close_grid_overview`** dispatch actions —
+  one-shot enter/leave for a press-to-open / Esc-to-close bind pairing,
+  alongside the existing `toggle_grid_overview`.
+- **`focuslast`** dispatch action (dwl parity) — toggle focus back to
+  the previously-focused window on the current monitor.
+- A complete, single-source dispatch-action catalogue
+  (`margo-config::actions`) — ~30 previously-uncatalogued actions
+  (`dpms`, `mru_next`/`mru_prev`, the `twilight_*` verbs, `focuswindow`
+  and friends, the grid/scroller overview navigation verbs, and more)
+  are now in `mctl actions`, the shell's layout menu, and the new
+  config-validator check below. A test locks the catalogue and the
+  dispatcher's `match` arms in sync in both directions.
+- **Config validator W005**: an unknown action in a `bind =` line is
+  now flagged, with a "did you mean" suggestion.
+
+### Fixed
+
+- **A floating window could get permanently stuck at an invisible
+  1×1-pixel size.** `movewin` / `resizewin` / `togglefloating` always
+  floated the focused window, but only seeded its remembered floating
+  geometry from the current tiled size the *first* time — a window once
+  shrunk to a sliver by `resizewin`, then tiled again (looking normal),
+  silently snapped back to that sliver the next time any of the three
+  actions floated it again.
+- **`mctl dispatch` no longer reports success for an unrecognised
+  action.** A typo'd action name (`mctl dispatch focuslsat`) used to
+  get back `{"ok":true}`; it now reports an error, so scripts notice.
+- **IPC `dispatch` argument parsing now matches config-file `bind`
+  parsing exactly**, instead of a second, subtly different
+  implementation that could disagree with what a bind line would do.
+- **margo-portal screencast**: a `Start` request that fails partway
+  through (timeout, race, error) no longer leaks the compositor-side
+  capture session.
+
+### Security
+
+- **mshell plugin sandbox**: a symlink inside a plugin's data directory
+  could be followed to read or write files outside that directory. Path
+  resolution now re-checks the canonical form of the parent chain
+  rather than trusting a single resolve-and-check.
+
 ## [3.4.1] – 2026-09-09
 
 **Tiling gap fixes — layouts stop collapsing around Discord-shaped windows,
