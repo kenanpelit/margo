@@ -641,6 +641,7 @@ const BOOL_KEYS: &[&str] = &[
     "focus_cross_tag",
     "focus_on_activate",
     "gaps_enabled",
+    "hot_corner_disable_on_fullscreen",
     "idleinhibit_ignore_visible",
     "layer_animations",
     "layer_shadows",

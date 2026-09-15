@@ -862,6 +862,9 @@ pub struct Config {
     pub hot_corner_bottom_left: String,
     pub hot_corner_bottom_right: String,
     pub hot_corner_dwell_ms: u32,
+    /// Suppress hot-corner triggering while the focused window is
+    /// fullscreen — a corner touch mid-video shouldn't interrupt it.
+    pub hot_corner_disable_on_fullscreen: bool,
 
     // gaps / borders
     pub enable_gaps: bool,
@@ -1204,6 +1207,7 @@ impl Default for Config {
             hot_corner_bottom_left: String::new(),
             hot_corner_bottom_right: String::new(),
             hot_corner_dwell_ms: 100,
+            hot_corner_disable_on_fullscreen: true,
 
             wallpaper: None,
             wallpaper_fit: WallpaperFit::default(),

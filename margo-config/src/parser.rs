@@ -496,6 +496,9 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "hot_corner_bottom_left" => cfg.hot_corner_bottom_left = val.trim().to_string(),
         "hot_corner_bottom_right" => cfg.hot_corner_bottom_right = val.trim().to_string(),
         "hot_corner_dwell_ms" => cfg.hot_corner_dwell_ms = parse_u32(val),
+        "hot_corner_disable_on_fullscreen" => {
+            cfg.hot_corner_disable_on_fullscreen = parse_bool(val)
+        }
         "cursor_hide_timeout" => cfg.cursor_hide_timeout = parse_u32(val),
 
         // gaps / borders
@@ -1643,6 +1646,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "hotarea_size",
     "hot_corner_bottom_left",
     "hot_corner_bottom_right",
+    "hot_corner_disable_on_fullscreen",
     "hot_corner_dwell_ms",
     "hot_corner_top_left",
     "hot_corner_top_right",

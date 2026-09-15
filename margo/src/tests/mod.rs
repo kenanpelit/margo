@@ -43,6 +43,7 @@ mod focus_mon;
 mod gamma_control;
 mod globals;
 mod groups;
+mod hot_corner;
 mod idle;
 mod layer_shell;
 mod mosaic_layout;

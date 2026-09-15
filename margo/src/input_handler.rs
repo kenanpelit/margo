@@ -776,7 +776,7 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
     update_hot_corner(state);
 }
 
-fn update_hot_corner(state: &mut MargoState) {
+pub(crate) fn update_hot_corner(state: &mut MargoState) {
     use crate::state::HotCorner;
 
     // Hard guards — these states own the screen and a corner-trigger
@@ -791,6 +791,13 @@ fn update_hot_corner(state: &mut MargoState) {
     // Bail before we even check the corners; armed_at stays None so
     // a re-entry restarts the timer cleanly once the guard lifts.
     if state.session_locked {
+        return;
+    }
+    if state.config.hot_corner_disable_on_fullscreen
+        && state
+            .focused_client_idx()
+            .is_some_and(|idx| state.clients[idx].is_fullscreen)
+    {
         return;
     }
     if state
