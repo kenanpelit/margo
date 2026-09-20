@@ -348,5 +348,13 @@ codegen-units = 1
 # `NotificationReplied(id, text)` signal — plus advertising `sound`
 # (the shell plays notification sounds + honours sound hints). Upstream
 # PR-able; drop the patch when wayle grows the capability natively.
+#
+# wayle-systray is vendored (verbatim copy of 0.1.4 + a one-block fix):
+# the `NewIcon` handler now re-reads `IconThemePath` too. Electron apps
+# (Ferdium, Discord, …) write each tray icon into a fresh temp dir and
+# only emit `NewIcon`, so the cached theme path went stale and the tray
+# showed the missing-icon glyph. Upstream PR-able; drop the patch once
+# wayle refreshes the theme path on `NewIcon`.
 [patch.crates-io]
 wayle-notification = { path = "vendor/wayle-notification" }
+wayle-systray = { path = "vendor/wayle-systray" }

@@ -1,7 +1,8 @@
 # cargo-deny — supply-chain gate for the margo workspace.
 #
 # Focus: RUSTSEC security advisories over the dependency tree the codebase
-# never scanned — it vendors third-party code (vendor/wayle-notification),
+# never scanned — it vendors third-party code (vendor/wayle-notification,
+# vendor/wayle-systray),
 # pins `smithay` to a git rev, and links a large GTK + wayland + wasmtime
 # stack. Non-security checks (duplicate versions, licenses) are configured
 # leniently so the gate stays about vulnerabilities, not churn.

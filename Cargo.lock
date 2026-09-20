@@ -10210,8 +10210,6 @@ dependencies = [
 [[package]]
 name = "wayle-systray"
 version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef04fd9cc1b2b603cb05872900bc620c10f93c8bf3e925fb2f1367a24474cf34"
 dependencies = [
  "async-stream",
  "async-trait",
