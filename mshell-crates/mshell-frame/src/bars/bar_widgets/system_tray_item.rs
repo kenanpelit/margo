@@ -1,3 +1,4 @@
+use mshell_common::{WatcherToken, watch_cancellable};
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, Sender, gtk, gtk::gdk, gtk::glib};
 use std::sync::Arc;
@@ -5,10 +6,11 @@ use wayle_systray::adapters::gtk4::Adapter;
 use wayle_systray::core::item::TrayItem;
 use wayle_systray::types::item::IconPixmap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct SystemTrayItemModel {
     tray_item: Arc<TrayItem>,
     popover: Option<gtk::PopoverMenu>,
+    icon_watcher: WatcherToken,
 }
 
 #[derive(Debug)]
@@ -19,9 +21,14 @@ pub(crate) enum SystemTrayItemInput {
 #[derive(Debug)]
 pub(crate) enum SystemTrayItemOutput {}
 
+#[derive(Debug)]
+pub(crate) enum SystemTrayItemCommandOutput {
+    IconChanged,
+}
+
 #[relm4::component(pub)]
 impl Component for SystemTrayItemModel {
-    type CommandOutput = ();
+    type CommandOutput = SystemTrayItemCommandOutput;
     type Input = SystemTrayItemInput;
     type Output = SystemTrayItemOutput;
     type Init = Arc<TrayItem>;
@@ -59,16 +66,51 @@ impl Component for SystemTrayItemModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = SystemTrayItemModel {
+        let mut model = SystemTrayItemModel {
             tray_item: params,
             popover: None,
+            icon_watcher: WatcherToken::new(),
         };
+
+        // Apps re-publish their icon at runtime (state changes, badges,
+        // signal strength); the wayle-systray item already tracks the
+        // NewIcon signal, so just re-render whenever a property changes.
+        // `icon_theme_path` is included because some apps poke it to force
+        // a refresh.
+        let token = model.icon_watcher.reset();
+        let item = model.tray_item.clone();
+        watch_cancellable!(
+            sender,
+            token,
+            [
+                item.icon_name.watch(),
+                item.icon_theme_path.watch(),
+                item.icon_pixmap.watch()
+            ],
+            |out| {
+                let _ = out.send(SystemTrayItemCommandOutput::IconChanged);
+            }
+        );
 
         let widgets = view_output!();
 
         Self::update_icon(&model, &widgets.image);
 
         ComponentParts { model, widgets }
+    }
+
+    fn update_cmd_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::CommandOutput,
+        _sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        match message {
+            SystemTrayItemCommandOutput::IconChanged => {
+                Self::update_icon(self, &widgets.image);
+            }
+        }
     }
 
     fn update_with_view(
@@ -110,6 +152,15 @@ impl SystemTrayItemModel {
     // https://github.com/Jas-SinghFSU/wayle/blob/master/crates/wayle-shell/src/shell/bar/modules/systray/item/mod.rs
     fn update_icon(&self, image: &gtk::Image) {
         if let Some(icon_name) = self.tray_item.icon_name.get() {
+            // Some apps (e.g. Vocalinux) publish an absolute file path as
+            // IconName instead of a theme icon name.
+            if icon_name.starts_with('/')
+                && let Ok(texture) = gdk::Texture::from_filename(&icon_name)
+            {
+                image.set_paintable(Some(&texture));
+                return;
+            }
+
             let theme_path = self.tray_item.icon_theme_path.get();
             if let Some(texture) = theme_path
                 .as_deref()
