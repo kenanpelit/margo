@@ -32,7 +32,6 @@ pub(crate) struct BehaviourModel {
     sloppyfocus: bool,
     warpcursor: bool,
     cursor_hide_timeout: f64,
-    xwayland_persistence: bool,
     drag_tile_to_tile: bool,
     mosaic_auto_overflow_tag: bool,
     drag_warp_cursor: bool,
@@ -192,10 +191,6 @@ impl Component for BehaviourModel {
                         #[template_child] title { set_label: "Hide cursor after inactivity (seconds, 0 = never)" },
                         gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.cursor_hide_timeout, 0.0, 30.0, 1.0),
                             connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("cursor_hide_timeout", s.value() as i64)) } },
-                    #[template] Row {
-                        #[template_child] title { set_label: "XWayland resize persistence (no flicker)" },
-                        gtk::Switch { set_valign: gtk::Align::Center, set_active: model.xwayland_persistence,
-                            connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("xwayland_persistence", s.is_active())) } },
                 },
 
                 gtk::Label { add_css_class: "label-large-bold", set_label: "Drag to rearrange", set_halign: gtk::Align::Start },
@@ -369,7 +364,6 @@ impl Component for BehaviourModel {
             sloppyfocus: read_bool("sloppyfocus", true),
             warpcursor: read_bool("warpcursor", false),
             cursor_hide_timeout: read_int("cursor_hide_timeout", 3) as f64,
-            xwayland_persistence: read_bool("xwayland_persistence", true),
             drag_tile_to_tile: read_bool("drag_tile_to_tile", true),
             mosaic_auto_overflow_tag: read_bool("mosaic_auto_overflow_tag", true),
             drag_warp_cursor: read_bool("drag_warp_cursor", true),

@@ -1047,7 +1047,6 @@ pub struct Config {
     /// themselves. See `MargoState::recompute_idle_inhibit`.
     pub idle_inhibit_when_fullscreen: bool,
     pub log_level: i32,
-    pub xwayland_persistence: bool,
     pub syncobj_enable: bool,
     pub drag_tile_refresh_interval: f32,
     pub drag_floating_refresh_interval: f32,
@@ -1383,7 +1382,6 @@ impl Default for Config {
             idleinhibit_ignore_visible: false,
             idle_inhibit_when_fullscreen: false,
             log_level: 0,
-            xwayland_persistence: true,
             syncobj_enable: false,
             drag_tile_refresh_interval: 8.0,
             drag_floating_refresh_interval: 8.0,

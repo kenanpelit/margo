@@ -694,7 +694,10 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "idleinhibit_ignore_visible" => cfg.idleinhibit_ignore_visible = parse_bool(val),
         "idle_inhibit_when_fullscreen" => cfg.idle_inhibit_when_fullscreen = parse_bool(val),
         "log_level" => cfg.log_level = parse_i32(val),
-        "xwayland_persistence" => cfg.xwayland_persistence = parse_bool(val),
+        // Deprecated no-op: never wired to anything (smithay starts Xwayland
+        // once with a fixed lifecycle). Still accepted so old configs load
+        // without an unknown-key warning.
+        "xwayland_persistence" => {}
         "syncobj_enable" => cfg.syncobj_enable = parse_bool(val),
         "drag_tile_refresh_interval" => cfg.drag_tile_refresh_interval = parse_f32(val),
         "drag_floating_refresh_interval" => cfg.drag_floating_refresh_interval = parse_f32(val),
