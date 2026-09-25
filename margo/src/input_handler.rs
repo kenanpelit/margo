@@ -340,7 +340,8 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                             false,
                         );
                         if matched.is_none() {
-                            for sym in handle.raw_syms() {
+                            let latin = handle.raw_latin_sym_or_raw_current_sym();
+                            for sym in handle.raw_syms().into_iter().chain(latin) {
                                 matched = find_keybinding(
                                     &state.config.key_bindings,
                                     mods,
@@ -449,8 +450,13 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
 
                     // Fallback to raw unshifted symbols if modified_sym didn't match.
                     // This fixes bindings like `super+shift,1` where modified_sym is `!` but raw is `1`.
+                    // Then the layout-agnostic latin sym: with a non-latin layout
+                    // active (ru, gr, …) the raw sym is e.g. `й`, so a `super+q`
+                    // bind would never fire — resolve the key through the first
+                    // configured layout that has a latin keysym for it instead.
                     if matched.is_none() {
-                        for sym in handle.raw_syms() {
+                        let latin = handle.raw_latin_sym_or_raw_current_sym();
+                        for sym in handle.raw_syms().into_iter().chain(latin) {
                             matched = find_keybinding(
                                 &state.config.key_bindings,
                                 mods,
