@@ -455,11 +455,31 @@ impl MargoState {
             0
         };
         let max = crate::MAX_TAGS as i32;
+        // With tag_gather the occupied tags are always packed at the front,
+        // so wrap at "last occupied + 1" rather than into empty tags.
+        let wrap_len = if self.config.tag_gather {
+            let tag_bits = (1u32 << max) - 1;
+            let highest = self
+                .clients
+                .iter()
+                .filter(|c| c.monitor == mon_idx)
+                .map(|c| (u32::BITS - (c.tags & tag_bits).leading_zeros()) as i32)
+                .max()
+                .unwrap_or(0);
+            gather_wrap_len(highest, max)
+        } else {
+            max
+        };
         // Carousel: when the move wraps past the first / last tag, force
         // the slide to continue in the travel direction (so 9→1 going
         // right slides rightward) instead of the long reverse the
         // tag-index delta would otherwise pick. Consumed in `view_tag`.
-        let (next, carousel_dir) = carousel_step(current_tag, delta, max, self.config.tag_carousel);
+        let (next, carousel_dir) =
+            carousel_step_within(current_tag, delta, max, wrap_len, self.config.tag_carousel);
+        // A one-tag wrap region wraps onto itself: nothing to switch to.
+        if current.count_ones() == 1 && (1u32 << next) == current {
+            return;
+        }
         if carousel_dir != 0 {
             self.tag_carousel_dir = carousel_dir;
         }
@@ -1626,6 +1646,35 @@ pub fn carousel_step(current_tag: i32, delta: i32, max: i32, carousel: bool) -> 
     (next, dir)
 }
 
+/// How many tags a relative view wraps over. With `tag_gather` on, tags
+/// past the last occupied one are dead space, so the wrap point is
+/// "highest occupied tag + 1" (capped at `max`) instead of an empty last
+/// tag (mango 0.17.3 `94fd551e`). `highest_occupied` is the 1-based tag
+/// number (0 when the monitor has no clients).
+pub fn gather_wrap_len(highest_occupied: i32, max: i32) -> i32 {
+    (highest_occupied + 1).clamp(1, max)
+}
+
+/// [`carousel_step`] over the first `wrap_len` tags only. Standing on a
+/// tag past that region (an empty tag the user switched to directly):
+/// forward jumps back to the first tag, backward steps down normally.
+pub fn carousel_step_within(
+    current_tag: i32,
+    delta: i32,
+    max: i32,
+    wrap_len: i32,
+    carousel: bool,
+) -> (i32, i8) {
+    let wrap_len = wrap_len.clamp(1, max);
+    if current_tag < wrap_len {
+        return carousel_step(current_tag, delta, wrap_len, carousel);
+    }
+    if delta > 0 {
+        return (0, if carousel { 1 } else { 0 });
+    }
+    carousel_step(current_tag, delta, max, carousel)
+}
+
 /// Resolve the tag-transition slide direction: a pending carousel
 /// direction (already consumed by the caller) overrides the natural
 /// tag-index comparison.
@@ -1716,10 +1765,51 @@ pub fn edge_scroller_decision(
 
 #[cfg(test)]
 mod decision_tests {
-    use super::{EdgeOutcome, carousel_step, edge_scroller_decision, transition_forward};
+    use super::{
+        EdgeOutcome, carousel_step, carousel_step_within, edge_scroller_decision, gather_wrap_len,
+        transition_forward,
+    };
     use crate::layout::LayoutId;
 
     // ── tag carousel ───────────────────────────────────────
+
+    #[test]
+    fn gather_wrap_len_is_last_occupied_plus_one_capped() {
+        assert_eq!(gather_wrap_len(0, 9), 1);
+        assert_eq!(gather_wrap_len(3, 9), 4);
+        assert_eq!(gather_wrap_len(9, 9), 9);
+    }
+
+    #[test]
+    fn carousel_within_gathered_region_wraps_at_last_plus_one() {
+        // Clients on tags 1-3 → region is 4 tags; tag 4 (idx 3) + 1 wraps to tag 1.
+        assert_eq!(carousel_step_within(3, 1, 9, 4, true), (0, 1));
+        // Tag 1 - 1 wraps to tag 4 (idx 3), not the empty tag 9.
+        assert_eq!(carousel_step_within(0, -1, 9, 4, true), (3, -1));
+        // Inside the region a normal step is untouched.
+        assert_eq!(carousel_step_within(1, 1, 9, 4, true), (2, 0));
+    }
+
+    #[test]
+    fn carousel_within_full_region_matches_plain_step() {
+        assert_eq!(
+            carousel_step_within(8, 1, 9, 9, true),
+            carousel_step(8, 1, 9, true)
+        );
+        assert_eq!(
+            carousel_step_within(0, -1, 9, 9, false),
+            carousel_step(0, -1, 9, false)
+        );
+    }
+
+    #[test]
+    fn carousel_from_past_the_gathered_region() {
+        // On empty tag 6 (idx 5) with the region at 4: forward → tag 1.
+        assert_eq!(carousel_step_within(5, 1, 9, 4, true), (0, 1));
+        assert_eq!(carousel_step_within(5, 1, 9, 4, false), (0, 0));
+        // Backward just steps down to tag 5.
+        assert_eq!(carousel_step_within(5, -1, 9, 4, true), (4, 0));
+    }
 
     #[test]
     fn carousel_no_wrap_keeps_dir_zero() {
