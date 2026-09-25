@@ -620,10 +620,10 @@ impl MargoState {
 
         if let Some(handle) = handle {
             if app_id_changed {
-                handle.send_app_id(&app_id);
+                handle.send_app_id(crate::utils::clamp_wire_str(&app_id));
             }
             if title_changed {
-                handle.send_title(&title);
+                handle.send_title(crate::utils::clamp_wire_str(&title));
             }
             handle.send_done();
         }

@@ -61,9 +61,10 @@ impl MargoState {
 
         let target_mon = client.monitor;
         let focus_new = !client.no_focus && !client.open_silent;
-        let ft_handle = self
-            .foreign_toplevel_list
-            .new_toplevel::<Self>(&client.title, &client.app_id);
+        let ft_handle = self.foreign_toplevel_list.new_toplevel::<Self>(
+            crate::utils::clamp_wire_str(&client.title),
+            crate::utils::clamp_wire_str(&client.app_id),
+        );
         ft_handle.send_done();
         client.foreign_toplevel_handle = Some(ft_handle);
         self.clients.push(client);

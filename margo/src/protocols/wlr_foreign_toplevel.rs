@@ -149,8 +149,8 @@ pub fn refresh(state: &mut MargoState) {
         alive.insert(surface.clone());
         snaps.push(Snap {
             surface,
-            title: client.title.clone(),
-            app_id: client.app_id.clone(),
+            title: crate::utils::clamp_wire_str(&client.title).to_owned(),
+            app_id: crate::utils::clamp_wire_str(&client.app_id).to_owned(),
             states,
         });
     }

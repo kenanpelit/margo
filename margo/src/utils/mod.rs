@@ -231,3 +231,50 @@ pub fn clamp_f32(x: f32, min: f32, max: f32) -> f32 {
 pub fn point_in_rect(px: f64, py: f64, rx: i32, ry: i32, rw: i32, rh: i32) -> bool {
     px >= rx as f64 && py >= ry as f64 && px < (rx + rw) as f64 && py < (ry + rh) as f64
 }
+
+/// Longest string a single-string Wayland event can carry: the 4096-byte
+/// message cap minus the 8-byte header, 4-byte length prefix and the NUL.
+pub const MAX_WIRE_STRING: usize = 4083;
+
+/// Clamp a client-controlled string (window title / app_id) to
+/// [`MAX_WIRE_STRING`] on a UTF-8 boundary before it goes on the wire.
+/// wayland-backend kills the receiving client when an event write fails,
+/// so an oversized title (an XWayland window can set an unbounded one)
+/// would otherwise disconnect taskbars and other foreign-toplevel clients.
+pub fn clamp_wire_str(s: &str) -> &str {
+    if s.len() <= MAX_WIRE_STRING {
+        return s;
+    }
+    let mut end = MAX_WIRE_STRING;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+#[cfg(test)]
+mod clamp_wire_str_tests {
+    use super::*;
+
+    #[test]
+    fn short_strings_pass_through() {
+        assert_eq!(clamp_wire_str("kitty"), "kitty");
+        let exact = "a".repeat(MAX_WIRE_STRING);
+        assert_eq!(clamp_wire_str(&exact), exact);
+    }
+
+    #[test]
+    fn long_strings_are_cut_to_the_limit() {
+        let long = "a".repeat(MAX_WIRE_STRING + 500);
+        assert_eq!(clamp_wire_str(&long).len(), MAX_WIRE_STRING);
+    }
+
+    #[test]
+    fn cut_never_splits_a_multibyte_char() {
+        // 'ş' is 2 bytes; an odd limit lands mid-character.
+        let long = "ş".repeat(MAX_WIRE_STRING);
+        let out = clamp_wire_str(&long);
+        assert!(out.len() <= MAX_WIRE_STRING);
+        assert!(out.chars().all(|c| c == 'ş'));
+    }
+}
