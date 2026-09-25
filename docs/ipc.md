@@ -37,6 +37,7 @@ file — both removed.
 | `keyboard-layout` | — | `{"keyboard_layout":"…"}` |
 | `twilight` | — | twilight state object |
 | `config-errors` | — | `{"config_errors":[…]}` |
+| `layers` | — | `{"layers":[{"monitor","layer","name"},…]}` — every layer-shell surface (`layer` = background/bottom/top/overlay, `name` = its namespace). `get` only. |
 
 Error frames are `{"error":"<message>"}`. Unknown verb/topic returns an
 error frame; the connection stays open.

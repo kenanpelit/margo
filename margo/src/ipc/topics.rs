@@ -34,8 +34,43 @@ impl MargoState {
         if topic == "perf" {
             return build_perf_payload(&self.perf_counters, std::time::Instant::now());
         }
+        // Layer-shell surfaces live in smithay's per-output layer maps, not
+        // in the state snapshot.
+        if topic == "layers" {
+            return self.build_layers_payload();
+        }
         let snap = self.ipc_state_snapshot();
         project_topic(&snap, &self.current_kb_layout, topic, args)
+    }
+
+    /// `layers` topic: every layer-shell surface currently on an output as
+    /// `{monitor, layer, name}` (mango's `get all-layers`). Handy for
+    /// writing window rules / debugging what a bar or lock surface
+    /// registers as its namespace.
+    fn build_layers_payload(&self) -> Value {
+        let mut layers = Vec::new();
+        for mon in &self.monitors {
+            let map = smithay::desktop::layer_map_for_output(&mon.output);
+            for surface in map.layers() {
+                layers.push(json!({
+                    "monitor": mon.name,
+                    "layer": layer_name(surface.layer()),
+                    "name": surface.namespace(),
+                }));
+            }
+        }
+        json!({ "layers": layers })
+    }
+}
+
+/// Wire name of a layer-shell layer.
+fn layer_name(layer: smithay::wayland::shell::wlr_layer::Layer) -> &'static str {
+    use smithay::wayland::shell::wlr_layer::Layer;
+    match layer {
+        Layer::Background => "background",
+        Layer::Bottom => "bottom",
+        Layer::Top => "top",
+        Layer::Overlay => "overlay",
     }
 }
 
@@ -203,8 +238,17 @@ pub fn project_topic(snap: &Value, kb_layout: &str, topic: &str, args: &[String]
 
 #[cfg(test)]
 mod tests {
-    use super::project_topic;
+    use super::{layer_name, project_topic};
     use serde_json::{Value, json};
+    use smithay::wayland::shell::wlr_layer::Layer;
+
+    #[test]
+    fn layer_names_are_the_protocol_layer_names() {
+        assert_eq!(layer_name(Layer::Background), "background");
+        assert_eq!(layer_name(Layer::Bottom), "bottom");
+        assert_eq!(layer_name(Layer::Top), "top");
+        assert_eq!(layer_name(Layer::Overlay), "overlay");
+    }
 
     fn snap() -> Value {
         json!({

@@ -302,7 +302,7 @@ enum Command {
                       pretty-print the single JSON reply.\n\n\
                       TOPICS: state | clients | client <id> | monitors | monitor <name> | \
                       tags <monitor> | focused | layouts | keyboard-layout | twilight | \
-                      config-errors\n\n\
+                      config-errors | layers\n\n\
                       EXAMPLES:\n  \
                         mctl get state\n  \
                         mctl get clients\n  \
