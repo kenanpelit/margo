@@ -391,6 +391,9 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "swipe_min_threshold" => cfg.swipe_min_threshold = parse_u32(val),
         "focused_opacity" => cfg.focused_opacity = parse_f32(val),
         "unfocused_opacity" => cfg.unfocused_opacity = parse_f32(val),
+        "dim_enable" => cfg.dim_enable = parse_bool(val),
+        "dim_focused_color" => cfg.dim_focused_color = parse_color(val)?,
+        "dim_unfocused_color" => cfg.dim_unfocused_color = parse_color(val)?,
 
         // hotarea
         "hotarea_size" => cfg.hotarea_size = parse_u32(val),
@@ -1646,6 +1649,9 @@ pub const OPTION_KEYS: &[&str] = &[
     "taglayout_force",
     "default_mfact",
     "default_nmaster",
+    "dim_enable",
+    "dim_focused_color",
+    "dim_unfocused_color",
     "disable_trackpad",
     "disable_while_typing",
     "drag_corner",
@@ -1853,6 +1859,22 @@ mod tests {
             expand_tilde_in_env("~/x", Some("/home/kenan/")),
             "/home/kenan/x"
         );
+    }
+
+    #[test]
+    fn dim_knobs_default_off_and_parse_rrggbbaa() {
+        let d = parse_config_str("", None).unwrap();
+        assert!(!d.dim_enable);
+        assert_eq!(d.dim_focused_color.0, [0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(d.dim_unfocused_color.0, [0.0, 0.0, 0.0, 85.0 / 255.0]);
+
+        let c = parse_config_str(
+            "dim_enable = 1\ndim_focused_color = 0x00000000\ndim_unfocused_color = 0x0000004d\n",
+            None,
+        )
+        .unwrap();
+        assert!(c.dim_enable);
+        assert_eq!(c.dim_unfocused_color.0, [0.0, 0.0, 0.0, 77.0 / 255.0]);
     }
 
     #[test]

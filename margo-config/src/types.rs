@@ -731,6 +731,11 @@ pub struct Config {
     pub focused_opacity: f32,
     pub unfocused_opacity: f32,
 
+    // dim overlay: a translucent layer over window content (mango 0.17.3).
+    pub dim_enable: bool,
+    pub dim_focused_color: Rgba,
+    pub dim_unfocused_color: Rgba,
+
     // hotarea
     pub hotarea_size: u32,
     pub hotarea_corner: HotareaCorner,
@@ -1170,6 +1175,11 @@ impl Default for Config {
             swipe_min_threshold: 1,
             focused_opacity: 1.0,
             unfocused_opacity: 1.0,
+
+            dim_enable: false,
+            dim_focused_color: Rgba([0.0, 0.0, 0.0, 0.0]),
+            // 0x55 / 255 — about a third black over unfocused windows.
+            dim_unfocused_color: Rgba([0.0, 0.0, 0.0, 85.0 / 255.0]),
 
             hotarea_size: 10,
             hotarea_corner: HotareaCorner::BottomLeft,

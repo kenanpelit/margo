@@ -1578,6 +1578,73 @@ fn push_drag_swap_highlight(
     ));
 }
 
+/// `dim_enable` overlay (mango a4764ccf): a translucent rounded fill over a
+/// window's content, tinted by `dim_focused_color` / `dim_unfocused_color`,
+/// so a window can be shaded without touching the app's own opacity. Never
+/// takes input (it's a render element only). Uses a stable per-window id
+/// plus a commit derived from the tint, so an unchanged dim reports zero
+/// damage instead of repainting every frame.
+fn push_dim_overlay(
+    renderer: &mut GlesRenderer,
+    state: &MargoState,
+    window: &smithay::desktop::Window,
+    client: &MargoClient,
+    is_focused: bool,
+    clip_geometry: Option<Rectangle<f64, Logical>>,
+    radius: f32,
+    output_scale: f64,
+    elements: &mut Vec<MargoRenderElement>,
+) {
+    // Overview already dims non-selected thumbnails; an opening window is
+    // drawn scaled by the open animation, so a slot-sized dim would lead it.
+    if !state.config.dim_enable || state.is_overview_open() || client.opening_animation.is_some() {
+        return;
+    }
+    let color = if is_focused {
+        state.config.dim_focused_color.0
+    } else {
+        state.config.dim_unfocused_color.0
+    };
+    if color[3] <= 0.0 {
+        return;
+    }
+    let Some(geo) = clip_geometry else { return };
+    let Some(program) = crate::render::rounded_solid::shader(renderer) else {
+        return;
+    };
+    let rect = Rectangle::<i32, smithay::utils::Physical>::new(
+        (
+            (geo.loc.x * output_scale).round() as i32,
+            (geo.loc.y * output_scale).round() as i32,
+        )
+            .into(),
+        (
+            ((geo.size.w * output_scale).round() as i32).max(1),
+            ((geo.size.h * output_scale).round() as i32).max(1),
+        )
+            .into(),
+    );
+    let id = match window.wl_surface() {
+        Some(s) => state.decoration_element_ids(&s).2,
+        None => smithay::backend::renderer::element::Id::new(),
+    };
+    let tint_key = color.iter().fold(0usize, |acc, c| {
+        acc.wrapping_mul(31).wrapping_add(c.to_bits() as usize)
+    });
+    elements.push(MargoRenderElement::RoundedSolid(
+        crate::render::rounded_solid::RoundedSolidElement::new(
+            id,
+            rect,
+            radius * output_scale as f32,
+            color,
+            program.0,
+        )
+        .with_commit(smithay::backend::renderer::utils::CommitCounter::from(
+            tint_key,
+        )),
+    ));
+}
+
 fn push_client_elements(
     renderer: &mut GlesRenderer,
     state: &MargoState,
@@ -1590,6 +1657,13 @@ fn push_client_elements(
     elements: &mut Vec<MargoRenderElement>,
 ) {
     let scale = Scale::from(output_scale);
+
+    // The keyboard-focused window, resolved once per frame (the lookup is a
+    // linear scan) for the `dim_*` tint below.
+    let focused_window = state
+        .focused_client_idx()
+        .and_then(|idx| state.clients.get(idx))
+        .map(|c| &c.window);
 
     // Index clients by window once per output per frame. The per-window
     // body below resolved its client with a linear `clients.iter().find`,
@@ -1842,6 +1916,25 @@ fn push_client_elements(
                             elements.push(MargoRenderElement::Shadow(shadow));
                         }
                     }
+                }
+
+                // Dim overlay: pushed ahead of every content variant below
+                // (open/close, resize snapshot, live surface) so it sits
+                // above all of them, but after the border/popups so those
+                // stay on top of it. Skipped in screencasts — a capture
+                // shouldn't come out darkened.
+                if !for_screencast && let Some(client) = client {
+                    push_dim_overlay(
+                        renderer,
+                        state,
+                        window,
+                        client,
+                        focused_window == Some(window),
+                        clip_geometry,
+                        radius,
+                        output_scale,
+                        elements,
+                    );
                 }
 
                 // Niri-style resize transition: render BOTH the live
@@ -2134,6 +2227,20 @@ fn push_client_elements(
                     output_scale,
                     elements,
                 );
+
+                if !for_screencast && let Some(client) = client {
+                    push_dim_overlay(
+                        renderer,
+                        state,
+                        window,
+                        client,
+                        focused_window == Some(window),
+                        clip_geometry,
+                        radius,
+                        output_scale,
+                        elements,
+                    );
+                }
 
                 let rendered = AsRenderElements::<GlesRenderer>::render_elements::<
                     WaylandSurfaceRenderElement<GlesRenderer>,

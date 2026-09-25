@@ -767,6 +767,7 @@ pub struct MargoState {
             (
                 smithay::backend::renderer::element::Id,
                 smithay::backend::renderer::element::Id,
+                smithay::backend::renderer::element::Id,
             ),
         >,
     >,
@@ -2999,14 +3000,15 @@ impl ForeignToplevelListHandler for MargoState {
 // ── XwmHandler: X11 window management ────────────────────────────────────────
 
 impl MargoState {
-    /// Stable `(shadow_id, blur_id)` for a surface's self-drawn
+    /// Stable `(shadow_id, blur_id, dim_id)` for a surface's self-drawn
     /// decorations, created once and reused across frames. See
-    /// [`MargoState::decoration_ids`]. The pair is created lazily on first
-    /// use; `Id` is a cheap clonable handle.
+    /// [`MargoState::decoration_ids`]. The triple is created lazily on
+    /// first use; `Id` is a cheap clonable handle.
     pub fn decoration_element_ids(
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> (
+        smithay::backend::renderer::element::Id,
         smithay::backend::renderer::element::Id,
         smithay::backend::renderer::element::Id,
     ) {
@@ -3014,7 +3016,7 @@ impl MargoState {
         self.decoration_ids
             .borrow_mut()
             .entry(surface.id())
-            .or_insert_with(|| (Id::new(), Id::new()))
+            .or_insert_with(|| (Id::new(), Id::new(), Id::new()))
             .clone()
     }
 }

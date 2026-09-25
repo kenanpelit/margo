@@ -90,6 +90,15 @@ impl RoundedSolidElement {
             program,
         }
     }
+
+    /// Override the commit counter. A caller that keeps one stable `Id`
+    /// across frames encodes what can change without moving the element
+    /// (its colour) here, so the damage tracker repaints when — and only
+    /// when — it did.
+    pub fn with_commit(mut self, commit: CommitCounter) -> Self {
+        self.commit = commit;
+        self
+    }
 }
 
 impl Element for RoundedSolidElement {
