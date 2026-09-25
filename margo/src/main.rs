@@ -804,8 +804,19 @@ fn main() -> Result<()> {
                                     // already set; we only fill in
                                     // a missing slot so we never
                                     // override an explicit choice.
+                                    // Same for the size: an explicit
+                                    // `env = XCURSOR_SIZE, …` in the
+                                    // config wins over `cursor_size`
+                                    // (mango f919134d).
                                     let cursor_size = state.config.cursor_size.max(8);
-                                    std::env::set_var("XCURSOR_SIZE", cursor_size.to_string());
+                                    if !state
+                                        .config
+                                        .envs
+                                        .iter()
+                                        .any(|(name, _)| name == "XCURSOR_SIZE")
+                                    {
+                                        std::env::set_var("XCURSOR_SIZE", cursor_size.to_string());
+                                    }
                                     if std::env::var_os("XCURSOR_THEME").is_none() {
                                         if let Some(theme) = state
                                             .config
@@ -820,7 +831,8 @@ fn main() -> Result<()> {
                                 info!(
                                     "XWayland ready on :{display_number} \
                                      XCURSOR_SIZE={} XCURSOR_THEME={}",
-                                    state.config.cursor_size,
+                                    std::env::var("XCURSOR_SIZE")
+                                        .unwrap_or_else(|_| "<unset>".into()),
                                     std::env::var("XCURSOR_THEME")
                                         .unwrap_or_else(|_| "<unset>".into()),
                                 );
