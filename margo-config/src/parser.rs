@@ -1081,8 +1081,34 @@ fn parse_env(cfg: &mut Config, val: &str) -> Result<()> {
     if name.is_empty() {
         bail!("env directive missing name");
     }
-    cfg.envs.push((name, value));
+    let home = std::env::var("HOME").ok();
+    cfg.envs
+        .push((name, expand_tilde_in_env(&value, home.as_deref())));
     Ok(())
+}
+
+/// Replace `~/` with `$HOME/` in an `env` value, at the start or after a
+/// `:`, `=` or whitespace (so `PATH`-style lists and `--flag=~/x` work,
+/// while a stray `a~/b` is left alone). With no `$HOME` the value is kept
+/// verbatim rather than failing the whole config load. mango 0.16.2.
+fn expand_tilde_in_env(value: &str, home: Option<&str>) -> String {
+    let Some(home) = home.filter(|h| !h.is_empty()) else {
+        return value.to_string();
+    };
+    let home = home.trim_end_matches('/');
+    let mut out = String::with_capacity(value.len());
+    let mut prev: Option<char> = None;
+    let mut chars = value.chars().peekable();
+    while let Some(c) = chars.next() {
+        let at_word_start = prev.is_none_or(|p| p == ':' || p == '=' || p.is_whitespace());
+        if c == '~' && at_word_start && chars.peek() == Some(&'/') {
+            out.push_str(home);
+        } else {
+            out.push(c);
+        }
+        prev = Some(c);
+    }
+    out
 }
 
 // ── Default ChVT bindings (Ctrl+Alt+F1…F12) ──────────────────────────────────
@@ -1802,9 +1828,38 @@ pub const OPTION_KEYS: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::{
-        clamp_keyword, parse_config, parse_config_str, parse_config_str_with_defaults, parse_key,
-        strip_inline_comment,
+        clamp_keyword, expand_tilde_in_env, parse_config, parse_config_str,
+        parse_config_str_with_defaults, parse_key, strip_inline_comment,
     };
+
+    #[test]
+    fn env_tilde_expands_at_word_starts_only() {
+        let home = Some("/home/kenan");
+        assert_eq!(expand_tilde_in_env("~/bin", home), "/home/kenan/bin");
+        assert_eq!(
+            expand_tilde_in_env("~/bin:~/.local/bin:/usr/bin", home),
+            "/home/kenan/bin:/home/kenan/.local/bin:/usr/bin"
+        );
+        assert_eq!(
+            expand_tilde_in_env("--config=~/x --log ~/y", home),
+            "--config=/home/kenan/x --log /home/kenan/y"
+        );
+        // Not at a word start, or not followed by `/`: untouched.
+        assert_eq!(expand_tilde_in_env("a~/b", home), "a~/b");
+        assert_eq!(expand_tilde_in_env("~user/x", home), "~user/x");
+        assert_eq!(expand_tilde_in_env("~", home), "~");
+        // A trailing slash on $HOME doesn't double up.
+        assert_eq!(
+            expand_tilde_in_env("~/x", Some("/home/kenan/")),
+            "/home/kenan/x"
+        );
+    }
+
+    #[test]
+    fn env_tilde_without_home_is_verbatim() {
+        assert_eq!(expand_tilde_in_env("~/bin", None), "~/bin");
+        assert_eq!(expand_tilde_in_env("~/bin", Some("")), "~/bin");
+    }
 
     #[test]
     fn clamp_keyword_is_char_safe() {
