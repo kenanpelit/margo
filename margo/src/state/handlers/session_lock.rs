@@ -12,8 +12,9 @@ use smithay::{
     output::Output,
     reexports::wayland_server::protocol::wl_output::WlOutput,
     utils::{SERIAL_COUNTER, Size},
-    wayland::session_lock::{
-        LockSurface, SessionLockHandler, SessionLockManagerState, SessionLocker,
+    wayland::{
+        session_lock::{LockSurface, SessionLockHandler, SessionLockManagerState, SessionLocker},
+        text_input::TextInputSeat,
     },
 };
 
@@ -42,6 +43,7 @@ impl SessionLockHandler for MargoState {
             keyboard.unset_grab(self);
             keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
         }
+        self.seat.text_input().set_focus(None);
         if let Some(touch) = self.seat.get_touch() {
             touch.unset_grab(self);
         }

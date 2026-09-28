@@ -91,7 +91,7 @@ use smithay::{
             },
         },
         shm::{ShmHandler, ShmState},
-        text_input::TextInputManagerState,
+        text_input::{TextInputManagerState, TextInputSeat},
         viewporter::ViewporterState,
         xdg_activation::XdgActivationState,
         xwayland_shell::XWaylandShellState,
@@ -2230,10 +2230,20 @@ impl MargoState {
             }
         }
 
+        // text-input-v3's own focus tracking is separate from keyboard
+        // focus and margo never drove it, so `enter`/`leave` never fired
+        // for any client — captured before `target` moves into
+        // `keyboard.set_focus` below.
+        let text_input_surface = target
+            .as_ref()
+            .and_then(FocusTarget::inner_wl_surface)
+            .cloned();
+
         let serial = SERIAL_COUNTER.next_serial();
         if let Some(keyboard) = self.seat.get_keyboard() {
             keyboard.set_focus(self, target, serial);
         }
+        self.seat.text_input().set_focus(text_input_surface);
 
         // Focus highlight cross-fade. When focus moves between two
         // windows, animate both: the outgoing window's border colour
