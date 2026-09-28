@@ -40,6 +40,24 @@ button:checked label {
     color: #1e1e2e;
 }
 
+/* Toolbar: dock/undock + hide, always shown above the keys. */
+.mkeys-toolbar {
+    padding: 2px 4px;
+}
+
+.mkeys-toolbar button {
+    background-color: transparent;
+    border-radius: 6px;
+    margin: 0;
+    padding: 4px;
+    min-width: 0;
+    min-height: 0;
+}
+
+.mkeys-toolbar button:hover {
+    background-color: rgba(205, 214, 244, 0.12);
+}
+
 /* Floating mode's drag handle. */
 .mkeys-grip {
     min-height: 14px;

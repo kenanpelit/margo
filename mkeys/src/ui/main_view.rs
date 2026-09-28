@@ -4,8 +4,8 @@ use std::thread;
 
 use gdk4::prelude::ObjectExt;
 use gtk::prelude::{
-    ApplicationExt, BoxExt, GestureDragExt, GestureSingleExt, GtkWindowExt, ToggleButtonExt,
-    WidgetExt,
+    ApplicationExt, BoxExt, ButtonExt, GestureDragExt, GestureSingleExt, GtkWindowExt,
+    ToggleButtonExt, WidgetExt,
 };
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use relm4::gtk::gdk;
@@ -79,35 +79,98 @@ impl SimpleComponent for UIModel {
         window.set_layer(Layer::Overlay);
         window.set_keyboard_mode(KeyboardMode::None);
         window.set_exclusive_zone(0);
+        window.set_opacity(config.opacity as f64);
 
         // Key cell height, scaled from the base 64px unit.
         let geometry_unit = (64.0 * config.scale).round() as i32;
+        let kb_width_units = keyboard_definition.width;
+        let kb_height_rows = keyboard_definition.height;
 
-        let floating_start = config
-            .floating
-            .then(|| setup_floating(&window, &config, &keyboard_definition, geometry_unit));
-        if !config.floating {
-            let bottom = matches!(config.position, Position::Bottom);
-            window.set_anchor(Edge::Left, false);
-            window.set_anchor(Edge::Right, false);
-            window.set_anchor(Edge::Top, !bottom);
-            window.set_anchor(Edge::Bottom, bottom);
-            window.set_margin(if bottom { Edge::Bottom } else { Edge::Top }, config.margin);
+        let is_floating = Rc::new(Cell::new(config.floating));
+        let float_state = FloatState {
+            pos: Rc::new(Cell::new((0, 0))),
+            bounds: Rc::new(Cell::new((0, 0))),
+        };
+        if is_floating.get() {
+            setup_floating(
+                &window,
+                config.margin,
+                kb_width_units,
+                kb_height_rows,
+                geometry_unit,
+                &float_state,
+            );
+        } else {
+            setup_docked(&window, config.position, config.margin);
         }
-        window.set_opacity(config.opacity as f64);
+
+        // Toolbar: dock/undock on the left, hide on the right. Always
+        // present, independent of `floating` — cosmic-osk parity 4/4.
+        let root = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .build();
+        window.set_child(Some(&root));
+        root.set_align(gtk::Align::Center);
+        root.set_expand(true);
+
+        let toolbar = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .css_classes(["mkeys-toolbar"])
+            .build();
+        let dock_button = gtk::Button::from_icon_name(dock_icon_name(is_floating.get()));
+        dock_button.add_css_class("flat");
+        dock_button.set_tooltip_text(Some(dock_tooltip(is_floating.get())));
+        let toolbar_spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        toolbar_spacer.set_hexpand(true);
+        let close_button = gtk::Button::from_icon_name("window-close-symbolic");
+        close_button.add_css_class("flat");
+        close_button.set_tooltip_text(Some("Hide keyboard"));
+        toolbar.append(&dock_button);
+        toolbar.append(&toolbar_spacer);
+        toolbar.append(&close_button);
+        root.append(&toolbar);
+
+        let close_sender = sender.clone();
+        close_button.connect_clicked(move |_| {
+            close_sender.input(UIMessage::AppQuit);
+        });
 
         let container = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .build();
-        window.set_child(Some(&container));
-        container.set_align(gtk::Align::Center);
-        container.set_expand(true);
+        root.append(&container);
 
-        if let Some((start_pos, bounds)) = floating_start {
-            let grip = gtk::Box::builder().css_classes(["mkeys-grip"]).build();
-            attach_grip_drag(&grip, &window, start_pos, bounds);
-            container.append(&grip);
-        }
+        let grip = gtk::Box::builder().css_classes(["mkeys-grip"]).build();
+        grip.set_visible(is_floating.get());
+        attach_grip_drag(&grip, &window, &float_state);
+        container.append(&grip);
+
+        let dock_window = window.clone();
+        let dock_grip = grip.clone();
+        let dock_button_self = dock_button.clone();
+        let dock_is_floating = is_floating.clone();
+        let dock_float_state = float_state.clone();
+        let dock_position = config.position;
+        let dock_margin = config.margin;
+        dock_button.connect_clicked(move |_| {
+            let now_floating = !dock_is_floating.get();
+            dock_is_floating.set(now_floating);
+            if now_floating {
+                setup_floating(
+                    &dock_window,
+                    dock_margin,
+                    kb_width_units,
+                    kb_height_rows,
+                    geometry_unit,
+                    &dock_float_state,
+                );
+            } else {
+                setup_docked(&dock_window, dock_position, dock_margin);
+            }
+            dock_grip.set_visible(now_floating);
+            dock_button_self.set_icon_name(dock_icon_name(now_floating));
+            dock_button_self.set_tooltip_text(Some(dock_tooltip(now_floating)));
+        });
 
         keyboard_definition.layout.iter().for_each(|row| {
             let row_container = gtk::Box::builder()
@@ -120,15 +183,26 @@ impl SimpleComponent for UIModel {
 
                 match key.key_type() {
                     KeyType::Mod => {
-                        let toggle = gtk::ToggleButton::builder()
-                            .label(format!(
-                                "{} {}",
-                                key.bottom_legend.clone().unwrap_or_default(),
-                                key.top_legend.clone().unwrap_or_default()
-                            ))
-                            .width_request(width)
-                            .height_request(geometry_unit)
-                            .build();
+                        // Shift (evdev KEY_LEFTSHIFT/RIGHTSHIFT) as an
+                        // up-chevron icon — the other mod keys (Ctrl/Win/
+                        // Alt) keep their text label.
+                        let toggle = if scan_code == 42 || scan_code == 54 {
+                            gtk::ToggleButton::builder()
+                                .icon_name("pan-up-symbolic")
+                                .width_request(width)
+                                .height_request(geometry_unit)
+                                .build()
+                        } else {
+                            gtk::ToggleButton::builder()
+                                .label(format!(
+                                    "{} {}",
+                                    key.bottom_legend.clone().unwrap_or_default(),
+                                    key.top_legend.clone().unwrap_or_default()
+                                ))
+                                .width_request(width)
+                                .height_request(geometry_unit)
+                                .build()
+                        };
 
                         let button_sender = sender.clone();
                         toggle.connect_toggled(move |btn| {
@@ -168,7 +242,19 @@ impl SimpleComponent for UIModel {
                             row_container.append(&label);
                         } else {
                             let button = ButtonEX::default();
-                            button.set_primary_content(key.top_legend.clone().unwrap_or_default());
+                            // Backspace (evdev KEY_BACKSPACE) as a symbolic
+                            // icon, matching cosmic-osk's own choice — the
+                            // one special key common to every layout, so
+                            // it's the safe one to icon-ify: `edit-clear-
+                            // symbolic` ships in the Adwaita fallback theme
+                            // every GTK install carries.
+                            if scan_code == 14 {
+                                button.set_icon_name(Some("edit-clear-symbolic".to_string()));
+                            } else {
+                                button.set_primary_content(
+                                    key.top_legend.clone().unwrap_or_default(),
+                                );
+                            }
                             button.set_secondary_content(
                                 key.bottom_legend.clone().unwrap_or_default(),
                             );
@@ -236,40 +322,81 @@ impl SimpleComponent for UIModel {
     fn update_view(&self, _widgets: &mut Self::Widgets, _sender: ComponentSender<Self>) {}
 }
 
+/// Live floating position + drag bounds, shared between [`setup_floating`]
+/// and [`attach_grip_drag`] (and refreshed by the dock/undock toolbar
+/// button each time floating mode is re-entered).
+#[derive(Clone)]
+struct FloatState {
+    pos: Rc<Cell<(i32, i32)>>,
+    bounds: Rc<Cell<(i32, i32)>>,
+}
+
 /// Anchors the layer surface to (Left, Top) only — free absolute
 /// positioning via margins, instead of docking to a screen edge — sets
 /// the initial margins to a sensible starting spot (horizontally
-/// centered, near the bottom like the docked default), and returns that
-/// start position plus the (left, top) margin range that keeps the
-/// keyboard fully on-screen, for [`attach_grip_drag`].
+/// centered, near the bottom like the docked default), and updates
+/// `state` with that position and the (left, top) margin range that
+/// keeps the keyboard fully on-screen, for [`attach_grip_drag`].
 fn setup_floating(
     window: &gtk::Window,
-    config: &Config,
-    keyboard_definition: &LayoutDefinition,
+    margin: i32,
+    kb_width_units: f32,
+    kb_height_rows: i32,
     geometry_unit: i32,
-) -> ((i32, i32), (i32, i32)) {
+    state: &FloatState,
+) {
     window.set_anchor(Edge::Left, true);
     window.set_anchor(Edge::Top, true);
     window.set_anchor(Edge::Right, false);
     window.set_anchor(Edge::Bottom, false);
 
-    let (kb_width, kb_height) = keyboard_pixel_size(keyboard_definition, geometry_unit);
+    let (kb_width, kb_height) = keyboard_pixel_size(kb_width_units, kb_height_rows, geometry_unit);
     let (mon_w, mon_h) = primary_monitor_size();
     let start_left = ((mon_w - kb_width) / 2).max(0);
-    let start_top = (mon_h - kb_height - config.margin).max(0);
+    let start_top = (mon_h - kb_height - margin).max(0);
     window.set_margin(Edge::Left, start_left);
     window.set_margin(Edge::Top, start_top);
 
-    let bounds = ((mon_w - kb_width).max(0), (mon_h - kb_height).max(0));
-    ((start_left, start_top), bounds)
+    state.pos.set((start_left, start_top));
+    state
+        .bounds
+        .set(((mon_w - kb_width).max(0), (mon_h - kb_height).max(0)));
+}
+
+/// Docks the layer surface to `position` (top/bottom), the pre-floating
+/// mkeys behaviour.
+fn setup_docked(window: &gtk::Window, position: Position, margin: i32) {
+    let bottom = matches!(position, Position::Bottom);
+    window.set_anchor(Edge::Left, false);
+    window.set_anchor(Edge::Right, false);
+    window.set_anchor(Edge::Top, !bottom);
+    window.set_anchor(Edge::Bottom, bottom);
+    window.set_margin(if bottom { Edge::Bottom } else { Edge::Top }, margin);
+}
+
+fn dock_icon_name(floating: bool) -> &'static str {
+    if floating {
+        "view-restore-symbolic"
+    } else {
+        "view-fullscreen-symbolic"
+    }
+}
+
+fn dock_tooltip(floating: bool) -> &'static str {
+    if floating {
+        "Dock keyboard"
+    } else {
+        "Detach keyboard"
+    }
 }
 
 /// Approximate on-screen size of the keyboard, for computing a starting
 /// floating position and clamping the drag range — a few tens of pixels
-/// off (button CSS margins, the grip bar) doesn't matter for either use.
-fn keyboard_pixel_size(keyboard_definition: &LayoutDefinition, geometry_unit: i32) -> (i32, i32) {
-    let width = (geometry_unit as f32 * keyboard_definition.width).round() as i32;
-    let height = geometry_unit * keyboard_definition.height;
+/// off (button CSS margins, the toolbar, the grip bar) doesn't matter
+/// for either use.
+fn keyboard_pixel_size(kb_width_units: f32, kb_height_rows: i32, geometry_unit: i32) -> (i32, i32) {
+    let width = (geometry_unit as f32 * kb_width_units).round() as i32;
+    let height = geometry_unit * kb_height_rows;
     (width.max(1), height.max(1))
 }
 
@@ -297,17 +424,11 @@ fn primary_monitor_size() -> (i32, i32) {
 }
 
 /// Wires a `GestureDrag` on `grip` that moves `window`'s floating
-/// position live, clamped to `bounds` (from [`setup_floating`]) so the
-/// keyboard can't be dragged off-screen. Position is tracked in a local
-/// `Cell` rather than read back from gtk4-layer-shell, seeded from
-/// `start_pos` (the margins `setup_floating` already applied).
-fn attach_grip_drag(
-    grip: &gtk::Box,
-    window: &gtk::Window,
-    start_pos: (i32, i32),
-    bounds: (i32, i32),
-) {
-    let pos = Rc::new(Cell::new(start_pos));
+/// position live, clamped to `state.bounds` (updated by [`setup_floating`]
+/// each time floating mode is entered, incl. via the dock/undock toolbar
+/// button) so the keyboard can't be dragged off-screen. Position is
+/// tracked in `state.pos` rather than read back from gtk4-layer-shell.
+fn attach_grip_drag(grip: &gtk::Box, window: &gtk::Window, state: &FloatState) {
     let drag_start = Rc::new(Cell::new((0, 0)));
 
     grip.set_cursor_from_name(Some("grab"));
@@ -316,7 +437,7 @@ fn attach_grip_drag(
     gesture.set_button(gdk::BUTTON_PRIMARY);
 
     let grip_begin = grip.clone();
-    let pos_begin = pos.clone();
+    let pos_begin = state.pos.clone();
     let start_begin = drag_start.clone();
     gesture.connect_drag_begin(move |_, _, _| {
         start_begin.set(pos_begin.get());
@@ -324,12 +445,14 @@ fn attach_grip_drag(
     });
 
     let window_update = window.clone();
-    let pos_update = pos.clone();
+    let pos_update = state.pos.clone();
+    let bounds_update = state.bounds.clone();
     let start_update = drag_start.clone();
     gesture.connect_drag_update(move |_, offset_x, offset_y| {
         let (base_left, base_top) = start_update.get();
-        let new_left = (base_left + offset_x.round() as i32).clamp(0, bounds.0);
-        let new_top = (base_top + offset_y.round() as i32).clamp(0, bounds.1);
+        let (bound_x, bound_y) = bounds_update.get();
+        let new_left = (base_left + offset_x.round() as i32).clamp(0, bound_x);
+        let new_top = (base_top + offset_y.round() as i32).clamp(0, bound_y);
         window_update.set_margin(Edge::Left, new_left);
         window_update.set_margin(Edge::Top, new_top);
         pos_update.set((new_left, new_top));
