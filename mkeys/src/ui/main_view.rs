@@ -181,28 +181,31 @@ impl SimpleComponent for UIModel {
                 let scan_code = key.scan_code;
                 let width = (key.width.unwrap_or(1.0) * geometry_unit as f32).round() as i32;
 
+                // Special-key glyphs are plain Unicode symbols, not
+                // icon-theme lookups: every install's font stack covers
+                // them, no dependency on which icon theme (or whether it
+                // inherits Adwaita/breeze) happens to be active.
+                let glyph = special_key_glyph(scan_code);
+                let mod_lock_label = || {
+                    glyph.map(str::to_string).unwrap_or_else(|| {
+                        format!(
+                            "{} {}",
+                            key.bottom_legend.clone().unwrap_or_default(),
+                            key.top_legend.clone().unwrap_or_default()
+                        )
+                    })
+                };
+
                 match key.key_type() {
                     KeyType::Mod => {
-                        // Shift (evdev KEY_LEFTSHIFT/RIGHTSHIFT) as an
-                        // up-chevron icon — the other mod keys (Ctrl/Win/
-                        // Alt) keep their text label.
-                        let toggle = if scan_code == 42 || scan_code == 54 {
-                            gtk::ToggleButton::builder()
-                                .icon_name("pan-up-symbolic")
-                                .width_request(width)
-                                .height_request(geometry_unit)
-                                .build()
-                        } else {
-                            gtk::ToggleButton::builder()
-                                .label(format!(
-                                    "{} {}",
-                                    key.bottom_legend.clone().unwrap_or_default(),
-                                    key.top_legend.clone().unwrap_or_default()
-                                ))
-                                .width_request(width)
-                                .height_request(geometry_unit)
-                                .build()
-                        };
+                        let toggle = gtk::ToggleButton::builder()
+                            .label(mod_lock_label())
+                            .width_request(width)
+                            .height_request(geometry_unit)
+                            .build();
+                        if glyph.is_some() {
+                            toggle.add_css_class("mkeys-glyph");
+                        }
 
                         let button_sender = sender.clone();
                         toggle.connect_toggled(move |btn| {
@@ -216,14 +219,13 @@ impl SimpleComponent for UIModel {
                     }
                     KeyType::Lock => {
                         let toggle = gtk::ToggleButton::builder()
-                            .label(format!(
-                                "{} {}",
-                                key.bottom_legend.clone().unwrap_or_default(),
-                                key.top_legend.clone().unwrap_or_default()
-                            ))
+                            .label(mod_lock_label())
                             .width_request(width)
                             .height_request(geometry_unit)
                             .build();
+                        if glyph.is_some() {
+                            toggle.add_css_class("mkeys-glyph");
+                        }
 
                         let button_sender = sender.clone();
                         toggle.connect_toggled(move |btn| {
@@ -242,14 +244,9 @@ impl SimpleComponent for UIModel {
                             row_container.append(&label);
                         } else {
                             let button = ButtonEX::default();
-                            // Backspace (evdev KEY_BACKSPACE) as a symbolic
-                            // icon, matching cosmic-osk's own choice — the
-                            // one special key common to every layout, so
-                            // it's the safe one to icon-ify: `edit-clear-
-                            // symbolic` ships in the Adwaita fallback theme
-                            // every GTK install carries.
-                            if scan_code == 14 {
-                                button.set_icon_name("edit-clear-symbolic");
+                            if let Some(glyph) = glyph {
+                                button.set_primary_content(glyph.to_string());
+                                button.add_css_class("mkeys-glyph");
                             } else {
                                 button.set_primary_content(
                                     key.top_legend.clone().unwrap_or_default(),
@@ -372,6 +369,19 @@ fn setup_docked(window: &gtk::Window, position: Position, margin: i32) {
     window.set_anchor(Edge::Top, !bottom);
     window.set_anchor(Edge::Bottom, bottom);
     window.set_margin(if bottom { Edge::Bottom } else { Edge::Top }, margin);
+}
+
+/// Unicode glyph for the handful of keys a real keyboard prints as a
+/// symbol rather than a word — evdev scan code keyed, layout-independent.
+fn special_key_glyph(scan_code: u16) -> Option<&'static str> {
+    match scan_code {
+        14 => Some("⌫"),      // Backspace
+        15 => Some("⇥"),      // Tab
+        28 => Some("⏎"),      // Enter
+        42 | 54 => Some("⇧"), // Shift (left/right)
+        58 => Some("⇪"),      // Caps Lock
+        _ => None,
+    }
 }
 
 fn dock_icon_name(floating: bool) -> &'static str {

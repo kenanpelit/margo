@@ -11,10 +11,6 @@ pub struct ButtonInner {
     primary_content: RefCell<Option<String>>,
     #[property(get, set)]
     secondary_content: RefCell<Option<String>>,
-    /// When set, replaces the primary-content label with a symbolic icon
-    /// (e.g. Backspace) instead of quoting its scan code's legend text.
-    #[property(get, set)]
-    icon_name: RefCell<Option<String>>,
     #[property(get, set)]
     layout: RefCell<Option<gtk::Box>>,
 }
@@ -45,10 +41,6 @@ impl ObjectImpl for ButtonInner {
         });
 
         obj.connect_secondary_content_notify(|obj| {
-            obj.update_view();
-        });
-
-        obj.connect_icon_name_notify(|obj| {
             obj.update_view();
         });
 
@@ -124,11 +116,7 @@ impl ButtonEX {
             .valign(gtk::Align::Center)
             .build();
 
-        if let Some(icon_name) = self.icon_name() {
-            let icon = gtk::Image::from_icon_name(&icon_name);
-            icon.set_pixel_size(16);
-            new_layout.append(&icon);
-        } else if let Some(primary_content) = primary_content
+        if let Some(primary_content) = primary_content
             && !primary_content.is_empty()
         {
             let primary_content = gtk::Label::new(Some(primary_content.as_str()));
