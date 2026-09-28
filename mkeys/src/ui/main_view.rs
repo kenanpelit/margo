@@ -3,7 +3,10 @@ use std::rc::Rc;
 use std::thread;
 
 use gdk4::prelude::ObjectExt;
-use gtk::prelude::{ApplicationExt, BoxExt, GtkWindowExt, ToggleButtonExt, WidgetExt};
+use gtk::prelude::{
+    ApplicationExt, BoxExt, GestureDragExt, GestureSingleExt, GtkWindowExt, ToggleButtonExt,
+    WidgetExt,
+};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use relm4::gtk::gdk;
 use relm4::{ComponentParts, ComponentSender, RelmWidgetExt, SimpleComponent, gtk};
