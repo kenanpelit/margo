@@ -23,6 +23,10 @@ wayland-protocols-misc = { version = "0.3", features = ["client", "wayland-clien
 xkbcommon = { workspace = true }
 evdev = "0.13"
 tempfile = "3"
+# Reads margo's config.conf for the active xkb RMLVO + queries `mctl` for
+# the active layout group — see src/xkb_config.rs.
+margo-config = { path = "../margo-config" }
+serde_json = { workspace = true }
 # Assets + config
 rust-embed = "8"
 toml = { workspace = true }

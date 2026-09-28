@@ -100,22 +100,30 @@ impl Dispatch<ZwpVirtualKeyboardV1, ()> for SessionState {
 }
 
 pub fn get_keymap_as_file() -> (File, u32) {
-    let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
-
-    let keymap = xkb::Keymap::new_from_names(
-        &context,
-        "",
-        "",
-        "us",
-        "",
-        None,
-        xkb::KEYMAP_COMPILE_NO_FLAGS,
-    )
-    .expect("xkbcommon keymap panicked!");
-    let xkb_state = xkb::State::new(&keymap);
-    let keymap = xkb_state
-        .get_keymap()
-        .get_as_string(xkb::KEYMAP_FORMAT_TEXT_V1);
+    // Submit margo's REAL active keymap to the virtual keyboard manager.
+    // This used to be a hardcoded "us" QWERTY keymap regardless of the
+    // user's actual xkb config — Smithay's virtual-keyboard handling
+    // pushes a device's submitted keymap to every client on the seat the
+    // moment it differs from the seat's current one (`send_keymap` in
+    // smithay's `input::keyboard`), so opening mkeys once was silently
+    // resetting every already-connected client's keyboard interpretation
+    // to US QWERTY until the compositor next changed the seat keymap.
+    // Falls back to a bare "us" keymap only if margo's config can't be
+    // read at all, so the virtual keyboard still works.
+    let keymap = crate::xkb_config::compiled_keymap().unwrap_or_else(|| {
+        let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+        xkb::Keymap::new_from_names(
+            &context,
+            "",
+            "",
+            "us",
+            "",
+            None,
+            xkb::KEYMAP_COMPILE_NO_FLAGS,
+        )
+        .expect("xkbcommon keymap panicked!")
+    });
+    let keymap = keymap.get_as_string(xkb::KEYMAP_FORMAT_TEXT_V1);
     let keymap = CString::new(keymap).expect("Keymap should not contain interior nul bytes");
     let keymap = keymap.as_bytes_with_nul();
     let dir = std::env::var_os("XDG_RUNTIME_DIR")

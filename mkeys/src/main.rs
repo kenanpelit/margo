@@ -5,6 +5,7 @@ mod layout;
 mod native;
 mod service;
 mod ui;
+mod xkb_config;
 
 use clap::Parser;
 use cli::{Cli, Cmd};

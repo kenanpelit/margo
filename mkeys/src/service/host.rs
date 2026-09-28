@@ -37,9 +37,13 @@ impl<N: IPCHandle + Send + 'static> AppService<N> {
     pub fn run(self) {
         let config = Config::load();
         let layout_str = LayoutAssets::by_name(&config.layout);
-        let layout = LayoutDefinition::from_toml(&layout_str)
+        let mut layout = LayoutDefinition::from_toml(&layout_str)
             .or_else(|_| LayoutDefinition::from_toml(&LayoutAssets::by_name("en")))
             .expect("bundled en layout must parse");
+        // Re-point single-character legends at margo's actual active xkb
+        // layout — a no-op if that can't be read, so the bundled TOML
+        // stays the fallback.
+        crate::layout::live_legends::apply(&mut layout);
 
         let keyboard = VirtualKeyboard::new();
 
