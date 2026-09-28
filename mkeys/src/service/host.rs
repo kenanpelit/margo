@@ -42,8 +42,10 @@ impl<N: IPCHandle + Send + 'static> AppService<N> {
             .expect("bundled en layout must parse");
         // Re-point single-character legends at margo's actual active xkb
         // layout — a no-op if that can't be read, so the bundled TOML
-        // stays the fallback.
+        // stays the fallback. MUST run before extra_rows::apply(), which
+        // appends its own static (not xkb-derived) digit/F-key legends.
         crate::layout::live_legends::apply(&mut layout);
+        crate::layout::extra_rows::apply(&mut layout, &config);
 
         let keyboard = VirtualKeyboard::new();
 

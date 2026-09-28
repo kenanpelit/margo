@@ -20,6 +20,8 @@ struct KbConfig {
     margin: i32,
     show_pill: bool,
     floating: bool,
+    function_row: bool,
+    numpad: bool,
 }
 
 impl Default for KbConfig {
@@ -32,6 +34,8 @@ impl Default for KbConfig {
             margin: 8,
             show_pill: true,
             floating: false,
+            function_row: false,
+            numpad: false,
         }
     }
 }
@@ -83,6 +87,8 @@ impl KbConfig {
                 }
                 "show_pill" => cfg.show_pill = val == "true",
                 "floating" => cfg.floating = val == "true",
+                "function_row" => cfg.function_row = val == "true",
+                "numpad" => cfg.numpad = val == "true",
                 _ => {}
             }
         }
@@ -102,14 +108,18 @@ impl KbConfig {
              opacity = {}\n\
              margin = {}\n\
              show_pill = {}\n\
-             floating = {}\n",
+             floating = {}\n\
+             function_row = {}\n\
+             numpad = {}\n",
             self.layout,
             self.scale,
             self.position,
             self.opacity,
             self.margin,
             self.show_pill,
-            self.floating
+            self.floating,
+            self.function_row,
+            self.numpad
         );
         if let Err(e) = std::fs::write(&path, body) {
             tracing::warn!(error = %e, "mkeys settings: failed to write mkeys.toml");
@@ -135,6 +145,8 @@ pub(crate) enum KeyboardSettingsInput {
     SetMargin(f64),
     SetShowPill(bool),
     SetFloating(bool),
+    SetFunctionRow(bool),
+    SetNumpad(bool),
 }
 
 #[derive(Debug)]
@@ -252,6 +264,34 @@ impl Component for KeyboardSettingsModel {
 
                     #[template]
                     Row {
+                        #[template_child] title { set_label: "Function row" },
+                        #[template_child] desc { set_label: "Add an Esc + F1-F12 row above the keys." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(function_row_handler)]
+                            set_active: model.cfg.function_row,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(KeyboardSettingsInput::SetFunctionRow(s.is_active()));
+                            } @function_row_handler,
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Numeric keypad" },
+                        #[template_child] desc { set_label: "Add a numpad block below the keys." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(numpad_handler)]
+                            set_active: model.cfg.numpad,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(KeyboardSettingsInput::SetNumpad(s.is_active()));
+                            } @numpad_handler,
+                        },
+                    },
+
+                    #[template]
+                    Row {
                         #[template_child] title { set_label: "Key size" },
                         #[template_child] desc { set_label: "Scale of each key (1.0 = default)." },
                         gtk::SpinButton {
@@ -348,6 +388,8 @@ impl Component for KeyboardSettingsModel {
             KeyboardSettingsInput::SetMargin(v) => self.cfg.margin = v.round() as i32,
             KeyboardSettingsInput::SetShowPill(v) => self.cfg.show_pill = v,
             KeyboardSettingsInput::SetFloating(v) => self.cfg.floating = v,
+            KeyboardSettingsInput::SetFunctionRow(v) => self.cfg.function_row = v,
+            KeyboardSettingsInput::SetNumpad(v) => self.cfg.numpad = v,
         }
         self.cfg.save();
     }

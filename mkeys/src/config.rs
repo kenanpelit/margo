@@ -31,6 +31,12 @@ pub struct Config {
     /// it is not written back to this file.
     #[serde(default)]
     pub floating: bool,
+    /// Prepend an Esc + F1-F12 row, language-independent.
+    #[serde(default)]
+    pub function_row: bool,
+    /// Append a numeric keypad block, language-independent.
+    #[serde(default)]
+    pub numpad: bool,
 }
 
 fn default_layout() -> String {
@@ -59,6 +65,8 @@ impl Default for Config {
             margin: default_margin(),
             show_pill: default_true(),
             floating: false,
+            function_row: false,
+            numpad: false,
         }
     }
 }
@@ -102,6 +110,8 @@ mod tests {
         assert_eq!(c.margin, 8);
         assert!(c.show_pill);
         assert!(!c.floating);
+        assert!(!c.function_row);
+        assert!(!c.numpad);
     }
 
     #[test]
