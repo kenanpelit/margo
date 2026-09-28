@@ -39,3 +39,15 @@ button:active label,
 button:checked label {
     color: #1e1e2e;
 }
+
+/* Floating mode's drag handle. */
+.mkeys-grip {
+    min-height: 14px;
+    margin: 2px 40%;
+    border-radius: 4px;
+    background-color: rgba(205, 214, 244, 0.35);
+}
+
+.mkeys-grip:hover {
+    background-color: rgba(205, 214, 244, 0.55);
+}

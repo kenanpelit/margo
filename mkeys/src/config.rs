@@ -26,6 +26,11 @@ pub struct Config {
     pub margin: i32,
     #[serde(default = "default_true")]
     pub show_pill: bool,
+    /// Free-floating (drag anywhere via the grip bar) instead of docked to
+    /// `position`. The dragged position lives only for the current show —
+    /// it is not written back to this file.
+    #[serde(default)]
+    pub floating: bool,
 }
 
 fn default_layout() -> String {
@@ -53,6 +58,7 @@ impl Default for Config {
             opacity: default_opacity(),
             margin: default_margin(),
             show_pill: default_true(),
+            floating: false,
         }
     }
 }
@@ -95,6 +101,7 @@ mod tests {
         assert!((c.opacity - 0.95).abs() < f32::EPSILON);
         assert_eq!(c.margin, 8);
         assert!(c.show_pill);
+        assert!(!c.floating);
     }
 
     #[test]

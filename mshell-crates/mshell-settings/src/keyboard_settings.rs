@@ -19,6 +19,7 @@ struct KbConfig {
     opacity: f32,
     margin: i32,
     show_pill: bool,
+    floating: bool,
 }
 
 impl Default for KbConfig {
@@ -30,6 +31,7 @@ impl Default for KbConfig {
             opacity: 0.95,
             margin: 8,
             show_pill: true,
+            floating: false,
         }
     }
 }
@@ -80,6 +82,7 @@ impl KbConfig {
                     }
                 }
                 "show_pill" => cfg.show_pill = val == "true",
+                "floating" => cfg.floating = val == "true",
                 _ => {}
             }
         }
@@ -98,8 +101,15 @@ impl KbConfig {
              position = \"{}\"\n\
              opacity = {}\n\
              margin = {}\n\
-             show_pill = {}\n",
-            self.layout, self.scale, self.position, self.opacity, self.margin, self.show_pill
+             show_pill = {}\n\
+             floating = {}\n",
+            self.layout,
+            self.scale,
+            self.position,
+            self.opacity,
+            self.margin,
+            self.show_pill,
+            self.floating
         );
         if let Err(e) = std::fs::write(&path, body) {
             tracing::warn!(error = %e, "mkeys settings: failed to write mkeys.toml");
@@ -124,6 +134,7 @@ pub(crate) enum KeyboardSettingsInput {
     SetOpacity(f64),
     SetMargin(f64),
     SetShowPill(bool),
+    SetFloating(bool),
 }
 
 #[derive(Debug)]
@@ -212,7 +223,7 @@ impl Component for KeyboardSettingsModel {
                     #[template]
                     Row {
                         #[template_child] title { set_label: "Position" },
-                        #[template_child] desc { set_label: "Which screen edge the keyboard docks to." },
+                        #[template_child] desc { set_label: "Which screen edge the keyboard docks to. Ignored while floating." },
                         gtk::DropDown {
                             set_valign: gtk::Align::Center,
                             set_width_request: 180,
@@ -222,6 +233,20 @@ impl Component for KeyboardSettingsModel {
                             connect_selected_notify[sender] => move |d| {
                                 sender.input(KeyboardSettingsInput::SetPosition(d.selected()));
                             } @position_handler,
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Floating" },
+                        #[template_child] desc { set_label: "Detach from the screen edge — drag the grip bar to reposition (resets on the next show)." },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[block_signal(floating_handler)]
+                            set_active: model.cfg.floating,
+                            connect_active_notify[sender] => move |s| {
+                                sender.input(KeyboardSettingsInput::SetFloating(s.is_active()));
+                            } @floating_handler,
                         },
                     },
 
@@ -322,6 +347,7 @@ impl Component for KeyboardSettingsModel {
             KeyboardSettingsInput::SetOpacity(v) => self.cfg.opacity = v as f32,
             KeyboardSettingsInput::SetMargin(v) => self.cfg.margin = v.round() as i32,
             KeyboardSettingsInput::SetShowPill(v) => self.cfg.show_pill = v,
+            KeyboardSettingsInput::SetFloating(v) => self.cfg.floating = v,
         }
         self.cfg.save();
     }
