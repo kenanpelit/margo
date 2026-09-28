@@ -249,7 +249,7 @@ impl SimpleComponent for UIModel {
                             // symbolic` ships in the Adwaita fallback theme
                             // every GTK install carries.
                             if scan_code == 14 {
-                                button.set_icon_name(Some("edit-clear-symbolic".to_string()));
+                                button.set_icon_name("edit-clear-symbolic");
                             } else {
                                 button.set_primary_content(
                                     key.top_legend.clone().unwrap_or_default(),
