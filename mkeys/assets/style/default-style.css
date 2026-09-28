@@ -1,29 +1,30 @@
-/* mkeys theme — a dark, rounded floating "card" panel (cosmic-osk-style
- * shape: rounded corners on every edge, a slim distinct toolbar strip,
- * flat glyph-first special keys) built from CSS tokens, not a fixed
- * COSMIC hex palette (COSMIC itself is theme-token/accent-driven, not a
- * fixed palette — see project_mkeys memory). */
+/* mkeys theme — matched against a real cosmic-osk screenshot
+ * (~/.eng/keyboard.png): a near-transparent panel the wallpaper/blur
+ * shows through, dark neutral (not purple-tinted) key caps with visible
+ * gaps, and toolbar icons floating directly on the backdrop with no
+ * separate chrome band. Not a fixed COSMIC hex palette — COSMIC itself
+ * is theme-token/accent-driven, not a fixed palette (see project_mkeys
+ * memory) — this reproduces the STRUCTURE and the neutral-dark key
+ * color actually seen in the screenshot. */
 
 window {
-    /* Translucent dark panel, rounded on every corner regardless of
-     * dock/float position so it always reads as a detached card. */
-    background-color: rgba(24, 24, 32, 0.94);
-    border: 1px solid rgba(205, 214, 244, 0.08);
-    border-radius: 16px;
+    /* Mostly see-through — margo's blur_layer (if the user has it on)
+     * does the rest; even without it this keeps the panel from reading
+     * as an opaque black slab like the previous round did. */
+    background-color: rgba(18, 18, 20, 0.55);
+    border-radius: 14px;
 }
 
-/* Toolbar strip: a subtly distinct band above the keys so the panel
- * reads as "chrome + content", not one flat slab. */
+/* Toolbar: icons sit directly on the same translucent backdrop as the
+ * keys — no separate darker strip, matching the reference screenshot. */
 .mkeys-toolbar {
-    padding: 3px 6px;
-    background-color: rgba(17, 17, 24, 0.55);
-    border-bottom: 1px solid rgba(205, 214, 244, 0.08);
-    border-radius: 16px 16px 0 0;
+    padding: 4px 8px;
+    background-color: transparent;
 }
 
 .mkeys-toolbar button {
     background-color: transparent;
-    color: #cdd6f4;
+    color: rgba(255, 255, 255, 0.85);
     border: none;
     border-radius: 8px;
     margin: 0;
@@ -33,19 +34,21 @@ window {
 }
 
 .mkeys-toolbar button:hover {
-    background-color: rgba(205, 214, 244, 0.12);
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
 .mkeys-toolbar button:active {
-    background-color: rgba(137, 180, 250, 0.35);
+    background-color: rgba(255, 255, 255, 0.18);
 }
 
 button {
-    background-color: rgba(69, 71, 90, 0.9);
+    /* Near-black neutral gray, not the previous purple-gray — this is
+     * the biggest visible miss the last round had against the reference. */
+    background-color: rgba(20, 20, 22, 0.82);
     background-image: none;
-    color: #cdd6f4;
+    color: rgba(255, 255, 255, 0.92);
     border: none;
-    border-radius: 10px;
+    border-radius: 9px;
     margin: 3px;
     padding: 10px;
     font-size: 15px;
@@ -56,7 +59,7 @@ button {
 
 /* ButtonEX nests its legends in labels inside the button. */
 button label {
-    color: #cdd6f4;
+    color: rgba(255, 255, 255, 0.92);
 }
 
 /* Backspace/Tab/Enter/Shift/Caps Lock: a plain Unicode glyph instead of
@@ -67,7 +70,7 @@ button.mkeys-glyph label {
 }
 
 button:hover {
-    background-color: rgba(88, 91, 112, 0.95);
+    background-color: rgba(38, 38, 42, 0.9);
 }
 
 /* Pressed normal keys + latched modifier/lock toggles use the accent. */
@@ -87,9 +90,9 @@ button:checked label {
     min-height: 14px;
     margin: 4px 40% 0 40%;
     border-radius: 4px;
-    background-color: rgba(205, 214, 244, 0.35);
+    background-color: rgba(255, 255, 255, 0.3);
 }
 
 .mkeys-grip:hover {
-    background-color: rgba(205, 214, 244, 0.55);
+    background-color: rgba(255, 255, 255, 0.5);
 }
