@@ -22,6 +22,16 @@ const IPC_OUT_CAP: usize = 4 * 1024 * 1024;
 /// request; a connection whose un-framed buffer passes it is dropped.
 const IPC_IN_CAP: usize = 1024 * 1024;
 
+/// Cap on total simultaneous IPC connections. Every real client (mctl,
+/// mshellctl, mshell-margo-client, an admin script) closes promptly, so
+/// legitimate use never comes close — this only stops the same local
+/// user's own runaway/malicious process from opening connections in a
+/// loop and never sending data, which would otherwise grow
+/// `ipc_conns` plus one calloop registration per connection without
+/// bound (the accept-side mirror of `watch`'s existing
+/// `MAX_WATCHES_TOTAL`).
+const MAX_IPC_CONNECTIONS: usize = 256;
+
 /// Result of trying to drain a connection's outbound buffer.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DrainState {
@@ -144,6 +154,16 @@ const FREE_TEXT_TAIL_ACTIONS: &[&str] = &[
     // tail is the one name.
     "theme",
     "set_theme",
+    // `global_shortcuts_bind`'s own arg is `<session> <id>:<TRIG>,…` —
+    // ONE string that its handler re-splits itself (global_shortcuts.rs).
+    // Without this, the "everything else" branch below split it into
+    // `arg.v`/`arg.v2` instead, but the dispatch table only forwards
+    // `arg.v` (the session) to the handler — the shortcut list was
+    // silently dropped, so `dispatch global_shortcuts_bind <session>
+    // <entries>` (what margo-portal actually sends) always registered
+    // an empty shortcut set and the portal's GlobalShortcuts backend
+    // never fired anything.
+    "global_shortcuts_bind",
 ];
 
 /// Map dispatch args onto margo's `Arg`, keyed off the action so the
@@ -204,6 +224,15 @@ impl MargoState {
     /// Register a freshly-accepted connection: stash it under a new
     /// token and add a calloop READ source that drains complete lines.
     pub fn ipc_accept(&mut self, stream: UnixStream) {
+        if self.ipc_conns.len() >= MAX_IPC_CONNECTIONS {
+            tracing::warn!(
+                limit = MAX_IPC_CONNECTIONS,
+                "ipc: too many simultaneous connections, refusing new one"
+            );
+            // Dropping `stream` closes it — the client sees a clean
+            // disconnect rather than a wedged/silent accept.
+            return;
+        }
         if let Err(e) = stream.set_nonblocking(true) {
             tracing::warn!(error = %e, "ipc: client set_nonblocking");
         }
@@ -613,6 +642,22 @@ mod tests {
         assert_eq!(a.v.as_deref(), Some("kitty -e htop"));
         assert_eq!(a.i, 0);
         assert_eq!(a.i2, 0);
+    }
+
+    #[test]
+    fn global_shortcuts_bind_rejoins_session_and_entries() {
+        // Regression: `global_shortcuts_bind`'s handler expects ONE
+        // string ("<session> <id>:<trig>,…") that it re-splits itself —
+        // without FREE_TEXT_TAIL_ACTIONS this landed in separate v/v2
+        // slots and the dispatch table only forwards v, silently
+        // dropping every registered shortcut (margo-portal's
+        // GlobalShortcuts backend never fired).
+        let a = args_to_dispatch_arg(
+            "global_shortcuts_bind",
+            &args(&["/session/1", "record:CTRL+SHIFT+r"]),
+        );
+        assert_eq!(a.v.as_deref(), Some("/session/1 record:CTRL+SHIFT+r"));
+        assert!(a.v2.is_none());
     }
 
     #[test]

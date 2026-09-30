@@ -97,10 +97,26 @@ pub fn parse_combo(spec: &str) -> Option<KeyCombo> {
 /// Does the focused `app_id` match `regex`? Bad regex / no focus → false.
 pub fn appid_matches(focused: Option<&str>, regex: &str) -> bool {
     let Some(app) = focused else { return false };
-    match regex::Regex::new(regex) {
-        Ok(re) => re.is_match(app),
-        Err(_) => false,
+    // Compiled-regex cache keyed by the pattern string, same rationale
+    // and shape as `state::data::matches_rule_text`'s window-rule cache
+    // (a `sendkey` binding is a hot per-keypress check, not a one-off).
+    // Kept separate rather than sharing that cache because the bad-
+    // regex fallback differs: window rules fall back to substring
+    // matching, sendkey's app-id gate fails closed (`false`) instead —
+    // it decides whether a synthetic key gets sent at all.
+    thread_local! {
+        static SENDKEY_REGEX_CACHE: std::cell::RefCell<std::collections::HashMap<String, Option<regex::Regex>>> =
+            std::cell::RefCell::new(std::collections::HashMap::new());
     }
+    SENDKEY_REGEX_CACHE.with(|cache| {
+        if let Some(entry) = cache.borrow().get(regex) {
+            return entry.as_ref().is_some_and(|re| re.is_match(app));
+        }
+        let compiled = regex::Regex::new(regex).ok();
+        let result = compiled.as_ref().is_some_and(|re| re.is_match(app));
+        cache.borrow_mut().insert(regex.to_string(), compiled);
+        result
+    })
 }
 
 /// Split a fallback spec `action[:arg]` → `(action, arg)` (arg `""` if none).

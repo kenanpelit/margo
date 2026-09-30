@@ -116,15 +116,21 @@ pub fn parse_trigger(s: &str) -> Option<(Modifiers, u32)> {
     (keysym != 0).then_some((mods, keysym))
 }
 
-/// Minimal %XX decode for the portal-encoded id/session tokens.
+/// Minimal %XX decode for the portal-encoded id/session tokens. Works
+/// on raw bytes throughout — never slices `s` as a `&str` — so a
+/// multi-byte UTF-8 character right after a stray `%` (e.g. `%€`,
+/// where naively slicing 2 bytes in would land mid-character) can never
+/// hit Rust's "byte index is not a char boundary" panic. This is fed
+/// straight off the IPC socket from any local process, unauthenticated
+/// beyond socket ownership, so it must never panic on adversarial input.
 pub fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
+            if let (Some(hi), Some(lo)) = (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2])) {
+                out.push((hi << 4) | lo);
                 i += 3;
                 continue;
             }
@@ -133,6 +139,16 @@ pub fn percent_decode(s: &str) -> String {
         i += 1;
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+/// The 4-bit value of an ASCII hex digit, or `None` if `b` isn't one.
+fn hex_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
 }
 
 impl crate::state::MargoState {
@@ -256,6 +272,17 @@ mod tests {
         assert_eq!(percent_decode("a%3Ab%2Cc%20d"), "a:b,c d");
         assert_eq!(percent_decode("plain"), "plain");
         assert_eq!(percent_decode("dangling%2"), "dangling%2");
+    }
+
+    #[test]
+    fn percent_decode_never_panics_on_multibyte_utf8_after_percent() {
+        // Regression: naively slicing `s[i+1..i+3]` as a `&str` panics
+        // ("byte index is not a char boundary") when a multi-byte UTF-8
+        // character immediately follows a stray `%` — this string is
+        // fed straight off the IPC socket by any local process.
+        assert_eq!(percent_decode("%€"), "%€");
+        assert_eq!(percent_decode("id%🎉end"), "id%🎉end");
+        assert_eq!(percent_decode("%%3A"), "%:");
     }
 
     #[test]
