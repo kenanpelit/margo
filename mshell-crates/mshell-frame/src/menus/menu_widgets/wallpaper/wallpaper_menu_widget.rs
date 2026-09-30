@@ -51,6 +51,10 @@ fn decode_pool() -> &'static mpsc::Sender<Box<dyn FnOnce() + Send>> {
     })
 }
 
+/// Hard cap on the decoded-thumbnail texture cache. See the comment at its
+/// one insertion site for why a full clear on overflow, not a proper LRU.
+const MAX_CACHED_THUMBNAILS: usize = 300;
+
 fn is_image_file(path: &std::path::Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -557,10 +561,21 @@ impl Component for WallpaperMenuWidgetModel {
                     let texture =
                         gdk::MemoryTexture::new(width, height, format, &bytes, rowstride as usize);
 
-                    cache_insert
-                        .lock()
-                        .unwrap()
-                        .insert(path_str, texture.clone());
+                    {
+                        let mut cache = cache_insert.lock().unwrap();
+                        // Bound decoded-texture memory: this cache is keyed by
+                        // path and never shrinks on its own, so browsing
+                        // through many wallpaper folders over a long session
+                        // would otherwise grow it forever. Not a proper LRU
+                        // (no per-entry recency tracking) — a full clear on
+                        // overflow is a rare, cheap-enough blip for a menu
+                        // this infrequently opened, and far simpler to get
+                        // right than hand-rolled eviction bookkeeping.
+                        if cache.len() >= MAX_CACHED_THUMBNAILS {
+                            cache.clear();
+                        }
+                        cache.insert(path_str, texture.clone());
+                    }
 
                     picture.set_paintable(Some(&texture));
                 }

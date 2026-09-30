@@ -1,10 +1,21 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
 use relm4::gtk::glib;
 
-static ICON_INDEX: RwLock<Option<(String, Arc<IconIndex>)>> = RwLock::new(None);
+/// How long a built index is trusted before `get_or_build` rebuilds it even
+/// for the same theme name. `invalidate()` handles an explicit signal (a
+/// theme *switch*); nothing previously handled the same theme's directory
+/// gaining icons in place (installing an app, a theme regenerated on disk)
+/// — `invalidate()` existed but had no caller for that case, so a newly
+/// installed app's icon could stay missing for the rest of the session.
+/// This TTL bounds that staleness window without needing a filesystem
+/// watcher wired to every place icons might change.
+const STALE_AFTER: Duration = Duration::from_secs(5 * 60);
+
+static ICON_INDEX: RwLock<Option<(String, Arc<IconIndex>, Instant)>> = RwLock::new(None);
 
 pub struct IconIndex {
     icons: HashMap<String, PathBuf>,
@@ -14,8 +25,9 @@ impl IconIndex {
     pub fn get_or_build(theme_name: &str) -> Arc<IconIndex> {
         {
             let guard = ICON_INDEX.read().unwrap();
-            if let Some((cached_theme, index)) = guard.as_ref()
+            if let Some((cached_theme, index, built_at)) = guard.as_ref()
                 && cached_theme == theme_name
+                && built_at.elapsed() < STALE_AFTER
             {
                 return Arc::clone(index);
             }
@@ -24,7 +36,7 @@ impl IconIndex {
         let index = Arc::new(Self::build(theme_name));
         {
             let mut guard = ICON_INDEX.write().unwrap();
-            *guard = Some((theme_name.to_string(), Arc::clone(&index)));
+            *guard = Some((theme_name.to_string(), Arc::clone(&index), Instant::now()));
         }
         index
     }
