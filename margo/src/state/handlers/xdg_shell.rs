@@ -335,7 +335,7 @@ impl XdgShellHandler for MargoState {
                 let _ = grab.ungrab(smithay::desktop::PopupUngrabStrategy::All);
                 return;
             }
-            keyboard.set_focus(self, grab.current_grab(), serial);
+            self.set_keyboard_focus(grab.current_grab(), serial);
             keyboard.set_grab(
                 self,
                 smithay::desktop::PopupKeyboardGrab::new(&grab),

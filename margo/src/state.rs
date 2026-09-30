@@ -66,7 +66,7 @@ use smithay::{
             protocol::wl_surface::WlSurface,
         },
     },
-    utils::{Clock, Monotonic, SERIAL_COUNTER, Size},
+    utils::{Clock, Monotonic, SERIAL_COUNTER, Serial, Size},
     wayland::{
         compositor::{CompositorClientState, CompositorState, with_states},
         dmabuf::{DmabufGlobal, DmabufState},
@@ -1971,11 +1971,7 @@ impl MargoState {
         self.rule_once_consumed.clear();
 
         if let Some(keyboard) = self.seat.get_keyboard() {
-            let xkb_options = if new_config.xkb_rules.options.is_empty() {
-                None
-            } else {
-                Some(new_config.xkb_rules.options.clone())
-            };
+            let xkb_options = new_config.xkb_rules.options_or_none();
             keyboard
                 .set_xkb_config(
                     self,
@@ -2162,6 +2158,32 @@ impl MargoState {
         None
     }
 
+    /// Sets keyboard AND text-input-v3 focus together. The two are
+    /// independent pieces of smithay-side state, and — unlike keyboard
+    /// focus — text-input-v3 `enter`/`leave` are never sent implicitly:
+    /// `TextInputHandle::set_focus` only updates which surface is
+    /// considered focused; the wire events require explicit
+    /// `enter()`/`leave()` calls (both are no-ops when there is no
+    /// text-input instance for the relevant surface, so they're safe to
+    /// call unconditionally). Every direct `keyboard.set_focus()` call
+    /// in the compositor should go through this instead, so IME / an
+    /// on-screen keyboard can ever see a real enter/leave.
+    pub fn set_keyboard_focus(&mut self, target: Option<FocusTarget>, serial: Serial) {
+        self.seat.text_input().leave();
+
+        let text_input_surface = target
+            .as_ref()
+            .and_then(FocusTarget::inner_wl_surface)
+            .cloned();
+
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.set_focus(self, target, serial);
+        }
+
+        self.seat.text_input().set_focus(text_input_surface);
+        self.seat.text_input().enter();
+    }
+
     pub fn focus_surface(&mut self, target: Option<FocusTarget>) {
         let _span = tracy_client::span!("focus_surface");
         // Once ext-session-lock has been accepted, only its own surfaces may
@@ -2230,20 +2252,8 @@ impl MargoState {
             }
         }
 
-        // text-input-v3's own focus tracking is separate from keyboard
-        // focus and margo never drove it, so `enter`/`leave` never fired
-        // for any client — captured before `target` moves into
-        // `keyboard.set_focus` below.
-        let text_input_surface = target
-            .as_ref()
-            .and_then(FocusTarget::inner_wl_surface)
-            .cloned();
-
         let serial = SERIAL_COUNTER.next_serial();
-        if let Some(keyboard) = self.seat.get_keyboard() {
-            keyboard.set_focus(self, target, serial);
-        }
-        self.seat.text_input().set_focus(text_input_surface);
+        self.set_keyboard_focus(target, serial);
 
         // Focus highlight cross-fade. When focus moves between two
         // windows, animate both: the outgoing window's border colour

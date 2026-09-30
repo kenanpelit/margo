@@ -304,7 +304,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
             if let Some(focus) = exclusive_keyboard_layer(state) {
                 let current_focus = keyboard.current_focus();
                 if current_focus.as_ref() != Some(&focus) {
-                    keyboard.set_focus(state, Some(focus), serial);
+                    state.set_keyboard_focus(Some(focus), serial);
                 }
             }
         }

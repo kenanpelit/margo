@@ -872,11 +872,7 @@ fn main() -> Result<()> {
             c.xkb_rules.model.clone(),
             c.xkb_rules.layout.clone(),
             c.xkb_rules.variant.clone(),
-            if c.xkb_rules.options.is_empty() {
-                None
-            } else {
-                Some(c.xkb_rules.options.clone())
-            },
+            c.xkb_rules.options_or_none(),
             c.repeat_delay,
             c.repeat_rate,
         )

@@ -552,6 +552,18 @@ pub struct XkbRules {
     pub options: String,
 }
 
+impl XkbRules {
+    /// `xkbcommon`'s RMLVO options slot is `Option<String>`, not a plain
+    /// string — an empty `options` means "none configured", not "an
+    /// empty options string". Every caller building an xkb `XkbConfig`/
+    /// `Keymap` from this struct (margo's own seat config, its config
+    /// reload, mkeys' proxy keymap) needs this same normalization; keep
+    /// it here once instead of three independent copies drifting apart.
+    pub fn options_or_none(&self) -> Option<String> {
+        (!self.options.is_empty()).then(|| self.options.clone())
+    }
+}
+
 // ── Input acceleration profile ───────────────────────────────────────────────
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AccelProfile {
