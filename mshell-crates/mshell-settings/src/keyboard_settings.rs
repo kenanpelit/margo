@@ -40,6 +40,16 @@ impl Default for KbConfig {
     }
 }
 
+/// Escapes `"` and `\` for a TOML basic string. Both `layout` and
+/// `position` are currently constrained to fixed dropdown values with
+/// no free-text entry, so this can't be hit today — but the writer
+/// itself has no such guarantee, and mkeys::config::Config::load()
+/// can't parse invalid TOML, so an unescaped `"` here would silently
+/// revert the whole file to compiled defaults.
+fn toml_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 fn config_path() -> PathBuf {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
@@ -111,9 +121,9 @@ impl KbConfig {
              floating = {}\n\
              function_row = {}\n\
              numpad = {}\n",
-            self.layout,
+            toml_escape(&self.layout),
             self.scale,
-            self.position,
+            toml_escape(&self.position),
             self.opacity,
             self.margin,
             self.show_pill,
