@@ -5,6 +5,103 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0] – 2026-09-30
+
+**A cosmic-osk visual/feature port for the on-screen keyboard, five more
+mango 0.17.3 ports, and a whole-project security and robustness audit —
+~35 findings fixed across the WASM plugin sandbox, IPC, secrets handling,
+atomic file writes, GTK main-thread blocking, and resource leaks.**
+
+### Added
+
+- **mkeys (on-screen keyboard) cosmic-osk parity**: key legends now
+  derive from margo's real active xkb layout instead of a hardcoded
+  keymap; floating mode with drag-to-move; function-row and numpad
+  toggles; a toolbar (dock/undock/close); and a full visual redesign —
+  near-transparent panel, neutral-dark keys — matching cosmic-osk's
+  actual look rather than a guess at it.
+- **Mango 0.17.3 ports**: a compositor dim overlay
+  (`dim_enable`/`dim_focused_color`/`dim_unfocused_color`); `tag_gather`
+  wraps `viewtoleft`/`viewtoright` at the last occupied tag + 1; `~/`
+  expands in `margo-config` env values; a new `get layers` IPC topic
+  lists layer-shell surfaces; an explicit `env = XCURSOR_SIZE` now wins
+  over `cursor_size` for XWayland; keybinds fall back to the
+  layout-independent latin keysym when the active layout doesn't have
+  the bound key.
+- A plugin's granted WASM host capabilities (process / network /
+  clipboard) are now shown in Settings → Plugins — previously enforced
+  but completely invisible in the UI.
+
+### Fixed
+
+- **`global_shortcuts_bind` was silently broken over the real IPC
+  protocol** — every shortcut an app registered through the
+  xdg-desktop-portal GlobalShortcuts backend was landing in the wrong
+  argument slot and getting dropped before it ever reached the
+  registry, so portal-registered global shortcuts never fired at all.
+- **The MRU switcher (Alt+Tab-style window cycling)** rendered its
+  strip from a flat `.take(mru_max)` while the selection index kept
+  advancing over the *full* candidate list — anyone with more open
+  windows than `mru_max` (default 20) saw the wrong thumbnail ringed as
+  "selected," or none at all, once they cycled past it.
+- Tray icons: Vocalinux and other apps rendering as a missing-icon
+  glyph, and Electron tray icons (Ferdium, …) going stale after their
+  first icon change — `wayle-systray` is now vendored with a fix that
+  re-reads the icon theme path on every icon-change signal.
+- A floating window could get permanently stuck at an invisible 1×1
+  size: `movewin`/`resizewin`/`togglefloating` only seeded the
+  remembered floating geometry from the tiled size the *first* time a
+  window floated, so a window shrunk once and re-tiled silently snapped
+  back to that sliver the next time it floated again.
+- text-input-v3 `enter`/`leave` events weren't firing on focus change —
+  keyboard focus routing is now centralized through one
+  `set_keyboard_focus` method instead of being set ad hoc at each call
+  site.
+
+### Security
+
+- **Plugin (WASM) sandbox hardening**: the blocking `run`/`http` host
+  calls had no timeout and could wedge the whole shell indefinitely on
+  a hung process or server; there was no wasmtime memory cap, so a
+  buggy or malicious plugin could grow memory unbounded and OOM the
+  entire shell process; `http`'s response body had no size cap either;
+  `notify()` had no capability check at all, letting any plugin spam or
+  spoof desktop notifications regardless of its granted capabilities.
+- **Path traversal**: a plugin registry's `id`/`dir` fields (fetched
+  from a remote, potentially compromised source) and a Settings-page
+  profile name both flowed unvalidated into filesystem paths — either
+  could escape the intended directory on install, or make a later
+  delete remove an arbitrary file.
+- **`percent_decode` (IPC)** panicked on a multi-byte UTF-8 character
+  right after a stray `%` — fed straight off the IPC socket from any
+  local process, so this could crash the whole compositor with one
+  crafted string. No cap on simultaneous IPC connections either.
+- The AI provider API key and the lockscreen password are now zeroized
+  in memory on drop instead of sitting as plain, unscrubbed `String`s.
+- **Non-atomic config writes**: importing a config bundle
+  (`config.conf`/`binds.conf`) and mdots' internal state files were
+  written in place — a crash or disk-full mid-write could leave the
+  *live* compositor config truncated. Both now go through a temp-file
+  + rename. `mctl migrate --output` no longer silently overwrites an
+  existing file without a backup.
+- A notification's `sound-file` hint had no size or type check before
+  being handed to `fs::read` — any local app could point it at a huge
+  or special file. Capped and type-checked.
+- **Resource leaks**: the audio-visualizer's `cava` process could
+  outlive its widget; `mvpn`'s desktop-notification helper left
+  zombies; the wallpaper-thumbnail texture cache and the app-icon index
+  cache grew without bound over a long session. `mvpn`'s auto-switch
+  timer no longer trusts a bare PID file without first verifying it's
+  still the process it thinks it is before signalling it.
+- GTK main-thread blocking removed or bounded: the launcher's tmux
+  search (previously a subprocess spawn on every keystroke) and
+  clipboard-copy path (4 providers) now run off-thread; Settings →
+  Login and the setup wizard's hardware probe cap their worst-case wait
+  instead of blocking indefinitely on `mlogind`/`nmcli`.
+- panic-ratchet baseline lowered 450 → 448 — two `.unwrap()` chains on
+  a dotfile's filename (which could panic the whole sync on a non-UTF8
+  name) now degrade gracefully instead.
+
 ## [3.5.0] – 2026-09-15
 
 **Five features ported from mango 0.17, a real floating-window bug fix,
