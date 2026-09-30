@@ -45,6 +45,15 @@ pub fn is_safe_profile_name(name: &str) -> bool {
     )
 }
 
+/// Marker written once the setup wizard has applied, so first-launch
+/// auto-open stops nagging. Re-opening from Settings / `mshellctl
+/// wizard` always works regardless of this file.
+pub fn wizard_sentinel_path() -> PathBuf {
+    home_dir()
+        .expect("HOME not set")
+        .join(".config/margo/.wizard-done")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -60,13 +69,4 @@ mod tests {
         assert!(!is_safe_profile_name("a/b"));
         assert!(!is_safe_profile_name("/etc"));
     }
-}
-
-/// Marker written once the setup wizard has applied, so first-launch
-/// auto-open stops nagging. Re-opening from Settings / `mshellctl
-/// wizard` always works regardless of this file.
-pub fn wizard_sentinel_path() -> PathBuf {
-    home_dir()
-        .expect("HOME not set")
-        .join(".config/margo/.wizard-done")
 }
