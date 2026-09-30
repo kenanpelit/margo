@@ -973,9 +973,18 @@ fn build_mru_switcher_elements(
     };
     let title_rgb = if accent { accent_rgb } else { [200, 200, 210] };
 
+    // Sliding window of at most `max` candidates, centred on the
+    // selection. `sw.selected` indexes the FULL candidate list (it wraps
+    // modulo `sw.candidates.len()` in `mru_advance`) — a flat
+    // `.take(max)` from the front left the strip frozen to the first
+    // `max` entries while cycling kept advancing `selected` (and focus)
+    // past what was ever rendered, so the ring landed on the wrong
+    // thumbnail (or none) for anyone with more open windows than `max`.
+    let window_start = mru_window_start(sw.selected, sw.candidates.len(), max);
+
     // (window, thumb_width, app_id). Thumb width keeps the window's aspect.
     let mut cells: Vec<(smithay::desktop::Window, i32, String)> = Vec::new();
-    for win in sw.candidates.iter().take(max) {
+    for win in sw.candidates.iter().skip(window_start).take(max) {
         let g = win.geometry().size;
         let (gw, gh) = (g.w.max(1), g.h.max(1));
         let tw = ((f64::from(gw) * f64::from(th) / f64::from(gh)).round() as i32).clamp(60, th * 2);
@@ -2486,5 +2495,65 @@ fn push_closing_layers(
                 clipped_surface_program.clone(),
             ),
         ));
+    }
+}
+
+/// First index of the `max`-wide slice of the full `total`-long candidate
+/// list to render, so that `selected` always falls inside it (centred when
+/// there's room, clamped at either end otherwise). Pure so it's testable
+/// without a renderer — see [`build_mru_switcher_elements`]'s call site.
+fn mru_window_start(selected: usize, total: usize, max: usize) -> usize {
+    if total <= max {
+        0
+    } else {
+        selected.saturating_sub(max / 2).min(total - max)
+    }
+}
+
+#[cfg(test)]
+mod mru_window_tests {
+    use super::mru_window_start;
+
+    #[test]
+    fn fits_entirely_when_under_the_cap() {
+        assert_eq!(mru_window_start(0, 5, 10), 0);
+        assert_eq!(mru_window_start(4, 5, 10), 0);
+    }
+
+    #[test]
+    fn centres_on_selection_away_from_either_edge() {
+        // 50 candidates, cap 10: selecting #25 should show roughly #20..#30.
+        let start = mru_window_start(25, 50, 10);
+        assert_eq!(start, 20);
+        assert!((start..start + 10).contains(&25));
+    }
+
+    #[test]
+    fn clamps_at_the_start_without_underflow() {
+        assert_eq!(mru_window_start(0, 50, 10), 0);
+        assert_eq!(mru_window_start(2, 50, 10), 0);
+    }
+
+    #[test]
+    fn clamps_at_the_end_without_running_past_total() {
+        // Selecting the very last candidate must still show it — this is
+        // exactly the case the old flat `.take(max)` got wrong: `selected`
+        // (49) landed far past the rendered window (0..10).
+        let start = mru_window_start(49, 50, 10);
+        assert_eq!(start, 40);
+        assert!((start..start + 10).contains(&49));
+    }
+
+    #[test]
+    fn selection_always_lands_inside_the_window_across_a_full_cycle() {
+        let (total, max) = (37usize, 6usize);
+        for selected in 0..total {
+            let start = mru_window_start(selected, total, max);
+            assert!(
+                (start..start + max).contains(&selected),
+                "selected={selected} start={start} max={max}"
+            );
+            assert!(start + max <= total, "window must not run past `total`");
+        }
     }
 }
