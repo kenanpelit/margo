@@ -163,6 +163,13 @@ async fn run_cava(out: relm4::Sender<AudioVisualizerCommandOutput>) {
         .arg(&cfg_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
+        // The `child.kill().await` below only runs when cava itself exits
+        // (the while loop's line stream ends). When the widget is torn
+        // down first, `tokio::select!` in `init` cancels this whole future
+        // mid-`.await`, dropping `child` without ever reaching that line —
+        // `kill_on_drop` is what actually reaps cava in that (the common)
+        // case, instead of leaking an orphan process per widget teardown.
+        .kill_on_drop(true)
         .spawn()
     {
         Ok(c) => c,

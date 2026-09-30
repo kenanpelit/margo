@@ -25,6 +25,24 @@ pub fn start(minutes: u64) -> std::io::Result<()> {
     Ok(())
 }
 
+/// `true` when `pid` still looks like our own detached `__timer-run`
+/// child, checked via `/proc/<pid>/cmdline`. The pid file just holds a
+/// bare number with nothing tying it back to us — if the timer process
+/// has since died and the OS recycled that pid for something unrelated
+/// (routine on Linux over time), `stop()` would otherwise SIGTERM an
+/// arbitrary process owned by this user. `is_running()` uses the same
+/// check so a stale pid file doesn't report a phantom running timer.
+fn is_our_timer(pid: i32) -> bool {
+    let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
+        return false;
+    };
+    // `cmdline` is NUL-separated argv; argv[1] is our subcommand name.
+    cmdline
+        .split(|&b| b == 0)
+        .nth(1)
+        .is_some_and(|arg| arg == b"__timer-run")
+}
+
 /// Kill the running timer, if any. Returns true if one was stopped.
 pub fn stop() -> bool {
     let p = pid_path();
@@ -32,7 +50,9 @@ pub fn stop() -> bool {
         return false;
     };
     let _ = std::fs::remove_file(&p);
-    if let Ok(pid) = s.trim().parse::<i32>() {
+    if let Ok(pid) = s.trim().parse::<i32>()
+        && is_our_timer(pid)
+    {
         // Best-effort SIGTERM via `kill` (no nix dep).
         return super::sys::ok("kill", &[&pid.to_string()]);
     }
@@ -43,8 +63,7 @@ pub fn is_running() -> bool {
     std::fs::read_to_string(pid_path())
         .ok()
         .and_then(|s| s.trim().parse::<i32>().ok())
-        .map(|pid| std::path::Path::new(&format!("/proc/{pid}")).exists())
-        .unwrap_or(false)
+        .is_some_and(is_our_timer)
 }
 
 /// The child loop: every `minutes`, switch to a random relay. Runs until killed.

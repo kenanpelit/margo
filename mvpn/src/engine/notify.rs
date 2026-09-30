@@ -33,7 +33,7 @@ pub fn send(summary: &str, body: &str, icon: &str) {
     if muted() {
         return;
     }
-    let _ = Command::new("notify-send")
+    if let Ok(mut child) = Command::new("notify-send")
         .args([
             "-a",
             "Mullvad VPN",
@@ -47,7 +47,17 @@ pub fn send(summary: &str, body: &str, icon: &str) {
             summary,
             body,
         ])
-        .spawn();
+        .spawn()
+    {
+        // `notify-send` exits almost immediately; reap it on a throwaway
+        // thread rather than dropping the handle unwaited. The GTK panel
+        // keeps running for the whole session and `send` can fire many
+        // times over that, so an unreaped child would sit as a zombie
+        // until the panel itself finally exits.
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+    }
 }
 
 /// Connected → vpn icon; disconnected → the crossed-out icon.

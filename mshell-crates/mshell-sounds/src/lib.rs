@@ -71,6 +71,26 @@ pub fn play_notification_critical() {
     play_embedded(NOTIFICATION_CRITICAL_SOUND);
 }
 
+/// Upper bound on a client-supplied `sound-file`'s size. Any real
+/// notification chime is well under 1 MiB; this is generous headroom
+/// while still ruling out `fs::read` turning into an unbounded-memory
+/// DoS on a multi-GB (or sparse/huge) file a hostile local app points at.
+const MAX_NOTIFICATION_SOUND_BYTES: u64 = 20 * 1024 * 1024;
+
+/// `true` when `path` is safe to hand to `fs::read` for sound playback: a
+/// plain, reasonably-sized regular file. `path` is untrusted (the spec's
+/// client-controlled `sound-file` hint) — `is_file()` alone rules out a
+/// FIFO/char-device/socket that could block the caller forever on read;
+/// the size check rules out a huge file turning into an unbounded
+/// allocation. Split out from [`play_notification_file`] so it's testable
+/// without a real audio device.
+fn is_safe_sound_file(path: &str) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    meta.is_file() && meta.len() > 0 && meta.len() <= MAX_NOTIFICATION_SOUND_BYTES
+}
+
 /// Play a client-supplied sound file (the spec's `sound-file` hint).
 /// Decode failures and missing files degrade silently — a bad hint must
 /// never take the shell down or block the toast.
@@ -80,6 +100,9 @@ pub fn play_notification_file(path: &str) {
         return;
     }
     std::thread::spawn(move || {
+        if !is_safe_sound_file(&path) {
+            return;
+        }
         let Ok(bytes) = std::fs::read(&path) else {
             return;
         };
@@ -196,5 +219,38 @@ mod tests {
             rodio::Decoder::try_from(Cursor::new(*bytes))
                 .unwrap_or_else(|e| panic!("embedded sound `{name}` failed to decode: {e}"));
         }
+    }
+
+    /// Regression: `play_notification_file` used to hand a client-supplied
+    /// `sound-file` path straight to `fs::read` with no size or type check —
+    /// an unbounded-memory-allocation DoS waiting to happen.
+    #[test]
+    fn safe_sound_file_rejects_missing_empty_oversized_and_dirs() {
+        let dir = std::env::temp_dir().join(format!(
+            "mshell-sounds-safe-file-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let missing = dir.join("nope.ogg");
+        assert!(!is_safe_sound_file(missing.to_str().unwrap()));
+
+        let empty = dir.join("empty.ogg");
+        std::fs::write(&empty, []).unwrap();
+        assert!(!is_safe_sound_file(empty.to_str().unwrap()));
+
+        let normal = dir.join("normal.ogg");
+        std::fs::write(&normal, b"not really ogg but nonzero").unwrap();
+        assert!(is_safe_sound_file(normal.to_str().unwrap()));
+
+        // Sparse file — no real disk use, just an inflated reported size.
+        let oversized = dir.join("huge.ogg");
+        let f = std::fs::File::create(&oversized).unwrap();
+        f.set_len(MAX_NOTIFICATION_SOUND_BYTES + 1).unwrap();
+        assert!(!is_safe_sound_file(oversized.to_str().unwrap()));
+
+        assert!(!is_safe_sound_file(dir.to_str().unwrap()), "a directory");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
