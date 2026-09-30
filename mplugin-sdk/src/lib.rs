@@ -123,6 +123,14 @@ impl El {
 
     /// An image — either a freedesktop icon name (e.g. `audio-volume-high-symbolic`)
     /// or an absolute file path. The renderer picks the right widget.
+    ///
+    /// Unlike `read-file`/`write-file`, a file path here is **not**
+    /// path-sandboxed to the plugin's data dir — the renderer hands it to
+    /// GTK as-is, so any file readable by the shell process can be shown.
+    /// Fine for a *trusted, user-installed* plugin rendering its own
+    /// assets; don't build a path here from guest-untrusted input (e.g.
+    /// unsanitized `http`/`read-file` results) without validating it
+    /// yourself first.
     pub fn image(src: impl Into<String>) -> El {
         Self::leaf(NodeKind::Image, src)
     }

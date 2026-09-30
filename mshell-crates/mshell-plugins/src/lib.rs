@@ -165,6 +165,19 @@ impl PluginStore {
     /// Install `entry` from `source_url`, validate its manifest, and return
     /// the composite key it was stored under. Does NOT enable it.
     pub fn install(&self, source_url: &str, entry: &RegistryEntry) -> Result<String, PluginError> {
+        // `entry.id` comes straight from an untrusted, remotely-fetched
+        // `registry.toml` and flows verbatim into `key_for`/`plugin_dir`
+        // (`plugins_dir().join(key)`), then into `git::install_plugin`'s
+        // destination and (later, via `uninstall`) a `remove_dir_all`. A
+        // malicious id (`..`, a path separator, an absolute path) could
+        // otherwise escape the plugins dir on install or make a future
+        // uninstall recursively delete an arbitrary directory.
+        if !is_safe_plugin_id(&entry.id) {
+            return Err(PluginError::Invalid(format!(
+                "unsafe plugin id from registry: `{}`",
+                entry.id
+            )));
+        }
         // Gate on the registry's declared min_mshell before downloading.
         if !compatible(&entry.min_mshell) {
             return Err(PluginError::Incompatible {
@@ -312,6 +325,20 @@ pub struct UpdateOutcome {
     pub errors: Vec<String>,
 }
 
+/// `true` when `id` is safe to use as a single filesystem path component —
+/// i.e. it has no separators, no `.`/`..`, and isn't an absolute-path root.
+/// The only thing standing between a compromised registry's `id` field and
+/// a real filesystem path (see [`PluginStore::install`]).
+fn is_safe_plugin_id(id: &str) -> bool {
+    if id.is_empty() {
+        return false;
+    }
+    matches!(
+        Path::new(id).components().collect::<Vec<_>>().as_slice(),
+        [std::path::Component::Normal(_)]
+    )
+}
+
 /// Read + parse `<dir>/manifest.toml`.
 fn read_manifest(dir: &Path) -> Result<Manifest, PluginError> {
     let path = dir.join("manifest.toml");
@@ -373,5 +400,17 @@ mod tests {
     fn installed_is_empty_without_dir() {
         let store = PluginStore::with_config_dir("/tmp/nonexistent-mplugins-none");
         assert!(store.installed().is_empty());
+    }
+
+    #[test]
+    fn plugin_id_rejects_path_traversal() {
+        assert!(is_safe_plugin_id("weather"));
+        assert!(is_safe_plugin_id("my-plugin_2"));
+        assert!(!is_safe_plugin_id(""));
+        assert!(!is_safe_plugin_id(".."));
+        assert!(!is_safe_plugin_id("."));
+        assert!(!is_safe_plugin_id("../../etc/passwd"));
+        assert!(!is_safe_plugin_id("a/b"));
+        assert!(!is_safe_plugin_id("/etc"));
     }
 }

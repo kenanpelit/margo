@@ -29,7 +29,15 @@ pub fn fetch_registry(url: &str) -> Result<Registry, PluginError> {
 /// Sparse-clone `entry_dir` from `url` and copy it to `dest` (replacing any
 /// existing contents). Caller validates the resulting manifest.
 pub fn install_plugin(url: &str, entry_dir: &str, dest: &Path) -> Result<(), PluginError> {
-    if entry_dir.trim().is_empty() || entry_dir.contains("..") {
+    // `entry_dir` is a field from an untrusted, remotely-fetched
+    // `registry.toml`. The `..` check alone isn't enough: `tmp.join(x)`
+    // *replaces* `tmp` outright when `x` is absolute (`PathBuf::join`'s
+    // documented behavior), so a registry entry with e.g. `dir = "/home"`
+    // would make `src` below resolve to `/home` itself, entirely outside
+    // the scratch clone — `copy_dir_all` would then happily copy an
+    // arbitrary readable directory into the plugin's install dir.
+    if entry_dir.trim().is_empty() || entry_dir.contains("..") || Path::new(entry_dir).is_absolute()
+    {
         return Err(PluginError::Git(format!(
             "invalid plugin dir `{entry_dir}`"
         )));
@@ -138,4 +146,22 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn install_plugin_rejects_unsafe_entry_dirs() {
+        // Each of these must be rejected by the leading check, before any
+        // git/network call — the bogus URL would fail loudly otherwise.
+        let dest = std::env::temp_dir().join("mplugins-git-test-unused");
+        for bad in ["/etc", "../escape", "..", "a/../../b", ""] {
+            assert!(
+                install_plugin("not-a-real-url", bad, &dest).is_err(),
+                "expected `{bad}` to be rejected as an entry dir"
+            );
+        }
+    }
 }

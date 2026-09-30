@@ -15,8 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, mpsc};
+use std::time::Duration;
 use wasmtime::component::{Component, Linker};
-use wasmtime::{Config, Engine, Store};
+use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView};
 
 wasmtime::component::bindgen!({
@@ -86,10 +87,14 @@ pub struct UiNode {
 /// default**: a plugin gets a capability only when its manifest opts in. The
 /// filesystem `read-file`/`write-file` calls are always path-sandboxed (see
 /// [`crate::sandbox`]) and so are not gated here; these are the calls that
-/// reach outside that sandbox.
+/// reach outside that sandbox. (A plugin's `Image` UI node is a separate,
+/// deliberately *un*sandboxed filesystem read — see the doc on
+/// `mplugin_sdk::El::image` — since it renders whatever the guest returns,
+/// not a call this trait gates.)
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PluginCapabilities {
-    /// Spawn subprocesses: the `run` and `process-start` host calls.
+    /// Spawn subprocesses: the `run`, `process-start`, and `notify` host
+    /// calls (the last shells out to `notify-send`).
     pub process: bool,
     /// Make outbound network requests: `http` and `http-start`.
     pub network: bool,
@@ -245,6 +250,8 @@ struct HostState {
     system: Arc<dyn SystemInfoSource>,
     wasi: WasiCtx,
     table: ResourceTable,
+    /// Caps this instance's wasm linear memory (see [`MAX_PLUGIN_MEMORY_BYTES`]).
+    limits: StoreLimits,
 }
 
 impl WasiView for HostState {
@@ -255,6 +262,14 @@ impl WasiView for HostState {
         &mut self.table
     }
 }
+
+/// Max wall-clock time the blocking `run` host call may block the calling
+/// (GTK main) thread before its child is abandoned and an error returned.
+const RUN_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Same idea for the blocking `http` host call (`http-start` already runs
+/// off a worker thread and is unaffected).
+const HTTP_TIMEOUT: Duration = Duration::from_secs(20);
 
 impl Host for HostState {
     fn log(&mut self, level: u32, message: String) {
@@ -273,6 +288,17 @@ impl Host for HostState {
     }
 
     fn notify(&mut self, summary: String, body: String) {
+        // Same bucket as `run`/`process-start`: this is a subprocess spawn
+        // (`notify-send`) like any other, and was previously ungated —
+        // any plugin, capabilities or not, could spam/spoof desktop
+        // notifications with attacker-controlled text.
+        if !self.capabilities.process {
+            tracing::warn!(
+                plugin = self.plugin_id,
+                "denied notify: capability 'process' not granted"
+            );
+            return;
+        }
         // `--` guards against a guest-supplied summary that starts with `-`.
         if let Err(e) = std::process::Command::new("notify-send")
             .arg("--")
@@ -319,17 +345,43 @@ impl Host for HostState {
                 code: -1,
             };
         }
-        match std::process::Command::new(&program).args(&args).output() {
-            Ok(out) => ProcessOutput {
+        // `run` is a blocking host call — the guest (and this instance's GTK
+        // main thread, see `PluginInstance`) waits right here for the result,
+        // unlike `process-start` which already streams off a worker thread.
+        // Run the actual `.output()` call (whose own concurrent stdout/stderr
+        // draining avoids a full-pipe deadlock — don't reimplement that) on a
+        // detached thread and bound how long we wait for it, so a hung or
+        // malicious child can't wedge the whole shell forever. On timeout the
+        // thread and its child are simply abandoned rather than the GTK
+        // thread blocking on them.
+        let (tx, rx) = mpsc::channel();
+        let prog = program.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(std::process::Command::new(&prog).args(&args).output());
+        });
+        match rx.recv_timeout(RUN_TIMEOUT) {
+            Ok(Ok(out)) => ProcessOutput {
                 stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
                 stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
                 code: out.status.code().unwrap_or(-1),
             },
-            Err(e) => {
+            Ok(Err(e)) => {
                 tracing::warn!(plugin = self.plugin_id, "run `{program}` failed: {e}");
                 ProcessOutput {
                     stdout: String::new(),
                     stderr: e.to_string(),
+                    code: -1,
+                }
+            }
+            Err(_) => {
+                tracing::warn!(
+                    plugin = self.plugin_id,
+                    "run `{program}` exceeded {}s timeout, abandoning",
+                    RUN_TIMEOUT.as_secs()
+                );
+                ProcessOutput {
+                    stdout: String::new(),
+                    stderr: format!("`{program}` timed out after {}s", RUN_TIMEOUT.as_secs()),
                     code: -1,
                 }
             }
@@ -591,7 +643,10 @@ fn host_http(req: HttpRequest) -> Result<HttpResponse, String> {
     } else {
         req.method.as_str()
     };
-    let mut request = ureq::request(method, &req.url);
+    // Bounded so a slow/hung server can't block the calling (GTK main)
+    // thread indefinitely — this call has no worker thread of its own,
+    // unlike `http-start` (see [`HTTP_TIMEOUT`]).
+    let mut request = ureq::request(method, &req.url).timeout(HTTP_TIMEOUT);
     for (name, value) in &req.headers {
         request = request.set(name, value);
     }
@@ -619,6 +674,13 @@ fn host_http(req: HttpRequest) -> Result<HttpResponse, String> {
 // The `types` interface is types-only, but the generated linker bound still
 // requires its (empty) host trait.
 impl margo::plugin::types::Host for HostState {}
+
+/// Max wasm linear memory a single plugin instance may grow to. Comfortably
+/// above any real UI plugin's needs; caps the blast radius of a
+/// malicious/buggy guest trying to grow memory unbounded and OOM the whole
+/// shell process — wasmtime enforces this on every `memory.grow` via
+/// [`wasmtime::ResourceLimiter`] (see `StoreLimits` in `instantiate`).
+const MAX_PLUGIN_MEMORY_BYTES: usize = 256 * 1024 * 1024;
 
 /// A wasmtime engine, reused across plugin instantiations.
 pub struct PluginRuntime {
@@ -691,8 +753,12 @@ impl PluginRuntime {
                 system: self.system.clone(),
                 wasi: WasiCtxBuilder::new().build(),
                 table: ResourceTable::new(),
+                limits: StoreLimitsBuilder::new()
+                    .memory_size(MAX_PLUGIN_MEMORY_BYTES)
+                    .build(),
             },
         );
+        store.limiter(|state| &mut state.limits);
         let bindings = Plugin::instantiate(&mut store, &component, &linker)?;
         Ok(PluginInstance {
             store,

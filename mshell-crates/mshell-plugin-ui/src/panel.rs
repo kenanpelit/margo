@@ -486,6 +486,15 @@ fn build(
             let src = node.text.as_str();
             // Filesystem paths render as a Picture; everything else (icon names
             // like `audio-volume-high-symbolic`) goes through the icon theme.
+            //
+            // SECURITY: unlike the `read-file`/`write-file` host calls, this
+            // path is NOT sandboxed to the plugin's data dir (see
+            // `mshell_plugin_host::sandbox`) — it goes to GTK as-is, so a
+            // plugin can point it at any file the shell process can read.
+            // We trust an installed plugin's own view()/update() output the
+            // same way we already trust its declared capabilities; this is
+            // documented on `mplugin_sdk::El::image` as a known, deliberate
+            // gap rather than sandboxed like the filesystem host calls.
             if src.starts_with('/') || src.starts_with("./") || src.starts_with("../") {
                 let pic = gtk::Picture::for_filename(src);
                 pic.set_can_shrink(true);
