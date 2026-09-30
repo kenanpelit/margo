@@ -98,6 +98,9 @@ impl ConfigManager {
     }
 
     pub fn create_profile(&self, name: &str) -> Result<(), ProfileCreateError> {
+        if !crate::paths::is_safe_profile_name(name) {
+            return Err(ProfileCreateError::InvalidName);
+        }
         let path = profile_path(name);
         if path.exists() {
             return Err(ProfileCreateError::AlreadyExists);
@@ -118,6 +121,9 @@ impl ConfigManager {
     /// configuration — the "keep my current setup as a named profile"
     /// path. Overwrites `name` if it already exists (re-snapshot).
     pub fn snapshot_active_as(&self, name: &str) -> Result<(), ProfileCreateError> {
+        if !crate::paths::is_safe_profile_name(name) {
+            return Err(ProfileCreateError::InvalidName);
+        }
         let path = profile_path(name);
         let current = self.config.read_untracked().clone();
         if let Err(e) = persist_config_layer(&current, &path) {
@@ -129,6 +135,13 @@ impl ConfigManager {
     }
 
     pub fn delete_profile(&self, name: &str) -> Result<(), ProfileDeleteError> {
+        // Defense in depth: every current caller already passes a name
+        // sourced from `list_available_profiles()` (real files on disk),
+        // but this is the one operation here that removes a file — worth
+        // never trusting `name` blindly regardless of caller discipline.
+        if !crate::paths::is_safe_profile_name(name) {
+            return Err(ProfileDeleteError::NotFound);
+        }
         let path = profile_path(name);
         if !path.exists() {
             return Err(ProfileDeleteError::NotFound);
