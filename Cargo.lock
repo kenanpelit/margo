@@ -4938,6 +4938,7 @@ dependencies = [
  "gtk4",
  "gtk4-layer-shell",
  "margo-config",
+ "mctl",
  "relm4",
  "rust-embed",
  "serde",

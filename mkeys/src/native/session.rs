@@ -17,6 +17,10 @@ pub struct SessionState {
     pub keyboard_manager: Option<ZwpVirtualKeyboardManagerV1>,
     pub keyboard: Option<ZwpVirtualKeyboardV1>,
     pub seat: Option<WlSeat>,
+    /// margo's active keymap, compiled once by the caller (`VirtualKeyboard::new`)
+    /// and shared with `layout::live_legends` — `None` if it couldn't be read,
+    /// in which case `get_keymap_as_file` falls back to a bare "us" keymap.
+    pub keymap: Option<xkb::Keymap>,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for SessionState {
@@ -80,7 +84,7 @@ impl Dispatch<WlSeat, ()> for SessionState {
         {
             let keyboard = keyboard_manager.create_virtual_keyboard(seat, qh, ());
 
-            let (file, len) = get_keymap_as_file();
+            let (file, len) = get_keymap_as_file(state.keymap.as_ref());
             keyboard.keymap(wl_keyboard::KeymapFormat::XkbV1.into(), file.as_fd(), len);
             state.keyboard = Some(keyboard);
         }
@@ -99,7 +103,7 @@ impl Dispatch<ZwpVirtualKeyboardV1, ()> for SessionState {
     }
 }
 
-pub fn get_keymap_as_file() -> (File, u32) {
+pub fn get_keymap_as_file(keymap: Option<&xkb::Keymap>) -> (File, u32) {
     // Submit margo's REAL active keymap to the virtual keyboard manager.
     // This used to be a hardcoded "us" QWERTY keymap regardless of the
     // user's actual xkb config — Smithay's virtual-keyboard handling
@@ -110,19 +114,24 @@ pub fn get_keymap_as_file() -> (File, u32) {
     // to US QWERTY until the compositor next changed the seat keymap.
     // Falls back to a bare "us" keymap only if margo's config can't be
     // read at all, so the virtual keyboard still works.
-    let keymap = crate::xkb_config::compiled_keymap().unwrap_or_else(|| {
-        let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
-        xkb::Keymap::new_from_names(
-            &context,
-            "",
-            "",
-            "us",
-            "",
-            None,
-            xkb::KEYMAP_COMPILE_NO_FLAGS,
-        )
-        .expect("xkbcommon keymap panicked!")
-    });
+    let fallback_keymap;
+    let keymap = match keymap {
+        Some(km) => km,
+        None => {
+            let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+            fallback_keymap = xkb::Keymap::new_from_names(
+                &context,
+                "",
+                "",
+                "us",
+                "",
+                None,
+                xkb::KEYMAP_COMPILE_NO_FLAGS,
+            )
+            .expect("xkbcommon keymap panicked!");
+            &fallback_keymap
+        }
+    };
     let keymap = keymap.get_as_string(xkb::KEYMAP_FORMAT_TEXT_V1);
     let keymap = CString::new(keymap).expect("Keymap should not contain interior nul bytes");
     let keymap = keymap.as_bytes_with_nul();

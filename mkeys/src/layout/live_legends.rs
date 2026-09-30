@@ -13,18 +13,19 @@ use xkbcommon::xkb;
 use super::parse::{KeyDefinition, LayoutDefinition};
 use crate::xkb_config;
 
-/// Best-effort; leaves `layout` untouched on any failure (no margo
-/// config reachable, bad RMLVO, xkbcommon compile error, …) — the
+/// Takes the caller's already-compiled keymap (shared with the keymap
+/// the virtual keyboard submits — see `service::host::run` — instead of
+/// each compiling its own copy). No-op if `keymap` is `None`: the
 /// bundled TOML legends are always a safe fallback.
-pub fn apply(layout: &mut LayoutDefinition) {
-    let Some(keymap) = xkb_config::compiled_keymap() else {
+pub fn apply(layout: &mut LayoutDefinition, keymap: Option<&xkb::Keymap>) {
+    let Some(keymap) = keymap else {
         return;
     };
-    let group = xkb_config::active_layout_group(&keymap);
+    let group = xkb_config::active_layout_group(keymap);
 
     for row in &mut layout.layout {
         for key in row {
-            apply_key(&keymap, group, key);
+            apply_key(keymap, group, key);
         }
     }
 }

@@ -1,5 +1,6 @@
 use tracing::info;
 use wayland_client::{Connection, EventQueue, protocol::wl_keyboard::KeyState};
+use xkbcommon::xkb;
 
 use crate::service::host::KeyboardHandle;
 
@@ -10,10 +11,21 @@ pub struct VirtualKeyboard {
     event_queue: EventQueue<SessionState>,
     modifiers: u32,
     locks: u32,
+    /// The xkb layout group to report on every `modifiers()` request —
+    /// resolved once from `keymap` at construction. Previously hardcoded
+    /// to 0: on a multi-layout config with a non-zero group active,
+    /// tapping any on-screen modifier/lock key would silently reset the
+    /// focused client's active layout group back to 0.
+    group: u32,
 }
 
 impl VirtualKeyboard {
-    pub fn new() -> Self {
+    /// `keymap` is margo's active keymap (already compiled once by the
+    /// caller — see `service::host::run`, which also feeds it to
+    /// `layout::live_legends`), or `None` if it couldn't be read; `None`
+    /// falls back to a bare "us" keymap and group 0 in
+    /// `session::get_keymap_as_file`.
+    pub fn new(keymap: Option<xkb::Keymap>) -> Self {
         let conn = Connection::connect_to_env().unwrap();
         let display = conn.display();
 
@@ -22,10 +34,16 @@ impl VirtualKeyboard {
 
         let _registry = display.get_registry(&qh, ());
 
+        let group = keymap
+            .as_ref()
+            .map(crate::xkb_config::active_layout_group)
+            .unwrap_or(0);
+
         let mut state = SessionState {
             keyboard_manager: None,
             keyboard: None,
             seat: None,
+            keymap,
         };
 
         //bind seat and virtual keyboard manager
@@ -38,6 +56,7 @@ impl VirtualKeyboard {
             event_queue,
             modifiers: 0,
             locks: 0,
+            group,
         }
     }
 }
@@ -92,7 +111,12 @@ impl KeyboardHandle for VirtualKeyboard {
     }
 
     fn destroy(&mut self) {
-        if let Some(keyboard) = &self.session_state.keyboard {
+        // `take()`, not a borrow: clears the field so a second `destroy()`
+        // call (e.g. the close button and the IPC "quit" listener firing
+        // within the same tick) is a safe no-op instead of resending a
+        // destroy request on an already-destroyed proxy and panicking in
+        // the roundtrip's `.unwrap()` on the protocol error that follows.
+        if let Some(keyboard) = self.session_state.keyboard.take() {
             info!("Destroying Virtual Keyboard.");
             keyboard.destroy();
             self.event_queue.roundtrip(&mut self.session_state).unwrap();
@@ -103,7 +127,7 @@ impl KeyboardHandle for VirtualKeyboard {
 impl VirtualKeyboard {
     fn update_state(&mut self) {
         if let Some(keyboard) = &self.session_state.keyboard {
-            keyboard.modifiers(self.modifiers, 0, self.locks, 0);
+            keyboard.modifiers(self.modifiers, 0, self.locks, self.group);
             self.event_queue.roundtrip(&mut self.session_state).unwrap();
         }
     }

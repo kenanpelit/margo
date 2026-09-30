@@ -26,6 +26,10 @@ tempfile = "3"
 # Reads margo's config.conf for the active xkb RMLVO + queries `mctl` for
 # the active layout group — see src/xkb_config.rs.
 margo-config = { path = "../margo-config" }
+# `mctl::ipc_client` — the same socket client `mctl`'s own CLI uses
+# (timeout + real error handling), for the monitor-geometry query in
+# src/ui/main_view.rs instead of a hand-rolled subprocess+JSON parse.
+mctl = { path = "../mctl" }
 serde_json = { workspace = true }
 # Assets + config
 rust-embed = "8"

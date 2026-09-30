@@ -9,19 +9,35 @@ use xkbcommon::xkb;
 /// from `~/.config/margo/config.conf`'s `xkb_rules_*` keys — the same
 /// RMLVO fields and `Keymap::new_from_names` call margo itself makes
 /// (`margo/src/state.rs::reload_config`), so the result matches what the
-/// compositor's seat resolves. `None` on any failure (no config file,
-/// bad RMLVO, …); callers fall back to a sane default.
+/// compositor's seat resolves. `None` on any failure: no config file,
+/// bad RMLVO, xkbcommon compile error, OR the config fails validation
+/// (`margo_config::validate_config`) — margo's own `reload_config` keeps
+/// the OLD keymap live when a reload is rejected, so a config someone is
+/// mid-edit on (or that got rejected and never fixed) must not produce a
+/// keymap here either; showing/submitting layout data for a config
+/// that was never actually applied is the same "legend lies" bug class
+/// this module exists to fix, just triggered by config/compositor-state
+/// skew instead of a hardcoded keymap.
+///
+/// Known gap: always resolves the *default* config path
+/// (`~/.config/margo/config.conf`), not a `margo -c <path>` override —
+/// margo's IPC doesn't expose which path it was actually launched with.
 pub fn compiled_keymap() -> Option<xkb::Keymap> {
+    if margo_config::validator::validate_config(None)
+        .ok()?
+        .has_errors()
+    {
+        return None;
+    }
     let cfg = margo_config::parse_config(None).ok()?;
     let ctx = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
-    let options = (!cfg.xkb_rules.options.is_empty()).then(|| cfg.xkb_rules.options.clone());
     xkb::Keymap::new_from_names(
         &ctx,
         &cfg.xkb_rules.rules,
         &cfg.xkb_rules.model,
         &cfg.xkb_rules.layout,
         &cfg.xkb_rules.variant,
-        options,
+        cfg.xkb_rules.options_or_none(),
         xkb::KEYMAP_COMPILE_NO_FLAGS,
     )
 }
@@ -34,12 +50,8 @@ pub fn compiled_keymap() -> Option<xkb::Keymap> {
 /// reports a name the keymap doesn't recognise — always correct for the
 /// common single-layout case.
 pub fn active_layout_group(keymap: &xkb::Keymap) -> u32 {
-    let active_name = std::process::Command::new("mctl")
-        .args(["get", "keyboard-layout"])
-        .output()
+    let active_name = mctl::ipc_client::request_once("get keyboard-layout")
         .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok())
         .and_then(|v| v.get("keyboard_layout")?.as_str().map(str::to_string));
 
     let Some(active_name) = active_name else {

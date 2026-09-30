@@ -40,14 +40,20 @@ impl<N: IPCHandle + Send + 'static> AppService<N> {
         let mut layout = LayoutDefinition::from_toml(&layout_str)
             .or_else(|_| LayoutDefinition::from_toml(&LayoutAssets::by_name("en")))
             .expect("bundled en layout must parse");
+        // Compiled once and shared with both the legend pass below and
+        // the virtual keyboard's submitted keymap — previously each
+        // independently re-read config.conf and re-compiled xkbcommon's
+        // keymap on every launch.
+        let keymap = crate::xkb_config::compiled_keymap();
+
         // Re-point single-character legends at margo's actual active xkb
-        // layout — a no-op if that can't be read, so the bundled TOML
+        // layout — a no-op if `keymap` is None, so the bundled TOML
         // stays the fallback. MUST run before extra_rows::apply(), which
         // appends its own static (not xkb-derived) digit/F-key legends.
-        crate::layout::live_legends::apply(&mut layout);
+        crate::layout::live_legends::apply(&mut layout, keymap.as_ref());
         crate::layout::extra_rows::apply(&mut layout, &config);
 
-        let keyboard = VirtualKeyboard::new();
+        let keyboard = VirtualKeyboard::new(keymap);
 
         let app = RelmApp::new("org.margo.mkeys");
         relm4::set_global_css(&StyleAssets::get_default_style_file());
