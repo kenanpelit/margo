@@ -31,6 +31,9 @@ atomic file writes, GTK main-thread blocking, and resource leaks.**
 - A plugin's granted WASM host capabilities (process / network /
   clipboard) are now shown in Settings → Plugins — previously enforced
   but completely invisible in the UI.
+- **`mdots`** now shares the workspace version instead of tracking its
+  own — it releases alongside margo/mshell going forward rather than on
+  a separate, easy-to-forget cadence.
 
 ### Fixed
 
