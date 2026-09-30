@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/kenanpelit/margo/releases/latest"><img src="https://img.shields.io/github/v/release/kenanpelit/margo?label=release" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg" alt="License"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.93%2B-orange?logo=rust" alt="Rust"></a>
   <a href="https://github.com/Smithay/smithay"><img src="https://img.shields.io/badge/built%20on-Smithay-blueviolet" alt="Smithay"></a>
@@ -26,7 +27,7 @@
 
 ---
 
-**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a complete first-party stack for everyday use: a GTK4 desktop shell (`mshell`) with bar / menus / notifications / OSD / settings UI, a control CLI (`mctl`), a screen locker (`mlock`), a login manager (`mlogind`) with a GTK4 greeter (`mgreet`), monitor profiles (`mlayout`), a screenshot helper (`mscreenshot`), an automatic power-profile manager (`mpower`), an on-screen keyboard (`mkeys`), Mullvad VPN control (`mvpn`), a calendar (`mcal`) and a folder-first music player (`mtune`). The whole stack ships from one workspace and one release. The compositor exposes a scriptable Unix control socket (`get` / `watch` / `dispatch`) plus the standard `ext-workspace` + `foreign-toplevel-list` protocols, so third-party bars (sfwbar, ironbar) work too — but you don't need one.
+**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a complete first-party stack for everyday use: a GTK4 desktop shell (`mshell`) with bar / menus / notifications / OSD / settings UI, a control CLI (`mctl`), a screen locker (`mlock`), a login manager (`mlogind`) with a GTK4 greeter (`mgreet`), monitor profiles (`mlayout`), a screenshot helper (`mscreenshot`), an automatic power-profile manager (`mpower`), an on-screen keyboard (`mkeys`), Mullvad VPN control (`mvpn`), a calendar (`mcal`), a folder-first music player (`mtune`) and a tmux session manager (`mtm`). The whole stack ships from one workspace and one release. The compositor exposes a scriptable Unix control socket (`get` / `watch` / `dispatch`) plus the standard `ext-workspace` + `foreign-toplevel-list` protocols, so third-party bars (sfwbar, ironbar) work too — but you don't need one.
 
 [Smithay]: https://github.com/Smithay/smithay
 [mango]: https://github.com/mangowm/mango
@@ -55,7 +56,7 @@ itself from your wallpaper with Material You.
 <td align="center" width="25%"><img src="docs/assets/screenshot.webp" alt="Screenshot editor"><br><sub><b>Screenshot</b><br>region → annotate → copy</sub></td>
 </tr>
 <tr>
-<td align="center" width="25%"><img src="docs/assets/launcher.webp" alt="App launcher"><br><sub><b>App launcher</b><br>fuzzy apps + ~15 providers</sub></td>
+<td align="center" width="25%"><img src="docs/assets/launcher.webp" alt="App launcher"><br><sub><b>App launcher</b><br>fuzzy apps + 17 providers</sub></td>
 <td align="center" width="25%"><img src="docs/assets/twilight.webp" alt="Twilight"><br><sub><b>Twilight</b><br>blue-light filter + schedule</sub></td>
 <td align="center" width="25%"><img src="docs/assets/weather.webp" alt="Weather"><br><sub><b>Weather</b><br>forecast + hourly details</sub></td>
 <td align="center" width="25%"><img src="docs/assets/audio.webp" alt="Audio mixer"><br><sub><b>Audio mixer</b><br>per-app volume + device ports</sub></td>
@@ -86,25 +87,26 @@ Each binary lives in its own top-level directory — the name links to it.
 | [`start-margo`](start-margo/) | Watchdog supervisor — restart-on-crash, sd_notify, signal forwarding |
 | [`mctl`](mctl/) | Compositor IPC + control CLI |
 | [`mshell`](mshell/) | GTK4 desktop shell — bar, menus, OSD, in-app Settings |
-| [`mshellctl`](mshellctl/) | Shell IPC CLI — menus, audio, media, mpv companion + video wallpaper, `mtune`, lock |
+| [`mshellctl`](mshellctl/) | Shell IPC CLI — menus, audio, cross-player media (MPRIS + MPD), mpv companion + video wallpaper, session, notifications |
 | [`mlock`](mlock/) | Screen locker — `ext-session-lock-v1` + PAM |
 | [`mlogind`](mlogind/) | Login / display manager — PAM, matugen-themed, TUI or GTK4 greeter |
 | [`mgreet`](mgreet/) | Optional GTK4 graphical greeter for `mlogind` — per-output layer-shell |
 | [`mpower`](mpower/) | Automatic power-profile manager — CPU + AC/battery aware |
 | [`mlayout`](mlayout/) | Named monitor profiles |
 | [`mscreenshot`](mscreenshot/) | Screen / region / window capture |
-| [`mkeys`](mkeys/) | On-screen keyboard — `zwp_virtual_keyboard`, layer-shell, en/tr |
+| [`mkeys`](mkeys/) | On-screen keyboard — live xkb-derived legends, floating mode, function row + numpad, `zwp_virtual_keyboard` |
 | [`mvpn`](mvpn/) | Mullvad VPN control — CLI + GTK4 layer-shell panel |
 | [`mcal`](mcal/) | Calendar — local + remote ICS, CLI + in-shell UI |
 | [`mtune`](mtune/) | Folder-first music player — GTK4 + GStreamer, MPRIS, tray, own bar pill + menu |
+| [`mtm`](mtm/) | Native tmux session / layout / buffer / clipboard manager (Rust port of `tm.sh`) |
 | [`mpicker`](mpicker/) | Native colour picker — frozen screencap + zoom lens |
-| [`mdots`](mdots/) | Dotfile manager — Nix-aware TUI (vendored `dcli` fork) |
+| [`mdots`](mdots/) | Declarative package + dotfiles manager, Nix-aware TUI |
 | [`mwizard`](mwizard/) | First-launch setup wizard launcher |
-| [`mvisual`](mvisual/) | Renderer visual debugger |
+| [`mvisual`](mvisual/) | Interactive layout previewer — every tiling layout side by side, per-tag pinning rehearsal |
 | [`margo-portal`](margo-portal/) | xdg-desktop-portal screencast / screenshot backend |
 | [`mshellshare`](mshellshare/) | Portal screencast helper |
 
-Library-only crates (`margo-config`, `margo-layouts`, and the `mshell-crates/*` family) keep their descriptive prefix.
+Library-only crates (`margo-config`, `margo-layouts`, `mplugin-sdk`, and the `mshell-crates/*` family) keep their descriptive prefix.
 
 ## Compositor highlights
 
@@ -162,7 +164,8 @@ A first-party GTK4 + relm4 + gtk4-layer-shell desktop shell that subscribes to m
 - **Wallpaper.** Per-tag wallpaper assignment, optional rotation timer, `mshellctl wallpaper next/prev/random` for scriptable cycling.
 - **Idle.** `ext-idle-notify-v1` consumer; tray `KeepAwake` pill toggles the inhibit at runtime.
 - **Settings UI.** Alphabetic sidebar with **Bar** at top level and **Widgets** as a group exposing every pill and menu as its own page. Live preview, debounced reload — slider drags don't thrash the compositor.
-- **Sound.** Optional matugen-style palette (`mshell-matugen`) generates wallpaper-derived themes that drive both the shell and the compositor border / focus colours.
+- **Theming.** Optional matugen-style palette (`mshell-matugen`) generates wallpaper-derived themes that drive both the shell and the compositor border / focus colours.
+- **WASM plugins.** Declarative, sandboxed widgets — a `manifest.toml` describes a bar pill (or a full WASM-rendered panel) that any git repo can ship; installs go through Settings → Plugins with per-plugin capability grants (process / network / clipboard, deny by default). Author one with [`mplugin-sdk`](mplugin-sdk/).
 
 ## Music player (`mtune`)
 
@@ -179,8 +182,9 @@ into the workspace and re-themed to the margo look with a live matugen palette.
 - **Dedicated shell surface** — a **Tune bar pill** (queue position + elapsed /
   total) and a menu with a draggable seek bar, transport, shuffle / repeat, a
   speed control and the folder / playlist actions. Not the generic MPRIS pill.
-- **`mshellctl mtune`** — a complete CLI (`play-pause`, `next`, `seek`, `rate`,
-  `repeat`, `jump`, `playlist-*`, `status --json`, `toggle-window`, …).
+- **`mshellctl media`** — cross-player control (MPRIS + native MPD, weighted
+  auto-pick or an explicit target) drives mtune like any other player; the
+  `org.margo.Tune` D-Bus interface above covers what's mtune-specific.
 - Playback speed with **pitch held constant** (`scaletempo`), **playlists**
   (m3u / pls, open + save), **resume** on launch, compact **mini / strip**
   window skins, **desktop notifications** on track / setting change, and a
@@ -252,7 +256,7 @@ path is recorded in `/usr/local/share/margo/install-manifest.txt`, so
 ```bash
 cargo build --release --workspace
 for bin in margo start-margo mctl mshell mshellctl mshellshare mlock mlogind mgreet \
-           mpower mlayout mscreenshot mkeys mvpn mcal mtune mpicker mdots mvisual mwizard; do
+           mpower mlayout mscreenshot mkeys mvpn mcal mtune mtm mpicker mdots mvisual mwizard; do
   sudo install -Dm755 target/release/$bin /usr/bin/$bin
 done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop
@@ -351,15 +355,14 @@ mshellctl screenrecord toggle full   # start/stop recording the whole layout
 mshellctl menu screenshot            # the GUI front of the same engine
 
 # Shell
-mshellctl menu show dashboard        # bring up the composite dashboard
-mshellctl menu session lock          # one-shot lock from the session menu
+mshellctl menu mdash                 # bring up the composite dashboard
+mshellctl session lock               # lock the session
 mshellctl wallpaper next             # cycle wallpaper
 
-# Music (mtune)
-mshellctl mtune next                  # skip track
-mshellctl mtune seek +30             # jump forward 30s
-mshellctl mtune status --json        # now-playing, scriptable
-mshellctl mtune toggle-window        # show / hide the player window
+# Media (any MPRIS player + native MPD, mtune included)
+mshellctl media next                 # skip track on the best-scoring active player
+mshellctl media toggle mtune         # play/pause, targeting mtune specifically
+mshellctl media status               # name, state, track — scriptable
 ```
 
 ## Scripting
@@ -392,7 +395,7 @@ Engine: [Rhai] (pure Rust, sandboxed by default). Guide: **[Scripting](https://k
 - [`CHANGELOG.md`](CHANGELOG.md) — release-by-release history (Keep-a-Changelog).
 - [`road_map.md`](road_map.md) — what's shipped, what's queued, design trade-offs.
 - [`docs/`](docs/) — design notes for in-flight features and the post-install validation checklist.
-- `mctl --help`, `mctl actions --verbose`, `mlock --help`, `mlayout --help`, `mscreenshot --help` — generated from source, always current.
+- `mctl --help`, `mctl actions --verbose`, `mshellctl --help`, `mlock --help`, `mlayout --help`, `mscreenshot --help` — generated from source, always current.
 
 ## Acknowledgements
 
