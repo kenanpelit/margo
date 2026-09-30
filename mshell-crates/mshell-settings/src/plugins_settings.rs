@@ -877,6 +877,21 @@ fn rebuild_installed(
             hint.set_tooltip_text(Some(&cmds));
             col.append(&hint);
         }
+
+        // Trust gate: which sensitive WASM host capabilities this plugin's
+        // panel was granted (deny-by-default — see `Capabilities` — so
+        // this was previously invisible in the UI entirely).
+        let caps = p.manifest.capabilities.to_tokens();
+        if !caps.is_empty() {
+            let hint = dim_line(&format!("capabilities: {caps}"));
+            hint.set_tooltip_text(Some(
+                "Sensitive host access this plugin's WASM panel was granted: \
+                 process (run subprocesses), network (make HTTP requests), \
+                 and/or clipboard (read/write). Denied by default — only \
+                 what the manifest declared and installing this plugin accepted.",
+            ));
+            col.append(&hint);
+        }
         row.append(&col);
 
         // Update (when a source offers a newer version).

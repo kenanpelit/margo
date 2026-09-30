@@ -138,6 +138,22 @@ pub struct Keybind {
 
 /// Replace every `{{key}}` in `template` with its value from `values`.
 /// Unknown placeholders are left untouched.
+///
+/// SECURITY: this is a raw, unescaped string substitution, and its result
+/// (a widget's `exec`/`on_click`/menu-row `exec`) is run through `sh -c`
+/// by the shell's custom-widget engine (`mshell-frame`'s `custom.rs`). A
+/// value that contains shell metacharacters (`;`, `` ` ``, `$(...)`, an
+/// unbalanced quote, a newline) is interpreted BY THE SHELL wherever the
+/// template author placed `{{key}}` outside their own quoting — including
+/// values sourced from the system keyring for `type = "secret"` settings
+/// (see `plugin_bridge::setting_values`), which the user doesn't get to
+/// pre-sanitize the way they might a plain text setting. There's no safe
+/// place to auto-quote here: a value substituted *inside* a template
+/// author's own `'...'` would become double-quoted and break, so this
+/// stays raw. Plugin manifests should wrap every `{{placeholder}}` in
+/// their own single quotes in `exec`/`on_click` strings, and settings
+/// (secret or not) that a plugin then feeds to `sh -c` should be treated
+/// as the plugin's own trust boundary, not the shell's.
 pub fn substitute(template: &str, values: &std::collections::BTreeMap<String, String>) -> String {
     let mut out = template.to_string();
     for (k, v) in values {

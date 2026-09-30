@@ -398,6 +398,11 @@ fn truncate(s: &str, max: u32) -> String {
 }
 
 /// Fire-and-forget a shell command (`sh -c`). Reaped to avoid zombies.
+///
+/// For a plugin-derived widget, `cmd` already had its `{{placeholder}}`s
+/// substituted (raw, unescaped — see `mshell_plugins::manifest::substitute`)
+/// including any `type = "secret"` settings, so a value with shell
+/// metacharacters is interpreted here exactly as typed.
 fn run_cmd(cmd: &str) {
     let cmd = cmd.trim().to_string();
     if cmd.is_empty() {

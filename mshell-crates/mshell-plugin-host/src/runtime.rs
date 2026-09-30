@@ -658,17 +658,42 @@ fn host_http(req: HttpRequest) -> Result<HttpResponse, String> {
     match result {
         Ok(resp) => {
             let status = resp.status();
-            let body = resp.into_string().map_err(|e| e.to_string())?;
+            let body = read_capped_body(resp)?;
             Ok(HttpResponse { status, body })
         }
         // A non-2xx status is still a real response (e.g. a 4xx JSON error from
         // an API) — hand it back to the guest rather than dropping it.
         Err(ureq::Error::Status(code, resp)) => {
-            let body = resp.into_string().unwrap_or_default();
+            let body = read_capped_body(resp).unwrap_or_default();
             Ok(HttpResponse { status: code, body })
         }
         Err(e) => Err(e.to_string()),
     }
+}
+
+/// Max response body the blocking, one-shot `http` call will read into
+/// host memory. `http-start` streams chunks instead (each one bounded by
+/// the wasm memory cap once it reaches the guest, see
+/// [`MAX_PLUGIN_MEMORY_BYTES`]) — this is the one path that reads a whole
+/// body into a host-native `String` up front, so an unbounded/malicious
+/// server response could otherwise grow the *host* process's memory, not
+/// just the plugin's.
+const MAX_HTTP_RESPONSE_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Read at most [`MAX_HTTP_RESPONSE_BYTES`] (+1, to detect truncation)
+/// from `resp`'s body.
+fn read_capped_body(resp: ureq::Response) -> Result<String, String> {
+    let mut buf = Vec::new();
+    resp.into_reader()
+        .take(MAX_HTTP_RESPONSE_BYTES + 1)
+        .read_to_end(&mut buf)
+        .map_err(|e| e.to_string())?;
+    if buf.len() as u64 > MAX_HTTP_RESPONSE_BYTES {
+        return Err(format!(
+            "response exceeds {MAX_HTTP_RESPONSE_BYTES} byte limit"
+        ));
+    }
+    Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
 // The `types` interface is types-only, but the generated linker bound still
