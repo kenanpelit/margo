@@ -114,8 +114,9 @@ impl KeyboardHandle for VirtualKeyboard {
         // `take()`, not a borrow: clears the field so a second `destroy()`
         // call (e.g. the close button and the IPC "quit" listener firing
         // within the same tick) is a safe no-op instead of resending a
-        // destroy request on an already-destroyed proxy and panicking in
-        // the roundtrip's `.unwrap()` on the protocol error that follows.
+        // destroy request on an already-destroyed proxy, which the
+        // roundtrip below would otherwise turn into a panic on the
+        // resulting protocol error.
         if let Some(keyboard) = self.session_state.keyboard.take() {
             info!("Destroying Virtual Keyboard.");
             keyboard.destroy();

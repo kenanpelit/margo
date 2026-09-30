@@ -177,7 +177,8 @@ impl SimpleComponent for UIModel {
             let monitor_size = Arc::new(Mutex::new(None));
             let monitor_size_bg = monitor_size.clone();
             thread::spawn(move || {
-                *monitor_size_bg.lock().unwrap() = Some(active_monitor_size());
+                let mut guard = monitor_size_bg.lock().unwrap_or_else(|e| e.into_inner());
+                *guard = Some(active_monitor_size());
             });
 
             let window = dock_window.clone();
@@ -185,9 +186,11 @@ impl SimpleComponent for UIModel {
             let button = dock_button_self.clone();
             let float_state = dock_float_state.clone();
             glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
-                let Some(size) = *monitor_size.lock().unwrap() else {
+                let guard = monitor_size.lock().unwrap_or_else(|e| e.into_inner());
+                let Some(size) = *guard else {
                     return glib::ControlFlow::Continue;
                 };
+                drop(guard);
                 apply_floating(
                     &window,
                     dock_margin,
