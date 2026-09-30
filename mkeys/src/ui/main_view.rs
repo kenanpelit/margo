@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use gdk4::prelude::ObjectExt;
@@ -8,7 +9,7 @@ use gtk::prelude::{
     ToggleButtonExt, WidgetExt,
 };
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
-use relm4::gtk::gdk;
+use relm4::gtk::{gdk, glib};
 use relm4::{ComponentParts, ComponentSender, RelmWidgetExt, SimpleComponent, gtk};
 use tracing::info;
 
@@ -155,21 +156,52 @@ impl SimpleComponent for UIModel {
         dock_button.connect_clicked(move |_| {
             let now_floating = !dock_is_floating.get();
             dock_is_floating.set(now_floating);
-            if now_floating {
-                setup_floating(
-                    &dock_window,
+
+            if !now_floating {
+                // Docking is purely local — no IPC round-trip needed.
+                setup_docked(&dock_window, dock_position, dock_margin);
+                dock_grip.set_visible(false);
+                dock_button_self.set_icon_name(dock_icon_name(false));
+                dock_button_self.set_tooltip_text(Some(dock_tooltip(false)));
+                return;
+            }
+
+            // Undocking needs active_monitor_size(), an `mctl` IPC
+            // round-trip that can block for up to its 5s socket timeout
+            // if margo is wedged. This fires from a live, interactive
+            // click (unlike the same call at init(), before the GTK
+            // main loop pumps) — run it on a background thread and
+            // apply the result on the main thread via a short poll
+            // rather than blocking here, so a slow/hung compositor
+            // can't freeze the whole on-screen keyboard.
+            let monitor_size = Arc::new(Mutex::new(None));
+            let monitor_size_bg = monitor_size.clone();
+            thread::spawn(move || {
+                *monitor_size_bg.lock().unwrap() = Some(active_monitor_size());
+            });
+
+            let window = dock_window.clone();
+            let grip = dock_grip.clone();
+            let button = dock_button_self.clone();
+            let float_state = dock_float_state.clone();
+            glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
+                let Some(size) = *monitor_size.lock().unwrap() else {
+                    return glib::ControlFlow::Continue;
+                };
+                apply_floating(
+                    &window,
                     dock_margin,
                     kb_width_units,
                     kb_height_rows,
                     geometry_unit,
-                    &dock_float_state,
+                    &float_state,
+                    size,
                 );
-            } else {
-                setup_docked(&dock_window, dock_position, dock_margin);
-            }
-            dock_grip.set_visible(now_floating);
-            dock_button_self.set_icon_name(dock_icon_name(now_floating));
-            dock_button_self.set_tooltip_text(Some(dock_tooltip(now_floating)));
+                grip.set_visible(true);
+                button.set_icon_name(dock_icon_name(true));
+                button.set_tooltip_text(Some(dock_tooltip(true)));
+                glib::ControlFlow::Break
+            });
         });
 
         keyboard_definition.layout.iter().for_each(|row| {
@@ -188,11 +220,15 @@ impl SimpleComponent for UIModel {
                 let glyph = special_key_glyph(scan_code);
                 let mod_lock_label = || {
                     glyph.map(str::to_string).unwrap_or_else(|| {
-                        format!(
-                            "{} {}",
-                            key.bottom_legend.clone().unwrap_or_default(),
-                            key.top_legend.clone().unwrap_or_default()
-                        )
+                        // Join whichever legends are actually set — a
+                        // key with only one (e.g. the numpad's Num
+                        // Lock, top_legend only) must not print a
+                        // stray leading/trailing space.
+                        [key.bottom_legend.clone(), key.top_legend.clone()]
+                            .into_iter()
+                            .flatten()
+                            .collect::<Vec<_>>()
+                            .join(" ")
                     })
                 };
 
@@ -328,12 +364,12 @@ struct FloatState {
     bounds: Rc<Cell<(i32, i32)>>,
 }
 
-/// Anchors the layer surface to (Left, Top) only — free absolute
-/// positioning via margins, instead of docking to a screen edge — sets
-/// the initial margins to a sensible starting spot (horizontally
-/// centered, near the bottom like the docked default), and updates
-/// `state` with that position and the (left, top) margin range that
-/// keeps the keyboard fully on-screen, for [`attach_grip_drag`].
+/// Synchronous convenience for `init()`, where blocking briefly on the
+/// `active_monitor_size()` IPC round-trip is harmless (the GTK main
+/// loop hasn't started pumping events yet). The dock/undock toolbar
+/// button — which fires *while* the keyboard is live and interactive —
+/// instead calls `active_monitor_size()` off-thread and applies the
+/// result via [`apply_floating`] once it's ready; see its call site.
 fn setup_floating(
     window: &gtk::Window,
     margin: i32,
@@ -342,13 +378,40 @@ fn setup_floating(
     geometry_unit: i32,
     state: &FloatState,
 ) {
+    apply_floating(
+        window,
+        margin,
+        kb_width_units,
+        kb_height_rows,
+        geometry_unit,
+        state,
+        active_monitor_size(),
+    );
+}
+
+/// Anchors the layer surface to (Left, Top) only — free absolute
+/// positioning via margins, instead of docking to a screen edge — sets
+/// the initial margins to a sensible starting spot (horizontally
+/// centered, near the bottom like the docked default), and updates
+/// `state` with that position and the (left, top) margin range that
+/// keeps the keyboard fully on-screen, for [`attach_grip_drag`].
+/// `monitor_size` is passed in (rather than queried here) so the caller
+/// can compute it off the GTK main thread.
+fn apply_floating(
+    window: &gtk::Window,
+    margin: i32,
+    kb_width_units: f32,
+    kb_height_rows: i32,
+    geometry_unit: i32,
+    state: &FloatState,
+    (mon_w, mon_h): (i32, i32),
+) {
     window.set_anchor(Edge::Left, true);
     window.set_anchor(Edge::Top, true);
     window.set_anchor(Edge::Right, false);
     window.set_anchor(Edge::Bottom, false);
 
     let (kb_width, kb_height) = keyboard_pixel_size(kb_width_units, kb_height_rows, geometry_unit);
-    let (mon_w, mon_h) = primary_monitor_size();
     let start_left = ((mon_w - kb_width) / 2).max(0);
     let start_top = (mon_h - kb_height - margin).max(0);
     window.set_margin(Edge::Left, start_left);
@@ -410,22 +473,24 @@ fn keyboard_pixel_size(kb_width_units: f32, kb_height_rows: i32, geometry_unit: 
     (width.max(1), height.max(1))
 }
 
-/// The primary monitor's size in logical pixels, via `mctl get monitors`
-/// (the first entry). Falls back to a common 1080p size on any failure —
-/// only used to pick a reasonable floating start position and drag
-/// bounds, never something that needs to be exact.
-fn primary_monitor_size() -> (i32, i32) {
+/// The ACTIVE monitor's size in logical pixels — via margo's own IPC
+/// client (`mctl::ipc_client::request_once`, same timeout + error
+/// handling `mctl`'s CLI gets, rather than a hand-rolled subprocess),
+/// picking the output flagged `"active"` in the snapshot rather than
+/// just the first one (mkeys can be shown on a non-first monitor).
+/// Falls back to a common 1080p size on any failure — this is only ever
+/// used to pick a reasonable floating start position and drag bounds,
+/// never something that needs to be exact. Blocking (up to `mctl`'s 5s
+/// socket timeout in the worst case) — call off the GTK main thread.
+fn active_monitor_size() -> (i32, i32) {
     const FALLBACK: (i32, i32) = (1920, 1080);
     (|| {
-        let output = std::process::Command::new("mctl")
-            .args(["get", "monitors"])
-            .output()
-            .ok()?;
-        if !output.status.success() {
-            return None;
-        }
-        let v: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
-        let mon = v.get("monitors")?.as_array()?.first()?;
+        let v = mctl::ipc_client::request_once("get monitors").ok()?;
+        let monitors = v.get("monitors")?.as_array()?;
+        let mon = monitors
+            .iter()
+            .find(|m| m.get("active").and_then(|a| a.as_bool()) == Some(true))
+            .or_else(|| monitors.first())?;
         let w = mon.get("width")?.as_i64()?;
         let h = mon.get("height")?.as_i64()?;
         Some((w.max(1) as i32, h.max(1) as i32))

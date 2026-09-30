@@ -20,7 +20,7 @@ pub fn apply(layout: &mut LayoutDefinition, config: &Config) {
         layout.layout.extend(numpad_rows());
     }
     if config.function_row || config.numpad {
-        recompute_geometry(layout);
+        layout.recompute_geometry();
     }
 }
 
@@ -80,16 +80,6 @@ fn numpad_rows() -> Vec<Vec<KeyDefinition>> {
             key(69, "Num", None),
         ],
     ]
-}
-
-/// Matches `LayoutDefinition::from_toml`'s geometry computation.
-fn recompute_geometry(layout: &mut LayoutDefinition) {
-    layout.height = layout.layout.len() as i32;
-    layout.width = layout
-        .layout
-        .iter()
-        .map(|row| row.iter().map(|k| k.width.unwrap_or(1.0)).sum::<f32>())
-        .fold(0.0_f32, f32::max);
 }
 
 #[cfg(test)]

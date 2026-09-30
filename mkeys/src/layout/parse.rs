@@ -61,13 +61,21 @@ impl LayoutDefinition {
     /// instead of panicking, so callers can fall back to a bundled layout.
     pub fn from_toml(toml_str: &str) -> Result<Self, toml::de::Error> {
         let mut def = toml::from_str::<LayoutDefinition>(toml_str)?;
-        def.height = def.layout.len() as i32;
-        def.width = def
+        def.recompute_geometry();
+        Ok(def)
+    }
+
+    /// Recomputes `height` (row count) and `width` (widest row, in key
+    /// units) from `layout`. Callers that mutate `layout` after the
+    /// initial parse (e.g. `layout::extra_rows` prepending/appending
+    /// rows) must call this afterwards to keep the two in sync.
+    pub fn recompute_geometry(&mut self) {
+        self.height = self.layout.len() as i32;
+        self.width = self
             .layout
             .iter()
             .map(|row| row.iter().map(|k| k.width.unwrap_or(1.0)).sum::<f32>())
             .fold(0.0_f32, f32::max);
-        Ok(def)
     }
 }
 
