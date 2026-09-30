@@ -67,25 +67,13 @@ fn patch_conf(updates: &[(&str, String)]) -> std::io::Result<()> {
     std::fs::write(&path, out)
 }
 
-/// Reload the compositor live, reaping the child asynchronously.
-fn reload() {
-    match std::process::Command::new("mctl").args(["reload"]).spawn() {
-        Ok(mut child) => {
-            std::thread::spawn(move || {
-                let _ = child.wait();
-            });
-        }
-        Err(e) => tracing::warn!(error = %e, "overview: `mctl reload` failed to spawn"),
-    }
-}
-
 /// Apply one config key and reload.
 fn apply(key: &str, val: String) {
     if let Err(e) = patch_conf(&[(key, val)]) {
         tracing::warn!(error = %e, key, "overview: failed to patch config.conf");
         return;
     }
-    reload();
+    crate::compositor_conf::reload();
 }
 
 pub struct OverviewSettingsInit {}

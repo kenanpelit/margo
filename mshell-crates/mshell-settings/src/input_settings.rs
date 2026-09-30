@@ -80,19 +80,7 @@ fn apply(key: &str, value: String) {
         tracing::warn!(error = %e, key, "input: failed to write compositor config");
         return;
     }
-    reload();
-}
-
-/// Spawn `mctl reload`, reaping the child asynchronously.
-fn reload() {
-    match std::process::Command::new("mctl").args(["reload"]).spawn() {
-        Ok(mut child) => {
-            std::thread::spawn(move || {
-                let _ = child.wait();
-            });
-        }
-        Err(e) => tracing::warn!(error = %e, "input: `mctl reload` failed to spawn"),
-    }
+    crate::compositor_conf::reload();
 }
 
 fn bit(on: bool) -> String {
@@ -160,7 +148,7 @@ fn write_gesturebinds(binds: &[String]) {
         tracing::warn!(error = %e, "input: failed to write gesturebinds");
         return;
     }
-    reload();
+    crate::compositor_conf::reload();
 }
 
 /// "none, up, 3, focusstack, +1" → "3-finger up · focusstack +1".

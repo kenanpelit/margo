@@ -1004,6 +1004,33 @@ fn main() -> Result<()> {
             }
             match output {
                 Some(path) => {
+                    // Back up an existing file rather than silently
+                    // clobbering it — a second `migrate` run, or a
+                    // copy-pasted command pointed at the wrong `-o`, must
+                    // never destroy a config the user has since hand-edited
+                    // with no way to get it back. Non-interactive on
+                    // purpose: this command is also used in scripts/install
+                    // pipelines, so back up rather than prompt.
+                    if path.exists() {
+                        let mut backup_name = path
+                            .file_name()
+                            .map(|n| n.to_os_string())
+                            .unwrap_or_else(|| std::ffi::OsString::from("output"));
+                        backup_name.push(".bak");
+                        let backup = path.with_file_name(&backup_name);
+                        if let Err(e) = std::fs::rename(&path, &backup) {
+                            eprintln!(
+                                "mctl migrate: {} exists and could not be backed up ({e}); refusing to overwrite",
+                                path.display()
+                            );
+                            std::process::exit(1);
+                        }
+                        eprintln!(
+                            "mctl migrate: backed up existing {} to {}",
+                            path.display(),
+                            backup.display()
+                        );
+                    }
                     if let Err(e) = std::fs::write(&path, &result.output) {
                         eprintln!("mctl migrate: write {}: {e}", path.display());
                         std::process::exit(1);

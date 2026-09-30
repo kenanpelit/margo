@@ -240,9 +240,19 @@ impl ConfigManager {
 
         thread::spawn(move || {
             let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
-            let mut watcher: RecommendedWatcher =
-                RecommendedWatcher::new(tx, NotifyConfig::default())
-                    .expect("config: failed to create watcher");
+            let mut watcher: RecommendedWatcher = match RecommendedWatcher::new(
+                tx,
+                NotifyConfig::default(),
+            ) {
+                Ok(w) => w,
+                Err(e) => {
+                    // e.g. the host's inotify instance limit is already
+                    // exhausted. Losing live-reload is far better than
+                    // taking the whole shell down over it.
+                    error!(error = %e, "config: failed to create watcher, live-reload disabled");
+                    return;
+                }
+            };
 
             let prof_dir = profiles_dir();
 

@@ -124,18 +124,6 @@ fn patch_conf(updates: &[(&str, String)]) -> std::io::Result<()> {
     std::fs::write(&path, out)
 }
 
-/// Reload the compositor live, reaping the child asynchronously.
-fn reload() {
-    match std::process::Command::new("mctl").args(["reload"]).spawn() {
-        Ok(mut child) => {
-            std::thread::spawn(move || {
-                let _ = child.wait();
-            });
-        }
-        Err(e) => tracing::warn!(error = %e, "animations: `mctl config reload` failed to spawn"),
-    }
-}
-
 fn bit(on: bool) -> String {
     if on { "1" } else { "0" }.to_string()
 }
@@ -699,17 +687,17 @@ impl Component for AnimationsSettingsModel {
             AnimationsSettingsInput::SetAnimations(v) => {
                 self.animations = v;
                 let _ = patch_conf(&[("animations", bit(v))]);
-                reload();
+                crate::compositor_conf::reload();
             }
             AnimationsSettingsInput::SetLayerAnimations(v) => {
                 self.layer_animations = v;
                 let _ = patch_conf(&[("layer_animations", bit(v))]);
-                reload();
+                crate::compositor_conf::reload();
             }
             AnimationsSettingsInput::SetTagDuration(v) => {
                 self.animation_duration_tag = v as f64;
                 let _ = patch_conf(&[("animation_duration_tag", v.to_string())]);
-                reload();
+                crate::compositor_conf::reload();
             }
             AnimationsSettingsInput::SelectPreset(idx) => {
                 self.selected = Some(idx);
@@ -753,7 +741,7 @@ impl Component for AnimationsSettingsModel {
                         {
                             self.animation_duration_tag = ms;
                         }
-                        reload();
+                        crate::compositor_conf::reload();
                     }
                 }
             }

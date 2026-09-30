@@ -772,18 +772,7 @@ pub(crate) fn persist(binds: &[Bind]) {
         tracing::warn!(error = %e, "keybinds: failed to write binds.conf");
         return;
     }
-    reload();
-}
-
-fn reload() {
-    match std::process::Command::new("mctl").args(["reload"]).spawn() {
-        Ok(mut child) => {
-            std::thread::spawn(move || {
-                let _ = child.wait();
-            });
-        }
-        Err(e) => tracing::warn!(error = %e, "keybinds: `mctl reload` failed to spawn"),
-    }
+    crate::compositor_conf::reload();
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
