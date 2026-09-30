@@ -144,15 +144,21 @@ impl EmojiProvider {
 fn copy_to_clipboard(text: &str) {
     use std::io::Write;
     use std::process::{Command, Stdio};
-    match Command::new("wl-copy").stdin(Stdio::piped()).spawn() {
-        Ok(mut child) => {
-            if let Some(stdin) = child.stdin.as_mut() {
-                let _ = stdin.write_all(text.as_bytes());
+    // Spawn, write and wait all off the GTK main thread — `on_activate`
+    // runs there, and even though `wl-copy` forks and exits quickly, it's
+    // a real subprocess spawn + blocking wait on every activation.
+    let text = text.to_string();
+    std::thread::spawn(
+        move || match Command::new("wl-copy").stdin(Stdio::piped()).spawn() {
+            Ok(mut child) => {
+                if let Some(stdin) = child.stdin.as_mut() {
+                    let _ = stdin.write_all(text.as_bytes());
+                }
+                let _ = child.wait();
             }
-            let _ = child.wait();
-        }
-        Err(err) => tracing::warn!(?err, "emoji wl-copy failed"),
-    }
+            Err(err) => tracing::warn!(?err, "emoji wl-copy failed"),
+        },
+    );
 }
 
 #[cfg(test)]

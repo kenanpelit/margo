@@ -280,22 +280,29 @@ impl Provider for WebsearchProvider {
         let query = item.name.split_once(": ").map(|(_, q)| q.to_string())?;
         Some(std::rc::Rc::new(move || {
             let url = engine.url_for(&query);
-            let mut child = match Command::new("wl-copy")
-                .stdin(std::process::Stdio::piped())
-                .spawn()
-            {
-                Ok(c) => c,
-                Err(err) => {
-                    tracing::warn!(?err, "wl-copy spawn failed for websearch alt-action");
-                    return;
+            // Spawn, write, wait and toast all off the GTK main thread —
+            // this closure runs on activation (which does), and even
+            // though `wl-copy` forks and exits quickly, it's a real
+            // subprocess spawn + blocking wait; `notify_rust`'s D-Bus
+            // call doesn't need the GTK main thread either.
+            std::thread::spawn(move || {
+                let mut child = match Command::new("wl-copy")
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()
+                {
+                    Ok(c) => c,
+                    Err(err) => {
+                        tracing::warn!(?err, "wl-copy spawn failed for websearch alt-action");
+                        return;
+                    }
+                };
+                if let Some(mut stdin) = child.stdin.take() {
+                    use std::io::Write as _;
+                    let _ = stdin.write_all(url.as_bytes());
                 }
-            };
-            if let Some(mut stdin) = child.stdin.take() {
-                use std::io::Write as _;
-                let _ = stdin.write_all(url.as_bytes());
-            }
-            let _ = child.wait();
-            toast("URL copied", url);
+                let _ = child.wait();
+                toast("URL copied", url);
+            });
         }))
     }
 }

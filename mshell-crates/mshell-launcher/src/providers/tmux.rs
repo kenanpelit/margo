@@ -6,14 +6,25 @@
 //! create-or-attach session manager — instead of a bare `tmux attach`, so
 //! a session that no longer exists still does something sensible.
 //!
-//! `search()` runs `tmux list-sessions` directly rather than shelling out
-//! to `mtm` on every keystroke (same reasoning as the `ssh` provider
-//! reading `assh.yml` directly instead of going through another binary);
-//! `mtm` is only invoked on activation, inside the spawned terminal.
+//! `search()` reads `tmux list-sessions` through [`BgCache`] rather than
+//! shelling out to `mtm` on every keystroke (same reasoning as the `ssh`
+//! provider reading `assh.yml` directly instead of going through another
+//! binary) — and rather than running `tmux` synchronously on the GTK main
+//! thread each time either, matching every other subprocess-backed
+//! provider (`bluetooth`, `wireplumber`, `playerctl`). `mtm` itself is
+//! only invoked on activation, inside the spawned terminal.
 
-use crate::{item::LauncherItem, notify::toast, provider::Provider};
+use crate::providers::bg_cache::BgCache;
+use crate::{
+    item::LauncherItem,
+    notify::toast,
+    provider::{Provider, RefreshNotifier},
+};
 use std::process::Command;
 use std::rc::Rc;
+use std::time::Duration;
+
+const SNAPSHOT_TTL: Duration = Duration::from_secs(2);
 
 /// One running session, projected from `tmux list-sessions -F …`.
 #[derive(Debug, Clone)]
@@ -25,6 +36,7 @@ struct Session {
 
 pub struct TmuxProvider {
     terminal: String,
+    cache: BgCache<Vec<Session>>,
 }
 
 impl TmuxProvider {
@@ -38,38 +50,48 @@ impl TmuxProvider {
                     .map(|t| t.to_string())
             })
             .unwrap_or_else(|| "kitty".into());
-        Self { terminal }
+        Self {
+            terminal,
+            cache: BgCache::new(SNAPSHOT_TTL),
+        }
     }
 
-    fn list_sessions(&self) -> Vec<Session> {
-        let out = Command::new("tmux")
-            .args([
-                "list-sessions",
-                "-F",
-                "#{session_name}\t#{session_windows}\t#{?session_attached,1,0}",
-            ])
-            .output();
-        let Ok(out) = out else { return Vec::new() };
-        if !out.status.success() {
-            // Non-zero covers both "tmux not installed" and "no server
-            // running" (an empty session list, not an error condition).
-            return Vec::new();
-        }
-        String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .filter_map(|line| {
-                let mut cols = line.splitn(3, '\t');
-                let name = cols.next()?.to_string();
-                let windows = cols.next()?.to_string();
-                let attached = cols.next() == Some("1");
-                Some(Session {
-                    name,
-                    windows,
-                    attached,
-                })
-            })
-            .collect()
+    /// Last session-list snapshot, refreshing off-thread when stale. The
+    /// `tmux list-sessions` call never runs on the calling (GTK main)
+    /// thread — `search()` fires on every keystroke.
+    fn cached_sessions(&self) -> Vec<Session> {
+        self.cache.get(snapshot).unwrap_or_default()
     }
+}
+
+fn snapshot() -> Vec<Session> {
+    let out = Command::new("tmux")
+        .args([
+            "list-sessions",
+            "-F",
+            "#{session_name}\t#{session_windows}\t#{?session_attached,1,0}",
+        ])
+        .output();
+    let Ok(out) = out else { return Vec::new() };
+    if !out.status.success() {
+        // Non-zero covers both "tmux not installed" and "no server
+        // running" (an empty session list, not an error condition).
+        return Vec::new();
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut cols = line.splitn(3, '\t');
+            let name = cols.next()?.to_string();
+            let windows = cols.next()?.to_string();
+            let attached = cols.next() == Some("1");
+            Some(Session {
+                name,
+                windows,
+                attached,
+            })
+        })
+        .collect()
 }
 
 impl Default for TmuxProvider {
@@ -102,6 +124,10 @@ impl Provider for TmuxProvider {
         false
     }
 
+    fn set_refresh_notifier(&mut self, notifier: RefreshNotifier) {
+        self.cache.set_notifier(notifier);
+    }
+
     fn handles_command(&self, query: &str) -> bool {
         let q = query.trim_start();
         q == "mtm" || q.starts_with("mtm ")
@@ -128,7 +154,7 @@ impl Provider for TmuxProvider {
         }
         let filter = q.trim_start_matches("mtm").trim().to_ascii_lowercase();
 
-        let sessions = self.list_sessions();
+        let sessions = self.cached_sessions();
         if sessions.is_empty() {
             return vec![LauncherItem {
                 id: "mtm:none".into(),
