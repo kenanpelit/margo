@@ -88,13 +88,22 @@ fn import_bundle(src: &Path) -> std::io::Result<()> {
     }
 
     // Single files: write through the (possibly symlinked) destination.
+    // `atomic_write` is what keeps that promise safely — plain `fs::copy`
+    // truncates the destination in place, so a disk-full or interrupted
+    // copy here could leave `config.conf` itself corrupt; `atomic_write`
+    // resolves the symlink, writes a sibling temp file, and renames over
+    // the *resolved* target, so the link survives and the write is
+    // all-or-nothing.
     for f in ["config.conf", "binds.conf"] {
         let from = tmp.join(f);
-        if from.is_file() {
-            let _ = std::fs::copy(&from, base.join(f));
+        if let Ok(bytes) = std::fs::read(&from) {
+            let _ = mshell_config::atomic_write::atomic_write(&base.join(f), &bytes);
         }
     }
-    // Profiles: copy every *.yaml into the profiles dir.
+    // Profiles: copy every *.yaml into the profiles dir. These are never
+    // symlinked (they live under the plain `mshell/profiles` dir `mdots`/
+    // dotfiles tooling doesn't touch), so a temp-file + rename in place is
+    // enough — no need for `atomic_write`'s symlink resolution.
     let prof_src = tmp.join("mshell/profiles");
     let prof_dst = base.join("mshell/profiles");
     if prof_src.is_dir() {
@@ -102,7 +111,11 @@ fn import_bundle(src: &Path) -> std::io::Result<()> {
         if let Ok(rd) = std::fs::read_dir(&prof_src) {
             for entry in rd.flatten() {
                 if entry.path().extension().is_some_and(|e| e == "yaml") {
-                    let _ = std::fs::copy(entry.path(), prof_dst.join(entry.file_name()));
+                    let dst = prof_dst.join(entry.file_name());
+                    let tmp_dst = dst.with_extension("mshell-import-tmp");
+                    if std::fs::copy(entry.path(), &tmp_dst).is_ok() {
+                        let _ = std::fs::rename(&tmp_dst, &dst);
+                    }
                 }
             }
         }

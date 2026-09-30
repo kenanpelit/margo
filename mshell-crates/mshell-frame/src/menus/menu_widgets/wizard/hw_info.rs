@@ -38,15 +38,32 @@ pub(crate) fn parse_monitor_count(drm_statuses: &[String]) -> usize {
         .count()
 }
 
+/// `nmcli device` output, or empty on failure/timeout. `probe()` is a
+/// `SimpleComponent` init-time call — no async-command machinery to defer
+/// onto, and this is a first-run-only / manual "Setup" flow, not a hot
+/// path — so run it on a worker thread and cap the wait rather than block
+/// the GTK main thread indefinitely on a slow/stuck NetworkManager: the
+/// common case (nmcli installed, NM responsive) finishes well under the
+/// cap and behaves exactly as before.
+fn wifi_probe_nmcli() -> String {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let out = std::process::Command::new("nmcli")
+            .args(["-t", "-f", "DEVICE,TYPE,STATE", "device"])
+            .output();
+        let _ = tx.send(out);
+    });
+    rx.recv_timeout(std::time::Duration::from_millis(300))
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
+}
+
 impl HwInfo {
     pub(crate) fn probe() -> Self {
         let proc_devices = std::fs::read_to_string("/proc/bus/input/devices").unwrap_or_default();
-        let nmcli = std::process::Command::new("nmcli")
-            .args(["-t", "-f", "DEVICE,TYPE,STATE", "device"])
-            .output()
-            .ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-            .unwrap_or_default();
+        let nmcli = wifi_probe_nmcli();
         let supply: Vec<String> = std::fs::read_dir("/sys/class/power_supply")
             .map(|rd| {
                 rd.flatten()

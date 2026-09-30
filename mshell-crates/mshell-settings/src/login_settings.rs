@@ -752,8 +752,25 @@ fn parse_passwd_line(line: &str) -> Option<String> {
 /// and `[autologin] session` both resolve against this list. `mlogind envs`
 /// derives it from the same config + session dirs the daemon uses, so asking
 /// the binary beats re-implementing its scan.
+///
+/// Called from `init()` on the GTK main thread: the `users`/`sessions`
+/// DropDowns are bound to `model.users_list`/`sessions_list` without
+/// `#[watch]`, so they're populated once at construction — moving this to
+/// relm4's async-command flow would mean naming and hand-updating those
+/// widgets in `update_cmd_with_view`, a much larger change than this
+/// finding's actual severity (a brief page-open delay) warrants. Instead,
+/// run the subprocess on a worker thread and cap how long `init()` waits
+/// for it: the common case (fast disk, few session files) finishes well
+/// under the cap and behaves exactly as before; only a genuinely
+/// stuck/slow `mlogind` falls back to an empty list, same as a spawn
+/// failure already does.
 fn wayland_sessions() -> Vec<String> {
-    let Ok(output) = std::process::Command::new("mlogind").arg("envs").output() else {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let out = std::process::Command::new("mlogind").arg("envs").output();
+        let _ = tx.send(out);
+    });
+    let Ok(Ok(output)) = rx.recv_timeout(std::time::Duration::from_millis(300)) else {
         return Vec::new();
     };
     String::from_utf8_lossy(&output.stdout)
