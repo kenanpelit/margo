@@ -161,16 +161,35 @@ impl Message {
 }
 
 /// Everything a request needs. Build it from the Settings values.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AiConfig {
     pub provider: Provider,
     pub model: String,
-    pub api_key: String,
+    /// Zeroized on drop — this struct gets cloned into UI state and can
+    /// live for the whole chat session, unlike the short-lived per-request
+    /// header string it's eventually copied into.
+    pub api_key: zeroize::Zeroizing<String>,
     /// Endpoint override; blank → [`Provider::default_endpoint`].
     pub endpoint: String,
     pub temperature: f64,
     pub max_tokens: u32,
     pub system_prompt: String,
+}
+
+// Manual impl (not derived) so `{:?}` never prints the key — `Zeroizing`'s
+// own derived Debug would format its inner value verbatim.
+impl std::fmt::Debug for AiConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiConfig")
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .field("api_key", &"[redacted]")
+            .field("endpoint", &self.endpoint)
+            .field("temperature", &self.temperature)
+            .field("max_tokens", &self.max_tokens)
+            .field("system_prompt", &self.system_prompt)
+            .finish()
+    }
 }
 
 impl AiConfig {
@@ -250,7 +269,7 @@ fn gemini_request(cfg: &AiConfig, msgs: &[Message]) -> Req {
         url,
         headers: vec![
             ("content-type".into(), "application/json".into()),
-            ("x-goog-api-key".into(), cfg.api_key.clone()),
+            ("x-goog-api-key".into(), cfg.api_key.to_string()),
         ],
         body: body.to_string(),
     }
@@ -294,7 +313,10 @@ fn openai_request(cfg: &AiConfig, msgs: &[Message]) -> Req {
     });
     let mut headers = vec![("content-type".into(), "application/json".into())];
     if !cfg.api_key.trim().is_empty() {
-        headers.push(("authorization".into(), format!("Bearer {}", cfg.api_key)));
+        headers.push((
+            "authorization".into(),
+            format!("Bearer {}", cfg.api_key.as_str()),
+        ));
     }
     Req {
         url: openai_chat_url(&cfg.base()),
@@ -323,7 +345,7 @@ fn anthropic_request(cfg: &AiConfig, msgs: &[Message]) -> Req {
         url: format!("{}/v1/messages", cfg.base()),
         headers: vec![
             ("content-type".into(), "application/json".into()),
-            ("x-api-key".into(), cfg.api_key.clone()),
+            ("x-api-key".into(), cfg.api_key.to_string()),
             ("anthropic-version".into(), "2023-06-01".into()),
         ],
         body: body.to_string(),
@@ -555,7 +577,7 @@ mod tests {
         AiConfig {
             provider: p,
             model: String::new(),
-            api_key: "k".into(),
+            api_key: "k".to_string().into(),
             endpoint: String::new(),
             temperature: 0.7,
             max_tokens: 1024,

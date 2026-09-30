@@ -369,7 +369,10 @@ impl Component for LockScreenModel {
             LockScreenInput::AttemptLogin => {
                 info!("Attempt password login");
                 self.stack_state = StackState::Authenticating;
-                let password = widgets.password_entry.text().to_string();
+                // Zeroized on drop — this is the plaintext unlock password,
+                // and the closure below moves it across to a worker thread
+                // and back, so it isn't gone the instant the entry is cleared.
+                let password = zeroize::Zeroizing::new(widgets.password_entry.text().to_string());
                 let username = current_username();
                 let sender = sender.clone();
 
@@ -378,7 +381,7 @@ impl Component for LockScreenModel {
                 // stays responsive (otherwise the "Checking…"
                 // spinner would never paint).
                 tokio::task::spawn_blocking(move || {
-                    let result = pam::authenticate(&username, &password);
+                    let result = pam::authenticate(&username, password.as_str());
                     if result.is_ok() {
                         sender.input(LockScreenInput::PasswordSuccess);
                     } else {

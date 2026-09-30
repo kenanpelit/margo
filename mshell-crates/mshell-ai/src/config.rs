@@ -82,11 +82,12 @@ fn keyring_entry() -> Option<keyring::Entry> {
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).ok()
 }
 
-/// The stored API key (empty when unset).
-pub fn api_key() -> String {
+/// The stored API key (empty when unset). Zeroized on drop.
+pub fn api_key() -> zeroize::Zeroizing<String> {
     keyring_entry()
         .and_then(|e| e.get_password().ok())
         .unwrap_or_default()
+        .into()
 }
 
 /// Store (or, with an empty value, clear) the API key in the keyring.

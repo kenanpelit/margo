@@ -320,7 +320,7 @@ impl Component for AiSettingsModel {
 
         // Seed the API key field from the keyring + the model dropdown from the
         // curated fallback for the saved provider.
-        widgets.key_entry.set_text(&config::api_key());
+        widgets.key_entry.set_text(config::api_key().as_str());
         populate_models(
             &widgets.model_drop,
             &model.model_list,
