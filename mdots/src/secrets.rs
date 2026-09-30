@@ -368,7 +368,8 @@ pub(crate) fn load_secrets_state(state_dir: &Path) -> Result<SecretsState> {
 pub(crate) fn save_secrets_state(state_dir: &Path, state: &SecretsState) -> Result<()> {
     fs::create_dir_all(state_dir).context("creating state directory")?;
     let yaml = serde_yaml::to_string(state).context("serializing secrets state")?;
-    fs::write(secrets_state_path(state_dir), yaml).context("writing secrets state file")
+    crate::atomic_write::write_atomic(&secrets_state_path(state_dir), &yaml)
+        .context("writing secrets state file")
 }
 
 /// Whether the `sops` binary is available on `PATH`.

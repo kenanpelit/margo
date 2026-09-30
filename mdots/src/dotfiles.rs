@@ -297,7 +297,10 @@ pub fn prune_dotfiles(paths: &ConfigPaths, config: &Config, json: bool) -> Resul
                 println!(
                     "  {} Removed symlink: {}",
                     "✗".yellow(),
-                    target.file_name().unwrap().to_str().unwrap()
+                    target
+                        .file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_else(|| target.to_string_lossy())
                 );
             }
 
@@ -688,7 +691,15 @@ fn detect_conflicts(dotfiles: &[ResolvedDotfile]) -> Result<()> {
 fn create_backup_path(original: &Path) -> PathBuf {
     let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
     let parent = original.parent().unwrap_or(Path::new("."));
-    let name = original.file_name().unwrap().to_str().unwrap();
+    // `.unwrap().unwrap()` here would panic the whole sync run on a
+    // dotfile whose name is non-UTF8 (rare but real on Linux) or on a
+    // degenerate `original` with no file-name component — fall back to a
+    // lossy rendering (backup naming, not the real target path) rather
+    // than crash.
+    let name = original
+        .file_name()
+        .map(|n| n.to_string_lossy())
+        .unwrap_or_else(|| original.to_string_lossy());
     parent.join(format!("{}.backup.{}", name, timestamp))
 }
 
@@ -717,7 +728,8 @@ fn save_dotfiles_state(paths: &ConfigPaths, state: &DotfilesState) -> Result<()>
 
     let yaml = serde_yaml::to_string(state).context("Failed to serialize dotfiles state")?;
 
-    fs::write(&state_file, yaml).context("Failed to write dotfiles state file")?;
+    crate::atomic_write::write_atomic(&state_file, &yaml)
+        .context("Failed to write dotfiles state file")?;
 
     Ok(())
 }

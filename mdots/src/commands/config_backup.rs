@@ -324,6 +324,19 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
 /// failure the live dir is moved back. Without this, a bad/partial archive,
 /// disk-full, or permission error mid-copy would have already deleted the
 /// user's tracked config with only a partial restore in its place.
+/// Copy `src` over `dst` without ever leaving `dst` truncated mid-write —
+/// `fs::copy` alone isn't atomic (it opens `dst` and can leave a
+/// half-written file behind on a disk-full or interrupted copy). Copies to
+/// a sibling temp file first, then renames over `dst` (same directory ⇒
+/// same filesystem ⇒ atomic rename): the file-level counterpart to
+/// [`restore_dir_safely`]'s move-aside-then-copy pattern for directories.
+fn restore_file_safely(src: &Path, dst: &Path) -> Result<()> {
+    let tmp = dst.with_extension("mdots-restore-tmp");
+    fs::copy(src, &tmp)?;
+    fs::rename(&tmp, dst)?;
+    Ok(())
+}
+
 fn restore_dir_safely(src: &Path, dst: &Path) -> Result<()> {
     if !dst.exists() {
         return copy_dir_recursive(src, dst);
@@ -500,12 +513,9 @@ pub fn restore_config(paths: &ConfigPaths, backup_name: Option<String>, json: bo
 
             let dst_path = paths.state_dir.join(&filename);
             if entry.path().is_dir() {
-                if dst_path.exists() {
-                    fs::remove_dir_all(&dst_path)?;
-                }
-                copy_dir_recursive(&entry.path(), &dst_path)?;
+                restore_dir_safely(&entry.path(), &dst_path)?;
             } else {
-                fs::copy(entry.path(), &dst_path)?;
+                restore_file_safely(&entry.path(), &dst_path)?;
             }
         }
         if !json {

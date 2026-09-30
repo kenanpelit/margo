@@ -239,7 +239,7 @@ pub fn save_theming_state(state_file: &Path, state: &ThemingState) -> Result<()>
 
     let yaml = serde_yaml::to_string(state).context("Failed to serialize theming state to YAML")?;
 
-    fs::write(state_file, yaml).context(format!(
+    crate::atomic_write::write_atomic(state_file, &yaml).context(format!(
         "Failed to write theming state file: {:?}",
         state_file
     ))?;
