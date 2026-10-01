@@ -6,7 +6,7 @@
 //! the CLI, and the menu all run the exact same path.
 //!
 //! ```text
-//! mshellctl screenshot region|window|output|full [EDITOR] [--copy|--save|--edit] [--delay N]
+//! mshellctl screenshot region|window|output|full|repeat [EDITOR] [--copy|--save|--edit] [--delay N]
 //! ```
 //! Default delivery is file + clipboard. `--copy` = clipboard only,
 //! `--save` = file only, `--edit` = editor → save (no clipboard).
@@ -26,6 +26,9 @@ pub enum ScreenshotCommands {
     Output(Capture),
     /// Whole layout (every output) → capture.
     Full(Capture),
+    /// Re-capture the last selected region (no reselect). Falls back
+    /// to a normal region select the first time it's used.
+    Repeat(Capture),
     /// (internal) Open the in-shell area selector and print the chosen
     /// region as "X,Y WxH" (slurp format). Used by the `mscreenshot` CLI's
     /// region bridge; not meant for direct use.
@@ -85,6 +88,7 @@ pub async fn execute(command: ScreenshotCommands) -> anyhow::Result<()> {
         ScreenshotCommands::Window(c) => capture("window", &c).await?,
         ScreenshotCommands::Output(c) => capture("output", &c).await?,
         ScreenshotCommands::Full(c) => capture("full", &c).await?,
+        ScreenshotCommands::Repeat(c) => capture("repeat", &c).await?,
         ScreenshotCommands::SelectRegion => {
             let geom: String = bus_command_with_reply("SelectRegion").await?;
             println!("{}", geom);

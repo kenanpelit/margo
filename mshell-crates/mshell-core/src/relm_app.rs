@@ -668,6 +668,7 @@ impl Component for Shell {
                     Some("window") => CaptureArea::SelectWindow,
                     Some("output") => CaptureArea::SelectMonitor,
                     Some("full") => CaptureArea::All,
+                    Some("repeat") => CaptureArea::RepeatRegion,
                     _ => CaptureArea::SelectRegion, // "region" / default
                 };
                 let target_tok = parts.next();

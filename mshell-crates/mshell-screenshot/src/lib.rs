@@ -21,14 +21,37 @@ use image::ImageEncoder;
 use selectors::area_selector::RegionSelection;
 use selectors::{monitor_selector, window_selector};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub enum CaptureArea {
     All,
     SelectRegion,
+    /// Re-capture the last region committed via `SelectRegion` (same
+    /// process, no reselect). Falls back to `SelectRegion` when
+    /// nothing has been captured yet this session.
+    RepeatRegion,
     SelectMonitor,
     SelectWindow,
+}
+
+/// Geometry of the last region a user committed through the area
+/// selector, shared by every caller of `take_screenshot` (keybind,
+/// launcher, menu). Backs `CaptureArea::RepeatRegion`. Lives only for
+/// the daemon's lifetime — there is no cross-session persistence.
+static LAST_REGION: OnceLock<Mutex<Option<RegionSelection>>> = OnceLock::new();
+
+fn store_last_region(region: RegionSelection) {
+    *LAST_REGION.get_or_init(|| Mutex::new(None)).lock().unwrap() = Some(region);
+}
+
+fn load_last_region() -> Option<RegionSelection> {
+    LAST_REGION
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap()
+        .clone()
 }
 
 #[derive(Debug, Clone)]
@@ -115,7 +138,10 @@ pub fn record_screen<S, D>(
     D: FnOnce(anyhow::Result<RecordResult>) + Send + 'static,
 {
     match request.area {
-        CaptureArea::SelectRegion => {
+        // `RepeatRegion` has no meaning for recording (there's no
+        // "repeat the last clip's region" use case) — it degrades to
+        // a normal selection rather than failing to compile.
+        CaptureArea::SelectRegion | CaptureArea::RepeatRegion => {
             let outputs = match query_outputs() {
                 Ok(o) => o,
                 Err(e) => return on_started(Err(e.into())),
@@ -213,6 +239,7 @@ where
                 // wanted — that's the whole point of the in-selector
                 // shortcuts. `None` keeps the caller's target.
                 Ok((region, override_target)) => {
+                    store_last_region(region.clone());
                     let final_target = override_target.unwrap_or(target);
                     capture_and_finish_async(
                         move || CaptureBackend::new()?.capture_region(&region),
@@ -224,6 +251,29 @@ where
                 Err(e) => on_done(Err(e)),
             });
         }
+        CaptureArea::RepeatRegion => match load_last_region() {
+            Some(region) => {
+                capture_and_finish_async(
+                    move || CaptureBackend::new()?.capture_region(&region),
+                    request.target,
+                    delay,
+                    on_done,
+                );
+            }
+            None => {
+                // Nothing captured yet this session — behave like a
+                // first-time region capture (which seeds the cache
+                // for the next repeat).
+                take_screenshot(
+                    ScreenshotRequest {
+                        area: CaptureArea::SelectRegion,
+                        target: request.target,
+                    },
+                    delay,
+                    on_done,
+                );
+            }
+        },
         CaptureArea::SelectMonitor => {
             let outputs = match query_outputs() {
                 Ok(o) => o,

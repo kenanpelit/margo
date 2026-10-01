@@ -1168,6 +1168,13 @@ _arguments "${_arguments_options[@]}" : \
 '::mode:_default' \
 && ret=0
 ;;
+(repeat-count)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+'::value:_default' \
+&& ret=0
+;;
 (shuffle)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -1309,6 +1316,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (repeat)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(repeat-count)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -2281,6 +2292,18 @@ _arguments "${_arguments_options[@]}" : \
 '::editor -- Force a specific annotation editor (satty | swappy | gimp | krita). Implies `--edit`. Omit to use the default chain (`SCREENSHOT_EDITOR` env, then satty → swappy → gimp → krita):_default' \
 && ret=0
 ;;
+(repeat)
+_arguments "${_arguments_options[@]}" : \
+'-d+[Wait N seconds before capturing (catch menus / tooltips)]:DELAY:_default' \
+'--delay=[Wait N seconds before capturing (catch menus / tooltips)]:DELAY:_default' \
+'--copy[Copy to clipboard only (no file, no editor)]' \
+'--save[Save to file only (no clipboard, no editor)]' \
+'--edit[Open the editor (satty / swappy) → save]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::editor -- Force a specific annotation editor (satty | swappy | gimp | krita). Implies `--edit`. Omit to use the default chain (`SCREENSHOT_EDITOR` env, then satty → swappy → gimp → krita):_default' \
+&& ret=0
+;;
 (select-region)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -2312,6 +2335,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (full)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(repeat)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -3702,6 +3729,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(repeat-count)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (shuffle)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -4127,6 +4158,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (full)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(repeat)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -6002,7 +6037,8 @@ _mshellctl__subcmd__help__subcmd__mtune_commands() {
 'seek:Seek\: \`90\` = to 0\:90, \`+30\` / \`-15\` = relative' \
 'volume:Set volume \`0.0\`–\`1.0\` (\`+0.1\` / \`-0.1\` relative); omit to print it' \
 'rate:Set playback speed \`0.5\`–\`2.0\` (\`up\` / \`down\` step ±0.1); omit to print it' \
-'repeat:Repeat mode\: \`off\` / \`all\` / \`one\` / \`cycle\`; omit to print it' \
+'repeat:Repeat mode\: \`off\` / \`all\` / \`one\` / \`each\` / \`cycle\`; omit to print it' \
+'repeat-count:Times to repeat each track under \`repeat each\` mode; omit to print it' \
 'shuffle:Shuffle\: \`on\` / \`off\` / \`toggle\`; omit to print it' \
 'jump:Jump to a queue position (0-based) and play it' \
 'open:Open a file, folder, or \`.m3u\` / \`.pls\` playlist (replaces the queue)' \
@@ -6104,6 +6140,11 @@ _mshellctl__subcmd__help__subcmd__mtune__subcmd__rate_commands() {
 _mshellctl__subcmd__help__subcmd__mtune__subcmd__repeat_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help mtune repeat commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__mtune__subcmd__repeat-count_commands] )) ||
+_mshellctl__subcmd__help__subcmd__mtune__subcmd__repeat-count_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help mtune repeat-count commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__mtune__subcmd__rescan_commands] )) ||
 _mshellctl__subcmd__help__subcmd__mtune__subcmd__rescan_commands() {
@@ -6381,6 +6422,7 @@ _mshellctl__subcmd__help__subcmd__screenshot_commands() {
 'window:Focused window → capture' \
 'output:Pick an output (monitor) → capture' \
 'full:Whole layout (every output) → capture' \
+'repeat:Re-capture the last selected region (no reselect). Falls back to a normal region select the first time it'\''s used' \
 'select-region:(internal) Open the in-shell area selector and print the chosen region as "X,Y WxH" (slurp format). Used by the \`mscreenshot\` CLI'\''s region bridge; not meant for direct use' \
     )
     _describe -t commands 'mshellctl help screenshot commands' commands "$@"
@@ -6399,6 +6441,11 @@ _mshellctl__subcmd__help__subcmd__screenshot__subcmd__output_commands() {
 _mshellctl__subcmd__help__subcmd__screenshot__subcmd__region_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl help screenshot region commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__help__subcmd__screenshot__subcmd__repeat_commands] )) ||
+_mshellctl__subcmd__help__subcmd__screenshot__subcmd__repeat_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl help screenshot repeat commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__help__subcmd__screenshot__subcmd__select-region_commands] )) ||
 _mshellctl__subcmd__help__subcmd__screenshot__subcmd__select-region_commands() {
@@ -7568,7 +7615,8 @@ _mshellctl__subcmd__mtune_commands() {
 'seek:Seek\: \`90\` = to 0\:90, \`+30\` / \`-15\` = relative' \
 'volume:Set volume \`0.0\`–\`1.0\` (\`+0.1\` / \`-0.1\` relative); omit to print it' \
 'rate:Set playback speed \`0.5\`–\`2.0\` (\`up\` / \`down\` step ±0.1); omit to print it' \
-'repeat:Repeat mode\: \`off\` / \`all\` / \`one\` / \`cycle\`; omit to print it' \
+'repeat:Repeat mode\: \`off\` / \`all\` / \`one\` / \`each\` / \`cycle\`; omit to print it' \
+'repeat-count:Times to repeat each track under \`repeat each\` mode; omit to print it' \
 'shuffle:Shuffle\: \`on\` / \`off\` / \`toggle\`; omit to print it' \
 'jump:Jump to a queue position (0-based) and play it' \
 'open:Open a file, folder, or \`.m3u\` / \`.pls\` playlist (replaces the queue)' \
@@ -7599,7 +7647,8 @@ _mshellctl__subcmd__mtune__subcmd__help_commands() {
 'seek:Seek\: \`90\` = to 0\:90, \`+30\` / \`-15\` = relative' \
 'volume:Set volume \`0.0\`–\`1.0\` (\`+0.1\` / \`-0.1\` relative); omit to print it' \
 'rate:Set playback speed \`0.5\`–\`2.0\` (\`up\` / \`down\` step ±0.1); omit to print it' \
-'repeat:Repeat mode\: \`off\` / \`all\` / \`one\` / \`cycle\`; omit to print it' \
+'repeat:Repeat mode\: \`off\` / \`all\` / \`one\` / \`each\` / \`cycle\`; omit to print it' \
+'repeat-count:Times to repeat each track under \`repeat each\` mode; omit to print it' \
 'shuffle:Shuffle\: \`on\` / \`off\` / \`toggle\`; omit to print it' \
 'jump:Jump to a queue position (0-based) and play it' \
 'open:Open a file, folder, or \`.m3u\` / \`.pls\` playlist (replaces the queue)' \
@@ -7707,6 +7756,11 @@ _mshellctl__subcmd__mtune__subcmd__help__subcmd__rate_commands() {
 _mshellctl__subcmd__mtune__subcmd__help__subcmd__repeat_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl mtune help repeat commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__mtune__subcmd__help__subcmd__repeat-count_commands] )) ||
+_mshellctl__subcmd__mtune__subcmd__help__subcmd__repeat-count_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl mtune help repeat-count commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__mtune__subcmd__help__subcmd__rescan_commands] )) ||
 _mshellctl__subcmd__mtune__subcmd__help__subcmd__rescan_commands() {
@@ -7827,6 +7881,11 @@ _mshellctl__subcmd__mtune__subcmd__rate_commands() {
 _mshellctl__subcmd__mtune__subcmd__repeat_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl mtune repeat commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__mtune__subcmd__repeat-count_commands] )) ||
+_mshellctl__subcmd__mtune__subcmd__repeat-count_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl mtune repeat-count commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__mtune__subcmd__rescan_commands] )) ||
 _mshellctl__subcmd__mtune__subcmd__rescan_commands() {
@@ -8400,6 +8459,7 @@ _mshellctl__subcmd__screenshot_commands() {
 'window:Focused window → capture' \
 'output:Pick an output (monitor) → capture' \
 'full:Whole layout (every output) → capture' \
+'repeat:Re-capture the last selected region (no reselect). Falls back to a normal region select the first time it'\''s used' \
 'select-region:(internal) Open the in-shell area selector and print the chosen region as "X,Y WxH" (slurp format). Used by the \`mscreenshot\` CLI'\''s region bridge; not meant for direct use' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -8417,6 +8477,7 @@ _mshellctl__subcmd__screenshot__subcmd__help_commands() {
 'window:Focused window → capture' \
 'output:Pick an output (monitor) → capture' \
 'full:Whole layout (every output) → capture' \
+'repeat:Re-capture the last selected region (no reselect). Falls back to a normal region select the first time it'\''s used' \
 'select-region:(internal) Open the in-shell area selector and print the chosen region as "X,Y WxH" (slurp format). Used by the \`mscreenshot\` CLI'\''s region bridge; not meant for direct use' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -8442,6 +8503,11 @@ _mshellctl__subcmd__screenshot__subcmd__help__subcmd__region_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl screenshot help region commands' commands "$@"
 }
+(( $+functions[_mshellctl__subcmd__screenshot__subcmd__help__subcmd__repeat_commands] )) ||
+_mshellctl__subcmd__screenshot__subcmd__help__subcmd__repeat_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl screenshot help repeat commands' commands "$@"
+}
 (( $+functions[_mshellctl__subcmd__screenshot__subcmd__help__subcmd__select-region_commands] )) ||
 _mshellctl__subcmd__screenshot__subcmd__help__subcmd__select-region_commands() {
     local commands; commands=()
@@ -8461,6 +8527,11 @@ _mshellctl__subcmd__screenshot__subcmd__output_commands() {
 _mshellctl__subcmd__screenshot__subcmd__region_commands() {
     local commands; commands=()
     _describe -t commands 'mshellctl screenshot region commands' commands "$@"
+}
+(( $+functions[_mshellctl__subcmd__screenshot__subcmd__repeat_commands] )) ||
+_mshellctl__subcmd__screenshot__subcmd__repeat_commands() {
+    local commands; commands=()
+    _describe -t commands 'mshellctl screenshot repeat commands' commands "$@"
 }
 (( $+functions[_mshellctl__subcmd__screenshot__subcmd__select-region_commands] )) ||
 _mshellctl__subcmd__screenshot__subcmd__select-region_commands() {

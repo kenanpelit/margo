@@ -904,6 +904,9 @@ _mshellctl() {
             mshellctl__subcmd__help__subcmd__mtune,repeat)
                 cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__repeat"
                 ;;
+            mshellctl__subcmd__help__subcmd__mtune,repeat-count)
+                cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__repeat__subcmd__count"
+                ;;
             mshellctl__subcmd__help__subcmd__mtune,rescan)
                 cmd="mshellctl__subcmd__help__subcmd__mtune__subcmd__rescan"
                 ;;
@@ -1029,6 +1032,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__help__subcmd__screenshot,region)
                 cmd="mshellctl__subcmd__help__subcmd__screenshot__subcmd__region"
+                ;;
+            mshellctl__subcmd__help__subcmd__screenshot,repeat)
+                cmd="mshellctl__subcmd__help__subcmd__screenshot__subcmd__repeat"
                 ;;
             mshellctl__subcmd__help__subcmd__screenshot,select-region)
                 cmd="mshellctl__subcmd__help__subcmd__screenshot__subcmd__select__subcmd__region"
@@ -1615,6 +1621,9 @@ _mshellctl() {
             mshellctl__subcmd__mtune,repeat)
                 cmd="mshellctl__subcmd__mtune__subcmd__repeat"
                 ;;
+            mshellctl__subcmd__mtune,repeat-count)
+                cmd="mshellctl__subcmd__mtune__subcmd__repeat__subcmd__count"
+                ;;
             mshellctl__subcmd__mtune,rescan)
                 cmd="mshellctl__subcmd__mtune__subcmd__rescan"
                 ;;
@@ -1689,6 +1698,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__mtune__subcmd__help,repeat)
                 cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__repeat"
+                ;;
+            mshellctl__subcmd__mtune__subcmd__help,repeat-count)
+                cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__repeat__subcmd__count"
                 ;;
             mshellctl__subcmd__mtune__subcmd__help,rescan)
                 cmd="mshellctl__subcmd__mtune__subcmd__help__subcmd__rescan"
@@ -1963,6 +1975,9 @@ _mshellctl() {
             mshellctl__subcmd__screenshot,region)
                 cmd="mshellctl__subcmd__screenshot__subcmd__region"
                 ;;
+            mshellctl__subcmd__screenshot,repeat)
+                cmd="mshellctl__subcmd__screenshot__subcmd__repeat"
+                ;;
             mshellctl__subcmd__screenshot,select-region)
                 cmd="mshellctl__subcmd__screenshot__subcmd__select__subcmd__region"
                 ;;
@@ -1980,6 +1995,9 @@ _mshellctl() {
                 ;;
             mshellctl__subcmd__screenshot__subcmd__help,region)
                 cmd="mshellctl__subcmd__screenshot__subcmd__help__subcmd__region"
+                ;;
+            mshellctl__subcmd__screenshot__subcmd__help,repeat)
+                cmd="mshellctl__subcmd__screenshot__subcmd__help__subcmd__repeat"
                 ;;
             mshellctl__subcmd__screenshot__subcmd__help,select-region)
                 cmd="mshellctl__subcmd__screenshot__subcmd__help__subcmd__select__subcmd__region"
@@ -5436,7 +5454,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__mtune)
-            opts="play-pause play pause stop next previous seek volume rate repeat shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise toggle-window quit menu"
+            opts="play-pause play pause stop next previous seek volume rate repeat repeat-count shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise toggle-window quit menu"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -5674,6 +5692,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__mtune__subcmd__repeat)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__mtune__subcmd__repeat__subcmd__count)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -6332,7 +6364,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__screenshot)
-            opts="region window output full select-region"
+            opts="region window output full repeat select-region"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -6374,6 +6406,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__help__subcmd__screenshot__subcmd__region)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__help__subcmd__screenshot__subcmd__repeat)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -9080,7 +9126,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__mtune)
-            opts="-h --help play-pause play pause stop next previous seek volume rate repeat shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise toggle-window quit menu help"
+            opts="-h --help play-pause play pause stop next previous seek volume rate repeat repeat-count shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise toggle-window quit menu help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -9094,7 +9140,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__mtune__subcmd__help)
-            opts="play-pause play pause stop next previous seek volume rate repeat shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise toggle-window quit menu help"
+            opts="play-pause play pause stop next previous seek volume rate repeat repeat-count shuffle jump open library rescan playlists playlist-load playlist-save status metadata raise toggle-window quit menu help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -9346,6 +9392,20 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__mtune__subcmd__help__subcmd__repeat)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__help__subcmd__repeat__subcmd__count)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -9683,6 +9743,20 @@ _mshellctl() {
             ;;
         mshellctl__subcmd__mtune__subcmd__repeat)
             opts="-h --help [MODE]"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__mtune__subcmd__repeat__subcmd__count)
+            opts="-h --help [VALUE]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -11032,7 +11106,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__screenshot)
-            opts="-h --help region window output full select-region help"
+            opts="-h --help region window output full repeat select-region help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -11068,7 +11142,7 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__screenshot__subcmd__help)
-            opts="region window output full select-region help"
+            opts="region window output full repeat select-region help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -11137,6 +11211,20 @@ _mshellctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mshellctl__subcmd__screenshot__subcmd__help__subcmd__repeat)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mshellctl__subcmd__screenshot__subcmd__help__subcmd__select__subcmd__region)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
@@ -11188,6 +11276,28 @@ _mshellctl() {
             return 0
             ;;
         mshellctl__subcmd__screenshot__subcmd__region)
+            opts="-d -h --copy --save --edit --delay --help [EDITOR]"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --delay)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -d)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mshellctl__subcmd__screenshot__subcmd__repeat)
             opts="-d -h --copy --save --edit --delay --help [EDITOR]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

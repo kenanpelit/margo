@@ -31,6 +31,9 @@ _mctl() {
             mctl,completions)
                 cmd="mctl__subcmd__completions"
                 ;;
+            mctl,config)
+                cmd="mctl__subcmd__config"
+                ;;
             mctl,config-errors)
                 cmd="mctl__subcmd__config__subcmd__errors"
                 ;;
@@ -100,6 +103,30 @@ _mctl() {
             mctl,watch)
                 cmd="mctl__subcmd__watch"
                 ;;
+            mctl__subcmd__config,diff)
+                cmd="mctl__subcmd__config__subcmd__diff"
+                ;;
+            mctl__subcmd__config,help)
+                cmd="mctl__subcmd__config__subcmd__help"
+                ;;
+            mctl__subcmd__config,list)
+                cmd="mctl__subcmd__config__subcmd__list"
+                ;;
+            mctl__subcmd__config,rollback)
+                cmd="mctl__subcmd__config__subcmd__rollback"
+                ;;
+            mctl__subcmd__config__subcmd__help,diff)
+                cmd="mctl__subcmd__config__subcmd__help__subcmd__diff"
+                ;;
+            mctl__subcmd__config__subcmd__help,help)
+                cmd="mctl__subcmd__config__subcmd__help__subcmd__help"
+                ;;
+            mctl__subcmd__config__subcmd__help,list)
+                cmd="mctl__subcmd__config__subcmd__help__subcmd__list"
+                ;;
+            mctl__subcmd__config__subcmd__help,rollback)
+                cmd="mctl__subcmd__config__subcmd__help__subcmd__rollback"
+                ;;
             mctl__subcmd__help,actions)
                 cmd="mctl__subcmd__help__subcmd__actions"
                 ;;
@@ -114,6 +141,9 @@ _mctl() {
                 ;;
             mctl__subcmd__help,completions)
                 cmd="mctl__subcmd__help__subcmd__completions"
+                ;;
+            mctl__subcmd__help,config)
+                cmd="mctl__subcmd__help__subcmd__config"
                 ;;
             mctl__subcmd__help,config-errors)
                 cmd="mctl__subcmd__help__subcmd__config__subcmd__errors"
@@ -183,6 +213,15 @@ _mctl() {
                 ;;
             mctl__subcmd__help,watch)
                 cmd="mctl__subcmd__help__subcmd__watch"
+                ;;
+            mctl__subcmd__help__subcmd__config,diff)
+                cmd="mctl__subcmd__help__subcmd__config__subcmd__diff"
+                ;;
+            mctl__subcmd__help__subcmd__config,list)
+                cmd="mctl__subcmd__help__subcmd__config__subcmd__list"
+                ;;
+            mctl__subcmd__help__subcmd__config,rollback)
+                cmd="mctl__subcmd__help__subcmd__config__subcmd__rollback"
                 ;;
             mctl__subcmd__help__subcmd__log,disable)
                 cmd="mctl__subcmd__help__subcmd__log__subcmd__disable"
@@ -446,7 +485,7 @@ _mctl() {
 
     case "${cmd}" in
         mctl)
-            opts="-o -h -V --output --help --version dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs perf focused help"
+            opts="-o -h -V --output --help --version dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config config-errors check-config rules completions doctor clients outputs perf focused help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -561,6 +600,20 @@ _mctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mctl__subcmd__config)
+            opts="-h --help list diff rollback help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mctl__subcmd__config__subcmd__errors)
             opts="-h --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
@@ -568,6 +621,130 @@ _mctl() {
                 return 0
             fi
             case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mctl__subcmd__config__subcmd__diff)
+            opts="-h --config --help [N]"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --config)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mctl__subcmd__config__subcmd__help)
+            opts="list diff rollback help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mctl__subcmd__config__subcmd__help__subcmd__diff)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mctl__subcmd__config__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mctl__subcmd__config__subcmd__help__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mctl__subcmd__config__subcmd__help__subcmd__rollback)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mctl__subcmd__config__subcmd__list)
+            opts="-h --config --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --config)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mctl__subcmd__config__subcmd__rollback)
+            opts="-h --yes --config --help [N]"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --config)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 *)
                     COMPREPLY=()
                     ;;
@@ -632,7 +809,7 @@ _mctl() {
             return 0
             ;;
         mctl__subcmd__help)
-            opts="dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config-errors check-config rules completions doctor clients outputs perf focused help"
+            opts="dispatch log plugin run migrate tags client-tags layout quit reload theme session-save session-load get watch status actions twilight config config-errors check-config rules completions doctor clients outputs perf focused help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -715,9 +892,65 @@ _mctl() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mctl__subcmd__help__subcmd__config)
+            opts="list diff rollback"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mctl__subcmd__help__subcmd__config__subcmd__errors)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mctl__subcmd__help__subcmd__config__subcmd__diff)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mctl__subcmd__help__subcmd__config__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mctl__subcmd__help__subcmd__config__subcmd__rollback)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi

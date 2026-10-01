@@ -628,6 +628,80 @@ esac
     ;;
 esac
 ;;
+(config)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_mctl__subcmd__config_commands" \
+"*::: :->config" \
+&& ret=0
+
+    case $state in
+    (config)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mctl-config-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'--config=[Path to the live config to compare each generation against. Defaults to \`~/.config/margo/config.conf\`]:CONFIG:_files' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(diff)
+_arguments "${_arguments_options[@]}" : \
+'--config=[Path to the live config. Defaults to \`~/.config/margo/config.conf\`]:CONFIG:_files' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::n -- Generation index (0 = most recent). Default\: 0:_default' \
+&& ret=0
+;;
+(rollback)
+_arguments "${_arguments_options[@]}" : \
+'--config=[Path to the live config. Defaults to \`~/.config/margo/config.conf\`]:CONFIG:_files' \
+'--yes[Skip the symlink/overwrite confirmation prompt]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::n -- Generation index (0 = most recent). Default\: index 0 (the last known-good) if the live file has unsaved changes (e.g. after a failed reload), else 1 (one before the current file):_default' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_mctl__subcmd__config__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mctl-config-help-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(diff)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(rollback)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
 (config-errors)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help (see more with '\''--help'\'')]' \
@@ -930,6 +1004,34 @@ esac
     ;;
 esac
 ;;
+(config)
+_arguments "${_arguments_options[@]}" : \
+":: :_mctl__subcmd__help__subcmd__config_commands" \
+"*::: :->config" \
+&& ret=0
+
+    case $state in
+    (config)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:mctl-help-config-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(diff)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(rollback)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
 (config-errors)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -1000,6 +1102,7 @@ _mctl_commands() {
 'status:Print current status (one shot)' \
 'actions:List every dispatch action margo accepts (for binds and \`mctl dispatch\`)' \
 'twilight:Twilight (built-in blue-light filter) control' \
+'config:Config generation history — list, diff, or roll back \`~/.config/margo/config.conf\`' \
 'config-errors:Show config diagnostics from the last reload (niri-style)' \
 'check-config:Validate the user'\''s config (niri-style diagnostics)' \
 'rules:Dry-run windowrules against an app_id / title pair' \
@@ -1037,6 +1140,61 @@ _mctl__subcmd__clients_commands() {
 _mctl__subcmd__completions_commands() {
     local commands; commands=()
     _describe -t commands 'mctl completions commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__config_commands] )) ||
+_mctl__subcmd__config_commands() {
+    local commands; commands=(
+'list:List saved config.conf generations, newest first (index 0 = most recent)' \
+'diff:Show a unified diff between a saved generation and the live file' \
+'rollback:Restore a saved generation to config.conf and reload' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mctl config commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__config__subcmd__diff_commands] )) ||
+_mctl__subcmd__config__subcmd__diff_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl config diff commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__config__subcmd__help_commands] )) ||
+_mctl__subcmd__config__subcmd__help_commands() {
+    local commands; commands=(
+'list:List saved config.conf generations, newest first (index 0 = most recent)' \
+'diff:Show a unified diff between a saved generation and the live file' \
+'rollback:Restore a saved generation to config.conf and reload' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'mctl config help commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__config__subcmd__help__subcmd__diff_commands] )) ||
+_mctl__subcmd__config__subcmd__help__subcmd__diff_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl config help diff commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__config__subcmd__help__subcmd__help_commands] )) ||
+_mctl__subcmd__config__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl config help help commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__config__subcmd__help__subcmd__list_commands] )) ||
+_mctl__subcmd__config__subcmd__help__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl config help list commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__config__subcmd__help__subcmd__rollback_commands] )) ||
+_mctl__subcmd__config__subcmd__help__subcmd__rollback_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl config help rollback commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__config__subcmd__list_commands] )) ||
+_mctl__subcmd__config__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl config list commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__config__subcmd__rollback_commands] )) ||
+_mctl__subcmd__config__subcmd__rollback_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl config rollback commands' commands "$@"
 }
 (( $+functions[_mctl__subcmd__config-errors_commands] )) ||
 _mctl__subcmd__config-errors_commands() {
@@ -1084,6 +1242,7 @@ _mctl__subcmd__help_commands() {
 'status:Print current status (one shot)' \
 'actions:List every dispatch action margo accepts (for binds and \`mctl dispatch\`)' \
 'twilight:Twilight (built-in blue-light filter) control' \
+'config:Config generation history — list, diff, or roll back \`~/.config/margo/config.conf\`' \
 'config-errors:Show config diagnostics from the last reload (niri-style)' \
 'check-config:Validate the user'\''s config (niri-style diagnostics)' \
 'rules:Dry-run windowrules against an app_id / title pair' \
@@ -1121,6 +1280,30 @@ _mctl__subcmd__help__subcmd__clients_commands() {
 _mctl__subcmd__help__subcmd__completions_commands() {
     local commands; commands=()
     _describe -t commands 'mctl help completions commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__help__subcmd__config_commands] )) ||
+_mctl__subcmd__help__subcmd__config_commands() {
+    local commands; commands=(
+'list:List saved config.conf generations, newest first (index 0 = most recent)' \
+'diff:Show a unified diff between a saved generation and the live file' \
+'rollback:Restore a saved generation to config.conf and reload' \
+    )
+    _describe -t commands 'mctl help config commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__help__subcmd__config__subcmd__diff_commands] )) ||
+_mctl__subcmd__help__subcmd__config__subcmd__diff_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl help config diff commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__help__subcmd__config__subcmd__list_commands] )) ||
+_mctl__subcmd__help__subcmd__config__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl help config list commands' commands "$@"
+}
+(( $+functions[_mctl__subcmd__help__subcmd__config__subcmd__rollback_commands] )) ||
+_mctl__subcmd__help__subcmd__config__subcmd__rollback_commands() {
+    local commands; commands=()
+    _describe -t commands 'mctl help config rollback commands' commands "$@"
 }
 (( $+functions[_mctl__subcmd__help__subcmd__config-errors_commands] )) ||
 _mctl__subcmd__help__subcmd__config-errors_commands() {
