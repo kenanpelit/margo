@@ -1213,6 +1213,19 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
                         }),
                         _ => true,
                     };
+                    // Clicking a window while an mshell-frame menu/pill is
+                    // open (Exclusive Top layer — never the Overlay
+                    // screenshot selector or similar modal grabs) closes
+                    // it first, GNOME-quick-settings-style: Exclusive is
+                    // unconditional (see `compute_desired_focus`), so
+                    // without this the click would focus the window but
+                    // the still-open menu keeps the keyboard regardless.
+                    // `menu close-all` is the exact action the frame's own
+                    // Esc shortcut already runs — idempotent, a no-op if
+                    // nothing is open.
+                    if matches!(target, FocusTarget::Window(_)) && top_menu_layer_open(state) {
+                        let _ = crate::utils::spawn(["mshellctl", "menu", "close-all"]);
+                    }
                     if takes_keyboard {
                         state.focus_surface(Some(target));
                     }
@@ -1480,6 +1493,23 @@ fn exclusive_keyboard_layer(state: &MargoState) -> Option<FocusTarget> {
     }
 
     None
+}
+
+/// True if an mshell-frame menu/pill is currently open — i.e. some Top
+/// layer surface holds Exclusive keyboard interactivity. Deliberately
+/// excludes Overlay (the screenshot region selector and similar modal
+/// grabs, which a stray window click should never dismiss) and skips
+/// the per-output `layer_accepts_input_on_output` / mapping check that
+/// `exclusive_keyboard_layer` does — the caller only uses this to gate
+/// an idempotent `mshellctl menu close-all` spawn, so a false positive
+/// costs nothing.
+fn top_menu_layer_open(state: &MargoState) -> bool {
+    state.layer_shell_state.layer_surfaces().any(|layer| {
+        layer.with_cached_state(|data| {
+            data.keyboard_interactivity == KeyboardInteractivity::Exclusive
+                && data.layer == WlrLayer::Top
+        })
+    })
 }
 
 fn focus_under(
