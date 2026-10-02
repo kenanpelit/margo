@@ -43,14 +43,20 @@ pub enum CaptureArea {
 static LAST_REGION: OnceLock<Mutex<Option<RegionSelection>>> = OnceLock::new();
 
 fn store_last_region(region: RegionSelection) {
-    *LAST_REGION.get_or_init(|| Mutex::new(None)).lock().unwrap() = Some(region);
+    // A panic while holding this lock elsewhere would be a bug worth
+    // surfacing, but it shouldn't also brick every future screenshot —
+    // recover the poisoned guard instead of unwrap()'s hard abort.
+    *LAST_REGION
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(region);
 }
 
 fn load_last_region() -> Option<RegionSelection> {
     LAST_REGION
         .get_or_init(|| Mutex::new(None))
         .lock()
-        .unwrap()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
         .clone()
 }
 
