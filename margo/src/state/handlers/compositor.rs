@@ -493,31 +493,6 @@ impl CompositorHandler for MargoState {
                 // layer surface always trips `kb_changed` (no prev
                 // entry), so initial focus still resolves correctly.
                 if kb_changed {
-                    // `None -> OnDemand` means a toggle-only menu (one
-                    // with nothing inside it that needs text input) just
-                    // became interactive — grant it sticky focus right
-                    // away so ESC / Tab-nav work before the user clicks
-                    // anything, mirroring `Exclusive`'s existing "just
-                    // works on open" behaviour (see
-                    // `focused_ondemand_layer`'s doc comment). Any other
-                    // transition (menu closed, or flipped to Exclusive)
-                    // clears a stale reference instead of leaving it
-                    // pinned to a surface that no longer wants it.
-                    use smithay::wayland::shell::wlr_layer::KeyboardInteractivity;
-                    let layer_surface = {
-                        let map = layer_map_for_output(&output);
-                        map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
-                            .map(|l| l.layer_surface().clone())
-                    };
-                    if let Some(layer_surface) = layer_surface {
-                        let interactivity =
-                            layer_surface.with_cached_state(|cur| cur.keyboard_interactivity);
-                        if interactivity == KeyboardInteractivity::OnDemand {
-                            self.focused_ondemand_layer = Some(layer_surface);
-                        } else if self.focused_ondemand_layer.as_ref() == Some(&layer_surface) {
-                            self.focused_ondemand_layer = None;
-                        }
-                    }
                     self.refresh_keyboard_focus();
                 }
             }
