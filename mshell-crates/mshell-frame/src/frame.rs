@@ -310,15 +310,16 @@ pub enum FrameInput {
     /// sync. The [`MenuId`] payload selects which. Menus with bespoke open
     /// logic keep their own variants below.
     ToggleMenu(MenuId),
-    /// Re-assert the layer surface's keyboard interactivity from the
-    /// current menu-reveal state. Fired once when the frame surface
-    /// first maps: gtk4-layer-shell's initial commit can land with a
-    /// non-`None` keyboard mode in some races (observed: the frame
-    /// holding `Exclusive` at login while no menu is open, trapping
-    /// keyboard focus into the invisible full-screen layer until the
-    /// first menu toggle finally ran `sync_keyboard_mode`). This
-    /// enforces the "Exclusive iff a menu is revealed" invariant
-    /// proactively at map time instead of only reactively on toggle.
+    /// Re-run `sync_keyboard_mode` (see its doc comment for the
+    /// None/OnDemand/Exclusive decision). Fired on every menu
+    /// reveal/close, on every GTK focus-widget change inside the frame,
+    /// and once when the frame surface first maps: gtk4-layer-shell's
+    /// initial commit can land with a non-`None` keyboard mode in some
+    /// races (observed: the frame holding `Exclusive` at login while no
+    /// menu is open, trapping keyboard focus into the invisible
+    /// full-screen layer until the first menu toggle finally ran
+    /// `sync_keyboard_mode`); firing it at map time closes that gap
+    /// proactively instead of waiting on the first toggle.
     SyncKeyboardMode,
     /// Forward a Hidden Bar IPC verb to both bars' drawers. The optional
     /// target name selects a single named drawer; `None` reaches all.
@@ -822,13 +823,10 @@ impl Component for Frame {
         root.set_decorated(false);
         // Start with `None` keyboard interactivity (we don't want to
         // steal keys from the user's toplevels while no menu is open).
-        // Each `ToggleXxxMenu` / `CloseMenus` handler calls
-        // `sync_keyboard_mode(root)` to switch to `Exclusive` while
-        // any menu is revealed and back to `None` when they all
-        // close. `Exclusive` is required because margo's
-        // `compute_desired_focus` only honours layer-surfaces with
-        // exclusive interactivity — anything else gets focus stolen
-        // by the active toplevel and ESC never reaches us.
+        // Each `ToggleXxxMenu` / `CloseMenus` handler, plus the
+        // focus-widget watcher below, calls `sync_keyboard_mode(root)`
+        // to pick `Exclusive`/`OnDemand`/`None` for the current menu +
+        // focus state — see that method's doc comment.
         root.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::None);
         root.set_visible(true);
         root.set_cursor_from_name(Some("default"));
@@ -836,10 +834,9 @@ impl Component for Frame {
         // Re-assert keyboard interactivity once the surface actually
         // maps. The `set_keyboard_mode(None)` above is queued before
         // the layer surface exists; in practice the frame has been
-        // observed committing `Exclusive` at login anyway, which traps
-        // keyboard focus into this invisible full-screen layer (margo's
-        // `compute_desired_focus` honours any Exclusive Top/Overlay
-        // layer) until the user's first menu toggle finally runs
+        // observed committing `Exclusive` at login anyway, which would
+        // trap keyboard focus into this invisible full-screen layer
+        // until the user's first menu toggle finally runs
         // `sync_keyboard_mode`. Firing it here closes that gap: at first
         // map no menu is revealed, so it resolves to `None`.
         {
@@ -852,6 +849,20 @@ impl Component for Frame {
                 sender_map.input(FrameInput::SyncKeyboardMode);
             });
         }
+
+        // Re-run `sync_keyboard_mode` whenever GTK-internal focus moves
+        // inside the frame — not just on menu open/close. A toggle-only
+        // menu opens at `OnDemand`; clicking into a text field it
+        // contains (a Settings entry, a hex color box, a search bar)
+        // needs to upgrade to `Exclusive` on the spot, and clicking back
+        // out of it needs to downgrade again so the window regains the
+        // keyboard. See `sync_keyboard_mode`'s doc comment.
+        root.connect_notify_local(Some("focus-widget"), {
+            let sender_focus = sender.clone();
+            move |_, _| {
+                sender_focus.input(FrameInput::SyncKeyboardMode);
+            }
+        });
 
         // ESC closes any open menu. Belt-and-suspenders setup:
         //
@@ -1630,15 +1641,40 @@ impl Frame {
             || self.bottom_right_revealed
     }
 
+    /// True if `widget` (or whatever currently holds GTK-internal
+    /// keyboard focus inside the frame) is a text-entry control —
+    /// `Editable` covers `Entry`/`SearchEntry`/`PasswordEntry`/
+    /// `SpinButton`; `TextView` is checked separately since it
+    /// doesn't implement `Editable`. Drives the Exclusive/OnDemand
+    /// split in `sync_keyboard_mode`.
+    fn widget_wants_text(widget: &gtk::Widget) -> bool {
+        widget.is::<gtk::Editable>() || widget.is::<gtk::TextView>()
+    }
+
     /// Switch the frame's layer-shell keyboard interactivity to track
-    /// the current menu state. We need `Exclusive` while a menu is
-    /// open so the compositor actually delivers keys to mshell — with
-    /// margo's `compute_desired_focus`, anything weaker (OnDemand,
-    /// None) gets the focus stolen back by the active toplevel
-    /// window between the pointer click and the next refresh, and
-    /// the ESC shortcut on the frame never fires. When no menus are
-    /// open we go back to `None` so the user's toplevels keep the
-    /// keyboard.
+    /// the current menu state AND what's focused inside it:
+    ///
+    ///   * No menu revealed → `None` (toplevels keep the keyboard).
+    ///   * A menu is open and GTK-internal focus sits on a text entry
+    ///     (search box, AI chat, a Settings field, a hex color entry,
+    ///     …) → `Exclusive`. Margo's `compute_desired_focus` gives an
+    ///     Exclusive layer unconditional priority, so typing reaches
+    ///     us no matter what — required for real text input.
+    ///   * A menu is open but nothing inside it needs text (quick
+    ///     toggles, the dashboard, a plain list) → `OnDemand`. Margo
+    ///     tracks `OnDemand` click/open history itself
+    ///     (`focused_ondemand_layer`) and keeps the layer keyboard-
+    ///     reachable (ESC, Tab-nav) until the user clicks a window —
+    ///     at which point the window gets real keys back while the
+    ///     menu stays visually open. This is the fix for "a toggle
+    ///     pill traps the keyboard and I can't type into the window I
+    ///     just clicked."
+    ///
+    /// Re-evaluated on every menu-reveal change (existing call sites)
+    /// AND on every GTK focus-widget change inside the frame (see the
+    /// `notify::focus-widget` handler in `init`), so clicking into a
+    /// text field mid-session upgrades Exclusive on the fly, and
+    /// clicking out of one downgrades back to OnDemand.
     ///
     /// **Debounced.** Each call (re)arms a 90 ms glib timer; only the
     /// last menu-state determines the applied mode. Without this,
@@ -1649,10 +1685,12 @@ impl Frame {
     /// every cycle — the user sees the bar entirely disappear when
     /// clicking widgets in quick succession.
     fn sync_keyboard_mode(&self, root: &<Self as Component>::Root) {
-        let desired = if self.any_menu_revealed() {
+        let desired = if !self.any_menu_revealed() {
+            gtk4_layer_shell::KeyboardMode::None
+        } else if gtk::prelude::RootExt::focus(root).is_some_and(|w| Self::widget_wants_text(&w)) {
             gtk4_layer_shell::KeyboardMode::Exclusive
         } else {
-            gtk4_layer_shell::KeyboardMode::None
+            gtk4_layer_shell::KeyboardMode::OnDemand
         };
 
         // Cancel any pending switch and replace it with the new one.

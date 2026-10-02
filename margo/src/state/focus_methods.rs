@@ -150,6 +150,32 @@ impl MargoState {
             }
         }
 
+        // `OnDemand` layer that most recently earned focus (explicit
+        // click, or freshly became interactive on open — see
+        // `focused_ondemand_layer`'s doc comment). Ranked below
+        // Exclusive but above the window fallback, so toggle-only menus
+        // (mshell-frame drops to `OnDemand` instead of `Exclusive` when
+        // nothing inside them needs text input) stay keyboard-reachable
+        // without permanently stealing focus from the user's windows —
+        // clicking a window clears this and wins outright.
+        if let Some(layer) = &self.focused_ondemand_layer {
+            let still_on_demand = layer.with_cached_state(|data| {
+                data.keyboard_interactivity == KeyboardInteractivity::OnDemand
+            });
+            if still_on_demand {
+                let mapped = self.space.outputs().find_map(|output| {
+                    let map = layer_map_for_output(output);
+                    map.layers()
+                        .find(|m| m.layer_surface() == layer)
+                        .filter(|mapped| self.layer_accepts_input_on_output(output, mapped.layer()))
+                        .map(|m| m.layer_surface().clone())
+                });
+                if let Some(s) = mapped {
+                    return Some(FocusTarget::LayerSurface(s));
+                }
+            }
+        }
+
         // Otherwise: monitor's last-selected client (focus history),
         // falling back to the topmost visible client on the same monitor.
         let mon_idx = self

@@ -260,6 +260,9 @@ impl WlrLayerShellHandler for MargoState {
         // layer in steady state.
         self.layer_layout_hashes.remove(&wl_surf.id());
         self.layer_kb_interactivity_hashes.remove(&wl_surf.id());
+        if self.focused_ondemand_layer.as_ref() == Some(&surface) {
+            self.focused_ondemand_layer = None;
+        }
 
         if layer_visible {
             self.refresh_output_work_area(&output);

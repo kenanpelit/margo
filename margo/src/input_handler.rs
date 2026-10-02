@@ -1213,6 +1213,24 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
                         }),
                         _ => true,
                     };
+                    // Track click-driven focus intent between `Window` and an
+                    // `OnDemand` layer (toggle-only menus — see
+                    // `focused_ondemand_layer`'s doc comment): a window click
+                    // always supersedes a previously sticky menu, and clicking
+                    // back into the still-open menu re-earns it. `Exclusive`
+                    // layers don't need this — `compute_desired_focus` already
+                    // gives them unconditional priority.
+                    match &target {
+                        FocusTarget::Window(_) => state.focused_ondemand_layer = None,
+                        FocusTarget::LayerSurface(layer)
+                            if layer.with_cached_state(|data| {
+                                data.keyboard_interactivity == KeyboardInteractivity::OnDemand
+                            }) =>
+                        {
+                            state.focused_ondemand_layer = Some(layer.clone());
+                        }
+                        _ => {}
+                    }
                     if takes_keyboard {
                         state.focus_surface(Some(target));
                     }

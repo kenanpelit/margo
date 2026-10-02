@@ -84,7 +84,7 @@ use smithay::{
             wlr_data_control::DataControlState,
         },
         shell::{
-            wlr_layer::{Layer as WlrLayer, WlrLayerShellState},
+            wlr_layer::{Layer as WlrLayer, LayerSurface as WlrLayerSurface, WlrLayerShellState},
             xdg::{
                 ToplevelSurface, XdgShellState, XdgToplevelSurfaceData,
                 decoration::XdgDecorationState,
@@ -573,6 +573,17 @@ pub struct MargoState {
     /// NOT pay the focus-refresh cost. Cleared in `layer_destroyed`.
     pub layer_kb_interactivity_hashes:
         std::collections::HashMap<smithay::reexports::wayland_server::backend::ObjectId, u64>,
+    /// The `OnDemand` layer surface last granted keyboard focus — either
+    /// by an explicit click (`handle_pointer_button`) or by freshly
+    /// becoming interactive (the `None -> OnDemand` transition in the
+    /// layer commit handler, so a just-opened menu is immediately
+    /// keyboard-reachable without requiring a click first). Consulted by
+    /// `compute_desired_focus` as a priority tier below `Exclusive` and
+    /// above the monitor's selected window, so clicking a window (which
+    /// clears this) hands real keyboard focus back to the window while
+    /// an `OnDemand` menu stays visually open. Cleared in
+    /// `layer_destroyed` and whenever a window click supersedes it.
+    pub focused_ondemand_layer: Option<WlrLayerSurface>,
     /// Per-output frame-callback sequence number. Bumped once per real
     /// vblank (in `note_vblank`) and once per estimated vblank (when
     /// the timer queued from the empty-render path fires). Surfaces
@@ -1302,6 +1313,7 @@ impl MargoState {
             rule_once_consumed: std::collections::HashSet::new(),
             layer_layout_hashes: std::collections::HashMap::new(),
             layer_kb_interactivity_hashes: std::collections::HashMap::new(),
+            focused_ondemand_layer: None,
             frame_callback_sequence: std::collections::HashMap::new(),
             perf_counters: std::collections::HashMap::new(),
             frame_callback_fallback_output: Output::new(
