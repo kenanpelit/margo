@@ -43,6 +43,14 @@ use zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1;
 
 const VERSION: u32 = 3;
 
+/// Single source of truth for the SHM stride we advertise to clients
+/// (`frame.buffer()`) and validate against on `Copy` — keeps the two
+/// call sites from drifting apart (see the `Copy` handler's doc note
+/// on why the old strict `shm_len` check was dropped).
+fn screencopy_shm_buffer_stride(size: Size<i32, Physical>) -> i32 {
+    size.w * 4
+}
+
 /// Per-manager-binding queue: tracks frames the compositor has handed out
 /// but the client hasn't yet committed via `Copy`/`CopyWithDamage`, plus
 /// the `Screencopy`s waiting to be served by the next render pass.
@@ -297,7 +305,7 @@ where
             Format::Xrgb8888,
             buffer_size.w as u32,
             buffer_size.h as u32,
-            buffer_size.w as u32 * 4,
+            screencopy_shm_buffer_stride(buffer_size) as u32,
         );
         if frame.version() >= 3 {
             frame.linux_dmabuf(
@@ -434,12 +442,20 @@ where
                 );
                 return;
             }
-        } else if shm::with_buffer_contents(&buffer, |_, shm_len, buffer_data| {
+        } else if shm::with_buffer_contents(&buffer, |_, _, buffer_data| {
+            // No `shm_len == stride*height` check here (ported fix,
+            // niri #4566): `shm_len` is the backing pool's size, which
+            // is legitimately allowed to be larger than this one
+            // buffer — a client sub-allocating several buffers from
+            // one big pool was getting its perfectly valid buffer
+            // rejected. The buffer's own bounds (offset + stride *
+            // height within the pool) are what matter for safety, and
+            // that's enforced independently by the SHM pool itself at
+            // `wl_shm_pool.create_buffer` time, not by this check.
             buffer_data.format == Format::Xrgb8888
                 && buffer_data.width == size.w
                 && buffer_data.height == size.h
-                && buffer_data.stride == size.w * 4
-                && shm_len == buffer_data.stride as usize * buffer_data.height as usize
+                && buffer_data.stride == screencopy_shm_buffer_stride(size)
         })
         .unwrap_or(false)
         {
