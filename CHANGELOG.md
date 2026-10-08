@@ -5,6 +5,38 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] – 2026-10-08
+
+**Screenshot repeat-region capture, a keyboard-focus fix for toggle-only
+menus, and two niri ports.**
+
+### Added
+
+- **`mshellctl screenshot repeat`** (default keybind: `ctrl+shift,Print`)
+  re-grabs the last region committed through the area selector without
+  reopening it — handy for rapid repeat captures of the same spot. Falls
+  back to a normal region select the first time it's used in a session.
+- Clicking a window while an mshell-frame menu/pill is open now closes
+  the menu first (GNOME quick-settings style), so typing reaches the
+  window immediately instead of requiring Esc first.
+- **`windowrule = focus_on_xdg_activate:0`** (ported from niri) denies
+  focus-steal from xdg-activation requests on a window — useful for
+  Picture-in-Picture-style windows that re-activate themselves — and
+  marks it **urgent** instead. `is_urgent` is now actually wired
+  end-to-end: it previously drove the urgent border color and the
+  dock/pill state mirror, but nothing in margo ever set it.
+
+### Fixed
+
+- A wlr-screencopy client supplying a valid SHM buffer from a larger
+  shared pool (several buffers packed into one pool) was spuriously
+  rejected (ported from niri).
+
+### Docs
+
+- README: fixed stale `mshellctl` command examples, a missing `mtm`
+  entry, and `mvisual`'s wrong description.
+
 ## [3.6.0] – 2026-09-30
 
 **A cosmic-osk visual/feature port for the on-screen keyboard, five more
