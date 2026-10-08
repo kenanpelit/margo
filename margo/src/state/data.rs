@@ -166,6 +166,11 @@ pub struct MargoClient {
     pub rule_placement_done: bool,
     pub allow_csd: bool,
     pub no_focus: bool,
+    /// Resolved from `WindowRule::focus_on_xdg_activate == Some(false)`
+    /// (inverted, like `no_focus` from `open_focused`). When set,
+    /// `request_activation` (xdg_activation.rs) marks the client
+    /// urgent instead of focusing it.
+    pub block_activation_focus: bool,
     pub no_fade_in: bool,
     pub no_fade_out: bool,
     pub no_blur: bool,
@@ -311,6 +316,7 @@ impl MargoClient {
             rule_placement_done: false,
             allow_csd: false,
             no_focus: false,
+            block_activation_focus: false,
             no_fade_in: false,
             no_fade_out: false,
             no_blur: false,

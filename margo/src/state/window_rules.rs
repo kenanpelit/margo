@@ -388,6 +388,9 @@ impl MargoState {
             if let Some(value) = rule.no_focus {
                 client.no_focus = value;
             }
+            if let Some(allow) = rule.focus_on_xdg_activate {
+                client.block_activation_focus = !allow;
+            }
             if let Some(value) = rule.no_fade_in {
                 client.no_fade_in = value;
             }

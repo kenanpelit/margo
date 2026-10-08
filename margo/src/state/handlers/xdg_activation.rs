@@ -79,6 +79,23 @@ impl XdgActivationHandler for MargoState {
             return;
         };
 
+        // `focus_on_xdg_activate:0` (niri port, d89a3eb): this client
+        // opted out of focus-steal from a — still cryptographically
+        // valid — activation request. Common case: a Picture-in-Picture
+        // popup re-activating itself on every frame. Mark urgent
+        // instead of jumping the view/focus to it.
+        if self.clients[idx].block_activation_focus {
+            self.clients[idx].is_urgent = true;
+            self.mark_state_dirty();
+            self.request_repaint();
+            tracing::info!(
+                "xdg_activation: blocked focus-steal (rule), marked urgent app_id={} idx={}",
+                self.clients[idx].app_id,
+                idx,
+            );
+            return;
+        }
+
         // Switch to the client's tag iff it isn't already visible —
         // see the module comment about browsers and the toggle-back
         // semantic.

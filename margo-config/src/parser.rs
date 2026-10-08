@@ -986,6 +986,7 @@ fn parse_windowrule(cfg: &mut Config, val: &str, once: bool) -> Result<()> {
                 rule.idle_inhibit_when_focus = Some(parse_bool_s(&v))
             }
             "nofocus" => rule.no_focus = Some(parse_bool_s(&v)),
+            "focus_on_xdg_activate" => rule.focus_on_xdg_activate = Some(parse_bool_s(&v)),
             "nofadein" => rule.no_fade_in = Some(parse_bool_s(&v)),
             "nofadeout" => rule.no_fade_out = Some(parse_bool_s(&v)),
             "no_force_center" => rule.no_force_center = Some(parse_bool_s(&v)),

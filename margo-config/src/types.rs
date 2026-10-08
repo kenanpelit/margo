@@ -419,6 +419,14 @@ pub struct WindowRule {
     /// Mirror of `width_fraction`.
     pub height_fraction: Option<f32>,
     pub no_focus: Option<bool>,
+    /// `false` denies focus-steal from xdg-activation requests on an
+    /// already-mapped window (e.g. a Picture-in-Picture popup
+    /// re-activating itself) — the window is marked urgent instead.
+    /// `true`/unset keeps today's behaviour (always focus). Niri port
+    /// (`focus-on-xdg-activate`, d89a3eb). Resolved into
+    /// `MargoClient::block_activation_focus` (inverted, like
+    /// `open_focused` → `no_focus`).
+    pub focus_on_xdg_activate: Option<bool>,
     pub no_fade_in: Option<bool>,
     pub no_fade_out: Option<bool>,
     pub no_force_center: Option<bool>,

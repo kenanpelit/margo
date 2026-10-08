@@ -2212,6 +2212,12 @@ impl MargoState {
                     self.focus_counter += 1;
                     self.clients[idx].last_focus_serial = self.focus_counter;
                 }
+                // Urgency is an attention request, not a standing state —
+                // clear it the moment the window actually becomes the
+                // user's focus (X11 WM_HINTS / GTK urgency-hint
+                // convention). `is_urgent` is still otherwise dead until
+                // `request_activation` (xdg_activation.rs) sets it.
+                self.clients[idx].is_urgent = false;
                 let mon = self.clients[idx].monitor;
                 let client_id = self.clients[idx].id;
                 let clients = &self.clients;
