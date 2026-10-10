@@ -5619,6 +5619,7 @@ dependencies = [
  "mshell-plugins",
  "mshell-services",
  "mshell-style",
+ "mshell-translate",
  "mshell-utils",
  "notify-rust",
  "paste",

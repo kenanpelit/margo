@@ -51,6 +51,7 @@ use crate::tag_layout_settings::{TagLayoutSettingsInit, TagLayoutSettingsModel};
 use crate::tag_rules_settings::{TagRulesInit, TagRulesModel};
 use crate::theme_settings::theme_settings::{ThemeSettingsInit, ThemeSettingsModel};
 use crate::toast_settings::{ToastSettingsInit, ToastSettingsModel};
+use crate::translate_settings::{TranslateSettingsInit, TranslateSettingsModel};
 use crate::users_settings::{UsersSettingsInit, UsersSettingsModel};
 use crate::vpn_settings::{VpnSettingsInit, VpnSettingsModel};
 use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
@@ -193,6 +194,7 @@ fn build_top_page(route: &str) -> Option<BuiltPage> {
         "overview" => page!(OverviewSettingsModel => OverviewSettingsInit {}),
         "vpn" => page!(VpnSettingsModel => VpnSettingsInit {}),
         "ai" => page!(AiSettingsModel => AiSettingsInit {}),
+        "translate" => page!(TranslateSettingsModel => TranslateSettingsInit {}),
         "date_time" => page!(DateTimeSettingsModel => DateTimeSettingsInit {}),
         "region" => page!(RegionSettingsModel => RegionSettingsInit {}),
         "sound" => page!(SoundSettingsModel => SoundSettingsInit {}),
@@ -1030,6 +1032,12 @@ impl Component for SettingsWindowModel {
                 stack_name: "ai_widget",
                 label: "AI",
                 icon: "starred-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::Translate,
+                stack_name: "translate",
+                label: "Translate",
+                icon: "preferences-desktop-locale-symbolic",
             },
             WidgetEntry::MediaPlayer,
             WidgetEntry::Tune,
@@ -2300,6 +2308,11 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "ai",
         icon: "starred-symbolic",
         label: "AI",
+    },
+    Page {
+        route: "translate",
+        icon: "preferences-desktop-locale-symbolic",
+        label: "Translate",
     },
     Page {
         route: "tiling_layout",

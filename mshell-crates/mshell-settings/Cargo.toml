@@ -27,6 +27,7 @@ mshell-matugen.workspace = true
 mshell-plugins.workspace = true
 mshell-services.workspace = true
 mshell-style.workspace = true
+mshell-translate.workspace = true
 mshell-utils.workspace = true
 notify-rust.workspace = true
 paste = "1"

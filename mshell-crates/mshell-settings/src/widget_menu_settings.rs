@@ -70,6 +70,9 @@ pub(crate) enum MenuKind {
     SshSessions,
     Ufw,
     Wallpaper,
+    /// The Translate menu (`translate_menu`), opened by the Translate
+    /// bar pill / `mshellctl menu translate`.
+    Translate,
 }
 
 // ── Per-menu field dispatch ──────────────────────────────────────────────
@@ -114,6 +117,7 @@ macro_rules! menu_read {
             MenuKind::ControlCenter => m.control_center_menu().$field().$g(),
             MenuKind::SshSessions => m.ssh_menu().$field().$g(),
             MenuKind::MargoLayout => m.margo_layout_menu().$field().$g(),
+            MenuKind::Translate => m.translate_menu().$field().$g(),
         }
     }};
 }
@@ -154,6 +158,7 @@ macro_rules! menu_write {
             MenuKind::ControlCenter => c.menus.control_center_menu.$field = $val,
             MenuKind::SshSessions => c.menus.ssh_menu.$field = $val,
             MenuKind::MargoLayout => c.menus.margo_layout_menu.$field = $val,
+            MenuKind::Translate => c.menus.translate_menu.$field = $val,
         });
     };
 }
@@ -194,6 +199,7 @@ impl MenuKind {
             Self::SshSessions => "SSH Sessions",
             Self::Ufw => "UFW Firewall",
             Self::Wallpaper => "Wallpaper",
+            Self::Translate => "Translate",
         }
     }
 
@@ -235,6 +241,7 @@ impl MenuKind {
             MenuKind::VpnIndicator,
             MenuKind::Network,
             MenuKind::MargoLayout,
+            MenuKind::Translate,
         ]
     }
 
