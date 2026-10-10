@@ -64,6 +64,9 @@ use crate::menus::menu_widgets::system_status::{SystemStatusInput, SystemStatusM
 use crate::menus::menu_widgets::system_update::system_update_menu_widget::{
     SystemUpdateMenuWidgetInput, SystemUpdateMenuWidgetModel,
 };
+use crate::menus::menu_widgets::translate::translate_menu_widget::{
+    TranslateMenuWidgetInput, TranslateMenuWidgetModel,
+};
 use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
     TwilightMenuWidgetInput, TwilightMenuWidgetModel,
 };
@@ -948,6 +951,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(AiMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<TranslateMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(TranslateMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =

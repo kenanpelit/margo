@@ -10,7 +10,7 @@
 
 use mshell_translate::{TranslateResult, config, looks_sensitive};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
+use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 pub(crate) struct TranslateMenuWidgetInit {}
 
@@ -22,10 +22,19 @@ pub(crate) struct TranslateMenuWidgetModel {
     /// differ from the `target_entry` setting when `translate_auto`
     /// flipped direction (selected text was already in that language).
     result: Option<(TranslateResult, String)>,
+    /// Cloned at init so `ParentRevealChanged` can grab focus for it
+    /// without needing `Widgets` access — same shape as the AI menu
+    /// widget's `self.input`.
+    input_entry: gtk::Entry,
 }
 
 #[derive(Debug)]
 pub(crate) enum TranslateMenuWidgetInput {
+    /// Broadcast by the menu stack when this panel's reveal state
+    /// flips (see `menu.rs`'s `BroadcastReveal`). On becoming visible,
+    /// focuses the input entry so you can start typing immediately —
+    /// matches the AI menu's `mshellctl menu ai` / pill-click behavior.
+    ParentRevealChanged(bool),
     /// Carries the input box's text at click/Enter time — read directly
     /// off the `gtk::Entry` in the view-macro closure, so this handler
     /// never needs widget access itself.
@@ -51,18 +60,53 @@ impl Component for TranslateMenuWidgetModel {
         gtk::Box {
             add_css_class: "translate-menu-widget",
             set_orientation: gtk::Orientation::Vertical,
-            set_spacing: 10,
-            set_margin_all: 14,
+            set_spacing: 12,
+
+            // ── §12 panel header (DESIGN.md §12) ──
+            gtk::Box {
+                add_css_class: "panel-header",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+
+                gtk::Image {
+                    add_css_class: "panel-header-icon",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: Some("preferences-desktop-locale-symbolic"),
+                },
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_hexpand: true,
+                    set_valign: gtk::Align::Center,
+                    gtk::Label {
+                        add_css_class: "panel-title",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Translate",
+                    },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                        set_label: "Auto-detects the source — just type, paste, or Enter",
+                    },
+                },
+            },
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 8,
 
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "to",
+                },
+
                 #[name = "target_entry"]
                 gtk::Entry {
+                    add_css_class: "translate-lang-entry",
                     set_hexpand: false,
                     set_width_chars: 4,
                     set_max_width_chars: 4,
+                    set_placeholder_text: Some("tr"),
                     set_tooltip_text: Some("Target language code (e.g. tr, en, es)"),
                     connect_changed[sender] => move |e| {
                         sender.input(TranslateMenuWidgetInput::TargetLangChanged(e.text().to_string()));
@@ -90,39 +134,59 @@ impl Component for TranslateMenuWidgetModel {
             #[name = "status_label"]
             gtk::Label {
                 add_css_class: "dim-label",
+                set_wrap: true,
+                set_xalign: 0.0,
                 set_halign: gtk::Align::Start,
                 set_visible: false,
             },
 
-            #[name = "result_label"]
-            gtk::Label {
-                set_wrap: true,
-                set_xalign: 0.0,
-                set_selectable: true,
+            // One card for the whole result — direction + translation +
+            // (single-word only) dictionary alternatives + copy — so it
+            // reads as one answer, not three loose labels.
+            #[name = "result_card"]
+            gtk::Box {
+                add_css_class: "translate-result-card",
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 6,
                 set_visible: false,
-            },
 
-            // Single-word lookups only (Google's dict-chrome-ex "basic
-            // dictionary" data — empty for anything multi-word): other
-            // meanings grouped by part of speech, e.g. "light" also
-            // meaning "hafif" (adjective) alongside the main "ışık".
-            #[name = "alternatives_label"]
-            gtk::Label {
-                add_css_class: "dim-label",
-                set_wrap: true,
-                set_xalign: 0.0,
-                set_selectable: true,
-                set_visible: false,
-            },
+                #[name = "direction_label"]
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_halign: gtk::Align::Start,
+                },
 
-            #[name = "copy_button"]
-            gtk::Button {
-                set_css_classes: &["ok-button-flat"],
-                set_label: "Copy result",
-                set_halign: gtk::Align::Start,
-                set_visible: false,
-                connect_clicked[sender] => move |_| {
-                    sender.input(TranslateMenuWidgetInput::CopyResult);
+                #[name = "result_label"]
+                gtk::Label {
+                    add_css_class: "translate-result-text",
+                    set_wrap: true,
+                    set_xalign: 0.0,
+                    set_halign: gtk::Align::Start,
+                    set_selectable: true,
+                },
+
+                // Single-word lookups only (Google's dict-chrome-ex "basic
+                // dictionary" data — empty for anything multi-word): other
+                // meanings grouped by part of speech, e.g. "light" also
+                // meaning "hafif" (adjective) alongside the main "ışık".
+                #[name = "alternatives_label"]
+                gtk::Label {
+                    add_css_class: "dim-label",
+                    set_wrap: true,
+                    set_xalign: 0.0,
+                    set_halign: gtk::Align::Start,
+                    set_selectable: true,
+                    set_visible: false,
+                },
+
+                #[name = "copy_button"]
+                gtk::Button {
+                    set_css_classes: &["ok-button-flat"],
+                    set_label: "Copy result",
+                    set_halign: gtk::Align::Start,
+                    connect_clicked[sender] => move |_| {
+                        sender.input(TranslateMenuWidgetInput::CopyResult);
+                    },
                 },
             },
         }
@@ -133,13 +197,13 @@ impl Component for TranslateMenuWidgetModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let widgets = view_output!();
         let model = TranslateMenuWidgetModel {
             busy: false,
             error: None,
             result: None,
+            input_entry: widgets.input_entry.clone(),
         };
-
-        let widgets = view_output!();
         widgets.target_entry.set_text(&config::load().target_lang);
 
         ComponentParts { model, widgets }
@@ -147,6 +211,17 @@ impl Component for TranslateMenuWidgetModel {
 
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
+            TranslateMenuWidgetInput::ParentRevealChanged(visible) => {
+                if visible {
+                    // Deferred to idle so the entry is mapped + the layer
+                    // surface already has keyboard focus — same timing
+                    // the AI menu widget uses for the same reason.
+                    let entry = self.input_entry.clone();
+                    relm4::gtk::glib::idle_add_local_once(move || {
+                        entry.grab_focus();
+                    });
+                }
+            }
             TranslateMenuWidgetInput::TargetLangChanged(lang) => {
                 let mut s = config::load();
                 s.target_lang = lang;
@@ -204,9 +279,10 @@ impl Component for TranslateMenuWidgetModel {
         refresh_view(
             self,
             &widgets.status_label,
+            &widgets.result_card,
+            &widgets.direction_label,
             &widgets.result_label,
             &widgets.alternatives_label,
-            &widgets.copy_button,
         );
     }
 }
@@ -214,9 +290,10 @@ impl Component for TranslateMenuWidgetModel {
 fn refresh_view(
     model: &TranslateMenuWidgetModel,
     status_label: &gtk::Label,
+    result_card: &gtk::Box,
+    direction_label: &gtk::Label,
     result_label: &gtk::Label,
     alternatives_label: &gtk::Label,
-    copy_button: &gtk::Button,
 ) {
     match &model.error {
         Some(e) => {
@@ -227,13 +304,13 @@ fn refresh_view(
     }
     match &model.result {
         Some((r, used_target)) => {
-            let text = match &r.detected_source {
-                Some(src) => format!("({src} → {used_target}) {}", r.translated),
-                None => format!("(→ {used_target}) {}", r.translated),
+            let direction = match &r.detected_source {
+                Some(src) => format!("{src} → {used_target}"),
+                None => format!("→ {used_target}"),
             };
-            result_label.set_text(&text);
-            result_label.set_visible(true);
-            copy_button.set_visible(true);
+            direction_label.set_text(&direction);
+            result_label.set_text(&r.translated);
+            result_card.set_visible(true);
 
             if r.alternatives.is_empty() {
                 alternatives_label.set_visible(false);
@@ -248,11 +325,7 @@ fn refresh_view(
                 alternatives_label.set_visible(true);
             }
         }
-        None => {
-            result_label.set_visible(false);
-            alternatives_label.set_visible(false);
-            copy_button.set_visible(false);
-        }
+        None => result_card.set_visible(false),
     }
 }
 

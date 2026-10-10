@@ -1,0 +1,41 @@
+@use "../02-functions/index" as *;
+// Translate — bar pill + manual-lookup panel. DESIGN.md §12 panel
+// header (icon/title/subtitle) + §5 menu card chrome for the result.
+
+.translate-menu-widget {
+  // Raise the Translate button off the bare --surface panel so it
+  // reads as a real control, not flat text (menu-professionalization
+  // §1) — same technique as Twilight/DNS.
+  .ok-button-surface {
+    background-color: var(--surface-container-high);
+    @include state-layer(var(--surface-container-high));
+  }
+}
+
+// Tiny "to" label ahead of the target-language entry.
+.translate-menu-widget > box > label.label-small {
+  padding: 0 var(--space-1);
+}
+
+// 2–4 char language-code entry — a compact chip, not a full-width
+// text field.
+.translate-lang-entry {
+  min-width: 0;
+}
+
+// The one card the direction + translation + alternatives + copy
+// button all live in, so a finished lookup reads as one answer
+// instead of three loose labels floating in the panel.
+.translate-result-card {
+  background-color: var(--surface-container);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+// The translation itself is the payload — a touch larger/heavier
+// than body text so it's the thing your eye lands on first.
+.translate-result-text {
+  font-size: var(--font-md);
+  font-weight: 500;
+  color: var(--on-surface);
+}
