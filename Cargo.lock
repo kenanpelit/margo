@@ -5663,6 +5663,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mshell-translate"
+version = "3.7.0"
+dependencies = [
+ "keyring",
+ "serde",
+ "serde_json",
+ "ureq",
+ "zeroize",
+]
+
+[[package]]
 name = "mshell-utils"
 version = "3.7.0"
 dependencies = [

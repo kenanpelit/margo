@@ -1,0 +1,17 @@
+[package]
+name = "mshell-translate"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
+description = "GTK-free translation engine for margo — key-free Google Translate by default, optional DeepL"
+
+# Shared by the shell's Translate bar widget / menu and the Settings → Translate page.
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+ureq = { workspace = true }
+keyring = { workspace = true }
+zeroize = { workspace = true }
