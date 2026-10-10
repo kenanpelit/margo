@@ -315,17 +315,39 @@ fn refresh_view(
             if r.alternatives.is_empty() {
                 alternatives_label.set_visible(false);
             } else {
-                let text = r
+                // Each part-of-speech group as its own bolded, capitalised
+                // heading ("Noun: ışık, aydınlık, nur"), with a blank line
+                // between groups so "Noun" / "Adjective" read as distinct
+                // entries rather than running together.
+                let markup = r
                     .alternatives
                     .iter()
-                    .map(|(pos, terms)| format!("{pos}: {}", terms.join(", ")))
+                    .map(|(pos, terms)| {
+                        let pos = gtk::glib::markup_escape_text(&capitalize(pos));
+                        let terms = terms
+                            .iter()
+                            .map(|t| gtk::glib::markup_escape_text(t))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!("<b>{pos}</b>: {terms}")
+                    })
                     .collect::<Vec<_>>()
-                    .join("\n");
-                alternatives_label.set_text(&text);
+                    .join("\n\n");
+                alternatives_label.set_markup(&markup);
                 alternatives_label.set_visible(true);
             }
         }
         None => result_card.set_visible(false),
+    }
+}
+
+/// Uppercase the first character ("noun" → "Noun") — Google's part-of-speech
+/// tags come back lowercase.
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
     }
 }
 
