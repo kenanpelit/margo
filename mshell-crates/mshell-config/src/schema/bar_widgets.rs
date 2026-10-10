@@ -122,6 +122,9 @@ pub enum BarWidget {
     Dns,
     Ip,
     Network,
+    /// Translate pill — opens the Translate menu (select-or-copy +
+    /// keybind capture, Google Translate by default, optional DeepL).
+    Translate,
     /// A user-defined pill; the `String` is the `custom_widgets` entry name.
     Custom(String),
     /// Blank gap of the given pixel width, for spacing widgets apart.
@@ -201,6 +204,7 @@ impl BarWidget {
             BarWidget::Ai => "AI",
             BarWidget::Ip => "Public IP",
             BarWidget::Network => "Network Console",
+            BarWidget::Translate => "Translate",
             BarWidget::Custom(_) => "Custom Widget",
             BarWidget::Spacer(_) => "Spacer",
             BarWidget::Separator => "Separator",

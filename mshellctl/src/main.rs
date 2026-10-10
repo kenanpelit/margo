@@ -94,6 +94,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Clipboard { command } => {
             mshellctl::subcommands::clipboard::execute(command).await?
         }
+        Commands::Translate { command } => {
+            mshellctl::subcommands::translate::execute(command).await?
+        }
         Commands::Doctor => mshellctl::subcommands::doctor::execute().await?,
         Commands::Completions { shell } => {
             use clap::CommandFactory;

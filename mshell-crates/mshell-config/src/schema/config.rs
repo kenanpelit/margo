@@ -1428,6 +1428,10 @@ pub struct Menus {
     /// Default-on-missing so older YAML predating this menu still parses.
     #[serde(default = "default_vpn_indicator_menu")]
     pub vpn_indicator_menu: Menu,
+    /// `translate` bar pill's panel. Default-on-missing so profiles
+    /// predating it still parse.
+    #[serde(default = "default_translate_menu")]
+    pub translate_menu: Menu,
     pub media_player_menu: Menu,
     /// Dedicated `mtune` (folder-first music player) menu. Default-on-missing
     /// so profiles predating it still parse.
@@ -1595,6 +1599,15 @@ fn default_bluetooth_menu() -> Menu {
         position: Position::Top,
         widgets: vec![MenuWidget::Bluetooth],
         minimum_width: 400,
+        maximum_height: 0,
+    }
+}
+
+fn default_translate_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::Translate],
+        minimum_width: 420,
         maximum_height: 0,
     }
 }
@@ -1869,6 +1882,7 @@ impl Default for Menus {
             ssh_menu: default_ssh_menu(),
             privacy_menu: default_privacy_menu(),
             vpn_indicator_menu: default_vpn_indicator_menu(),
+            translate_menu: default_translate_menu(),
             plugin_panel_menu: default_plugin_panel_menu(),
             media_player_menu: Menu {
                 position: Position::TopRight,

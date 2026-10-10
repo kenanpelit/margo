@@ -253,6 +253,13 @@ pub enum Commands {
         #[command(subcommand)]
         command: crate::subcommands::clipboard::ClipboardCommands,
     },
+    /// Headless translate: select or copy text, run this (bind it to a
+    /// keybind/gesture), get the result copied + toasted back. No menu
+    /// panel involved — use `mshellctl menu translate` for manual entry.
+    Translate {
+        #[command(subcommand)]
+        command: crate::subcommands::translate::TranslateCommands,
+    },
     /// Show a transient state-change toast — the `notify-send` equivalent for
     /// the toast surface. Ephemeral (no notification history); usable from
     /// scripts and startup services.

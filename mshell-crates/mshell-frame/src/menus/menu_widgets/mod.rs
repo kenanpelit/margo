@@ -44,6 +44,7 @@ pub(crate) mod ssh_sessions;
 pub(crate) mod system_status;
 pub(crate) mod system_update;
 pub(crate) mod theme_picker;
+pub(crate) mod translate;
 pub(crate) mod twilight;
 pub(crate) mod ufw;
 pub(crate) mod valent;

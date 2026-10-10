@@ -101,6 +101,9 @@ use crate::menus::menu_widgets::system_update::system_update_menu_widget::{
 use crate::menus::menu_widgets::theme_picker::theme_picker_menu_widget::{
     ThemePickerMenuWidgetInit, ThemePickerMenuWidgetModel,
 };
+use crate::menus::menu_widgets::translate::translate_menu_widget::{
+    TranslateMenuWidgetInit, TranslateMenuWidgetModel,
+};
 use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
     TwilightMenuWidgetInit, TwilightMenuWidgetModel,
 };
@@ -407,6 +410,11 @@ pub fn build_widget(
         MenuWidget::ThemePicker => Box::new(
             ThemePickerMenuWidgetModel::builder()
                 .launch(ThemePickerMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Translate => Box::new(
+            TranslateMenuWidgetModel::builder()
+                .launch(TranslateMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Wallpaper => Box::new(

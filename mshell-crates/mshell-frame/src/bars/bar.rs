@@ -46,6 +46,7 @@ use crate::bars::bar_widgets::shutdown::{ShutdownInit, ShutdownModel};
 use crate::bars::bar_widgets::ssh_sessions::{SshSessionsInit, SshSessionsModel};
 use crate::bars::bar_widgets::system_tray::{SystemTrayInit, SystemTrayModel};
 use crate::bars::bar_widgets::system_update::{SystemUpdateInit, SystemUpdateModel};
+use crate::bars::bar_widgets::translate::{TranslateInit, TranslateModel, TranslateOutput};
 use crate::bars::bar_widgets::twilight::{TwilightInit, TwilightModel};
 use crate::bars::bar_widgets::ufw::{UfwInit, UfwModel};
 use crate::bars::bar_widgets::vpn_indicator::{VpnIndicatorInit, VpnIndicatorModel};
@@ -235,6 +236,7 @@ pub(crate) enum BarOutput {
     PowerClicked,
     PrivacyClicked,
     MediaPlayerClicked,
+    TranslateClicked,
     MtuneClicked,
     LyricsClicked,
     /// Margo layout switcher bar pill clicked. Frame catches and
@@ -1032,6 +1034,13 @@ impl BarModel {
                     .launch(ClipboardInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
                         ClipboardOutput::Clicked => BarOutput::ClipboardClicked,
+                    }),
+            ),
+            BarWidget::Translate => Box::new(
+                TranslateModel::builder()
+                    .launch(TranslateInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        TranslateOutput::Clicked => BarOutput::TranslateClicked,
                     }),
             ),
             BarWidget::Clock => Box::new(

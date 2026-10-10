@@ -50,6 +50,7 @@ pub(crate) mod sysstat;
 pub(crate) mod system_tray;
 pub(crate) mod system_tray_item;
 pub(crate) mod system_update;
+pub(crate) mod translate;
 pub(crate) mod twilight;
 pub(crate) mod ufw;
 pub(crate) mod valent;

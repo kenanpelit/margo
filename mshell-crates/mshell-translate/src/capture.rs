@@ -45,6 +45,32 @@ fn shell_quote(path: &Path) -> String {
     format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
 }
 
+fn pid_path() -> PathBuf {
+    runtime_dir().join("margo-translate-watchers.pid")
+}
+
+/// Is `pid` a live process AND still actually `wl-paste` — not just a
+/// number that happens to be unassigned or (worse) reused by an
+/// unrelated process since the pidfile was written. Linux-only
+/// (`/proc`), matching this crate's `wl-paste`-only scope.
+fn pid_is_our_watcher(pid: &str) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/comm"))
+        .map(|comm| comm.trim() == "wl-paste")
+        .unwrap_or(false)
+}
+
+/// True if a previous call (ours or another process') already has
+/// live watchers running, per the pidfile. This is the cross-process
+/// half of idempotency — `WATCHERS` only dedups within one process,
+/// but every `mshellctl translate` invocation is a fresh process, so
+/// without this each one would spawn its own redundant watcher pair.
+fn watchers_already_running() -> bool {
+    let Ok(raw) = std::fs::read_to_string(pid_path()) else {
+        return false;
+    };
+    raw.lines().all(|pid| pid_is_our_watcher(pid.trim())) && raw.lines().count() == 2
+}
+
 fn spawn_watch(path: &Path, primary: bool) -> std::io::Result<Child> {
     // Clear any stale content from a previous run so a freshness
     // check right after startup can't see old data as "just copied".
@@ -66,12 +92,23 @@ fn spawn_watch(path: &Path, primary: bool) -> std::io::Result<Child> {
 }
 
 /// Start the two background watchers if they haven't been started
-/// yet. Idempotent, and safe to call even when `wl-paste` is missing
-/// (capture then just always comes back empty).
+/// yet — checked both within this process (`WATCHERS`) and across
+/// processes (the pidfile), since `capture()` is called both from the
+/// long-lived `mshell` process and from a fresh `mshellctl translate`
+/// process on every keybind press. Idempotent, and safe to call even
+/// when `wl-paste` is missing (capture then just always comes back
+/// empty).
 fn ensure_started() {
+    if watchers_already_running() {
+        return;
+    }
     WATCHERS.get_or_init(|| {
         let clipboard = spawn_watch(&clipboard_path(), false).ok()?;
         let primary = spawn_watch(&primary_path(), true).ok()?;
+        let _ = std::fs::write(
+            pid_path(),
+            format!("{}\n{}\n", clipboard.id(), primary.id()),
+        );
         Some(Watchers {
             _clipboard: clipboard,
             _primary: primary,
@@ -120,6 +157,26 @@ pub fn capture(
     };
 
     winner.filter(|t| Some(t.as_str()) != suppress)
+}
+
+fn last_copied_path() -> PathBuf {
+    runtime_dir().join("margo-translate-last-copied.txt")
+}
+
+/// The text a *previous* `translate` invocation copied back to the
+/// clipboard, if any — pass this as `capture`'s `suppress` so
+/// re-pressing the keybind right after a translation doesn't
+/// immediately re-translate it. Persisted to disk (not just
+/// in-memory) because each keybind press is a fresh `mshellctl`
+/// process with no state of its own.
+pub fn last_copied() -> Option<String> {
+    std::fs::read_to_string(last_copied_path()).ok()
+}
+
+/// Record `text` as this invocation's own clipboard write, for the
+/// *next* invocation's [`last_copied`] to read.
+pub fn mark_copied(text: &str) {
+    let _ = std::fs::write(last_copied_path(), text);
 }
 
 #[cfg(test)]

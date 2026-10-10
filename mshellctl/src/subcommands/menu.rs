@@ -138,6 +138,10 @@ pub enum MenuCommands {
         /// The plugin key (its id, or a widget key).
         key: String,
     },
+    /// Toggle the Translate menu (manual language lookup; the
+    /// select-or-copy + keybind flow is headless — see `mshellctl
+    /// translate`)
+    Translate,
     /// Close all open menus
     CloseAll,
 }
@@ -238,6 +242,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Dns => {
             bus_command("Dns").await?;
+        }
+        MenuCommands::Translate => {
+            bus_command("TranslateMenu").await?;
         }
         MenuCommands::Ai => {
             bus_command("Ai").await?;

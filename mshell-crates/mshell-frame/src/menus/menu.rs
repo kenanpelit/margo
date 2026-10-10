@@ -94,6 +94,7 @@ use std::fmt::Debug;
 
 pub(crate) enum MenuType {
     Clipboard,
+    Translate,
     Clock,
     Notifications,
     Screenshot,
@@ -407,6 +408,12 @@ impl Component for MenuModel {
                 // tabs stay fixed while only the list scrolls — and the
                 // bounded inner viewport lets the ListView virtualize.
                 // Capping both would double-scroll (chrome scrolls away).
+            }
+            MenuType::Translate => {
+                css_class = "translate-menu".to_string();
+                effect_widgets!(effects, base_config, sender, translate_menu);
+                effect_min_width!(effects, base_config, sender, translate_menu);
+                effect_max_height!(effects, base_config, sender, translate_menu);
             }
             MenuType::Notifications => {
                 css_class = "notifications-menu".to_string();

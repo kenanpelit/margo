@@ -134,6 +134,9 @@ pub enum MenuWidget {
     /// connect in a new terminal.
     SshSessions,
     ThemePicker,
+    /// `translate` bar pill's panel — source/target language picker +
+    /// swap, manual entry, result card, and a short history list.
+    Translate,
     Wallpaper,
     Weather,
 }
@@ -206,6 +209,7 @@ impl MenuWidget {
             MenuWidget::Keybinds => "Keyboard Shortcuts",
             MenuWidget::SshSessions => "SSH Sessions",
             MenuWidget::ThemePicker => "Theme Picker",
+            MenuWidget::Translate => "Translate",
             MenuWidget::Wallpaper => "Wallpaper",
             MenuWidget::Weather => "Weather",
         }
@@ -274,6 +278,7 @@ impl MenuWidget {
             MenuWidget::Keybinds,
             MenuWidget::SshSessions,
             MenuWidget::ThemePicker,
+            MenuWidget::Translate,
             MenuWidget::Wallpaper,
             MenuWidget::Weather,
         ]

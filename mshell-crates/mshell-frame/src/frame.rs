@@ -74,6 +74,7 @@ fn signal_i32(values: &[glib::Value], index: usize) -> i32 {
 }
 const MDASH_MENU: &str = "mdash";
 const MARGO_LAYOUT_MENU: &str = "margo_layout";
+const TRANSLATE_MENU: &str = "translate";
 
 pub struct Frame {
     // Margo's mshell ships only horizontal bars — vertical Left /
@@ -200,6 +201,7 @@ pub enum MenuId {
     Session,
     Mdash,
     MargoLayout,
+    Translate,
 }
 
 impl MenuId {
@@ -244,6 +246,7 @@ impl MenuId {
             MenuId::Session => SESSION_MENU,
             MenuId::Mdash => MDASH_MENU,
             MenuId::MargoLayout => MARGO_LAYOUT_MENU,
+            MenuId::Translate => TRANSLATE_MENU,
         }
     }
 
@@ -289,6 +292,7 @@ impl MenuId {
             MenuId::Session => MenuType::Session,
             MenuId::Mdash => MenuType::Mdash,
             MenuId::MargoLayout => MenuType::MargoLayout,
+            MenuId::Translate => MenuType::Translate,
         }
     }
 }

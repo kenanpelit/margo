@@ -244,6 +244,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Dns => {
                     app_sender.emit(ShellInput::ToggleDnsMenu(active_monitor().await));
                 }
+                IPCCommand::Translate => {
+                    app_sender.emit(ShellInput::ToggleTranslateMenu(active_monitor().await));
+                }
                 IPCCommand::Podman => {
                     app_sender.emit(ShellInput::TogglePodmanMenu(active_monitor().await));
                 }
@@ -698,6 +701,7 @@ enum IPCCommand {
     Vpn,
     Ai,
     Dns,
+    Translate,
     Podman,
     Notes,
     Ip,
@@ -1790,6 +1794,9 @@ impl IPCService {
     }
     async fn dns(&self) {
         let _ = self.tx.send(IPCCommand::Dns);
+    }
+    async fn translate_menu(&self) {
+        let _ = self.tx.send(IPCCommand::Translate);
     }
     async fn podman(&self) {
         let _ = self.tx.send(IPCCommand::Podman);
