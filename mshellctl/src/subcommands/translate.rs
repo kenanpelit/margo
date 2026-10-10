@@ -66,20 +66,21 @@ pub async fn execute(command: TranslateCommands) -> anyhow::Result<()> {
     // runtime"). `translate()`'s own blocking network call belongs off
     // the async task for the same reason `mshell-frame`'s menu widget
     // runs it via spawn_blocking; do the same here.
+    let secondary_lang = settings.secondary_lang.clone();
     let result = tokio::task::spawn_blocking(move || {
         let cfg = config::resolved();
-        mshell_translate::translate(&cfg, &text)
+        mshell_translate::translate_auto(&cfg, &secondary_lang, &text)
     })
     .await
     .unwrap_or_else(|_| Err("worker panicked".into()));
 
     match result {
-        Ok(result) => {
+        Ok((result, used_target)) => {
             copy_to_clipboard(&result.translated);
             capture::mark_copied(&result.translated);
             let title = match &result.detected_source {
-                Some(src) => format!("Translate ({src} → {})", settings.target_lang),
-                None => format!("Translate (→ {})", settings.target_lang),
+                Some(src) => format!("Translate ({src} → {used_target})"),
+                None => format!("Translate (→ {used_target})"),
             };
             toast(&title, &result.translated, "calm").await;
         }

@@ -21,6 +21,11 @@ pub struct TranslateSettings {
     pub target_lang: String,
     /// Source language override; blank = auto-detect.
     pub source_lang: String,
+    /// Auto-flip target: if the detected source language turns out to
+    /// *be* `target_lang` (e.g. you selected Turkish text while
+    /// `target_lang` is `tr`), translate to this language instead —
+    /// see `translate_auto`. Blank disables the flip.
+    pub secondary_lang: String,
     /// Capture-by-selection-or-copy: only consider a selection fresher than
     /// this many seconds.
     pub selection_max_age_secs: u32,
@@ -36,6 +41,7 @@ impl Default for TranslateSettings {
             provider: "google".into(),
             target_lang: "tr".into(),
             source_lang: String::new(),
+            secondary_lang: "en".into(),
             selection_max_age_secs: 15,
             clipboard_max_age_secs: 60,
             keep_history: true,

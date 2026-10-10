@@ -18,7 +18,10 @@ pub(crate) struct TranslateMenuWidgetInit {}
 pub(crate) struct TranslateMenuWidgetModel {
     busy: bool,
     error: Option<String>,
-    result: Option<TranslateResult>,
+    /// The result, alongside the target language actually used — may
+    /// differ from the `target_entry` setting when `translate_auto`
+    /// flipped direction (selected text was already in that language).
+    result: Option<(TranslateResult, String)>,
 }
 
 #[derive(Debug)]
@@ -33,7 +36,7 @@ pub(crate) enum TranslateMenuWidgetInput {
 
 #[derive(Debug)]
 pub(crate) enum TranslateMenuWidgetCommandOutput {
-    Done(Result<TranslateResult, String>),
+    Done(Result<(TranslateResult, String), String>),
 }
 
 #[relm4::component(pub(crate))]
@@ -150,7 +153,7 @@ impl Component for TranslateMenuWidgetModel {
                 config::save(&s);
             }
             TranslateMenuWidgetInput::CopyResult => {
-                if let Some(r) = &self.result {
+                if let Some((r, _)) = &self.result {
                     copy_to_clipboard(&r.translated);
                 }
             }
@@ -166,10 +169,11 @@ impl Component for TranslateMenuWidgetModel {
                 }
                 self.busy = true;
                 self.error = None;
-                let cfg = config::resolved();
+                let secondary_lang = config::load().secondary_lang;
                 sender.command(move |out, _shutdown| async move {
                     let res = tokio::task::spawn_blocking(move || {
-                        mshell_translate::translate(&cfg, &text)
+                        let cfg = config::resolved();
+                        mshell_translate::translate_auto(&cfg, &secondary_lang, &text)
                     })
                     .await
                     .unwrap_or_else(|_| Err("worker panicked".into()));
@@ -222,10 +226,10 @@ fn refresh_view(
         None => status_label.set_visible(false),
     }
     match &model.result {
-        Some(r) => {
+        Some((r, used_target)) => {
             let text = match &r.detected_source {
-                Some(src) => format!("({src}) {}", r.translated),
-                None => r.translated.clone(),
+                Some(src) => format!("({src} → {used_target}) {}", r.translated),
+                None => format!("(→ {used_target}) {}", r.translated),
             };
             result_label.set_text(&text);
             result_label.set_visible(true);

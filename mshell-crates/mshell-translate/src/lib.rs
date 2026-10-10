@@ -255,6 +255,42 @@ pub fn translate(cfg: &TranslateConfig, text: &str) -> Result<TranslateResult, S
     }
 }
 
+/// True if `detected` (the provider's detected/echoed source language)
+/// is the same language as `target` — i.e. translating would be a
+/// same-language no-op. Case-insensitive; `None` (provider reported no
+/// detection) is never considered a match.
+fn is_same_language(detected: Option<&str>, target: &str) -> bool {
+    detected.is_some_and(|d| d.eq_ignore_ascii_case(target))
+}
+
+/// Like [`translate`], but auto-flips direction: if the text's detected
+/// source language turns out to *be* `cfg.target_lang` (the user
+/// selected/copied text already in their target language — translating
+/// Turkish text to Turkish is a no-op), retries once against
+/// `secondary_lang` instead. Returns the result alongside whichever
+/// target language was actually used, so callers can show the real
+/// direction (e.g. "tr → en") rather than always the configured one.
+///
+/// A blank `secondary_lang` disables the flip (falls back to plain
+/// [`translate`]) — some setups genuinely only want one fixed target.
+pub fn translate_auto(
+    cfg: &TranslateConfig,
+    secondary_lang: &str,
+    text: &str,
+) -> Result<(TranslateResult, String), String> {
+    let result = translate(cfg, text)?;
+    let secondary_lang = secondary_lang.trim();
+    if secondary_lang.is_empty()
+        || !is_same_language(result.detected_source.as_deref(), &cfg.target_lang)
+    {
+        return Ok((result, cfg.target_lang.clone()));
+    }
+    let mut swapped = cfg.clone();
+    swapped.target_lang = secondary_lang.to_string();
+    let result = translate(&swapped, text)?;
+    Ok((result, secondary_lang.to_string()))
+}
+
 // ── Privacy screening ────────────────────────────────────────────────────
 
 /// Best-effort check for secret-shaped text, run *before* anything is sent
@@ -354,6 +390,14 @@ mod tests {
     fn provider_parse() {
         assert_eq!(Provider::parse("DeepL"), Provider::DeepL);
         assert_eq!(Provider::parse("whatever"), Provider::Google);
+    }
+
+    #[test]
+    fn same_language_detection() {
+        assert!(is_same_language(Some("tr"), "tr"));
+        assert!(is_same_language(Some("TR"), "tr"));
+        assert!(!is_same_language(Some("en"), "tr"));
+        assert!(!is_same_language(None, "tr"));
     }
 
     #[test]
