@@ -5,6 +5,32 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] – 2026-10-10
+
+**A native translate feature — select/copy text, press a keybind, get the
+translation — and native tmux gesture support. No scripts, no WASM
+plugin.**
+
+### Added
+
+- **Native translate** (`mshell-translate`): select or copy text and press
+  a keybind to get the translation on your clipboard plus a toast — Google
+  Translate by default (no key, no account needed), with an optional DeepL
+  upgrade using your own key. Auto-detects the source language and
+  auto-flips direction (configure e.g. tr↔en and it translates whichever
+  way the text isn't already in); single-word lookups also surface
+  Google's dictionary alternate meanings, grouped by part of speech. A
+  Translate bar pill + menu panel cover manual lookups
+  (`mshellctl menu translate`, default `super+alt,t`), alongside
+  `mshellctl translate selection|clipboard|text` for the headless
+  capture flow (default `super+ctrl,t`). Settings → Translate configures
+  the provider/languages/DeepL key; Settings → Widgets covers the pill
+  and menu panel's position and size.
+- Three-finger swipe tab-switching gestures (already wired for browsers)
+  now also drive **tmux** window switching when the focused client's
+  app-id matches — real `tmux next-window`/`tmux previous-window` dispatch
+  from margo's own `sendkey`, not an external script.
+
 ## [3.7.0] – 2026-10-08
 
 **Screenshot repeat-region capture, a keyboard-focus fix for toggle-only
