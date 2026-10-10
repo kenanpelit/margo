@@ -12,6 +12,7 @@
 //! text ever leaves the machine, since both providers are third-party
 //! services.
 
+pub mod capture;
 pub mod config;
 
 use std::collections::VecDeque;
