@@ -83,6 +83,11 @@ pub struct TranslateResult {
     /// Source language as detected/echoed by the provider (`None` if the
     /// provider didn't report one, e.g. an explicit `source_lang` override).
     pub detected_source: Option<String>,
+    /// Dictionary-style alternate meanings, grouped by part of speech —
+    /// Google only, and only populated for a single-word lookup (empty
+    /// for anything multi-word, including on DeepL). `(part_of_speech,
+    /// terms)`, e.g. `("noun", ["ışık", "aydınlık", …])`.
+    pub alternatives: Vec<(String, Vec<String>)>,
 }
 
 const MAX_TEXT_LEN: usize = 5000;
@@ -93,8 +98,13 @@ fn google_request_url(cfg: &TranslateConfig, text: &str) -> String {
         .as_deref()
         .filter(|s| !s.is_empty())
         .unwrap_or("auto");
+    // `dt=bd` ("basic dictionary") is what turns this into the same
+    // sözlük-style response the `dict-chrome-ex` client name refers
+    // to — a per-part-of-speech alternate-meanings breakdown. Google
+    // only populates it for a single-word query; harmless no-op
+    // (comes back `null`) for anything longer.
     format!(
-        "https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl={}&tl={}&dt=t&q={}",
+        "https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl={}&tl={}&dt=t&dt=bd&q={}",
         urlencode(sl),
         urlencode(&cfg.target_lang),
         urlencode(text)
@@ -116,8 +126,11 @@ fn urlencode(s: &str) -> String {
     out
 }
 
-/// Google's response is `[[[translated, original, …], …], null, detected_source]`
-/// — chunked per sentence when the input is long. Concatenate the chunks.
+/// Google's response is `[[[translated, original, …], …], dict, detected_source, …]`
+/// — the first element chunks per sentence when the input is long
+/// (concatenated below); `dict` (index 1, present only with `dt=bd`)
+/// is `null` for anything but a single-word query, else
+/// `[[part_of_speech, [terms…], [detailed…], word, index], …]`.
 fn parse_google_response(body: &str) -> Result<TranslateResult, String> {
     let v: serde_json::Value =
         serde_json::from_str(body).map_err(|e| format!("bad response: {e}"))?;
@@ -132,9 +145,27 @@ fn parse_google_response(body: &str) -> Result<TranslateResult, String> {
         return Err("empty translation".into());
     }
     let detected_source = v[2].as_str().map(str::to_string);
+    let alternatives = v[1]
+        .as_array()
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|entry| {
+                    let pos = entry[0].as_str()?.to_string();
+                    let terms: Vec<String> = entry[1]
+                        .as_array()?
+                        .iter()
+                        .filter_map(|t| t.as_str().map(str::to_string))
+                        .collect();
+                    (!terms.is_empty()).then_some((pos, terms))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(TranslateResult {
         translated,
         detected_source,
+        alternatives,
     })
 }
 
@@ -203,6 +234,7 @@ fn translate_deepl(cfg: &TranslateConfig, text: &str) -> Result<TranslateResult,
     Ok(TranslateResult {
         translated,
         detected_source,
+        alternatives: Vec::new(),
     })
 }
 
@@ -341,6 +373,33 @@ mod tests {
         let r = parse_google_response(body).unwrap();
         assert_eq!(r.translated, "Merhaba dünya");
         assert_eq!(r.detected_source, Some("en".to_string()));
+        assert!(r.alternatives.is_empty());
+    }
+
+    #[test]
+    fn google_response_parses_dictionary_alternatives() {
+        // Real `dt=bd` response for the single word "light" (sl=auto,
+        // tl=tr), truncated to the noun/adjective groups.
+        let body = r#"[[["ışık","light",null,null,10]],[["noun",["ışık","aydınlık","nur"],[["ışık",["light","lamp"],null,0.367]],"light",1],["adjective",["hafif","açık"],[["hafif",["light","mild"],null,0.153]],"light",3]],"en"]"#;
+        let r = parse_google_response(body).unwrap();
+        assert_eq!(r.translated, "ışık");
+        assert_eq!(
+            r.alternatives,
+            vec![
+                (
+                    "noun".to_string(),
+                    vec![
+                        "ışık".to_string(),
+                        "aydınlık".to_string(),
+                        "nur".to_string()
+                    ]
+                ),
+                (
+                    "adjective".to_string(),
+                    vec!["hafif".to_string(), "açık".to_string()]
+                ),
+            ]
+        );
     }
 
     #[test]
@@ -378,6 +437,7 @@ mod tests {
         let r = TranslateResult {
             translated: "hi".into(),
             detected_source: Some("en".into()),
+            alternatives: Vec::new(),
         };
         assert!(cache.get(&c, "hello").is_none());
         cache.insert(&c, "hello", r.clone());

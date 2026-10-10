@@ -99,6 +99,19 @@ impl Component for TranslateMenuWidgetModel {
                 set_visible: false,
             },
 
+            // Single-word lookups only (Google's dict-chrome-ex "basic
+            // dictionary" data — empty for anything multi-word): other
+            // meanings grouped by part of speech, e.g. "light" also
+            // meaning "hafif" (adjective) alongside the main "ışık".
+            #[name = "alternatives_label"]
+            gtk::Label {
+                add_css_class: "dim-label",
+                set_wrap: true,
+                set_xalign: 0.0,
+                set_selectable: true,
+                set_visible: false,
+            },
+
             #[name = "copy_button"]
             gtk::Button {
                 set_css_classes: &["ok-button-flat"],
@@ -188,6 +201,7 @@ impl Component for TranslateMenuWidgetModel {
             self,
             &widgets.status_label,
             &widgets.result_label,
+            &widgets.alternatives_label,
             &widgets.copy_button,
         );
     }
@@ -197,6 +211,7 @@ fn refresh_view(
     model: &TranslateMenuWidgetModel,
     status_label: &gtk::Label,
     result_label: &gtk::Label,
+    alternatives_label: &gtk::Label,
     copy_button: &gtk::Button,
 ) {
     match &model.error {
@@ -215,9 +230,23 @@ fn refresh_view(
             result_label.set_text(&text);
             result_label.set_visible(true);
             copy_button.set_visible(true);
+
+            if r.alternatives.is_empty() {
+                alternatives_label.set_visible(false);
+            } else {
+                let text = r
+                    .alternatives
+                    .iter()
+                    .map(|(pos, terms)| format!("{pos}: {}", terms.join(", ")))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                alternatives_label.set_text(&text);
+                alternatives_label.set_visible(true);
+            }
         }
         None => {
             result_label.set_visible(false);
+            alternatives_label.set_visible(false);
             copy_button.set_visible(false);
         }
     }
