@@ -702,6 +702,7 @@ impl Component for MenuModel {
                     | MenuType::Ai
                     | MenuType::Vpn
                     | MenuType::AppLauncher
+                    | MenuType::Translate
             ),
             _effects: effects,
         };
