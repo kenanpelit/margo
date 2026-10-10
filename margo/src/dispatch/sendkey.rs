@@ -3,6 +3,15 @@
 //! fallback action. margo owns the seat keyboard, so the events are
 //! forwarded straight to the focused surface — no virtual-keyboard
 //! protocol, no uinput, no external tool.
+//!
+//! A second, optional app-id gate (the 4th arg, `v4`) targets a
+//! terminal multiplexer (tmux) instead: rather than injecting a
+//! keystroke and hoping it survives both the terminal's keyboard-
+//! protocol encoding and the multiplexer's own key table, that gate
+//! drives tmux directly over its control CLI (`tmux next-window` /
+//! `previous-window`) — direction comes from whether the combo holds
+//! Shift, so one line still covers both the browser-facing combo and
+//! the tmux target.
 
 use crate::state::MargoState;
 use margo_config::Arg;
@@ -131,6 +140,19 @@ pub fn parse_fallback(spec: &str) -> Option<(&str, &str)> {
     })
 }
 
+/// Maps a `sendkey` combo to the tmux CLI command for the `v4`
+/// (terminal-multiplexer) app-id gate: Shift held means "the
+/// backward direction" (mirrors the up/`ctrl+shift+Tab` vs.
+/// down/`ctrl+Tab` convention the browser-facing combo already uses).
+fn tmux_window_cmd(combo: &KeyCombo) -> &'static str {
+    const KEY_LEFTSHIFT: u32 = 42;
+    if combo.mods.contains(&KEY_LEFTSHIFT) {
+        "tmux previous-window"
+    } else {
+        "tmux next-window"
+    }
+}
+
 impl MargoState {
     /// `app_id` of the focused client, if any.
     fn focused_app_id(&self) -> Option<String> {
@@ -152,6 +174,31 @@ impl MargoState {
         if let Some(re) = arg.v2.as_deref().filter(|s| !s.is_empty())
             && !appid_matches(self.focused_app_id().as_deref(), re)
         {
+            let focused = self.focused_app_id();
+
+            // Optional 2nd app-id gate (`v4`): a terminal-multiplexer
+            // app-id pattern. Injecting a keystroke into a terminal and
+            // hoping it survives the terminal's keyboard-protocol
+            // encoding AND the multiplexer's own key table is one hop
+            // too many to be reliable — so for this gate we skip
+            // inject_combo entirely and drive tmux directly over its
+            // control CLI instead. Direction comes from the combo
+            // itself (Shift held = "previous", matching the
+            // up/ctrl+shift+Tab vs down/ctrl+Tab convention the
+            // browser-facing combo already uses) rather than a
+            // separate arg, so one `sendkey` line covers both targets
+            // with the one semantic ("switch tab/window forward or
+            // back").
+            if let Some(tmux_re) = arg.v4.as_deref().filter(|s| !s.is_empty())
+                && appid_matches(focused.as_deref(), tmux_re)
+            {
+                let cmd = tmux_window_cmd(&combo);
+                if let Err(e) = crate::utils::spawn_shell(cmd) {
+                    tracing::warn!(cmd, error = ?e, "sendkey: tmux dispatch failed");
+                }
+                return;
+            }
+
             // Run the fallback action, if any.
             if let Some((action, farg)) = arg.v3.as_deref().and_then(parse_fallback)
                 && action != "sendkey"
@@ -240,6 +287,22 @@ mod tests {
         // unknown key / mod
         assert_eq!(parse_combo("ctrl+bogus"), None);
         assert_eq!(parse_combo("hyper+Tab"), None);
+    }
+
+    #[test]
+    fn tmux_window_cmd_direction() {
+        assert_eq!(
+            tmux_window_cmd(&parse_combo("ctrl+Tab").unwrap()),
+            "tmux next-window"
+        );
+        assert_eq!(
+            tmux_window_cmd(&parse_combo("ctrl+shift+Tab").unwrap()),
+            "tmux previous-window"
+        );
+        assert_eq!(
+            tmux_window_cmd(&parse_combo("shift+Tab").unwrap()),
+            "tmux previous-window"
+        );
     }
 
     #[test]

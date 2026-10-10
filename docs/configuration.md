@@ -446,7 +446,7 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | Action | Arg | Description |
 | --- | --- | --- |
 | `spawn` | `<COMMAND>` | Run a shell command (through `sh -c`). |
-| `sendkey` | `<COMBO>[,<APPID-REGEX>][,<FALLBACK>]` | Inject a synthetic key combo into the focused window. Optional app-id gate restricts it to matching windows; optional fallback action fires otherwise (e.g. `focusdir:up`). Great for gestures that send browser shortcuts. |
+| `sendkey` | `<COMBO>[,<APPID-REGEX>][,<FALLBACK>][,<TMUX-APPID-REGEX>]` | Inject a synthetic key combo into the focused window. Optional app-id gate restricts it to matching windows; optional fallback action fires otherwise (e.g. `focusdir:up`). Great for gestures that send browser shortcuts. A 4th arg targets a terminal multiplexer instead: on a match, margo skips the keystroke and runs `tmux next-window` / `previous-window` (direction from whether the combo holds Shift) directly over tmux's CLI. |
 | `cyclekblayout`, `cycle_kb_layout` | | Cycle the keyboard to the next configured xkb layout. |
 | `run_script`, `rhai-eval` | `<PATH>` | Evaluate a Rhai script against the live compositor. |
 | `screenshot` / `screenshot-window` / `screenshot-region` / `screenshot-output` | | Capture output / window / region → editor → file (via `mscreenshot`). |
