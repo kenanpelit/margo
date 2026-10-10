@@ -75,13 +75,17 @@ fn spawn_watch(path: &Path, primary: bool) -> std::io::Result<Child> {
     // Clear any stale content from a previous run so a freshness
     // check right after startup can't see old data as "just copied".
     let _ = std::fs::write(path, "");
+    // `--watch <command>` must be wl-paste's LAST option — everything
+    // after it is the command to run, so `--primary`/`--type` have to
+    // come BEFORE `--watch` or wl-paste parses them as (invalid)
+    // arguments to the watch command itself and exits immediately.
     let mut cmd = Command::new("wl-paste");
-    cmd.arg("--watch");
     if primary {
         cmd.arg("--primary");
     }
     cmd.arg("--type")
         .arg("text")
+        .arg("--watch")
         .arg("sh")
         .arg("-c")
         .arg(format!("cat > {}", shell_quote(path)));
