@@ -267,6 +267,7 @@ impl BarWidget {
             BarWidget::Vpn,
             BarWidget::Dns,
             BarWidget::Ai,
+            BarWidget::Translate,
             BarWidget::Ip,
             BarWidget::Network,
             BarWidget::Spacer(8),
