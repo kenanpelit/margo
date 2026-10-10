@@ -59,8 +59,21 @@ pub async fn execute(command: TranslateCommands) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let cfg = config::resolved();
-    match mshell_translate::translate(&cfg, &text) {
+    // `config::resolved()` reads the DeepL key from the keyring, which on
+    // this project's async-secret-service backend blocks by spinning up
+    // its own nested tokio runtime — calling it directly from this
+    // already-async fn panics ("Cannot start a runtime from within a
+    // runtime"). `translate()`'s own blocking network call belongs off
+    // the async task for the same reason `mshell-frame`'s menu widget
+    // runs it via spawn_blocking; do the same here.
+    let result = tokio::task::spawn_blocking(move || {
+        let cfg = config::resolved();
+        mshell_translate::translate(&cfg, &text)
+    })
+    .await
+    .unwrap_or_else(|_| Err("worker panicked".into()));
+
+    match result {
         Ok(result) => {
             copy_to_clipboard(&result.translated);
             capture::mark_copied(&result.translated);
