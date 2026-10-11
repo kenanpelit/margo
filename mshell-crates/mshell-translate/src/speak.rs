@@ -178,6 +178,12 @@ pub fn voice_for_lang(lang: &str, settings: &crate::config::TranslateSettings) -
 /// Synthesize `text` spoken by `voice` (must be one of [`VOICES`]),
 /// returning raw mp3 bytes.
 pub fn synthesize(voice: &str, text: &str) -> Result<Vec<u8>, String> {
+    // rustls 0.23+ panics in `ClientConfig::builder()` (tungstenite's TLS
+    // connect path) unless a process-wide default CryptoProvider was
+    // installed first. Idempotent — a second call just returns `Err`
+    // ("already installed"), which is exactly what we want here.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     if !VOICES.contains(&voice) {
         return Err("unknown voice".into());
     }

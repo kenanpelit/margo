@@ -24,6 +24,14 @@ tungstenite = { version = "0.24", default-features = false, features = [
   "handshake",
   "rustls-tls-webpki-roots",
 ] }
+# tungstenite's TLS connect calls rustls `ClientConfig::builder()`, which
+# since rustls 0.23 panics unless a process-wide default CryptoProvider was
+# installed — nothing else in this process does that (ureq builds its own
+# config with an explicit provider). `ring` feature to install one.
+rustls = { version = "0.23", default-features = false, features = [
+  "ring",
+  "std",
+] }
 # Random hex for the ConnectionId/X-RequestId/cookie values below — a v4
 # UUID's bytes are random enough for that, so no separate `rand` dependency.
 uuid = { version = "1", features = ["v4"] }

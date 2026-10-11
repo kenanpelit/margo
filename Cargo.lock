@@ -5670,6 +5670,7 @@ version = "3.8.0"
 dependencies = [
  "chrono",
  "keyring",
+ "rustls",
  "serde",
  "serde_json",
  "sha2",
