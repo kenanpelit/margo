@@ -264,7 +264,7 @@ impl Component for TranslateMenuWidgetModel {
                     return;
                 };
                 let text = r.translated.clone();
-                let voice = speak::voice_for_lang(used_target).to_string();
+                let voice = speak::voice_for_lang(used_target, &config::load());
                 self.speaking = true;
                 sender.command(move |out, _shutdown| async move {
                     let res = tokio::task::spawn_blocking(move || speak::synthesize(&voice, &text))

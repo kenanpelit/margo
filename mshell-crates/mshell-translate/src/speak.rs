@@ -17,8 +17,23 @@ use tungstenite::Message;
 use tungstenite::client::IntoClientRequest;
 use uuid::Uuid;
 
+/// Selectable English voices (Settings → Translate's "English voice" picker).
+pub const EN_VOICES: &[&str] = &[
+    "en-US-JennyNeural",
+    "en-US-AriaNeural",
+    "en-US-GuyNeural",
+    "en-US-AndrewNeural",
+    "en-GB-SoniaNeural",
+    "en-GB-RyanNeural",
+];
+
+/// Selectable Turkish voices (Settings → Translate's "Turkish voice" picker).
+pub const TR_VOICES: &[&str] = &["tr-TR-EmelNeural", "tr-TR-AhmetNeural"];
+
 /// Known-good voices — a small curated set (not the service's full
 /// catalogue, which numbers in the hundreds) covering English + Turkish.
+/// [`synthesize`] validates against this; [`EN_VOICES`]/[`TR_VOICES`] are
+/// the per-language subsets Settings actually offers a dropdown over.
 pub const VOICES: &[&str] = &[
     "en-US-JennyNeural",
     "en-US-AriaNeural",
@@ -29,6 +44,21 @@ pub const VOICES: &[&str] = &[
     "tr-TR-EmelNeural",
     "tr-TR-AhmetNeural",
 ];
+
+/// A short, friendly label for a voice id, for the Settings dropdowns.
+pub fn voice_label(voice: &str) -> &'static str {
+    match voice {
+        "en-US-JennyNeural" => "Jenny (US, female)",
+        "en-US-AriaNeural" => "Aria (US, female)",
+        "en-US-GuyNeural" => "Guy (US, male)",
+        "en-US-AndrewNeural" => "Andrew (US, male)",
+        "en-GB-SoniaNeural" => "Sonia (UK, female)",
+        "en-GB-RyanNeural" => "Ryan (UK, male)",
+        "tr-TR-EmelNeural" => "Emel (female)",
+        "tr-TR-AhmetNeural" => "Ahmet (male)",
+        _ => "Unknown",
+    }
+}
 
 /// Per-request text cap the service enforces (empirically — longer requests
 /// get a plain `400`).
@@ -134,14 +164,14 @@ impl std::fmt::Display for AttemptErr {
     }
 }
 
-/// Pick a sensible default voice for a target language code. A small,
-/// hand-picked mapping (not every language in [`VOICES`] needs one) —
-/// falls back to the English voice for anything unmapped.
-pub fn voice_for_lang(lang: &str) -> &'static str {
+/// Pick the voice to speak `lang` with, per the user's configured
+/// `voice_en`/`voice_tr` (Settings → Translate) — falls back to
+/// `settings.voice_en` for anything that isn't Turkish, same as before
+/// these were configurable.
+pub fn voice_for_lang(lang: &str, settings: &crate::config::TranslateSettings) -> String {
     match lang.trim().to_lowercase().as_str() {
-        "tr" => "tr-TR-AhmetNeural",
-        "en" => "en-US-GuyNeural",
-        _ => "en-US-GuyNeural",
+        "tr" => settings.voice_tr.clone(),
+        _ => settings.voice_en.clone(),
     }
 }
 

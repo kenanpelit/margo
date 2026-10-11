@@ -33,6 +33,11 @@ pub struct TranslateSettings {
     pub clipboard_max_age_secs: u32,
     /// Keep a persistent history of past translations (shown in the menu).
     pub keep_history: bool,
+    /// Microsoft Edge neural voice used to speak an English result aloud
+    /// (`speak::EN_VOICES`).
+    pub voice_en: String,
+    /// Same, for a Turkish result (`speak::TR_VOICES`).
+    pub voice_tr: String,
 }
 
 impl Default for TranslateSettings {
@@ -45,6 +50,8 @@ impl Default for TranslateSettings {
             selection_max_age_secs: 15,
             clipboard_max_age_secs: 60,
             keep_history: true,
+            voice_en: "en-US-GuyNeural".into(),
+            voice_tr: "tr-TR-AhmetNeural".into(),
         }
     }
 }

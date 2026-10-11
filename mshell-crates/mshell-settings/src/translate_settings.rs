@@ -11,6 +11,7 @@
 use crate::row::Row;
 use mshell_translate::Provider;
 use mshell_translate::config::{self, TranslateSettings};
+use mshell_translate::speak;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
@@ -19,6 +20,8 @@ pub struct TranslateSettingsInit {}
 pub struct TranslateSettingsModel {
     settings: TranslateSettings,
     provider_list: gtk::StringList,
+    voice_en_list: gtk::StringList,
+    voice_tr_list: gtk::StringList,
 }
 
 #[derive(Debug)]
@@ -28,6 +31,8 @@ pub enum TranslateSettingsInput {
     SecondaryLangChanged(String),
     SourceLangChanged(String),
     DeepLKeyChanged(String),
+    VoiceEnPicked(u32),
+    VoiceTrPicked(u32),
 }
 
 /// Providers in dropdown order.
@@ -155,6 +160,41 @@ impl Component for TranslateSettingsModel {
                 gtk::Box {
                     add_css_class: "boxed-list",
                     set_orientation: gtk::Orientation::Vertical,
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "English voice" },
+                        #[template_child] desc { set_label: "Microsoft Edge neural voice used when the result's speaker button reads English aloud." },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.voice_en_list),
+                            #[watch]
+                            set_selected: speak::EN_VOICES.iter().position(|v| *v == model.settings.voice_en).unwrap_or(0) as u32,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(TranslateSettingsInput::VoiceEnPicked(d.selected()));
+                            },
+                        },
+                    },
+
+                    #[template]
+                    Row {
+                        #[template_child] title { set_label: "Turkish voice" },
+                        #[template_child] desc { set_label: "Same, for Turkish." },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&model.voice_tr_list),
+                            #[watch]
+                            set_selected: speak::TR_VOICES.iter().position(|v| *v == model.settings.voice_tr).unwrap_or(0) as u32,
+                            connect_selected_notify[sender] => move |d| {
+                                sender.input(TranslateSettingsInput::VoiceTrPicked(d.selected()));
+                            },
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    add_css_class: "boxed-list",
+                    set_orientation: gtk::Orientation::Vertical,
                     #[watch]
                     set_visible: Provider::parse(&model.settings.provider).needs_key(),
 
@@ -184,8 +224,18 @@ impl Component for TranslateSettingsModel {
     ) -> ComponentParts<Self> {
         let settings = config::load();
         let provider_labels: Vec<&str> = providers().iter().map(|p| p.label()).collect();
+        let voice_en_labels: Vec<&str> = speak::EN_VOICES
+            .iter()
+            .map(|v| speak::voice_label(v))
+            .collect();
+        let voice_tr_labels: Vec<&str> = speak::TR_VOICES
+            .iter()
+            .map(|v| speak::voice_label(v))
+            .collect();
         let model = TranslateSettingsModel {
             provider_list: gtk::StringList::new(&provider_labels),
+            voice_en_list: gtk::StringList::new(&voice_en_labels),
+            voice_tr_list: gtk::StringList::new(&voice_tr_labels),
             settings,
         };
         let widgets = view_output!();
@@ -224,6 +274,22 @@ impl Component for TranslateSettingsModel {
                 }
             }
             TranslateSettingsInput::DeepLKeyChanged(key) => config::set_deepl_api_key(&key),
+            TranslateSettingsInput::VoiceEnPicked(idx) => {
+                if let Some(voice) = speak::EN_VOICES.get(idx as usize)
+                    && *voice != self.settings.voice_en
+                {
+                    self.settings.voice_en = voice.to_string();
+                    self.save();
+                }
+            }
+            TranslateSettingsInput::VoiceTrPicked(idx) => {
+                if let Some(voice) = speak::TR_VOICES.get(idx as usize)
+                    && *voice != self.settings.voice_tr
+                {
+                    self.settings.voice_tr = voice.to_string();
+                    self.save();
+                }
+            }
         }
     }
 }
