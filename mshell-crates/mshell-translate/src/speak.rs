@@ -149,19 +149,13 @@ fn random_hex32() -> String {
 }
 
 enum AttemptErr {
-    /// The service rejected the handshake with 403 and a `Date` header —
-    /// our clock is off; retry once with the server's reported time.
+    /// 403 with a `Date` header. In practice this is almost always the
+    /// backend transiently rejecting a well-formed request (rate limiting
+    /// / server routing — a plain retry often just works) rather than an
+    /// actual clock problem; the server's reported time is applied to the
+    /// retry anyway in case this machine's clock genuinely is off.
     Skew(f64),
     Msg(String),
-}
-
-impl std::fmt::Display for AttemptErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AttemptErr::Skew(_) => write!(f, "clock skew"),
-            AttemptErr::Msg(m) => write!(f, "{m}"),
-        }
-    }
 }
 
 /// Pick the voice to speak `lang` with, per the user's configured
@@ -191,17 +185,28 @@ pub fn synthesize(voice: &str, text: &str) -> Result<Vec<u8>, String> {
     if clean.is_empty() || clean.chars().count() > MAX_TEXT_CHARS {
         return Err("text length".into());
     }
-    match attempt(voice, clean, 0.0) {
-        Ok(audio) => Ok(audio),
-        Err(AttemptErr::Skew(server_seconds)) => {
-            // A phone/desktop whose clock is off gets 403; the response's
-            // Date header says what time the service thinks it is. Retry
-            // once with that offset applied to the GEC computation.
-            let skew = server_seconds - now_unix_seconds();
-            attempt(voice, clean, skew).map_err(|e| e.to_string())
+
+    // The backend 403s a well-formed request often enough (observed: fails,
+    // then an identical retry a moment later succeeds) that a single
+    // attempt isn't reliable — a short, limited retry absorbs that without
+    // the caller needing to click the button again.
+    const MAX_ATTEMPTS: u32 = 3;
+    let mut skew = 0.0;
+    let mut last_err = String::new();
+    for n in 0..MAX_ATTEMPTS {
+        match attempt(voice, clean, skew) {
+            Ok(audio) => return Ok(audio),
+            Err(AttemptErr::Skew(server_seconds)) => {
+                skew = server_seconds - now_unix_seconds();
+                last_err = "rejected by the service".into();
+            }
+            Err(AttemptErr::Msg(m)) => last_err = m,
         }
-        Err(e) => Err(e.to_string()),
+        if n + 1 < MAX_ATTEMPTS {
+            std::thread::sleep(Duration::from_millis(400));
+        }
     }
+    Err(last_err)
 }
 
 fn attempt(voice: &str, text: &str, skew_seconds: f64) -> Result<Vec<u8>, AttemptErr> {
