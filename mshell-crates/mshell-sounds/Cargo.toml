@@ -8,6 +8,9 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-rodio.workspace = true
+# mp3 added on top of the workspace default (vorbis + playback) for
+# play_bytes() — Edge TTS (mshell-translate::speak) returns mp3, rodio's
+# vorbis decoder can't touch it.
+rodio = { workspace = true, features = ["mp3"] }
 [lints]
 workspace = true

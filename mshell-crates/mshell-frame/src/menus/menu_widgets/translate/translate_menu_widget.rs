@@ -8,6 +8,7 @@
 //! surface for everything that needs eyes on it: a manual lookup, or
 //! overriding the target language / provider (Settings → Translate).
 
+use mshell_translate::speak;
 use mshell_translate::{TranslateResult, config, looks_sensitive};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -17,6 +18,9 @@ pub(crate) struct TranslateMenuWidgetInit {}
 #[derive(Debug)]
 pub(crate) struct TranslateMenuWidgetModel {
     busy: bool,
+    /// A speak request's Edge TTS network round-trip is in flight —
+    /// debounces the button against repeat clicks while it fetches.
+    speaking: bool,
     error: Option<String>,
     /// The result, alongside the target language actually used — may
     /// differ from the `target_entry` setting when `translate_auto`
@@ -41,11 +45,15 @@ pub(crate) enum TranslateMenuWidgetInput {
     Translate(String),
     TargetLangChanged(String),
     CopyResult,
+    /// Speak the current result aloud (Microsoft Edge neural voice, picked
+    /// from the result's actual target language).
+    Speak,
 }
 
 #[derive(Debug)]
 pub(crate) enum TranslateMenuWidgetCommandOutput {
     Done(Result<(TranslateResult, String), String>),
+    SpeakDone(Result<(), String>),
 }
 
 #[relm4::component(pub(crate))]
@@ -179,13 +187,28 @@ impl Component for TranslateMenuWidgetModel {
                     set_visible: false,
                 },
 
-                #[name = "copy_button"]
-                gtk::Button {
-                    set_css_classes: &["ok-button-flat"],
-                    set_label: "Copy result",
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
                     set_halign: gtk::Align::Start,
-                    connect_clicked[sender] => move |_| {
-                        sender.input(TranslateMenuWidgetInput::CopyResult);
+
+                    #[name = "speak_button"]
+                    gtk::Button {
+                        set_css_classes: &["ok-button-flat"],
+                        set_icon_name: "audio-volume-high-symbolic",
+                        set_tooltip_text: Some("Listen (Microsoft neural voice)"),
+                        connect_clicked[sender] => move |_| {
+                            sender.input(TranslateMenuWidgetInput::Speak);
+                        },
+                    },
+
+                    #[name = "copy_button"]
+                    gtk::Button {
+                        set_css_classes: &["ok-button-flat"],
+                        set_label: "Copy result",
+                        connect_clicked[sender] => move |_| {
+                            sender.input(TranslateMenuWidgetInput::CopyResult);
+                        },
                     },
                 },
             },
@@ -200,6 +223,7 @@ impl Component for TranslateMenuWidgetModel {
         let widgets = view_output!();
         let model = TranslateMenuWidgetModel {
             busy: false,
+            speaking: false,
             error: None,
             result: None,
             input_entry: widgets.input_entry.clone(),
@@ -231,6 +255,24 @@ impl Component for TranslateMenuWidgetModel {
                 if let Some((r, _)) = &self.result {
                     copy_to_clipboard(&r.translated);
                 }
+            }
+            TranslateMenuWidgetInput::Speak => {
+                if self.speaking {
+                    return;
+                }
+                let Some((r, used_target)) = &self.result else {
+                    return;
+                };
+                let text = r.translated.clone();
+                let voice = speak::voice_for_lang(used_target).to_string();
+                self.speaking = true;
+                sender.command(move |out, _shutdown| async move {
+                    let res = tokio::task::spawn_blocking(move || speak::synthesize(&voice, &text))
+                        .await
+                        .unwrap_or_else(|_| Err("worker panicked".into()));
+                    let res = res.map(mshell_sounds::play_bytes);
+                    let _ = out.send(TranslateMenuWidgetCommandOutput::SpeakDone(res));
+                });
             }
             TranslateMenuWidgetInput::Translate(text) => {
                 // Serialise: ignore a new request while one is in flight.
@@ -265,17 +307,26 @@ impl Component for TranslateMenuWidgetModel {
         _sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
-        self.busy = false;
         match message {
             TranslateMenuWidgetCommandOutput::Done(Ok(r)) => {
+                self.busy = false;
                 self.result = Some(r);
                 self.error = None;
             }
             TranslateMenuWidgetCommandOutput::Done(Err(e)) => {
+                self.busy = false;
                 self.error = Some(e);
                 self.result = None;
             }
+            TranslateMenuWidgetCommandOutput::SpeakDone(Ok(())) => {
+                self.speaking = false;
+            }
+            TranslateMenuWidgetCommandOutput::SpeakDone(Err(e)) => {
+                self.speaking = false;
+                self.error = Some(format!("couldn't speak: {e}"));
+            }
         }
+        widgets.speak_button.set_sensitive(!self.speaking);
         refresh_view(
             self,
             &widgets.status_label,

@@ -14,6 +14,7 @@
 
 pub mod capture;
 pub mod config;
+pub mod speak;
 
 use std::collections::VecDeque;
 use std::time::Duration;

@@ -116,6 +116,22 @@ pub fn play_notification_file(path: &str) {
     });
 }
 
+/// Fire-and-forget playback of already-fetched/generated audio bytes (e.g.
+/// an mp3 TTS clip) on a background thread — same shape as
+/// [`play_notification_file`], but for bytes already in hand rather than a
+/// path. Decode/playback failures are silent.
+pub fn play_bytes(bytes: Vec<u8>) {
+    std::thread::spawn(move || {
+        let Ok(mut handle) = rodio::DeviceSinkBuilder::open_default_sink() else {
+            return;
+        };
+        handle.log_on_drop(false);
+        if let Ok(player) = rodio::play(handle.mixer(), Cursor::new(bytes)) {
+            player.sleep_until_end();
+        }
+    });
+}
+
 /// Fire-and-forget playback of an embedded clip on its own thread.
 fn play_embedded(bytes: &'static [u8]) {
     std::thread::spawn(move || {
