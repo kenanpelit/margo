@@ -401,7 +401,7 @@ fn run_slot(action: SlotCmd) -> bool {
             !d.is_empty()
         }
         SlotCmd::List => {
-            for d in slot::list_devices() {
+            for d in slot::list_devices(None) {
                 println!("{d}");
             }
             true
@@ -414,7 +414,7 @@ fn run_slot(action: SlotCmd) -> bool {
             println!("device:     {}", slot::current_device());
             true
         }
-        SlotCmd::Revoke { device } => match slot::revoke(&device) {
+        SlotCmd::Revoke { device } => match slot::revoke(None, &device) {
             Ok(()) => {
                 println!("revoked: {device}");
                 true

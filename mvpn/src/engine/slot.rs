@@ -157,8 +157,17 @@ pub fn is_logged_in() -> bool {
 }
 
 /// Device names on the account (`account list-devices`, header dropped).
-pub fn list_devices() -> Vec<String> {
-    parse_devices(&sys::mullvad(&["account", "list-devices"]))
+/// `account`, given explicitly via `-a`, works even when not logged in
+/// here — the CLI's "current account" fallback (used when `account` is
+/// `None`) needs a login to already exist, which recycling a slot can't
+/// assume.
+pub fn list_devices(account: Option<&str>) -> Vec<String> {
+    let mut args = vec!["account", "list-devices"];
+    if let Some(acc) = account {
+        args.push("-a");
+        args.push(acc);
+    }
+    parse_devices(&sys::mullvad(&args))
 }
 
 pub fn parse_devices(s: &str) -> Vec<String> {
@@ -183,14 +192,21 @@ pub fn account_number(pass_entry: &str) -> Option<String> {
 }
 
 /// Revoke a device by name. Refuses to revoke the current device.
-pub fn revoke(name: &str) -> Result<(), String> {
+/// `account`, if given, is passed via `-a` (see [`list_devices`]).
+pub fn revoke(account: Option<&str>, name: &str) -> Result<(), String> {
     if name.is_empty() {
         return Err("no device name".into());
     }
     if name == current_device() {
         return Err(format!("refusing to revoke the current device '{name}'"));
     }
-    if sys::mullvad_ok(&["account", "revoke-device", name]) {
+    let mut args = vec!["account", "revoke-device"];
+    if let Some(acc) = account {
+        args.push("-a");
+        args.push(acc);
+    }
+    args.push(name);
+    if sys::mullvad_ok(&args) {
         Ok(())
     } else {
         Err(format!("revoke failed for '{name}'"))
@@ -212,23 +228,45 @@ pub fn login_if_needed(pass_entry: &str) -> Result<(), String> {
     }
 }
 
-/// Free a slot for this machine: optionally revoke the *other* machines'
-/// recorded devices, log in, connect, and record this device. `dry_run` only
+/// Free a slot for this machine: optionally revoke every account device
+/// except this exact OS install's own (if it was ever recorded here
+/// before), log in, connect, and record this device. `dry_run` only
 /// reports what it would revoke.
+///
+/// "Others" comes from the account's live device list
+/// ([`list_devices`]), not the local `slot.state` file: a dual-boot
+/// machine has a *different* `/etc/machine-id` (hence a different
+/// `state_key()`) per OS install, so the two installs' state files never
+/// see each other's recorded name — the other OS's device is invisible
+/// to a purely-local lookup. The remote list is account-wide truth, seen
+/// identically from either install.
 pub fn recycle(revoke_others: bool, pass_entry: &str, dry_run: bool) -> Result<String, String> {
     let my_key = state_key();
     if revoke_others {
-        let others: Vec<String> = read_state()
+        // list-devices / revoke-device need an account number up front —
+        // their "current account" fallback needs a prior login, which is
+        // exactly what we don't have yet (that's the whole reason we're
+        // here). Resolve it once and pass it explicitly to both calls.
+        let acc = account_number(pass_entry);
+
+        // Protect this exact install's own last-recorded name, if any —
+        // everything else on the account is fair game. (A dual-boot pair
+        // of installs sharing one account: every device *is* "me, from
+        // the other OS", never a genuinely separate machine.)
+        let my_name = read_state()
             .into_iter()
-            .filter(|(k, _)| *k != my_key)
+            .find(|(k, _)| *k == my_key)
             .map(|(_, v)| v)
-            .collect();
-        for dev in others {
+            .unwrap_or_default();
+        for dev in list_devices(acc.as_deref()) {
+            if dev == my_name {
+                continue;
+            }
             if dry_run {
                 println!("would revoke: {dev}");
                 continue;
             }
-            match revoke(&dev) {
+            match revoke(acc.as_deref(), &dev) {
                 Ok(()) => println!("revoked: {dev}"),
                 Err(e) => eprintln!("skip: {e}"),
             }
