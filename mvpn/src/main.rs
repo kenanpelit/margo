@@ -407,9 +407,11 @@ fn run_slot(action: SlotCmd) -> bool {
             true
         }
         SlotCmd::Status => {
-            println!("os-id:   {}", slot::os_id());
-            println!("key:     {}", slot::state_key());
-            println!("device:  {}", slot::current_device());
+            println!("os-id:      {}", slot::os_id());
+            println!("hostname:   {}", slot::hostname());
+            println!("machine-id: {}", slot::machine_id());
+            println!("key:        {}", slot::state_key());
+            println!("device:     {}", slot::current_device());
             true
         }
         SlotCmd::Revoke { device } => match slot::revoke(&device) {

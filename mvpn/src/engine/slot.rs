@@ -1,12 +1,23 @@
 //! Device-slot management for Mullvad's 5-device account limit across machines.
 //!
 //! Each machine records "the device name I own" in `~/.mullvad/slot.state`
-//! under a per-OS key (`DEV_<os-id>=<device name>`). `recycle` can revoke the
-//! *other* machines' recorded devices (never the current one) to free a slot,
-//! then log in + connect + record itself.
+//! under a per-machine key (`DEV_<hostname>_<machine-id prefix>=<device
+//! name>`). `recycle` can revoke the *other* machines' recorded devices
+//! (never the current one) to free a slot, then log in + connect + record
+//! itself.
 //!
-//! Format-compatible with osc-mullvad's `slot.state`. The account number comes
-//! from `$MULLVAD_ACCOUNT_NUMBER` or `pass show <entry>`.
+//! The key used to be `DEV_<os-id>` (collides when two machines run the same
+//! distro), then `DEV_<hostname>` alone (still collides when two machines
+//! share a hostname — a user-chosen label, not guaranteed unique). The
+//! `/etc/machine-id` suffix is what actually disambiguates: systemd generates
+//! it once per OS install and it stays constant across reboots, so two
+//! separate installs get different ids even with identical distro + hostname
+//! (the one exception: a disk cloned/imaged without regenerating it).
+//!
+//! Originally format-compatible with osc-mullvad's `slot.state`
+//! (`DEV_<os-id>`); now retired/unused, so the key scheme above is free to
+//! diverge. The account number comes from `$MULLVAD_ACCOUNT_NUMBER` or
+//! `pass show <entry>`.
 
 use std::path::PathBuf;
 
@@ -34,9 +45,39 @@ fn sanitize(s: &str) -> String {
         .collect()
 }
 
-/// This machine's state key.
+/// This machine's hostname (`/etc/hostname`, falling back to `uname -n`).
+pub fn hostname() -> String {
+    if let Ok(h) = std::fs::read_to_string("/etc/hostname") {
+        let h = h.trim();
+        if !h.is_empty() {
+            return h.to_string();
+        }
+    }
+    sys::out("uname", &["-n"]).trim().to_string()
+}
+
+/// This install's `/etc/machine-id` (generated once by systemd at install
+/// time; stable across reboots, distinct per install — unlike the hostname
+/// label, which a user can duplicate across machines).
+pub fn machine_id() -> String {
+    std::fs::read_to_string("/etc/machine-id")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_default()
+}
+
+/// This machine's state key: hostname (readable) + a machine-id prefix
+/// (actually unique), so two machines sharing a hostname still don't
+/// collide.
 pub fn state_key() -> String {
-    format!("DEV_{}", sanitize(&os_id()))
+    let host = sanitize(&hostname());
+    let mid = machine_id();
+    if mid.is_empty() {
+        format!("DEV_{host}")
+    } else {
+        format!("DEV_{host}_{}", &mid[..mid.len().min(8)])
+    }
 }
 
 /// Slot-state path. Precedence (mirrors osc-mullvad):
