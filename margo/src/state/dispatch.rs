@@ -413,7 +413,7 @@ impl MargoState {
 
         self.update_pertag_for_tagset(mon_idx, new_tagmask);
         self.arrange_monitor(mon_idx);
-        self.focus_first_visible_or_clear(mon_idx);
+        self.focus_most_recent_visible_or_clear(mon_idx);
         if do_anim {
             let output = self.monitors[mon_idx].output.clone();
             self.request_repaint_output(&output);
@@ -438,7 +438,7 @@ impl MargoState {
             self.monitors[mon_idx].tagset[seltags] = new;
             self.update_pertag_for_tagset(mon_idx, new);
             self.arrange_monitor(mon_idx);
-            self.focus_first_visible_or_clear(mon_idx);
+            self.focus_most_recent_visible_or_clear(mon_idx);
             self.mark_state_dirty();
         }
     }
@@ -663,7 +663,7 @@ impl MargoState {
         self.arrange_monitor(mon_idx);
 
         if !self.clients[idx].is_visible_on(mon_idx, self.monitors[mon_idx].current_tagset()) {
-            self.focus_first_visible_or_clear(mon_idx);
+            self.focus_most_recent_visible_or_clear(mon_idx);
         }
 
         self.mark_state_dirty();
@@ -728,7 +728,7 @@ impl MargoState {
             self.arrange_monitor(mon_idx);
 
             if !self.clients[idx].is_visible_on(mon_idx, self.monitors[mon_idx].current_tagset()) {
-                self.focus_first_visible_or_clear(mon_idx);
+                self.focus_most_recent_visible_or_clear(mon_idx);
             }
 
             self.mark_state_dirty();

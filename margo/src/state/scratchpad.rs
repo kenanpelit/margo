@@ -216,7 +216,7 @@ impl MargoState {
         // stranded on a hidden surface.
         let mon_idx = self.clients[idx].monitor;
         if mon_idx < self.monitors.len() {
-            self.focus_first_visible_or_clear(mon_idx);
+            self.focus_most_recent_visible_or_clear(mon_idx);
         }
         self.request_repaint();
     }

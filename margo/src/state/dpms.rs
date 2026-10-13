@@ -113,7 +113,7 @@ impl MargoState {
         self.monitors[mon_idx].enabled = false;
         self.drop_output_clock(&src_name);
         self.arrange_monitor(target);
-        self.focus_first_visible_or_clear(target);
+        self.focus_most_recent_visible_or_clear(target);
         self.publish_output_topology();
         self.mark_state_dirty();
         tracing::info!(

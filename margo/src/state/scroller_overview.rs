@@ -226,7 +226,7 @@ impl MargoState {
         }
         if !flipped.is_empty() {
             self.arrange_monitors(&flipped);
-            self.focus_first_visible_or_clear(focused);
+            self.focus_most_recent_visible_or_clear(focused);
         }
 
         // Start the zoom-back-in animation; the tick tears it down at 0.

@@ -347,7 +347,7 @@ impl MargoState {
                     self.clients[evict_idx].tags = dest_bit;
                     packable.retain(|c| self.clients[c.index].id != evict_id);
                     if !self.clients[evict_idx].is_visible_on(mon_idx, tagset) {
-                        self.focus_first_visible_or_clear(mon_idx);
+                        self.focus_most_recent_visible_or_clear(mon_idx);
                     }
                     self.mark_state_dirty();
                 }

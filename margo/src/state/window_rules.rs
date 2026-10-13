@@ -99,21 +99,32 @@ impl MargoState {
         // sloppy-focus / focus-under lookups land on this output.
         self.input_pointer.x = (area.x + area.width / 2) as f64;
         self.input_pointer.y = (area.y + area.height / 2) as f64;
-        self.focus_first_visible_or_clear(mon_idx);
+        self.focus_most_recent_visible_or_clear(mon_idx);
     }
 
-    pub(crate) fn focus_first_visible_or_clear(&mut self, mon_idx: usize) {
+    /// Focus whichever visible client on `mon_idx`'s current tagset was
+    /// focused most recently (highest `last_focus_serial` — the same MRU
+    /// key the Alt/Super-Tab switcher uses), or clear focus if nothing on
+    /// the tagset is visible. Used after anything that changes what's
+    /// shown (tag switch, monitor switch, overview/scratchpad exit, DPMS
+    /// wake, …) so returning to a tag restores whatever you were actually
+    /// looking at there — not just the oldest-created window on it.
+    pub(crate) fn focus_most_recent_visible_or_clear(&mut self, mon_idx: usize) {
         if mon_idx >= self.monitors.len() {
             self.focus_surface(None);
             return;
         }
 
         let tagset = self.monitors[mon_idx].current_tagset();
-        if let Some(idx) = self
+        let candidate = self
             .clients
             .iter()
-            .position(|c| c.is_visible_on(mon_idx, tagset))
-        {
+            .enumerate()
+            .filter(|(_, c)| c.is_visible_on(mon_idx, tagset))
+            .max_by_key(|(_, c)| c.last_focus_serial)
+            .map(|(idx, _)| idx);
+
+        if let Some(idx) = candidate {
             self.monitors[mon_idx].selected = Some(idx);
             let window = self.clients[idx].window.clone();
             self.focus_surface(Some(FocusTarget::Window(window)));

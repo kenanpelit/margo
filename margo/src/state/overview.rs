@@ -185,7 +185,7 @@ impl MargoState {
             self.focus_surface(Some(FocusTarget::Window(window)));
         } else {
             let mon_idx = self.focused_monitor();
-            self.focus_first_visible_or_clear(mon_idx);
+            self.focus_most_recent_visible_or_clear(mon_idx);
         }
 
         self.mark_state_dirty();
