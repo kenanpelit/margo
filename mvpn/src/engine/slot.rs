@@ -228,40 +228,33 @@ pub fn login_if_needed(pass_entry: &str) -> Result<(), String> {
     }
 }
 
-/// Free a slot for this machine: optionally revoke every account device
-/// except this exact OS install's own (if it was ever recorded here
-/// before), log in, connect, and record this device. `dry_run` only
-/// reports what it would revoke.
+/// Free a slot for this machine: optionally revoke the *other* machine's
+/// recorded device, log in, connect, and record this device. `dry_run`
+/// only reports what it would revoke.
 ///
-/// "Others" comes from the account's live device list
-/// ([`list_devices`]), not the local `slot.state` file: a dual-boot
-/// machine has a *different* `/etc/machine-id` (hence a different
-/// `state_key()`) per OS install, so the two installs' state files never
-/// see each other's recorded name — the other OS's device is invisible
-/// to a purely-local lookup. The remote list is account-wide truth, seen
-/// identically from either install.
+/// "Others" comes *only* from the local (shared — see the module docs)
+/// `slot.state` file, never the account's live device list: this
+/// account has other people's devices on it too (this user's own Mullvad
+/// allotment is exactly one slot, shared between two dual-booted OS
+/// installs), and the live list has no way to tell "the other OS, mine"
+/// apart from "a stranger's device, not mine". `slot.state` can: it only
+/// ever contains a name this same tool itself recorded under a `DEV_*`
+/// key, so anything in it is unconditionally safe to revoke — a
+/// stranger's device is simply never in there to begin with.
 pub fn recycle(revoke_others: bool, pass_entry: &str, dry_run: bool) -> Result<String, String> {
     let my_key = state_key();
     if revoke_others {
-        // list-devices / revoke-device need an account number up front —
-        // their "current account" fallback needs a prior login, which is
-        // exactly what we don't have yet (that's the whole reason we're
-        // here). Resolve it once and pass it explicitly to both calls.
+        // revoke-device needs an account number up front when not logged
+        // in — its "current account" fallback needs a prior login, which
+        // is exactly what we don't have yet (that's the whole reason
+        // we're here).
         let acc = account_number(pass_entry);
-
-        // Protect this exact install's own last-recorded name, if any —
-        // everything else on the account is fair game. (A dual-boot pair
-        // of installs sharing one account: every device *is* "me, from
-        // the other OS", never a genuinely separate machine.)
-        let my_name = read_state()
+        let others: Vec<String> = read_state()
             .into_iter()
-            .find(|(k, _)| *k == my_key)
+            .filter(|(k, _)| *k != my_key)
             .map(|(_, v)| v)
-            .unwrap_or_default();
-        for dev in list_devices(acc.as_deref()) {
-            if dev == my_name {
-                continue;
-            }
+            .collect();
+        for dev in others {
             if dry_run {
                 println!("would revoke: {dev}");
                 continue;
