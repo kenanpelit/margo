@@ -68,9 +68,10 @@ use frame::{flush_presentation_feedback, render_all_outputs, render_due_outputs}
 use helpers::{connector_is_non_desktop, find_crtc, monotonic_now, smithay_transform};
 use hotplug::rescan_outputs;
 use mode::{apply_pending_mode_changes, select_drm_mode};
+#[cfg(feature = "xdp-gnome-screencast")]
+use render_elements::drain_active_cast_frames;
 use render_elements::{
-    RenderTarget, build_render_elements, build_render_elements_inner, drain_active_cast_frames,
-    drain_image_copy_frames,
+    RenderTarget, build_render_elements, build_render_elements_inner, drain_image_copy_frames,
 };
 
 render_elements! {

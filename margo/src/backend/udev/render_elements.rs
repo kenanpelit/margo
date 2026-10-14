@@ -394,10 +394,10 @@ pub(super) fn drain_active_cast_frames(
                     continue;
                 };
 
-                // Build the FULL output element list (decorations,
-                // cursor, block-out, popups, animations) and shift
-                // each element so the target window's top-left
-                // lands at (0, 0) in the cast buffer.
+                // Build only the target window's elements (surface,
+                // popups, border, shadow, block-out) plus the cursor,
+                // and shift them so the window's top-left lands at
+                // (0, 0) in the cast buffer.
                 //
                 // Relocate offset: cast wants the window at origin,
                 // so we translate by -(window_pos_relative_to_output).
@@ -417,12 +417,9 @@ pub(super) fn drain_active_cast_frames(
                     crate::dbus::mutter_screen_cast::CursorMode::Metadata
                 );
 
-                let output_elems = build_render_elements_inner(
-                    renderer,
-                    od,
-                    state,
-                    RenderTarget::Screencast { include_cursor },
-                );
+                let window = client.window.clone();
+                let output_elems =
+                    build_window_cast_elements(renderer, od, state, &window, include_cursor);
                 // Pointer-only sidecar elements for Metadata mode.
                 // Same shape as Embedded but lifted out of `elements`
                 // so pw_utils strips them from the main damage pass
@@ -671,43 +668,8 @@ pub(super) fn build_render_elements_inner(
         let mut elements = Vec::new();
 
         // Highest priority: cursor (if inside this output)
-        let ptr_global = Point::<f64, _>::from((state.input_pointer.x, state.input_pointer.y));
-        if include_cursor && output_geo.to_f64().contains(ptr_global) {
-            let ptr_pos = ptr_global - output_geo.loc.to_f64();
-            match &state.cursor_status {
-                CursorImageStatus::Surface(surface) => {
-                    let hotspot = with_states(surface, |states| {
-                        states
-                            .data_map
-                            .get::<Mutex<CursorImageAttributes>>()
-                            .and_then(|attrs| attrs.lock().ok().map(|attrs| attrs.hotspot))
-                            .unwrap_or_default()
-                    });
-                    let ptr_i = (ptr_pos - hotspot.to_f64())
-                        .to_physical_precise_round::<f64, i32>(output_scale);
-                    let cursor_elems = render_elements_from_surface_tree(
-                        renderer,
-                        surface,
-                        ptr_i,
-                        output_scale,
-                        1.0f32,
-                        Kind::Cursor,
-                    );
-                    for e in cursor_elems {
-                        elements.push(MargoRenderElement::WaylandSurface(e));
-                    }
-                }
-                CursorImageStatus::Hidden => {}
-                _ => {
-                    if let Some(cursor_elem) =
-                        state
-                            .cursor_manager
-                            .render_element(renderer, ptr_pos, output_scale)
-                    {
-                        elements.push(MargoRenderElement::Cursor(cursor_elem));
-                    }
-                }
-            }
+        if include_cursor {
+            push_cursor_elements(renderer, state, output_geo, output_scale, &mut elements);
         }
 
         // If the locker has not supplied a surface for this output yet, the
@@ -777,52 +739,8 @@ pub(super) fn build_render_elements_inner(
         Vec::with_capacity(upper_layers.len() + lower_layers.len() + state.clients.len() * 2 + 1);
 
     // First elements are highest z-order in the DRM compositor.
-    let ptr_global = Point::<f64, _>::from((state.input_pointer.x, state.input_pointer.y));
-    if include_cursor && output_geo.to_f64().contains(ptr_global) {
-        let ptr_pos = ptr_global - output_geo.loc.to_f64();
-        match &state.cursor_status {
-            CursorImageStatus::Surface(surface) => {
-                let hotspot = with_states(surface, |states| {
-                    states
-                        .data_map
-                        .get::<Mutex<CursorImageAttributes>>()
-                        .and_then(|attrs| attrs.lock().ok().map(|attrs| attrs.hotspot))
-                        .unwrap_or_default()
-                });
-                if hotspot.x != 0 || hotspot.y != 0 {
-                    tracing::trace!(
-                        "cursor hotspot=({}, {}) ptr_pos=({:.0}, {:.0})",
-                        hotspot.x,
-                        hotspot.y,
-                        ptr_pos.x,
-                        ptr_pos.y
-                    );
-                }
-                let ptr_i = (ptr_pos - hotspot.to_f64())
-                    .to_physical_precise_round::<f64, i32>(output_scale);
-                let cursor_elems = render_elements_from_surface_tree(
-                    renderer,
-                    surface,
-                    ptr_i,
-                    output_scale,
-                    1.0f32,
-                    Kind::Cursor,
-                );
-                for e in cursor_elems {
-                    elements.push(MargoRenderElement::WaylandSurface(e));
-                }
-            }
-            CursorImageStatus::Hidden => {}
-            _ => {
-                if let Some(cursor_elem) =
-                    state
-                        .cursor_manager
-                        .render_element(renderer, ptr_pos, output_scale)
-                {
-                    elements.push(MargoRenderElement::Cursor(cursor_elem));
-                }
-            }
-        }
+    if include_cursor {
+        push_cursor_elements(renderer, state, output_geo, output_scale, &mut elements);
     }
 
     // Config-error overlay — niri-style red-bordered banner pinned
@@ -895,6 +813,7 @@ pub(super) fn build_render_elements_inner(
         border_program.clone(),
         clipped_surface_program.clone(),
         for_screencast,
+        None,
         &mut elements,
     );
 
@@ -917,6 +836,96 @@ pub(super) fn build_render_elements_inner(
         &mut elements,
     );
 
+    elements
+}
+
+/// The pointer sprite for this output (if the pointer is on it).
+fn push_cursor_elements(
+    renderer: &mut GlesRenderer,
+    state: &MargoState,
+    output_geo: Rectangle<i32, Logical>,
+    output_scale: f64,
+    elements: &mut Vec<MargoRenderElement>,
+) {
+    let ptr_global = Point::<f64, _>::from((state.input_pointer.x, state.input_pointer.y));
+    if !output_geo.to_f64().contains(ptr_global) {
+        return;
+    }
+    let ptr_pos = ptr_global - output_geo.loc.to_f64();
+    match &state.cursor_status {
+        CursorImageStatus::Surface(surface) => {
+            let hotspot = with_states(surface, |states| {
+                states
+                    .data_map
+                    .get::<Mutex<CursorImageAttributes>>()
+                    .and_then(|attrs| attrs.lock().ok().map(|attrs| attrs.hotspot))
+                    .unwrap_or_default()
+            });
+            let ptr_i =
+                (ptr_pos - hotspot.to_f64()).to_physical_precise_round::<f64, i32>(output_scale);
+            let cursor_elems = render_elements_from_surface_tree(
+                renderer,
+                surface,
+                ptr_i,
+                output_scale,
+                1.0f32,
+                Kind::Cursor,
+            );
+            for e in cursor_elems {
+                elements.push(MargoRenderElement::WaylandSurface(e));
+            }
+        }
+        CursorImageStatus::Hidden => {}
+        _ => {
+            if let Some(cursor_elem) =
+                state
+                    .cursor_manager
+                    .render_element(renderer, ptr_pos, output_scale)
+            {
+                elements.push(MargoRenderElement::Cursor(cursor_elem));
+            }
+        }
+    }
+}
+
+/// Elements for a single-window cast: only `window` itself (surface,
+/// popups, border, shadow) plus the cursor — never other windows, layer
+/// surfaces (notifications, bars) or compositor overlays that happen to
+/// overlap it. Output-relative coordinates, like the full builder.
+#[cfg(feature = "xdp-gnome-screencast")]
+pub(super) fn build_window_cast_elements(
+    renderer: &mut GlesRenderer,
+    od: &OutputDevice,
+    state: &MargoState,
+    window: &smithay::desktop::Window,
+    include_cursor: bool,
+) -> Vec<MargoRenderElement> {
+    if state.session_locked {
+        return Vec::new();
+    }
+    let Some(output_geo) = state.space.output_geometry(&od.output) else {
+        return Vec::new();
+    };
+    let output_scale = od.output.current_scale().fractional_scale();
+    let border_program = crate::render::rounded_border::shader(renderer).map(|program| program.0);
+    let clipped_surface_program =
+        crate::render::clipped_surface::shader(renderer).map(|program| program.0);
+    let mut elements = Vec::new();
+    if include_cursor {
+        push_cursor_elements(renderer, state, output_geo, output_scale, &mut elements);
+    }
+    push_client_elements(
+        renderer,
+        state,
+        &od.output,
+        output_geo,
+        output_scale,
+        border_program,
+        clipped_surface_program,
+        true,
+        Some(window),
+        &mut elements,
+    );
     elements
 }
 
@@ -1663,6 +1672,7 @@ fn push_client_elements(
     border_program: Option<smithay::backend::renderer::gles::GlesPixelProgram>,
     clipped_surface_program: Option<GlesTexProgram>,
     for_screencast: bool,
+    only_window: Option<&smithay::desktop::Window>,
     elements: &mut Vec<MargoRenderElement>,
 ) {
     let scale = Scale::from(output_scale);
@@ -1682,6 +1692,9 @@ fn push_client_elements(
         state.clients.iter().map(|c| (&c.window, c)).collect();
 
     for window in state.space.elements_for_output(output).rev() {
+        if only_window.is_some_and(|only| only != window) {
+            continue;
+        }
         let Some(location) = state.space.element_location(window) else {
             continue;
         };
