@@ -120,7 +120,6 @@ pub struct ShadowRenderElement {
 }
 
 impl ShadowRenderElement {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: Id,
         window_rect: Rectangle<i32, Logical>,

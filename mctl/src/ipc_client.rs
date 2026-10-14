@@ -14,6 +14,7 @@ pub fn socket_path() -> PathBuf {
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
+            // SAFETY: getuid() has no preconditions and cannot fail.
             let uid = unsafe { libc::getuid() };
             PathBuf::from(format!("/run/user/{uid}"))
         });

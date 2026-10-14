@@ -204,7 +204,6 @@ pub(super) fn rescan_outputs(backend_data: &Rc<RefCell<BackendData>>, state: &mu
 /// Build the `OutputDevice` + associated `MargoMonitor` for a single
 /// connected connector. Mirrors the inline init loop so that hotplug
 /// goes through exactly the same code path as startup.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn setup_connector(
     drm: &mut DrmDevice,
     conn_handle: connector::Handle,

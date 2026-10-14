@@ -96,7 +96,6 @@ pub fn chip_rects(
 /// `output_origin` is the output's top-left in global-logical coords,
 /// `scale` is the output scale, `radius` the corner radius (logical px),
 /// and `program` the compiled rounded-solid shader. One element per member.
-#[allow(clippy::too_many_arguments)]
 pub fn render_elements(
     slot: Rect,
     members: &[usize],

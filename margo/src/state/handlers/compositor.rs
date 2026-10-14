@@ -739,7 +739,6 @@ fn repaint_target_for_root(state: &mut MargoState, root: &WlSurface) -> CommitRe
 /// Primitive-typed on purpose — the caller normalises smithay's `Anchor` /
 /// `ExclusiveZone` / `Layer` enums to their raw values, so this stays pure
 /// and unit-testable without a live compositor.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn layer_commit_hashes(
     size: (i32, i32),
     anchor_bits: u32,

@@ -296,7 +296,6 @@ impl PipeWire {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn start_cast(
         &self,
         gbm: GbmDevice<DrmDeviceFd>,
@@ -739,6 +738,7 @@ impl PipeWire {
 
                     trace!("size={size:?}, alpha={alpha}, modifier={modifier:?}");
 
+                    // SAFETY: PipeWire passes a valid `pw_buffer` for the duration of the add_buffer callback; its `buffer`/`datas` are initialised by the stream.
                     unsafe {
                         let spa_buffer = (*buffer).buffer;
 
@@ -833,6 +833,7 @@ impl PipeWire {
                         .rendering_buffers
                         .retain(|(buf, _)| buf.as_ptr() != buffer);
 
+                    // SAFETY: PipeWire passes a valid `pw_buffer` for the duration of the remove_buffer callback.
                     unsafe {
                         let spa_buffer = (*buffer).buffer;
                         // Guard the datas[0] read: a zero-length datas array
@@ -1084,6 +1085,7 @@ impl Cast {
     }
 
     fn dequeue_available_buffer(&mut self) -> Option<NonNull<pw_buffer>> {
+        // SAFETY: the stream is alive (owned by `self`); a null return is mapped to `None`.
         unsafe { NonNull::new(self.stream.dequeue_raw_buffer()) }
     }
 
@@ -1102,6 +1104,7 @@ impl Cast {
 
         for (buffer, _) in inner.rendering_buffers.drain(..first_in_progress_idx) {
             trace!("queueing completed buffer");
+            // SAFETY: each buffer was dequeued from this stream and not yet queued back; the stream is alive.
             unsafe {
                 pw_stream_queue_buffer(self.stream.as_raw_ptr(), buffer.as_ptr());
             }
@@ -1170,7 +1173,6 @@ impl Cast {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn dequeue_buffer_and_render(
         &mut self,
         renderer: &mut GlesRenderer,
@@ -1267,6 +1269,7 @@ impl Cast {
             return false;
         };
 
+        // SAFETY: `buffer` was just dequeued from this live stream and stays ours until queued back.
         unsafe {
             let spa_buffer = (*buffer).buffer;
 
@@ -1330,6 +1333,7 @@ impl Cast {
         };
         let buffer = pw_buffer.as_ptr();
 
+        // SAFETY: `buffer` was just dequeued from this live stream and stays ours until queued back.
         unsafe {
             let spa_buffer = (*buffer).buffer;
 
@@ -1392,6 +1396,7 @@ impl CastState {
 fn pw_version_supports_cursor_metadata() -> bool {
     // This PipeWire version fixed a critical memory issue with cursor metadata:
     // https://gitlab.freedesktop.org/pipewire/pipewire/-/merge_requests/2538
+    // SAFETY: plain version query on the loaded libpipewire; no pointers involved.
     unsafe { pw_check_library_version(1, 4, 8) }
 }
 
@@ -1556,6 +1561,7 @@ fn allocate_dmabuf(
 }
 
 unsafe fn return_unused_buffer(stream: &Stream, pw_buffer: NonNull<pw_buffer>) {
+    // SAFETY: caller passes a buffer dequeued from `stream` and not yet returned (this fn's contract).
     unsafe {
         // pw_stream_return_buffer() requires too new PipeWire (1.4.0). So, mark as
         // corrupted and queue.
@@ -1576,6 +1582,7 @@ unsafe fn return_unused_buffer(stream: &Stream, pw_buffer: NonNull<pw_buffer>) {
 }
 
 unsafe fn mark_buffer_as_good(pw_buffer: NonNull<pw_buffer>, sequence: &mut u64) {
+    // SAFETY: caller passes a dequeued, not-yet-queued buffer whose `buffer`/`datas` PipeWire initialised.
     unsafe {
         let pw_buffer = pw_buffer.as_ptr();
         let spa_buffer = (*pw_buffer).buffer;
@@ -1603,6 +1610,7 @@ unsafe fn mark_buffer_as_good(pw_buffer: NonNull<pw_buffer>, sequence: &mut u64)
 }
 
 unsafe fn find_meta_header(buffer: *mut spa_buffer) -> Option<NonNull<spa_meta_header>> {
+    // SAFETY: caller passes a valid `spa_buffer`; the returned pointer is null-checked.
     unsafe {
         let p =
             spa_buffer_find_meta_data(buffer, SPA_META_Header, size_of::<spa_meta_header>()).cast();
@@ -1611,6 +1619,7 @@ unsafe fn find_meta_header(buffer: *mut spa_buffer) -> Option<NonNull<spa_meta_h
 }
 
 unsafe fn add_invisible_cursor(spa_buffer: *mut spa_buffer) {
+    // SAFETY: caller passes a valid `spa_buffer`; the meta pointer is null-checked before use.
     unsafe {
         let cursor_meta_ptr: *mut spa_meta_cursor = spa_buffer_find_meta_data(
             spa_buffer,
@@ -1663,6 +1672,7 @@ unsafe fn add_cursor_metadata(
     cursor_data: &CursorData<impl RenderElement<GlesRenderer>>,
     redraw: bool,
 ) {
+    // SAFETY: caller passes a valid `spa_buffer`; the meta pointer is null-checked before use.
     unsafe {
         let cursor_meta_ptr: *mut spa_meta_cursor = spa_buffer_find_meta_data(
             spa_buffer,

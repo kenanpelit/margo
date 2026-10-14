@@ -1728,7 +1728,6 @@ pub struct EdgeOutcome {
 /// monitor lookup stay in the caller; this is the pure edge-detection +
 /// speed-gated debounce. `armed` in → `armed` out; fires `focus` once per
 /// edge dwell (only while armed and moving slower than `allow`).
-#[allow(clippy::too_many_arguments)]
 /// Deliver dispatch feedback as an mshell OSD toast — ephemeral, no
 /// notification-history pollution. Falls back to `notify-send` when
 /// mshell isn't up (standalone margo + external bar setups). The

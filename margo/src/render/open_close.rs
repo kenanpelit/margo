@@ -134,7 +134,6 @@ pub struct OpenCloseRenderElement {
 }
 
 impl OpenCloseRenderElement {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: Id,
         texture: GlesTexture,

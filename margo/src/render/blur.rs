@@ -149,6 +149,7 @@ pub fn shader(renderer: &mut GlesRenderer) -> Option<BlurReady> {
         if slot.borrow().is_some() {
             return Some(BlurReady);
         }
+        // SAFETY: `with_context` makes the renderer's GL context current for the closure.
         let compiled = renderer.with_context(|gl| unsafe { compile_blur_gl(gl) });
         match compiled {
             Ok(Ok(blur_gl)) => {
@@ -170,8 +171,11 @@ pub fn shader(renderer: &mut GlesRenderer) -> Option<BlurReady> {
 /// # Safety
 /// Must be called with a current GL context (inside `with_context`).
 unsafe fn compile_blur_gl(gl: &ffi::Gles2) -> Result<BlurGl, GlesError> {
+    // SAFETY: caller guarantees a current GL context (this fn's `# Safety`).
     let down_prog = unsafe { link_program(gl, VERT_SRC, DOWN_FRAG_SRC)? };
+    // SAFETY: caller guarantees a current GL context (this fn's `# Safety`).
     let up_prog = unsafe { link_program(gl, VERT_SRC, UP_FRAG_SRC)? };
+    // SAFETY: caller guarantees a current GL context (this fn's `# Safety`).
     let composite_prog = unsafe { link_program(gl, COMPOSITE_VERT_SRC, COMPOSITE_FRAG_SRC)? };
 
     let mut quad_vbo = 0;
@@ -186,6 +190,7 @@ unsafe fn compile_blur_gl(gl: &ffi::Gles2) -> Result<BlurGl, GlesError> {
          1.0,  1.0, 1.0, 1.0,
         -1.0,  1.0, 0.0, 1.0,
     ];
+    // SAFETY: caller guarantees a current GL context; `quad_vbo` and `quad` outlive the calls.
     unsafe {
         gl.GenBuffers(1, &mut quad_vbo);
         gl.BindBuffer(ffi::ARRAY_BUFFER, quad_vbo);
@@ -224,6 +229,7 @@ impl BlurGl {
         while self.pool.len() <= idx {
             let mut tex = 0;
             let mut fbo = 0;
+            // SAFETY: only reached from render paths that hold the renderer's GL context; `tex` / `fbo` are valid out-pointers.
             unsafe {
                 gl.GenTextures(1, &mut tex);
                 gl.GenFramebuffers(1, &mut fbo);
@@ -252,6 +258,7 @@ impl BlurGl {
         if slot.w < w || slot.h < h {
             let nw = slot.w.max(w);
             let nh = slot.h.max(h);
+            // SAFETY: same GL-context contract as the pool fill above; `slot.tex` was created by this pool.
             unsafe {
                 gl.BindTexture(ffi::TEXTURE_2D, slot.tex);
                 gl.TexImage2D(
@@ -407,6 +414,7 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
         let corner_px = self.corner_radius * self.scale.x as f32;
         let params = self.params;
 
+        // SAFETY: `with_context` makes the frame's GL context current for the closure.
         frame.with_context(|gl| unsafe {
             CACHED.with(|slot| {
                 let mut borrow = slot.borrow_mut();
@@ -429,7 +437,6 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
 ///
 /// # Safety
 /// Current GL context; `blur_gl` programs/VBO are valid.
-#[allow(clippy::too_many_arguments)]
 unsafe fn draw_blur(
     gl: &ffi::Gles2,
     blur_gl: &mut BlurGl,
@@ -444,6 +451,7 @@ unsafe fn draw_blur(
         return;
     }
 
+    // SAFETY: caller holds the GL context (render path); all GL objects used were created in that context.
     unsafe {
         // ── Save GL state ────────────────────────────────────────────
         let mut prev_fbo = 0;
@@ -640,6 +648,7 @@ unsafe fn draw_blur(
 /// # Safety
 /// Current GL context; `vbo` bound to `ARRAY_BUFFER`.
 unsafe fn bind_quad_attribs(gl: &ffi::Gles2, prog: ffi::types::GLuint) -> (i32, i32) {
+    // SAFETY: current GL context: called from `with_context` / a caller under the same contract (see the fn's `# Safety`).
     unsafe {
         let pos_loc = gl.GetAttribLocation(prog, c"a_pos".as_ptr() as *const _);
         let uv_loc = gl.GetAttribLocation(prog, c"a_uv".as_ptr() as *const _);
@@ -673,6 +682,7 @@ unsafe fn bind_quad_attribs(gl: &ffi::Gles2, prog: ffi::types::GLuint) -> (i32, 
 /// # Safety
 /// Current GL context.
 unsafe fn disable_quad_attribs(gl: &ffi::Gles2, locs: (i32, i32)) {
+    // SAFETY: current GL context: called from `with_context` / a caller under the same contract (see the fn's `# Safety`).
     unsafe {
         if locs.0 >= 0 {
             gl.DisableVertexAttribArray(locs.0 as u32);
@@ -687,7 +697,6 @@ unsafe fn disable_quad_attribs(gl: &ffi::Gles2, locs: (i32, i32)) {
 ///
 /// # Safety
 /// Current GL context.
-#[allow(clippy::too_many_arguments)]
 unsafe fn run_pass(
     gl: &ffi::Gles2,
     prog: ffi::types::GLuint,
@@ -700,6 +709,7 @@ unsafe fn run_pass(
     radius: f32,
     src_uv_scale: (f32, f32),
 ) {
+    // SAFETY: current GL context: called from `with_context` / a caller under the same contract (see the fn's `# Safety`).
     unsafe {
         gl.BindFramebuffer(ffi::FRAMEBUFFER, fbo);
         gl.Viewport(0, 0, mw, mh);
@@ -724,7 +734,6 @@ unsafe fn run_pass(
 ///
 /// # Safety
 /// Current GL context.
-#[allow(clippy::too_many_arguments)]
 unsafe fn composite_pass(
     gl: &ffi::Gles2,
     prog: ffi::types::GLuint,
@@ -738,6 +747,7 @@ unsafe fn composite_pass(
     params: &BlurParams,
     viewport: [i32; 4],
 ) {
+    // SAFETY: current GL context: called from `with_context` / a caller under the same contract (see the fn's `# Safety`).
     unsafe {
         gl.UseProgram(prog);
         gl.BindBuffer(ffi::ARRAY_BUFFER, vbo);
@@ -776,6 +786,7 @@ unsafe fn composite_pass(
 
 /// # Safety: current GL context.
 unsafe fn set_uniform_1i(gl: &ffi::Gles2, prog: ffi::types::GLuint, name: &std::ffi::CStr, v: i32) {
+    // SAFETY: current GL context: called from `with_context` / a caller under the same contract (see the fn's `# Safety`).
     unsafe {
         let loc = gl.GetUniformLocation(prog, name.as_ptr() as *const _);
         if loc >= 0 {
@@ -786,6 +797,7 @@ unsafe fn set_uniform_1i(gl: &ffi::Gles2, prog: ffi::types::GLuint, name: &std::
 
 /// # Safety: current GL context.
 unsafe fn set_uniform_1f(gl: &ffi::Gles2, prog: ffi::types::GLuint, name: &std::ffi::CStr, v: f32) {
+    // SAFETY: current GL context: called from `with_context` / a caller under the same contract (see the fn's `# Safety`).
     unsafe {
         let loc = gl.GetUniformLocation(prog, name.as_ptr() as *const _);
         if loc >= 0 {
@@ -802,6 +814,7 @@ unsafe fn set_uniform_2f(
     a: f32,
     b: f32,
 ) {
+    // SAFETY: current GL context: called from `with_context` / a caller under the same contract (see the fn's `# Safety`).
     unsafe {
         let loc = gl.GetUniformLocation(prog, name.as_ptr() as *const _);
         if loc >= 0 {
@@ -811,7 +824,6 @@ unsafe fn set_uniform_2f(
 }
 
 /// # Safety: current GL context.
-#[allow(clippy::too_many_arguments)]
 unsafe fn set_uniform_4f(
     gl: &ffi::Gles2,
     prog: ffi::types::GLuint,
@@ -821,6 +833,7 @@ unsafe fn set_uniform_4f(
     c: f32,
     d: f32,
 ) {
+    // SAFETY: current GL context: called from `with_context` / a caller under the same contract (see the fn's `# Safety`).
     unsafe {
         let loc = gl.GetUniformLocation(prog, name.as_ptr() as *const _);
         if loc >= 0 {

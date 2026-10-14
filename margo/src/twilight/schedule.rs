@@ -193,7 +193,9 @@ fn julian_days_since_j2000(now: SystemTime) -> f64 {
 fn local_tz_offset_seconds(unix: i64) -> i32 {
     #[allow(clippy::useless_conversion)]
     let t: libc::time_t = unix as libc::time_t;
+    // SAFETY: `libc::tm` is plain old data; all-zero is a valid value.
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    // SAFETY: `t` and `tm` are valid for the call; localtime_r is the reentrant variant.
     unsafe {
         libc::localtime_r(&t, &mut tm);
     }

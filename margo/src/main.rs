@@ -15,6 +15,7 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::excessive_precision)]
 #![allow(clippy::needless_borrows_for_generic_args)]
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 #[cfg(feature = "a11y")]
 mod a11y;
@@ -670,11 +671,14 @@ fn main() -> Result<()> {
         // compositor; our own socket reaches children via the overlay.
         // SAFETY: still no other thread — winit/EGL start inside `run`.
         if let Some(wd) = &parent_wayland_display {
+            // SAFETY: no other thread exists yet (see above).
             unsafe { std::env::set_var("WAYLAND_DISPLAY", wd) };
         } else {
+            // SAFETY: no other thread exists yet (see above).
             unsafe { std::env::remove_var("WAYLAND_DISPLAY") };
         }
         if let Some(xd) = &parent_x_display {
+            // SAFETY: no other thread exists yet (see above).
             unsafe { std::env::set_var("DISPLAY", xd) };
         }
         utils::set_child_env("WAYLAND_DISPLAY", socket_name.to_string_lossy());
@@ -709,6 +713,7 @@ fn main() -> Result<()> {
             // be in the real env. The failed udev bring-up may have left
             // driver threads behind; this dev-only fallback accepts that.
             if let Some(wd) = &parent_wayland_display {
+                // SAFETY: see the fallback note above.
                 unsafe { std::env::set_var("WAYLAND_DISPLAY", wd) };
             }
             utils::set_child_env("WAYLAND_DISPLAY", socket_name.to_string_lossy());
@@ -1776,6 +1781,7 @@ mod boot_fallback_tests {
         // SAFETY: test-local mutation, restored before the function returns.
         let _guard = HOME_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev = std::env::var_os("HOME");
+        // SAFETY: serialised by HOME_ENV_LOCK; restored before returning.
         unsafe { std::env::remove_var("HOME") };
         let fallback = Some((
             margo_config::generations::Generation {
@@ -1787,6 +1793,7 @@ mod boot_fallback_tests {
         ));
         let resolution = resolve_boot_config(Err(anyhow::anyhow!("boom")), fallback, None);
         if let Some(home) = prev {
+            // SAFETY: serialised by HOME_ENV_LOCK; restores the value saved above.
             unsafe { std::env::set_var("HOME", home) };
         }
         assert!(resolution.restored_generation.is_none());

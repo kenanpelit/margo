@@ -331,6 +331,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                 OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK,
             )
             .map_err(|e| anyhow::anyhow!("open DRM device: {e}"))?;
+        // SAFETY: `into_raw_fd` hands over sole ownership of a freshly opened, valid DRM fd.
         DrmDeviceFd::new(unsafe { DeviceFd::from_raw_fd(owned_fd.into_raw_fd()) })
     };
 
@@ -351,8 +352,10 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
 
     // ── 4. GBM + EGL + GLES ──────────────────────────────────────────────────
     let gbm = GbmDevice::new(drm_fd.clone()).context("GbmDevice::new")?;
+    // SAFETY: `gbm` wraps the open DRM device and is kept alive by the display it is moved into.
     let egl_display = unsafe { EGLDisplay::new(gbm.clone()) }.context("EGLDisplay::new")?;
     let egl_context = EGLContext::new(&egl_display).context("EGLContext::new")?;
+    // SAFETY: the EGL context was created on this thread for this renderer and is not shared.
     let mut renderer = unsafe { GlesRenderer::new(egl_context) }.context("GlesRenderer::new")?;
 
     match renderer.bind_wl_display(&state.display_handle) {
