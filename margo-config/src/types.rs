@@ -903,6 +903,12 @@ pub struct Config {
     pub hot_corner_bottom_left: String,
     pub hot_corner_bottom_right: String,
     pub hot_corner_dwell_ms: u32,
+    /// `session_end`: how long windows get to close after the close
+    /// request before the "still open" countdown notification (ms).
+    pub session_end_grace_ms: u32,
+    /// `session_end`: countdown after that notification before the
+    /// reboot / power-off / logout happens anyway (ms).
+    pub session_end_countdown_ms: u32,
     /// Suppress hot-corner triggering while the focused window is
     /// fullscreen — a corner touch mid-video shouldn't interrupt it.
     pub hot_corner_disable_on_fullscreen: bool,
@@ -1264,6 +1270,8 @@ impl Default for Config {
             hot_corner_bottom_left: String::new(),
             hot_corner_bottom_right: String::new(),
             hot_corner_dwell_ms: 100,
+            session_end_grace_ms: 5000,
+            session_end_countdown_ms: 15000,
             hot_corner_disable_on_fullscreen: true,
 
             wallpaper: None,

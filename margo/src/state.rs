@@ -28,6 +28,7 @@ mod scratchpad;
 pub(crate) use scratchpad::MatchOp;
 mod screencast;
 mod scroller_overview;
+mod session_end;
 mod state_file;
 mod theme;
 mod twilight_methods;
@@ -1026,6 +1027,8 @@ pub struct MargoState {
     /// Virtual keyboards that set modifiers directly (`modifiers`
     /// request), so their removal can clear what they left held.
     pub virtual_modifier_devices: std::collections::HashSet<String>,
+    /// `session_end` in progress (windows asked to close, waiting).
+    pub session_ending: Option<session_end::SessionEnd>,
 }
 
 impl MargoState {
@@ -1441,6 +1444,7 @@ impl MargoState {
             virtual_input: false,
             active_virtual_keymap: None,
             virtual_modifier_devices: std::collections::HashSet::new(),
+            session_ending: None,
             title_rules_exist: config_has_title_rules(&config),
             config,
             theme_baseline: None,

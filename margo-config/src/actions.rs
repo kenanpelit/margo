@@ -957,6 +957,18 @@ pub const ACTIONS: &[Action] = &[
         detail: "Reads `$XDG_STATE_HOME/margo/session.json` and re-applies it to whatever monitors are present today (matched by output name). Snapshot entries for monitors that aren't connected get skipped (logged, not an error). Triggers an arrange + repaint so the new state is visible on the next frame.",
     },
     Action {
+        name: "session_end",
+        aliases: &[],
+        args: "<reboot|poweroff|logout|cancel>",
+        group: Group::System,
+        summary: "Close every window gracefully, then reboot / power off / log out.",
+        detail: "Windows get a normal close request so browsers exit cleanly. \
+                 Windows still open after `session_end_grace_ms` get a \
+                 notification with a Cancel button; the action runs after \
+                 `session_end_countdown_ms` or as soon as they close. \
+                 `cancel` aborts a pending one.",
+    },
+    Action {
         name: "quit",
         aliases: &[],
         args: "",

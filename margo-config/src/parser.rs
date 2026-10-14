@@ -630,6 +630,8 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "hot_corner_bottom_left" => cfg.hot_corner_bottom_left = val.trim().to_string(),
         "hot_corner_bottom_right" => cfg.hot_corner_bottom_right = val.trim().to_string(),
         "hot_corner_dwell_ms" => cfg.hot_corner_dwell_ms = parse_u32(val),
+        "session_end_grace_ms" => cfg.session_end_grace_ms = parse_u32(val),
+        "session_end_countdown_ms" => cfg.session_end_countdown_ms = parse_u32(val),
         "hot_corner_disable_on_fullscreen" => {
             cfg.hot_corner_disable_on_fullscreen = parse_bool(val)
         }
@@ -1838,6 +1840,8 @@ pub const OPTION_KEYS: &[&str] = &[
     "hot_corner_bottom_right",
     "hot_corner_disable_on_fullscreen",
     "hot_corner_dwell_ms",
+    "session_end_grace_ms",
+    "session_end_countdown_ms",
     "hot_corner_top_left",
     "hot_corner_top_right",
     "idleinhibit_ignore_visible",

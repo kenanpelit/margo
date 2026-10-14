@@ -776,6 +776,8 @@ const UINT_KEYS: &[&str] = &[
     "group_bar_gap",
     "group_bar_height",
     "hot_corner_dwell_ms",
+    "session_end_countdown_ms",
+    "session_end_grace_ms",
     "hotarea_size",
     "inner_gaps",
     "log_keep_sessions",

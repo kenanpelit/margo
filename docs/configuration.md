@@ -397,6 +397,7 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 
 | Action | Arg | Description |
 | --- | --- | --- |
+| `session_end` | `reboot` / `poweroff` / `logout` / `cancel` | Close every window gracefully, then reboot / power off / log out. Windows still open after `session_end_grace_ms` (5000) get a notification with Cancel; the action runs after `session_end_countdown_ms` (15000) or once they close. |
 | `focusstack` | `<DIR>` | Cycle focus through the stack: next/previous (`1` / `-1`). |
 | `focusdir` | `<DIR>` | Focus the nearest window `left`/`right`/`up`/`down`. At the edge: `focus_cross_tag = 1` jumps to the nearest occupied tag, else `focus_cross_monitor = 1` to the adjacent monitor. |
 | `exchange_client`, `smartmovewin` | `<DIR>` | Swap the focused window with its neighbour in that direction. |

@@ -256,3 +256,48 @@ fn focusdir_is_spatial_and_crosses_tags_at_the_edge() {
         .focus_direction(margo_config::Direction::Right);
     assert_eq!(fx.server.state.monitors[0].current_tagset(), home << 1);
 }
+
+#[test]
+fn session_end_closes_every_window_then_runs_once_they_are_gone() {
+    let mut fx = Fixture::new();
+    let ids = windows(&mut fx, 2);
+
+    fx.server.state.session_end("logout");
+    for &id in &ids {
+        fx.roundtrip(id);
+        assert!(
+            fx.client(id)
+                .state
+                .toplevels
+                .values()
+                .any(|t| t.close_requested),
+            "every window gets a close request"
+        );
+    }
+    assert!(!fx.server.state.should_quit, "waits for the windows");
+
+    fx.kill_client(ids[0]);
+    assert!(!fx.server.state.should_quit);
+    fx.kill_client(ids[1]);
+    assert!(fx.server.state.should_quit, "last window gone → logout");
+    assert!(fx.server.state.session_ending.is_none());
+}
+
+#[test]
+fn session_end_cancel_aborts() {
+    let mut fx = Fixture::new();
+    let ids = windows(&mut fx, 1);
+    fx.server.state.session_end("logout");
+    assert!(fx.server.state.session_ending.is_some());
+    crate::dispatch::dispatch_action(
+        &mut fx.server.state,
+        "session_end",
+        &margo_config::Arg {
+            v: Some("cancel".into()),
+            ..Default::default()
+        },
+    );
+    assert!(fx.server.state.session_ending.is_none());
+    fx.kill_client(ids[0]);
+    assert!(!fx.server.state.should_quit, "nothing runs after a cancel");
+}

@@ -81,6 +81,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
     debug!(action = %action, "dispatch");
     match action {
         "quit" => state.should_quit = true,
+        "session_end" => state.session_end(arg.v.as_deref().unwrap_or("")),
         "debug_dump" | "debug-dump" | "diagnose" => state.debug_dump(),
         // Cycle the keyboard to the next configured xkb layout. Driven
         // by a keybind or the shell's keyboard-layout pill (via mctl).

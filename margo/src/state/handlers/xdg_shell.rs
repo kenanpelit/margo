@@ -432,6 +432,7 @@ impl XdgShellHandler for MargoState {
             self.clients.remove(idx);
             self.remove_focus_history_id(client_id);
             self.shift_indices_after_remove(idx);
+            self.session_end_check();
             if let Some(gid) = group {
                 self.repair_group(gid);
             }
