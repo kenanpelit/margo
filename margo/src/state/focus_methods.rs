@@ -105,15 +105,13 @@ impl MargoState {
         {
             let now = crate::utils::now_ms();
             let dur = self.config.animation_duration_focus;
-            let bordercolor = self.config.bordercolor.0;
-            let focuscolor = self.config.focuscolor.0;
             // Outgoing: drop focus highlight back to bordercolor +
             // dim opacity to unfocused.
             if let Some(idx) = prev_focus_idx {
                 if idx < self.clients.len() {
                     let initial_color = self.clients[idx].opacity_animation.current_border_color;
                     let initial_color = if initial_color == [0.0, 0.0, 0.0, 0.0] {
-                        focuscolor
+                        crate::border::color_for(self, idx, true)
                     } else {
                         initial_color
                     };
@@ -126,7 +124,7 @@ impl MargoState {
                         time_started: now,
                         duration: dur,
                         initial_border_color: initial_color,
-                        target_border_color: bordercolor,
+                        target_border_color: crate::border::color_for(self, idx, false),
                         current_border_color: initial_color,
                     };
                 }
@@ -136,7 +134,7 @@ impl MargoState {
                 if idx < self.clients.len() {
                     let initial_color = self.clients[idx].opacity_animation.current_border_color;
                     let initial_color = if initial_color == [0.0, 0.0, 0.0, 0.0] {
-                        bordercolor
+                        crate::border::color_for(self, idx, false)
                     } else {
                         initial_color
                     };
@@ -149,7 +147,7 @@ impl MargoState {
                         time_started: now,
                         duration: dur,
                         initial_border_color: initial_color,
-                        target_border_color: focuscolor,
+                        target_border_color: crate::border::color_for(self, idx, true),
                         current_border_color: initial_color,
                     };
                 }

@@ -51,11 +51,15 @@ impl ClientBorder {
     }
 }
 
-fn color_for(state: &MargoState, client_idx: usize, focused: bool) -> [f32; 4] {
+/// The border colour a client settles on (no focus crossfade running).
+pub(crate) fn color_for(state: &MargoState, client_idx: usize, focused: bool) -> [f32; 4] {
     let c = &state.clients[client_idx];
     let cfg = &state.config;
     if c.is_urgent {
         cfg.urgentcolor.0
+    } else if focused && c.is_in_scratchpad {
+        // mango `scratchpadcolor`: the focused scratchpad window.
+        cfg.scratchpadcolor.0
     } else if c.is_overlay {
         cfg.overlaycolor.0
     } else if c.is_global {

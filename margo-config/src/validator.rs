@@ -660,7 +660,6 @@ pub const NO_EFFECT_KEYS: &[&str] = &[
     "no_radius_when_single",
     "numlockon",
     "ov_tab_mode",
-    "scratchpadcolor",
     "scroller_ignore_proportion_single",
     "snap_distance",
     "switchbind",

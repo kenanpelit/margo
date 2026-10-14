@@ -37,7 +37,6 @@ const NO_EFFECT_FIELDS: &[&str] = &[
     "no_radius_when_single",
     "numlock_on",
     "ov_tab_mode",
-    "scratchpadcolor",
     "scroller_ignore_proportion_single",
     "snap_distance",
     "switch_bindings",
