@@ -477,6 +477,20 @@ pub const ACTIONS: &[Action] = &[
         detail: "",
     },
     Action {
+        name: "smartkillclient",
+        aliases: &[],
+        args: "",
+        group: Group::Window,
+        summary: "Remove the focused window from the current tag(s) if it's on \
+                   more than one tag; otherwise close it.",
+        detail: "A window pinned across several tags (e.g. `sticky_window`, or \
+                  manually tagged onto more than one) disappears from just the \
+                  tag(s) you're viewing instead of closing outright — it's still \
+                  open on its other tags. Falls back to a normal `killclient` \
+                  when it's on a single tag, or when removing the viewed tag(s) \
+                  would leave it on none.",
+    },
+    Action {
         name: "movewin",
         aliases: &[],
         args: "<DX> <DY>",

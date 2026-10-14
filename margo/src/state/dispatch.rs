@@ -69,6 +69,35 @@ impl MargoState {
         }
     }
 
+    /// mango's `smartkillclient` (`ac1420a0`): if the focused window is on
+    /// more than one tag, remove it from just the currently-viewed tag(s)
+    /// instead of closing it outright — it's still open on its other
+    /// tags. Falls back to [`kill_focused`](Self::kill_focused) when it's
+    /// on a single tag, or when removing the viewed tag(s) would leave it
+    /// on none.
+    pub fn smart_kill_client(&mut self) {
+        let Some(idx) = self.focused_client_idx() else {
+            return;
+        };
+        let mon_idx = self.clients[idx].monitor;
+        let client_tags = self.clients[idx].tags;
+        if client_tags.count_ones() <= 1 || mon_idx >= self.monitors.len() {
+            self.kill_focused();
+            return;
+        }
+
+        let view_tags = self.monitors[mon_idx].current_tagset();
+        let remaining_tags = client_tags & !view_tags;
+        if remaining_tags == 0 {
+            self.kill_focused();
+            return;
+        }
+
+        self.clients[idx].tags = remaining_tags;
+        self.focus_most_recent_visible_or_clear(mon_idx);
+        self.arrange_monitor(mon_idx);
+    }
+
     pub fn focus_stack(&mut self, direction: i32) {
         let mon_idx = self.focused_monitor();
         if mon_idx >= self.monitors.len() {

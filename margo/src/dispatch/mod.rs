@@ -482,6 +482,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
             }
         }
         "killclient" => state.kill_focused(),
+        "smartkillclient" => state.smart_kill_client(),
         // Focus a specific window by its `state snapshot` client index, jumping
         // to its tag first if hidden. Lets the shell dock focus the exact
         // window a user clicks (margo is tag-based and otherwise has no

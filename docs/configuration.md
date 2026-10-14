@@ -417,6 +417,7 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | `togglefullscreen_exclusive` | | Exclusive fullscreen — covers the whole output, hides every layer-shell (bar). Right for mpv / games. |
 | `sticky_window`, `togglesticky` | | Pin the focused window to every tag on its monitor; press again to restore. |
 | `killclient` | | Close the focused window. |
+| `smartkillclient` | | Remove the focused window from the current tag(s) if it's on more than one; otherwise close it. |
 | `movewin` | `<DX> <DY>` | Move the focused window by px (forces floating). |
 | `resizewin` | `<DW> <DH>` | Resize the focused window by px (forces floating; min 50×50). |
 | `moveresize` | `curmove`\|`curresize` | Start an interactive pointer move/resize — for `mousebind`. |
