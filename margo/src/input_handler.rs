@@ -684,35 +684,9 @@ fn confine_pointer_rule_client(state: &MargoState) -> Option<usize> {
     Some(idx)
 }
 
-fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
-    state: &mut MargoState,
-    event: E,
-) {
-    let serial = SERIAL_COUNTER.next_serial();
-    let delta = (event.delta_x(), event.delta_y()).into();
-    let delta_unaccel = (event.delta_x_unaccel(), event.delta_y_unaccel()).into();
-    let time = event.time();
-
-    // Save the pre-move cursor position so we can restore it for
-    // pointer-constraints-v1 lock requests (FPS games etc.).
-    let prev_x = state.input_pointer.x;
-    let prev_y = state.input_pointer.y;
-
-    state.input_pointer.x += event.delta_x();
-    state.input_pointer.y += event.delta_y();
-    state.clamp_pointer_to_outputs();
-    state.input_pointer.motion_events += 1;
-    state.refresh_pointer_monitor_tracking();
-    // The hidden desktop must not react to edge focus or honour a stale
-    // desktop pointer constraint while the session lock owns input.
-    if !state.session_locked {
-        // Edge-scroller pointer focus (no-op unless
-        // `edge_scroller_focus_allow_speed > 0`). Speed = this event's
-        // accelerated motion magnitude.
-        let edge_speed = (event.delta_x().powi(2) + event.delta_y().powi(2)).sqrt();
-        state.maybe_edge_scroller_focus(edge_speed);
-    }
-
+/// Apply pointer constraints to the just-moved `input_pointer`, given
+/// its position before the move.
+fn constrain_pointer(state: &mut MargoState, prev_x: f64, prev_y: f64) {
     // Pointer-constraints enforcement. Two cases:
     //   * Active LOCK: the cursor stays pinned at its prior absolute
     //     position; only relative deltas reach the client. We undo
@@ -766,6 +740,38 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
             state.input_pointer.y = state.input_pointer.y.clamp(min_y, max_y);
         }
     }
+}
+
+fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
+    state: &mut MargoState,
+    event: E,
+) {
+    let serial = SERIAL_COUNTER.next_serial();
+    let delta = (event.delta_x(), event.delta_y()).into();
+    let delta_unaccel = (event.delta_x_unaccel(), event.delta_y_unaccel()).into();
+    let time = event.time();
+
+    // Save the pre-move cursor position so we can restore it for
+    // pointer-constraints-v1 lock requests (FPS games etc.).
+    let prev_x = state.input_pointer.x;
+    let prev_y = state.input_pointer.y;
+
+    state.input_pointer.x += event.delta_x();
+    state.input_pointer.y += event.delta_y();
+    state.clamp_pointer_to_outputs();
+    state.input_pointer.motion_events += 1;
+    state.refresh_pointer_monitor_tracking();
+    // The hidden desktop must not react to edge focus or honour a stale
+    // desktop pointer constraint while the session lock owns input.
+    if !state.session_locked {
+        // Edge-scroller pointer focus (no-op unless
+        // `edge_scroller_focus_allow_speed > 0`). Speed = this event's
+        // accelerated motion magnitude.
+        let edge_speed = (event.delta_x().powi(2) + event.delta_y().powi(2)).sqrt();
+        state.maybe_edge_scroller_focus(edge_speed);
+    }
+
+    constrain_pointer(state, prev_x, prev_y);
 
     let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
     log_pointer_motion(state, "relative", pos);
@@ -1009,22 +1015,27 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
 ) {
     let serial = SERIAL_COUNTER.next_serial();
     let old_pos = Point::from((state.input_pointer.x, state.input_pointer.y));
-    let output = state.space.outputs().next().cloned();
-    if let Some(output) = output {
-        let size = state
-            .space
-            .output_geometry(&output)
-            .unwrap_or_default()
-            .size;
-        let pos = event.position_transformed(size);
+    // Absolute devices (tablets in mouse mode, VM pointers) span the
+    // whole output layout, not just the first output at the origin.
+    let layout = state
+        .space
+        .outputs()
+        .filter_map(|output| state.space.output_geometry(output))
+        .reduce(|a, b| a.merge(b));
+    if let Some(layout) = layout {
+        let pos = event.position_transformed(layout.size) + layout.loc.to_f64();
         state.input_pointer.x = pos.x;
         state.input_pointer.y = pos.y;
         state.clamp_pointer_to_outputs();
         state.input_pointer.motion_events += 1;
         state.refresh_pointer_monitor_tracking();
+        constrain_pointer(state, old_pos.x, old_pos.y);
         let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
         log_pointer_motion(state, "absolute", pos);
         request_cursor_repaint(state, old_pos, pos);
+        if state.session_locked {
+            state.refresh_keyboard_focus();
+        }
 
         let (kbd_focus, ptr_focus) = hit_test(state, pos);
         apply_sloppy_focus(state, kbd_focus.as_ref().map(|(t, _)| t));
@@ -1041,6 +1052,7 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
             );
             ptr.frame(state);
         }
+        update_hot_corner(state);
     }
 }
 
