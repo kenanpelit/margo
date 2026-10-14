@@ -458,7 +458,12 @@ fn render_output(
         && let Some(ref wp) = state.wallpaper
         && let Some(output_geo) = state.space.output_geometry(&od.output)
     {
-        if let Some(wp_elem) = wp.render_element(renderer, output_geo.size) {
+        if let Some(wp_elem) = wp.render_element(
+            renderer,
+            output_geo.size,
+            state.config.wallpaper_fit,
+            od.output.current_scale().fractional_scale(),
+        ) {
             elements.push(MargoRenderElement::Cursor(wp_elem));
         }
     }

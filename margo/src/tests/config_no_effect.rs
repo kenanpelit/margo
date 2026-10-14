@@ -21,7 +21,6 @@ const NO_EFFECT_FIELDS: &[&str] = &[
     "touch_edge_size_top",
     "touch_gesture_bindings",
     "touch_timeout_ms",
-    "wallpaper_fit",
 ];
 
 fn rust_sources(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {

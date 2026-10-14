@@ -115,56 +115,39 @@ impl WallpaperState {
         }
     }
 
-    /// Build a render element that fills `output_size` (logical) with the
-    /// wallpaper, `Cover`-fit: a centred sub-region of the source whose aspect
-    /// ratio matches the output is sampled and scaled to fill it exactly.
+    /// Build a render element for an output of `output_size` (logical)
+    /// placed per `fit` (`wallpaper_fit`): `Cover` crops the centred part
+    /// whose aspect matches the output, `Contain` letterboxes the whole
+    /// image, `Fill` stretches it, `Center` shows it at native size (cropped
+    /// if larger). Uncovered strips show the `rootcolor` clear.
     ///
-    /// The element is positioned at the output-**local** origin `(0, 0)`. The
-    /// udev renderer composites each output in its own local coordinate space
-    /// (see the cursor / lock-surface handling in `render_elements.rs`, and the
-    /// solid overview backdrop that already anchors at `(0, 0)`), so a wallpaper
-    /// always starts at its output's top-left. Passing the output's *global*
-    /// position here — as this once did — offset the wallpaper by that origin on
-    /// every non-primary output: on a second monitor at global x=1920 the
-    /// wallpaper was shoved 1920 px right, showing a sliver on the right and the
-    /// `rootcolor` clear (grey) across the rest.
+    /// Coordinates are output-**local**: the udev renderer composites each
+    /// output in its own space, so the image is anchored at the output's
+    /// top-left (a global origin here once shoved the wallpaper 1920 px
+    /// right on a second monitor). `scale` converts the letterbox offset to
+    /// the physical location smithay wants.
     pub fn render_element(
         &self,
         renderer: &mut GlesRenderer,
         output_size: Size<i32, Logical>,
+        fit: margo_config::WallpaperFit,
+        scale: f64,
     ) -> Option<MemoryRenderBufferRenderElement<GlesRenderer>> {
-        let (img_w, img_h) = (self.natural_size.0 as f64, self.natural_size.1 as f64);
-        if img_w <= 0.0 || img_h <= 0.0 {
-            return None;
-        }
-
-        // Cover-fit src rect: choose the cropped sub-rectangle of the
-        // source image whose aspect ratio matches the output, then let
-        // Smithay scale it into the dst region.
-        let out_w = output_size.w as f64;
-        let out_h = output_size.h as f64;
-        let src_aspect = img_w / img_h;
-        let out_aspect = out_w / out_h;
-        let (src_w, src_h) = if src_aspect > out_aspect {
-            // Source wider than output → crop horizontally.
-            (img_h * out_aspect, img_h)
-        } else {
-            // Source taller than output → crop vertically.
-            (img_w, img_w / out_aspect)
-        };
-        let src_x = (img_w - src_w) / 2.0;
-        let src_y = (img_h - src_h) / 2.0;
-        // Smithay's `from_buffer` takes the sample region and the destination
-        // size in *logical* units and resolves physical scaling internally via
-        // the output scale, so we stay in logical coords for the size. The
-        // location is physical; at the local origin it is `(0, 0)` either way.
+        let (src, dst_loc, dst_size) = fit_rects(
+            (self.natural_size.0 as f64, self.natural_size.1 as f64),
+            (output_size.w as f64, output_size.h as f64),
+            fit,
+        )?;
+        // `from_buffer` takes the sample region and destination size in
+        // logical units (it resolves physical scaling itself); the location
+        // is physical.
         let src =
-            Rectangle::<f64, Logical>::new(Point::from((src_x, src_y)), Size::from((src_w, src_h)));
-        let dst_size = Size::<i32, Logical>::from((output_size.w, output_size.h));
-
+            Rectangle::<f64, Logical>::new(Point::from((src.0, src.1)), Size::from((src.2, src.3)));
+        let dst_size =
+            Size::<i32, Logical>::from((dst_size.0.round() as i32, dst_size.1.round() as i32));
         MemoryRenderBufferRenderElement::from_buffer(
             renderer,
-            Point::<f64, Physical>::from((0.0, 0.0)),
+            Point::<f64, Physical>::from((dst_loc.0 * scale, dst_loc.1 * scale)),
             &self.buffer,
             None,
             Some(src),
@@ -173,6 +156,53 @@ impl WallpaperState {
         )
         .ok()
     }
+}
+
+/// `(src x, y, w, h)` in image pixels, destination location and size in
+/// output-local logical px, for an `img`-sized image on an `out`-sized
+/// output under `fit`. `None` for a degenerate image or output.
+fn fit_rects(
+    img: (f64, f64),
+    out: (f64, f64),
+    fit: margo_config::WallpaperFit,
+) -> Option<((f64, f64, f64, f64), (f64, f64), (f64, f64))> {
+    use margo_config::WallpaperFit;
+    let ((iw, ih), (ow, oh)) = (img, out);
+    if iw <= 0.0 || ih <= 0.0 || ow <= 0.0 || oh <= 0.0 {
+        return None;
+    }
+    Some(match fit {
+        WallpaperFit::Cover => {
+            let (sw, sh) = if iw / ih > ow / oh {
+                (ih * ow / oh, ih)
+            } else {
+                (iw, iw * oh / ow)
+            };
+            (
+                ((iw - sw) / 2.0, (ih - sh) / 2.0, sw, sh),
+                (0.0, 0.0),
+                (ow, oh),
+            )
+        }
+        WallpaperFit::Contain => {
+            let k = (ow / iw).min(oh / ih);
+            let (dw, dh) = (iw * k, ih * k);
+            (
+                (0.0, 0.0, iw, ih),
+                ((ow - dw) / 2.0, (oh - dh) / 2.0),
+                (dw, dh),
+            )
+        }
+        WallpaperFit::Fill => ((0.0, 0.0, iw, ih), (0.0, 0.0), (ow, oh)),
+        WallpaperFit::Center => {
+            let (vw, vh) = (iw.min(ow), ih.min(oh));
+            (
+                ((iw - vw) / 2.0, (ih - vh) / 2.0, vw, vh),
+                ((ow - vw) / 2.0, (oh - vh) / 2.0),
+                (vw, vh),
+            )
+        }
+    })
 }
 
 fn resolve_path(explicit: Option<&str>) -> Option<PathBuf> {
@@ -356,5 +386,49 @@ mod tests {
             "/usr/share/margo/wallpapers/default.jpg"
         )));
         assert!(!is_raw_backdrop(Path::new("/home/u/wall.png")));
+    }
+}
+
+#[cfg(test)]
+mod fit_tests {
+    use super::fit_rects;
+    use margo_config::WallpaperFit;
+
+    #[test]
+    fn cover_crops_the_wider_image_to_the_output_aspect() {
+        let (src, loc, size) =
+            fit_rects((4000.0, 1000.0), (1920.0, 1080.0), WallpaperFit::Cover).unwrap();
+        assert!((src.2 / src.3 - 1920.0 / 1080.0).abs() < 1e-9);
+        assert_eq!((loc, size), ((0.0, 0.0), (1920.0, 1080.0)));
+    }
+
+    #[test]
+    fn contain_letterboxes_and_centres() {
+        let (src, loc, size) =
+            fit_rects((1000.0, 1000.0), (1920.0, 1080.0), WallpaperFit::Contain).unwrap();
+        assert_eq!(src, (0.0, 0.0, 1000.0, 1000.0));
+        assert_eq!(size, (1080.0, 1080.0));
+        assert_eq!(loc, (420.0, 0.0));
+    }
+
+    #[test]
+    fn fill_stretches_the_whole_image() {
+        let (src, loc, size) =
+            fit_rects((800.0, 600.0), (1920.0, 1080.0), WallpaperFit::Fill).unwrap();
+        assert_eq!(
+            (src, loc, size),
+            ((0.0, 0.0, 800.0, 600.0), (0.0, 0.0), (1920.0, 1080.0))
+        );
+    }
+
+    #[test]
+    fn center_keeps_native_size_and_crops_overflow() {
+        let (_, loc, size) =
+            fit_rects((800.0, 600.0), (1920.0, 1080.0), WallpaperFit::Center).unwrap();
+        assert_eq!((loc, size), ((560.0, 240.0), (800.0, 600.0)));
+        let (src, loc, size) =
+            fit_rects((4000.0, 2000.0), (1920.0, 1080.0), WallpaperFit::Center).unwrap();
+        assert_eq!(src, (1040.0, 460.0, 1920.0, 1080.0));
+        assert_eq!((loc, size), ((0.0, 0.0), (1920.0, 1080.0)));
     }
 }

@@ -1367,7 +1367,12 @@ fn build_scroller_overview_elements(
     // when no image is set, and as a fallback if the image element fails
     // to build). Elements[0] is topmost, so trailing pushes draw first.
     if let Some(bg) = state.overview_backdrop.as_ref()
-        && let Some(elem) = bg.render_element(renderer, output_geo.size)
+        && let Some(elem) = bg.render_element(
+            renderer,
+            output_geo.size,
+            margo_config::WallpaperFit::Cover,
+            scale.x,
+        )
     {
         elements.push(MargoRenderElement::Cursor(elem));
     }

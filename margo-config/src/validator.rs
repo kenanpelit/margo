@@ -644,7 +644,6 @@ pub const NO_EFFECT_KEYS: &[&str] = &[
     "touch_edge_size_top",
     "touch_timeoutms",
     "touchgesturebind",
-    "wallpaper_fit",
 ];
 
 // ── Typed scalar keys ───────────────────────────────────────────────────────

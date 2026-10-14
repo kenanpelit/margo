@@ -1579,7 +1579,12 @@ fn screencopy_capture_elements(
     if !state.session_locked
         && let Some(ref wp) = state.wallpaper
         && let Some(output_geo) = state.space.output_geometry(&od.output)
-        && let Some(wp_elem) = wp.render_element(renderer, output_geo.size)
+        && let Some(wp_elem) = wp.render_element(
+            renderer,
+            output_geo.size,
+            state.config.wallpaper_fit,
+            od.output.current_scale().fractional_scale(),
+        )
     {
         elements.push(MargoRenderElement::Cursor(wp_elem));
     }
