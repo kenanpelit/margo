@@ -8,7 +8,6 @@ const NO_EFFECT_FIELDS: &[&str] = &[
     "allow_lock_transparent",
     "allow_shortcuts_inhibit",
     "allow_tearing",
-    "animation_clock_layer",
     "axis_bind_apply_timeout",
     "axis_bindings",
     "axis_scroll_factor",

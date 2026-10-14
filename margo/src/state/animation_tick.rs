@@ -127,12 +127,7 @@ pub fn tick_animations(
                 continue;
             }
             let raw = elapsed as f64 / anim.duration as f64;
-            let action = if anim.is_close {
-                AnimationType::Close
-            } else {
-                AnimationType::Open
-            };
-            anim.progress = curves.sample(raw, action) as f32;
+            anim.progress = curves.sample_layer(raw, anim.is_close) as f32;
             changed = true;
         }
         for id in to_drop {

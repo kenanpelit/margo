@@ -137,6 +137,11 @@ pub struct AnimationCurves {
     pub focus_curve: BakedCurve,
     pub opafadein_curve: BakedCurve,
     pub opafadeout_curve: BakedCurve,
+    /// Layer-surface open / close: the open / close bezier curves, driven
+    /// by `animation_clock_layer` (bezier or spring) instead of the
+    /// window clocks.
+    pub layer_open_curve: BakedCurve,
+    pub layer_close_curve: BakedCurve,
 }
 
 impl AnimationCurves {
@@ -175,6 +180,11 @@ impl AnimationCurves {
             // opacity blends look unnatural with overshoot.
             opafadein_curve: BakedCurve::bake(&config.animation_curve_opafadein),
             opafadeout_curve: BakedCurve::bake(&config.animation_curve_opafadeout),
+            layer_open_curve: bake_one(&config.animation_clock_layer, &config.animation_curve_open),
+            layer_close_curve: bake_one(
+                &config.animation_clock_layer,
+                &config.animation_curve_close,
+            ),
         }
     }
 
@@ -189,6 +199,15 @@ impl AnimationCurves {
             AnimationType::OpaFadeOut => &self.opafadeout_curve,
         };
         curve.sample(t)
+    }
+
+    /// Sample the layer-surface open (`is_close == false`) or close curve.
+    pub fn sample_layer(&self, t: f64, is_close: bool) -> f64 {
+        if is_close {
+            self.layer_close_curve.sample(t)
+        } else {
+            self.layer_open_curve.sample(t)
+        }
     }
 }
 
