@@ -655,7 +655,6 @@ pub const NO_EFFECT_KEYS: &[&str] = &[
     "focus_on_activate",
     "hotarea_corner",
     "hotarea_size",
-    "keymode",
     "new_is_master",
     "no_border_when_single",
     "no_radius_when_single",
