@@ -1100,6 +1100,7 @@ fn parse_windowrule(cfg: &mut Config, val: &str, once: bool) -> Result<()> {
             "force_tiled_state" => rule.force_tiled_state = Some(parse_bool_s(&v)),
             "force_tearing" => rule.force_tearing = Some(parse_bool_s(&v)),
             "noswallow" => rule.no_swallow = Some(parse_bool_s(&v)),
+            "confine_pointer" => rule.confine_pointer = Some(parse_bool_s(&v)),
             "noblur" => rule.no_blur = Some(parse_bool_s(&v)),
             "group" | "isgroup" => rule.group = Some(parse_bool_s(&v)),
             "focused_opacity" => rule.focused_opacity = Some(parse_f32_s(&v)),

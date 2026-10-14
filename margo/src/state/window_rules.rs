@@ -426,6 +426,9 @@ impl MargoState {
             if let Some(value) = rule.no_swallow {
                 client.no_swallow = value;
             }
+            if let Some(value) = rule.confine_pointer {
+                client.confine_pointer = value;
+            }
             if let Some(value) = rule.no_blur {
                 client.no_blur = value;
             }

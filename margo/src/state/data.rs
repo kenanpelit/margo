@@ -142,6 +142,9 @@ pub struct MargoClient {
     pub is_named_scratchpad: bool,
     pub is_term: bool,
     pub no_swallow: bool,
+    /// `windowrule = confine_pointer:1, …` — see the field doc on
+    /// `margo_config::types::WindowRule::confine_pointer`.
+    pub confine_pointer: bool,
     pub is_killing: bool,
     pub is_tag_switching: bool,
     /// True while the pointer is hovering this client's grid slot
@@ -303,6 +306,7 @@ impl MargoClient {
             is_named_scratchpad: false,
             is_term: false,
             no_swallow: false,
+            confine_pointer: false,
             is_killing: false,
             is_tag_switching: false,
             is_overview_hovered: false,
@@ -403,6 +407,24 @@ impl MargoClient {
             return false;
         }
         self.monitor == mon && (self.tags & tagset) != 0
+    }
+
+    /// Pixels of clearance kept inside the border for
+    /// `windowrule = confine_pointer:1` — matches mango's own margin.
+    pub const CONFINE_POINTER_MARGIN: f64 = 5.0;
+
+    /// The logical-coordinate box [`confine_pointer`](Self::confine_pointer)
+    /// clamps the cursor into: this client's geometry, inset by its border
+    /// width plus [`CONFINE_POINTER_MARGIN`](Self::CONFINE_POINTER_MARGIN)
+    /// on every side. Degenerate (zero-size) geometry collapses min == max
+    /// rather than inverting, so a clamp against it is always well-formed.
+    pub fn confine_box(&self) -> (f64, f64, f64, f64) {
+        let margin = self.border_width as f64 + Self::CONFINE_POINTER_MARGIN;
+        let min_x = self.geom.x as f64 + margin;
+        let min_y = self.geom.y as f64 + margin;
+        let max_x = ((self.geom.x + self.geom.width) as f64 - margin).max(min_x);
+        let max_y = ((self.geom.y + self.geom.height) as f64 - margin).max(min_y);
+        (min_x, min_y, max_x, max_y)
     }
 }
 

@@ -436,6 +436,14 @@ pub struct WindowRule {
     pub force_tiled_state: Option<bool>,
     pub force_tearing: Option<bool>,
     pub no_swallow: Option<bool>,
+    /// While this window is focused, mapped and visible, force the
+    /// cursor to stay inside it — for X11 (Proton/Wine) games whose own
+    /// pointer-confine can get dropped by Xwayland, letting the cursor
+    /// escape to another monitor. Doesn't require the client to use the
+    /// pointer-constraints protocol; yields to a real protocol-level
+    /// constraint if one is active. Resolved into
+    /// `MargoClient::confine_pointer`.
+    pub confine_pointer: Option<bool>,
     pub no_blur: Option<bool>,
     /// `group:1` — auto-merge matching windows into a tabbed group
     /// keyed by their app-id, so e.g. every terminal opens as a tab of

@@ -664,6 +664,26 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
     }
 }
 
+/// The client `windowrule = confine_pointer:1` currently applies to, if
+/// any: the keyboard-focused client (falling back to the focused
+/// monitor's selected client), provided it actually has the rule set and
+/// is visible right now (not minimized, not hidden on another tag, not
+/// behind the overview). `None` means nothing should be confined.
+fn confine_pointer_rule_client(state: &MargoState) -> Option<usize> {
+    let idx = state
+        .focused_client_idx()
+        .or_else(|| state.monitors.get(state.focused_monitor())?.selected)?;
+    let client = state.clients.get(idx)?;
+    if !client.confine_pointer || client.is_minimized {
+        return None;
+    }
+    let mon = state.monitors.get(client.monitor)?;
+    if mon.is_overview || !client.is_visible_on(client.monitor, mon.current_tagset()) {
+        return None;
+    }
+    Some(idx)
+}
+
 fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
     state: &mut MargoState,
     event: E,
@@ -703,6 +723,7 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
     //     since the source of truth lives there. Re-clamp ourselves
     //     against the constraint's region so subsequent libinput
     //     deltas accumulate from the clamped value.
+    let mut has_active_pointer_constraint = false;
     if !state.session_locked
         && let Some(pointer) = state.seat.get_pointer()
     {
@@ -717,6 +738,7 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
             with_pointer_constraint(&focus_surface, &pointer, |constraint| {
                 if let Some(constraint) = constraint {
                     if constraint.is_active() {
+                        has_active_pointer_constraint = true;
                         if let PointerConstraint::Locked(_) = &*constraint {
                             state.input_pointer.x = prev_x;
                             state.input_pointer.y = prev_y;
@@ -728,6 +750,20 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
                     }
                 }
             });
+        }
+    }
+
+    // `windowrule = confine_pointer:1` — mango port (`045c7003`). A
+    // same-shaped manual clamp for windows that don't use the pointer-
+    // constraints protocol at all (X11/Proton games whose own confine
+    // Xwayland emulates, and which Xwayland itself can drop — see the
+    // rule's doc comment). Yields entirely to a real protocol-level
+    // constraint when one is active, exactly like mango does.
+    if !state.session_locked && !has_active_pointer_constraint {
+        if let Some(idx) = confine_pointer_rule_client(state) {
+            let (min_x, min_y, max_x, max_y) = state.clients[idx].confine_box();
+            state.input_pointer.x = state.input_pointer.x.clamp(min_x, max_x);
+            state.input_pointer.y = state.input_pointer.y.clamp(min_y, max_y);
         }
     }
 

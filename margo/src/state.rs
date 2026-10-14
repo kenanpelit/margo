@@ -2411,6 +2411,24 @@ impl MargoState {
             // `refresh_keyboard_focus` and we don't want to fire
             // hooks for no-op refreshes.
             crate::scripting::fire_focus_change(self);
+
+            // `windowrule = confine_pointer:1` (mango `045c7003`): if the
+            // window we just switched focus to has it and the cursor is
+            // currently outside its bounds, snap to center immediately
+            // instead of waiting for the next motion event — regaining
+            // focus on an already-running game shouldn't leave the
+            // cursor sitting on another monitor for one more frame.
+            if let Some(idx) = new_focus_idx
+                && self.clients[idx].confine_pointer
+            {
+                let (min_x, min_y, max_x, max_y) = self.clients[idx].confine_box();
+                if !(min_x..=max_x).contains(&self.input_pointer.x)
+                    || !(min_y..=max_y).contains(&self.input_pointer.y)
+                {
+                    self.input_pointer.x = (min_x + max_x) / 2.0;
+                    self.input_pointer.y = (min_y + max_y) / 2.0;
+                }
+            }
         }
     }
 
