@@ -29,6 +29,7 @@
 //!    ```
 
 mod client;
+mod config_no_effect;
 mod fixture;
 mod server;
 

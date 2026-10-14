@@ -405,6 +405,21 @@ fn validate_text(
             }
         }
 
+        // W006: accepted, but the compositor doesn't act on it.
+        if NO_EFFECT_KEYS.contains(&key) {
+            let key_col = raw.len() - raw.trim_start().len() + 1;
+            report.push(ConfigDiagnostic {
+                path: path.to_path_buf(),
+                line: lineno,
+                col: key_col,
+                end_col: key_col + key.len(),
+                severity: Severity::Warning,
+                code: "W006".into(),
+                message: format!("`{key}` is accepted but currently has no effect in margo"),
+                line_text: raw.to_string(),
+            });
+        }
+
         // Unknown top-level key (best-effort; allowlist).
         if !is_csv_shaped_key(key) && !is_bind_key(key) && !is_known_scalar_key(key) {
             let key_col = raw.find(key.chars().next().unwrap_or('?')).unwrap_or(0) + 1;
@@ -606,6 +621,64 @@ fn is_valid_modifier_token(t: &str) -> bool {
     let t = t.trim().to_ascii_lowercase();
     t.is_empty() || t.starts_with("code:") || VALID_MODIFIERS.contains(&t.as_str())
 }
+
+/// Keys the parser accepts (mango compatibility, or settings that were
+/// planned) but the compositor never reads — setting them changes
+/// nothing. Reported as W006 so a user tuning one isn't left guessing.
+/// `margo`'s `no_effect_keys_stay_unread` test fails when the compositor
+/// starts reading one of these, so an implemented key can't keep warning.
+pub const NO_EFFECT_KEYS: &[&str] = &[
+    "allow_lock_transparent",
+    "allow_shortcuts_inhibit",
+    "allow_tearing",
+    "animation_clock_layer",
+    "animation_fade_in",
+    "animation_fade_out",
+    "axis_bind_apply_timeout",
+    "axis_scroll_factor",
+    "axisbind",
+    "blur_optimized",
+    "button_map",
+    "capslock",
+    "center_master_overspread",
+    "center_when_single_stack",
+    "cursor_hide_timeout",
+    "drag_corner",
+    "drag_warp_cursor",
+    "enable_floating_snap",
+    "enable_hotarea",
+    "exchange_cross_monitor",
+    "fadein_begin_opacity",
+    "fadeout_begin_opacity",
+    "focus_cross_monitor",
+    "focus_cross_tag",
+    "focus_on_activate",
+    "hotarea_corner",
+    "hotarea_size",
+    "keymode",
+    "new_is_master",
+    "no_border_when_single",
+    "no_radius_when_single",
+    "numlockon",
+    "ov_tab_mode",
+    "scratchpadcolor",
+    "scroller_ignore_proportion_single",
+    "snap_distance",
+    "switchbind",
+    "syncobj_enable",
+    "tablet_map_to_mon",
+    "touch_degrees_leniency",
+    "touch_distance_threshold",
+    "touch_edge_size_bottom",
+    "touch_edge_size_left",
+    "touch_edge_size_right",
+    "touch_edge_size_top",
+    "touch_timeoutms",
+    "touchgesturebind",
+    "trackpad_scroll_factor",
+    "wallpaper_fit",
+    "warpcursor",
+];
 
 // ── Typed scalar keys ───────────────────────────────────────────────────────
 // Derived from the `parse_bool` / `parse_i32` / `parse_u32` / `parse_f32`
@@ -1301,5 +1374,22 @@ mod tests {
     fn decimal_comma_on_a_float_key_warns() {
         let r = validate_str("mouse_accel_speed = 0,5\n");
         assert!(r.diagnostics.iter().any(|d| d.code == "W003"));
+    }
+
+    #[test]
+    fn no_effect_keys_warn_and_are_real_keys() {
+        for key in NO_EFFECT_KEYS {
+            assert!(
+                is_known_scalar_key(key)
+                    || is_csv_shaped_key(key)
+                    || is_bind_key(key)
+                    || ["axisbind", "switchbind", "touchgesturebind"].contains(key),
+                "{key} is not a key the parser accepts"
+            );
+        }
+        let r = validate_str("warpcursor = 1\n");
+        assert!(r.diagnostics.iter().any(|d| d.code == "W006"));
+        let r = validate_str("borderpx = 2\n");
+        assert!(!r.diagnostics.iter().any(|d| d.code == "W006"));
     }
 }
