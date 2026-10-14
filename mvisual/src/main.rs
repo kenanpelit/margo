@@ -157,6 +157,8 @@ fn render_layout(cr: &cairo::Context, w: i32, h: i32, p: &LayoutParams, big: boo
         scroller_focus_center: true,
         scroller_prefer_center: true,
         scroller_prefer_overspread: false,
+        center_master_overspread: false,
+        center_when_single_stack: true,
     };
     let result = arrange(p.layout, &ctx);
 
