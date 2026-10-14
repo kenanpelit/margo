@@ -752,3 +752,57 @@
         box-shadow: inset 0 0 0 var(--border-width) var(--error);
     }
 }
+
+// ── KDE-style page extras (mshell-settings `page_defaults`) ──────────────
+// A row whose setting differs from its default: a 3px `--tertiary` leading
+// bar (inset, so nothing shifts) — the same structural mark the selected
+// sidebar row uses, in a different role colour so the two never read alike.
+.action-row.setting-changed {
+    box-shadow: inset 3px 0 0 0 var(--tertiary);
+}
+
+// Search jump target: a brief tonal wash that fades back out when the
+// class is removed (the transition is on the row itself).
+.action-row,
+.settings-page label.label-large-bold {
+    transition:
+        background-color var(--motion-medium) var(--ease-standard),
+        box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.action-row.search-hit,
+.settings-page label.label-large-bold.search-hit {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+}
+
+// Hero end: "N changed" chip + Defaults (+ inline confirm).
+.settings-page-actions {
+    .settings-changed-chip > button {
+        @include buttons.button-base("--tertiary-container", "--on-tertiary-container");
+        @include buttons.state-layers("--tertiary-container", "--on-tertiary-container");
+        border-radius: var(--radius-pill);
+        padding: var(--space-1) var(--space-3);
+        min-height: 0;
+    }
+}
+
+.settings-changed-popover > contents {
+    padding: var(--space-2);
+}
+
+.settings-changed-item {
+    padding: var(--space-1) var(--space-2);
+}
+
+// Sidebar header toggle for "Highlight changed settings".
+.settings-highlight-toggle {
+    @include buttons.button-base("--surface", "--on-surface-variant");
+    @include buttons.state-layers("--surface", "--on-surface-variant");
+    padding: var(--space-1);
+
+    &:checked {
+        @include buttons.button-base("--tertiary-container", "--on-tertiary-container");
+        @include buttons.state-layers("--tertiary-container", "--on-tertiary-container");
+    }
+}

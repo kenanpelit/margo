@@ -108,7 +108,7 @@ pub struct SettingsWindowModel {
     /// `Rc` because those closures push into it from GTK signal handlers. Never
     /// read — the model owning the tokens is the whole point (`dead_code`).
     #[allow(dead_code)]
-    alive: Rc<RefCell<Vec<Box<dyn std::any::Any>>>>,
+    alive: Alive,
 }
 
 #[derive(Debug)]
@@ -155,7 +155,54 @@ pub enum SettingsWindowCommandOutput {}
 type BuiltPage = (gtk::Widget, Vec<Box<dyn std::any::Any>>);
 
 /// A one-shot factory for a lazily-built sub-page (theme / widgets sub-stack).
-type PageFactory = Box<dyn FnOnce() -> BuiltPage>;
+/// Re-runnable so Defaults can rebuild the page in place.
+type PageFactory = Rc<dyn Fn() -> BuiltPage>;
+
+/// Keep-alive tokens of every built page, by route. Rebuilding a page
+/// replaces (and so drops) its old controllers.
+type Alive = Rc<RefCell<HashMap<String, Vec<Box<dyn std::any::Any>>>>>;
+
+/// Build a page into `stack` as child `name` — replacing an existing child
+/// of that name — then decorate it (`page_defaults`) and park its controllers
+/// under `route`. `show` makes it the visible child (used by rebuilds).
+fn mount_page(
+    stack: &gtk::Stack,
+    name: &str,
+    route: &str,
+    build: Rc<dyn Fn() -> Option<BuiltPage>>,
+    alive: &Alive,
+    show: bool,
+) {
+    use gtk::prelude::*;
+    let Some((widget, tokens)) = build() else {
+        return;
+    };
+    if !route.contains('/') {
+        sync_page_hero(&widget, route);
+    }
+    let rebuild: Rc<dyn Fn()> = {
+        let stack = stack.downgrade();
+        let (name, route) = (name.to_string(), route.to_string());
+        let (build, alive) = (build.clone(), alive.clone());
+        Rc::new(move || {
+            if let Some(stack) = stack.upgrade() {
+                mount_page(&stack, &name, &route, build.clone(), &alive, true);
+            }
+        })
+    };
+    crate::page_defaults::decorate(&widget, route, rebuild);
+    if let Some(old) = stack.child_by_name(name) {
+        stack.remove(&old);
+    }
+    // The panel drives visibility through its own sidebar, never a
+    // GtkStackSwitcher, so the page title is unused — add_named avoids
+    // threading dead title strings through every builder.
+    stack.add_named(&widget, Some(name));
+    alive.borrow_mut().insert(route.to_string(), tokens);
+    if show {
+        stack.set_visible_child_name(name);
+    }
+}
 
 /// Launch one top-level settings page on demand, keyed by its stack-child
 /// route. Every page's relm4 controller lives only for as long as its returned
@@ -342,6 +389,17 @@ impl Component for SettingsWindowModel {
                             set_halign: gtk::Align::Start,
                             set_hexpand: true,
                         },
+                        // KDE's "Highlight Changed Settings": marks every row
+                        // whose value differs from its default.
+                        #[name = "highlight_toggle"]
+                        gtk::ToggleButton {
+                            add_css_class: "settings-highlight-toggle",
+                            set_icon_name: "document-edit-symbolic",
+                            set_tooltip_text: Some("Highlight changed settings"),
+                            set_valign: gtk::Align::Center,
+                            set_active: crate::page_defaults::highlight_enabled(),
+                            connect_toggled => |b| crate::page_defaults::set_highlight(b.is_active()),
+                        },
                     },
 
                     #[name = "search_entry"]
@@ -491,7 +549,7 @@ impl Component for SettingsWindowModel {
         // blocking call (the 3–4 s freeze). Each page's controller lands here
         // as it is built so it outlives the panel (a detached `Controller`
         // shuts its component down when dropped). See the `ensure_*` closures.
-        let alive: Rc<RefCell<Vec<Box<dyn std::any::Any>>>> = Rc::new(RefCell::new(Vec::new()));
+        let alive: Alive = Rc::new(RefCell::new(HashMap::new()));
 
         // Built before the model so the model can hold a clone; the
         // Widgets sub-sidebar build loop (further down) fills the same map.
@@ -542,14 +600,10 @@ impl Component for SettingsWindowModel {
                 if stack.child_by_name(route).is_some() {
                     return;
                 }
-                if let Some((widget, tokens)) = build_top_page(route) {
-                    sync_page_hero(&widget, route);
-                    // The panel drives visibility through its own sidebar, never
-                    // a GtkStackSwitcher, so the page title is unused — add_named
-                    // avoids threading dead title strings through every builder.
-                    stack.add_named(&widget, Some(route));
-                    alive.borrow_mut().extend(tokens);
-                }
+                let owned = route.to_string();
+                let build: Rc<dyn Fn() -> Option<BuiltPage>> =
+                    Rc::new(move || build_top_page(&owned));
+                mount_page(&stack, route, route, build, &alive, false);
             })
         };
 
@@ -714,11 +768,17 @@ impl Component for SettingsWindowModel {
                 if sub_stack.child_by_name(name).is_some() {
                     return;
                 }
-                let factory = registry.borrow_mut().remove(name);
+                let factory = registry.borrow().get(name).cloned();
                 if let Some(factory) = factory {
-                    let (widget, tokens) = factory();
-                    sub_stack.add_named(&widget, Some(name));
-                    alive.borrow_mut().extend(tokens);
+                    let build: Rc<dyn Fn() -> Option<BuiltPage>> = Rc::new(move || Some(factory()));
+                    mount_page(
+                        &sub_stack,
+                        name,
+                        &format!("theme/{name}"),
+                        build,
+                        &alive,
+                        false,
+                    );
                 }
             })
         };
@@ -765,7 +825,7 @@ impl Component for SettingsWindowModel {
         // composed pages (Weather / Lyrics / …) spell their factories out.
         macro_rules! page_factory {
             ($model:path => $init:expr) => {
-                Box::new(move || {
+                Rc::new(move || {
                     let ctrl = <$model>::builder().launch($init).detach();
                     let widget: gtk::Widget = ctrl.widget().clone().into();
                     (widget, vec![Box::new(ctrl) as Box<dyn std::any::Any>])
@@ -902,11 +962,17 @@ impl Component for SettingsWindowModel {
                 if sub_stack.child_by_name(name).is_some() {
                     return;
                 }
-                let factory = registry.borrow_mut().remove(name);
+                let factory = registry.borrow().get(name).cloned();
                 if let Some(factory) = factory {
-                    let (widget, tokens) = factory();
-                    sub_stack.add_named(&widget, Some(name));
-                    alive.borrow_mut().extend(tokens);
+                    let build: Rc<dyn Fn() -> Option<BuiltPage>> = Rc::new(move || Some(factory()));
+                    mount_page(
+                        &sub_stack,
+                        name,
+                        &format!("widgets/{name}"),
+                        build,
+                        &alive,
+                        false,
+                    );
                 }
             })
         };
@@ -1381,7 +1447,7 @@ impl Component for SettingsWindowModel {
                     // surface (position / width / height -> the generic per-menu
                     // page). Compose both into one scrolling page so all of
                     // weather's settings live under this single Widgets entry.
-                    let factory: PageFactory = Box::new(|| {
+                    let factory: PageFactory = Rc::new(|| {
                         let weather_ctrl = WeatherSettingsModel::builder()
                             .launch(WeatherSettingsInit {})
                             .detach();
@@ -1438,7 +1504,7 @@ impl Component for SettingsWindowModel {
                     // per-menu page) and the playback knobs (seek step +
                     // album-art size -> MediaPlayerSettings, ported from the
                     // mplayerplus plugin). Compose both into one scrolling page.
-                    let factory: PageFactory = Box::new(|| {
+                    let factory: PageFactory = Rc::new(|| {
                         let menu_ctrl = WidgetMenuSettingsModel::builder()
                             .launch(WidgetMenuSettingsInit {
                                 kind: MenuKind::MediaPlayer,
@@ -1492,7 +1558,7 @@ impl Component for SettingsWindowModel {
                     // (which elements show, cover/label size) and the menu
                     // surface geometry (the generic per-menu page). Compose
                     // both into one page, same as Lyrics.
-                    let factory: PageFactory = Box::new(|| {
+                    let factory: PageFactory = Rc::new(|| {
                         let bar_ctrl = crate::tune_bar_settings::TuneBarSettingsModel::builder()
                             .launch(crate::tune_bar_settings::TuneBarSettingsInit {})
                             .detach();
@@ -1541,7 +1607,7 @@ impl Component for SettingsWindowModel {
                     // Lyrics has two config domains: the bar-pill behaviour (show
                     // the current line in the bar) and the menu surface geometry
                     // (the generic per-menu page). Compose both into one page.
-                    let factory: PageFactory = Box::new(|| {
+                    let factory: PageFactory = Rc::new(|| {
                         let bar_ctrl = crate::lyrics_settings::LyricsSettingsModel::builder()
                             .launch(crate::lyrics_settings::LyricsSettingsInit {})
                             .detach();
@@ -1596,7 +1662,7 @@ impl Component for SettingsWindowModel {
                     // / BottomHidden locations), so add / remove / reorder work
                     // exactly like the normal bar slots -- that's how the user
                     // picks what the drawer hides.
-                    let factory: PageFactory = Box::new(|| {
+                    let factory: PageFactory = Rc::new(|| {
                         let cfg = config_manager().config().read_untracked().clone();
                         let hidden_bar_ctrl = HiddenBarSettingsModel::builder()
                             .launch(HiddenBarSettingsInit {})
@@ -1881,6 +1947,7 @@ impl Component for SettingsWindowModel {
                         .map(|(_, route)| route.clone());
                     if let Some(route) = route {
                         widgets.search_entry.set_text("");
+                        crate::page_defaults::highlight_search(&route, &q);
                         sender.input(SettingsWindowInput::ActivateSection(route));
                     }
                 }
@@ -1921,7 +1988,9 @@ impl Component for SettingsWindowModel {
                         btn.set_child(Some(&lbl));
                         let route = route.clone();
                         let s = sender.clone();
+                        let query = q.clone();
                         btn.connect_clicked(move |_| {
+                            crate::page_defaults::highlight_search(&route, &query);
                             s.input(SettingsWindowInput::ActivateSection(route.clone()));
                         });
                         widgets.search_results_box.append(&btn);

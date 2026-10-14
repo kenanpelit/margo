@@ -119,6 +119,49 @@ pub(crate) fn reload() {
     }
 }
 
+/// The current `config.conf` value of each of `keys` that is set (first
+/// non-comment occurrence, like [`read_raw`]), reading the file once.
+pub(crate) fn read_many(keys: &[&str]) -> Vec<(String, String)> {
+    let body = std::fs::read_to_string(conf_path()).unwrap_or_default();
+    keys.iter()
+        .filter_map(|k| parse_raw(&body, k).map(|v| (k.to_string(), v)))
+        .collect()
+}
+
+/// Return `keys` to margo's built-in defaults: every live `key = …` line is
+/// commented out (kept, not deleted, so the old value stays visible in the
+/// hand-edited file), then `mctl reload`. Settings → Defaults uses this.
+pub(crate) fn unset_keys(keys: &[&str]) {
+    let path = conf_path();
+    let Ok(body) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let mut lines: Vec<String> = body.lines().map(str::to_string).collect();
+    if !comment_out(&mut lines, keys) {
+        return;
+    }
+    let mut out = lines.join("\n");
+    out.push('\n');
+    if let Err(e) = std::fs::write(&path, out) {
+        tracing::warn!(error = %e, "settings: failed to reset config.conf keys");
+        return;
+    }
+    reload();
+}
+
+/// Pure in-place comment-out (no IO) — see [`unset_keys`]. Returns whether
+/// any line changed.
+fn comment_out(lines: &mut [String], keys: &[&str]) -> bool {
+    let mut changed = false;
+    for line in lines.iter_mut() {
+        if keys.iter().any(|k| line_is(k, line)) {
+            *line = format!("# {}  # reset to default by Settings", line.trim_start());
+            changed = true;
+        }
+    }
+    changed
+}
+
 /// Does this line declare `<prefix> = …` (ignoring leading space + comments)?
 fn line_is(prefix: &str, line: &str) -> bool {
     let t = line.trim_start();
@@ -238,6 +281,19 @@ focused_opacity = 1.0";
         assert_eq!(
             l, once,
             "re-applying the same value must not change the file"
+        );
+    }
+
+    #[test]
+    fn comment_out_disables_every_occurrence_only_of_those_keys() {
+        let mut l = lines("borderpx = 4\n# borderpx = 1\ngappih = 5\n  borderpx=6\nborderpx_x = 1");
+        assert!(comment_out(&mut l, &["borderpx"]));
+        assert_eq!(parse_raw(&l.join("\n"), "borderpx"), None);
+        assert_eq!(parse_raw(&l.join("\n"), "gappih").as_deref(), Some("5"));
+        assert_eq!(parse_raw(&l.join("\n"), "borderpx_x").as_deref(), Some("1"));
+        assert!(
+            !comment_out(&mut l, &["borderpx"]),
+            "second pass is a no-op"
         );
     }
 
