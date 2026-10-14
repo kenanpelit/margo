@@ -142,6 +142,9 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
                 data.clients[idx].interactive_grab = false;
             }
             data.drag_swap_target = None;
+            if !(self.was_tiled && data.config.drag_tile_to_tile) {
+                snap_floating_window(data, &self.window);
+            }
             finish_grab_arrange(data, &self.window);
             // Drag-tile-to-tile end of grab. Only kicks in when
             // the grabbed window was tiled (or Mosaic-governed) at
@@ -238,6 +241,126 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
     }
 
     fn unset(&mut self, _data: &mut MargoState) {}
+}
+
+// ── Floating snap ────────────────────────────────────────────────────────────
+
+/// `enable_floating_snap`: on release, pull a dragged floating window's
+/// edges onto the nearest edge of another visible floating window, the
+/// monitor or the work area when closer than `snap_distance` px (mango).
+fn snap_floating_window(data: &mut MargoState, window: &Window) {
+    if !data.config.enable_floating_snap || data.config.snap_distance <= 0 {
+        return;
+    }
+    let Some(idx) = data.client_idx(window) else {
+        return;
+    };
+    let c = &data.clients[idx];
+    if !c.is_floating {
+        return;
+    }
+    let Some(mon) = data.monitors.get(c.monitor) else {
+        return;
+    };
+    let tagset = mon.current_tagset();
+    let outset = |r: crate::layout::Rect, bw: i32| {
+        crate::layout::Rect::new(r.x - bw, r.y - bw, r.width + 2 * bw, r.height + 2 * bw)
+    };
+    let bw = c.border_width as i32;
+    let me = outset(c.float_geom, bw);
+    let others: Vec<crate::layout::Rect> = data
+        .clients
+        .iter()
+        .enumerate()
+        .filter(|&(i, o)| {
+            i != idx && o.is_floating && !o.is_killing && o.is_visible_on(c.monitor, tagset)
+        })
+        .map(|(_, o)| outset(o.geom, o.border_width as i32))
+        .collect();
+    let (dx, dy) = floating_snap_offset(
+        me,
+        &others,
+        &[mon.monitor_area, mon.work_area],
+        data.config.snap_distance,
+    );
+    data.clients[idx].float_geom.x += dx;
+    data.clients[idx].float_geom.y += dy;
+}
+
+/// Offset that snaps `me` per mango's `client_snap`: per axis, the nearest
+/// non-negative gap to a neighbour's facing edge or to an inner edge of a
+/// `bounds` rect, applied if it is under `distance`.
+pub(crate) fn floating_snap_offset(
+    me: crate::layout::Rect,
+    others: &[crate::layout::Rect],
+    bounds: &[crate::layout::Rect],
+    distance: i32,
+) -> (i32, i32) {
+    let (mut left, mut right, mut up, mut down) = (i32::MAX, i32::MAX, i32::MAX, i32::MAX);
+    let take = |slot: &mut i32, gap: i32| {
+        if gap >= 0 && gap < *slot {
+            *slot = gap;
+        }
+    };
+    for o in others {
+        take(&mut left, me.x - (o.x + o.width));
+        take(&mut right, o.x - (me.x + me.width));
+        take(&mut up, me.y - (o.y + o.height));
+        take(&mut down, o.y - (me.y + me.height));
+    }
+    for b in bounds {
+        take(&mut left, me.x - b.x);
+        take(&mut right, b.x + b.width - (me.x + me.width));
+        take(&mut up, me.y - b.y);
+        take(&mut down, b.y + b.height - (me.y + me.height));
+    }
+    let dx = if left < right && left < distance {
+        -left
+    } else if right <= left && right < distance {
+        right
+    } else {
+        0
+    };
+    let dy = if up < down && up < distance {
+        -up
+    } else if down <= up && down < distance {
+        down
+    } else {
+        0
+    };
+    (dx, dy)
+}
+
+#[cfg(test)]
+mod snap_tests {
+    use super::floating_snap_offset;
+    use crate::layout::Rect;
+
+    const SCREEN: Rect = Rect {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+    };
+
+    #[test]
+    fn snaps_to_screen_edges_within_distance() {
+        let me = Rect::new(20, 1080 - 210, 300, 200);
+        assert_eq!(floating_snap_offset(me, &[], &[SCREEN], 30), (-20, 10));
+    }
+
+    #[test]
+    fn snaps_next_to_a_neighbour() {
+        let other = Rect::new(500, 500, 200, 200);
+        let me = Rect::new(715, 520, 100, 100);
+        assert_eq!(floating_snap_offset(me, &[other], &[SCREEN], 30).0, -15);
+    }
+
+    #[test]
+    fn leaves_far_windows_alone() {
+        let me = Rect::new(800, 400, 100, 100);
+        assert_eq!(floating_snap_offset(me, &[], &[SCREEN], 30), (0, 0));
+    }
 }
 
 // ── Grab arrange throttling ───────────────────────────────────────────────────
