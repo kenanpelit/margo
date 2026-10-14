@@ -88,7 +88,6 @@ pub struct OverviewSettingsModel {
     grid_gap_outer: i32,
     grid_dim: f32,
     grid_transition: u32,
-    tab_mode: bool,
     selected_border_mult: f64,
     cycle_order_idx: u32,
     /// Solid backdrop colour painted behind the scroller-overview cells.
@@ -136,7 +135,6 @@ pub enum OverviewSettingsInput {
     SetGridGapOuter(i32),
     SetGridDim(f64),
     SetGridTransition(i32),
-    SetTabMode(bool),
     SetSelectedBorderMult(f64),
     /// 0 = MRU, 1 = Tag, 2 = Mixed.
     SetCycleOrder(u32),
@@ -477,19 +475,6 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
-                        #[template_child] title { set_label: "Tab mode" },
-                        #[template_child] desc { set_label: "Alternate overview tab layout." },
-                        gtk::Switch {
-                            set_valign: gtk::Align::Center,
-                            set_active: model.tab_mode,
-                            connect_active_notify[sender] => move |s| {
-                                sender.input(OverviewSettingsInput::SetTabMode(s.is_active()));
-                            },
-                        },
-                    },
-
-                    #[template]
-                    Row {
                         #[template_child] title { set_label: "Cycle order" },
                         #[template_child] desc { set_label: "Order alt+Tab walks the grid thumbnails." },
                         gtk::DropDown {
@@ -522,7 +507,6 @@ impl Component for OverviewSettingsModel {
             grid_gap_outer: cfg.overview_gap_outer,
             grid_dim: cfg.overview_dim_alpha,
             grid_transition: cfg.overview_transition_ms,
-            tab_mode: cfg.ov_tab_mode != 0,
             selected_border_mult: cfg.overview_selected_border_multiplier as f64,
             cycle_order_idx: match cfg.overview_cycle_order {
                 margo_config::OverviewCycleOrder::Mru => 0,
@@ -573,9 +557,6 @@ impl Component for OverviewSettingsModel {
             }
             OverviewSettingsInput::SetGridTransition(v) => {
                 apply("overview_transition_ms", v.to_string());
-            }
-            OverviewSettingsInput::SetTabMode(on) => {
-                apply("ov_tab_mode", if on { "1" } else { "0" }.to_string());
             }
             OverviewSettingsInput::SetSelectedBorderMult(v) => {
                 apply("overview_selected_border_multiplier", format!("{v:.1}"));

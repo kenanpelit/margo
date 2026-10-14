@@ -533,7 +533,13 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "enable_hotarea" => cfg.enable_hotarea = parse_bool(val),
 
         // overview
-        "ov_tab_mode" => cfg.ov_tab_mode = parse_u32(val),
+        // Legacy alias: 1 = the column (scroller) overview.
+        "ov_tab_mode" => {
+            cfg.ov_tab_mode = parse_u32(val);
+            if cfg.ov_tab_mode == 1 {
+                cfg.overview_style = crate::types::OverviewStyle::Scroller;
+            }
+        }
         "overviewgappi" => cfg.overview_gap_inner = parse_i32(val),
         "overviewgappo" => cfg.overview_gap_outer = parse_i32(val),
         "overview_zoom" => cfg.overview_zoom = parse_f32(val).clamp(0.1, 1.0),
@@ -2643,5 +2649,13 @@ mod tests {
         // `visited` guard, the source line would successfully re-read the
         // fragment and this would fail with borderpx == 1.
         assert_eq!(cfg.borderpx, 5);
+    }
+
+    #[test]
+    fn ov_tab_mode_one_selects_the_scroller_overview() {
+        let cfg = parse_config_str("ov_tab_mode = 1\n", None).unwrap();
+        assert_eq!(cfg.overview_style, crate::types::OverviewStyle::Scroller);
+        let cfg = parse_config_str("overview_style = scroller\nov_tab_mode = 0\n", None).unwrap();
+        assert_eq!(cfg.overview_style, crate::types::OverviewStyle::Scroller);
     }
 }

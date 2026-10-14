@@ -11,7 +11,6 @@ const NO_EFFECT_FIELDS: &[&str] = &[
     "exchange_cross_monitor",
     "focus_cross_monitor",
     "focus_cross_tag",
-    "ov_tab_mode",
     "switch_bindings",
     "syncobj_enable",
     "tablet_map_to_mon",

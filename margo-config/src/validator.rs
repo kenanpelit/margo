@@ -634,7 +634,6 @@ pub const NO_EFFECT_KEYS: &[&str] = &[
     "exchange_cross_monitor",
     "focus_cross_monitor",
     "focus_cross_tag",
-    "ov_tab_mode",
     "switchbind",
     "syncobj_enable",
     "tablet_map_to_mon",
