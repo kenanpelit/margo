@@ -1554,6 +1554,14 @@ fn push_group_tabs(
             output_scale,
             radius,
             prog.0,
+            |member| {
+                state
+                    .clients
+                    .get(member)
+                    .and_then(|c| c.window.wl_surface())
+                    .map(|s| state.decoration_element_ids(&s).group_chip)
+                    .unwrap_or_else(smithay::backend::renderer::element::Id::new)
+            },
         ) {
             elements.push(MargoRenderElement::RoundedSolid(chip));
         }
@@ -1643,7 +1651,7 @@ fn push_dim_overlay(
             .into(),
     );
     let id = match window.wl_surface() {
-        Some(s) => state.decoration_element_ids(&s).2,
+        Some(s) => state.decoration_element_ids(&s).dim,
         None => smithay::backend::renderer::element::Id::new(),
     };
     let tint_key = color.iter().fold(0usize, |acc, c| {
@@ -1918,7 +1926,7 @@ fn push_client_elements(
                             // unchanged shadow reports zero damage instead
                             // of re-damaging its oversized bbox every frame.
                             let shadow_id = match window.wl_surface() {
-                                Some(s) => state.decoration_element_ids(&s).0,
+                                Some(s) => state.decoration_element_ids(&s).shadow,
                                 None => smithay::backend::renderer::element::Id::new(),
                             };
                             let shadow = crate::render::shadow::ShadowRenderElement::new(
@@ -2213,7 +2221,7 @@ fn push_client_elements(
                             // window blur reports zero damage rather than
                             // re-damaging its rect every frame.
                             let blur_id = match window.wl_surface() {
-                                Some(s) => state.decoration_element_ids(&s).1,
+                                Some(s) => state.decoration_element_ids(&s).blur,
                                 None => smithay::backend::renderer::element::Id::new(),
                             };
                             elements.push(MargoRenderElement::Blur(
@@ -2437,7 +2445,7 @@ fn push_layer_elements(
                 // reports zero damage rather than re-damaging every frame.
                 let blur_id = state
                     .decoration_element_ids(surface.layer_surface().wl_surface())
-                    .1;
+                    .blur;
                 elements.push(MargoRenderElement::Blur(
                     crate::render::blur::BlurRenderElement::new(
                         blur_id,

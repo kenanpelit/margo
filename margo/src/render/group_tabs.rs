@@ -22,6 +22,7 @@
 
 use smithay::backend::renderer::element::Id;
 use smithay::backend::renderer::gles::GlesPixelProgram;
+use smithay::backend::renderer::utils::CommitCounter;
 use smithay::utils::{Physical, Point, Rectangle, Size};
 
 use crate::layout::Rect;
@@ -108,6 +109,7 @@ pub fn render_elements(
     output_scale: f64,
     radius: f32,
     program: GlesPixelProgram,
+    chip_id: impl Fn(usize) -> Id,
 ) -> Vec<RoundedSolidElement> {
     let radius_phys = radius * output_scale as f32;
     chip_rects(slot, members, active_idx, bar_height, gap)
@@ -126,13 +128,20 @@ pub fn render_elements(
             } else {
                 inactive_color
             };
+            // Stable per-member id + a colour-derived commit: an
+            // unchanged chip reports no damage, a focus change (colour
+            // swap) does.
+            let color_key = color.iter().fold(0usize, |acc, c| {
+                acc.wrapping_mul(31).wrapping_add(c.to_bits() as usize)
+            });
             RoundedSolidElement::new(
-                Id::new(),
+                chip_id(chip.client_idx),
                 Rectangle::new(loc, size),
                 radius_phys,
                 color,
                 program.clone(),
             )
+            .with_commit(CommitCounter::from(color_key))
         })
         .collect()
 }

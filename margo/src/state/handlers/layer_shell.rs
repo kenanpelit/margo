@@ -138,6 +138,7 @@ impl WlrLayerShellHandler for MargoState {
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
+        self.forget_decoration_ids(surface.wl_surface());
         // Find the monitor index that owns this layer surface
         let mut found_mon: Option<usize> = None;
         for i in 0..self.monitors.len() {

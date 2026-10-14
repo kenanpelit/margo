@@ -149,6 +149,17 @@ impl ShadowRenderElement {
             )
                 .into(),
         );
+        // The id is stable across frames, so anything that changes the
+        // pixels without moving the element (colour, radius after a
+        // `mctl reload`) has to show up in the commit, or the old shadow
+        // stays on screen until unrelated damage.
+        let params_key = color
+            .iter()
+            .copied()
+            .chain([corner_radius, blur, size])
+            .fold(0usize, |acc, v| {
+                acc.wrapping_mul(31).wrapping_add(v.to_bits() as usize)
+            });
         Self {
             id,
             geometry,
@@ -158,7 +169,7 @@ impl ShadowRenderElement {
             inset: size,
             color,
             scale,
-            commit: CommitCounter::default(),
+            commit: CommitCounter::from(params_key),
             program,
         }
     }

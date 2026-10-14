@@ -801,16 +801,12 @@ pub struct MargoState {
     /// every shadow/blur as brand-new and re-damaged its whole (oversized)
     /// bbox each frame — any unrelated repaint then redrew every floating
     /// window's decorations. A stable id lets unchanged decorations report
-    /// zero damage. Entries for closed surfaces just linger (an `Id` is a
-    /// cheap handle); not worth pruning.
+    /// zero damage. Entries are dropped when their surface's window or
+    /// layer goes away (`forget_decoration_ids`).
     pub decoration_ids: std::cell::RefCell<
         std::collections::HashMap<
             smithay::reexports::wayland_server::backend::ObjectId,
-            (
-                smithay::backend::renderer::element::Id,
-                smithay::backend::renderer::element::Id,
-                smithay::backend::renderer::element::Id,
-            ),
+            DecorationIds,
         >,
     >,
 
@@ -3186,24 +3182,49 @@ impl ForeignToplevelListHandler for MargoState {
 // ── XwmHandler: X11 window management ────────────────────────────────────────
 
 impl MargoState {
-    /// Stable `(shadow_id, blur_id, dim_id)` for a surface's self-drawn
-    /// decorations, created once and reused across frames. See
-    /// [`MargoState::decoration_ids`]. The triple is created lazily on
-    /// first use; `Id` is a cheap clonable handle.
+    /// Stable element ids for a surface's self-drawn decorations,
+    /// created once and reused across frames. See
+    /// [`MargoState::decoration_ids`]. `Id` is a cheap clonable handle.
     pub fn decoration_element_ids(
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-    ) -> (
-        smithay::backend::renderer::element::Id,
-        smithay::backend::renderer::element::Id,
-        smithay::backend::renderer::element::Id,
-    ) {
-        use smithay::backend::renderer::element::Id;
+    ) -> DecorationIds {
         self.decoration_ids
             .borrow_mut()
             .entry(surface.id())
-            .or_insert_with(|| (Id::new(), Id::new(), Id::new()))
+            .or_insert_with(DecorationIds::new)
             .clone()
+    }
+
+    /// Drop a destroyed surface's decoration ids.
+    pub fn forget_decoration_ids(
+        &self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
+        self.decoration_ids.borrow_mut().remove(&surface.id());
+    }
+}
+
+/// Per-surface stable render-element ids (see
+/// [`MargoState::decoration_element_ids`]).
+#[derive(Clone)]
+pub struct DecorationIds {
+    pub shadow: smithay::backend::renderer::element::Id,
+    pub blur: smithay::backend::renderer::element::Id,
+    pub dim: smithay::backend::renderer::element::Id,
+    /// The surface's own chip in its group's tab strip.
+    pub group_chip: smithay::backend::renderer::element::Id,
+}
+
+impl DecorationIds {
+    fn new() -> Self {
+        use smithay::backend::renderer::element::Id;
+        Self {
+            shadow: Id::new(),
+            blur: Id::new(),
+            dim: Id::new(),
+            group_chip: Id::new(),
+        }
     }
 }
 

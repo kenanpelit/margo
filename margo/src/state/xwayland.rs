@@ -102,6 +102,9 @@ impl MargoState {
             let group = self.group_of(idx);
             self.mru_remove_window(&window);
             self.space.unmap_elem(&window);
+            if let Some(surface) = window.wl_surface() {
+                self.forget_decoration_ids(&surface);
+            }
             self.clients.remove(idx);
             self.remove_focus_history_id(client_id);
             self.shift_indices_after_remove(idx);
