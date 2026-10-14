@@ -226,8 +226,7 @@ impl MargoState {
         };
 
         let window = self.clients[focused_idx].window.clone();
-        let moved = self.clients.remove(focused_idx);
-        self.clients.insert(target_idx, moved);
+        self.move_client_index(focused_idx, target_idx);
 
         self.arrange_monitor(mon_idx);
         self.focus_surface(Some(FocusTarget::Window(window)));

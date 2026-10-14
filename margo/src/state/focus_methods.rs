@@ -224,6 +224,39 @@ impl MargoState {
         }
     }
 
+    /// Swap two entries of `clients`, keeping every monitor's
+    /// `selected` / `prev_selected` on the same *windows*.
+    pub(crate) fn swap_clients(&mut self, a: usize, b: usize) {
+        self.clients.swap(a, b);
+        self.remap_monitor_indices(|i| {
+            if i == a {
+                b
+            } else if i == b {
+                a
+            } else {
+                i
+            }
+        });
+    }
+
+    /// Move the client at `from` so it ends up at index `to` (remove +
+    /// insert), keeping monitor index slots on the same windows.
+    pub(crate) fn move_client_index(&mut self, from: usize, to: usize) {
+        let client = self.clients.remove(from);
+        self.clients.insert(to, client);
+        self.remap_monitor_indices(|i| index_after_move(i, from, to));
+    }
+
+    fn remap_monitor_indices(&mut self, map: impl Fn(usize) -> usize) {
+        for mon in &mut self.monitors {
+            for slot in [&mut mon.selected, &mut mon.prev_selected] {
+                if let Some(s) = slot.as_mut() {
+                    *s = map(*s);
+                }
+            }
+        }
+    }
+
     /// Remove a closing window's stable identity from every monitor MRU.
     pub(crate) fn remove_focus_history_id(&mut self, client_id: u64) {
         for monitor in &mut self.monitors {
@@ -288,5 +321,40 @@ impl MargoState {
 
         self.input_pointer.x = self.input_pointer.x.clamp(min_x as f64, (max_x - 1) as f64);
         self.input_pointer.y = self.input_pointer.y.clamp(min_y as f64, (max_y - 1) as f64);
+    }
+}
+
+/// Where the element at index `i` lands after moving the element at
+/// `from` to `to` with `Vec::remove` + `Vec::insert`.
+fn index_after_move(i: usize, from: usize, to: usize) -> usize {
+    if i == from {
+        to
+    } else if from < to && (from + 1..=to).contains(&i) {
+        i - 1
+    } else if to < from && (to..from).contains(&i) {
+        i + 1
+    } else {
+        i
+    }
+}
+
+#[cfg(test)]
+mod index_tests {
+    use super::index_after_move;
+
+    #[test]
+    fn index_after_move_matches_vec_remove_insert() {
+        for len in 1..6usize {
+            for from in 0..len {
+                for to in 0..len {
+                    let mut v: Vec<usize> = (0..len).collect();
+                    let x = v.remove(from);
+                    v.insert(to, x);
+                    for (new_pos, &orig) in v.iter().enumerate() {
+                        assert_eq!(index_after_move(orig, from, to), new_pos);
+                    }
+                }
+            }
+        }
     }
 }

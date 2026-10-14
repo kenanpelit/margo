@@ -197,7 +197,7 @@ impl MargoState {
         };
         let target_idx = visible[target_pos];
         let window = self.clients[current_idx].window.clone();
-        self.clients.swap(current_idx, target_idx);
+        self.swap_clients(current_idx, target_idx);
         self.arrange_monitor(mon_idx);
         self.focus_surface(Some(FocusTarget::Window(window)));
     }
@@ -1294,7 +1294,7 @@ impl MargoState {
             return;
         };
 
-        self.clients.swap(a, b);
+        self.swap_clients(a, b);
         self.arrange_monitor(mon_idx);
     }
 

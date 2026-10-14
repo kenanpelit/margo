@@ -287,10 +287,7 @@ impl MargoState {
         };
         let a = members[pos];
         let b = members[other_pos];
-        self.clients.swap(a, b);
-        // `selected` slots may now point at the swapped indices; the
-        // existing focus machinery re-resolves from the keyboard focus,
-        // so a coarse fix-up is enough.
+        self.swap_clients(a, b);
         let mon_idx = self.clients[a]
             .monitor
             .min(self.monitors.len().saturating_sub(1));

@@ -39,6 +39,7 @@ mod color_management;
 mod dispatch;
 mod dmabuf;
 mod floating_layout;
+mod focus_index;
 mod focus_mon;
 mod gamma_control;
 mod globals;

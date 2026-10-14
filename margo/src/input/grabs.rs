@@ -470,7 +470,7 @@ pub(crate) fn resolve_drag_tile_drop(
 
     let cursor = (data.input_pointer.x as i32, data.input_pointer.y as i32);
     if let Some(dst) = find_drag_tile_target(data, src, cursor) {
-        data.clients.swap(src, dst);
+        data.swap_clients(src, dst);
     }
     data.drag_swap_target = None;
 
