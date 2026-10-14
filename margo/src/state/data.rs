@@ -39,12 +39,44 @@ pub enum HotCorner {
 impl HotCorner {
     /// Pull the matching dispatch-action string out of `Config`. Empty
     /// string = "this corner is disabled".
+    ///
+    /// mango's `enable_hotarea` / `hotarea_corner` alias onto this: the
+    /// hot-area corner toggles the overview unless its own
+    /// `hot_corner_<corner>` says otherwise.
     pub fn action_str(self, cfg: &Config) -> &str {
-        match self {
+        let own = match self {
             HotCorner::TopLeft => &cfg.hot_corner_top_left,
             HotCorner::TopRight => &cfg.hot_corner_top_right,
             HotCorner::BottomLeft => &cfg.hot_corner_bottom_left,
             HotCorner::BottomRight => &cfg.hot_corner_bottom_right,
+        };
+        if own.trim().is_empty() && self.is_hotarea(cfg) {
+            "toggle_overview"
+        } else {
+            own
+        }
+    }
+
+    /// Whether this is the enabled mango hot-area corner.
+    pub fn is_hotarea(self, cfg: &Config) -> bool {
+        use margo_config::HotareaCorner as H;
+        cfg.enable_hotarea
+            && matches!(
+                (self, cfg.hotarea_corner),
+                (HotCorner::TopLeft, H::TopLeft)
+                    | (HotCorner::TopRight, H::TopRight)
+                    | (HotCorner::BottomLeft, H::BottomLeft)
+                    | (HotCorner::BottomRight, H::BottomRight)
+            )
+    }
+
+    /// Side of the square trigger zone in logical px: `hotarea_size` for
+    /// the hot-area corner, otherwise the 1×1 corner pixel (niri).
+    pub fn zone_size(self, cfg: &Config) -> f64 {
+        if self.is_hotarea(cfg) {
+            f64::from(cfg.hotarea_size.max(1))
+        } else {
+            1.0
         }
     }
 }

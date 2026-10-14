@@ -1218,7 +1218,7 @@ impl Default for Config {
 
             hotarea_size: 10,
             hotarea_corner: HotareaCorner::BottomLeft,
-            enable_hotarea: true,
+            enable_hotarea: false,
 
             ov_tab_mode: 0,
             overview_gap_inner: 5,

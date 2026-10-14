@@ -870,17 +870,25 @@ fn hot_corner_at(state: &MargoState, x: f64, y: f64) -> Option<crate::state::Hot
         let y0 = geo.loc.y as f64;
         let x1 = (geo.loc.x + geo.size.w) as f64;
         let y1 = (geo.loc.y + geo.size.h) as f64;
-        let near_left = (x - x0).abs() < 1.0;
-        let near_right = (x - (x1 - 1.0)).abs() < 1.0;
-        let near_top = (y - y0).abs() < 1.0;
-        let near_bottom = (y - (y1 - 1.0)).abs() < 1.0;
-        match (near_left, near_right, near_top, near_bottom) {
-            (true, _, true, _) => Some(HotCorner::TopLeft),
-            (_, true, true, _) => Some(HotCorner::TopRight),
-            (true, _, _, true) => Some(HotCorner::BottomLeft),
-            (_, true, _, true) => Some(HotCorner::BottomRight),
-            _ => None,
-        }
+        [
+            HotCorner::TopLeft,
+            HotCorner::TopRight,
+            HotCorner::BottomLeft,
+            HotCorner::BottomRight,
+        ]
+        .into_iter()
+        .find(|corner| {
+            let zone = corner.zone_size(&state.config);
+            let horizontal = match corner {
+                HotCorner::TopLeft | HotCorner::BottomLeft => x >= x0 && x < x0 + zone,
+                HotCorner::TopRight | HotCorner::BottomRight => x < x1 && x >= x1 - zone,
+            };
+            let vertical = match corner {
+                HotCorner::TopLeft | HotCorner::TopRight => y >= y0 && y < y0 + zone,
+                HotCorner::BottomLeft | HotCorner::BottomRight => y < y1 && y >= y1 - zone,
+            };
+            horizontal && vertical
+        })
     })
 }
 

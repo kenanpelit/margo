@@ -122,3 +122,27 @@ fn leaving_the_corner_cancels_the_dwell_timer() {
     fx.dispatch();
     assert!(!fx.server.state.monitors[0].is_overview);
 }
+
+#[test]
+fn hotarea_corner_toggles_overview_from_a_sized_zone() {
+    let mut fx = Fixture::with_config(Config {
+        enable_hotarea: true,
+        hotarea_corner: margo_config::HotareaCorner::BottomRight,
+        hotarea_size: 10,
+        hot_corner_dwell_ms: 0,
+        ..Config::default()
+    });
+    fx.add_keyboard();
+    fx.add_output("DP-1", (1920, 1080));
+    // 6 px in from the corner: outside the 1 px niri corner, inside the
+    // 10 px hot area.
+    fx.server.state.input_pointer.x = 1914.0;
+    fx.server.state.input_pointer.y = 1074.0;
+    update_hot_corner(&mut fx.server.state);
+    assert_eq!(
+        fx.server.state.hot_corner_dwelling,
+        Some(HotCorner::BottomRight)
+    );
+    update_hot_corner(&mut fx.server.state);
+    assert!(fx.server.state.monitors[0].is_overview);
+}
