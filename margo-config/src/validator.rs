@@ -622,6 +622,10 @@ fn is_valid_modifier_token(t: &str) -> bool {
     t.is_empty() || t.starts_with("code:") || VALID_MODIFIERS.contains(&t.as_str())
 }
 
+/// (`blur_optimized` is a deliberate, documented compatibility no-op —
+/// its wallpaper-only blur cache was hardware-tested and reverted — so
+/// it is not listed.)
+///
 /// Keys the parser accepts (mango compatibility, or settings that were
 /// planned) but the compositor never reads — setting them changes
 /// nothing. Reported as W006 so a user tuning one isn't left guessing.
@@ -629,7 +633,6 @@ fn is_valid_modifier_token(t: &str) -> bool {
 /// starts reading one of these, so an implemented key can't keep warning.
 pub const NO_EFFECT_KEYS: &[&str] = &[
     "allow_tearing",
-    "blur_optimized",
     "tablet_map_to_mon",
     "touch_degrees_leniency",
     "touch_distance_threshold",

@@ -6,7 +6,6 @@
 /// `Config` fields set by the `NO_EFFECT_KEYS` keys.
 const NO_EFFECT_FIELDS: &[&str] = &[
     "allow_tearing",
-    "blur_optimized",
     "tablet_map_to_mon",
     "touch_degrees_leniency",
     "touch_distance_threshold",
