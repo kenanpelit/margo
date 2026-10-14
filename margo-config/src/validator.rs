@@ -631,7 +631,6 @@ pub const NO_EFFECT_KEYS: &[&str] = &[
     "allow_tearing",
     "axisbind",
     "blur_optimized",
-    "exchange_cross_monitor",
     "focus_cross_monitor",
     "focus_cross_tag",
     "switchbind",

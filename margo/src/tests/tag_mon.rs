@@ -119,3 +119,46 @@ fn tag_mon_is_noop_with_single_output() {
         "single-output tag_mon must not re-tag the window",
     );
 }
+
+/// `exchange_cross_monitor`: `move_client` at the monitor edge swaps the
+/// focused window with the nearest tiled window on the next monitor.
+#[test]
+fn move_client_at_the_edge_swaps_across_monitors_when_enabled() {
+    let mut fx = Fixture::new();
+    fx.add_keyboard();
+    fx.add_output("DP-1", (1920, 1080));
+    fx.add_output("DP-2", (1920, 1080));
+    fx.server.state.config.animations = false;
+    fx.server.state.config.exchange_cross_monitor = true;
+
+    let _a = map_focused_window(&mut fx);
+    // Second window: send it to DP-2.
+    let _b = map_focused_window(&mut fx);
+    let b_idx = fx.server.state.focused_client_idx().unwrap();
+    fx.server.state.tag_mon(1);
+    let b_id = fx.server.state.clients[b_idx].id;
+    assert_eq!(fx.server.state.clients[b_idx].monitor, 1);
+
+    // Focus the DP-1 window and push it right, past the edge.
+    let a_idx = (0..2)
+        .find(|&i| fx.server.state.clients[i].monitor == 0)
+        .unwrap();
+    let a_id = fx.server.state.clients[a_idx].id;
+    let w = fx.server.state.clients[a_idx].window.clone();
+    fx.server
+        .state
+        .focus_surface(Some(crate::state::FocusTarget::Window(w)));
+    fx.server.state.move_client(margo_config::Direction::Right);
+
+    let mon_of = |fx: &Fixture, id: u64| {
+        fx.server
+            .state
+            .clients
+            .iter()
+            .find(|c| c.id == id)
+            .unwrap()
+            .monitor
+    };
+    assert_eq!(mon_of(&fx, a_id), 1);
+    assert_eq!(mon_of(&fx, b_id), 0);
+}

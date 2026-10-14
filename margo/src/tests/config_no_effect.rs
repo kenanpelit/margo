@@ -8,7 +8,6 @@ const NO_EFFECT_FIELDS: &[&str] = &[
     "allow_lock_transparent",
     "allow_tearing",
     "blur_optimized",
-    "exchange_cross_monitor",
     "focus_cross_monitor",
     "focus_cross_tag",
     "switch_bindings",

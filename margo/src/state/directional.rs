@@ -193,12 +193,9 @@ impl MargoState {
     /// windows in between untouched instead of shifting them, which is
     /// the actual "push aside" mango describes.
     ///
-    /// No-ops on a floating/fullscreen/minimized focus (`!is_tiled()`)
-    /// and when there's no neighbour that way. Unlike
-    /// `focus_window_or_workspace`, an edge doesn't fall through to a
-    /// tag/monitor jump — margo has no directional (as opposed to
-    /// cyclic) monitor-selection primitive to jump through, and this
-    /// stays a same-tag reorder.
+    /// No-ops on a floating/fullscreen/minimized focus (`!is_tiled()`).
+    /// At the edge, `exchange_cross_monitor` swaps with the nearest tiled
+    /// window that way on another monitor; otherwise nothing happens.
     pub fn move_client(&mut self, dir: Direction) {
         let Some(focused_idx) = self.focused_client_idx() else {
             return;
@@ -221,14 +218,52 @@ impl MargoState {
             .map(|(i, c)| (i, c.geom))
             .collect();
 
-        let Some(target_idx) = spatial_neighbor(focused_geom, &candidates, dir) else {
+        let window = self.clients[focused_idx].window.clone();
+        if let Some(target_idx) = spatial_neighbor(focused_geom, &candidates, dir) {
+            self.move_client_index(focused_idx, target_idx);
+            self.arrange_monitor(mon_idx);
+            self.focus_surface(Some(FocusTarget::Window(window)));
+            return;
+        }
+
+        // `exchange_cross_monitor` (mango): at the monitor edge, swap with
+        // the nearest tiled window that way on another monitor — each
+        // takes the other's monitor, tags and slot.
+        if !self.config.exchange_cross_monitor {
+            return;
+        }
+        let others: Vec<(usize, Rect)> = self
+            .clients
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                c.monitor != mon_idx
+                    && c.is_tiled()
+                    && self
+                        .monitors
+                        .get(c.monitor)
+                        .is_some_and(|m| c.is_visible_on(c.monitor, m.current_tagset()))
+            })
+            .map(|(i, c)| (i, c.geom))
+            .collect();
+        let Some(other_idx) = spatial_neighbor(focused_geom, &others, dir) else {
             return;
         };
-
-        let window = self.clients[focused_idx].window.clone();
-        self.move_client_index(focused_idx, target_idx);
-
-        self.arrange_monitor(mon_idx);
+        let other_mon = self.clients[other_idx].monitor;
+        let (a_mon, a_tags) = (
+            self.clients[focused_idx].monitor,
+            self.clients[focused_idx].tags,
+        );
+        let (b_mon, b_tags) = (
+            self.clients[other_idx].monitor,
+            self.clients[other_idx].tags,
+        );
+        self.clients[focused_idx].monitor = b_mon;
+        self.clients[focused_idx].tags = b_tags;
+        self.clients[other_idx].monitor = a_mon;
+        self.clients[other_idx].tags = a_tags;
+        self.swap_clients(focused_idx, other_idx);
+        self.arrange_monitors(&[mon_idx, other_mon]);
         self.focus_surface(Some(FocusTarget::Window(window)));
     }
 }
