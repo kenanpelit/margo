@@ -5,6 +5,54 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] – 2026-10-15
+
+**Settings, reorganised the KDE System Settings way: clearer categories,
+page headers that match the sidebar, and on every page "what did I
+change?", a Defaults button and search that lands on the matching row.**
+
+### Added
+
+- **Changed settings at a glance.** Each Settings page header shows
+  "N changed"; its popover lists every setting that differs from its
+  default, with the current and default value. A new header toggle,
+  *Highlight changed settings*, marks those rows with an accent bar
+  (on by default, remembered).
+- **Defaults per page.** Resets the page's settings after an inline
+  confirmation, then rebuilds the page so every control shows the reset
+  value. Shell settings return to their built-in defaults. Compositor
+  keys are commented out in `config.conf` (kept, never deleted, so the
+  old value stays visible) and margo reloads. Lists you built yourself
+  are never reset: bar widgets, autostart scripts, calendar
+  subscriptions, notification blocklist, saved weather locations,
+  window/layer/tag rules and per-tag layouts.
+- **Search lands on the setting.** Opening a search result scrolls to
+  the first matching row (or section) and flashes it.
+- Pages that were missing from search by name (VPN, AI, Translate,
+  Calendar, Date & Time, Overview) are found now. Every sidebar label is
+  searchable.
+
+### Changed
+
+- **Sidebar categories follow KDE System Settings:** General ·
+  Appearance · Workspace · Window Management · Input · Hardware ·
+  Network · Applications · System · Help (Applications and System start
+  collapsed). Clearer names: *Window Style* (was Appearance),
+  *Input Devices*, *Keyboard Shortcuts*, *On-screen Displays*, *Tags*,
+  *Startup*. Every row and group has its own icon. Groups you had
+  collapsed may open expanded once because their names changed.
+- **Page headers match the sidebar row** that opens them (title and
+  icon), enforced when the page is built so they can't drift again.
+- Launcher settings rows use the same row style as every other page.
+
+### Developer notes
+
+- `mshell-settings/build.rs` generates which settings each page owns
+  from the page sources (`update_config` field paths,
+  `reactive_settings!` bindings, margo option keys). Rows opt into
+  highlighting with `set_widget_name: "setting:<key>"`, and a test
+  validates every tag. See `docs/config-conventions.md` §9.
+
 ## [4.0.0] – 2026-10-14
 
 **Graceful reboot / shutdown, forty config keys that finally do what they
