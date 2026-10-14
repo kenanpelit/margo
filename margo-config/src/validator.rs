@@ -628,7 +628,6 @@ fn is_valid_modifier_token(t: &str) -> bool {
 /// starts reading one of these, so an implemented key can't keep warning.
 pub const NO_EFFECT_KEYS: &[&str] = &[
     "allow_lock_transparent",
-    "allow_shortcuts_inhibit",
     "allow_tearing",
     "axisbind",
     "blur_optimized",
@@ -638,7 +637,6 @@ pub const NO_EFFECT_KEYS: &[&str] = &[
     "exchange_cross_monitor",
     "focus_cross_monitor",
     "focus_cross_tag",
-    "focus_on_activate",
     "hotarea_corner",
     "hotarea_size",
     "new_is_master",

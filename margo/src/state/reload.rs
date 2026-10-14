@@ -233,6 +233,13 @@ impl MargoState {
         // have just changed — start/stop/re-sync the watcher to match.
         self.sync_config_watcher();
         self.arm_cursor_hide_timer();
+        // `allow_shortcuts_inhibit = 0` withdraws inhibitors already
+        // granted; 2 (deny new) leaves them alone.
+        if self.config.allow_shortcuts_inhibit == margo_config::ShortcutsInhibit::Disable {
+            for inhibitor in self.keyboard_shortcuts_inhibiting_surfaces.values() {
+                inhibitor.inactivate();
+            }
+        }
         tracing::info!("config reloaded");
         Ok(())
     }

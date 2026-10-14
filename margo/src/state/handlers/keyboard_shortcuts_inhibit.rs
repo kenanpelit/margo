@@ -29,11 +29,22 @@ impl KeyboardShortcutsInhibitHandler for MargoState {
     }
 
     fn new_inhibitor(&mut self, inhibitor: KeyboardShortcutsInhibitor) {
-        inhibitor.activate();
         let surface = inhibitor.wl_surface().clone();
+        // mango: `allow_shortcuts_inhibit = 0` (or margo's 2, deny new)
+        // never honours an inhibitor; a window rule
+        // `allow_shortcuts_inhibit:0` refuses it per client. Layer
+        // surfaces follow the global setting only.
+        let allowed = self.config.allow_shortcuts_inhibit == margo_config::ShortcutsInhibit::Enable
+            && self
+                .client_idx_for_surface(&surface)
+                .is_none_or(|idx| self.clients[idx].allow_shortcuts_inhibit);
+        if allowed {
+            inhibitor.activate();
+        }
         tracing::info!(
             surface = ?surface.id(),
-            "keyboard-shortcuts-inhibit: new inhibitor (auto-activated)",
+            allowed,
+            "keyboard-shortcuts-inhibit: new inhibitor",
         );
         self.keyboard_shortcuts_inhibiting_surfaces
             .insert(surface, inhibitor);

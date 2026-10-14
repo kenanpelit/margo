@@ -84,12 +84,14 @@ impl XdgActivationHandler for MargoState {
         // valid — activation request. Common case: a Picture-in-Picture
         // popup re-activating itself on every frame. Mark urgent
         // instead of jumping the view/focus to it.
-        if self.clients[idx].block_activation_focus {
+        // Global `focus_on_activate = 0` (mango) does the same for every
+        // client.
+        if !self.config.focus_on_activate || self.clients[idx].block_activation_focus {
             self.clients[idx].is_urgent = true;
             self.mark_state_dirty();
             self.request_repaint();
             tracing::info!(
-                "xdg_activation: blocked focus-steal (rule), marked urgent app_id={} idx={}",
+                "xdg_activation: blocked focus-steal, marked urgent app_id={} idx={}",
                 self.clients[idx].app_id,
                 idx,
             );

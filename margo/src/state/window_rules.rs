@@ -402,6 +402,9 @@ impl MargoState {
             if let Some(allow) = rule.focus_on_xdg_activate {
                 client.block_activation_focus = !allow;
             }
+            if let Some(allow) = rule.allow_shortcuts_inhibit {
+                client.allow_shortcuts_inhibit = allow;
+            }
             if let Some(value) = rule.no_fade_in {
                 client.no_fade_in = value;
             }

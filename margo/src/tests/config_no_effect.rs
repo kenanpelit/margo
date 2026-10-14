@@ -6,7 +6,6 @@
 /// `Config` fields set by the `NO_EFFECT_KEYS` keys.
 const NO_EFFECT_FIELDS: &[&str] = &[
     "allow_lock_transparent",
-    "allow_shortcuts_inhibit",
     "allow_tearing",
     "blur_optimized",
     "button_map",
@@ -15,7 +14,6 @@ const NO_EFFECT_FIELDS: &[&str] = &[
     "exchange_cross_monitor",
     "focus_cross_monitor",
     "focus_cross_tag",
-    "focus_on_activate",
     "hotarea_corner",
     "hotarea_size",
     "new_is_master",

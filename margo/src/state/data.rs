@@ -174,6 +174,9 @@ pub struct MargoClient {
     /// `request_activation` (xdg_activation.rs) marks the client
     /// urgent instead of focusing it.
     pub block_activation_focus: bool,
+    /// Window rule `allow_shortcuts_inhibit:0` refuses this client's
+    /// keyboard-shortcuts-inhibit requests.
+    pub allow_shortcuts_inhibit: bool,
     pub no_fade_in: bool,
     pub no_fade_out: bool,
     pub no_blur: bool,
@@ -319,6 +322,7 @@ impl MargoClient {
             allow_csd: false,
             no_focus: false,
             block_activation_focus: false,
+            allow_shortcuts_inhibit: true,
             no_fade_in: false,
             no_fade_out: false,
             no_blur: false,
