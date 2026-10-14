@@ -396,6 +396,729 @@ fn ensure_default_config(config_override: Option<&std::path::Path>) {
     }
 }
 
+/// Work done after every event-loop dispatch: Wayland flush, coalesced
+/// IPC push, animation ticking and the overlay timeouts.
+fn on_loop_iteration(state: &mut MargoState) {
+    if state.should_quit {
+        state.loop_signal.stop();
+        return;
+    }
+    // Flush pending Wayland messages after each iteration
+    if let Err(e) = state.display_handle.flush_clients() {
+        error!("flush_clients: {e}");
+    }
+    // Coalesced IPC push: a burst of state changes within one
+    // dispatch marks state dirty repeatedly but fans out one
+    // `watch` snapshot frame here, once per iteration.
+    state.flush_ipc_if_dirty();
+    let now = utils::now_ms();
+    tick_frame_animations(state, now);
+
+    // Scroller-overview open/close zoom animation. Advances the
+    // eased progress and keeps repainting until it settles (a close
+    // also clears the overview here when it reaches 0).
+    if state.tick_scroller_overview(now) {
+        state.request_scene_repaint();
+    }
+
+    // Config-error overlay timeout. The banner is armed by
+    // `MargoState::reload_config` with a 10 s deadline; once the
+    // deadline passes we clear it here and request one final
+    // repaint so the banner doesn't visually linger on a stale
+    // frame (the renderer would otherwise re-emit it on next
+    // damage even though the deadline is gone). Cheap check —
+    // a comparison per loop iteration when the overlay is active,
+    // nothing when it isn't.
+    if let Some(until) = state.config_error_overlay_until {
+        if std::time::Instant::now() >= until {
+            state.config_error_overlay_until = None;
+            state.request_repaint();
+        }
+    }
+}
+
+/// Advance every running animation one step and re-map / repaint what
+/// moved.
+fn tick_frame_animations(state: &mut MargoState, now: u32) {
+    // Capture the client set before ticking as well as after: an
+    // animation that settles on this tick still needs one final frame, but
+    // its `running` flag will already be false afterwards.
+    let mut animation_clients: Vec<usize> = state
+        .clients
+        .iter()
+        .enumerate()
+        .filter(|(_, client)| {
+            client.animation.running
+                || client.opacity_animation.running
+                || client.opening_animation.is_some()
+                || client.resize_snapshot.is_some()
+        })
+        .map(|(idx, _)| idx)
+        .collect();
+    let mut closing_animation_monitors: Vec<usize> = state
+        .closing_clients
+        .iter()
+        .filter_map(|client| {
+            if state.session_locked || state.scroller_overview.is_some() {
+                return None;
+            }
+            let monitor = state
+                .monitors
+                .get(client.monitor)
+                .filter(|monitor| monitor.enabled)?;
+            let tagset = if monitor.is_overview {
+                !0
+            } else {
+                monitor.current_tagset()
+            };
+            ((client.tags & tagset) != 0).then_some(client.monitor)
+        })
+        .collect();
+    let mut layer_animation_outputs: Vec<_> = state
+        .layer_animations
+        .values()
+        .filter(|anim| {
+            state.scroller_overview.is_none()
+                && state.layer_renders_on_output(&anim.output, anim.layer)
+        })
+        .map(|anim| anim.output.clone())
+        .collect();
+    let mut unique_layer_outputs = Vec::new();
+    for output in layer_animation_outputs.drain(..) {
+        if !unique_layer_outputs.contains(&output) {
+            unique_layer_outputs.push(output);
+        }
+    }
+    layer_animation_outputs = unique_layer_outputs;
+    let nothing_animating = animation_clients.is_empty()
+        && state.closing_clients.is_empty()
+        && state.layer_animations.is_empty();
+    let animations_changed = !nothing_animating && {
+        let cfg = &state.config;
+        let use_spring = cfg.animation_clock_move.eq_ignore_ascii_case("spring");
+        // The spring carried in `AnimTickSpec` is a 0→1 *progress*
+        // spring — its from/to/initial_velocity are unused at tick
+        // time; only the params (damping/mass/stiffness/epsilon)
+        // matter, and they're rebuilt every frame from config so
+        // `/reload` picks up new tuning without restart.
+        let spring = animation::spring::Spring {
+            from: 0.0,
+            to: 1.0,
+            initial_velocity: 0.0,
+            params: animation::spring::SpringParams::new(
+                cfg.animation_spring_damping_ratio,
+                cfg.animation_spring_stiffness,
+                0.0001,
+            ),
+        };
+        let spec = state::AnimTickSpec {
+            duration_move: cfg.animation_duration_move,
+            use_spring,
+            spring,
+        };
+        // Disjoint borrows across MargoState fields so each
+        // category of animation can be advanced from a single
+        // call. The compiler treats these as independent
+        // because they're distinct named fields.
+        let curves = &state.animation_curves;
+        state::tick_animations(
+            &mut state.clients,
+            curves,
+            now,
+            spec,
+            &mut state.closing_clients,
+            &mut state.layer_animations,
+        )
+    };
+    if animations_changed {
+        animation_clients.extend(
+            state
+                .clients
+                .iter()
+                .enumerate()
+                .filter(|(_, client)| {
+                    client.animation.running
+                        || client.opacity_animation.running
+                        || client.opening_animation.is_some()
+                        || client.resize_snapshot.is_some()
+                })
+                .map(|(idx, _)| idx),
+        );
+        animation_clients.sort_unstable();
+        animation_clients.dedup();
+        closing_animation_monitors.extend(state.closing_clients.iter().filter_map(|client| {
+            if state.session_locked || state.scroller_overview.is_some() {
+                return None;
+            }
+            let monitor = state
+                .monitors
+                .get(client.monitor)
+                .filter(|monitor| monitor.enabled)?;
+            let tagset = if monitor.is_overview {
+                !0
+            } else {
+                monitor.current_tagset()
+            };
+            ((client.tags & tagset) != 0).then_some(client.monitor)
+        }));
+        closing_animation_monitors.sort_unstable();
+        closing_animation_monitors.dedup();
+        for output in state
+            .layer_animations
+            .values()
+            .filter(|anim| {
+                state.scroller_overview.is_none()
+                    && state.layer_renders_on_output(&anim.output, anim.layer)
+            })
+            .map(|anim| anim.output.clone())
+        {
+            if !layer_animation_outputs.contains(&output) {
+                layer_animation_outputs.push(output);
+            }
+        }
+
+        // Snapshot the old Space memberships and union them with every
+        // output intersected by the just-ticked geometry. This preserves
+        // the erase side of a cross-output move before `map_element`
+        // changes the element location below.
+        let mut animation_outputs = layer_animation_outputs;
+        for &idx in &animation_clients {
+            let Some(client) = state.clients.get(idx) else {
+                continue;
+            };
+            if let Some(owner) = state
+                .monitors
+                .get(client.monitor)
+                .filter(|monitor| monitor.enabled)
+                .map(|monitor| monitor.output.clone())
+                && state.client_renders_on_output(client, &owner)
+                && !animation_outputs.contains(&owner)
+            {
+                animation_outputs.push(owner);
+            }
+            for output in state.space.outputs_for_element(&client.window) {
+                if state.client_renders_on_output(client, &output)
+                    && !animation_outputs.contains(&output)
+                {
+                    animation_outputs.push(output);
+                }
+            }
+            let geom = client.geom;
+            for monitor in state.monitors.iter().filter(|monitor| monitor.enabled) {
+                let area = monitor.monitor_area;
+                let intersects = geom.x < area.x + area.width
+                    && geom.x + geom.width > area.x
+                    && geom.y < area.y + area.height
+                    && geom.y + geom.height > area.y;
+                if intersects
+                    && state.client_renders_on_output(client, &monitor.output)
+                    && !animation_outputs.contains(&monitor.output)
+                {
+                    animation_outputs.push(monitor.output.clone());
+                }
+            }
+        }
+        for &mon_idx in &closing_animation_monitors {
+            if let Some(output) = state
+                .monitors
+                .get(mon_idx)
+                .filter(|monitor| monitor.enabled && !state.session_locked)
+                .map(|monitor| monitor.output.clone())
+                && !animation_outputs.contains(&output)
+            {
+                animation_outputs.push(output);
+            }
+        }
+
+        // Only windows whose animated position actually moved this tick
+        // need re-mapping; everything else is already where
+        // `arrange_monitor` (or an earlier tick) put it.
+        let mut remapped = false;
+        for &idx in &animation_clients {
+            let Some(client) = state.clients.get(idx) else {
+                continue;
+            };
+            let on_its_output = state
+                .monitors
+                .get(client.monitor)
+                .is_some_and(|monitor| state.client_renders_on_output(client, &monitor.output));
+            let loc = smithay::utils::Point::<i32, smithay::utils::Logical>::from((
+                client.geom.x,
+                client.geom.y,
+            ));
+            if !on_its_output || state.space.element_location(&client.window) == Some(loc) {
+                continue;
+            }
+            // Match `arrange_monitor`'s convention exactly:
+            // `Space::map_element` records the location of the
+            // window's *geometry origin* in space coords. Render
+            // path (push_client_elements) then computes
+            // `render_location = element_location - window.geometry().loc`
+            // to put the surface buffer in the right physical
+            // spot. Subtracting `geometry().loc` HERE on top of
+            // the render-path subtraction produces a double-
+            // correction: the surface ends up at
+            // `c.geom.loc - 2 * geometry.loc` instead of
+            // `c.geom.loc` for any client with non-zero geometry
+            // offset (Electron toplevels frequently report a
+            // non-zero `geometry().loc` even with server-side
+            // decorations). That's the "border içindeki pencere
+            // border kadar hızlı hareket etmiyor" symptom — every
+            // animation tick re-positioned the surface
+            // `geometry.loc` short of where the border tracked.
+            let window = client.window.clone();
+            state.space.map_element(window, loc, false);
+            remapped = true;
+        }
+        // `map_element` retains Smithay's old output-membership cache. A
+        // boundary-crossing animation must refresh that cache before the
+        // due-output batch starts, or whichever output renders first can
+        // see an empty/missing frame. Most animation frames remain inside
+        // one output and skip the O(windows × outputs) refresh entirely.
+        let membership_changed = animation_clients.iter().any(|&idx| {
+            state.clients.get(idx).is_some_and(|client| {
+                let cached = state.space.outputs_for_element(&client.window);
+                state.window_space_membership_is_stale(&client.window, &cached)
+            })
+        });
+        if membership_changed {
+            state.space.refresh();
+        }
+        // smithay's `space.map_element` always moves the touched
+        // element to the top of the stack, so an animated tile
+        // would otherwise leap above an unrelated floating window
+        // (CopyQ, pavucontrol). Re-establish the z bands whenever
+        // this tick re-mapped something.
+        if remapped {
+            state.enforce_z_order();
+        }
+        // Only animated clients' geometry / focus colour changed.
+        for &idx in &animation_clients {
+            border::refresh_one(state, idx);
+        }
+        for output in animation_outputs {
+            state.request_repaint_output(&output);
+        }
+    }
+}
+
+/// Stand up the Mutter / GNOME Shell D-Bus shims xdg-desktop-portal-gnome
+/// talks to (ScreenCast, Screenshot, DisplayConfig, Introspect). Every
+/// failure is logged and non-fatal.
+#[cfg_attr(not(feature = "dbus"), allow(unused_variables))]
+fn start_dbus_services(event_loop: &EventLoop<'static, MargoState>, margo: &mut MargoState) {
+    // ── D-Bus shims for xdp-gnome screencast support ──────────────────────────
+    // Stand up the Mutter / Shell D-Bus interfaces in the user-bus
+    // session so xdg-desktop-portal-gnome can serve the ScreenCast
+    // / Screenshot / DisplayConfig portals against margo. Each
+    // shim claims its own bus name; failures are logged but
+    // non-fatal — a missing bus or zbus error just means xdp-gnome
+    // can't serve that one portal interface, the rest of the
+    // compositor keeps running. See `crate::dbus` for the
+    // architecture and `docs/portal-design.md` for the rollout
+    // plan. This call is the bring-up entry point niri's pattern
+    // calls `DBusServers::start`.
+    #[cfg(feature = "dbus")]
+    {
+        use crate::dbus::Start as _;
+        use crate::dbus::mutter_service_channel::{NewClient, ServiceChannel};
+
+        // Per-interface channels so blocking D-Bus callbacks can
+        // hand work to the calloop thread without taking a
+        // borrow on MargoState.
+        let (svc_tx, svc_rx) = calloop::channel::channel::<NewClient>();
+        match event_loop
+            .handle()
+            .insert_source(svc_rx, |event, _, state: &mut MargoState| match event {
+                calloop::channel::Event::Msg(client) => {
+                    // xdp-gnome opened a service-channel Wayland
+                    // socket. Insert the compositor-side end into
+                    // the display so xdp becomes its own client.
+                    let stream = match client.client.try_clone() {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::warn!("svc client clone failed: {e:?}");
+                            return;
+                        }
+                    };
+                    if let Err(e) = state
+                        .display_handle
+                        .insert_client(stream, std::sync::Arc::new(MargoClientData::default()))
+                    {
+                        tracing::warn!("insert_client (svc): {e:?}");
+                    }
+                }
+                calloop::channel::Event::Closed => (),
+            }) {
+            Err(e) => {
+                warn!("ServiceChannel calloop source insert failed: {e}");
+            }
+            _ => match ServiceChannel::new(svc_tx).start() {
+                Ok(conn) => margo.dbus_servers.conn_service_channel = Some(conn),
+                Err(e) => warn!("ServiceChannel D-Bus start failed: {e}"),
+            },
+        }
+    }
+
+    // ── DisplayConfig D-Bus shim ──────────────────────────────────────────────
+    // xdp-gnome cross-references monitor enumeration on
+    // `org.gnome.Mutter.DisplayConfig` when populating the
+    // ScreenCast chooser's Entire Screen tab.
+    #[cfg(feature = "dbus")]
+    {
+        use crate::dbus::Start as _;
+        use crate::dbus::mutter_display_config::DisplayConfig;
+
+        // Snapshot the live monitor list into the shared
+        // `ipc_outputs` Arc once, so DisplayConfig sees the
+        // current outputs without holding a stale per-service
+        // copy. Subsequent hotplugs route through
+        // `MargoState::refresh_ipc_outputs()` which mutates the
+        // SAME Arc — both DisplayConfig and ScreenCast pick the
+        // new state up on their next read.
+        margo.refresh_ipc_outputs();
+        match DisplayConfig::new(margo.ipc_outputs.clone()).start() {
+            Ok(conn) => margo.dbus_servers.conn_display_config = Some(conn),
+            Err(e) => warn!("DisplayConfig D-Bus start failed: {e}"),
+        }
+    }
+
+    // ── Gnome Shell Introspect D-Bus shim ─────────────────────────────────────
+    // Powers the Window tab of xdp-gnome's screencast chooser:
+    // `GetWindows` returns the list of toplevels with title +
+    // app_id. The compositor side answers via the from_compositor
+    // async-channel — for now respond with margo's current
+    // `clients` snapshot synchronously inline so the chooser
+    // dialog populates without round-tripping back through
+    // calloop. Live reactive updates (`windows_changed` signal)
+    // are a follow-up.
+    #[cfg(feature = "dbus")]
+    {
+        use crate::dbus::Start as _;
+        use crate::dbus::gnome_shell_introspect::{
+            CompositorToIntrospect, Introspect, IntrospectToCompositor, WindowProperties,
+        };
+        use std::collections::HashMap;
+
+        let (intr_tx, intr_rx) = calloop::channel::channel::<IntrospectToCompositor>();
+        let (resp_tx, resp_rx) = async_channel::unbounded::<CompositorToIntrospect>();
+
+        match event_loop
+            .handle()
+            .insert_source(intr_rx, move |event, _, state: &mut MargoState| {
+                if let calloop::channel::Event::Msg(IntrospectToCompositor::GetWindows) = event {
+                    let mut map: HashMap<u64, WindowProperties> = HashMap::new();
+                    for c in &state.clients {
+                        // Stable per-client id (minted at construction).
+                        // Must match what StartCast resolves against — a
+                        // pointer-address id aliased a different window
+                        // once `clients` reallocated between this snapshot
+                        // and the cast request.
+                        map.insert(
+                            c.id,
+                            WindowProperties {
+                                title: c.title.clone(),
+                                app_id: c.app_id.clone(),
+                            },
+                        );
+                    }
+                    let _ = resp_tx.try_send(CompositorToIntrospect::Windows(map));
+                }
+            }) {
+            Err(e) => {
+                warn!("Introspect calloop source insert failed: {e}");
+            }
+            _ => match Introspect::new(intr_tx, resp_rx).start() {
+                Ok(conn) => margo.dbus_servers.conn_introspect = Some(conn),
+                Err(e) => warn!("Introspect D-Bus start failed: {e}"),
+            },
+        }
+    }
+
+    // ── Gnome Shell Screenshot D-Bus shim ─────────────────────────────────────
+    // Programmatic Screenshot portal path. Margo already has the
+    // keybind-driven `margo-screenshot` script for users; this
+    // shim handles the API path (browser screenshot APIs, GNOME
+    // apps invoking the portal).
+    #[cfg(feature = "dbus")]
+    {
+        use crate::dbus::Start as _;
+        use crate::dbus::gnome_shell_screenshot::{
+            CompositorToScreenshot, Screenshot, ScreenshotToCompositor,
+        };
+
+        let (shot_tx, shot_rx) = calloop::channel::channel::<ScreenshotToCompositor>();
+        let (resp_tx, resp_rx) = async_channel::unbounded::<CompositorToScreenshot>();
+
+        match event_loop.handle().insert_source(
+            shot_rx,
+            move |event, _, _state: &mut MargoState| {
+                let calloop::channel::Event::Msg(msg) = event else {
+                    return;
+                };
+                match msg {
+                    ScreenshotToCompositor::TakeScreenshot { include_cursor } => {
+                        // Capture the whole desktop to a temp PNG via
+                        // `grim` — a child process that speaks
+                        // wlr-screencopy, so margo's event loop keeps
+                        // servicing it while it runs. We must NOT block
+                        // here (that would deadlock the capture), so we
+                        // wait for grim in a detached thread and report
+                        // the resulting path back to the portal shim.
+                        // The portal frontend turns it into the
+                        // `file://` URI the requesting app receives.
+                        let runtime =
+                            std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_owned());
+                        let stamp = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis())
+                            .unwrap_or(0);
+                        let path = std::path::PathBuf::from(format!(
+                            "{runtime}/margo-portal-shot-{stamp}.png"
+                        ));
+                        let mut cmd = std::process::Command::new("grim");
+                        utils::apply_child_env(&mut cmd);
+                        if include_cursor {
+                            cmd.arg("-c");
+                        }
+                        cmd.arg(&path);
+                        match cmd.spawn() {
+                            Ok(mut child) => {
+                                let resp = resp_tx.clone();
+                                std::thread::spawn(move || {
+                                    let ok = matches!(child.wait(), Ok(s) if s.success())
+                                        && path.exists();
+                                    let _ =
+                                        resp.try_send(CompositorToScreenshot::ScreenshotResult(
+                                            ok.then_some(path),
+                                        ));
+                                });
+                            }
+                            Err(e) => {
+                                warn!("grim spawn for portal screenshot failed: {e}");
+                                let _ = resp_tx
+                                    .try_send(CompositorToScreenshot::ScreenshotResult(None));
+                            }
+                        }
+                    }
+                    ScreenshotToCompositor::PickColor(reply) => {
+                        // No in-tree color picker yet — let the
+                        // requesting app handle it.
+                        let _ = reply.try_send(None);
+                    }
+                }
+            },
+        ) {
+            Err(e) => {
+                warn!("Screenshot calloop source insert failed: {e}");
+            }
+            _ => match Screenshot::new(shot_tx, resp_rx).start() {
+                Ok(conn) => margo.dbus_servers.conn_screen_shot = Some(conn),
+                Err(e) => warn!("Screenshot D-Bus start failed: {e}"),
+            },
+        }
+    }
+
+    // ── Mutter ScreenCast D-Bus shim — the main event ─────────────────────────
+    // This is the interface that xdp-gnome calls to mint
+    // sessions / streams. Without it, the Window + Entire Screen
+    // tabs in browser meeting clients stay grayed out.
+    //
+    // The receiver side (`ScreenCastToCompositor` channel) wires
+    // into `MargoState::screencasting`; `StartCast` boots a
+    // PipeWire stream against the source, `StopCast` tears it
+    // down. The actual cast lifecycle / render hook for
+    // emitting frames lives in
+    // `crate::screencasting::pw_utils::Cast`.
+    #[cfg(feature = "xdp-gnome-screencast")]
+    {
+        use crate::dbus::Start as _;
+        use crate::dbus::mutter_screen_cast::{ScreenCast, ScreenCastToCompositor};
+
+        let (sc_tx, sc_rx) = calloop::channel::channel::<ScreenCastToCompositor>();
+        // Same shared `ipc_outputs` Arc DisplayConfig got above;
+        // hotplug-driven `refresh_ipc_outputs()` mutates the map
+        // in place, so ScreenCast's chooser reflects the live
+        // output set without a margo restart.
+        let outputs = margo.ipc_outputs.clone();
+
+        match event_loop
+            .handle()
+            .insert_source(sc_rx, |event, _, state: &mut MargoState| {
+                let calloop::channel::Event::Msg(msg) = event else {
+                    return;
+                };
+                match msg {
+                    ScreenCastToCompositor::StartCast {
+                        session_id,
+                        stream_id,
+                        target,
+                        cursor_mode,
+                        signal_ctx,
+                    } => {
+                        state.start_cast(session_id, stream_id, target, cursor_mode, signal_ctx);
+                    }
+                    ScreenCastToCompositor::StopCast { session_id } => {
+                        state.stop_cast(session_id);
+                    }
+                }
+            }) {
+            Err(e) => {
+                warn!("ScreenCast calloop source insert failed: {e}");
+            }
+            _ => match ScreenCast::new(outputs, sc_tx).start() {
+                Ok(conn) => margo.dbus_servers.conn_screen_cast = Some(conn),
+                Err(e) => warn!("ScreenCast D-Bus start failed: {e}"),
+            },
+        }
+    }
+}
+
+/// Start X11 support per the CLI flags: none, an external
+/// xwayland-satellite, or the in-tree smithay XWayland.
+fn start_xwayland(
+    args: &Args,
+    event_loop: &mut EventLoop<'static, MargoState>,
+    margo: &mut MargoState,
+) -> Result<()> {
+    // ── XWayland ──────────────────────────────────────────────────────────────
+    //
+    // Three modes (W2.5):
+    //   * `--no-xwayland` → don't spawn anything. Pure Wayland session.
+    //   * `--xwayland-satellite[=PATH]` → spawn `xwayland-satellite`
+    //     (Supreeeme) as a separate process. Resilience win: an X11
+    //     client crash can't take margo down. The satellite
+    //     registers as a regular Wayland client, opens its own
+    //     DISPLAY socket, and forwards clipboard / primary /
+    //     selection / clipboard-mime negotiation.
+    //   * Default → in-tree smithay XWayland (existing behaviour;
+    //     same in-process model that's been here since day one).
+    let want_intree_xwayland = !args.no_xwayland && args.xwayland_satellite.is_none();
+    if args.no_xwayland {
+        info!("--no-xwayland set; X11 client support disabled");
+    } else if let Some(satellite_bin) = args.xwayland_satellite.clone() {
+        info!("xwayland-satellite mode: spawning `{satellite_bin}` as separate process");
+        match std::process::Command::new(&satellite_bin)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(child) => {
+                info!(
+                    "spawned xwayland-satellite pid={} — set DISPLAY to the satellite's \
+                     socket (typically :0; satellite logs the actual number on stderr if \
+                     you redirect it)",
+                    child.id()
+                );
+                // Don't `wait()` — satellite reparents to systemd
+                // like any daemon. Strict lifetime coupling is
+                // user-side: pair `--no-xwayland` with a systemd
+                // user unit `PartOf=margo-session.target` instead.
+                std::mem::drop(child);
+            }
+            Err(e) => {
+                error!(
+                    "failed to spawn xwayland-satellite at `{satellite_bin}`: {e}\n  \
+                     install: `cargo install xwayland-satellite`\n  \
+                     or pass `--xwayland-satellite=/full/path/to/binary`\n  \
+                     X11 client support is now off (no fallback)"
+                );
+            }
+        }
+    }
+    if want_intree_xwayland {
+        use smithay::xwayland::{XWayland, XWaylandEvent};
+        use std::process::Stdio;
+        match XWayland::spawn(
+            &margo.display_handle,
+            None,
+            std::iter::empty::<(&str, &str)>(),
+            // `extra_args`: added upstream (smithay HEAD) between `envs`
+            // and `open_abstract_socket` — we pass no extra X server args.
+            std::iter::empty::<&str>(),
+            true,
+            Stdio::null(),
+            Stdio::null(),
+            |_| {},
+        ) {
+            Ok((xwayland, client)) => {
+                let loop_handle = event_loop.handle();
+                loop_handle
+                    .insert_source(xwayland, move |event, _, state: &mut MargoState| {
+                        match event {
+                            XWaylandEvent::Ready {
+                                x11_socket,
+                                display_number,
+                            } => {
+                                // Children get these through the child-env
+                                // overlay: margo is multi-threaded by now
+                                // (PipeWire, zbus, Mesa), so mutating the
+                                // process env here would race their getenv.
+                                utils::set_child_env("DISPLAY", format!(":{display_number}"));
+                                // XCURSOR_SIZE / XCURSOR_THEME let XWayland
+                                // apps pick up the native cursor instead of
+                                // libxcursor's 16-px default (the "Steam /
+                                // Discord cursor shrinks on hover" bug). An
+                                // explicit `env = XCURSOR_SIZE, …` / an
+                                // inherited XCURSOR_THEME wins (mango
+                                // f919134d).
+                                let cursor_size = state.config.cursor_size.max(8);
+                                if !state
+                                    .config
+                                    .envs
+                                    .iter()
+                                    .any(|(name, _)| name == "XCURSOR_SIZE")
+                                {
+                                    utils::set_child_env("XCURSOR_SIZE", cursor_size.to_string());
+                                }
+                                if std::env::var_os("XCURSOR_THEME").is_none()
+                                    && let Some(theme) = state
+                                        .config
+                                        .cursor_theme
+                                        .as_deref()
+                                        .filter(|s| !s.is_empty())
+                                {
+                                    utils::set_child_env("XCURSOR_THEME", theme);
+                                }
+                                info!(
+                                    "XWayland ready on :{display_number} \
+                                     XCURSOR_SIZE={} XCURSOR_THEME={}",
+                                    utils::child_env_var("XCURSOR_SIZE")
+                                        .unwrap_or_else(|| "<unset>".into()),
+                                    utils::child_env_var("XCURSOR_THEME")
+                                        .unwrap_or_else(|| "<unset>".into()),
+                                );
+                                utils::import_session_environment(&[
+                                    "XDG_SESSION_DESKTOP",
+                                    "DESKTOP_SESSION",
+                                    "DISPLAY",
+                                    "XCURSOR_SIZE",
+                                    "XCURSOR_THEME",
+                                ]);
+                                match smithay::xwayland::X11Wm::start_wm(
+                                    state.loop_handle.clone(),
+                                    &state.display_handle,
+                                    x11_socket,
+                                    client.clone(),
+                                ) {
+                                    Ok(wm) => state.xwm = Some(wm),
+                                    Err(e) => error!("X11Wm::start_wm: {e}"),
+                                }
+                            }
+                            XWaylandEvent::Error => {
+                                error!("XWayland startup error");
+                            }
+                        }
+                    })
+                    .map_err(|e| anyhow::anyhow!("XWayland source: {e}"))?;
+            }
+            Err(e) => warn!("XWayland spawn failed (X11 apps unavailable): {e}"),
+        }
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     // Logging is brought up a few lines down — *after* the config parse — so
     // the file sink (~/.local/state/margo/logs/margo-*.log) honours the
@@ -726,141 +1449,7 @@ fn main() -> Result<()> {
     // the session target starts them, otherwise they can select the wrong backend.
     utils::import_session_environment(&["XDG_SESSION_DESKTOP", "DESKTOP_SESSION"]);
 
-    // ── XWayland ──────────────────────────────────────────────────────────────
-    //
-    // Three modes (W2.5):
-    //   * `--no-xwayland` → don't spawn anything. Pure Wayland session.
-    //   * `--xwayland-satellite[=PATH]` → spawn `xwayland-satellite`
-    //     (Supreeeme) as a separate process. Resilience win: an X11
-    //     client crash can't take margo down. The satellite
-    //     registers as a regular Wayland client, opens its own
-    //     DISPLAY socket, and forwards clipboard / primary /
-    //     selection / clipboard-mime negotiation.
-    //   * Default → in-tree smithay XWayland (existing behaviour;
-    //     same in-process model that's been here since day one).
-    let want_intree_xwayland = !args.no_xwayland && args.xwayland_satellite.is_none();
-    if args.no_xwayland {
-        info!("--no-xwayland set; X11 client support disabled");
-    } else if let Some(satellite_bin) = args.xwayland_satellite.clone() {
-        info!("xwayland-satellite mode: spawning `{satellite_bin}` as separate process");
-        match std::process::Command::new(&satellite_bin)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            Ok(child) => {
-                info!(
-                    "spawned xwayland-satellite pid={} — set DISPLAY to the satellite's \
-                     socket (typically :0; satellite logs the actual number on stderr if \
-                     you redirect it)",
-                    child.id()
-                );
-                // Don't `wait()` — satellite reparents to systemd
-                // like any daemon. Strict lifetime coupling is
-                // user-side: pair `--no-xwayland` with a systemd
-                // user unit `PartOf=margo-session.target` instead.
-                std::mem::drop(child);
-            }
-            Err(e) => {
-                error!(
-                    "failed to spawn xwayland-satellite at `{satellite_bin}`: {e}\n  \
-                     install: `cargo install xwayland-satellite`\n  \
-                     or pass `--xwayland-satellite=/full/path/to/binary`\n  \
-                     X11 client support is now off (no fallback)"
-                );
-            }
-        }
-    }
-    if want_intree_xwayland {
-        use smithay::xwayland::{XWayland, XWaylandEvent};
-        use std::process::Stdio;
-        match XWayland::spawn(
-            &margo.display_handle,
-            None,
-            std::iter::empty::<(&str, &str)>(),
-            // `extra_args`: added upstream (smithay HEAD) between `envs`
-            // and `open_abstract_socket` — we pass no extra X server args.
-            std::iter::empty::<&str>(),
-            true,
-            Stdio::null(),
-            Stdio::null(),
-            |_| {},
-        ) {
-            Ok((xwayland, client)) => {
-                let loop_handle = event_loop.handle();
-                loop_handle
-                    .insert_source(xwayland, move |event, _, state: &mut MargoState| {
-                        match event {
-                            XWaylandEvent::Ready {
-                                x11_socket,
-                                display_number,
-                            } => {
-                                // Children get these through the child-env
-                                // overlay: margo is multi-threaded by now
-                                // (PipeWire, zbus, Mesa), so mutating the
-                                // process env here would race their getenv.
-                                utils::set_child_env("DISPLAY", format!(":{display_number}"));
-                                // XCURSOR_SIZE / XCURSOR_THEME let XWayland
-                                // apps pick up the native cursor instead of
-                                // libxcursor's 16-px default (the "Steam /
-                                // Discord cursor shrinks on hover" bug). An
-                                // explicit `env = XCURSOR_SIZE, …` / an
-                                // inherited XCURSOR_THEME wins (mango
-                                // f919134d).
-                                let cursor_size = state.config.cursor_size.max(8);
-                                if !state
-                                    .config
-                                    .envs
-                                    .iter()
-                                    .any(|(name, _)| name == "XCURSOR_SIZE")
-                                {
-                                    utils::set_child_env("XCURSOR_SIZE", cursor_size.to_string());
-                                }
-                                if std::env::var_os("XCURSOR_THEME").is_none()
-                                    && let Some(theme) = state
-                                        .config
-                                        .cursor_theme
-                                        .as_deref()
-                                        .filter(|s| !s.is_empty())
-                                {
-                                    utils::set_child_env("XCURSOR_THEME", theme);
-                                }
-                                info!(
-                                    "XWayland ready on :{display_number} \
-                                     XCURSOR_SIZE={} XCURSOR_THEME={}",
-                                    utils::child_env_var("XCURSOR_SIZE")
-                                        .unwrap_or_else(|| "<unset>".into()),
-                                    utils::child_env_var("XCURSOR_THEME")
-                                        .unwrap_or_else(|| "<unset>".into()),
-                                );
-                                utils::import_session_environment(&[
-                                    "XDG_SESSION_DESKTOP",
-                                    "DESKTOP_SESSION",
-                                    "DISPLAY",
-                                    "XCURSOR_SIZE",
-                                    "XCURSOR_THEME",
-                                ]);
-                                match smithay::xwayland::X11Wm::start_wm(
-                                    state.loop_handle.clone(),
-                                    &state.display_handle,
-                                    x11_socket,
-                                    client.clone(),
-                                ) {
-                                    Ok(wm) => state.xwm = Some(wm),
-                                    Err(e) => error!("X11Wm::start_wm: {e}"),
-                                }
-                            }
-                            XWaylandEvent::Error => {
-                                error!("XWayland startup error");
-                            }
-                        }
-                    })
-                    .map_err(|e| anyhow::anyhow!("XWayland source: {e}"))?;
-            }
-            Err(e) => warn!("XWayland spawn failed (X11 apps unavailable): {e}"),
-        }
-    }
+    start_xwayland(&args, &mut event_loop, &mut margo)?;
 
     // ── Add keyboard to seat ──────────────────────────────────────────────────
     let (xkb_rules, xkb_model, xkb_layout, xkb_variant, xkb_options, repeat_delay, repeat_rate) = {
@@ -912,271 +1501,7 @@ fn main() -> Result<()> {
 
     margo.seat.add_pointer();
 
-    // ── D-Bus shims for xdp-gnome screencast support ──────────────────────────
-    // Stand up the Mutter / Shell D-Bus interfaces in the user-bus
-    // session so xdg-desktop-portal-gnome can serve the ScreenCast
-    // / Screenshot / DisplayConfig portals against margo. Each
-    // shim claims its own bus name; failures are logged but
-    // non-fatal — a missing bus or zbus error just means xdp-gnome
-    // can't serve that one portal interface, the rest of the
-    // compositor keeps running. See `crate::dbus` for the
-    // architecture and `docs/portal-design.md` for the rollout
-    // plan. This call is the bring-up entry point niri's pattern
-    // calls `DBusServers::start`.
-    #[cfg(feature = "dbus")]
-    {
-        use crate::dbus::Start as _;
-        use crate::dbus::mutter_service_channel::{NewClient, ServiceChannel};
-
-        // Per-interface channels so blocking D-Bus callbacks can
-        // hand work to the calloop thread without taking a
-        // borrow on MargoState.
-        let (svc_tx, svc_rx) = calloop::channel::channel::<NewClient>();
-        match event_loop
-            .handle()
-            .insert_source(svc_rx, |event, _, state: &mut MargoState| match event {
-                calloop::channel::Event::Msg(client) => {
-                    // xdp-gnome opened a service-channel Wayland
-                    // socket. Insert the compositor-side end into
-                    // the display so xdp becomes its own client.
-                    let stream = match client.client.try_clone() {
-                        Ok(s) => s,
-                        Err(e) => {
-                            tracing::warn!("svc client clone failed: {e:?}");
-                            return;
-                        }
-                    };
-                    if let Err(e) = state
-                        .display_handle
-                        .insert_client(stream, std::sync::Arc::new(MargoClientData::default()))
-                    {
-                        tracing::warn!("insert_client (svc): {e:?}");
-                    }
-                }
-                calloop::channel::Event::Closed => (),
-            }) {
-            Err(e) => {
-                warn!("ServiceChannel calloop source insert failed: {e}");
-            }
-            _ => match ServiceChannel::new(svc_tx).start() {
-                Ok(conn) => margo.dbus_servers.conn_service_channel = Some(conn),
-                Err(e) => warn!("ServiceChannel D-Bus start failed: {e}"),
-            },
-        }
-    }
-
-    // ── DisplayConfig D-Bus shim ──────────────────────────────────────────────
-    // xdp-gnome cross-references monitor enumeration on
-    // `org.gnome.Mutter.DisplayConfig` when populating the
-    // ScreenCast chooser's Entire Screen tab.
-    #[cfg(feature = "dbus")]
-    {
-        use crate::dbus::Start as _;
-        use crate::dbus::mutter_display_config::DisplayConfig;
-
-        // Snapshot the live monitor list into the shared
-        // `ipc_outputs` Arc once, so DisplayConfig sees the
-        // current outputs without holding a stale per-service
-        // copy. Subsequent hotplugs route through
-        // `MargoState::refresh_ipc_outputs()` which mutates the
-        // SAME Arc — both DisplayConfig and ScreenCast pick the
-        // new state up on their next read.
-        margo.refresh_ipc_outputs();
-        match DisplayConfig::new(margo.ipc_outputs.clone()).start() {
-            Ok(conn) => margo.dbus_servers.conn_display_config = Some(conn),
-            Err(e) => warn!("DisplayConfig D-Bus start failed: {e}"),
-        }
-    }
-
-    // ── Gnome Shell Introspect D-Bus shim ─────────────────────────────────────
-    // Powers the Window tab of xdp-gnome's screencast chooser:
-    // `GetWindows` returns the list of toplevels with title +
-    // app_id. The compositor side answers via the from_compositor
-    // async-channel — for now respond with margo's current
-    // `clients` snapshot synchronously inline so the chooser
-    // dialog populates without round-tripping back through
-    // calloop. Live reactive updates (`windows_changed` signal)
-    // are a follow-up.
-    #[cfg(feature = "dbus")]
-    {
-        use crate::dbus::Start as _;
-        use crate::dbus::gnome_shell_introspect::{
-            CompositorToIntrospect, Introspect, IntrospectToCompositor, WindowProperties,
-        };
-        use std::collections::HashMap;
-
-        let (intr_tx, intr_rx) = calloop::channel::channel::<IntrospectToCompositor>();
-        let (resp_tx, resp_rx) = async_channel::unbounded::<CompositorToIntrospect>();
-
-        match event_loop
-            .handle()
-            .insert_source(intr_rx, move |event, _, state: &mut MargoState| {
-                if let calloop::channel::Event::Msg(IntrospectToCompositor::GetWindows) = event {
-                    let mut map: HashMap<u64, WindowProperties> = HashMap::new();
-                    for c in &state.clients {
-                        // Stable per-client id (minted at construction).
-                        // Must match what StartCast resolves against — a
-                        // pointer-address id aliased a different window
-                        // once `clients` reallocated between this snapshot
-                        // and the cast request.
-                        map.insert(
-                            c.id,
-                            WindowProperties {
-                                title: c.title.clone(),
-                                app_id: c.app_id.clone(),
-                            },
-                        );
-                    }
-                    let _ = resp_tx.try_send(CompositorToIntrospect::Windows(map));
-                }
-            }) {
-            Err(e) => {
-                warn!("Introspect calloop source insert failed: {e}");
-            }
-            _ => match Introspect::new(intr_tx, resp_rx).start() {
-                Ok(conn) => margo.dbus_servers.conn_introspect = Some(conn),
-                Err(e) => warn!("Introspect D-Bus start failed: {e}"),
-            },
-        }
-    }
-
-    // ── Gnome Shell Screenshot D-Bus shim ─────────────────────────────────────
-    // Programmatic Screenshot portal path. Margo already has the
-    // keybind-driven `margo-screenshot` script for users; this
-    // shim handles the API path (browser screenshot APIs, GNOME
-    // apps invoking the portal).
-    #[cfg(feature = "dbus")]
-    {
-        use crate::dbus::Start as _;
-        use crate::dbus::gnome_shell_screenshot::{
-            CompositorToScreenshot, Screenshot, ScreenshotToCompositor,
-        };
-
-        let (shot_tx, shot_rx) = calloop::channel::channel::<ScreenshotToCompositor>();
-        let (resp_tx, resp_rx) = async_channel::unbounded::<CompositorToScreenshot>();
-
-        match event_loop.handle().insert_source(
-            shot_rx,
-            move |event, _, _state: &mut MargoState| {
-                let calloop::channel::Event::Msg(msg) = event else {
-                    return;
-                };
-                match msg {
-                    ScreenshotToCompositor::TakeScreenshot { include_cursor } => {
-                        // Capture the whole desktop to a temp PNG via
-                        // `grim` — a child process that speaks
-                        // wlr-screencopy, so margo's event loop keeps
-                        // servicing it while it runs. We must NOT block
-                        // here (that would deadlock the capture), so we
-                        // wait for grim in a detached thread and report
-                        // the resulting path back to the portal shim.
-                        // The portal frontend turns it into the
-                        // `file://` URI the requesting app receives.
-                        let runtime =
-                            std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_owned());
-                        let stamp = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.as_millis())
-                            .unwrap_or(0);
-                        let path = std::path::PathBuf::from(format!(
-                            "{runtime}/margo-portal-shot-{stamp}.png"
-                        ));
-                        let mut cmd = std::process::Command::new("grim");
-                        utils::apply_child_env(&mut cmd);
-                        if include_cursor {
-                            cmd.arg("-c");
-                        }
-                        cmd.arg(&path);
-                        match cmd.spawn() {
-                            Ok(mut child) => {
-                                let resp = resp_tx.clone();
-                                std::thread::spawn(move || {
-                                    let ok = matches!(child.wait(), Ok(s) if s.success())
-                                        && path.exists();
-                                    let _ =
-                                        resp.try_send(CompositorToScreenshot::ScreenshotResult(
-                                            ok.then_some(path),
-                                        ));
-                                });
-                            }
-                            Err(e) => {
-                                warn!("grim spawn for portal screenshot failed: {e}");
-                                let _ = resp_tx
-                                    .try_send(CompositorToScreenshot::ScreenshotResult(None));
-                            }
-                        }
-                    }
-                    ScreenshotToCompositor::PickColor(reply) => {
-                        // No in-tree color picker yet — let the
-                        // requesting app handle it.
-                        let _ = reply.try_send(None);
-                    }
-                }
-            },
-        ) {
-            Err(e) => {
-                warn!("Screenshot calloop source insert failed: {e}");
-            }
-            _ => match Screenshot::new(shot_tx, resp_rx).start() {
-                Ok(conn) => margo.dbus_servers.conn_screen_shot = Some(conn),
-                Err(e) => warn!("Screenshot D-Bus start failed: {e}"),
-            },
-        }
-    }
-
-    // ── Mutter ScreenCast D-Bus shim — the main event ─────────────────────────
-    // This is the interface that xdp-gnome calls to mint
-    // sessions / streams. Without it, the Window + Entire Screen
-    // tabs in browser meeting clients stay grayed out.
-    //
-    // The receiver side (`ScreenCastToCompositor` channel) wires
-    // into `MargoState::screencasting`; `StartCast` boots a
-    // PipeWire stream against the source, `StopCast` tears it
-    // down. The actual cast lifecycle / render hook for
-    // emitting frames lives in
-    // `crate::screencasting::pw_utils::Cast`.
-    #[cfg(feature = "xdp-gnome-screencast")]
-    {
-        use crate::dbus::Start as _;
-        use crate::dbus::mutter_screen_cast::{ScreenCast, ScreenCastToCompositor};
-
-        let (sc_tx, sc_rx) = calloop::channel::channel::<ScreenCastToCompositor>();
-        // Same shared `ipc_outputs` Arc DisplayConfig got above;
-        // hotplug-driven `refresh_ipc_outputs()` mutates the map
-        // in place, so ScreenCast's chooser reflects the live
-        // output set without a margo restart.
-        let outputs = margo.ipc_outputs.clone();
-
-        match event_loop
-            .handle()
-            .insert_source(sc_rx, |event, _, state: &mut MargoState| {
-                let calloop::channel::Event::Msg(msg) = event else {
-                    return;
-                };
-                match msg {
-                    ScreenCastToCompositor::StartCast {
-                        session_id,
-                        stream_id,
-                        target,
-                        cursor_mode,
-                        signal_ctx,
-                    } => {
-                        state.start_cast(session_id, stream_id, target, cursor_mode, signal_ctx);
-                    }
-                    ScreenCastToCompositor::StopCast { session_id } => {
-                        state.stop_cast(session_id);
-                    }
-                }
-            }) {
-            Err(e) => {
-                warn!("ScreenCast calloop source insert failed: {e}");
-            }
-            _ => match ScreenCast::new(outputs, sc_tx).start() {
-                Ok(conn) => margo.dbus_servers.conn_screen_cast = Some(conn),
-                Err(e) => warn!("ScreenCast D-Bus start failed: {e}"),
-            },
-        }
-    }
+    start_dbus_services(&event_loop, &mut margo);
 
     // Tell start-margo / systemd that the compositor is genuinely usable:
     // Wayland socket is open, backend is ready, compositor env is imported,
@@ -1339,304 +1664,7 @@ fn main() -> Result<()> {
     }
 
     // ── Run the event loop ────────────────────────────────────────────────────
-    event_loop.run(None, &mut margo, |state| {
-        if state.should_quit {
-            state.loop_signal.stop();
-            return;
-        }
-        // Flush pending Wayland messages after each iteration
-        if let Err(e) = state.display_handle.flush_clients() {
-            error!("flush_clients: {e}");
-        }
-        // Coalesced IPC push: a burst of state changes within one
-        // dispatch marks state dirty repeatedly but fans out one
-        // `watch` snapshot frame here, once per iteration.
-        state.flush_ipc_if_dirty();
-        // Animation tick — split borrow across fields
-        let now = utils::now_ms();
-        // Capture the client set before ticking as well as after: an
-        // animation that settles on this tick still needs one final frame, but
-        // its `running` flag will already be false afterwards.
-        let mut animation_clients: Vec<usize> = state
-            .clients
-            .iter()
-            .enumerate()
-            .filter(|(_, client)| {
-                client.animation.running
-                    || client.opacity_animation.running
-                    || client.opening_animation.is_some()
-                    || client.resize_snapshot.is_some()
-            })
-            .map(|(idx, _)| idx)
-            .collect();
-        let mut closing_animation_monitors: Vec<usize> = state
-            .closing_clients
-            .iter()
-            .filter_map(|client| {
-                if state.session_locked || state.scroller_overview.is_some() {
-                    return None;
-                }
-                let monitor = state
-                    .monitors
-                    .get(client.monitor)
-                    .filter(|monitor| monitor.enabled)?;
-                let tagset = if monitor.is_overview {
-                    !0
-                } else {
-                    monitor.current_tagset()
-                };
-                ((client.tags & tagset) != 0).then_some(client.monitor)
-            })
-            .collect();
-        let mut layer_animation_outputs: Vec<_> = state
-            .layer_animations
-            .values()
-            .filter(|anim| {
-                state.scroller_overview.is_none()
-                    && state.layer_renders_on_output(&anim.output, anim.layer)
-            })
-            .map(|anim| anim.output.clone())
-            .collect();
-        let mut unique_layer_outputs = Vec::new();
-        for output in layer_animation_outputs.drain(..) {
-            if !unique_layer_outputs.contains(&output) {
-                unique_layer_outputs.push(output);
-            }
-        }
-        layer_animation_outputs = unique_layer_outputs;
-        let nothing_animating = animation_clients.is_empty()
-            && state.closing_clients.is_empty()
-            && state.layer_animations.is_empty();
-        let animations_changed = !nothing_animating && {
-            let cfg = &state.config;
-            let use_spring = cfg.animation_clock_move.eq_ignore_ascii_case("spring");
-            // The spring carried in `AnimTickSpec` is a 0→1 *progress*
-            // spring — its from/to/initial_velocity are unused at tick
-            // time; only the params (damping/mass/stiffness/epsilon)
-            // matter, and they're rebuilt every frame from config so
-            // `/reload` picks up new tuning without restart.
-            let spring = animation::spring::Spring {
-                from: 0.0,
-                to: 1.0,
-                initial_velocity: 0.0,
-                params: animation::spring::SpringParams::new(
-                    cfg.animation_spring_damping_ratio,
-                    cfg.animation_spring_stiffness,
-                    0.0001,
-                ),
-            };
-            let spec = state::AnimTickSpec {
-                duration_move: cfg.animation_duration_move,
-                use_spring,
-                spring,
-            };
-            // Disjoint borrows across MargoState fields so each
-            // category of animation can be advanced from a single
-            // call. The compiler treats these as independent
-            // because they're distinct named fields.
-            let curves = &state.animation_curves;
-            state::tick_animations(
-                &mut state.clients,
-                curves,
-                now,
-                spec,
-                &mut state.closing_clients,
-                &mut state.layer_animations,
-            )
-        };
-        if animations_changed {
-            animation_clients.extend(
-                state
-                    .clients
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, client)| {
-                        client.animation.running
-                            || client.opacity_animation.running
-                            || client.opening_animation.is_some()
-                            || client.resize_snapshot.is_some()
-                    })
-                    .map(|(idx, _)| idx),
-            );
-            animation_clients.sort_unstable();
-            animation_clients.dedup();
-            closing_animation_monitors.extend(state.closing_clients.iter().filter_map(|client| {
-                if state.session_locked || state.scroller_overview.is_some() {
-                    return None;
-                }
-                let monitor = state
-                    .monitors
-                    .get(client.monitor)
-                    .filter(|monitor| monitor.enabled)?;
-                let tagset = if monitor.is_overview {
-                    !0
-                } else {
-                    monitor.current_tagset()
-                };
-                ((client.tags & tagset) != 0).then_some(client.monitor)
-            }));
-            closing_animation_monitors.sort_unstable();
-            closing_animation_monitors.dedup();
-            for output in state
-                .layer_animations
-                .values()
-                .filter(|anim| {
-                    state.scroller_overview.is_none()
-                        && state.layer_renders_on_output(&anim.output, anim.layer)
-                })
-                .map(|anim| anim.output.clone())
-            {
-                if !layer_animation_outputs.contains(&output) {
-                    layer_animation_outputs.push(output);
-                }
-            }
-
-            // Snapshot the old Space memberships and union them with every
-            // output intersected by the just-ticked geometry. This preserves
-            // the erase side of a cross-output move before `map_element`
-            // changes the element location below.
-            let mut animation_outputs = layer_animation_outputs;
-            for &idx in &animation_clients {
-                let Some(client) = state.clients.get(idx) else {
-                    continue;
-                };
-                if let Some(owner) = state
-                    .monitors
-                    .get(client.monitor)
-                    .filter(|monitor| monitor.enabled)
-                    .map(|monitor| monitor.output.clone())
-                    && state.client_renders_on_output(client, &owner)
-                    && !animation_outputs.contains(&owner)
-                {
-                    animation_outputs.push(owner);
-                }
-                for output in state.space.outputs_for_element(&client.window) {
-                    if state.client_renders_on_output(client, &output)
-                        && !animation_outputs.contains(&output)
-                    {
-                        animation_outputs.push(output);
-                    }
-                }
-                let geom = client.geom;
-                for monitor in state.monitors.iter().filter(|monitor| monitor.enabled) {
-                    let area = monitor.monitor_area;
-                    let intersects = geom.x < area.x + area.width
-                        && geom.x + geom.width > area.x
-                        && geom.y < area.y + area.height
-                        && geom.y + geom.height > area.y;
-                    if intersects
-                        && state.client_renders_on_output(client, &monitor.output)
-                        && !animation_outputs.contains(&monitor.output)
-                    {
-                        animation_outputs.push(monitor.output.clone());
-                    }
-                }
-            }
-            for &mon_idx in &closing_animation_monitors {
-                if let Some(output) = state
-                    .monitors
-                    .get(mon_idx)
-                    .filter(|monitor| monitor.enabled && !state.session_locked)
-                    .map(|monitor| monitor.output.clone())
-                    && !animation_outputs.contains(&output)
-                {
-                    animation_outputs.push(output);
-                }
-            }
-
-            // Only windows whose animated position actually moved this tick
-            // need re-mapping; everything else is already where
-            // `arrange_monitor` (or an earlier tick) put it.
-            let mut remapped = false;
-            for &idx in &animation_clients {
-                let Some(client) = state.clients.get(idx) else {
-                    continue;
-                };
-                let on_its_output = state
-                    .monitors
-                    .get(client.monitor)
-                    .is_some_and(|monitor| state.client_renders_on_output(client, &monitor.output));
-                let loc = smithay::utils::Point::<i32, smithay::utils::Logical>::from((
-                    client.geom.x,
-                    client.geom.y,
-                ));
-                if !on_its_output || state.space.element_location(&client.window) == Some(loc) {
-                    continue;
-                }
-                // Match `arrange_monitor`'s convention exactly:
-                // `Space::map_element` records the location of the
-                // window's *geometry origin* in space coords. Render
-                // path (push_client_elements) then computes
-                // `render_location = element_location - window.geometry().loc`
-                // to put the surface buffer in the right physical
-                // spot. Subtracting `geometry().loc` HERE on top of
-                // the render-path subtraction produces a double-
-                // correction: the surface ends up at
-                // `c.geom.loc - 2 * geometry.loc` instead of
-                // `c.geom.loc` for any client with non-zero geometry
-                // offset (Electron toplevels frequently report a
-                // non-zero `geometry().loc` even with server-side
-                // decorations). That's the "border içindeki pencere
-                // border kadar hızlı hareket etmiyor" symptom — every
-                // animation tick re-positioned the surface
-                // `geometry.loc` short of where the border tracked.
-                let window = client.window.clone();
-                state.space.map_element(window, loc, false);
-                remapped = true;
-            }
-            // `map_element` retains Smithay's old output-membership cache. A
-            // boundary-crossing animation must refresh that cache before the
-            // due-output batch starts, or whichever output renders first can
-            // see an empty/missing frame. Most animation frames remain inside
-            // one output and skip the O(windows × outputs) refresh entirely.
-            let membership_changed = animation_clients.iter().any(|&idx| {
-                state.clients.get(idx).is_some_and(|client| {
-                    let cached = state.space.outputs_for_element(&client.window);
-                    state.window_space_membership_is_stale(&client.window, &cached)
-                })
-            });
-            if membership_changed {
-                state.space.refresh();
-            }
-            // smithay's `space.map_element` always moves the touched
-            // element to the top of the stack, so an animated tile
-            // would otherwise leap above an unrelated floating window
-            // (CopyQ, pavucontrol). Re-establish the z bands whenever
-            // this tick re-mapped something.
-            if remapped {
-                state.enforce_z_order();
-            }
-            // Only animated clients' geometry / focus colour changed.
-            for &idx in &animation_clients {
-                border::refresh_one(state, idx);
-            }
-            for output in animation_outputs {
-                state.request_repaint_output(&output);
-            }
-        }
-
-        // Scroller-overview open/close zoom animation. Advances the
-        // eased progress and keeps repainting until it settles (a close
-        // also clears the overview here when it reaches 0).
-        if state.tick_scroller_overview(now) {
-            state.request_scene_repaint();
-        }
-
-        // Config-error overlay timeout. The banner is armed by
-        // `MargoState::reload_config` with a 10 s deadline; once the
-        // deadline passes we clear it here and request one final
-        // repaint so the banner doesn't visually linger on a stale
-        // frame (the renderer would otherwise re-emit it on next
-        // damage even though the deadline is gone). Cheap check —
-        // a comparison per loop iteration when the overlay is active,
-        // nothing when it isn't.
-        if let Some(until) = state.config_error_overlay_until {
-            if std::time::Instant::now() >= until {
-                state.config_error_overlay_until = None;
-                state.request_repaint();
-            }
-        }
-    })?;
+    event_loop.run(None, &mut margo, on_loop_iteration)?;
 
     // Clean shutdown: drop the crash autosave so the next start
     // doesn't mistake this session for a crashed one. (A crash never
