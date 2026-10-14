@@ -60,6 +60,7 @@ mod repaint;
 mod screencopy;
 mod selection;
 mod session_lock;
+mod session_regressions;
 mod tag_mon;
 mod tag_transition_anim;
 mod theme;
