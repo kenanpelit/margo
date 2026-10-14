@@ -10,11 +10,8 @@ use super::*;
 
 impl MargoState {
     pub fn arrange_all(&mut self) {
-        for mon_idx in 0..self.monitors.len() {
-            self.arrange_monitor(mon_idx);
-        }
-        self.mark_state_dirty();
-        self.publish_a11y_window_list();
+        let all: Vec<usize> = (0..self.monitors.len()).collect();
+        self.arrange_monitors(&all);
     }
 
     /// Arrange just the listed monitors. Used by `open_overview` and
@@ -25,10 +22,20 @@ impl MargoState {
     /// during multi-output hot-unplug and we don't want to panic mid-
     /// arrange.
     pub fn arrange_monitors(&mut self, indices: &[usize]) {
+        let mut arranged = Vec::with_capacity(indices.len());
+        let mut repaint_outputs: Vec<Output> = Vec::new();
         for &idx in indices {
-            if idx < self.monitors.len() {
-                self.arrange_monitor(idx);
+            if let Some(outputs) = self.arrange_monitor_layout(idx) {
+                arranged.push(idx);
+                for output in outputs {
+                    if !repaint_outputs.contains(&output) {
+                        repaint_outputs.push(output);
+                    }
+                }
             }
+        }
+        if !arranged.is_empty() {
+            self.arrange_finish(&arranged, repaint_outputs);
         }
         self.mark_state_dirty();
         self.publish_a11y_window_list();
@@ -393,15 +400,26 @@ impl MargoState {
     }
 
     pub fn arrange_monitor(&mut self, mon_idx: usize) {
+        if let Some(repaint_outputs) = self.arrange_monitor_layout(mon_idx) {
+            self.arrange_finish(&[mon_idx], repaint_outputs);
+        }
+    }
+
+    /// The per-monitor half of an arrange: lay out `mon_idx`, map its
+    /// windows and send configures. Returns the outputs to repaint, or
+    /// `None` when the monitor isn't arranged at all. The global
+    /// follow-up (z-order, borders, space refresh, …) is
+    /// [`arrange_finish`](Self::arrange_finish), run once per batch.
+    fn arrange_monitor_layout(&mut self, mon_idx: usize) -> Option<Vec<Output>> {
         let _span = tracy_client::span!("arrange_monitor");
         if mon_idx >= self.monitors.len() {
-            return;
+            return None;
         }
         // Soft-disabled monitor: don't lay out — clients have already
         // been migrated off, and laying out against a panel that isn't
         // being rendered just produces stale geometry.
         if !self.monitors[mon_idx].enabled {
-            return;
+            return None;
         }
 
         // Preserve the old output footprint before any map/unmap/move below.
@@ -972,6 +990,13 @@ impl MargoState {
                 }
             }
         }
+        Some(repaint_outputs)
+    }
+
+    /// Global follow-up to one or more [`arrange_monitor_layout`]
+    /// passes. Each step here walks every client or the whole space, so
+    /// a multi-monitor `arrange_all` runs it once, not once per monitor.
+    fn arrange_finish(&mut self, mons: &[usize], mut repaint_outputs: Vec<Output>) {
         self.enforce_z_order();
         crate::border::refresh(self);
         // `map_element` starts with an empty output-membership map. Populate
@@ -982,7 +1007,7 @@ impl MargoState {
         for client in self
             .clients
             .iter()
-            .filter(|client| client.monitor == mon_idx)
+            .filter(|client| mons.contains(&client.monitor))
         {
             for output in self.space.outputs_for_element(&client.window) {
                 if !repaint_outputs.contains(&output) {
@@ -993,27 +1018,25 @@ impl MargoState {
         for output in repaint_outputs {
             self.request_repaint_output(&output);
         }
-        // mango 0.16.1 `tag_gather`: compact this monitor's occupied tags
+        // mango 0.16.1 `tag_gather`: compact each monitor's occupied tags
         // to consecutive numbers after every arrange, closing gaps left by
         // closed/moved windows. Remapping only relabels tag numbers — the
         // set of clients visible right now is unchanged (the current
         // view's tag moves with its content), so the geometry just
-        // computed above stays valid and this can't feed back into
-        // another arrange.
+        // computed stays valid and this can't feed back into another
+        // arrange.
         if self.config.tag_gather {
-            self.tag_gather_apply(mon_idx);
+            for &mon_idx in mons {
+                self.tag_gather_apply(mon_idx);
+            }
         }
         // Covers the two idle-inhibit inputs a focus change alone
         // doesn't: a fullscreen toggle on the already-focused client,
         // and a tag switch changing which protocol inhibitors are
         // currently visible.
         self.recompute_idle_inhibit();
-        // Refresh the IPC channels so `mctl clients`/`focused`/`status`
-        // and any IPC `watch state` subscriber sees the new
-        // windows the moment they're laid out. arrange_all already
-        // covered both, but arrange_monitor (the path most map/unmap/
-        // tag-move events take) didn't — leaving state snapshot + the bar
-        // tag-counts stuck on the boot snapshot of zero.
+        // Keep `mctl` / IPC `watch state` subscribers current after every
+        // arrange, including the single-monitor map/unmap/tag-move path.
         self.mark_state_dirty();
     }
 
@@ -1216,14 +1239,12 @@ impl MargoState {
         {
             self.space.raise_element(&w, false);
         }
-        let floats: Vec<smithay::desktop::Window> = self
+        for c in self
             .clients
             .iter()
             .filter(|c| (c.is_floating || c.is_in_scratchpad) && !c.is_overlay)
-            .map(|c| c.window.clone())
-            .collect();
-        for w in &floats {
-            self.space.raise_element(w, false);
+        {
+            self.space.raise_element(&c.window, false);
         }
         // A client mid interactive move/resize must render above every
         // other float/tile it may currently overlap, no matter where it
@@ -1235,22 +1256,11 @@ impl MargoState {
         // dragging. Raising it here, after the plain float band above,
         // wins the same last-raise-on-top race in the grabbed client's
         // favour.
-        if let Some(w) = self
-            .clients
-            .iter()
-            .find(|c| c.interactive_grab)
-            .map(|c| c.window.clone())
-        {
-            self.space.raise_element(&w, false);
+        if let Some(c) = self.clients.iter().find(|c| c.interactive_grab) {
+            self.space.raise_element(&c.window, false);
         }
-        let overlays: Vec<smithay::desktop::Window> = self
-            .clients
-            .iter()
-            .filter(|c| c.is_overlay)
-            .map(|c| c.window.clone())
-            .collect();
-        for w in &overlays {
-            self.space.raise_element(w, false);
+        for c in self.clients.iter().filter(|c| c.is_overlay) {
+            self.space.raise_element(&c.window, false);
         }
     }
 }
