@@ -504,7 +504,8 @@ fn main() -> Result<()> {
     }
 
     for (name, value) in &config.envs {
-        // SAFETY: single-threaded at this point, no other threads reading env
+        // SAFETY: no other thread exists yet (backend, D-Bus, PipeWire and
+        // the config watcher all start later).
         unsafe { std::env::set_var(name, value) };
     }
 
@@ -575,26 +576,6 @@ fn main() -> Result<()> {
             message,
             line_text: String::new(),
         }];
-    }
-
-    // ── Config auto-reload (`auto_reload_config`) ─────────────────────────────
-    // The watcher's own callback runs on its background thread, not this
-    // one — MargoState isn't Send, so it can't call reload_config()
-    // directly. It only ever sends a settled-batch signal here; the
-    // actual reload happens below, back on the compositor's own thread.
-    let (config_reload_tx, config_reload_rx) = calloop::channel::channel::<()>();
-    if let Err(e) =
-        loop_handle.insert_source(config_reload_rx, |event, _, state: &mut MargoState| {
-            if let calloop::channel::Event::Msg(()) = event
-                && let Err(e) = state.reload_config_on_change()
-            {
-                tracing::warn!(error = ?e, "config auto-reload: reload failed");
-            }
-        })
-    {
-        warn!("config auto-reload source insert failed: {e}");
-    } else {
-        margo.set_config_reload_sender(config_reload_tx);
     }
 
     // Hidden workspaces do not participate in an output's normal vblank walk,
@@ -674,8 +655,9 @@ fn main() -> Result<()> {
         })
         .map_err(|e| anyhow::anyhow!("socket source: {e}"))?;
 
-    // Expose our socket to child processes
-    // SAFETY: single-threaded; no other thread reading env
+    // Expose our socket to child processes.
+    // SAFETY: no other thread exists yet — backend bring-up, D-Bus and the
+    // config watcher all start below.
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &socket_name) };
     info!("Wayland socket: {:?}", socket_name);
 
@@ -684,7 +666,9 @@ fn main() -> Result<()> {
 
     if use_winit {
         info!("using winit backend");
-        // Restore parent display env so winit connects to the real parent compositor
+        // Restore parent display env so winit connects to the real parent
+        // compositor; our own socket reaches children via the overlay.
+        // SAFETY: still no other thread — winit/EGL start inside `run`.
         if let Some(wd) = &parent_wayland_display {
             unsafe { std::env::set_var("WAYLAND_DISPLAY", wd) };
         } else {
@@ -693,10 +677,8 @@ fn main() -> Result<()> {
         if let Some(xd) = &parent_x_display {
             unsafe { std::env::set_var("DISPLAY", xd) };
         }
-        let result = backend::winit::run(&mut margo, &mut event_loop);
-        // Restore our socket for clients to connect to us
-        unsafe { std::env::set_var("WAYLAND_DISPLAY", &socket_name) };
-        result?;
+        utils::set_child_env("WAYLAND_DISPLAY", socket_name.to_string_lossy());
+        backend::winit::run(&mut margo, &mut event_loop)?;
     } else {
         info!("using udev backend");
         if let Err(e) = backend::udev::run(&mut margo, &mut event_loop) {
@@ -723,12 +705,14 @@ fn main() -> Result<()> {
             error!(
                 "Software rendering (pixman) fallback is W2.2b in road_map.md, not yet shipped."
             );
+            // SAFETY: winit reads WAYLAND_DISPLAY in-process, so it has to
+            // be in the real env. The failed udev bring-up may have left
+            // driver threads behind; this dev-only fallback accepts that.
             if let Some(wd) = &parent_wayland_display {
                 unsafe { std::env::set_var("WAYLAND_DISPLAY", wd) };
             }
-            let result = backend::winit::run(&mut margo, &mut event_loop);
-            unsafe { std::env::set_var("WAYLAND_DISPLAY", &socket_name) };
-            result?;
+            utils::set_child_env("WAYLAND_DISPLAY", socket_name.to_string_lossy());
+            backend::winit::run(&mut margo, &mut event_loop)?;
         }
     }
 
@@ -807,55 +791,43 @@ fn main() -> Result<()> {
                                 x11_socket,
                                 display_number,
                             } => {
-                                unsafe {
-                                    std::env::set_var("DISPLAY", format!(":{display_number}"));
-                                    // XCURSOR_SIZE / XCURSOR_THEME let
-                                    // XWayland apps pick up the same
-                                    // cursor the native Wayland side
-                                    // uses. Without these the X11
-                                    // cursor falls back to libxcursor's
-                                    // 16-px default and the user sees
-                                    // a noticeably-smaller pointer the
-                                    // moment an X11 client takes the
-                                    // pointer (the classic
-                                    // "Steam / Discord / Spotify
-                                    // cursor shrinks on hover" bug).
-                                    // Default theme is left to the
-                                    // user's `XCURSOR_THEME` env if
-                                    // already set; we only fill in
-                                    // a missing slot so we never
-                                    // override an explicit choice.
-                                    // Same for the size: an explicit
-                                    // `env = XCURSOR_SIZE, …` in the
-                                    // config wins over `cursor_size`
-                                    // (mango f919134d).
-                                    let cursor_size = state.config.cursor_size.max(8);
-                                    if !state
+                                // Children get these through the child-env
+                                // overlay: margo is multi-threaded by now
+                                // (PipeWire, zbus, Mesa), so mutating the
+                                // process env here would race their getenv.
+                                utils::set_child_env("DISPLAY", format!(":{display_number}"));
+                                // XCURSOR_SIZE / XCURSOR_THEME let XWayland
+                                // apps pick up the native cursor instead of
+                                // libxcursor's 16-px default (the "Steam /
+                                // Discord cursor shrinks on hover" bug). An
+                                // explicit `env = XCURSOR_SIZE, …` / an
+                                // inherited XCURSOR_THEME wins (mango
+                                // f919134d).
+                                let cursor_size = state.config.cursor_size.max(8);
+                                if !state
+                                    .config
+                                    .envs
+                                    .iter()
+                                    .any(|(name, _)| name == "XCURSOR_SIZE")
+                                {
+                                    utils::set_child_env("XCURSOR_SIZE", cursor_size.to_string());
+                                }
+                                if std::env::var_os("XCURSOR_THEME").is_none()
+                                    && let Some(theme) = state
                                         .config
-                                        .envs
-                                        .iter()
-                                        .any(|(name, _)| name == "XCURSOR_SIZE")
-                                    {
-                                        std::env::set_var("XCURSOR_SIZE", cursor_size.to_string());
-                                    }
-                                    if std::env::var_os("XCURSOR_THEME").is_none() {
-                                        if let Some(theme) = state
-                                            .config
-                                            .cursor_theme
-                                            .as_deref()
-                                            .filter(|s| !s.is_empty())
-                                        {
-                                            std::env::set_var("XCURSOR_THEME", theme);
-                                        }
-                                    }
+                                        .cursor_theme
+                                        .as_deref()
+                                        .filter(|s| !s.is_empty())
+                                {
+                                    utils::set_child_env("XCURSOR_THEME", theme);
                                 }
                                 info!(
                                     "XWayland ready on :{display_number} \
                                      XCURSOR_SIZE={} XCURSOR_THEME={}",
-                                    std::env::var("XCURSOR_SIZE")
-                                        .unwrap_or_else(|_| "<unset>".into()),
-                                    std::env::var("XCURSOR_THEME")
-                                        .unwrap_or_else(|_| "<unset>".into()),
+                                    utils::child_env_var("XCURSOR_SIZE")
+                                        .unwrap_or_else(|| "<unset>".into()),
+                                    utils::child_env_var("XCURSOR_THEME")
+                                        .unwrap_or_else(|| "<unset>".into()),
                                 );
                                 utils::import_session_environment(&[
                                     "XDG_SESSION_DESKTOP",
@@ -1105,6 +1077,7 @@ fn main() -> Result<()> {
                             "{runtime}/margo-portal-shot-{stamp}.png"
                         ));
                         let mut cmd = std::process::Command::new("grim");
+                        utils::apply_child_env(&mut cmd);
                         if include_cursor {
                             cmd.arg("-c");
                         }
@@ -1335,6 +1308,29 @@ fn main() -> Result<()> {
                 calloop::timer::TimeoutAction::ToDuration(std::time::Duration::from_secs(60))
             })
             .map_err(|e| anyhow::anyhow!("insert autosave timer: {e}"))?;
+    }
+
+    // ── Config auto-reload (`auto_reload_config`) ─────────────────────────────
+    // Wired last: its watcher starts threads, and the startup code above
+    // still mutates the process environment (WAYLAND_DISPLAY,
+    // MARGO_SOCKET, config `env =` lines).
+    // The watcher's own callback runs on its background thread, not this
+    // one — MargoState isn't Send, so it can't call reload_config()
+    // directly. It only ever sends a settled-batch signal here; the
+    // actual reload happens below, back on the compositor's own thread.
+    let (config_reload_tx, config_reload_rx) = calloop::channel::channel::<()>();
+    if let Err(e) =
+        loop_handle.insert_source(config_reload_rx, |event, _, state: &mut MargoState| {
+            if let calloop::channel::Event::Msg(()) = event
+                && let Err(e) = state.reload_config_on_change()
+            {
+                tracing::warn!(error = ?e, "config auto-reload: reload failed");
+            }
+        })
+    {
+        warn!("config auto-reload source insert failed: {e}");
+    } else {
+        margo.set_config_reload_sender(config_reload_tx);
     }
 
     // ── Run the event loop ────────────────────────────────────────────────────

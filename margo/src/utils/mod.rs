@@ -5,6 +5,45 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 
+/// Environment for children that only becomes known once margo is
+/// already multi-threaded (XWayland's `DISPLAY`, the matching
+/// `XCURSOR_*`). Mutating the process environment at that point races C
+/// code on other threads (PipeWire, Mesa, glibc's `localtime`) that calls
+/// `getenv` without Rust's env lock, so these live here and are applied
+/// to every spawned [`Command`] instead.
+static CHILD_ENV: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+
+fn child_env() -> std::sync::MutexGuard<'static, Vec<(String, String)>> {
+    CHILD_ENV.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Set `key` for every child spawned from now on.
+pub fn set_child_env(key: &str, value: impl Into<String>) {
+    let value = value.into();
+    let mut env = child_env();
+    match env.iter_mut().find(|(k, _)| k == key) {
+        Some(slot) => slot.1 = value,
+        None => env.push((key.to_owned(), value)),
+    }
+}
+
+/// `key` as a spawned child would see it: the child-env overlay first,
+/// then margo's own process environment.
+pub fn child_env_var(key: &str) -> Option<String> {
+    if let Some((_, v)) = child_env().iter().find(|(k, _)| k == key) {
+        return Some(v.clone());
+    }
+    std::env::var(key).ok()
+}
+
+/// Apply the child-env overlay to `cmd`.
+pub fn apply_child_env(cmd: &mut Command) -> &mut Command {
+    for (k, v) in child_env().iter() {
+        cmd.env(k, v);
+    }
+    cmd
+}
+
 /// Spawn a program asynchronously (mirrors C `spawn`).
 ///
 /// Goes through `setsid --fork` so the command runs in its own session
@@ -43,6 +82,7 @@ pub fn spawn_shell(cmd: &str) -> Result<()> {
 /// thread so it can't linger as a zombie either.
 fn spawn_detached(mut cmd: Command, build: impl FnOnce(&mut Command)) -> Result<()> {
     build(&mut cmd);
+    apply_child_env(&mut cmd);
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -92,7 +132,7 @@ pub fn import_session_environment(extra: &[&str]) {
 
     let to_push: Vec<(&str, String)> = vars
         .iter()
-        .filter_map(|k| std::env::var(k).ok().map(|v| (*k, v)))
+        .filter_map(|k| child_env_var(k).map(|v| (*k, v)))
         .collect();
     if to_push.is_empty() {
         tracing::warn!("import_session_environment: no variables set in process env, skipping");
@@ -116,7 +156,7 @@ pub fn import_session_environment(extra: &[&str]) {
     // systemd user manager: imports each NAME from the caller's env
     // into the manager's env block. `inherit_*` and stderr capture
     // so we can include the failure reason in the log.
-    let sysd = Command::new("systemctl")
+    let sysd = apply_child_env(&mut Command::new("systemctl"))
         .arg("--user")
         .arg("import-environment")
         .args(&pushed_keys)
@@ -150,7 +190,7 @@ pub fn import_session_environment(extra: &[&str]) {
     // isn't installed, we just skip without taking the systemd half
     // down.
     let env_args: Vec<String> = to_push.iter().map(|(k, v)| format!("{k}={v}")).collect();
-    let dbus = Command::new("dbus-update-activation-environment")
+    let dbus = apply_child_env(&mut Command::new("dbus-update-activation-environment"))
         .arg("--systemd")
         .args(&env_args)
         .stdin(Stdio::null())
@@ -276,5 +316,26 @@ mod clamp_wire_str_tests {
         let out = clamp_wire_str(&long);
         assert!(out.len() <= MAX_WIRE_STRING);
         assert!(out.chars().all(|c| c == 'ş'));
+    }
+}
+
+#[cfg(test)]
+mod child_env_tests {
+    use super::*;
+
+    #[test]
+    fn overlay_wins_and_reaches_spawned_commands() {
+        set_child_env("MARGO_CHILD_ENV_TEST", "one");
+        set_child_env("MARGO_CHILD_ENV_TEST", "two");
+        assert_eq!(
+            child_env_var("MARGO_CHILD_ENV_TEST").as_deref(),
+            Some("two")
+        );
+        let mut cmd = Command::new("true");
+        apply_child_env(&mut cmd);
+        assert!(
+            cmd.get_envs()
+                .any(|(k, v)| k == "MARGO_CHILD_ENV_TEST" && v == Some(OsStr::new("two")))
+        );
     }
 }
