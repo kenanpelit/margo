@@ -56,6 +56,8 @@ fn screencopy_shm_buffer_stride(size: Size<i32, Physical>) -> i32 {
 /// the `Screencopy`s waiting to be served by the next render pass.
 pub struct ScreencopyQueue {
     damage_tracker: OutputDamageTracker,
+    /// `(buffer size, scale bits)` `damage_tracker` was built for.
+    damage_key: Option<(Size<i32, Physical>, u64)>,
     pending_frames: HashSet<ZwlrScreencopyFrameV1>,
     screencopies: Vec<Screencopy>,
 }
@@ -64,6 +66,7 @@ impl ScreencopyQueue {
     fn new() -> Self {
         Self {
             damage_tracker: OutputDamageTracker::new((0, 0), 1.0, Transform::Normal),
+            damage_key: None,
             pending_frames: HashSet::new(),
             screencopies: Vec::new(),
         }
@@ -86,6 +89,34 @@ impl ScreencopyQueue {
 
     pub fn push(&mut self, screencopy: Screencopy) {
         self.screencopies.push(screencopy);
+    }
+
+    /// Pending screencopies, oldest first.
+    pub fn screencopies(&self) -> &[Screencopy] {
+        &self.screencopies
+    }
+
+    /// Damage of `elements` since this queue's previous capture, in the
+    /// capture buffer's physical coordinates. Empty when nothing
+    /// changed. The tracker persists across captures (rebuilt only when
+    /// the buffer size or scale changes), so a recorder polling with
+    /// `copy_with_damage` gets the real changed region instead of a
+    /// full frame every time.
+    pub fn damage_since_last_capture<E: smithay::backend::renderer::element::Element>(
+        &mut self,
+        size: Size<i32, Physical>,
+        scale: f64,
+        elements: &[E],
+    ) -> Vec<Rectangle<i32, Physical>> {
+        let key = (size, scale.to_bits());
+        if self.damage_key != Some(key) {
+            self.damage_tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
+            self.damage_key = Some(key);
+        }
+        match self.damage_tracker.damage_output(1, elements) {
+            Ok((damage, _)) => damage.cloned().unwrap_or_default(),
+            Err(_) => vec![Rectangle::from_size(size)],
+        }
     }
 
     /// Pop the next screencopy. Caller is responsible for actually
@@ -142,6 +173,11 @@ impl ScreencopyManagerState {
             return;
         };
         queue.push(screencopy);
+    }
+
+    /// Iterate every queue.
+    pub fn queues(&self) -> impl Iterator<Item = &ScreencopyQueue> {
+        self.queues.values()
     }
 
     /// Iterate every queue with mutable access. Used by the backend to

@@ -1436,293 +1436,337 @@ pub(super) fn take_mru_thumbnails(
     }
 }
 
-/// Drain any wlr-screencopy frames pending for `od.output` and write the
-/// rendered pixels into the client's buffer. Currently supports SHM
-/// targets only — dmabuf clients fall through and time out (their `Drop`
-/// emits `failed`). Renders into a transient `GlesRenderbuffer` matching
-/// the client's requested `buffer_size` so we honour scaling/transform.
+/// Drain the wlr-screencopy frames pending for `od.output` and write the
+/// rendered pixels into each client's buffer (dmabuf zero-copy or SHM
+/// read-back).
+///
+/// The capture element list is built once per cursor variant per frame
+/// (and the display list is reused outright when a cursor capture needs
+/// no screencast blackout). Each queue keeps a persistent damage
+/// tracker, so `copy_with_damage` clients get the region that actually
+/// changed since their previous capture — and wait, as the protocol
+/// intends, while nothing changed — instead of a full-frame damage
+/// every frame that made encoders re-encode the whole screen.
 pub(super) fn serve_screencopies(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
     state: &mut MargoState,
     elements: &[MargoRenderElement],
 ) {
-    use smithay::backend::renderer::{
-        Bind, ExportMem, Offscreen, damage::OutputDamageTracker as DamageTracker,
-    };
+    use smithay::backend::renderer::element::utils::{Relocate, RelocateRenderElement};
 
     let now = monotonic_now();
     let output = od.output.clone();
 
-    // Collect screencopies destined for THIS output across all queues.
-    let mut to_serve: Vec<crate::protocols::screencopy::Screencopy> = Vec::new();
-    state.screencopy_state.with_queues_mut(|queue| {
-        // niri keeps damage tracking per-queue; we just drain everything
-        // that targets our output. Region-based capture and damage events
-        // are best-effort here — full-frame ready/damage is good enough
-        // for grim/wf-recorder/screen-rec.
-        let drained: Vec<_> = (0..)
-            .map_while(|_| {
-                let head_matches = queue
-                    .split()
-                    .1
-                    .map(|s| s.output() == &output)
-                    .unwrap_or(false);
-                if head_matches {
-                    Some(queue.pop())
-                } else {
-                    None
-                }
-            })
-            .collect();
-        to_serve.extend(drained);
-    });
-    if to_serve.is_empty() {
+    let (mut want_cursor, mut want_plain) = (false, false);
+    for queue in state.screencopy_state.queues() {
+        for sc in queue
+            .screencopies()
+            .iter()
+            .take_while(|sc| sc.output() == &output)
+        {
+            if sc.overlay_cursor() {
+                want_cursor = true;
+            } else {
+                want_plain = true;
+            }
+        }
+    }
+    if !want_cursor && !want_plain {
         return;
     }
 
-    // The output's full physical mode size — we render this into the
-    // offscreen target, then `copy_framebuffer` reads back only the
-    // client-requested sub-region (region_loc + buffer_size).
-    let output_size = match od.output.current_mode().map(|m| m.size) {
-        Some(s) => s,
-        None => {
-            for s in to_serve {
-                drop(s); // → fires `failed` via Drop
+    // The output's full physical mode size — the SHM path renders this
+    // into the offscreen target, then `copy_framebuffer` reads back only
+    // the client-requested sub-region (region_loc + buffer_size).
+    let Some(output_size) = od.output.current_mode().map(|m| m.size) else {
+        state.screencopy_state.with_queues_mut(|queue| {
+            while queue
+                .screencopies()
+                .first()
+                .is_some_and(|sc| sc.output() == &output)
+            {
+                drop(queue.pop()); // → fires `failed` via Drop
             }
+        });
+        return;
+    };
+    let scale = od.output.current_scale().fractional_scale();
+
+    // `block_out_from_screencast` windows must be blacked out in every
+    // capture, so the display list (which shows them) is only reusable
+    // for cursor captures when no such window exists.
+    let any_blocked = state.clients.iter().any(|c| c.block_out_from_screencast);
+    let cursor_elements = (want_cursor && any_blocked)
+        .then(|| screencopy_capture_elements(renderer, od, state, true));
+    let plain_elements =
+        want_plain.then(|| screencopy_capture_elements(renderer, od, state, false));
+    let elements_for = |overlay_cursor: bool| -> &[MargoRenderElement] {
+        let built = if overlay_cursor {
+            cursor_elements.as_deref()
+        } else {
+            plain_elements.as_deref()
+        };
+        built.unwrap_or(elements)
+    };
+
+    let mut ready = Vec::new();
+    state.screencopy_state.with_queues_mut(|queue| {
+        while let Some(head) = queue.screencopies().first() {
+            if head.output() != &output {
+                break;
+            }
+            let size = head.buffer_size();
+            if size.w <= 0 || size.h <= 0 {
+                drop(queue.pop());
+                continue;
+            }
+            let with_damage = head.with_damage();
+            let region_loc = head.region_loc();
+            let translate = Point::<i32, Physical>::from((-region_loc.x, -region_loc.y));
+            let relocated: Vec<_> = elements_for(head.overlay_cursor())
+                .iter()
+                .map(|e| RelocateRenderElement::from_element(e, translate, Relocate::Relative))
+                .collect();
+            let damage = queue.damage_since_last_capture(size, scale, &relocated);
+            if with_damage && damage.is_empty() {
+                // Nothing changed since this client's last frame: keep
+                // it queued until something does.
+                break;
+            }
+            ready.push((queue.pop(), damage));
+        }
+    });
+
+    for (screencopy, damage) in ready {
+        let elements = elements_for(screencopy.overlay_cursor());
+        render_screencopy(
+            renderer,
+            screencopy,
+            elements,
+            output_size,
+            scale,
+            &damage,
+            now,
+        );
+    }
+}
+
+/// The element list a screencopy captures: the screencast variant of the
+/// scene (blackout filter applied, cursor per the client's request) plus
+/// the compositor wallpaper the display path adds on top of it.
+fn screencopy_capture_elements(
+    renderer: &mut GlesRenderer,
+    od: &OutputDevice,
+    state: &MargoState,
+    include_cursor: bool,
+) -> Vec<MargoRenderElement> {
+    let mut elements = build_render_elements_inner(
+        renderer,
+        od,
+        state,
+        RenderTarget::Screencast { include_cursor },
+    );
+    if !state.session_locked
+        && let Some(ref wp) = state.wallpaper
+        && let Some(output_geo) = state.space.output_geometry(&od.output)
+        && let Some(wp_elem) = wp.render_element(renderer, output_geo.size)
+    {
+        elements.push(MargoRenderElement::Cursor(wp_elem));
+    }
+    elements
+}
+
+/// Render one screencopy into its buffer, report `damage` (buffer
+/// coordinates) when the client asked for it, and submit.
+fn render_screencopy(
+    renderer: &mut GlesRenderer,
+    screencopy: crate::protocols::screencopy::Screencopy,
+    elements_to_render: &[MargoRenderElement],
+    output_size: smithay::utils::Size<i32, Physical>,
+    scale: f64,
+    damage: &[smithay::utils::Rectangle<i32, Physical>],
+    now: std::time::Duration,
+) {
+    use smithay::backend::renderer::{
+        Bind, ExportMem, Offscreen, damage::OutputDamageTracker as DamageTracker,
+    };
+    let size = screencopy.buffer_size();
+    let region_loc = screencopy.region_loc();
+    let report_damage = |screencopy: &crate::protocols::screencopy::Screencopy| {
+        if screencopy.with_damage() {
+            screencopy.damage(damage.iter().map(|r| {
+                smithay::utils::Rectangle::new(
+                    smithay::utils::Point::from((r.loc.x, r.loc.y)),
+                    smithay::utils::Size::from((r.size.w, r.size.h)),
+                )
+            }));
+        }
+    };
+
+    // ── DMA-BUF zero-copy fast path ─────────────────────────────
+    // OBS / Discord / xdg-desktop-portal-wlr negotiate dmabuf via
+    // `frame.linux_dmabuf(...)` and submit a GBM-allocated wl_buffer
+    // sized to the full output. That's the cheap case: bind the
+    // dmabuf as a render target and let smithay's damage tracker
+    // paint the elements straight into it. No CPU readback, no SHM
+    // upload — the screencast pipeline gets a buffer the GPU has
+    // already touched.
+    if let crate::protocols::screencopy::ScreencopyBuffer::Dmabuf(dmabuf) = screencopy.buffer() {
+        // Translate every element by `-region_loc` and render
+        // to a damage-tracker sized to the *client's* requested
+        // `buffer_size`. For full-output capture region_loc is
+        // (0,0) and buffer_size == output_size, so the wrap is
+        // a no-op and the relocate elements forward to their
+        // inner draw unchanged. For region capture (`grim -g`,
+        // a portal `crop` request) we shift the world by
+        // -region_loc so the requested rect lands at (0,0) of
+        // the dmabuf and run a damage tracker at buffer_size,
+        // which clips anything outside the dmabuf for free.
+        use smithay::backend::renderer::element::utils::{Relocate, RelocateRenderElement};
+        let translate: smithay::utils::Point<i32, smithay::utils::Physical> =
+            (-region_loc.x, -region_loc.y).into();
+        let relocated: Vec<RelocateRenderElement<&MargoRenderElement>> = elements_to_render
+            .iter()
+            .map(|e| RelocateRenderElement::from_element(e, translate, Relocate::Relative))
+            .collect();
+
+        let mut dmabuf = dmabuf.clone();
+        let render_result = match renderer.bind(&mut dmabuf) {
+            Ok(mut target) => {
+                let mut tracker = DamageTracker::new(size, scale, Transform::Normal);
+                let res = tracker
+                    .render_output(renderer, &mut target, 0, &relocated, [0.0, 0.0, 0.0, 1.0])
+                    .map(|_| ());
+                drop(target);
+                res
+            }
+            Err(e) => Err(smithay::backend::renderer::damage::Error::Rendering(e)),
+        };
+
+        match render_result {
+            Ok(()) => {
+                report_damage(&screencopy);
+                // Implicit-sync dmabuf submit. Every consumer
+                // we've tested (xdg-desktop-portal-wlr, OBS,
+                // wf-recorder, grim) is happy with this; the
+                // explicit-sync path comes back when DRM
+                // syncobj fences are wired into screencopy.
+                screencopy.submit_now(false, now);
+            }
+            Err(e) => warn!("screencopy: dmabuf render failed: {e:?}"),
+        }
+        return;
+    }
+
+    // ── SHM path (renderbuffer + read-back + memcpy) ─────────────
+    // Render the FULL output (not just the region). We crop on read-back
+    // via `copy_framebuffer`. Renderbuffer matches the output mode.
+    let buf_size =
+        smithay::utils::Size::<i32, smithay::utils::Buffer>::from((output_size.w, output_size.h));
+
+    let mut renderbuffer = match <GlesRenderer as Offscreen<
+        smithay::backend::renderer::gles::GlesRenderbuffer,
+    >>::create_buffer(
+        renderer, drm_fourcc::DrmFourcc::Xrgb8888, buf_size
+    ) {
+        Ok(rb) => rb,
+        Err(e) => {
+            warn!("screencopy: create_buffer failed: {e:?}");
             return;
         }
     };
 
-    for screencopy in to_serve {
-        let size = screencopy.buffer_size();
-        let region_loc = screencopy.region_loc();
-        if size.w <= 0 || size.h <= 0 {
-            continue;
+    let mut target = match renderer.bind(&mut renderbuffer) {
+        Ok(t) => t,
+        Err(e) => {
+            warn!("screencopy: bind renderbuffer failed: {e:?}");
+            return;
         }
-        let scale = od.output.current_scale().fractional_scale();
+    };
 
-        // Re-build the element list with `for_screencast = true` so
-        // any window flagged `block_out_from_screencast = 1` in the
-        // user's windowrules gets substituted with a solid black
-        // rect — password managers, private-browsing tabs, 2FA
-        // apps, polkit prompts, …. We can't reuse the main display
-        // `elements` array even when `overlay_cursor = true`,
-        // because that array was built without the screencast
-        // blackout filter (it's still showing those windows
-        // intact, which is what the user is supposed to see on
-        // screen). The cursor sprite is included if the client
-        // asked for it via `overlay_cursor`.
-        let owned_elements = build_render_elements_inner(
-            renderer,
-            od,
-            state,
-            RenderTarget::Screencast {
-                include_cursor: screencopy.overlay_cursor(),
-            },
-        );
-        let elements_to_render: &[MargoRenderElement] = &owned_elements;
-        let _ = elements; // main display array intentionally unused for screencast
-
-        // ── DMA-BUF zero-copy fast path ─────────────────────────────
-        // OBS / Discord / xdg-desktop-portal-wlr negotiate dmabuf via
-        // `frame.linux_dmabuf(...)` and submit a GBM-allocated wl_buffer
-        // sized to the full output. That's the cheap case: bind the
-        // dmabuf as a render target and let smithay's damage tracker
-        // paint the elements straight into it. No CPU readback, no SHM
-        // upload — the screencast pipeline gets a buffer the GPU has
-        // already touched. For region capture (`grim -g`) we'd need to
-        // translate elements by `-region_loc` and render at
-        // `buffer_size` instead of `output_size`; that's a follow-up
-        // (smithay's OutputDamageTracker doesn't take a render-time
-        // offset, so we'd need RelocateRenderElement wrapping). Until
-        // then, region capture with a dmabuf target fails the frame —
-        // grim is the only user we know of that requests one and it
-        // happily falls back to SHM.
-        if let crate::protocols::screencopy::ScreencopyBuffer::Dmabuf(dmabuf) = screencopy.buffer()
-        {
-            // Translate every element by `-region_loc` and render
-            // to a damage-tracker sized to the *client's* requested
-            // `buffer_size`. For full-output capture region_loc is
-            // (0,0) and buffer_size == output_size, so the wrap is
-            // a no-op and the relocate elements forward to their
-            // inner draw unchanged. For region capture (`grim -g`,
-            // a portal `crop` request) we shift the world by
-            // -region_loc so the requested rect lands at (0,0) of
-            // the dmabuf and run a damage tracker at buffer_size,
-            // which clips anything outside the dmabuf for free.
-            use smithay::backend::renderer::element::utils::{Relocate, RelocateRenderElement};
-            let translate: smithay::utils::Point<i32, smithay::utils::Physical> =
-                (-region_loc.x, -region_loc.y).into();
-            let relocated: Vec<RelocateRenderElement<&MargoRenderElement>> = elements_to_render
-                .iter()
-                .map(|e| RelocateRenderElement::from_element(e, translate, Relocate::Relative))
-                .collect();
-
-            let mut dmabuf = dmabuf.clone();
-            let render_result = match renderer.bind(&mut dmabuf) {
-                Ok(mut target) => {
-                    let mut tracker = DamageTracker::new(size, scale, Transform::Normal);
-                    let res = tracker
-                        .render_output(renderer, &mut target, 0, &relocated, [0.0, 0.0, 0.0, 1.0])
-                        .map(|r| r.damage.map(|d| d.to_owned()));
-                    drop(target);
-                    res
-                }
-                Err(e) => Err(smithay::backend::renderer::damage::Error::Rendering(e)),
-            };
-
-            match render_result {
-                Ok(damage) => {
-                    if screencopy.with_damage() {
-                        if let Some(damage_rects) = damage.as_ref() {
-                            screencopy.damage(damage_rects.iter().map(|r| {
-                                smithay::utils::Rectangle::new(
-                                    smithay::utils::Point::from((r.loc.x, r.loc.y)),
-                                    smithay::utils::Size::from((r.size.w, r.size.h)),
-                                )
-                            }));
-                        }
-                    }
-                    // Implicit-sync dmabuf submit. Every consumer
-                    // we've tested (xdg-desktop-portal-wlr, OBS,
-                    // wf-recorder, grim) is happy with this; the
-                    // explicit-sync path comes back when DRM
-                    // syncobj fences are wired into screencopy.
-                    screencopy.submit_now(false, now);
-                }
-                Err(e) => warn!("screencopy: dmabuf render failed: {e:?}"),
-            }
-            continue;
-        }
-
-        // ── SHM path (renderbuffer + read-back + memcpy) ─────────────
-        // Render the FULL output (not just the region). We crop on read-back
-        // via `copy_framebuffer`. Renderbuffer matches the output mode.
-        let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from((
-            output_size.w,
-            output_size.h,
-        ));
-
-        let mut renderbuffer = match <GlesRenderer as Offscreen<
-            smithay::backend::renderer::gles::GlesRenderbuffer,
-        >>::create_buffer(
-            renderer, drm_fourcc::DrmFourcc::Xrgb8888, buf_size
-        ) {
-            Ok(rb) => rb,
-            Err(e) => {
-                warn!("screencopy: create_buffer failed: {e:?}");
-                continue;
-            }
-        };
-
-        let mut target = match renderer.bind(&mut renderbuffer) {
-            Ok(t) => t,
-            Err(e) => {
-                warn!("screencopy: bind renderbuffer failed: {e:?}");
-                continue;
-            }
-        };
-
-        let mut tracker = DamageTracker::new(output_size, scale, Transform::Normal);
-        let render_result = tracker.render_output(
-            renderer,
-            &mut target,
-            0,
-            elements_to_render,
-            [0.0, 0.0, 0.0, 1.0],
-        );
-        let damage = match render_result {
-            Ok(res) => res.damage,
-            Err(e) => {
-                warn!("screencopy: render_output failed: {e:?}");
-                continue;
-            }
-        };
-
-        // Crop on copy: pull out the requested sub-region (or the full
-        // output if region_loc=(0,0) and size==output_size).
-        let region = smithay::utils::Rectangle::new(
-            smithay::utils::Point::<i32, smithay::utils::Buffer>::from((
-                region_loc.x,
-                region_loc.y,
-            )),
-            smithay::utils::Size::<i32, smithay::utils::Buffer>::from((size.w, size.h)),
-        );
-        let mapping =
-            match renderer.copy_framebuffer(&target, region, drm_fourcc::DrmFourcc::Xrgb8888) {
-                Ok(m) => m,
-                Err(e) => {
-                    warn!("screencopy: copy_framebuffer failed: {e:?}");
-                    continue;
-                }
-            };
-        // Drop the bind so map_texture can re-bind the GL state.
-        drop(target);
-        let pixels = match renderer.map_texture(&mapping) {
-            Ok(p) => p,
-            Err(e) => {
-                warn!("screencopy: map_texture failed: {e:?}");
-                continue;
-            }
-        };
-
-        // Write into the SHM buffer. The dmabuf branch is handled
-        // earlier in the loop with a zero-copy bind+render path; by
-        // the time we reach this match the buffer must be SHM. The
-        // Dmabuf arm is unreachable but kept exhaustive so adding a
-        // future ScreencopyBuffer variant fails to compile here.
-        let copied = match screencopy.buffer() {
-            crate::protocols::screencopy::ScreencopyBuffer::Shm(buf) => {
-                let need = (size.w as usize)
-                    .saturating_mul(4)
-                    .saturating_mul(size.h as usize);
-                let copied_n = match smithay::wayland::shm::with_buffer_contents_mut(
-                    buf,
-                    |dst_ptr, dst_len, _meta| {
-                        let n = need.min(dst_len).min(pixels.len());
-                        // SAFETY: dst_ptr+dst_len come from a validated wl_shm
-                        // wl_buffer; we never read more than n bytes from
-                        // pixels (whose size is dst_len-clamped).
-                        unsafe {
-                            std::ptr::copy_nonoverlapping(pixels.as_ptr(), dst_ptr, n);
-                        }
-                        n
-                    },
-                ) {
-                    Ok(n) => n,
-                    Err(e) => {
-                        warn!("screencopy: shm map failed: {e:?}");
-                        0
-                    }
-                };
-                copied_n > 0
-            }
-            crate::protocols::screencopy::ScreencopyBuffer::Dmabuf(_) => {
-                // Should not happen: handled earlier and `continue`d.
-                unreachable!("screencopy dmabuf path took the SHM branch");
-            }
-        };
-
-        if !copied {
-            // Drop without submit → frame.failed() fires from `impl Drop`.
-            continue;
-        }
-
-        // Optional: announce damage for with_damage clients.
-        if screencopy.with_damage() {
-            if let Some(damage_rects) = damage.as_ref() {
-                screencopy.damage(damage_rects.iter().map(|r| {
-                    smithay::utils::Rectangle::new(
-                        smithay::utils::Point::from((r.loc.x, r.loc.y)),
-                        smithay::utils::Size::from((r.size.w, r.size.h)),
-                    )
-                }));
-            }
-        }
-        // SHM: synchronous, no GPU sync needed before submit.
-        screencopy.submit_now(false, now);
+    let mut tracker = DamageTracker::new(output_size, scale, Transform::Normal);
+    let render_result = tracker.render_output(
+        renderer,
+        &mut target,
+        0,
+        elements_to_render,
+        [0.0, 0.0, 0.0, 1.0],
+    );
+    if let Err(e) = render_result {
+        warn!("screencopy: render_output failed: {e:?}");
+        return;
     }
+
+    // Crop on copy: pull out the requested sub-region (or the full
+    // output if region_loc=(0,0) and size==output_size).
+    let region = smithay::utils::Rectangle::new(
+        smithay::utils::Point::<i32, smithay::utils::Buffer>::from((region_loc.x, region_loc.y)),
+        smithay::utils::Size::<i32, smithay::utils::Buffer>::from((size.w, size.h)),
+    );
+    let mapping = match renderer.copy_framebuffer(&target, region, drm_fourcc::DrmFourcc::Xrgb8888)
+    {
+        Ok(m) => m,
+        Err(e) => {
+            warn!("screencopy: copy_framebuffer failed: {e:?}");
+            return;
+        }
+    };
+    // Drop the bind so map_texture can re-bind the GL state.
+    drop(target);
+    let pixels = match renderer.map_texture(&mapping) {
+        Ok(p) => p,
+        Err(e) => {
+            warn!("screencopy: map_texture failed: {e:?}");
+            return;
+        }
+    };
+
+    // Write into the SHM buffer. The dmabuf branch is handled
+    // earlier in the loop with a zero-copy bind+render path; by
+    // the time we reach this match the buffer must be SHM. The
+    // Dmabuf arm is unreachable but kept exhaustive so adding a
+    // future ScreencopyBuffer variant fails to compile here.
+    let copied = match screencopy.buffer() {
+        crate::protocols::screencopy::ScreencopyBuffer::Shm(buf) => {
+            let need = (size.w as usize)
+                .saturating_mul(4)
+                .saturating_mul(size.h as usize);
+            let copied_n = match smithay::wayland::shm::with_buffer_contents_mut(
+                buf,
+                |dst_ptr, dst_len, _meta| {
+                    let n = need.min(dst_len).min(pixels.len());
+                    // SAFETY: dst_ptr+dst_len come from a validated wl_shm
+                    // wl_buffer; we never read more than n bytes from
+                    // pixels (whose size is dst_len-clamped).
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(pixels.as_ptr(), dst_ptr, n);
+                    }
+                    n
+                },
+            ) {
+                Ok(n) => n,
+                Err(e) => {
+                    warn!("screencopy: shm map failed: {e:?}");
+                    0
+                }
+            };
+            copied_n > 0
+        }
+        crate::protocols::screencopy::ScreencopyBuffer::Dmabuf(_) => {
+            // Should not happen: handled earlier and returned.
+            unreachable!("screencopy dmabuf path took the SHM branch");
+        }
+    };
+
+    if !copied {
+        // Drop without submit → frame.failed() fires from `impl Drop`.
+        return;
+    }
+
+    report_damage(&screencopy);
+    // SHM: synchronous, no GPU sync needed before submit.
+    screencopy.submit_now(false, now);
 }
 
 // ── CRTC helper ───────────────────────────────────────────────────────────────
