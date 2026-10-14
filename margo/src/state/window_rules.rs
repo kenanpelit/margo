@@ -599,18 +599,16 @@ impl MargoState {
         Rect::new(x, y, width, height)
     }
 
+    /// `idx` is the committing client's index (the commit handler has
+    /// already resolved it).
     pub(crate) fn refresh_wayland_toplevel_identity(
         &mut self,
-        window: &Window,
+        idx: usize,
         toplevel: &ToplevelSurface,
     ) {
-        let Some(idx) = self
-            .clients
-            .iter()
-            .position(|client| client.window == *window)
-        else {
+        if idx >= self.clients.len() {
             return;
-        };
+        }
 
         // Compare the freshly-committed identity against the client's
         // current one inside the surface-state lock; only clone the

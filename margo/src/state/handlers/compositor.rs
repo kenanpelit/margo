@@ -242,11 +242,19 @@ impl CompositorHandler for MargoState {
             // deferred (created in `new_toplevel`, not yet mapped
             // because we wanted to wait for app_id before applying
             // window rules). If so, finalise the initial map now.
-            let deferred_idx = self.clients.iter().position(|c| {
-                c.is_initial_map_pending && c.window.wl_surface().as_deref() == Some(&root)
-            });
-            if let Some(idx) = deferred_idx.filter(|_| !self.session_locked) {
+            let find_client = |state: &Self| {
+                state
+                    .clients
+                    .iter()
+                    .position(|client| client.window.wl_surface().as_deref() == Some(&root))
+            };
+            let mut committed_client_idx = find_client(self);
+            if let Some(idx) = committed_client_idx
+                .filter(|&idx| self.clients[idx].is_initial_map_pending && !self.session_locked)
+            {
                 self.finalize_initial_map(idx);
+                // Mapping can insert the client at a new position.
+                committed_client_idx = find_client(self);
             }
 
             // Hidden-tag windows are deliberately unmapped from `Space`, but
@@ -256,10 +264,6 @@ impl CompositorHandler for MargoState {
             // child commit so its cached bbox stays correct. Resolve through
             // the authoritative client list first; the Space fallback covers
             // any auxiliary window not represented there.
-            let committed_client_idx = self
-                .clients
-                .iter()
-                .position(|client| client.window.wl_surface().as_deref() == Some(&root));
             let committed_window = committed_client_idx
                 .and_then(|idx| self.clients.get(idx).map(|client| client.window.clone()))
                 .or_else(|| {
@@ -268,13 +272,16 @@ impl CompositorHandler for MargoState {
                         .find(|window| window.wl_surface().as_deref() == Some(&root))
                         .cloned()
                 });
+            let is_window_commit = committed_window.is_some();
             if let Some(window) = committed_window {
                 window.on_commit();
                 // Send the initial configure on first commit if not yet sent.
                 // xdg-shell clients perform an initial bufferless commit after
                 // role assignment and then wait for this configure.
                 if let WindowSurface::Wayland(toplevel) = window.underlying_surface() {
-                    self.refresh_wayland_toplevel_identity(&window, toplevel);
+                    if let Some(idx) = committed_client_idx {
+                        self.refresh_wayland_toplevel_identity(idx, toplevel);
+                    }
                     let initial_sent = with_states(toplevel.wl_surface(), |states| {
                         states
                             .data_map
@@ -332,24 +339,22 @@ impl CompositorHandler for MargoState {
                 }
             }
 
-            let layer_output = self.space.outputs().find_map(|output| {
-                let map = layer_map_for_output(output);
-                if map
-                    .layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
-                    .is_some()
-                {
-                    Some(output.clone())
-                } else {
-                    None
-                }
-            });
+            // A toplevel root is never also a layer surface: skip the
+            // per-output layer-map lookup (one mutex lock per output) on
+            // window commits, and take output + layer in one pass.
+            let layer_hit = if is_window_commit {
+                None
+            } else {
+                self.space.outputs().find_map(|output| {
+                    layer_map_for_output(output)
+                        .layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
+                        .cloned()
+                        .map(|layer| (output.clone(), layer))
+                })
+            };
 
-            if let Some(output) = layer_output {
-                let layer_role = {
-                    let map = layer_map_for_output(&output);
-                    map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
-                        .map(|layer| layer.layer())
-                };
+            if let Some((output, layer)) = layer_hit {
+                let layer_role = Some(layer.layer());
                 if let Some(role) = layer_role
                     && let Some(animation) = self.layer_animations.get_mut(&root.id())
                 {
@@ -387,51 +392,38 @@ impl CompositorHandler for MargoState {
                 // keyboard_interactivity changes (noctalia/rofi
                 // launcher flips `Exclusive <-> None`).
                 let (new_layout_hash, new_kb_hash) = {
-                    let layer = {
-                        let map = layer_map_for_output(&output);
-                        map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
-                            .cloned()
-                    };
-                    match layer {
-                        Some(layer) => {
-                            use smithay::wayland::shell::wlr_layer::ExclusiveZone;
-                            layer.layer_surface().with_cached_state(|cur| {
-                                // ExclusiveZone / exclusive_edge aren't primitive;
-                                // normalise to the (tag, value) shape the pure
-                                // hasher takes, so the raw values are hashed (not
-                                // their Debug strings — the old `format!("{:?}")`
-                                // path heap-allocated a String per layer commit,
-                                // and a mshell bar re-flows several times a second).
-                                let ez: (u8, u32) = match cur.exclusive_zone {
-                                    ExclusiveZone::Exclusive(z) => (0, z),
-                                    ExclusiveZone::Neutral => (1, 0),
-                                    ExclusiveZone::DontCare => (2, 0),
-                                };
-                                let edge: (u8, u32) = match cur.exclusive_edge {
-                                    Some(a) => (1, a.bits()),
-                                    None => (0, 0),
-                                };
-                                layer_commit_hashes(
-                                    (cur.size.w, cur.size.h),
-                                    cur.anchor.bits(),
-                                    ez,
-                                    edge,
-                                    (
-                                        cur.margin.top,
-                                        cur.margin.bottom,
-                                        cur.margin.left,
-                                        cur.margin.right,
-                                    ),
-                                    cur.layer as u32,
-                                    cur.keyboard_interactivity as u32,
-                                )
-                            })
-                        }
-                        // No layer surface for this root (shouldn't happen on a
-                        // layer commit): fall back to the empty-hasher pair, the
-                        // same constants the previous inline code produced.
-                        None => layer_commit_hashes_empty(),
-                    }
+                    use smithay::wayland::shell::wlr_layer::ExclusiveZone;
+                    layer.layer_surface().with_cached_state(|cur| {
+                        // ExclusiveZone / exclusive_edge aren't primitive;
+                        // normalise to the (tag, value) shape the pure
+                        // hasher takes, so the raw values are hashed (not
+                        // their Debug strings — the old `format!("{:?}")`
+                        // path heap-allocated a String per layer commit,
+                        // and a mshell bar re-flows several times a second).
+                        let ez: (u8, u32) = match cur.exclusive_zone {
+                            ExclusiveZone::Exclusive(z) => (0, z),
+                            ExclusiveZone::Neutral => (1, 0),
+                            ExclusiveZone::DontCare => (2, 0),
+                        };
+                        let edge: (u8, u32) = match cur.exclusive_edge {
+                            Some(a) => (1, a.bits()),
+                            None => (0, 0),
+                        };
+                        layer_commit_hashes(
+                            (cur.size.w, cur.size.h),
+                            cur.anchor.bits(),
+                            ez,
+                            edge,
+                            (
+                                cur.margin.top,
+                                cur.margin.bottom,
+                                cur.margin.left,
+                                cur.margin.right,
+                            ),
+                            cur.layer as u32,
+                            cur.keyboard_interactivity as u32,
+                        )
+                    })
                 };
 
                 // Store the PURE layout hash (not a layout^kb combination).
@@ -769,14 +761,6 @@ pub(crate) fn layer_commit_hashes(
     layer.hash(&mut layout);
     keyboard_interactivity.hash(&mut kb);
     (layout.finish(), kb.finish())
-}
-
-/// The `(layout, keyboard)` pair for a layer commit with no resolvable layer
-/// surface — two empty-hasher finishes, matching the previous inline code.
-fn layer_commit_hashes_empty() -> (u64, u64) {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::Hasher;
-    (DefaultHasher::new().finish(), DefaultHasher::new().finish())
 }
 
 #[cfg(test)]
