@@ -782,10 +782,9 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
 
     // Sloppy-focus uses the toplevel-level FocusTarget (keyboard cares about
     // windows, not subsurfaces). Pointer events use the drilled wl_surface.
-    let kbd_focus = focus_under(state, pos);
+    let (kbd_focus, ptr_focus) = hit_test(state, pos);
     apply_sloppy_focus(state, kbd_focus.as_ref().map(|(t, _)| t));
     update_overview_hover(state, pos);
-    let ptr_focus = pointer_focus_under(state, pos);
 
     if let Some(ptr) = state.seat.get_pointer() {
         ptr.motion(
@@ -1027,10 +1026,9 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
         log_pointer_motion(state, "absolute", pos);
         request_cursor_repaint(state, old_pos, pos);
 
-        let kbd_focus = focus_under(state, pos);
+        let (kbd_focus, ptr_focus) = hit_test(state, pos);
         apply_sloppy_focus(state, kbd_focus.as_ref().map(|(t, _)| t));
         update_overview_hover(state, pos);
-        let ptr_focus = pointer_focus_under(state, pos);
         if let Some(ptr) = state.seat.get_pointer() {
             ptr.motion(
                 state,
@@ -1105,6 +1103,21 @@ fn request_cursor_repaint(
         return;
     }
 
+    // Common case (no overlapping outputs): at most one output under
+    // each position — no allocation on this 1000 Hz path.
+    let overlapping = state.space.output_under(old_pos).nth(1).is_some()
+        || state.space.output_under(new_pos).nth(1).is_some();
+    if !overlapping {
+        let old_output = state.space.output_under(old_pos).next().cloned();
+        let new_output = state.space.output_under(new_pos).next().cloned();
+        if let Some(output) = &old_output {
+            state.request_repaint_output(output);
+        }
+        if let Some(output) = new_output.filter(|o| Some(o) != old_output.as_ref()) {
+            state.request_repaint_output(&output);
+        }
+        return;
+    }
     let mut outputs: Vec<_> = state.space.output_under(old_pos).cloned().collect();
     for output in state.space.output_under(new_pos) {
         if !outputs.contains(output) {
@@ -1557,93 +1570,117 @@ fn top_menu_layer_open(state: &MargoState) -> bool {
     })
 }
 
-fn focus_under(
+type SurfaceHit = (
+    smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    Point<f64, Logical>,
+);
+type FocusHit = (FocusTarget, Point<f64, Logical>);
+
+/// Keyboard-level target (toplevel / layer / lock surface) and the
+/// drilled pointer surface under `pos`, from a single walk of the layer
+/// maps and the space. Pointer motion needs both — one for sloppy focus,
+/// one for `pointer.motion` — and used to hit-test twice per event.
+fn hit_test(
     state: &MargoState,
     pos: Point<f64, Logical>,
-) -> Option<(FocusTarget, Point<f64, Logical>)> {
+) -> (Option<FocusHit>, Option<SurfaceHit>) {
     if state.session_locked {
-        return state.space.output_under(pos).next().and_then(|output| {
-            state
-                .lock_surfaces
-                .iter()
-                .find(|(o, surface)| o == output && MargoState::lock_surface_ready(surface))
-                .and_then(|(_, s)| {
-                    // `output` came from `output_under`, so it is mapped and
-                    // geometry is Some in practice. Use `?` rather than unwrap
-                    // so a degenerate output can't panic the input loop while
-                    // the session is locked (a panic there strands the user).
-                    let output_geo = state.space.output_geometry(output)?;
-                    let local = pos - output_geo.loc.to_f64();
-                    Some((FocusTarget::SessionLock(s.clone()), local))
-                })
-        });
+        return (lock_focus_under(state, pos), lock_pointer_under(state, pos));
     }
 
-    layer_focus_under(state, pos, &[WlrLayer::Overlay, WlrLayer::Top])
+    if let Some((layer, focus_loc, surface)) =
+        layer_hit(state, pos, &[WlrLayer::Overlay, WlrLayer::Top])
+    {
+        return (
+            Some((FocusTarget::LayerSurface(layer), focus_loc)),
+            Some(surface),
+        );
+    }
+
+    let mut focus = None;
+    if let Some((window, win_loc)) = state.space.element_under(pos) {
+        focus = Some((FocusTarget::Window(window.clone()), win_loc.to_f64()));
+        let local = pos - win_loc.to_f64();
+        if let Some((surface, surf_loc)) = window.surface_under(local, WindowSurfaceType::ALL) {
+            // surf_loc is window-local; add the window origin for the
+            // space coordinates smithay's pointer.motion expects.
+            return (focus, Some((surface, (surf_loc + win_loc).to_f64())));
+        }
+    }
+
+    match layer_hit(state, pos, &[WlrLayer::Bottom, WlrLayer::Background]) {
+        Some((layer, focus_loc, surface)) => (
+            focus.or(Some((FocusTarget::LayerSurface(layer), focus_loc))),
+            Some(surface),
+        ),
+        None => (focus, None),
+    }
+}
+
+fn focus_under(state: &MargoState, pos: Point<f64, Logical>) -> Option<FocusHit> {
+    if state.session_locked {
+        return lock_focus_under(state, pos);
+    }
+    layer_hit(state, pos, &[WlrLayer::Overlay, WlrLayer::Top])
+        .map(|(layer, loc, _)| (FocusTarget::LayerSurface(layer), loc))
         .or_else(|| {
             state
                 .space
                 .element_under(pos)
                 .map(|(w, p)| (FocusTarget::Window(w.clone()), p.to_f64()))
         })
-        .or_else(|| layer_focus_under(state, pos, &[WlrLayer::Bottom, WlrLayer::Background]))
+        .or_else(|| {
+            layer_hit(state, pos, &[WlrLayer::Bottom, WlrLayer::Background])
+                .map(|(layer, loc, _)| (FocusTarget::LayerSurface(layer), loc))
+        })
 }
 
-/// Pointer-specific focus lookup: returns the actual `WlSurface` under the
+/// Pointer-specific focus lookup: the actual `WlSurface` under the
 /// pointer (drilled through subsurfaces and popups), with that surface's
-/// origin in space. This is what `pointer.motion` should receive — when a
-/// CSD GTK file dialog with multiple subsurfaces is on screen, we route to
-/// the right child surface instead of always the toplevel.
-fn pointer_focus_under(
-    state: &MargoState,
-    pos: Point<f64, Logical>,
-) -> Option<(
-    smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-    Point<f64, Logical>,
-)> {
-    use smithay::desktop::WindowSurfaceType;
-
-    // While the session is locked, EVERY pointer event must go to the
-    // lock surface for the output the cursor is on. Anything else would
-    // route input to hidden background apps and defeat the lock.
-    if state.session_locked {
-        let output = state.space.output_under(pos).next()?;
-        let (_, lock_surface) = state
-            .lock_surfaces
-            .iter()
-            .find(|(o, surface)| o == output && MargoState::lock_surface_ready(surface))?;
-        let output_geo = state.space.output_geometry(output)?;
-        return Some((lock_surface.wl_surface().clone(), output_geo.loc.to_f64()));
-    }
-
-    // Layer surfaces sit above + below the windows.
-    let layer_above = layer_pointer_under(state, pos, &[WlrLayer::Overlay, WlrLayer::Top]);
-    if layer_above.is_some() {
-        return layer_above;
-    }
-
-    if let Some((window, win_loc)) = state.space.element_under(pos) {
-        let local = pos - win_loc.to_f64();
-        if let Some((surface, surf_loc)) = window.surface_under(local, WindowSurfaceType::ALL) {
-            // surf_loc is in window-local coords; add window origin to make
-            // it space-coords (matches what smithay's pointer.motion expects).
-            let space_loc = (surf_loc + win_loc).to_f64();
-            return Some((surface, space_loc));
-        }
-    }
-
-    layer_pointer_under(state, pos, &[WlrLayer::Bottom, WlrLayer::Background])
+/// origin in space — so a CSD GTK dialog with several subsurfaces routes
+/// to the right child instead of always the toplevel.
+fn pointer_focus_under(state: &MargoState, pos: Point<f64, Logical>) -> Option<SurfaceHit> {
+    hit_test(state, pos).1
 }
 
-fn layer_pointer_under(
+fn lock_focus_under(state: &MargoState, pos: Point<f64, Logical>) -> Option<FocusHit> {
+    let output = state.space.output_under(pos).next()?;
+    let (_, surface) = state
+        .lock_surfaces
+        .iter()
+        .find(|(o, surface)| o == output && MargoState::lock_surface_ready(surface))?;
+    // `?` rather than unwrap: a panic in the input loop while locked
+    // strands the user.
+    let output_geo = state.space.output_geometry(output)?;
+    let local = pos - output_geo.loc.to_f64();
+    Some((FocusTarget::SessionLock(surface.clone()), local))
+}
+
+/// While the session is locked EVERY pointer event goes to the lock
+/// surface of the output under the cursor — anything else would route
+/// input to hidden background apps and defeat the lock.
+fn lock_pointer_under(state: &MargoState, pos: Point<f64, Logical>) -> Option<SurfaceHit> {
+    let output = state.space.output_under(pos).next()?;
+    let (_, lock_surface) = state
+        .lock_surfaces
+        .iter()
+        .find(|(o, surface)| o == output && MargoState::lock_surface_ready(surface))?;
+    let output_geo = state.space.output_geometry(output)?;
+    Some((lock_surface.wl_surface().clone(), output_geo.loc.to_f64()))
+}
+
+/// Topmost input-accepting layer surface of `layer_kinds` under `pos`:
+/// the layer (focus target), its origin in space, and the drilled
+/// surface hit with that surface's origin in space.
+fn layer_hit(
     state: &MargoState,
     pos: Point<f64, Logical>,
     layer_kinds: &[WlrLayer],
 ) -> Option<(
-    smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    smithay::wayland::shell::wlr_layer::LayerSurface,
     Point<f64, Logical>,
+    SurfaceHit,
 )> {
-    use smithay::desktop::WindowSurfaceType;
     let output = state.space.output_under(pos).next()?;
     let output_geo = state.space.output_geometry(output)?;
     let output_pos = pos - output_geo.loc.to_f64();
@@ -1661,48 +1698,16 @@ fn layer_pointer_under(
             if let Some((surface, surf_loc)) =
                 layer.surface_under(layer_local, WindowSurfaceType::ALL)
             {
-                let space_loc = (surf_loc + layer_geo.loc + output_geo.loc).to_f64();
-                return Some((surface, space_loc));
-            }
-        }
-    }
-
-    None
-}
-
-fn layer_focus_under(
-    state: &MargoState,
-    pos: Point<f64, Logical>,
-    layer_kinds: &[WlrLayer],
-) -> Option<(FocusTarget, Point<f64, Logical>)> {
-    let output = state.space.output_under(pos).next()?;
-    let output_geo = state.space.output_geometry(output)?;
-    let output_pos = pos - output_geo.loc.to_f64();
-    let layers = layer_map_for_output(output);
-
-    for layer_kind in layer_kinds {
-        for layer in layers.layers_on(*layer_kind).rev() {
-            if !state.layer_accepts_input_on_output(output, layer.layer()) {
-                continue;
-            }
-            let Some(layer_geo) = layers.layer_geometry(layer) else {
-                continue;
-            };
-            let surface_pos = output_pos - layer_geo.loc.to_f64();
-
-            if layer
-                .surface_under(surface_pos, WindowSurfaceType::ALL)
-                .is_some()
-            {
                 let focus_loc = (output_geo.loc + layer_geo.loc).to_f64();
+                let space_loc = (surf_loc + layer_geo.loc + output_geo.loc).to_f64();
                 return Some((
-                    FocusTarget::LayerSurface(layer.layer_surface().clone()),
+                    layer.layer_surface().clone(),
                     focus_loc,
+                    (surface, space_loc),
                 ));
             }
         }
     }
-
     None
 }
 
