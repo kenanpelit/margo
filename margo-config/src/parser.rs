@@ -1611,16 +1611,25 @@ fn parse_bool(s: &str) -> bool {
     )
 }
 fn parse_i32(s: &str) -> i32 {
-    s.trim().parse().unwrap_or(0)
+    parse_or_zero(s)
 }
 fn parse_u32(s: &str) -> u32 {
-    s.trim().parse().unwrap_or(0)
+    parse_or_zero(s)
 }
 fn parse_f32(s: &str) -> f32 {
-    s.trim().parse().unwrap_or(0.0)
+    parse_or_zero(s)
 }
 fn parse_f64(s: &str) -> f64 {
-    s.trim().parse().unwrap_or(0.0)
+    parse_or_zero(s)
+}
+/// Numeric parse that falls back to zero — loudly, so a malformed value
+/// (`0,5` with a decimal comma, `12px`) shows up in the log as well as
+/// in `mctl check-config`'s W003.
+fn parse_or_zero<T: std::str::FromStr + Default>(s: &str) -> T {
+    s.trim().parse().unwrap_or_else(|_| {
+        warn!("`{}` is not a valid number — using 0", s.trim());
+        T::default()
+    })
 }
 /// Char-safe clamp for the fixed-width compositor keyword fields
 /// (`animation_type_*` cap at 9 chars, `keymode` at 27). A raw byte slice

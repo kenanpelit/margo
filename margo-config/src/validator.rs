@@ -647,17 +647,19 @@ const BOOL_KEYS: &[&str] = &[
     "focus_on_activate",
     "gaps_enabled",
     "hot_corner_disable_on_fullscreen",
-    "idleinhibit_ignore_visible",
     "idle_inhibit_when_fullscreen",
+    "idleinhibit_ignore_visible",
     "layer_animations",
     "layer_shadows",
     "left_handed",
+    "log_to_file",
     "middle_button_emulation",
+    "monly",
     "mosaic_auto_overflow_tag",
     "mosaic_overflow_stack",
     "mouse_natural_scrolling",
-    "mru_show_labels",
     "mru_accent_selection",
+    "mru_show_labels",
     "new_is_master",
     "no_border_when_single",
     "no_radius_when_single",
@@ -665,6 +667,7 @@ const BOOL_KEYS: &[&str] = &[
     "per_output_frame_clock",
     "scratchpad_cross_monitor",
     "scroller_focus_center",
+    "scroller_ignore_proportion_single",
     "scroller_overview_loop",
     "scroller_prefer_center",
     "scroller_prefer_overspread",
@@ -674,7 +677,6 @@ const BOOL_KEYS: &[&str] = &[
     "sloppyfocus",
     "sloppyfocus_arrange",
     "smartgaps",
-    "monly",
     "syncobj_enable",
     "tag_carousel",
     "tag_gather",
@@ -689,15 +691,17 @@ const BOOL_KEYS: &[&str] = &[
 ];
 
 const INT_KEYS: &[&str] = &[
+    "allow_shortcuts_inhibit",
+    "allow_tearing",
     "blur_params_num_passes",
     "blur_params_radius",
     "border_radius",
     "drag_corner",
+    "hotarea_corner",
     "log_level",
     "overviewgappi",
     "overviewgappo",
     "repeat_delay",
-    "mru_thumb_height",
     "repeat_rate",
     "scroller_overview_gap",
     "scroller_structs",
@@ -707,6 +711,7 @@ const INT_KEYS: &[&str] = &[
 ];
 
 const UINT_KEYS: &[&str] = &[
+    "accel_profile",
     "animation_duration_close",
     "animation_duration_focus",
     "animation_duration_move",
@@ -715,28 +720,44 @@ const UINT_KEYS: &[&str] = &[
     "axis_bind_apply_timeout",
     "borderpx",
     "button_map",
+    "click_method",
     "cursor_hide_timeout",
     "cursor_size",
     "default_nmaster",
+    "gap",
+    "gappi",
     "gappih",
     "gappiv",
+    "gappo",
     "gappoh",
     "gappov",
+    "gaps",
+    "gaps_in",
+    "gaps_out",
+    "gapsin",
+    "gapsout",
     "group_bar_gap",
     "group_bar_height",
     "hot_corner_dwell_ms",
     "hotarea_size",
+    "inner_gaps",
+    "log_keep_sessions",
+    "monitor_gap",
+    "mouse_accel_profile",
     "mru_max",
-    "mru_thumb_gap",
     "mru_panel_padding",
+    "mru_thumb_gap",
+    "mru_thumb_height",
+    "outer_gaps",
     "ov_tab_mode",
     "overview_transition_ms",
-    "warmup_hidden_ms",
     "scroll_button",
+    "scroll_method",
     "send_events_mode",
     "shadows_size",
     "swipe_min_threshold",
     "touch_timeoutms",
+    "trackpad_accel_profile",
     "twilight_day_gamma",
     "twilight_day_temp",
     "twilight_night_gamma",
@@ -745,9 +766,16 @@ const UINT_KEYS: &[&str] = &[
     "twilight_static_temp",
     "twilight_transition_s",
     "twilight_update_interval",
+    "warmup_hidden_ms",
+    "window_gap",
 ];
 
 const FLOAT_KEYS: &[&str] = &[
+    "accel_speed",
+    "animation_spring_damping_ratio",
+    "animation_spring_mass",
+    "animation_spring_stiffness",
+    "axis_scroll_factor",
     "blur_params_brightness",
     "blur_params_contrast",
     "blur_params_noise",
@@ -755,17 +783,29 @@ const FLOAT_KEYS: &[&str] = &[
     "default_mfact",
     "drag_floating_refresh_interval",
     "drag_tile_refresh_interval",
+    "edge_scroller_focus_allow_speed",
     "fadein_begin_opacity",
     "fadeout_begin_opacity",
     "focused_opacity",
-    "overview_dim_alpha",
+    "mouse_accel_speed",
     "mru_dim_alpha",
+    "overview_dim_alpha",
+    "overview_selected_border_multiplier",
     "overview_zoom",
     "scratchpad_height_ratio",
     "scratchpad_width_ratio",
     "scroller_default_proportion",
+    "scroller_default_proportion_single",
     "scroller_overview_zoom",
     "shadows_blur",
+    "touch_degrees_leniency",
+    "touch_distance_threshold",
+    "touch_edge_size_bottom",
+    "touch_edge_size_left",
+    "touch_edge_size_right",
+    "touch_edge_size_top",
+    "trackpad_accel_speed",
+    "trackpad_scroll_factor",
     "twilight_latitude",
     "twilight_longitude",
     "unfocused_opacity",
@@ -773,9 +813,21 @@ const FLOAT_KEYS: &[&str] = &[
     "zoom_initial_ratio",
 ];
 
+const ANIMATION_CLOCKS: &[&str] = &["bezier", "spring"];
+
 /// Scalar keys whose value is one of a fixed set. Mirrors the `match`
 /// arms in `parser::parse_option`; keep in sync when a new enum knob lands.
 const ENUM_KEYS: &[(&str, &[&str])] = &[
+    ("animation_clock_close", ANIMATION_CLOCKS),
+    ("animation_clock_focus", ANIMATION_CLOCKS),
+    ("animation_clock_layer", ANIMATION_CLOCKS),
+    ("animation_clock_move", ANIMATION_CLOCKS),
+    ("animation_clock_open", ANIMATION_CLOCKS),
+    ("animation_clock_tag", ANIMATION_CLOCKS),
+    (
+        "log_file_level",
+        &["error", "warn", "info", "debug", "trace"],
+    ),
     ("mru_filter", &["all", "appid"]),
     ("mru_scope", &["all", "output", "workspace"]),
     ("overview_cycle_order", &["mru", "tag", "mixed"]),
@@ -1169,5 +1221,85 @@ mod tests {
             "should point at line 1: {}",
             w.message
         );
+    }
+
+    /// Every `parse_option` arm that parses through a typed helper must
+    /// be in the matching type table, or a malformed value (e.g. a
+    /// decimal comma, `mouse_accel_speed = 0,5`) silently becomes 0
+    /// with no W003.
+    #[test]
+    fn typed_parser_arms_are_in_type_tables() {
+        let src = include_str!("parser.rs");
+        let lines: Vec<&str> = src.lines().collect();
+        let start = lines
+            .iter()
+            .position(|l| l.trim_start().starts_with("fn parse_option"))
+            .expect("parse_option fn");
+        let end = (start..lines.len())
+            .find(|&i| {
+                lines[i].trim_start().starts_with("other =>")
+                    && lines
+                        .get(i + 1)
+                        .is_some_and(|n| n.contains("unknown config key"))
+            })
+            .expect("parse_option catch-all");
+
+        let mut arms: Vec<(Vec<String>, String)> = Vec::new();
+        for &l in &lines[start..end] {
+            let is_arm = l.starts_with("        \"") || l.starts_with("        | \"");
+            if is_arm {
+                let pat = l.split("=>").next().unwrap_or(l);
+                let keys: Vec<String> = pat
+                    .split('"')
+                    .skip(1)
+                    .step_by(2)
+                    .map(String::from)
+                    .collect();
+                let continues = l.starts_with("        | \"")
+                    && arms.last().is_some_and(|(_, body)| body.is_empty());
+                if !continues {
+                    arms.push((Vec::new(), String::new()));
+                }
+                let arm = arms.last_mut().expect("arm");
+                arm.0.extend(keys);
+                if let Some((_, rest)) = l.split_once("=>") {
+                    arm.1.push_str(rest);
+                }
+            } else if let Some(arm) = arms.last_mut() {
+                arm.1.push_str(l);
+            }
+        }
+
+        let typed = [
+            ("parse_bool(", BOOL_KEYS),
+            ("parse_i32(", INT_KEYS),
+            ("parse_u32(", UINT_KEYS),
+            ("parse_f32(", FLOAT_KEYS),
+            ("parse_f64(", FLOAT_KEYS),
+        ];
+        let mut missing = Vec::new();
+        for (keys, body) in &arms {
+            let first = typed
+                .iter()
+                .filter_map(|(f, table)| body.find(f).map(|pos| (pos, *f, *table)))
+                .min_by_key(|(pos, _, _)| *pos);
+            if let Some((_, f, table)) = first {
+                for k in keys {
+                    if !table.contains(&k.as_str()) {
+                        missing.push(format!("{k} ({f}..)"));
+                    }
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "typed keys missing from validator tables: {missing:?}"
+        );
+    }
+
+    #[test]
+    fn decimal_comma_on_a_float_key_warns() {
+        let r = validate_str("mouse_accel_speed = 0,5\n");
+        assert!(r.diagnostics.iter().any(|d| d.code == "W003"));
     }
 }
