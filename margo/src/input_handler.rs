@@ -1424,6 +1424,10 @@ fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(state: &mut Marg
         return;
     }
 
+    if run_axis_binding(state, &event) {
+        return;
+    }
+
     // AxisFrame::source() and AxisFrame::value() both use smithay::backend::input types.
     let source = event.source();
     let mut frame = AxisFrame::new(event.time()).source(source);
@@ -1462,6 +1466,57 @@ fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(state: &mut Marg
         ptr.axis(state, frame);
         ptr.frame(state);
     }
+}
+
+/// `axisbind = MODS,DIR,action,…` (mango semantics): a scroll in DIR with
+/// exactly MODS held runs the action instead of reaching the client. A
+/// continuous scroll keeps firing at most once per
+/// `axis_bind_apply_timeout` ms, but reversing direction fires at once.
+/// Returns whether the event was consumed.
+fn run_axis_binding<B: InputBackend, E: PointerAxisEvent<B>>(
+    state: &mut MargoState,
+    event: &E,
+) -> bool {
+    if state.config.axis_bindings.is_empty() {
+        return false;
+    }
+    let delta = |axis| {
+        event
+            .amount(axis)
+            .or_else(|| event.amount_v120(axis))
+            .filter(|d| *d != 0.0)
+    };
+    // Directions as parsed: 0 up, 1 down, 2 left, 3 right.
+    let (direction, delta) = match (delta(Axis::Vertical), delta(Axis::Horizontal)) {
+        (Some(d), _) => (if d > 0.0 { 1 } else { 0 }, d),
+        (None, Some(d)) => (if d > 0.0 { 3 } else { 2 }, d),
+        (None, None) => return false,
+    };
+    let mods = state
+        .seat
+        .get_keyboard()
+        .map(|k| smithay_mods_to_margo(&k.modifier_state()))
+        .unwrap_or_else(margo_config::Modifiers::empty);
+    let Some(bind) = state
+        .config
+        .axis_bindings
+        .iter()
+        .find(|b| b.modifiers == mods && b.direction == direction)
+        .cloned()
+    else {
+        return false;
+    };
+    let now = event.time().millis();
+    let sign: i8 = if delta > 0.0 { 1 } else { -1 };
+    let reversed = state.axis_bind_dir != 0 && state.axis_bind_dir != sign;
+    let due = now.wrapping_sub(state.axis_bind_time) > state.config.axis_bind_apply_timeout;
+    state.axis_bind_time = now;
+    state.axis_bind_dir = sign;
+    if due || reversed {
+        crate::dispatch::dispatch_action(state, &bind.action, &bind.arg);
+        state.request_repaint();
+    }
+    true
 }
 
 /// Map a released modifier keysym to the matching `margo_config::Modifiers`

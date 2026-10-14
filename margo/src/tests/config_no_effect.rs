@@ -8,8 +8,6 @@ const NO_EFFECT_FIELDS: &[&str] = &[
     "allow_lock_transparent",
     "allow_shortcuts_inhibit",
     "allow_tearing",
-    "axis_bind_apply_timeout",
-    "axis_bindings",
     "blur_optimized",
     "button_map",
     "capslock",

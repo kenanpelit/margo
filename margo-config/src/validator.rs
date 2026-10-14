@@ -542,7 +542,6 @@ fn is_bind_key(k: &str) -> bool {
 /// it doubles as a suggestion source for `suggest_key`.
 const CSV_SHAPED_KEYS: &[&str] = &[
     "mousebind",
-    "axisbind",
     "switchbind",
     "gesturebind",
     "touchgesturebind",
@@ -631,7 +630,6 @@ pub const NO_EFFECT_KEYS: &[&str] = &[
     "allow_lock_transparent",
     "allow_shortcuts_inhibit",
     "allow_tearing",
-    "axis_bind_apply_timeout",
     "axisbind",
     "blur_optimized",
     "button_map",

@@ -1011,6 +1011,10 @@ pub struct MargoState {
     pub cursor_hidden: bool,
     pub pointer_activity_at: std::time::Instant,
     pub cursor_hide_timer: Option<smithay::reexports::calloop::RegistrationToken>,
+    /// Last `axisbind` scroll (ms) and its direction sign, for
+    /// `axis_bind_apply_timeout` throttling.
+    pub axis_bind_time: u32,
+    pub axis_bind_dir: i8,
 }
 
 impl MargoState {
@@ -1420,6 +1424,8 @@ impl MargoState {
             cursor_hidden: false,
             pointer_activity_at: std::time::Instant::now(),
             cursor_hide_timer: None,
+            axis_bind_time: 0,
+            axis_bind_dir: 0,
             title_rules_exist: config_has_title_rules(&config),
             config,
             theme_baseline: None,
