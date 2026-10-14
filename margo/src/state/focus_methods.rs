@@ -23,7 +23,7 @@ impl MargoState {
         let keyboard = self.seat.get_keyboard()?;
         let focus = keyboard.current_focus()?;
         if let FocusTarget::Window(focused) = focus {
-            self.clients.iter().position(|c| c.window == focused)
+            self.client_idx(&focused)
         } else {
             None
         }
@@ -68,7 +68,7 @@ impl MargoState {
         // `mosaic_arrange`, same as `Client::is_mosaic_stacked`'s doc
         // comment promises.
         if let Some(FocusTarget::Window(w)) = &desired
-            && let Some(idx) = self.clients.iter().position(|c| &c.window == w)
+            && let Some(idx) = self.client_idx(w)
             && self.clients[idx].is_mosaic_stacked
         {
             self.clients[idx].is_mosaic_stacked = false;
@@ -222,6 +222,11 @@ impl MargoState {
                 }
             }
         }
+    }
+
+    /// Index of `window` in `clients`.
+    pub(crate) fn client_idx(&self, window: &Window) -> Option<usize> {
+        self.clients.iter().position(|c| c.window == *window)
     }
 
     /// Swap two entries of `clients`, keeping every monitor's

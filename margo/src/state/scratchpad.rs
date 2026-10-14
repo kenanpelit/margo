@@ -351,8 +351,7 @@ impl MargoState {
         // active tag — just refocus it. Saves a needless tag-switch
         // animation and a re-arrange when the user presses summon while
         // the target is already in front of them.
-        let already_here = self.clients[idx].monitor == target_mon
-            && (self.clients[idx].tags & target_tagset) != 0
+        let already_here = self.clients[idx].is_visible_on(target_mon, target_tagset)
             && !self.clients[idx].is_minimized;
         if already_here {
             let window = self.clients[idx].window.clone();

@@ -604,6 +604,17 @@ pub struct MargoMonitor {
 }
 
 impl MargoMonitor {
+    /// This monitor's gaps, or all-zero when gaps are globally disabled.
+    pub fn gaps(&self, enable_gaps: bool) -> crate::layout::GapConfig {
+        let on = |v: i32| if enable_gaps { v } else { 0 };
+        crate::layout::GapConfig {
+            gappih: on(self.gappih),
+            gappiv: on(self.gappiv),
+            gappoh: on(self.gappoh),
+            gappov: on(self.gappov),
+        }
+    }
+
     pub fn current_tagset(&self) -> u32 {
         self.tagset[self.seltags]
     }

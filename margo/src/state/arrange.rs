@@ -71,6 +71,73 @@ impl MargoState {
             .find_map(|&id| tiled.iter().position(|&idx| self.clients[idx].id == id))
     }
 
+    /// Clients on `mon_idx`, visible on `tagset`, that an auto-floating
+    /// layout (Floating / Mosaic) governs. Excludes fullscreen (the
+    /// fullscreen override wins above `is_floating`), scratchpad /
+    /// overlay (own visibility model), and not-yet-mapped / dying /
+    /// minimized / hidden-group-member clients.
+    fn auto_float_governed(&self, mon_idx: usize, tagset: u32) -> Vec<usize> {
+        self.clients
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                c.monitor == mon_idx
+                    && !c.is_initial_map_pending
+                    && c.is_visible_on(mon_idx, tagset)
+                    && c.fullscreen_mode == FullscreenMode::Off
+                    && !c.is_in_scratchpad
+                    && !c.is_named_scratchpad
+                    && !c.is_overlay
+                    && !c.is_minimized
+                    && !c.is_killing
+                    && !c.is_hidden_group_member()
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// A tabbed group is a tiling construct — dissolve every group with a
+    /// member in `clients` before an auto-floating layout takes them.
+    fn dissolve_groups_of(&mut self, clients: &[usize]) {
+        let gids: std::collections::BTreeSet<u32> = clients
+            .iter()
+            .filter_map(|&i| self.clients[i].group_id)
+            .collect();
+        for gid in gids {
+            self.dissolve_group(gid);
+        }
+    }
+
+    /// Hand client `i` to auto-floating layout `owner`: claimed if it isn't
+    /// floating yet (a tiled client entering the layout), or if it is
+    /// floating under the *other* auto-float layout's ownership (the tag
+    /// just switched Floating <-> Mosaic). A client `owner` already owns,
+    /// or one the user hand-floated (`is_floating && !floated_by_layout`),
+    /// is left alone.
+    fn claim_auto_float(&mut self, i: usize, owner: crate::layout::LayoutId) {
+        let c = &mut self.clients[i];
+        let owned_by_other = c.floated_by_layout && c.auto_float_owner != Some(owner);
+        if !c.is_floating || owned_by_other {
+            c.is_floating = true;
+            c.floated_by_layout = true;
+            c.auto_float_owner = Some(owner);
+        }
+    }
+
+    /// The tag left `owner`'s layout: return the clients it auto-floated
+    /// to the tiled set.
+    fn release_auto_float(&mut self, clients: &[usize], owner: crate::layout::LayoutId) {
+        for &i in clients {
+            let c = &mut self.clients[i];
+            if c.floated_by_layout && c.auto_float_owner == Some(owner) {
+                c.is_floating = false;
+                c.floated_by_layout = false;
+                c.auto_float_owner = None;
+                c.is_mosaic_stacked = false;
+            }
+        }
+    }
+
     /// Auto-float / re-tile clients for the `Floating` layout. Runs at
     /// the top of every `arrange_monitor` pass (issue #1).
     ///
@@ -95,40 +162,10 @@ impl MargoState {
         let tagset = mon.current_tagset();
         let work_area = mon.work_area;
 
-        // Clients on this monitor, visible on the current tagset, that
-        // the floating layout governs. Excludes fullscreen (the
-        // fullscreen override wins above `is_floating`), scratchpad /
-        // overlay (own visibility model), and not-yet-mapped / dying /
-        // hidden-group-member clients.
-        let governed: Vec<usize> = self
-            .clients
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| {
-                c.monitor == mon_idx
-                    && !c.is_initial_map_pending
-                    && c.is_visible_on(mon_idx, tagset)
-                    && c.fullscreen_mode == FullscreenMode::Off
-                    && !c.is_in_scratchpad
-                    && !c.is_named_scratchpad
-                    && !c.is_overlay
-                    && !c.is_minimized
-                    && !c.is_killing
-                    && !c.is_hidden_group_member()
-            })
-            .map(|(i, _)| i)
-            .collect();
+        let governed = self.auto_float_governed(mon_idx, tagset);
 
         if is_floating_layout {
-            // A tabbed group is a tiling construct — dissolve any on
-            // this tag before floating its members.
-            let gids: std::collections::BTreeSet<u32> = governed
-                .iter()
-                .filter_map(|&i| self.clients[i].group_id)
-                .collect();
-            for gid in gids {
-                self.dissolve_group(gid);
-            }
+            self.dissolve_groups_of(&governed);
 
             // Cascade slots already consumed by floating clients on
             // this tag (recomputed each pass → stable / idempotent).
@@ -139,19 +176,7 @@ impl MargoState {
 
             for &i in &governed {
                 let needs_geom = self.clients[i].float_geom.width == 0;
-                // Claim this client if it isn't floating yet (a tiled
-                // client entering Floating), or if it *is* floating but
-                // under Mosaic's ownership (a tag that just switched
-                // Mosaic -> Floating) — either way it becomes ours. A
-                // client already ours, or one the user hand-floated
-                // (`is_floating && !floated_by_layout`), is left alone.
-                let owned_by_other = self.clients[i].floated_by_layout
-                    && self.clients[i].auto_float_owner != Some(crate::layout::LayoutId::Floating);
-                if !self.clients[i].is_floating || owned_by_other {
-                    self.clients[i].is_floating = true;
-                    self.clients[i].floated_by_layout = true;
-                    self.clients[i].auto_float_owner = Some(crate::layout::LayoutId::Floating);
-                }
+                self.claim_auto_float(i, crate::layout::LayoutId::Floating);
                 if needs_geom {
                     let c = &self.clients[i];
                     let preferred = if c.geom.width > 0 && c.geom.height > 0 {
@@ -172,17 +197,9 @@ impl MargoState {
                 self.clients[i].geom = self.clients[i].float_geom;
             }
         } else {
-            for &i in &governed {
-                if self.clients[i].floated_by_layout
-                    && self.clients[i].auto_float_owner == Some(crate::layout::LayoutId::Floating)
-                {
-                    self.clients[i].is_floating = false;
-                    self.clients[i].floated_by_layout = false;
-                    self.clients[i].auto_float_owner = None;
-                    // `float_geom` is left intact: switching back to
-                    // Floating restores each window to its last spot.
-                }
-            }
+            // `float_geom` is left intact: switching back to Floating
+            // restores each window to its last spot.
+            self.release_auto_float(&governed, crate::layout::LayoutId::Floating);
         }
     }
 
@@ -232,57 +249,15 @@ impl MargoState {
             mon.pertag.ltidxs.get(curtag).copied() == Some(crate::layout::LayoutId::Mosaic);
         let tagset = mon.current_tagset();
         let work_area = mon.work_area;
-        let gaps = crate::layout::GapConfig {
-            gappih: if self.enable_gaps { mon.gappih } else { 0 },
-            gappiv: if self.enable_gaps { mon.gappiv } else { 0 },
-            gappoh: if self.enable_gaps { mon.gappoh } else { 0 },
-            gappov: if self.enable_gaps { mon.gappov } else { 0 },
-        };
+        let gaps = mon.gaps(self.enable_gaps);
 
-        // Same governed-set contract as `reconcile_floating_layout`.
-        let governed: Vec<usize> = self
-            .clients
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| {
-                c.monitor == mon_idx
-                    && !c.is_initial_map_pending
-                    && c.is_visible_on(mon_idx, tagset)
-                    && c.fullscreen_mode == FullscreenMode::Off
-                    && !c.is_in_scratchpad
-                    && !c.is_named_scratchpad
-                    && !c.is_overlay
-                    && !c.is_minimized
-                    && !c.is_killing
-                    && !c.is_hidden_group_member()
-            })
-            .map(|(i, _)| i)
-            .collect();
+        let governed = self.auto_float_governed(mon_idx, tagset);
 
         if is_mosaic_layout {
-            // A tabbed group is a tiling construct — dissolve any on this
-            // tag before mosaic-floating its members (same reasoning as
-            // `reconcile_floating_layout`).
-            let gids: std::collections::BTreeSet<u32> = governed
-                .iter()
-                .filter_map(|&i| self.clients[i].group_id)
-                .collect();
-            for gid in gids {
-                self.dissolve_group(gid);
-            }
+            self.dissolve_groups_of(&governed);
 
             for &i in &governed {
-                // Claim this client if it isn't floating yet, or if it's
-                // floating under Floating's ownership (a tag that just
-                // switched Floating -> Mosaic) — see the matching comment
-                // in `reconcile_floating_layout`.
-                let owned_by_other = self.clients[i].floated_by_layout
-                    && self.clients[i].auto_float_owner != Some(crate::layout::LayoutId::Mosaic);
-                if !self.clients[i].is_floating || owned_by_other {
-                    self.clients[i].is_floating = true;
-                    self.clients[i].floated_by_layout = true;
-                    self.clients[i].auto_float_owner = Some(crate::layout::LayoutId::Mosaic);
-                }
+                self.claim_auto_float(i, crate::layout::LayoutId::Mosaic);
             }
 
             // Pack only the clients Mosaic itself owns. A window the user
@@ -386,16 +361,7 @@ impl MargoState {
                 self.clients[i].geom = rect;
             }
         } else {
-            for &i in &governed {
-                if self.clients[i].floated_by_layout
-                    && self.clients[i].auto_float_owner == Some(crate::layout::LayoutId::Mosaic)
-                {
-                    self.clients[i].is_floating = false;
-                    self.clients[i].floated_by_layout = false;
-                    self.clients[i].auto_float_owner = None;
-                    self.clients[i].is_mosaic_stacked = false;
-                }
-            }
+            self.release_auto_float(&governed, crate::layout::LayoutId::Mosaic);
         }
     }
 
@@ -515,12 +481,7 @@ impl MargoState {
                 gappov: outer,
             }
         } else {
-            layout::GapConfig {
-                gappih: if self.enable_gaps { mon.gappih } else { 0 },
-                gappiv: if self.enable_gaps { mon.gappiv } else { 0 },
-                gappoh: if self.enable_gaps { mon.gappoh } else { 0 },
-                gappov: if self.enable_gaps { mon.gappov } else { 0 },
-            }
+            mon.gaps(self.enable_gaps)
         };
         let visible_in_pass = |c: &MargoClient| {
             // Skip clients that haven't gone through their deferred
@@ -1091,12 +1052,7 @@ impl MargoState {
         let mfact = mon.pertag.mfacts.get(tag).copied().unwrap_or(0.55);
         let work_area = mon.work_area;
         let monitor_area = mon.monitor_area;
-        let mut gaps = layout::GapConfig {
-            gappih: if self.enable_gaps { mon.gappih } else { 0 },
-            gappiv: if self.enable_gaps { mon.gappiv } else { 0 },
-            gappoh: if self.enable_gaps { mon.gappoh } else { 0 },
-            gappov: if self.enable_gaps { mon.gappov } else { 0 },
-        };
+        let mut gaps = mon.gaps(self.enable_gaps);
 
         // Tiled clients on this (mon, tag), in clients-vec order.
         let tiled: Vec<usize> = self

@@ -181,7 +181,7 @@ impl MargoState {
         else {
             return;
         };
-        if let Some(idx) = self.clients.iter().position(|c| c.window == win) {
+        if let Some(idx) = self.client_idx(&win) {
             self.activate_window_idx(idx);
         }
     }
@@ -195,7 +195,7 @@ impl MargoState {
             .and_then(|s| s.candidates.get(s.selected).cloned());
         self.mru_switcher = None;
         if let Some(win) = win
-            && let Some(idx) = self.clients.iter().position(|c| c.window == win)
+            && let Some(idx) = self.client_idx(&win)
         {
             self.activate_window_idx(idx);
         }
@@ -206,7 +206,7 @@ impl MargoState {
     pub fn mru_cancel(&mut self) {
         if let Some(sw) = self.mru_switcher.take() {
             if let Some(orig) = sw.candidates.first().cloned() {
-                if let Some(idx) = self.clients.iter().position(|c| c.window == orig) {
+                if let Some(idx) = self.client_idx(&orig) {
                     self.activate_window_idx(idx);
                 }
             }

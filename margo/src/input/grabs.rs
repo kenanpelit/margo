@@ -70,7 +70,7 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
         let new_loc = self.initial_loc.to_f64() + delta;
         let new_loc = new_loc.to_i32_round();
 
-        if let Some(idx) = data.clients.iter().position(|c| c.window == self.window) {
+        if let Some(idx) = data.client_idx(&self.window) {
             data.clients[idx].is_floating = true;
             // Drag-tile-small visual: when the user is dragging a
             // window that was tiled at grab start AND the config
@@ -138,7 +138,7 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
             // before anything below touches arrange (`resolve_drag_tile_
             // drop` ends with its own `arrange_monitor`), and the
             // highlight so it can't outlive the drag it was previewing.
-            if let Some(idx) = data.clients.iter().position(|c| c.window == self.window) {
+            if let Some(idx) = data.client_idx(&self.window) {
                 data.clients[idx].interactive_grab = false;
             }
             data.drag_swap_target = None;
@@ -244,10 +244,8 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
 
 /// The monitor `window` lives on (falls back to the focused one).
 fn grab_monitor(data: &MargoState, window: &Window) -> usize {
-    data.clients
-        .iter()
-        .find(|c| c.window == *window)
-        .map(|c| c.monitor)
+    data.client_idx(window)
+        .map(|idx| data.clients[idx].monitor)
         .unwrap_or_else(|| data.focused_monitor())
 }
 
@@ -430,7 +428,7 @@ impl PointerGrab<MargoState> for ResizeSurfaceGrab {
         let delta = event.location - self.start_data.location;
         let (new_loc, new_size) = self.compute_new_geom(delta);
 
-        if let Some(idx) = data.clients.iter().position(|c| c.window == self.window) {
+        if let Some(idx) = data.client_idx(&self.window) {
             data.clients[idx].is_floating = true;
             data.clients[idx].float_geom.x = new_loc.x;
             data.clients[idx].float_geom.y = new_loc.y;
@@ -459,7 +457,7 @@ impl PointerGrab<MargoState> for ResizeSurfaceGrab {
     ) {
         handle.button(data, event);
         if handle.current_pressed().is_empty() {
-            if let Some(idx) = data.clients.iter().position(|c| c.window == self.window) {
+            if let Some(idx) = data.client_idx(&self.window) {
                 data.clients[idx].interactive_grab = false;
             }
             finish_grab_arrange(data, &self.window);
@@ -569,7 +567,7 @@ pub(crate) fn resolve_drag_tile_drop(
     dragged: &Window,
     original_float_geom: crate::layout::Rect,
 ) {
-    let Some(src) = data.clients.iter().position(|c| &c.window == dragged) else {
+    let Some(src) = data.client_idx(dragged) else {
         return;
     };
     let src_is_mosaic = data.clients[src].auto_float_owner == Some(crate::layout::LayoutId::Mosaic);

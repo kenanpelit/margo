@@ -2341,7 +2341,7 @@ impl MargoState {
         // focused id from every old position, and cap the MRU depth.
         const FOCUS_HISTORY_DEPTH: usize = 5;
         if let Some(FocusTarget::Window(w)) = &target {
-            let new_idx = self.clients.iter().position(|c| &c.window == w);
+            let new_idx = self.client_idx(w);
             if let Some(idx) = new_idx {
                 // MRU recency key for the Super+Tab switcher — but NOT while the
                 // switcher is cycling (preview-focus must not rewrite the MRU
@@ -2384,7 +2384,7 @@ impl MargoState {
         // Track focus history per-monitor so toplevel_destroyed can recall
         // the previously focused window (niri-style).
         if let Some(FocusTarget::Window(ref w)) = target {
-            if let Some(new_idx) = self.clients.iter().position(|c| c.window == *w) {
+            if let Some(new_idx) = self.client_idx(w) {
                 let mon_idx = self.clients[new_idx].monitor;
                 if mon_idx < self.monitors.len() {
                     let cur = self.monitors[mon_idx].selected;
