@@ -2656,6 +2656,13 @@ impl SeatHandler for MargoState {
     fn seat_state(&mut self) -> &mut SeatState<MargoState> {
         &mut self.seat_state
     }
+    fn led_state_changed(
+        &mut self,
+        _seat: &Seat<Self>,
+        led_state: smithay::input::keyboard::LedState,
+    ) {
+        self.sync_keyboard_leds(led_state);
+    }
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&FocusTarget>) {
         // Route clipboard / primary-selection events to the newly focused
         // client. Without this, copy-paste between apps and clipboard

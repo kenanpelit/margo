@@ -1498,6 +1498,7 @@ fn main() -> Result<()> {
         })
         .map_err(|e| anyhow::anyhow!("keyboard init: {e}"))?;
     let _ = keyboard;
+    margo.apply_lock_keys();
 
     margo.seat.add_pointer();
 

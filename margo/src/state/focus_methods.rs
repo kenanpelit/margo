@@ -559,6 +559,45 @@ impl MargoState {
         }
     }
 
+    /// `numlockon` / `capslock`: lock NumLock / CapsLock on when the
+    /// keymap is (re)loaded, as mango does. Keys already locked stay
+    /// locked; nothing is ever switched off.
+    pub(crate) fn apply_lock_keys(&mut self) {
+        if !self.config.numlock_on && !self.config.capslock {
+            return;
+        }
+        let Some(keyboard) = self.seat.get_keyboard() else {
+            return;
+        };
+        let mut mods = keyboard.modifier_state();
+        mods.num_lock |= self.config.numlock_on;
+        mods.caps_lock |= self.config.capslock;
+        if keyboard.set_modifier_state(mods) != 0 {
+            keyboard.advertise_modifier_state(self);
+            self.sync_keyboard_leds(keyboard.led_state());
+        }
+    }
+
+    /// Mirror the xkb LED state onto every physical keyboard.
+    pub(crate) fn sync_keyboard_leds(&mut self, leds: smithay::input::keyboard::LedState) {
+        use smithay::reexports::input::{DeviceCapability, Led};
+        let mut mask = Led::empty();
+        if leds.num == Some(true) {
+            mask |= Led::NUMLOCK;
+        }
+        if leds.caps == Some(true) {
+            mask |= Led::CAPSLOCK;
+        }
+        if leds.scroll == Some(true) {
+            mask |= Led::SCROLLLOCK;
+        }
+        for device in &mut self.libinput_devices {
+            if device.has_capability(DeviceCapability::Keyboard) {
+                device.led_update(mask);
+            }
+        }
+    }
+
     pub(crate) fn pointer_monitor(&self) -> Option<usize> {
         self.monitor_at_point(self.input_pointer.x, self.input_pointer.y)
     }

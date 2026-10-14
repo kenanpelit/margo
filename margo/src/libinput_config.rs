@@ -67,6 +67,17 @@ pub fn apply_to_device(device: &mut Device, config: &Config) {
             "tap_to_click",
             device.config_tap_set_enabled(config.tap_to_click),
         );
+        // mango: 0 = 1/2/3-finger tap → left/right/middle, 1 = left/middle/right.
+        log_config_result(
+            &name,
+            &sysname,
+            "button_map",
+            device.config_tap_set_button_map(if config.button_map == 1 {
+                smithay::reexports::input::TapButtonMap::LeftMiddleRight
+            } else {
+                smithay::reexports::input::TapButtonMap::LeftRightMiddle
+            }),
+        );
         log_config_result(
             &name,
             &sysname,
