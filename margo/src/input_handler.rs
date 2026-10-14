@@ -314,11 +314,137 @@ fn handle_touch_up<B: InputBackend, E: smithay::backend::input::TouchUpEvent<B>>
     dispatch_swipe(state, avg_dx, avg_dy, releases.len() as u32, "touchscreen");
 }
 
+/// Put the configured xkb keymap back after a virtual keyboard's own
+/// keymap was active.
+fn restore_configured_keymap(state: &mut MargoState) {
+    state.active_virtual_keymap = None;
+    let Some(keyboard) = state.seat.get_keyboard() else {
+        return;
+    };
+    let rules = state.config.xkb_rules.clone();
+    let config = smithay::input::keyboard::XkbConfig {
+        rules: &rules.rules,
+        model: &rules.model,
+        layout: &rules.layout,
+        variant: &rules.variant,
+        options: rules.options_or_none(),
+    };
+    if let Err(e) = keyboard.set_xkb_config(state, config) {
+        tracing::warn!("restoring the configured keymap failed: {e:?}");
+    }
+    state.apply_lock_keys();
+}
+
+/// Load `device`'s keymap into the seat if it isn't already; a device
+/// without one (`no_keymap`) uses the configured keymap.
+fn activate_virtual_keymap(
+    state: &mut MargoState,
+    device: &smithay::wayland::virtual_keyboard::VirtualKeyboardDevice,
+) {
+    match device.keymap() {
+        Some(keymap) => {
+            if state.active_virtual_keymap.as_ref() == Some(&keymap) {
+                return;
+            }
+            let Some(keyboard) = state.seat.get_keyboard() else {
+                return;
+            };
+            match keyboard.set_keymap_from_string(state, keymap.to_string()) {
+                Ok(()) => state.active_virtual_keymap = Some(keymap),
+                Err(e) => tracing::warn!("virtual keyboard keymap rejected: {e:?}"),
+            }
+        }
+        None => {
+            if state.active_virtual_keymap.is_some() {
+                restore_configured_keymap(state);
+            }
+        }
+    }
+}
+
+/// `zwp_virtual_keyboard_v1` input (wtype, wayvnc, mkeys, IMEs). smithay
+/// delivers it as a regular input device, so keys go through the same
+/// path as a physical keyboard — bindings included, minus anything that
+/// would end or escape the session (see `handle_keyboard`).
+pub(crate) fn handle_virtual_keyboard(
+    state: &mut MargoState,
+    event: InputEvent<smithay::wayland::virtual_keyboard::VirtualKeyboardBackend>,
+) {
+    use smithay::backend::input::{Device, Event};
+    use smithay::wayland::input_method::InputMethodSeat;
+    use smithay::wayland::virtual_keyboard::VirtualKeyboardSpecialEvent as Special;
+    match event {
+        InputEvent::Keyboard { event } => {
+            let device = event.device();
+            activate_virtual_keymap(state, &device);
+            // An IME forwarding keys it didn't consume through its own
+            // virtual keyboard must not get them back through its grab.
+            let grab_client = state.seat.input_method().keyboard_grab_client();
+            if grab_client.is_some() && grab_client == device.client() {
+                if let Some(keyboard) = state.seat.get_keyboard() {
+                    keyboard.input_forward_bypassing_grab(
+                        state,
+                        event.key_code(),
+                        event.state(),
+                        SERIAL_COUNTER.next_serial(),
+                        event.time(),
+                        true,
+                    );
+                }
+                return;
+            }
+            state.keyboard_source = device.source();
+            state.virtual_input = true;
+            handle_keyboard(state, event);
+            state.virtual_input = false;
+            state.keyboard_source = smithay::input::keyboard::KeyboardSource::MAIN;
+        }
+        InputEvent::Special(Special::Modifiers {
+            device,
+            mods_depressed,
+            mods_latched,
+            mods_locked,
+            group,
+        }) => {
+            activate_virtual_keymap(state, &device);
+            state.virtual_modifier_devices.insert(device.id());
+            if let Some(keyboard) = state.seat.get_keyboard() {
+                keyboard.with_xkb_state(state, |mut context| {
+                    context.set_modifier_mask(mods_depressed, mods_latched, mods_locked, group)
+                });
+            }
+        }
+        InputEvent::DeviceRemoved { device } => {
+            let set_modifiers = state.virtual_modifier_devices.remove(&device.id());
+            if device.keymap().is_some()
+                && state.active_virtual_keymap.as_ref() == device.keymap().as_ref()
+            {
+                // Rebuilds the xkb state, which also drops its modifiers.
+                restore_configured_keymap(state);
+            } else if set_modifiers && let Some(keyboard) = state.seat.get_keyboard() {
+                // Seat-keymap device that set modifiers directly: release
+                // what it left held, keep the locks.
+                let locked = keyboard.modifier_state().serialized.locked;
+                keyboard.with_xkb_state(state, |mut context| {
+                    context.set_modifier_mask(0, 0, locked, 0)
+                });
+            }
+        }
+        _ => {}
+    }
+}
+
 fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoState, event: E) {
     let serial = SERIAL_COUNTER.next_serial();
     let time = event.time();
     let key_state = event.state();
     let keycode = event.key_code();
+
+    // A physical key after a virtual keyboard swapped in its own keymap:
+    // put the configured one back first.
+    if !state.virtual_input && state.active_virtual_keymap.is_some() {
+        restore_configured_keymap(state);
+    }
 
     if let Some(keyboard) = state.seat.get_keyboard() {
         // While the session is locked, the lock surface MUST keep
@@ -335,7 +461,9 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
             }
         }
 
-        keyboard.input(
+        let source = state.keyboard_source;
+        keyboard.input_from_source(
+            source,
             state,
             keycode,
             key_state,
@@ -353,7 +481,10 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                     // locked, so the user has a way to recover from a
                     // wedged lock screen without rebooting. Everything
                     // else is forwarded straight to the lock surface.
-                    if key_state == KeyState::Pressed {
+                    // Synthetic keys never reach a binding over the lock:
+                    // a client with a virtual keyboard must not be able to
+                    // `force_unlock` or run lock-safe actions.
+                    if key_state == KeyState::Pressed && !state.virtual_input {
                         let keysym = handle.modified_sym();
                         let mods = smithay_mods_to_margo(modifiers);
                         let mode = state.input_keyboard.mode.clone();
@@ -495,6 +626,20 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                                 break;
                             }
                         }
+                    }
+
+                    // Virtual keyboards drive normal bindings (that is the
+                    // point of smithay routing them as input devices), but
+                    // never ones that end or escape the session.
+                    if state.virtual_input
+                        && matched.as_ref().is_some_and(|kb| {
+                            matches!(
+                                kb.action.as_str(),
+                                "quit" | "force_unlock" | "force-unlock" | "chvt"
+                            )
+                        })
+                    {
+                        return FilterResult::Forward;
                     }
 
                     if let Some(kb) = matched {
@@ -1828,6 +1973,17 @@ fn layer_hit(
     }
     None
 }
+
+impl smithay::wayland::virtual_keyboard::VirtualKeyboardHandler for MargoState {
+    fn process_virtual_keyboard_event(
+        &mut self,
+        event: InputEvent<smithay::wayland::virtual_keyboard::VirtualKeyboardBackend>,
+    ) {
+        handle_virtual_keyboard(self, event);
+    }
+}
+
+impl smithay::wayland::text_input::TextInputActivation for MargoState {}
 
 #[cfg(test)]
 mod gesture_tests {

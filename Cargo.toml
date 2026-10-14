@@ -298,16 +298,15 @@ mshell-wallpaper = { path = "mshell-crates/mshell-wallpaper" }
 
 [workspace.dependencies.smithay]
 git = "https://github.com/Smithay/smithay.git"
-# Master HEAD 2026-09-05 — well past the v0.7.0 tag (a166cf4c). The 0.7.0
-# "breaking changes" (Option<DrmSyncobjState>, GbmFramebufferExporter
-# import_node, DrmTimeline OwnedFd, eventfd Arc) are all baked in here and
-# handled in our code. Pinning the tag would be a large downgrade; we track
-# HEAD instead. This bump (from 347b2b30) carries: InputTime replacing raw
-# u32/u64 timestamps on input events, a foreign-toplevel-list identifier
-# hook, an XWayland unrecognized-property-forwarding hook, back-to-front
-# damage calculation + empty-rect-in-opaque-coverage fixes, and deadlock
-# fixes in pointer_constraints and tablet with_tools.
-rev = "28c8e0fad905f3e7d01c2446fb60d26659071684"
+# Master HEAD 2026-10-14 — well past the v0.7.0 tag (a166cf4c); pinning
+# the tag would be a large downgrade, we track HEAD. This bump (from
+# 28c8e0fa, 48 commits) carries: virtual keyboards as real input devices
+# (VirtualKeyboardHandler — margo routes them through its keyboard path),
+# text-input activation hooks, wl_seat missing_capability errors, no frame
+# callbacks for bufferless surfaces, keymap updates to grabs, weak-ref
+# input handles, xwm _NET_ACTIVE_WINDOW fixes, drm render-node and legacy
+# VRR fixes, and wl_region / size-hint validation.
+rev = "8a270232f1bfc416c781273c98a3f52a812a0bba"
 default-features = false
 
 # Local dev + test builds default to full DWARF (`debug = 2`), which is the

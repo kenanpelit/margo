@@ -1015,6 +1015,17 @@ pub struct MargoState {
     /// `axis_bind_apply_timeout` throttling.
     pub axis_bind_time: u32,
     pub axis_bind_dir: i8,
+    /// Source of the keyboard event being processed: physical, or a
+    /// `zwp_virtual_keyboard_v1` device (smithay tracks held keys per
+    /// source). `virtual_input` marks the latter for the binding filter.
+    pub keyboard_source: smithay::input::keyboard::KeyboardSource,
+    pub virtual_input: bool,
+    /// Keymap of the virtual keyboard currently loaded into the seat
+    /// (`None` = the configured xkb keymap is active).
+    pub active_virtual_keymap: Option<std::sync::Arc<str>>,
+    /// Virtual keyboards that set modifiers directly (`modifiers`
+    /// request), so their removal can clear what they left held.
+    pub virtual_modifier_devices: std::collections::HashSet<String>,
 }
 
 impl MargoState {
@@ -1426,6 +1437,10 @@ impl MargoState {
             cursor_hide_timer: None,
             axis_bind_time: 0,
             axis_bind_dir: 0,
+            keyboard_source: smithay::input::keyboard::KeyboardSource::MAIN,
+            virtual_input: false,
+            active_virtual_keymap: None,
+            virtual_modifier_devices: std::collections::HashSet::new(),
             title_rules_exist: config_has_title_rules(&config),
             config,
             theme_baseline: None,

@@ -34,7 +34,23 @@ fn map_window(fx: &mut Fixture) -> (ClientId, wayland_client::protocol::wl_surfa
     surface.commit();
     fx.client(id).flush();
     fx.roundtrip(id);
+    // A real buffer: smithay never sends frame callbacks to a surface the
+    // renderer has nothing to show for (or to its subsurfaces).
+    attach_buffer(fx, id, &surface);
     (id, surface)
+}
+
+fn attach_buffer(
+    fx: &mut Fixture,
+    id: ClientId,
+    surface: &wayland_client::protocol::wl_surface::WlSurface,
+) {
+    let buffer = fx.client(id).create_shm_buffer(64, 64);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.damage_buffer(0, 0, 64, 64);
+    surface.commit();
+    fx.client(id).flush();
+    fx.roundtrip(id);
 }
 
 #[test]
@@ -306,6 +322,10 @@ fn synchronized_child_commit_waits_for_root_and_scopes_to_owner_output() {
     fx.add_output("DP-2", (1920, 1080));
     let (id, parent) = map_window(&mut fx);
     let (child, _subsurface) = fx.client(id).create_sync_subsurface(&parent);
+    // A synchronized child's buffer is applied with the parent's commit.
+    attach_buffer(&mut fx, id, &child);
+    parent.commit();
+    fx.client(id).flush();
     fx.roundtrip(id);
     reset_clocks(&mut fx);
 
@@ -488,6 +508,10 @@ fn hidden_chromium_tree_gets_callback_on_first_empty_present_after_remap() {
     fx.add_output("DP-2", (1920, 1080));
     let (id, parent) = map_window(&mut fx);
     let (child, _subsurface) = fx.client(id).create_sync_subsurface(&parent);
+    // A synchronized child's buffer is applied with the parent's commit.
+    attach_buffer(&mut fx, id, &child);
+    parent.commit();
+    fx.client(id).flush();
     fx.roundtrip(id);
     fx.server.state.config.warmup_hidden_ms = 0;
 
@@ -929,6 +953,7 @@ fn scroller_overview_keeps_background_layers_live() {
     surface.commit();
     fx.client(layer_id).flush();
     fx.roundtrip(layer_id);
+    attach_buffer(&mut fx, layer_id, &surface);
     fx.server.state.open_scroller_overview();
     reset_clocks(&mut fx);
     let output = fx.server.state.monitors[0].output.clone();
@@ -965,6 +990,7 @@ fn classic_overview_restores_layers_over_exclusive_clients() {
     surface.commit();
     fx.client(layer_id).flush();
     fx.roundtrip(layer_id);
+    attach_buffer(&mut fx, layer_id, &surface);
     fx.server.state.clients[0].fullscreen_mode = crate::state::FullscreenMode::Exclusive;
     fx.server.state.monitors[0].is_overview = true;
     reset_clocks(&mut fx);

@@ -34,7 +34,10 @@ impl Server {
         let loop_handle = event_loop.handle();
         let loop_signal = event_loop.get_signal();
 
-        let state = MargoState::new(config, &mut display, loop_handle, loop_signal, None);
+        let mut state = MargoState::new(config, &mut display, loop_handle, loop_signal, None);
+        // Like main.rs: margo always has a pointer. smithay answers
+        // `get_pointer` without the capability with a protocol error.
+        state.seat.add_pointer();
 
         Self {
             event_loop,
