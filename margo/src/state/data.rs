@@ -605,6 +605,11 @@ pub struct MargoMonitor {
     /// 0 → gamma control unsupported (winit backend or connector
     /// without GAMMA_LUT). Set by the udev backend on output add.
     pub gamma_size: u32,
+    /// Visible (non-minimized) clients on the current tagset, and how many
+    /// of those are tiled — refreshed after every arrange. Drive
+    /// `no_border_when_single` / `no_radius_when_single`.
+    pub visible_clients: usize,
+    pub visible_tiled: usize,
 }
 
 impl MargoMonitor {

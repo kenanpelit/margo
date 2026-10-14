@@ -372,6 +372,8 @@ pub(super) fn setup_connector(
         enabled: true,
         gamma_size: 0,
         focus_history: std::collections::VecDeque::new(),
+        visible_clients: 0,
+        visible_tiled: 0,
     });
     state.apply_tag_rules_to_monitor(state.monitors.len() - 1);
     // Hotplug-in (live-connector path): keep the shared

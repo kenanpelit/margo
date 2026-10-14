@@ -400,6 +400,7 @@ impl XdgShellHandler for MargoState {
                     .unwrap_or_else(|| self.config.animation_type_close.clone());
                 let kind = crate::render::open_close::OpenCloseKind::parse(&kind_str);
                 let now = crate::utils::now_ms();
+                let border_radius = self.client_radius(idx);
                 let c = &self.clients[idx];
                 self.closing_clients.push(ClosingClient {
                     id: RenderElementId::new(),
@@ -413,7 +414,7 @@ impl XdgShellHandler for MargoState {
                     progress: 0.0,
                     kind,
                     extreme_scale: self.config.zoom_end_ratio.clamp(0.05, 1.0),
-                    border_radius: self.config.border_radius as f32,
+                    border_radius,
                     source_surface: Some(wl_surf.clone()),
                 });
                 self.request_repaint();

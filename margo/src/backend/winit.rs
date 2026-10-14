@@ -148,6 +148,8 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
         enabled: true,
         gamma_size: 0,
         focus_history: std::collections::VecDeque::new(), // winit/nested: no DRM gamma plane
+        visible_clients: 0,
+        visible_tiled: 0,
     });
     state.apply_tag_rules_to_monitor(state.monitors.len() - 1);
 

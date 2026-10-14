@@ -942,10 +942,71 @@ impl MargoState {
         }
     }
 
+    fn update_visible_counts(&mut self, mon_idx: usize) {
+        let Some(mon) = self.monitors.get(mon_idx) else {
+            return;
+        };
+        let tagset = mon.current_tagset();
+        let (mut visible, mut tiled) = (0, 0);
+        for c in &self.clients {
+            if c.is_visible_on(mon_idx, tagset) && !c.is_minimized {
+                visible += 1;
+                if !c.is_floating {
+                    tiled += 1;
+                }
+            }
+        }
+        let mon = &mut self.monitors[mon_idx];
+        mon.visible_clients = visible;
+        mon.visible_tiled = tiled;
+    }
+
+    /// Corner radius (logical px) for client `idx` — surface clip, border,
+    /// shadow, dim overlay and open/close snapshots all use this, so they
+    /// always agree. 0 for `no_radius` windows, fullscreen, and the lone
+    /// tiled window under `no_radius_when_single`.
+    pub(crate) fn client_radius(&self, idx: usize) -> f32 {
+        let Some(c) = self.clients.get(idx) else {
+            return 0.0;
+        };
+        let lone_tiled = self.config.no_radius_when_single
+            && !c.is_floating
+            && self
+                .monitors
+                .get(c.monitor)
+                .is_some_and(|m| m.visible_tiled == 1);
+        if c.no_radius || c.is_fullscreen || lone_tiled {
+            0.0
+        } else {
+            self.config.border_radius.max(0) as f32
+        }
+    }
+
+    /// `no_border_when_single` (mango): no border when the monitor shows a
+    /// single window, or for the lone tiled column in scroller.
+    pub(crate) fn hide_border_when_single(&self, idx: usize) -> bool {
+        if !self.config.no_border_when_single {
+            return false;
+        }
+        let Some(c) = self.clients.get(idx) else {
+            return false;
+        };
+        let Some(m) = self.monitors.get(c.monitor) else {
+            return false;
+        };
+        m.visible_clients == 1
+            || (m.visible_tiled == 1
+                && !c.is_floating
+                && m.current_layout() == crate::layout::LayoutId::Scroller)
+    }
+
     /// Global follow-up to one or more [`arrange_monitor_layout`]
     /// passes. Each step here walks every client or the whole space, so
     /// a multi-monitor `arrange_all` runs it once, not once per monitor.
     fn arrange_finish(&mut self, mons: &[usize], mut repaint_outputs: Vec<Output>) {
+        for &mon_idx in mons {
+            self.update_visible_counts(mon_idx);
+        }
         self.enforce_z_order();
         crate::border::refresh(self);
         // `map_element` starts with an empty output-membership map. Populate

@@ -169,3 +169,30 @@ fn new_is_master_puts_the_new_window_first() {
     );
     assert_eq!(fx.server.state.clients[1].id, first);
 }
+
+#[test]
+fn single_window_drops_radius_and_border_when_configured() {
+    let mut fx = Fixture::new();
+    windows(&mut fx, 1);
+    fx.server.state.config.border_radius = 12;
+    fx.server.state.config.no_radius_when_single = true;
+    fx.server.state.config.no_border_when_single = true;
+    fx.server.state.arrange_monitor(0);
+    assert_eq!(fx.server.state.client_radius(0), 0.0);
+    assert!(fx.server.state.hide_border_when_single(0));
+
+    windows_more(&mut fx, 1);
+    fx.server.state.arrange_monitor(0);
+    assert_eq!(fx.server.state.client_radius(0), 12.0);
+    assert!(!fx.server.state.hide_border_when_single(0));
+}
+
+fn windows_more(fx: &mut Fixture, n: usize) {
+    for _ in 0..n {
+        let id = fx.add_client();
+        let (_toplevel, surface) = fx.client(id).create_toplevel();
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+    }
+}

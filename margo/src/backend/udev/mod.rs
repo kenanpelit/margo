@@ -659,6 +659,8 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
             enabled: true,
             gamma_size: 0, // backfilled by GAMMA_LUT discovery below
             focus_history: std::collections::VecDeque::new(),
+            visible_clients: 0,
+            visible_tiled: 0,
         });
         state.apply_tag_rules_to_monitor(state.monitors.len() - 1);
         // Hotplug-in (initial-setup path): refresh the shared

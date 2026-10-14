@@ -344,7 +344,10 @@ impl MargoState {
         // the same OpenCloseRenderElement as the toplevel close path,
         // just with a slide kind instead of zoom.
         if do_anim {
-            for c in self.clients.iter() {
+            let radii: Vec<f32> = (0..self.clients.len())
+                .map(|i| self.client_radius(i))
+                .collect();
+            for (ci, c) in self.clients.iter().enumerate() {
                 if c.monitor != mon_idx {
                     continue;
                 }
@@ -370,7 +373,7 @@ impl MargoState {
                         progress: 0.0,
                         kind: crate::render::open_close::OpenCloseKind::Slide(slide_dir),
                         extreme_scale: 1.0, // pure slide, no scale
-                        border_radius: self.config.border_radius as f32,
+                        border_radius: radii[ci],
                         source_surface: surface,
                     });
                 }
@@ -650,6 +653,7 @@ impl MargoState {
         if mon_idx >= self.monitors.len() {
             return;
         }
+        let border_radius = self.client_radius(idx);
         let c = &self.clients[idx];
         if !c.is_visible_on(mon_idx, self.monitors[mon_idx].current_tagset()) {
             return;
@@ -667,7 +671,7 @@ impl MargoState {
             progress: 0.0,
             kind: crate::render::open_close::OpenCloseKind::Fade,
             extreme_scale: 1.0,
-            border_radius: self.config.border_radius as f32,
+            border_radius,
             source_surface: surface,
         });
     }

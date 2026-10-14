@@ -1595,7 +1595,11 @@ fn push_drag_swap_highlight(
     let Some(prog) = crate::render::rounded_solid::shader(renderer) else {
         return;
     };
-    let radius = (state.config.border_radius as f32) * output_scale as f32;
+    let radius = state
+        .client_idx(&client.window)
+        .map(|idx| state.client_radius(idx))
+        .unwrap_or(0.0)
+        * output_scale as f32;
     elements.push(MargoRenderElement::RoundedSolid(
         crate::render::drag_highlight::render_element(
             client.geom,
@@ -1772,8 +1776,8 @@ fn push_client_elements(
         }
 
         let radius = client
-            .filter(|client| !client.no_radius && !client.is_fullscreen)
-            .map(|_| state.config.border_radius.max(0) as f32)
+            .and_then(|c| state.client_idx(&c.window))
+            .map(|idx| state.client_radius(idx))
             .unwrap_or(0.0);
         // Clip the surface tree to the same `min(geometry.size, slot)`
         // box that `border::refresh` uses for the border. The two
@@ -1936,7 +1940,7 @@ fn push_client_elements(
                             let shadow = crate::render::shadow::ShadowRenderElement::new(
                                 shadow_id,
                                 win_rect,
-                                state.config.border_radius.max(0) as f32,
+                                radius,
                                 state.config.shadows_size as f32,
                                 state.config.shadows_blur,
                                 (

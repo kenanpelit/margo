@@ -637,8 +637,6 @@ pub const NO_EFFECT_KEYS: &[&str] = &[
     "focus_cross_tag",
     "hotarea_corner",
     "hotarea_size",
-    "no_border_when_single",
-    "no_radius_when_single",
     "ov_tab_mode",
     "switchbind",
     "syncobj_enable",

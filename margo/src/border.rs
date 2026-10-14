@@ -111,7 +111,11 @@ fn refresh_client(state: &mut MargoState, idx: usize, focused: Option<usize>) {
         // Letting the border pop in at the end of the open
         // animation matches niri/Hyprland behaviour and is far less
         // jarring than the alternative.
-        let hide = c.no_border || c.is_fullscreen || !visible || c.opening_animation.is_some();
+        let hide = c.no_border
+            || c.is_fullscreen
+            || !visible
+            || c.opening_animation.is_some()
+            || state.hide_border_when_single(idx);
 
         // The border has to wrap the *actual* on-screen content,
         // not the layout-reserved rect: Electron clients (Helium
@@ -243,7 +247,7 @@ fn refresh_client(state: &mut MargoState, idx: usize, focused: Option<usize>) {
     // `radius - border_width`, so pass `border_radius + width` as the outer
     // radius → inner == the window's radius. A square window
     // (border_radius 0) keeps a square border.
-    let base_radius = state.config.border_radius as f32;
+    let base_radius = state.client_radius(idx);
     let radius = if base_radius > 0.0 {
         base_radius + effective
     } else {

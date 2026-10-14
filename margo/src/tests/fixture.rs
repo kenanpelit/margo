@@ -152,6 +152,8 @@ impl Fixture {
             enabled: true,
             gamma_size,
             focus_history: std::collections::VecDeque::new(),
+            visible_clients: 0,
+            visible_tiled: 0,
         });
         let mon_idx = state.monitors.len() - 1;
         state.apply_tag_rules_to_monitor(mon_idx);
