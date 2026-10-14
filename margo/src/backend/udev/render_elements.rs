@@ -693,13 +693,47 @@ pub(super) fn build_render_elements_inner(
             }
         }
 
+        // `allow_lock_transparent` (mango): a translucent lock surface
+        // shows the desktop beneath it — only once that output's lock
+        // surface has a buffer (never during the protocol gap) and never
+        // in a capture.
+        if !for_screencast && state.lock_shows_desktop(&od.output) {
+            elements.extend(build_desktop_elements(
+                renderer,
+                od,
+                state,
+                output_geo,
+                output_scale,
+                false,
+                false,
+            ));
+        }
+
         return elements;
     }
 
-    let Some(output_geo) = state.space.output_geometry(&od.output) else {
-        return Vec::new();
-    };
+    build_desktop_elements(
+        renderer,
+        od,
+        state,
+        output_geo,
+        output_scale,
+        include_cursor,
+        for_screencast,
+    )
+}
 
+/// The unlocked scene for one output: overlays, layers, windows,
+/// decorations (and the cursor when `include_cursor`).
+fn build_desktop_elements(
+    renderer: &mut GlesRenderer,
+    od: &OutputDevice,
+    state: &MargoState,
+    output_geo: Rectangle<i32, Logical>,
+    output_scale: f64,
+    include_cursor: bool,
+    for_screencast: bool,
+) -> Vec<MargoRenderElement> {
     // Scroller overview takes over the whole output render when open:
     // a dark backdrop with each tag's windows scaled into a vertical
     // strip of cells. Replaces the normal window/layer compositing

@@ -234,6 +234,17 @@ impl MargoState {
         }
     }
 
+    /// `allow_lock_transparent`: while locked, render the desktop under
+    /// `output`'s lock surface — only once that surface has a buffer.
+    pub(crate) fn lock_shows_desktop(&self, output: &Output) -> bool {
+        self.session_locked
+            && self.config.allow_lock_transparent
+            && self
+                .lock_surfaces
+                .iter()
+                .any(|(o, surface)| o == output && Self::lock_surface_ready(surface))
+    }
+
     pub(crate) fn lock_surface_ready(
         surface: &smithay::wayland::session_lock::LockSurface,
     ) -> bool {

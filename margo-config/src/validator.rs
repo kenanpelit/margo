@@ -626,7 +626,6 @@ fn is_valid_modifier_token(t: &str) -> bool {
 /// `margo`'s `no_effect_keys_stay_unread` test fails when the compositor
 /// starts reading one of these, so an implemented key can't keep warning.
 pub const NO_EFFECT_KEYS: &[&str] = &[
-    "allow_lock_transparent",
     "allow_tearing",
     "axisbind",
     "blur_optimized",

@@ -454,7 +454,7 @@ fn render_output(
     // iterates element[0] = topmost, so trailing entries are drawn
     // first / occluded by everything above. Skip while session is
     // locked — mlock paints its own backdrop over the entire output.
-    if !state.session_locked
+    if (!state.session_locked || state.lock_shows_desktop(&od.output))
         && let Some(ref wp) = state.wallpaper
         && let Some(output_geo) = state.space.output_geometry(&od.output)
     {

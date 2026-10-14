@@ -5,7 +5,6 @@
 
 /// `Config` fields set by the `NO_EFFECT_KEYS` keys.
 const NO_EFFECT_FIELDS: &[&str] = &[
-    "allow_lock_transparent",
     "allow_tearing",
     "blur_optimized",
     "focus_cross_monitor",
