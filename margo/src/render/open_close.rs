@@ -150,30 +150,6 @@ fn fade_alpha(fade_begin: Option<f32>, kind: OpenCloseKind, is_close: bool, prog
     alpha.clamp(0.0, 1.0)
 }
 
-#[cfg(test)]
-mod fade_tests {
-    use super::{OpenCloseKind, fade_alpha};
-
-    #[test]
-    fn open_starts_at_begin_opacity_and_ends_opaque() {
-        assert_eq!(fade_alpha(Some(0.6), OpenCloseKind::Zoom, false, 0.0), 0.6);
-        assert_eq!(fade_alpha(Some(0.6), OpenCloseKind::Zoom, false, 1.0), 1.0);
-        assert!((fade_alpha(Some(0.6), OpenCloseKind::Zoom, false, 0.5) - 0.8).abs() < 1e-6);
-    }
-
-    #[test]
-    fn close_starts_at_begin_opacity_and_ends_transparent() {
-        assert_eq!(fade_alpha(Some(0.5), OpenCloseKind::Zoom, true, 0.0), 0.5);
-        assert_eq!(fade_alpha(Some(0.5), OpenCloseKind::Zoom, true, 1.0), 0.0);
-    }
-
-    #[test]
-    fn disabled_fade_keeps_zoom_opaque_but_fade_kind_still_fades() {
-        assert_eq!(fade_alpha(None, OpenCloseKind::Zoom, false, 0.1), 1.0);
-        assert_eq!(fade_alpha(None, OpenCloseKind::Fade, true, 0.25), 0.75);
-    }
-}
-
 impl OpenCloseRenderElement {
     pub fn new(
         id: Id,
@@ -390,5 +366,29 @@ impl RenderElement<GlesRenderer> for OpenCloseRenderElement {
         // GPU-only texture; no associated wl_buffer → opt out of direct
         // scanout for the duration of the transition.
         None
+    }
+}
+
+#[cfg(test)]
+mod fade_tests {
+    use super::{OpenCloseKind, fade_alpha};
+
+    #[test]
+    fn open_starts_at_begin_opacity_and_ends_opaque() {
+        assert_eq!(fade_alpha(Some(0.6), OpenCloseKind::Zoom, false, 0.0), 0.6);
+        assert_eq!(fade_alpha(Some(0.6), OpenCloseKind::Zoom, false, 1.0), 1.0);
+        assert!((fade_alpha(Some(0.6), OpenCloseKind::Zoom, false, 0.5) - 0.8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn close_starts_at_begin_opacity_and_ends_transparent() {
+        assert_eq!(fade_alpha(Some(0.5), OpenCloseKind::Zoom, true, 0.0), 0.5);
+        assert_eq!(fade_alpha(Some(0.5), OpenCloseKind::Zoom, true, 1.0), 0.0);
+    }
+
+    #[test]
+    fn disabled_fade_keeps_zoom_opaque_but_fade_kind_still_fades() {
+        assert_eq!(fade_alpha(None, OpenCloseKind::Zoom, false, 0.1), 1.0);
+        assert_eq!(fade_alpha(None, OpenCloseKind::Fade, true, 0.25), 0.75);
     }
 }
