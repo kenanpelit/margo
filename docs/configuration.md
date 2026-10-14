@@ -58,6 +58,18 @@ source  = ~/.config/margo/conf.d/*.conf
 
 Both `include = …` (single file) and `source = …` (glob; matches in lex order) are supported. Re-applying via `mctl reload` re-reads the entire tree.
 
+## Configuration variables
+
+```ini
+var = term, kitty
+var = mod,  super
+
+bind = $mod, Return, spawn, $term
+bind = $mod, e,       spawn, $term -e nvim
+```
+
+Define with `var = name, value` (names: `[A-Za-z_][A-Za-z0-9_]*`), reference with `$name` or `${name}` — anywhere a value appears, including in `source`/`include`d files (define before use). Only names you've actually defined this way get substituted; `$HOME`, `$(date …)`, `$1`, `$$` and an undefined `$foo` are left exactly as written, so shell commands in `spawn`/`spawn_shell` keep working untouched. Pick distinctive names — `var = HOME, …` would also expand `$HOME` inside `spawn_shell` commands, before the shell ever sees it.
+
 ## Startup apps on background tags
 
 Windows on hidden tags normally receive no frame callbacks until their tag is

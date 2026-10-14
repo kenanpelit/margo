@@ -1,5 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+
+/// `var=name,value` definitions accumulated while parsing — shared across
+/// `source`/`include`'d files (a file can use a variable defined before its
+/// `source` line). Threaded through the recursive parse calls the same way
+/// `visited` already is.
+type Vars = HashMap<String, String>;
 
 use anyhow::{Context, Result, anyhow, bail};
 use tracing::{error, warn};
@@ -13,7 +19,13 @@ use crate::types::*;
 pub fn parse_config(path: Option<&Path>) -> Result<Config> {
     let resolved = resolve_config_path(path)?;
     let mut cfg = Config::default();
-    parse_file(&mut cfg, &resolved, true, &mut HashSet::new())?;
+    parse_file(
+        &mut cfg,
+        &resolved,
+        true,
+        &mut HashSet::new(),
+        &mut Vars::new(),
+    )?;
     inject_default_chvt_bindings(&mut cfg);
     Ok(cfg)
 }
@@ -44,7 +56,7 @@ pub fn parse_config_str(content: &str, path: Option<&Path>) -> Result<Config> {
     // (matching parse_file's own guard) instead of re-reading whatever
     // is currently on disk at `origin`, which may not match `content`.
     visited.insert(std::fs::canonicalize(&origin).unwrap_or_else(|_| origin.clone()));
-    parse_lines(&mut cfg, content, &origin, &mut visited);
+    parse_lines(&mut cfg, content, &origin, &mut visited, &mut Vars::new());
     inject_default_chvt_bindings(&mut cfg);
     Ok(cfg)
 }
@@ -111,6 +123,7 @@ fn parse_file(
     path: &Path,
     required: bool,
     visited: &mut HashSet<PathBuf>,
+    vars: &mut Vars,
 ) -> Result<()> {
     // Guard against include/source cycles (A→B→A, or a file that
     // includes itself) and accidental double-loads of the same file
@@ -134,7 +147,7 @@ fn parse_file(
             return Ok(());
         }
     };
-    parse_lines(cfg, &text, path, visited);
+    parse_lines(cfg, &text, path, visited, vars);
     Ok(())
 }
 
@@ -145,13 +158,19 @@ fn parse_file(
 /// location `content` is *pretending* to be). Parse errors on individual
 /// lines are logged and skipped, never propagated — matches the
 /// permissive-parser contract the rest of the crate already documents.
-fn parse_lines(cfg: &mut Config, text: &str, origin: &Path, visited: &mut HashSet<PathBuf>) {
+fn parse_lines(
+    cfg: &mut Config,
+    text: &str,
+    origin: &Path,
+    visited: &mut HashSet<PathBuf>,
+    vars: &mut Vars,
+) {
     for (lineno, raw) in text.lines().enumerate() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        if let Err(e) = parse_line(cfg, line, origin, visited) {
+        if let Err(e) = parse_line(cfg, line, origin, visited, vars) {
             error!("{}:{}: {} — {:?}", origin.display(), lineno + 1, e, line);
         }
     }
@@ -206,6 +225,7 @@ fn parse_line(
     line: &str,
     origin: &Path,
     visited: &mut HashSet<PathBuf>,
+    vars: &mut Vars,
 ) -> Result<()> {
     // Strip inline comments before parsing so users can write e.g.
     //   xkb_rules_options = ctrl:nocaps   # CapsLock → Ctrl
@@ -213,7 +233,16 @@ fn parse_line(
     let line = strip_inline_comment(line);
     let (raw_key, raw_val) = split_kv(line).ok_or_else(|| anyhow!("invalid line format"))?;
     let key = raw_key.trim();
-    let val = raw_val.trim();
+    // Expand `$name`/`${name}` to already-defined `var=` values before any
+    // key-specific handling — matches mango: expansion applies uniformly
+    // to every line's value, `var=` lines included (so a later var can
+    // reference an earlier one), not just plain option values.
+    let val = expand_vars(raw_val.trim(), vars);
+    let val = val.as_str();
+
+    if key == "var" {
+        return parse_var(val, vars);
+    }
 
     // include/source directive
     if key == "include" || key == "source" {
@@ -228,7 +257,7 @@ fn parse_line(
             );
             return Ok(());
         }
-        return parse_file(cfg, &p, false, visited);
+        return parse_file(cfg, &p, false, visited, vars);
     }
 
     // bind variants
@@ -260,6 +289,80 @@ fn parse_line(
     }
 
     parse_option(cfg, key, val)
+}
+
+/// `var=name,value` — define (or overwrite) a config variable. Names must
+/// match `[A-Za-z_][A-Za-z0-9_]*`; anything else is a parse error (reported
+/// and skipped, per the permissive-parser contract — this `var=` line is
+/// simply dropped, not fatal to the rest of the file).
+fn parse_var(val: &str, vars: &mut Vars) -> Result<()> {
+    let (name, value) = val
+        .split_once(',')
+        .ok_or_else(|| anyhow!("invalid var format (expected name,value): {val}"))?;
+    let name = name.trim();
+    let value = value.trim();
+    if !is_valid_var_name(name) {
+        bail!("invalid var name (allowed: [A-Za-z_][A-Za-z0-9_]*): {name}");
+    }
+    vars.insert(name.to_string(), value.to_string());
+    Ok(())
+}
+
+fn is_valid_var_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Expand `$name` / `${name}` references to already-defined `var=`
+/// variables. Only names actually defined via `var=` are touched —
+/// anything else (`$HOME`, `$(date …)`, `$1`, `$$`, an undefined `$foo`)
+/// is copied through byte-for-byte, so shell commands in
+/// `spawn`/`spawn_shell` keep working exactly as before.
+fn expand_vars(value: &str, vars: &Vars) -> String {
+    if vars.is_empty() || !value.contains('$') {
+        return value.to_string();
+    }
+    let bytes = value.as_bytes();
+    let mut out = String::with_capacity(value.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' {
+            if bytes.get(i + 1) == Some(&b'{') {
+                if let Some(close) = value[i + 2..].find('}') {
+                    let name = &value[i + 2..i + 2 + close];
+                    if let Some(v) = vars.get(name) {
+                        out.push_str(v);
+                        i += 2 + close + 1;
+                        continue;
+                    }
+                }
+            } else if matches!(bytes.get(i + 1), Some(b) if b.is_ascii_alphabetic() || *b == b'_') {
+                let start = i + 1;
+                let mut end = start;
+                while end < bytes.len()
+                    && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
+                {
+                    end += 1;
+                }
+                if let Some(v) = vars.get(&value[start..end]) {
+                    out.push_str(v);
+                    i = end;
+                    continue;
+                }
+            }
+        }
+        // Not a recognised/defined variable reference — copy one *char*
+        // (not byte) through untouched, so this stays UTF-8 safe for any
+        // multibyte text sitting next to an unrelated '$'.
+        let ch_len = value[i..].chars().next().map_or(1, char::len_utf8);
+        out.push_str(&value[i..i + ch_len]);
+        i += ch_len;
+    }
+    out
 }
 
 fn is_bind_key(k: &str) -> bool {
@@ -1843,6 +1946,46 @@ mod tests {
         clamp_keyword, expand_tilde_in_env, parse_config, parse_config_str,
         parse_config_str_with_defaults, parse_key, strip_inline_comment,
     };
+
+    #[test]
+    fn var_expands_in_later_lines_and_across_definitions() {
+        let c = parse_config_str(
+            "var=term,kitty\nvar=mod,super\nenv=TESTVAR,${term}-$mod\n",
+            None,
+        )
+        .unwrap();
+        assert_eq!(c.envs.last().map(|(_, v)| v.as_str()), Some("kitty-super"));
+    }
+
+    #[test]
+    fn var_defined_from_an_earlier_var() {
+        let c =
+            parse_config_str("var=base,/x\nvar=full,$base/y\nenv=TESTVAR,$full\n", None).unwrap();
+        assert_eq!(c.envs.last().map(|(_, v)| v.as_str()), Some("/x/y"));
+    }
+
+    #[test]
+    fn var_leaves_shell_syntax_and_undefined_names_untouched() {
+        // $HOME, $(date …), $1 and $$ are never config variables, and an
+        // undefined $foo is left exactly as written — only names actually
+        // defined via `var=` get substituted.
+        let c = parse_config_str("exec=echo $HOME $(date +%s) $1 $$ $undefined\n", None).unwrap();
+        assert_eq!(
+            c.exec.first().map(String::as_str),
+            Some("echo $HOME $(date +%s) $1 $$ $undefined")
+        );
+    }
+
+    #[test]
+    fn var_bad_name_is_rejected_without_poisoning_later_lines() {
+        // "1bad" isn't a valid name ([A-Za-z_][A-Za-z0-9_]*) — the var=
+        // line is dropped (permissive-parser contract: an error on one
+        // line never aborts the rest of the file), so nothing named
+        // "1bad" ever gets defined and `${1bad}` later has nothing to
+        // expand to — left exactly as written.
+        let c = parse_config_str("var=1bad,oops\nexec=echo ${1bad}\n", None).unwrap();
+        assert_eq!(c.exec.first().map(String::as_str), Some("echo ${1bad}"));
+    }
 
     #[test]
     fn env_tilde_expands_at_word_starts_only() {

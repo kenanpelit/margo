@@ -539,6 +539,7 @@ const CSV_SHAPED_KEYS: &[&str] = &[
     "layerrule",
     "monitor",
     "env",
+    "var",
     "circle_layout",
 ];
 
