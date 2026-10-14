@@ -17,17 +17,18 @@ use crate::types::*;
 
 /// Parse the user's mango config file (auto-discovers path if none given).
 pub fn parse_config(path: Option<&Path>) -> Result<Config> {
+    parse_config_tracked(path).map(|(cfg, _)| cfg)
+}
+
+fn parse_config_tracked(path: Option<&Path>) -> Result<(Config, Vec<PathBuf>)> {
     let resolved = resolve_config_path(path)?;
     let mut cfg = Config::default();
-    parse_file(
-        &mut cfg,
-        &resolved,
-        true,
-        &mut HashSet::new(),
-        &mut Vars::new(),
-    )?;
+    let mut visited = HashSet::new();
+    parse_file(&mut cfg, &resolved, true, &mut visited, &mut Vars::new())?;
     inject_default_chvt_bindings(&mut cfg);
-    Ok(cfg)
+    let mut sources: Vec<PathBuf> = visited.into_iter().collect();
+    sources.sort();
+    Ok((cfg, sources))
 }
 
 /// Every file this config currently reads, transitively through
@@ -36,11 +37,7 @@ pub fn parse_config(path: Option<&Path>) -> Result<Config> {
 /// change across edits (a `source` line added/removed), so callers
 /// re-fetch this after every reload rather than caching it once.
 pub fn config_source_files(path: Option<&Path>) -> Result<Vec<PathBuf>> {
-    let resolved = resolve_config_path(path)?;
-    let mut cfg = Config::default();
-    let mut visited = HashSet::new();
-    parse_file(&mut cfg, &resolved, true, &mut visited, &mut Vars::new())?;
-    Ok(visited.into_iter().collect())
+    parse_config_tracked(path).map(|(_, sources)| sources)
 }
 
 /// Like [`parse_config`] but also applies margo's built-in first-party
@@ -50,6 +47,17 @@ pub fn parse_config_with_defaults(path: Option<&Path>) -> Result<Config> {
     let mut cfg = parse_config(path)?;
     apply_first_party_defaults(&mut cfg);
     Ok(cfg)
+}
+
+/// [`parse_config_with_defaults`] plus the file list of
+/// [`config_source_files`] from the same single parse — what a reload
+/// needs to both apply the config and re-sync its watch set.
+pub fn parse_config_with_defaults_and_sources(
+    path: Option<&Path>,
+) -> Result<(Config, Vec<PathBuf>)> {
+    let (mut cfg, sources) = parse_config_tracked(path)?;
+    apply_first_party_defaults(&mut cfg);
+    Ok((cfg, sources))
 }
 
 /// Like [`parse_config`] but the top-level content comes from `content`

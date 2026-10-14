@@ -9,7 +9,7 @@
 //! `docs/superpowers/specs/2026-09-01-config-generations-rollback-design.md`.
 
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 /// One saved copy of `config.conf`'s content.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,8 +56,32 @@ fn generation_id_now() -> String {
 /// runs on the boot/reload-critical path and a full disk must never
 /// block config from applying.
 pub fn save_to(dir: &Path, content: &str, keep: usize) -> Option<Generation> {
-    if let Ok(existing) = list_in(dir)
-        && let Some(newest) = existing.first()
+    save_inner(dir, content, keep, None)
+}
+
+/// Like [`save_to`], but when the newest generation is younger than
+/// `window` it is *replaced* rather than kept alongside the new one. Used
+/// for config auto-reload, where every editor save is a reload — without
+/// coalescing an afternoon of tweaking would push every earlier
+/// known-good config out of the `keep` window. The generation that
+/// predates the editing burst is never touched.
+pub fn save_coalescing_to(
+    dir: &Path,
+    content: &str,
+    keep: usize,
+    window: Duration,
+) -> Option<Generation> {
+    save_inner(dir, content, keep, Some(window))
+}
+
+fn save_inner(
+    dir: &Path,
+    content: &str,
+    keep: usize,
+    coalesce: Option<Duration>,
+) -> Option<Generation> {
+    let newest = list_in(dir).ok().and_then(|g| g.into_iter().next());
+    if let Some(newest) = &newest
         && let Ok(prev) = std::fs::read_to_string(&newest.path)
         && prev == content
     {
@@ -79,6 +103,16 @@ pub fn save_to(dir: &Path, content: &str, keep: usize) -> Option<Generation> {
         );
         return None;
     }
+    if let (Some(window), Some(newest)) = (coalesce, &newest)
+        && newest.id != id
+        && newest.timestamp.elapsed().is_ok_and(|age| age < window)
+        && let Err(e) = std::fs::remove_file(&newest.path)
+    {
+        tracing::warn!(
+            "config generations: could not coalesce {}: {e}",
+            newest.path.display()
+        );
+    }
     prune_to(dir, keep);
     Some(Generation {
         id,
@@ -90,6 +124,11 @@ pub fn save_to(dir: &Path, content: &str, keep: usize) -> Option<Generation> {
 /// [`save_to`] against [`generations_dir`].
 pub fn save(content: &str, keep: usize) -> Option<Generation> {
     save_to(&generations_dir(), content, keep)
+}
+
+/// [`save_coalescing_to`] against [`generations_dir`].
+pub fn save_coalescing(content: &str, keep: usize, window: Duration) -> Option<Generation> {
+    save_coalescing_to(&generations_dir(), content, keep, window)
 }
 
 /// List generations under `dir`, newest first.
@@ -260,5 +299,31 @@ mod tests {
             generations_dir_from(None, None),
             PathBuf::from("/tmp/.local/state/margo/config-generations")
         );
+    }
+
+    #[test]
+    fn coalescing_replaces_a_recent_newest_but_keeps_older_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("20200101T000000Z.conf");
+        std::fs::write(&old, "borderpx = 1\n").unwrap();
+        let recent = dir.path().join("20200101T000001Z.conf");
+        std::fs::write(&recent, "borderpx = 2\n").unwrap();
+        // `recent` has a fresh mtime, so it is inside the window.
+        let saved = save_coalescing_to(dir.path(), "borderpx = 3\n", 20, Duration::from_secs(600))
+            .expect("changed content must save");
+        let ids: Vec<String> = list_in(dir.path())
+            .unwrap()
+            .into_iter()
+            .map(|g| g.id)
+            .collect();
+        assert_eq!(ids, vec![saved.id, "20200101T000000Z".to_string()]);
+    }
+
+    #[test]
+    fn coalescing_keeps_a_newest_older_than_the_window() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("20200101T000000Z.conf"), "borderpx = 1\n").unwrap();
+        save_coalescing_to(dir.path(), "borderpx = 2\n", 20, Duration::ZERO).unwrap();
+        assert_eq!(list_in(dir.path()).unwrap().len(), 2);
     }
 }

@@ -184,16 +184,11 @@ fn watch_loop(rx: mpsc::Receiver<notify::Result<Event>>, files: FileSet, on_sett
     }
 }
 
-/// Every file `config_path` currently reads, transitively through
-/// `include`/`source`, plus the main path as configured (which may be a
-/// symlink the parser canonicalised away). Falls back to just the main
-/// file if the walk fails — a config that doesn't parse at all
-/// shouldn't also lose its own watch.
-pub(crate) fn watch_list(config_path: Option<&Path>) -> Vec<PathBuf> {
-    let mut list = margo_config::config_source_files(config_path).unwrap_or_else(|e| {
-        tracing::warn!(error = ?e, "config watcher: couldn't walk source/include tree");
-        Vec::new()
-    });
+/// The watcher's path list: the config tree from the last parse plus
+/// the main path as configured (which may be a symlink the parser
+/// canonicalised away).
+pub(crate) fn watch_list(config_path: Option<&Path>, sources: &[PathBuf]) -> Vec<PathBuf> {
+    let mut list = sources.to_vec();
     if let Ok(main) = margo_config::resolve_config_path(config_path) {
         list.push(main);
     }

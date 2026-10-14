@@ -586,7 +586,7 @@ fn main() -> Result<()> {
     if let Err(e) =
         loop_handle.insert_source(config_reload_rx, |event, _, state: &mut MargoState| {
             if let calloop::channel::Event::Msg(()) = event
-                && let Err(e) = state.reload_config()
+                && let Err(e) = state.reload_config_on_change()
             {
                 tracing::warn!(error = ?e, "config auto-reload: reload failed");
             }

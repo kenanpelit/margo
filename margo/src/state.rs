@@ -99,7 +99,7 @@ use smithay::{
     xwayland::{X11Surface, X11Wm},
 };
 
-use margo_config::{Config, WindowRule, generations, parse_config_with_defaults};
+use margo_config::{Config, WindowRule, generations};
 
 use crate::{
     animation::{AnimationCurves, AnimationType, ClientAnimation, OpacityAnimation},
@@ -184,6 +184,22 @@ pub enum ActiveOutputSource {
     Focus,
     /// The pointer's monitor defines the active output.
     Pointer,
+}
+
+/// Auto-reload saves landing within this window of the previous
+/// auto-reload generation replace it instead of adding a new one.
+const GENERATION_COALESCE_WINDOW: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// Content hash of the config file tree; a missing file hashes as a
+/// distinct marker so creating a `source`d file still counts as a change.
+fn config_fingerprint(paths: &[std::path::PathBuf]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for path in paths {
+        path.hash(&mut hasher);
+        std::fs::read(path).ok().hash(&mut hasher);
+    }
+    hasher.finish()
 }
 
 /// Does any window rule carry a title / exclude_title pattern? Cached on
@@ -720,6 +736,11 @@ pub struct MargoState {
     /// created; `sync_config_watcher` (called at startup and after every
     /// reload) keeps it started/stopped/re-synced to match.
     config_watcher: Option<crate::config_watcher::ConfigWatcher>,
+    /// Every file the applied config was parsed from (canonical paths),
+    /// from the last successful parse — the watcher's file set.
+    config_sources: Vec<std::path::PathBuf>,
+    /// [`config_fingerprint`] of `config_sources` as last applied.
+    config_fingerprint: Option<u64>,
     /// Where `config_watcher`'s background thread sends once a batch of
     /// filesystem changes has settled — see `set_config_reload_sender`.
     config_reload_tx: Option<calloop::channel::Sender<()>>,
@@ -1286,6 +1307,8 @@ impl MargoState {
             // Set up once the full `event_loop` handle exists — see
             // `main.rs`'s post-construction setup.
             config_watcher: None,
+            config_sources: Vec::new(),
+            config_fingerprint: None,
             config_reload_tx: None,
             animation_curves,
             input_keyboard,
@@ -1940,7 +1963,24 @@ impl MargoState {
         requested
     }
 
+    /// Explicit reload (`mctl reload`, the reload keybind).
     pub fn reload_config(&mut self) -> Result<()> {
+        self.reload_config_inner(false)
+    }
+
+    /// Reload requested by the `auto_reload_config` watcher. Skipped when
+    /// the watched files' content is unchanged since the last applied
+    /// reload — e.g. Settings wrote a fragment *and* ran `mctl reload`,
+    /// so the watcher's follow-up event would only repeat that reload.
+    pub fn reload_config_on_change(&mut self) -> Result<()> {
+        if self.config_fingerprint == Some(config_fingerprint(&self.config_sources)) {
+            tracing::debug!("config auto-reload: content unchanged, skipping");
+            return Ok(());
+        }
+        self.reload_config_inner(true)
+    }
+
+    fn reload_config_inner(&mut self, auto: bool) -> Result<()> {
         // Validate first. The parser is permissive (silent defaults
         // on malformed values), so a "successful" parse can still mean
         // the user's intent was misread. Run the structured validator
@@ -1970,8 +2010,11 @@ impl MargoState {
             }
         }
 
-        let new_config = parse_config_with_defaults(self.config_path.as_deref())
-            .with_context(|| "reload margo config")?;
+        let (new_config, sources) =
+            margo_config::parse_config_with_defaults_and_sources(self.config_path.as_deref())
+                .with_context(|| "reload margo config")?;
+        self.config_fingerprint = Some(config_fingerprint(&sources));
+        self.config_sources = sources;
 
         // Save this generation now that it's confirmed to parse (the
         // validator above already confirmed it has no errors). Mirrors
@@ -1988,7 +2031,11 @@ impl MargoState {
             })
             && let Ok(raw) = std::fs::read_to_string(&path)
         {
-            let _ = generations::save(&raw, 20);
+            if auto {
+                let _ = generations::save_coalescing(&raw, 20, GENERATION_COALESCE_WINDOW);
+            } else {
+                let _ = generations::save(&raw, 20);
+            }
         }
 
         // Successful reload — clear any stale diagnostics + overlay
@@ -2164,7 +2211,15 @@ impl MargoState {
             // since that can't run before startup finishes.
             return;
         };
-        let paths = crate::config_watcher::watch_list(self.config_path.as_deref());
+        if self.config_sources.is_empty() {
+            // Startup: the boot parse in main.rs doesn't report its
+            // file list, so walk the tree once here.
+            self.config_sources =
+                margo_config::config_source_files(self.config_path.as_deref()).unwrap_or_default();
+            self.config_fingerprint = Some(config_fingerprint(&self.config_sources));
+        }
+        let paths =
+            crate::config_watcher::watch_list(self.config_path.as_deref(), &self.config_sources);
         match &mut self.config_watcher {
             Some(watcher) => watcher.update(&paths),
             None => {
