@@ -107,6 +107,91 @@ fn nearest_occupied_tag(
 }
 
 impl MargoState {
+    /// `focusdir` (mango `focus_direction`): focus the nearest window in
+    /// `dir`. In monocle, left/right step through the stack. With no
+    /// neighbour on this monitor, `focus_cross_monitor` also searches the
+    /// other monitors; at the edge, `focus_cross_tag` moves to the nearest
+    /// occupied tag that way, else `focus_cross_monitor` focuses the
+    /// adjacent monitor. Otherwise nothing happens.
+    pub fn focus_direction(&mut self, dir: Direction) {
+        let mon_idx = self.focused_monitor();
+        let Some(mon) = self.monitors.get(mon_idx) else {
+            return;
+        };
+        let tagset = mon.current_tagset();
+        let layout = mon.current_layout();
+        let focused = self
+            .focused_client_idx()
+            .filter(|&i| self.clients[i].is_visible_on(mon_idx, tagset));
+
+        if layout == crate::layout::LayoutId::Monocle
+            && focused.is_some_and(|i| self.clients[i].is_tiled())
+            && matches!(dir, Direction::Left | Direction::Right)
+        {
+            self.focus_stack(if dir == Direction::Left { -1 } else { 1 });
+            return;
+        }
+
+        if let Some(focused_idx) = focused {
+            let geom = self.clients[focused_idx].geom;
+            let same_monitor: Vec<(usize, Rect)> = self
+                .clients
+                .iter()
+                .enumerate()
+                .filter(|(i, c)| *i != focused_idx && c.is_visible_on(mon_idx, tagset))
+                .map(|(i, c)| (i, c.geom))
+                .collect();
+            let mut target = spatial_neighbor(geom, &same_monitor, dir);
+            if target.is_none() && self.config.focus_cross_monitor {
+                let other_monitors: Vec<(usize, Rect)> = self
+                    .clients
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| {
+                        c.monitor != mon_idx
+                            && self
+                                .monitors
+                                .get(c.monitor)
+                                .is_some_and(|m| c.is_visible_on(c.monitor, m.current_tagset()))
+                    })
+                    .map(|(i, c)| (i, c.geom))
+                    .collect();
+                target = spatial_neighbor(geom, &other_monitors, dir);
+            }
+            if let Some(idx) = target {
+                let target_mon = self.clients[idx].monitor;
+                let window = self.clients[idx].window.clone();
+                self.focus_surface(Some(FocusTarget::Window(window)));
+                self.arrange_monitor(target_mon);
+                return;
+            }
+        }
+
+        let step = match dir {
+            Direction::Left | Direction::Up => -1,
+            Direction::Right | Direction::Down => 1,
+            Direction::None => return,
+        };
+        if self.config.focus_cross_tag {
+            let max = crate::MAX_TAGS as u32;
+            let current_tag = if tagset.count_ones() == 1 {
+                tagset.trailing_zeros() + 1
+            } else {
+                1
+            };
+            let carousel = self.config.tag_carousel;
+            if let Some((target, _)) = nearest_occupied_tag(current_tag, max, dir, carousel, |n| {
+                self.clients
+                    .iter()
+                    .any(|c| c.is_visible_on(mon_idx, 1u32 << (n - 1)))
+            }) {
+                self.view_tag(1u32 << (target - 1));
+            }
+        } else if self.config.focus_cross_monitor {
+            self.focus_mon(step);
+        }
+    }
+
     /// Focus the window in `dir`; if none is there (edge of the tag), jump to
     /// the nearest tag in that direction that has clients, falling back to
     /// the blind next/previous tag if none are occupied. Ports mango 0.15.5's

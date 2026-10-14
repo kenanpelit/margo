@@ -217,3 +217,42 @@ fn warpcursor_moves_the_pointer_to_the_newly_focused_window() {
     assert!((px - (g.x as f64 + g.width as f64 / 2.0)).abs() < 1.0);
     assert!((py - (g.y as f64 + g.height as f64 / 2.0)).abs() < 1.0);
 }
+
+#[test]
+fn focusdir_is_spatial_and_crosses_tags_at_the_edge() {
+    let mut fx = Fixture::new();
+    windows(&mut fx, 2);
+    let curtag = fx.server.state.monitors[0].pertag.curtag;
+    fx.server.state.monitors[0].pertag.ltidxs[curtag] = crate::layout::LayoutId::Tile;
+    fx.server.state.arrange_monitor(0);
+    // Leftmost window (master in tile).
+    let left = (0..2)
+        .min_by_key(|&i| fx.server.state.clients[i].geom.x)
+        .unwrap();
+    focus(&mut fx, left);
+    let left_id = fx.server.state.clients[left].id;
+
+    // Nothing left of the master: without cross flags, focus stays.
+    fx.server
+        .state
+        .focus_direction(margo_config::Direction::Left);
+    assert_eq!(focused_id(&fx), Some(left_id));
+
+    // Right finds the other window.
+    fx.server
+        .state
+        .focus_direction(margo_config::Direction::Right);
+    assert_ne!(focused_id(&fx), Some(left_id));
+
+    // With focus_cross_tag, the edge moves to an occupied tag.
+    let home = fx.server.state.monitors[0].current_tagset();
+    let other = fx.server.state.focused_client_idx().unwrap();
+    fx.server.state.clients[other].tags = home << 1;
+    fx.server.state.arrange_monitor(0);
+    focus(&mut fx, left);
+    fx.server.state.config.focus_cross_tag = true;
+    fx.server
+        .state
+        .focus_direction(margo_config::Direction::Right);
+    assert_eq!(fx.server.state.monitors[0].current_tagset(), home << 1);
+}

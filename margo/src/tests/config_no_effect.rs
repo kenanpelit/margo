@@ -7,8 +7,6 @@
 const NO_EFFECT_FIELDS: &[&str] = &[
     "allow_tearing",
     "blur_optimized",
-    "focus_cross_monitor",
-    "focus_cross_tag",
     "tablet_map_to_mon",
     "touch_degrees_leniency",
     "touch_distance_threshold",

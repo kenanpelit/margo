@@ -504,8 +504,17 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                 state.activate_window_id(arg.i as u64);
             }
         }
-        "focusstack" | "focusdir" => {
+        "focusstack" => {
             state.focus_stack(direction_arg(arg));
+            state.warp_cursor_to_focus(false);
+        }
+        // Spatial (mango). A numeric argument (`focusdir,1`) keeps the old
+        // stack-cycling meaning.
+        "focusdir" => {
+            match direction4(arg) {
+                margo_config::Direction::None => state.focus_stack(direction_arg(arg)),
+                dir => state.focus_direction(dir),
+            }
             state.warp_cursor_to_focus(false);
         }
         // dwl's `focuslast` — jump back to the window you were on before

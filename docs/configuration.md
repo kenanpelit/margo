@@ -397,7 +397,8 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 
 | Action | Arg | Description |
 | --- | --- | --- |
-| `focusstack`, `focusdir` | `<DIR>` | Move focus next/previous (`1` / `-1`) or directional (`left`/`right`/`up`/`down`). |
+| `focusstack` | `<DIR>` | Cycle focus through the stack: next/previous (`1` / `-1`). |
+| `focusdir` | `<DIR>` | Focus the nearest window `left`/`right`/`up`/`down`. At the edge: `focus_cross_tag = 1` jumps to the nearest occupied tag, else `focus_cross_monitor = 1` to the adjacent monitor. |
 | `exchange_client`, `smartmovewin` | `<DIR>` | Swap the focused window with its neighbour in that direction. |
 | `focusmon` | `<DIR>` | Move keyboard focus to another monitor (`left`/`right`/`up`/`down` or `1`/`-1`). |
 | `zoom` | | Promote the focused window to the master slot (dwm zoom). |

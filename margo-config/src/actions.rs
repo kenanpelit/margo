@@ -184,13 +184,24 @@ pub const ACTIONS: &[Action] = &[
     // ── Focus ───────────────────────────────────────────────────────
     Action {
         name: "focusstack",
-        aliases: &["focusdir"],
+        aliases: &[],
         args: "<DIRECTION>",
         group: Group::Focus,
-        summary: "Move keyboard focus next/previous (1 / -1) or directional (left/right/up/down).",
-        detail: "`focusdir` and `focusstack` share the dispatcher; the \
-                 direction argument may be a signed integer or one of \
-                 `left right up down prev next`.",
+        summary: "Cycle keyboard focus through the stack: next (1) / previous (-1).",
+        detail: "The direction may be a signed integer or one of \
+                 `left right up down prev next` (left/up = previous).",
+    },
+    Action {
+        name: "focusdir",
+        aliases: &[],
+        args: "<left|right|up|down>",
+        group: Group::Focus,
+        summary: "Focus the nearest window in a direction.",
+        detail: "Spatial, like mango: monocle steps the stack on left/right. \
+                 At the edge `focus_cross_tag` jumps to the nearest occupied \
+                 tag, else `focus_cross_monitor` to the adjacent monitor \
+                 (which also lets the search include other monitors). A \
+                 numeric argument cycles the stack like `focusstack`.",
     },
     Action {
         name: "focuslast",
