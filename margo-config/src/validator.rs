@@ -632,7 +632,6 @@ pub const NO_EFFECT_KEYS: &[&str] = &[
     "blur_optimized",
     "focus_cross_monitor",
     "focus_cross_tag",
-    "syncobj_enable",
     "tablet_map_to_mon",
     "touch_degrees_leniency",
     "touch_distance_threshold",

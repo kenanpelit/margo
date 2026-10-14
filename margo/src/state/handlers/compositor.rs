@@ -129,7 +129,15 @@ impl CompositorHandler for MargoState {
             return;
         }
         let _hook = add_pre_commit_hook::<Self, _>(surface, |state, _dh, surface| {
+            let mut acquire_point = None;
             let maybe_dmabuf = with_states(surface, |surface_data| {
+                acquire_point.clone_from(
+                    &surface_data
+                        .cached_state
+                        .get::<smithay::wayland::drm_syncobj::DrmSyncobjCachedState>()
+                        .pending()
+                        .acquire_point,
+                );
                 surface_data
                     .cached_state
                     .get::<SurfaceAttributes>()
@@ -141,7 +149,28 @@ impl CompositorHandler for MargoState {
                         _ => None,
                     })
             });
-            if let Some(dmabuf) = maybe_dmabuf {
+            // Explicit sync (`syncobj_enable`): hold the commit until the
+            // client's acquire point signals, instead of the implicit
+            // dmabuf fence (smithay anvil's pattern).
+            let mut acquire_blocked = false;
+            if maybe_dmabuf.is_some()
+                && let Some(acquire_point) = acquire_point
+                && let Ok((blocker, source)) = acquire_point.generate_blocker()
+                && let Some(client) = surface.client()
+            {
+                let res = state.loop_handle.insert_source(source, move |_, _, state| {
+                    let dh = state.display_handle.clone();
+                    state
+                        .client_compositor_state(&client)
+                        .blocker_cleared(state, &dh);
+                    Ok(())
+                });
+                if res.is_ok() {
+                    add_blocker(surface, blocker);
+                    acquire_blocked = true;
+                }
+            }
+            if let Some(dmabuf) = maybe_dmabuf.filter(|_| !acquire_blocked) {
                 if let Ok((blocker, source)) = dmabuf.generate_blocker(Interest::READ) {
                     if let Some(client) = surface.client() {
                         let res = state.loop_handle.insert_source(source, move |_, _, state| {

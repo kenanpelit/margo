@@ -5,16 +5,13 @@
 //! instead of SHM — we run the renderer-supplied `dmabuf_import_hook`
 //! to validate import, then signal success / failure on the notifier.
 //!
-//! The drm-syncobj global is only exposed when the udev backend has
-//! had a chance to test the primary DRM node for `syncobj_eventfd`
-//! support and flip `drm_syncobj_state` to `Some`. Until that
-//! happens `drm_syncobj_state()` returns `None` and smithay's
-//! dispatch refuses to bind, so kernels / drivers without timeline
-//! syncobj support don't see a global advertised at all (the
-//! contract niri / sway / mutter follow). Once the global is up,
-//! the per-surface `wp_linux_drm_syncobj_surface_v1` plumbs acquire
-//! + release fences through smithay's compositor pre-commit hooks
-//! automatically.
+//! The drm-syncobj global is opt-in (`syncobj_enable`): the udev
+//! backend creates `drm_syncobj_state` at start-up only when it is set
+//! and the primary DRM node supports syncobj eventfds; otherwise
+//! `drm_syncobj_state()` returns `None` and smithay refuses to bind.
+//! With it up, acquire points are waited on by the pre-commit hook in
+//! `handlers/compositor.rs`, and smithay signals release points when
+//! the last reference to a buffer drops.
 
 use smithay::{
     backend::allocator::dmabuf::Dmabuf,
