@@ -10,7 +10,6 @@ const NO_EFFECT_FIELDS: &[&str] = &[
     "blur_optimized",
     "focus_cross_monitor",
     "focus_cross_tag",
-    "switch_bindings",
     "syncobj_enable",
     "tablet_map_to_mon",
     "touch_degrees_leniency",

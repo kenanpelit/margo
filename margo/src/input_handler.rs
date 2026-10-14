@@ -66,8 +66,34 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
         InputEvent::TouchDown { event } => handle_touch_down(state, event),
         InputEvent::TouchMotion { event } => handle_touch_motion(state, event),
         InputEvent::TouchUp { event } => handle_touch_up(state, event),
+        InputEvent::SwitchToggle { event } => handle_switch_toggle(state, event),
         _ => {}
     }
+}
+
+/// `switchbind = fold|unfold,action,…` (mango): a lid / tablet-mode switch
+/// turning on (`fold`) or off (`unfold`) runs the first matching bind.
+fn handle_switch_toggle<B: InputBackend, E: smithay::backend::input::SwitchToggleEvent<B>>(
+    state: &mut MargoState,
+    event: E,
+) {
+    use smithay::backend::input::SwitchState;
+    let fold = match event.state() {
+        SwitchState::On => margo_config::FoldState::Fold,
+        SwitchState::Off => margo_config::FoldState::Unfold,
+    };
+    let Some(bind) = state
+        .config
+        .switch_bindings
+        .iter()
+        .find(|b| b.fold == fold)
+        .cloned()
+    else {
+        return;
+    };
+    tracing::info!(switch = ?event.switch(), ?fold, action = %bind.action, "switchbind");
+    crate::dispatch::dispatch_action(state, &bind.action, &bind.arg);
+    state.request_repaint();
 }
 
 // ── Touchpad swipe gestures ──────────────────────────────────────────────────
