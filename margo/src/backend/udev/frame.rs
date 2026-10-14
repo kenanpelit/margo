@@ -68,10 +68,7 @@ pub(super) fn update_primary_scanout_outputs(
     use smithay::desktop::utils::update_surface_primary_scanout_output;
     use smithay::wayland::compositor::{TraversalAction, with_surface_tree_downward};
 
-    for window in state.space.elements() {
-        if !state.space.outputs_for_element(window).contains(output) {
-            continue;
-        }
+    for window in state.space.elements_for_output(output) {
         window.with_surfaces(|surface, states| {
             update_surface_primary_scanout_output(
                 surface,
@@ -213,16 +210,14 @@ pub(super) fn build_presentation_feedback(
     let mut feedback = OutputPresentationFeedback::new(output);
 
     // Toplevels.
-    for window in state.space.elements() {
-        if state.space.outputs_for_element(window).contains(output) {
-            window.take_presentation_feedback(
-                &mut feedback,
-                surface_primary_scanout_output,
-                |surface, _| {
-                    surface_presentation_feedback_flags_from_states(surface, None, render_states)
-                },
-            );
-        }
+    for window in state.space.elements_for_output(output) {
+        window.take_presentation_feedback(
+            &mut feedback,
+            surface_primary_scanout_output,
+            |surface, _| {
+                surface_presentation_feedback_flags_from_states(surface, None, render_states)
+            },
+        );
     }
     // Layer surfaces (bar, notifications, OSD).
     let map = layer_map_for_output(output);
