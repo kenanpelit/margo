@@ -151,3 +151,21 @@ fn cursor_hides_after_timeout_and_returns_on_activity() {
     fx.server.state.arm_cursor_hide_timer();
     assert!(fx.server.state.cursor_hide_timer.is_none());
 }
+
+#[test]
+fn new_is_master_puts_the_new_window_first() {
+    let mut fx = Fixture::new();
+    windows(&mut fx, 1);
+    let first = fx.server.state.clients[0].id;
+    fx.server.state.config.new_is_master = true;
+    let id = fx.add_client();
+    let (_toplevel, surface) = fx.client(id).create_toplevel();
+    surface.commit();
+    fx.client(id).flush();
+    fx.roundtrip(id);
+    assert_ne!(
+        fx.server.state.clients[0].id, first,
+        "new window must take index 0"
+    );
+    assert_eq!(fx.server.state.clients[1].id, first);
+}

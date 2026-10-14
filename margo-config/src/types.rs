@@ -1184,7 +1184,7 @@ impl Default for Config {
             scroller_proportion_presets: vec![],
             circle_layouts: vec![],
 
-            new_is_master: true,
+            new_is_master: false,
             color_management: false,
             default_layout: "tile".into(),
             taglayouts: Vec::new(),

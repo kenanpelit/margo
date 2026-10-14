@@ -91,9 +91,9 @@ impl XdgShellHandler for MargoState {
 
         // Smart-insert (niri pattern): in scroller layout, place the new
         // client right after the focused one so closing it returns you near
-        // your previous position. Other layouts are order-agnostic.
+        // your previous position; elsewhere `new_is_master` puts it first.
         let target_mon = client.monitor;
-        let insert_at = self.scroller_insert_position(target_mon);
+        let insert_at = self.new_client_position(target_mon);
         let new_idx = match insert_at {
             Some(pos) => {
                 self.clients.insert(pos, client);

@@ -67,7 +67,14 @@ impl MargoState {
         );
         ft_handle.send_done();
         client.foreign_toplevel_handle = Some(ft_handle);
-        self.clients.push(client);
+        let app_id = client.app_id.clone();
+        match self.new_client_position(target_mon) {
+            Some(pos) => {
+                self.clients.insert(pos, client);
+                self.shift_indices_at_or_after(pos);
+            }
+            None => self.clients.push(client),
+        }
         let map_loc = self
             .monitors
             .get(target_mon)
@@ -81,7 +88,7 @@ impl MargoState {
             self.arrange_monitor(target_mon);
         }
         tracing::info!(
-            app_id = %self.clients.last().map(|c| c.app_id.as_str()).unwrap_or(""),
+            app_id = %app_id,
             monitor = target_mon,
             "new x11 toplevel",
         );

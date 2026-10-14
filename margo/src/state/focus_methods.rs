@@ -402,6 +402,17 @@ impl MargoState {
     /// created window should land — right after the currently focused client
     /// on the same monitor. Returns `None` if the target monitor isn't using
     /// scroller (any layout) or if there's no focused client there.
+    /// Where a new client goes in `clients` (`None` = append): after the
+    /// focused column in scroller, or at the head — the master slot — for
+    /// other layouts when `new_is_master` is set (mango).
+    pub(crate) fn new_client_position(&self, target_mon: usize) -> Option<usize> {
+        let layout = self.monitors.get(target_mon)?.current_layout();
+        if layout == crate::layout::LayoutId::Scroller {
+            return self.scroller_insert_position(target_mon);
+        }
+        self.config.new_is_master.then_some(0)
+    }
+
     pub(crate) fn scroller_insert_position(&self, target_mon: usize) -> Option<usize> {
         let mon = self.monitors.get(target_mon)?;
         if mon.current_layout() != crate::layout::LayoutId::Scroller {

@@ -14,7 +14,6 @@ const NO_EFFECT_FIELDS: &[&str] = &[
     "focus_cross_tag",
     "hotarea_corner",
     "hotarea_size",
-    "new_is_master",
     "no_border_when_single",
     "no_radius_when_single",
     "ov_tab_mode",
