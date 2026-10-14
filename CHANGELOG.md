@@ -5,6 +5,118 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] – 2026-10-14
+
+**Graceful reboot / shutdown, forty config keys that finally do what they
+say, a deep code-quality and performance pass, and smithay master HEAD.
+Major bump because a few existing setups behave differently — see
+"Changed" first.**
+
+### Changed
+
+- **`focusdir` is spatial** (mango's `focus_direction`): `focusdir,left`
+  focuses the nearest window to the left instead of cycling the stack.
+  At the edge, `focus_cross_tag = 1` jumps to the nearest occupied tag,
+  else `focus_cross_monitor = 1` to the adjacent monitor; with both off
+  nothing happens. A numeric argument (`focusdir,1`) and `focusstack`
+  keep cycling. Direction binds and gestures bound to `focusdir` behave
+  differently.
+- **Center-tile defaults follow mango**: with no stack windows the master
+  keeps its `mfact` width, centred (`center_master_overspread = 0`); with
+  one stack window the master stays centred
+  (`center_when_single_stack = 1`). Configs that don't set them see a
+  different center-tile layout.
+- **Virtual keyboards are real input devices** (smithay HEAD): keys from
+  wtype, wayvnc, mkeys or an IME now pass margo's keyboard path and can
+  trigger bindings — except over the lock screen, and never `quit`,
+  `force_unlock` or `chvt`.
+- **Power menu**: with the command fields empty, mshell's Reboot /
+  Shutdown / Logout use margo's new graceful `session_end`.
+- The built-in defaults of `new_is_master` and `enable_hotarea` are 0;
+  neither ever worked, so this keeps everyone's behaviour as it was.
+- Settings: the no-op "Tab mode" (Overview) and "Optimized blur"
+  (Effects) switches are gone.
+- smithay bumped to master HEAD (`8a270232`); winit 0.31.0-beta.3,
+  smithay-client-toolkit 0.21.1.
+
+### Added
+
+- **`session_end reboot|poweroff|logout|cancel`** — every window (all tags
+  and monitors, X11 included) is asked to close normally, so browsers
+  exit cleanly instead of reporting a crash on the next start; the
+  action runs once the last window is gone. Windows still open after
+  `session_end_grace_ms` (5000) get a notification naming them with a
+  Cancel button, and the action runs after `session_end_countdown_ms`
+  (15000) or as soon as they close.
+- **Config keys that were parsed but ignored now work** (mango
+  semantics): `warpcursor`, `cursor_hide_timeout`,
+  `enable_floating_snap` / `snap_distance`, `drag_corner` /
+  `drag_warp_cursor`, `no_border_when_single`, `no_radius_when_single`,
+  `scratchpadcolor`, `animation_fade_in` / `animation_fade_out` /
+  `fadein_begin_opacity` / `fadeout_begin_opacity`,
+  `animation_clock_layer`, `scroller_ignore_proportion_single` (+ the
+  per-window `scroller_proportion_single`), `center_master_overspread`,
+  `center_when_single_stack`, `new_is_master`, `exchange_cross_monitor`,
+  `focus_cross_monitor`, `focus_cross_tag`, `focus_on_activate`,
+  `allow_shortcuts_inhibit` (+ window rule), `numlockon`, `capslock`,
+  `button_map`, `axis_scroll_factor`, `trackpad_scroll_factor`,
+  `axisbind` / `axis_bind_apply_timeout`, `switchbind`, `wallpaper_fit`,
+  `allow_lock_transparent`, `syncobj_enable` (opt-in explicit sync),
+  `drag_tile_refresh_interval` / `drag_floating_refresh_interval`;
+  `enable_hotarea` / `hotarea_corner` / `hotarea_size` and `ov_tab_mode`
+  as aliases onto hot corners and `overview_style`.
+- `mctl check-config` warns **W006** for the keys that are still accepted
+  but have no effect (`allow_tearing`, touch-gesture and tablet keys); a
+  test keeps that list honest.
+- Ports from mango 0.18.0: `auto_reload_config` (reload on save, default
+  on), `var=name,value` config variables, the `confine_pointer` window
+  rule, the `smartkillclient` action and `disable_middle_paste`.
+- Translate: speak the result aloud with Microsoft neural voices, voice
+  picker in Settings → Translate.
+
+### Fixed
+
+- Keyboard LEDs (Caps / Num / Scroll Lock) never followed the lock state.
+- Config auto-reload stopped after the first save from editors that save
+  by rename, and re-triggered itself on its own reads.
+- Returning to a tag focused its oldest window instead of the last one.
+- `focuslast` jumped to the wrong window after windows were reordered.
+- A single-window screencast captured anything overlapping the window
+  (notifications, floating windows).
+- A cursor parked in a hot corner never fired it.
+- Absolute pointer motion (tablets in mouse mode, VMs) only reached the
+  first monitor and skipped pointer constraints.
+- Malformed numeric config values silently became 0 with no warning.
+- The process environment was modified while other threads ran
+  (XWayland start-up), a rare crash risk.
+- The focus border crossfade jumped to the real colour at the end for
+  urgent / overlay / fullscreen / scratchpad windows; the corner radius
+  was computed in six places that disagreed (`no_radius` windows got a
+  rounded border).
+- Screen captures lacked the compositor wallpaper; changed shadow colours
+  weren't repainted after a reload.
+- mvpn: device-slot recycling keyed on hostname collided between
+  machines, and is now strictly limited to devices it recorded itself.
+- Translate speech: a rustls panic and a misreported "clock skew".
+
+### Performance
+
+- Move/resize drags are throttled by the drag refresh intervals instead
+  of re-arranging on every pointer event (1000 Hz mice).
+- Animation ticks only re-map what moved; arrange's global steps run once
+  per batch, not per monitor; one hit-test per pointer motion; the commit
+  handler resolves its client and layer once.
+- Screencopy builds its elements once per frame and reports real damage
+  to `copy_with_damage` clients; window casts build only the window.
+- Group-tab chips and shadows keep stable element ids; config reloads
+  parse once and skip unchanged auto-reloads.
+
+### Tests
+
+- Regression tests for the fixed focus, hot-corner, config-watcher,
+  session-end and layout paths; `clippy::undocumented_unsafe_blocks` is
+  enforced and every unsafe block is documented; panic ratchet 448 → 446.
+
 ## [3.8.0] – 2026-10-10
 
 **A native translate feature — select/copy text, press a keybind, get the
