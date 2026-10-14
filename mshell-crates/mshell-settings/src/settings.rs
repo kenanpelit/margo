@@ -453,12 +453,8 @@ impl Component for SettingsWindowModel {
 
         // Search targets — top-level sections seeded here, widgets
         // sub-pages appended as their buttons are built (`make_sub_btn`).
-        let search_index: Rc<RefCell<Vec<(String, String)>>> = Rc::new(RefCell::new(
-            SEARCH_ALIASES
-                .iter()
-                .map(|(label, route)| (label.to_string(), route.to_string()))
-                .collect(),
-        ));
+        let search_index: Rc<RefCell<Vec<(String, String)>>> =
+            Rc::new(RefCell::new(initial_search_index()));
         // Display titles for the flat results list. Top-level pages seeded from
         // the SIDEBAR table; widgets sub-pages added in `make_sub_btn`.
         let search_titles: Rc<RefCell<HashMap<String, String>>> = Rc::new(RefCell::new(
@@ -2087,6 +2083,20 @@ fn keywords_for(label: &str) -> &'static str {
         .unwrap_or("")
 }
 
+/// The search box's starting targets: every alias, then every sidebar page
+/// under the label it is shown with, so a page is always findable by the
+/// name the user sees (aliases win on order for "first match" submits).
+fn initial_search_index() -> Vec<(String, String)> {
+    let aliases = SEARCH_ALIASES
+        .iter()
+        .map(|(label, route)| (label.to_string(), route.to_string()));
+    let labels = SIDEBAR.iter().filter_map(|e| match e {
+        SidebarEntry::Page { route, label, .. } => Some((label.to_lowercase(), route.to_string())),
+        SidebarEntry::Section { .. } => None,
+    });
+    aliases.chain(labels).collect()
+}
+
 /// Search aliases for the sidebar search box: each `(label, route)` makes
 /// `label` (matched as a substring of the query) jump to `route`. Multiple
 /// aliases can point at the same route. Seeds `search_index` at startup; the
@@ -2200,9 +2210,14 @@ enum SidebarEntry {
 
 use SidebarEntry::{Page, Section};
 
-/// The sidebar layout in display order. Built imperatively (relm4's `view!`
-/// can't loop), so adding a page is one row here + one stack page + search
-/// entries — no hand-wired named widget / button-lookup arm.
+/// The sidebar layout in display order, grouped KDE-System-Settings style
+/// by what the user is trying to change: how it looks, the desktop shell,
+/// window management, input, hardware, network, applications, and the
+/// session/system. Built imperatively (relm4's `view!` can't loop), so
+/// adding a page is one row here + one stack page + search entries.
+///
+/// Section names are also the persisted collapse-state keys, and icons are
+/// unique across the whole list (see `sidebar_tests`).
 const SIDEBAR: &[SidebarEntry] = &[
     Page {
         route: "general",
@@ -2211,13 +2226,18 @@ const SIDEBAR: &[SidebarEntry] = &[
     },
     Section {
         name: "Appearance",
-        icon: "applications-graphics-symbolic",
+        icon: "wallpaper-symbolic",
         collapsed: false,
+    },
+    Page {
+        route: "theme",
+        icon: "palette-symbolic",
+        label: "Theme",
     },
     Page {
         route: "appearance",
         icon: "preferences-desktop-display-symbolic",
-        label: "Appearance",
+        label: "Window Style",
     },
     Page {
         route: "effects",
@@ -2225,9 +2245,74 @@ const SIDEBAR: &[SidebarEntry] = &[
         label: "Effects",
     },
     Page {
+        route: "animations",
+        icon: "preferences-desktop-screensaver-symbolic",
+        label: "Animations",
+    },
+    Page {
         route: "osd",
         icon: "notification-symbolic",
         label: "On-screen Displays",
+    },
+    Section {
+        name: "Workspace",
+        icon: "tray-symbolic",
+        collapsed: false,
+    },
+    Page {
+        route: "bar",
+        icon: "sidebar-symbolic",
+        label: "Bar",
+    },
+    Page {
+        route: "menus",
+        icon: "view-list-symbolic",
+        label: "Menus",
+    },
+    Page {
+        route: "widgets",
+        icon: "view-app-grid-symbolic",
+        label: "Widgets",
+    },
+    Page {
+        route: "overview",
+        icon: "view-grid-symbolic",
+        label: "Overview",
+    },
+    Page {
+        route: "window_switcher",
+        icon: "view-more-horizontal-symbolic",
+        label: "Window Switcher",
+    },
+    Page {
+        route: "launcher",
+        icon: "system-search-symbolic",
+        label: "Launcher",
+    },
+    Page {
+        route: "toasts",
+        icon: "preferences-system-notifications-symbolic",
+        label: "Toasts",
+    },
+    Section {
+        name: "Window Management",
+        icon: "layout-symbolic",
+        collapsed: false,
+    },
+    Page {
+        route: "tiling_layout",
+        icon: "video-joined-displays-symbolic",
+        label: "Tiling Layout",
+    },
+    Page {
+        route: "summon",
+        icon: "workspace-symbolic",
+        label: "Tags",
+    },
+    Page {
+        route: "behaviour",
+        icon: "preferences-system-symbolic",
+        label: "Behaviour",
     },
     Page {
         route: "window_rules",
@@ -2243,6 +2328,146 @@ const SIDEBAR: &[SidebarEntry] = &[
         route: "tag_rules",
         icon: "window-symbolic",
         label: "Tag Rules",
+    },
+    Section {
+        name: "Input",
+        icon: "input-tablet-symbolic",
+        collapsed: false,
+    },
+    Page {
+        route: "input",
+        icon: "input-mouse-symbolic",
+        label: "Input Devices",
+    },
+    Page {
+        route: "keybinds",
+        icon: "preferences-desktop-keyboard-shortcuts-symbolic",
+        label: "Keyboard Shortcuts",
+    },
+    Page {
+        route: "keyboard",
+        icon: "input-keyboard-symbolic",
+        label: "On-Screen Keyboard",
+    },
+    Section {
+        name: "Hardware",
+        icon: "cpu-symbolic",
+        collapsed: false,
+    },
+    Page {
+        route: "display",
+        icon: "video-display-symbolic",
+        label: "Display",
+    },
+    Page {
+        route: "sound",
+        icon: "audio-volume-high-symbolic",
+        label: "Sound",
+    },
+    Page {
+        route: "bluetooth",
+        icon: "bluetooth-active-symbolic",
+        label: "Bluetooth",
+    },
+    Page {
+        route: "power",
+        icon: "battery-symbolic",
+        label: "Power",
+    },
+    Page {
+        route: "game_mode",
+        icon: "input-gaming-symbolic",
+        label: "Game Mode",
+    },
+    Section {
+        name: "Network",
+        icon: "network-workgroup-symbolic",
+        collapsed: false,
+    },
+    Page {
+        route: "network",
+        icon: "network-wireless-symbolic",
+        label: "Network",
+    },
+    Page {
+        route: "vpn",
+        icon: "network-vpn-symbolic",
+        label: "VPN",
+    },
+    Section {
+        name: "Applications",
+        icon: "package-symbolic",
+        collapsed: true,
+    },
+    Page {
+        route: "default_apps",
+        icon: "application-x-executable-symbolic",
+        label: "Default Apps",
+    },
+    Page {
+        route: "ai",
+        icon: "starred-symbolic",
+        label: "AI",
+    },
+    Page {
+        route: "translate",
+        icon: "globe-symbolic",
+        label: "Translate",
+    },
+    Page {
+        route: "mtune",
+        icon: "org.margo.Tune-symbolic",
+        label: "Tune",
+    },
+    Page {
+        route: "calendar",
+        icon: "x-office-calendar-symbolic",
+        label: "Calendar",
+    },
+    Page {
+        route: "plugins",
+        icon: "application-x-addon-symbolic",
+        label: "Plugins",
+    },
+    Section {
+        name: "System",
+        icon: "computer-symbolic",
+        collapsed: true,
+    },
+    Page {
+        route: "lock",
+        icon: "system-lock-screen-symbolic",
+        label: "Lock Screen",
+    },
+    Page {
+        route: "login",
+        icon: "avatar-default-symbolic",
+        label: "Login Screen",
+    },
+    Page {
+        route: "idle",
+        icon: "coffee-symbolic",
+        label: "Idle",
+    },
+    Page {
+        route: "privacy",
+        icon: "security-high-symbolic",
+        label: "Privacy",
+    },
+    Page {
+        route: "users",
+        icon: "system-users-symbolic",
+        label: "Users",
+    },
+    Page {
+        route: "region",
+        icon: "preferences-desktop-locale-symbolic",
+        label: "Region & Language",
+    },
+    Page {
+        route: "date_time",
+        icon: "preferences-system-time-symbolic",
+        label: "Date & Time",
     },
     Page {
         route: "startup_env",
@@ -2260,224 +2485,19 @@ const SIDEBAR: &[SidebarEntry] = &[
         label: "Logging",
     },
     Page {
-        route: "behaviour",
-        icon: "preferences-system-symbolic",
-        label: "Behaviour",
-    },
-    Page {
-        route: "animations",
-        icon: "preferences-desktop-screensaver-symbolic",
-        label: "Animations",
-    },
-    Page {
-        route: "window_switcher",
-        icon: "view-more-horizontal-symbolic",
-        label: "Window Switcher",
-    },
-    Page {
-        route: "theme",
-        icon: "palette-symbolic",
-        label: "Theme",
-    },
-    Section {
-        name: "Shell & Desktop",
-        icon: "sidebar-symbolic",
-        collapsed: false,
-    },
-    Page {
-        route: "bar",
-        icon: "sidebar-symbolic",
-        label: "Bar",
-    },
-    Page {
-        route: "menus",
-        icon: "view-list-symbolic",
-        label: "Menus",
-    },
-    Page {
-        route: "overview",
-        icon: "view-grid-symbolic",
-        label: "Overview",
-    },
-    Page {
-        route: "vpn",
-        icon: "network-vpn-symbolic",
-        label: "VPN",
-    },
-    Page {
-        route: "ai",
-        icon: "starred-symbolic",
-        label: "AI",
-    },
-    Page {
-        route: "translate",
-        icon: "preferences-desktop-locale-symbolic",
-        label: "Translate",
-    },
-    Page {
-        route: "tiling_layout",
-        icon: "video-joined-displays-symbolic",
-        label: "Tiling Layout",
-    },
-    Page {
-        route: "widgets",
-        icon: "view-app-grid-symbolic",
-        label: "Widgets",
-    },
-    Section {
-        name: "System & Devices",
-        icon: "preferences-system-symbolic",
-        collapsed: false,
-    },
-    Page {
-        route: "bluetooth",
-        icon: "bluetooth-active-symbolic",
-        label: "Bluetooth",
-    },
-    Page {
-        route: "display",
-        icon: "video-display-symbolic",
-        label: "Display",
-    },
-    Page {
-        route: "idle",
-        icon: "coffee-symbolic",
-        label: "Idle",
-    },
-    Page {
-        route: "mtune",
-        icon: "org.margo.Tune-symbolic",
-        label: "Tune",
-    },
-    Page {
-        route: "toasts",
-        icon: "preferences-system-notifications-symbolic",
-        label: "Toasts",
-    },
-    Page {
-        route: "game_mode",
-        icon: "input-gaming-symbolic",
-        label: "Game Mode",
-    },
-    Page {
-        route: "keyboard",
-        icon: "input-keyboard-symbolic",
-        label: "On-Screen Keyboard",
-    },
-    Page {
-        route: "lock",
-        icon: "system-lock-screen-symbolic",
-        label: "Lock Screen",
-    },
-    Page {
-        route: "login",
-        icon: "avatar-default-symbolic",
-        label: "Login Screen",
-    },
-    Page {
-        route: "network",
-        icon: "network-wireless-symbolic",
-        label: "Network",
-    },
-    Page {
-        route: "power",
-        icon: "battery-symbolic",
-        label: "Power",
-    },
-    Page {
-        route: "privacy",
-        icon: "security-high-symbolic",
-        label: "Privacy",
-    },
-    Page {
-        route: "sound",
-        icon: "audio-volume-high-symbolic",
-        label: "Sound",
-    },
-    Section {
-        name: "Input & Shortcuts",
-        icon: "input-keyboard-symbolic",
-        collapsed: false,
-    },
-    Page {
-        route: "input",
-        icon: "input-keyboard-symbolic",
-        label: "Input",
-    },
-    Page {
-        route: "keybinds",
-        icon: "preferences-desktop-keyboard-shortcuts-symbolic",
-        label: "Keyboard Shortcuts",
-    },
-    Page {
-        route: "summon",
-        icon: "view-grid-symbolic",
-        label: "Tags",
-    },
-    Page {
-        route: "launcher",
-        icon: "system-search-symbolic",
-        label: "Launcher",
-    },
-    Section {
-        name: "Locale & Accounts",
-        icon: "preferences-desktop-locale-symbolic",
-        collapsed: true,
-    },
-    Page {
-        route: "date_time",
-        icon: "preferences-system-time-symbolic",
-        label: "Date & Time",
-    },
-    Page {
-        route: "calendar",
-        icon: "x-office-calendar-symbolic",
-        label: "Calendar",
-    },
-    Page {
-        route: "default_apps",
-        icon: "application-x-executable-symbolic",
-        label: "Default Apps",
-    },
-    Page {
-        route: "region",
-        icon: "preferences-desktop-locale-symbolic",
-        label: "Region & Language",
-    },
-    Page {
-        route: "users",
-        icon: "system-users-symbolic",
-        label: "Users",
-    },
-    Section {
-        name: "Advanced",
-        icon: "emblem-system-symbolic",
-        collapsed: true,
-    },
-    Page {
-        route: "plugins",
-        icon: "application-x-addon-symbolic",
-        label: "Plugins",
-    },
-    Page {
         route: "setup",
         icon: "emblem-system-symbolic",
         label: "Setup",
     },
     Section {
-        name: "Guide",
-        icon: "help-faq-symbolic",
+        name: "Help",
+        icon: "dialog-question-symbolic",
         collapsed: false,
     },
     Page {
         route: "guide",
         icon: "help-faq-symbolic",
         label: "Guide",
-    },
-    Section {
-        name: "About",
-        icon: "help-about-symbolic",
-        collapsed: false,
     },
     Page {
         route: "about",
@@ -2821,6 +2841,56 @@ mod registry_tests {
                 routes.contains(label),
                 "{label} missing from search aliases"
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod sidebar_tests {
+    use super::{SIDEBAR, SidebarEntry, initial_search_index};
+    use std::collections::HashSet;
+
+    #[test]
+    fn sidebar_routes_and_section_names_are_unique() {
+        let mut routes = HashSet::new();
+        let mut sections = HashSet::new();
+        for entry in SIDEBAR {
+            match entry {
+                SidebarEntry::Page { route, .. } => {
+                    assert!(routes.insert(*route), "duplicate sidebar route: {route}")
+                }
+                SidebarEntry::Section { name, .. } => {
+                    assert!(sections.insert(*name), "duplicate section: {name}")
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sidebar_icons_are_unique() {
+        // Same icon on two rows makes the sidebar hard to scan.
+        let mut seen = HashSet::new();
+        for entry in SIDEBAR {
+            let icon = match entry {
+                SidebarEntry::Page { icon, .. } | SidebarEntry::Section { icon, .. } => *icon,
+            };
+            assert!(seen.insert(icon), "duplicate sidebar icon: {icon}");
+        }
+    }
+
+    #[test]
+    fn every_sidebar_page_is_searchable_by_its_label() {
+        // A page must be findable by the name the sidebar shows, including
+        // after a rename, without a hand-kept alias.
+        let index = initial_search_index();
+        for entry in SIDEBAR {
+            if let SidebarEntry::Page { route, label, .. } = entry {
+                let label = label.to_lowercase();
+                assert!(
+                    index.iter().any(|(l, r)| r == route && *l == label),
+                    "sidebar page {route} ({label}) is not in the search index"
+                );
+            }
         }
     }
 }
