@@ -224,6 +224,7 @@ impl Component for BluetoothSettingsModel {
                         // Master switch
                         gtk::Box {
                             add_css_class: "action-row",
+                            set_widget_name: "setting:/bluetooth/autoconnect_enabled",
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 20,
                             gtk::Label {
@@ -244,6 +245,7 @@ impl Component for BluetoothSettingsModel {
                         // Delay
                         gtk::Box {
                             add_css_class: "action-row",
+                            set_widget_name: "setting:/bluetooth/autoconnect_delay_secs",
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 20,
                             gtk::Label {
@@ -268,6 +270,7 @@ impl Component for BluetoothSettingsModel {
                         // Route audio output
                         gtk::Box {
                             add_css_class: "action-row",
+                            set_widget_name: "setting:/bluetooth/route_audio_output",
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 20,
                             gtk::Box {
@@ -300,6 +303,7 @@ impl Component for BluetoothSettingsModel {
                         // Route audio input (mic)
                         gtk::Box {
                             add_css_class: "action-row",
+                            set_widget_name: "setting:/bluetooth/route_audio_input",
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 20,
                             gtk::Box {

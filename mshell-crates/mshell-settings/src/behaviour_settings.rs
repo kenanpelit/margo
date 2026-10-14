@@ -155,39 +155,48 @@ impl Component for BehaviourModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:sloppyfocus",
                         #[template_child] title { set_label: "Sloppy focus (focus follows cursor)" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.sloppyfocus,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("sloppyfocus", s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:warpcursor",
                         #[template_child] title { set_label: "Warp cursor to focused window" },
                         #[template_child] desc { set_label: "Avoid with sloppy focus on — they can ping-pong." },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.warpcursor,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("warpcursor", s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:focus_on_activate",
                         #[template_child] title { set_label: "Focus a window on activation request" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.focus_on_activate,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("focus_on_activate", s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:focus_cross_monitor",
                         #[template_child] title { set_label: "Let focus cross the monitor edge" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.focus_cross_monitor,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("focus_cross_monitor", s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:exchange_cross_monitor",
                         #[template_child] title { set_label: "Let window-exchange cross the monitor edge" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.exchange_cross_monitor,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("exchange_cross_monitor", s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:focus_cross_tag",
                         #[template_child] title { set_label: "Let focus cross tags" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.focus_cross_tag,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("focus_cross_tag", s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:view_current_to_back",
                         #[template_child] title { set_label: "Super+N on the same tag returns to previous" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.view_current_to_back,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("view_current_to_back", s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:tag_gather",
                         #[template_child] title { set_label: "Compact tags to close gaps (renumber on every arrange)" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.tag_gather,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("tag_gather", s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:cursor_hide_timeout",
                         #[template_child] title { set_label: "Hide cursor after inactivity (seconds, 0 = never)" },
                         gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.cursor_hide_timeout, 0.0, 30.0, 1.0),
                             connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("cursor_hide_timeout", s.value() as i64)) } },
@@ -200,14 +209,17 @@ impl Component for BehaviourModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:drag_tile_to_tile",
                         #[template_child] title { set_label: "Drag a tile onto another to swap" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.drag_tile_to_tile,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("drag_tile_to_tile", s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:mosaic_auto_overflow_tag",
                         #[template_child] title { set_label: "Mosaic: move overflowing windows to an empty tag" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.mosaic_auto_overflow_tag,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("mosaic_auto_overflow_tag", s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:drag_corner",
                         #[template_child] title { set_label: "Grab corner" },
                         gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,
                             set_model: Some(&model.corners5),
@@ -215,14 +227,17 @@ impl Component for BehaviourModel {
                             set_selected: model.drag_corner_idx,
                             connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetInt("drag_corner", d.selected() as i64)) @drag_corner_h } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:drag_warp_cursor",
                         #[template_child] title { set_label: "Warp cursor while dragging" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.drag_warp_cursor,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("drag_warp_cursor", s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:drag_tile_refresh_interval",
                         #[template_child] title { set_label: "Tile drag refresh interval (ms)" },
                         gtk::SpinButton { set_valign: gtk::Align::Center, set_digits: 1, set_adjustment: &adj(model.drag_tile_refresh_interval, 1.0, 60.0, 0.5),
                             connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetF("drag_tile_refresh_interval", s.value(), 1)) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:drag_floating_refresh_interval",
                         #[template_child] title { set_label: "Floating drag refresh interval (ms)" },
                         gtk::SpinButton { set_valign: gtk::Align::Center, set_digits: 1, set_adjustment: &adj(model.drag_floating_refresh_interval, 1.0, 60.0, 0.5),
                             connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetF("drag_floating_refresh_interval", s.value(), 1)) } },
@@ -235,10 +250,12 @@ impl Component for BehaviourModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:enable_floating_snap",
                         #[template_child] title { set_label: "Floating window snapping" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.enable_floating_snap,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("enable_floating_snap", s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:snap_distance",
                         #[template_child] title { set_label: "Snap distance (px)" },
                         gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.snap_distance, 0.0, 128.0, 1.0),
                             connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("snap_distance", s.value() as i64)) } },
@@ -251,6 +268,7 @@ impl Component for BehaviourModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:hot_corner_top_left",
                         #[template_child] title { set_label: "Top-left corner" },
                         gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 180,
                             set_model: Some(&model.tl_list),
@@ -258,6 +276,7 @@ impl Component for BehaviourModel {
                             set_selected: model.tl_idx,
                             connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetCorner("hot_corner_top_left", d.selected())) @tl_h } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:hot_corner_top_right",
                         #[template_child] title { set_label: "Top-right corner" },
                         gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 180,
                             set_model: Some(&model.tr_list),
@@ -265,6 +284,7 @@ impl Component for BehaviourModel {
                             set_selected: model.tr_idx,
                             connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetCorner("hot_corner_top_right", d.selected())) @tr_h } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:hot_corner_bottom_left",
                         #[template_child] title { set_label: "Bottom-left corner" },
                         gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 180,
                             set_model: Some(&model.bl_list),
@@ -272,6 +292,7 @@ impl Component for BehaviourModel {
                             set_selected: model.bl_idx,
                             connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetCorner("hot_corner_bottom_left", d.selected())) @bl_h } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:hot_corner_bottom_right",
                         #[template_child] title { set_label: "Bottom-right corner" },
                         gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 180,
                             set_model: Some(&model.br_list),
@@ -279,6 +300,7 @@ impl Component for BehaviourModel {
                             set_selected: model.br_idx,
                             connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetCorner("hot_corner_bottom_right", d.selected())) @br_h } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:hot_corner_dwell_ms",
                         #[template_child] title { set_label: "Dwell before firing (ms)" },
                         #[template_child] desc { set_label: "How long the cursor must rest in a corner before its action fires." },
                         gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.hot_corner_dwell, 0.0, 1000.0, 10.0),
@@ -292,18 +314,22 @@ impl Component for BehaviourModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:axis_bind_apply_timeout",
                         #[template_child] title { set_label: "Axis-bind apply timeout (ms)" },
                         gtk::SpinButton { set_valign: gtk::Align::Center, set_adjustment: &adj(model.axis_bind_apply_timeout, 0.0, 1000.0, 10.0),
                             connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetInt("axis_bind_apply_timeout", s.value() as i64)) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:axis_scroll_factor",
                         #[template_child] title { set_label: "Scroll factor" },
                         gtk::SpinButton { set_valign: gtk::Align::Center, set_digits: 2, set_adjustment: &adj(model.axis_scroll_factor, 0.1, 5.0, 0.05),
                             connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetF("axis_scroll_factor", s.value(), 2)) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:scratchpad_cross_monitor",
                         #[template_child] title { set_label: "Scratchpad follows cursor across monitors" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.scratchpad_cross_monitor,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("scratchpad_cross_monitor", s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:single_scratchpad",
                         #[template_child] title { set_label: "Auto-hide other scratchpads" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.single_scratchpad,
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("single_scratchpad", s.is_active())) } },
@@ -319,11 +345,13 @@ impl Component for BehaviourModel {
                         set_margin_top: 8,
 
                         #[template] Row {
+                            set_widget_name: "setting:conf:syncobj_enable",
                             #[template_child] title { set_label: "Explicit sync (syncobj)" },
                             #[template_child] desc { set_label: "Set on for DXVK/Vulkan." },
                             gtk::Switch { set_valign: gtk::Align::Center, set_active: model.syncobj_enable,
                                 connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("syncobj_enable", s.is_active())) } },
                         #[template] Row {
+                            set_widget_name: "setting:conf:allow_tearing",
                             #[template_child] title { set_label: "Tearing" },
                             gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,
                                 set_model: Some(&model.tearing),
@@ -331,10 +359,12 @@ impl Component for BehaviourModel {
                                 set_selected: model.allow_tearing_idx,
                                 connect_selected_notify[sender] => move |d| sender.input(BehaviourInput::SetInt("allow_tearing", d.selected() as i64)) @tearing_h } },
                         #[template] Row {
+                            set_widget_name: "setting:conf:allow_shortcuts_inhibit",
                             #[template_child] title { set_label: "Allow apps to inhibit shortcuts" },
                             gtk::Switch { set_valign: gtk::Align::Center, set_active: model.allow_shortcuts_inhibit,
                                 connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("allow_shortcuts_inhibit", s.is_active())) } },
                         #[template] Row {
+                            set_widget_name: "setting:conf:idleinhibit_ignore_visible",
                             #[template_child] title { set_label: "Idle inhibitor ignores window visibility" },
                             gtk::Switch { set_valign: gtk::Align::Center, set_active: model.idleinhibit_ignore_visible,
                                 connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("idleinhibit_ignore_visible", s.is_active())) } },

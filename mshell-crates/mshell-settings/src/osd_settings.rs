@@ -116,6 +116,7 @@ impl Component for OsdSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/osd/position",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -153,6 +154,7 @@ impl Component for OsdSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/osd/distance",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -201,6 +203,7 @@ impl Component for OsdSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/osd/width",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -237,6 +240,7 @@ impl Component for OsdSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/osd/radius",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -273,6 +277,7 @@ impl Component for OsdSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/osd/border_width",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {

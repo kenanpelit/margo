@@ -109,6 +109,7 @@ impl Component for SystemUpdateSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/system_update_menu/position",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Position", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -123,6 +124,7 @@ impl Component for SystemUpdateSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/system_update_menu/minimum_width",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Width (px)", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -138,6 +140,7 @@ impl Component for SystemUpdateSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/system_update_menu/maximum_height",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Max height (px, 0 = no cap)", set_hexpand: true, set_halign: gtk::Align::Start },

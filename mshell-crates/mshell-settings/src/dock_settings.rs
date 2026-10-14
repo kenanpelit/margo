@@ -161,6 +161,7 @@ impl Component for DockSettingsModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] DockRow {
+                        set_widget_name: "setting:/dock/in_bar",
                         #[template_child] title { set_label: "Show in the bar" },
                         #[template_child] desc { set_label: "The classic dock pill inside an mshell bar." },
                         gtk::Switch {
@@ -171,6 +172,7 @@ impl Component for DockSettingsModel {
                         },
                     },
                     #[template] DockRow {
+                        set_widget_name: "setting:/dock/standalone",
                         #[template_child] title { set_label: "Standalone dock surface" },
                         #[template_child] desc { set_label: "A floating dock window on its own (independent of the bar)." },
                         gtk::Switch {
@@ -181,6 +183,7 @@ impl Component for DockSettingsModel {
                         },
                     },
                     #[template] DockRow {
+                        set_widget_name: "setting:/dock/style",
                         #[template_child] title { set_label: "Standalone style" },
                         #[template_child] desc { set_label: "Layer-shell = bar-attached, opens inside the bar like the session menu. Popup = its own floating window pinned to a screen edge (Always / Auto-hide / Toggle)." },
                         gtk::DropDown {
@@ -193,6 +196,7 @@ impl Component for DockSettingsModel {
                         },
                     },
                     #[template] DockRow {
+                        set_widget_name: "setting:/dock/behavior",
                         #[template_child] title { set_label: "Standalone behaviour (layer-shell)" },
                         #[template_child] desc { set_label: "Always visible, auto-hide on the edge, or toggle on demand (mshellctl dock toggle)." },
                         gtk::DropDown {
@@ -205,6 +209,7 @@ impl Component for DockSettingsModel {
                         },
                     },
                     #[template] DockRow {
+                        set_widget_name: "setting:/dock/position",
                         #[template_child] title { set_label: "Standalone position" },
                         #[template_child] desc { set_label: "Which screen edge the standalone dock anchors to." },
                         gtk::DropDown {
@@ -226,6 +231,7 @@ impl Component for DockSettingsModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] DockRow {
+                        set_widget_name: "setting:/dock/show_running",
                         #[template_child] title { set_label: "Show running apps" },
                         #[template_child] desc { set_label: "Include running apps that aren't pinned. Off = a pinned-only launcher dock." },
                         gtk::Switch {
@@ -236,6 +242,7 @@ impl Component for DockSettingsModel {
                         },
                     },
                     #[template] DockRow {
+                        set_widget_name: "setting:/dock/launcher_enabled",
                         #[template_child] title { set_label: "App-launcher button" },
                         #[template_child] desc { set_label: "A launcher button at the end of the dock." },
                         gtk::Switch {
@@ -246,6 +253,7 @@ impl Component for DockSettingsModel {
                         },
                     },
                     #[template] DockRow {
+                        set_widget_name: "setting:/dock/separator",
                         #[template_child] title { set_label: "Separator" },
                         #[template_child] desc { set_label: "A divider between the apps and the launcher button." },
                         gtk::Switch {
@@ -265,6 +273,7 @@ impl Component for DockSettingsModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] DockRow {
+                        set_widget_name: "setting:/dock/icon_size",
                         #[template_child] title { set_label: "Icon size" },
                         #[template_child] desc { set_label: "App-icon pixel size in the dock." },
                         gtk::SpinButton {
@@ -278,6 +287,7 @@ impl Component for DockSettingsModel {
                         },
                     },
                     #[template] DockRow {
+                        set_widget_name: "setting:/dock/spacing",
                         #[template_child] title { set_label: "Item spacing" },
                         #[template_child] desc { set_label: "Pixels between dock items." },
                         gtk::SpinButton {
@@ -291,6 +301,7 @@ impl Component for DockSettingsModel {
                         },
                     },
                     #[template] DockRow {
+                        set_widget_name: "setting:/dock/hover_preview",
                         #[template_child] title { set_label: "Hover preview" },
                         #[template_child] desc { set_label: "A rich hover card: app name + its open window titles." },
                         gtk::Switch {
@@ -301,6 +312,7 @@ impl Component for DockSettingsModel {
                         },
                     },
                     #[template] DockRow {
+                        set_widget_name: "setting:/dock/show_tooltips",
                         #[template_child] title { set_label: "Window tooltips" },
                         #[template_child] desc { set_label: "Plain hover tooltip listing window titles (used when Hover preview is off)." },
                         gtk::Switch {

@@ -96,11 +96,13 @@ impl Component for LoggingModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:/logging/enabled",
                         #[template_child] title { set_label: "Write shell log files" },
                         #[template_child] desc { set_label: "mshell-*.log" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.shell_enabled,
                             connect_active_notify[sender] => move |s| sender.input(LoggingInput::SetShellEnabled(s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:/logging/level",
                         #[template_child] title { set_label: "Shell log level" },
                         #[template_child] desc { set_label: "debug / trace = deeper diagnostics" },
                         gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,
@@ -117,11 +119,13 @@ impl Component for LoggingModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:log_to_file",
                         #[template_child] title { set_label: "Write compositor log files" },
                         #[template_child] desc { set_label: "margo-*.log — applied via mctl reload" },
                         gtk::Switch { set_valign: gtk::Align::Center, set_active: model.comp_enabled,
                             connect_active_notify[sender] => move |s| sender.input(LoggingInput::SetCompEnabled(s.is_active())) } },
                     #[template] Row {
+                        set_widget_name: "setting:conf:log_file_level",
                         #[template_child] title { set_label: "Compositor log level" },
                         #[template_child] desc { set_label: "debug / trace = deeper diagnostics" },
                         gtk::DropDown { set_valign: gtk::Align::Center, set_width_request: 160,

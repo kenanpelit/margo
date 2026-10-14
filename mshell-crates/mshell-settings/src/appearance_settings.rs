@@ -92,6 +92,7 @@ impl Component for AppearanceModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:borderpx",
                         #[template_child] title { set_label: "Border thickness (px)" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,
@@ -100,6 +101,7 @@ impl Component for AppearanceModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:border_radius",
                         #[template_child] title { set_label: "Corner radius (px)" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,
@@ -108,6 +110,7 @@ impl Component for AppearanceModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:no_border_when_single",
                         #[template_child] title { set_label: "No border when single window" },
                         gtk::Switch {
                             set_valign: gtk::Align::Center,
@@ -116,6 +119,7 @@ impl Component for AppearanceModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:no_radius_when_single",
                         #[template_child] title { set_label: "No corner radius when single window" },
                         gtk::Switch {
                             set_valign: gtk::Align::Center,
@@ -132,6 +136,7 @@ impl Component for AppearanceModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:gappih",
                         #[template_child] title { set_label: "Inner gap — horizontal" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,
@@ -140,6 +145,7 @@ impl Component for AppearanceModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:gappiv",
                         #[template_child] title { set_label: "Inner gap — vertical" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,
@@ -148,6 +154,7 @@ impl Component for AppearanceModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:gappoh",
                         #[template_child] title { set_label: "Outer gap — horizontal" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,
@@ -156,6 +163,7 @@ impl Component for AppearanceModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:gappov",
                         #[template_child] title { set_label: "Outer gap — vertical" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,
@@ -164,6 +172,7 @@ impl Component for AppearanceModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:smartgaps",
                         #[template_child] title { set_label: "Smart gaps (drop gaps with one window)" },
                         gtk::Switch {
                             set_valign: gtk::Align::Center,
@@ -172,6 +181,7 @@ impl Component for AppearanceModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:monly",
                         #[template_child] title { set_label: "Maximise the only window (monly)" },
                         gtk::Switch {
                             set_valign: gtk::Align::Center,
@@ -188,6 +198,7 @@ impl Component for AppearanceModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:focused_opacity",
                         #[template_child] title { set_label: "Focused window opacity" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,
@@ -197,6 +208,7 @@ impl Component for AppearanceModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:unfocused_opacity",
                         #[template_child] title { set_label: "Unfocused window opacity" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,
@@ -206,6 +218,7 @@ impl Component for AppearanceModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:cursor_size",
                         #[template_child] title { set_label: "Cursor size (px)" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,

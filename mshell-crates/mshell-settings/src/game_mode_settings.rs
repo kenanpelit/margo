@@ -154,6 +154,7 @@ impl Component for GameModeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/game_mode/disable_animations",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -181,6 +182,7 @@ impl Component for GameModeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/game_mode/disable_blur",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -208,6 +210,7 @@ impl Component for GameModeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/game_mode/disable_shadows",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -235,6 +238,7 @@ impl Component for GameModeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/game_mode/inhibit_idle",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -271,6 +275,7 @@ impl Component for GameModeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/game_mode/enable_dnd",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -307,6 +312,7 @@ impl Component for GameModeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/game_mode/allow_tearing",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {

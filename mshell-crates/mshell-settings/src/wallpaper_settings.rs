@@ -130,6 +130,7 @@ impl Component for WallpaperSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/wallpaper/wallpaper_dir",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -158,6 +159,7 @@ impl Component for WallpaperSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/wallpaper/content_fit",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -200,6 +202,7 @@ impl Component for WallpaperSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/wallpaper/apply_theme_filter",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -239,6 +242,7 @@ impl Component for WallpaperSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/wallpaper/theme_filter_strength",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -291,6 +295,7 @@ impl Component for WallpaperSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/wallpaper/rotation_enabled",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -330,6 +335,7 @@ impl Component for WallpaperSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/wallpaper/rotation_interval_minutes",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -373,6 +379,7 @@ impl Component for WallpaperSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/wallpaper/rotation_mode",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -426,6 +433,7 @@ impl Component for WallpaperSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/wallpaper/daily_wallpaper_enabled",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -463,6 +471,7 @@ impl Component for WallpaperSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/wallpaper/daily_wallpaper_source",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -501,6 +510,7 @@ impl Component for WallpaperSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/wallpaper/daily_wallpaper_locale",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 

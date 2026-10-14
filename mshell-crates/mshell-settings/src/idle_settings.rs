@@ -109,6 +109,7 @@ impl Component for IdleSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/idle/dim_enabled",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -146,6 +147,7 @@ impl Component for IdleSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/idle/dim_timeout_minutes",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -188,6 +190,7 @@ impl Component for IdleSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/idle/lock_enabled",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -225,6 +228,7 @@ impl Component for IdleSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/idle/lock_timeout_minutes",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -267,6 +271,7 @@ impl Component for IdleSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/idle/suspend_enabled",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -304,6 +309,7 @@ impl Component for IdleSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/idle/suspend_timeout_minutes",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -344,6 +350,7 @@ impl Component for IdleSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/idle/inhibit_while_media",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 

@@ -554,6 +554,7 @@ impl Component for AnimationsSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:animations",
                         #[template_child] title { set_label: "Animations" },
                         #[template_child] desc { set_label: "Master switch. Off = instant transitions." },
                         #[name = "anim_switch"]
@@ -569,6 +570,7 @@ impl Component for AnimationsSettingsModel {
                     },
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:layer_animations",
                         #[template_child] title { set_label: "Layer animations" },
                         #[template_child] desc { set_label: "Bars, launchers and menus animate in/out." },
                         #[name = "layer_switch"]
@@ -635,6 +637,7 @@ impl Component for AnimationsSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:animation_duration_tag",
                         #[template_child] title { set_label: "Tag-switch duration" },
                         #[template_child] desc { set_label: "How long a window fades/slides when it moves to another tag or monitor (ms)." },
                         gtk::SpinButton {

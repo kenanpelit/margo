@@ -160,6 +160,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/icons/shell_icon_theme",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -206,6 +207,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/icons/app_icon_theme",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -252,6 +254,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/icons/apply_theme_filter",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -291,6 +294,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/icons/filter_strength",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -332,6 +336,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/icons/monochrome_strength",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -373,6 +378,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/icons/contrast_strength",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -427,6 +433,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/sizing/radius_widget",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -467,6 +474,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/sizing/radius_window",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -507,6 +515,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/sizing/border_width",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -598,6 +607,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/css_file",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -656,6 +666,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/window_opacity",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -697,6 +708,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/sizing/surface_opacity",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -761,6 +773,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/matugen/scheme_type",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -808,6 +821,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/matugen/preference",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -855,6 +869,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/matugen/mode",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -902,6 +917,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/matugen/auto_polarity",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -941,6 +957,7 @@ impl Component for ThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/matugen/contrast",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 

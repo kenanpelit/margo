@@ -236,6 +236,7 @@ impl Component for GeneralSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/settings_menu/position",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Label {
@@ -258,6 +259,7 @@ impl Component for GeneralSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/general/settings_panel_width",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Label {
@@ -281,6 +283,7 @@ impl Component for GeneralSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/general/settings_panel_height",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Label {

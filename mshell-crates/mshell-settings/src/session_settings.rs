@@ -115,6 +115,7 @@ impl Component for SessionSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/session_menu/position",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Position", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -129,6 +130,7 @@ impl Component for SessionSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/session_menu/minimum_width",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Width (px)", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -144,6 +146,7 @@ impl Component for SessionSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/session_menu/maximum_height",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Max height (px, 0 = no cap)", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -182,6 +185,7 @@ impl Component for SessionSettingsModel {
                 // ── Lock ────────────────────────────────────────
                 gtk::Box {
                     add_css_class: "action-row",
+                    set_widget_name: "setting:/session/lock_command",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
                     gtk::Box {
@@ -214,6 +218,7 @@ impl Component for SessionSettingsModel {
                 // ── Logout ──────────────────────────────────────
                 gtk::Box {
                     add_css_class: "action-row",
+                    set_widget_name: "setting:/session/logout_command",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
                     gtk::Box {
@@ -246,6 +251,7 @@ impl Component for SessionSettingsModel {
                 // ── Suspend ─────────────────────────────────────
                 gtk::Box {
                     add_css_class: "action-row",
+                    set_widget_name: "setting:/session/suspend_command",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
                     gtk::Box {
@@ -278,6 +284,7 @@ impl Component for SessionSettingsModel {
                 // ── Reboot ──────────────────────────────────────
                 gtk::Box {
                     add_css_class: "action-row",
+                    set_widget_name: "setting:/session/reboot_command",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
                     gtk::Box {
@@ -310,6 +317,7 @@ impl Component for SessionSettingsModel {
                 // ── Shutdown ────────────────────────────────────
                 gtk::Box {
                     add_css_class: "action-row",
+                    set_widget_name: "setting:/session/shutdown_command",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
                     gtk::Box {

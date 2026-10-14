@@ -128,6 +128,7 @@ impl Component for LauncherSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/app_launcher_menu/position",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -163,6 +164,7 @@ impl Component for LauncherSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/app_launcher_menu/minimum_width",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -199,6 +201,7 @@ impl Component for LauncherSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/app_launcher_menu/maximum_height",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -247,6 +250,7 @@ impl Component for LauncherSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/launcher/show_preview",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Box {
@@ -278,6 +282,7 @@ impl Component for LauncherSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/launcher/compact_rows",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Box {
@@ -309,6 +314,7 @@ impl Component for LauncherSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/launcher/large_app_icons",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Box {

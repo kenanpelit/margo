@@ -156,6 +156,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/notification_position",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -209,6 +210,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/show_close_button",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -246,6 +248,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/show_action_buttons",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -283,6 +286,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/popup_width",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -323,6 +327,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/show_timeout_bar",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -360,6 +365,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/popup_duration_ms",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -411,6 +417,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/inline_reply",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -448,6 +455,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/show_progress",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -485,6 +493,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/sound_enabled",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -522,6 +531,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/sound_low",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -561,6 +571,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/sound_normal",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -600,6 +611,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/sound_critical",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -639,6 +651,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/sound_from_client",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -678,6 +691,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/quiet_hours_enabled",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -768,6 +782,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/notification_menu/minimum_width",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -808,6 +823,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/notification_menu/maximum_height",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -848,6 +864,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/history_limit",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -888,6 +905,7 @@ impl Component for NotificationSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/notifications/group_notifications",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 

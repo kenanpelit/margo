@@ -138,6 +138,7 @@ impl Component for ClipboardSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/clipboard_menu/position",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Position", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -152,6 +153,7 @@ impl Component for ClipboardSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/clipboard_menu/minimum_width",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Width (px)", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -167,6 +169,7 @@ impl Component for ClipboardSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/clipboard_menu/maximum_height",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Max height (px, 0 = no cap)", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -195,6 +198,7 @@ impl Component for ClipboardSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/clipboard/max_entries",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "History size", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -210,6 +214,7 @@ impl Component for ClipboardSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/clipboard/persist",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Persist to disk", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -223,6 +228,7 @@ impl Component for ClipboardSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/clipboard/density",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Panel density", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -236,6 +242,7 @@ impl Component for ClipboardSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/clipboard/clear_policy",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Auto-clear", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -249,6 +256,7 @@ impl Component for ClipboardSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/clipboard/clear_after_hours",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Clear after (hours)", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -264,6 +272,7 @@ impl Component for ClipboardSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/clipboard/skip_sensitive",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Skip password-manager copies", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -279,6 +288,7 @@ impl Component for ClipboardSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/clipboard/image_history",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label { set_label: "Keep image copies", set_hexpand: true, set_halign: gtk::Align::Start },
@@ -294,6 +304,7 @@ impl Component for ClipboardSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/clipboard/image_max_kb",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
                         gtk::Label {

@@ -132,6 +132,7 @@ impl Component for FontsSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/font/primary",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -201,6 +202,7 @@ impl Component for FontsSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/font/secondary",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -270,6 +272,7 @@ impl Component for FontsSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/font/tertiary",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -339,6 +342,7 @@ impl Component for FontsSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/font/monospace",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -408,6 +412,7 @@ impl Component for FontsSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/sizing/font_scale",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -449,6 +454,7 @@ impl Component for FontsSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/sizing/bar_font_scale",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -490,6 +496,7 @@ impl Component for FontsSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/sizing/settings_font_scale",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 

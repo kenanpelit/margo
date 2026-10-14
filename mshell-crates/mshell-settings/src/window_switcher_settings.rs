@@ -146,11 +146,13 @@ impl Component for WindowSwitcherModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:mru_thumb_height",
                         #[template_child] title { set_label: "Thumbnail size" },
                         #[template_child] desc { set_label: "Height of each window preview in the switcher strip." },
                         #[local_ref] thumb_scale -> gtk::Scale {},
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:mru_max",
                         #[template_child] title { set_label: "Max thumbnails" },
                         #[template_child] desc { set_label: "How many previews the strip shows at once (the cycle still walks every window)." },
                         gtk::SpinButton {
@@ -160,6 +162,7 @@ impl Component for WindowSwitcherModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:mru_show_labels",
                         #[template_child] title { set_label: "Show app labels" },
                         #[template_child] desc { set_label: "Draw the app-id under each thumbnail." },
                         gtk::Switch {
@@ -179,6 +182,7 @@ impl Component for WindowSwitcherModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:mru_accent_selection",
                         #[template_child] title { set_label: "Accent-themed selection" },
                         #[template_child] desc { set_label: "Tint the selected thumbnail, title and label with the theme accent colour." },
                         gtk::Switch {
@@ -189,11 +193,13 @@ impl Component for WindowSwitcherModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:mru_dim_alpha",
                         #[template_child] title { set_label: "Backdrop dim" },
                         #[template_child] desc { set_label: "Darken the desktop behind the switcher (0 = off)." },
                         #[local_ref] dim_scale -> gtk::Scale {},
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:mru_thumb_gap",
                         #[template_child] title { set_label: "Thumbnail gap" },
                         #[template_child] desc { set_label: "Space between previews (px)." },
                         gtk::SpinButton {
@@ -203,6 +209,7 @@ impl Component for WindowSwitcherModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:mru_panel_padding",
                         #[template_child] title { set_label: "Panel padding" },
                         #[template_child] desc { set_label: "Inner padding around the switcher panel (px)." },
                         gtk::SpinButton {
@@ -221,6 +228,7 @@ impl Component for WindowSwitcherModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:mru_scope",
                         #[template_child] title { set_label: "Default scope" },
                         #[template_child] desc { set_label: "Which windows the switcher cycles by default." },
                         gtk::DropDown {
@@ -233,6 +241,7 @@ impl Component for WindowSwitcherModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:mru_filter",
                         #[template_child] title { set_label: "Default filter" },
                         #[template_child] desc { set_label: "Cycle every window, or only windows of the active app." },
                         gtk::DropDown {

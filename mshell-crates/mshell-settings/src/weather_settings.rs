@@ -119,6 +119,7 @@ impl Component for WeatherSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/general/weather_location_query",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -244,6 +245,7 @@ impl Component for WeatherSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/general/temperature_unit",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -289,6 +291,7 @@ impl Component for WeatherSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/general/weather_poll_minutes",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -327,6 +330,7 @@ impl Component for WeatherSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/general/weather_retry_minutes",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 

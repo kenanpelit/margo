@@ -398,6 +398,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -433,6 +434,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight_mode",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -485,6 +487,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight_day_temp",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -522,6 +525,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight_night_temp",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -559,6 +563,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight_day_gamma",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -596,6 +601,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight_night_gamma",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -647,6 +653,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight_transition_s",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -684,6 +691,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight_update_interval",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -735,6 +743,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight_latitude",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -772,6 +781,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight_longitude",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -823,6 +833,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight_sunrise",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -860,6 +871,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight_sunset",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -911,6 +923,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight_static_temp",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -948,6 +961,7 @@ impl Component for DisplaySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:conf:twilight_static_gamma",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {

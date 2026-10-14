@@ -109,6 +109,7 @@ impl Component for HeliumThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/apps/helium/enabled",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -140,6 +141,7 @@ impl Component for HeliumThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/apps/helium/apply_on_theme_change",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -171,6 +173,7 @@ impl Component for HeliumThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/apps/helium/isolated_root",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -202,6 +205,7 @@ impl Component for HeliumThemeSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/apps/helium/target_mode",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {

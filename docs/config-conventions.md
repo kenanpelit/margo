@@ -179,7 +179,38 @@ manifest references (`*.sh`, `sounds/`, …). The install copy
 lives in the plugin repo, not the config dir. Keep it that way; don't
 reintroduce a whole-dir copy.
 
-## 9. Quick checklist
+## 9. Settings pages: changed-settings + Defaults scope
+
+Every Settings page can show "N changed", reset itself with **Defaults**,
+and highlight changed rows (`mshell-settings/src/page_defaults.rs`, KDE
+System Settings style). What a page owns is **generated, not hand-kept**:
+`mshell-settings/build.rs` scans the page sources listed in its `PAGES`
+table —
+
+- shell: field paths written in `update_config(|c| c.a.b = …)` closures and
+  `reactive_settings! { group: g, … => key }` bindings → JSON pointers
+  `/a/b`, `/g/key`;
+- compositor: string literals that are margo options
+  (`margo-config` `OPTION_KEYS`) in a page that edits `config.conf`.
+
+Rules:
+
+- **New page with settings → add `(route, &[files])` to `PAGES`.** Routes are
+  the stack routes (`bar`, `theme/fonts`, `widgets/clipboard`).
+- **Data the user built is never a "default".** Lists like bar widgets,
+  autostart scripts, subscriptions, blocklists, rules, per-tag layouts go in
+  `USER_DATA` (shell) or the page stays out of `PAGES` (compositor rule
+  blocks, managed fragments). Live state (`game_mode.active`) too.
+- **Tag each row with the setting it edits** so it can be highlighted:
+  `set_widget_name: "setting:/toasts/battery"` (shell) or
+  `"setting:conf:borderpx"` (compositor). A test checks every tag against
+  the page's generated scope.
+- Defaults on a compositor key **comments the line out** in `config.conf`
+  (never deletes it — §2, it may be a dotfiles symlink) and runs
+  `mctl reload`; margo's built-in default applies. Shell keys are set back
+  to `Config::default()`.
+
+## 10. Quick checklist
 
 - Compositor setting → §4 (types + parser + KNOWN + validator). Shell setting
   → §5. Never the wrong world (§0).
@@ -190,3 +221,5 @@ reintroduce a whole-dir copy.
   Define precedence (§6).
 - Don't merge/relocate machine-written fragments (§1/§2); `config.conf` may be
   a dotfiles symlink (§2).
+- New Settings page / row → `build.rs` `PAGES` entry + `setting:` row tags;
+  user-built lists stay out of Defaults (§9).

@@ -351,6 +351,7 @@ impl Component for PrivacySettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/privacy/remember_recent",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 

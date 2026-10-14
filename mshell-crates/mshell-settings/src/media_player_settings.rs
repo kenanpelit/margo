@@ -90,6 +90,7 @@ impl Component for MediaPlayerSettingsModel {
                     // Seek step (seconds)
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/general/media_seek_step_seconds",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {
@@ -129,6 +130,7 @@ impl Component for MediaPlayerSettingsModel {
                     // Large album art
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/general/media_large_album_art",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Box {

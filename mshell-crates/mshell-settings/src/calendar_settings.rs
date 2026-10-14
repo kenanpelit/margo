@@ -315,6 +315,7 @@ impl Component for CalendarSettingsModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:/calendars/local_dir",
                         #[template_child] title { set_label: "Folder" },
                         #[local_ref]
                         local_entry -> gtk::Entry {
@@ -325,6 +326,7 @@ impl Component for CalendarSettingsModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:/calendars/refresh_secs",
                         #[template_child] title { set_label: "Refresh every" },
                         #[local_ref]
                         refresh_spin -> gtk::SpinButton {

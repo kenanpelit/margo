@@ -207,6 +207,7 @@ impl Component for SoundSettingsModel {
                 // ── Output filter ────────────────────────────────
                 gtk::Box {
                     add_css_class: "action-row",
+                    set_widget_name: "setting:/audio/hide_hdmi_outputs",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
 
@@ -246,6 +247,7 @@ impl Component for SoundSettingsModel {
                 // ── Follow the mic when the output moves to a headset ──
                 gtk::Box {
                     add_css_class: "action-row",
+                    set_widget_name: "setting:/audio/route_switch_microphone",
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
 
@@ -356,18 +358,21 @@ impl Component for SoundSettingsModel {
 
                 #[template]
                 Row {
+                    set_widget_name: "setting:/audio/restore_volume_on_start",
                     #[template_child] title { set_label: "Restore volume on startup" },
                     #[template_child] desc { set_label: "Pin the output + mic to the levels below at each login and after every device switch. PipeWire forgets volumes across reboots, and each device carries its own last level." },
                     #[local_ref] restore_switch_w -> gtk::Switch {},
                 },
                 #[template]
                 Row {
+                    set_widget_name: "setting:/audio/default_output_volume",
                     #[template_child] title { set_label: "Default output level" },
                     #[template_child] desc { set_label: "Speaker level applied at startup." },
                     #[local_ref] def_out_scale_w -> gtk::Scale {},
                 },
                 #[template]
                 Row {
+                    set_widget_name: "setting:/audio/default_input_volume",
                     #[template_child] title { set_label: "Default input level" },
                     #[template_child] desc { set_label: "Microphone level applied at startup." },
                     #[local_ref] def_in_scale_w -> gtk::Scale {},

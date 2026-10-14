@@ -402,6 +402,7 @@ impl Component for NetworkSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/network/proxy_mode",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -452,6 +453,7 @@ impl Component for NetworkSettingsModel {
 
                         // HTTP proxy
                         gtk::Box {
+                            set_widget_name: "setting:/network/proxy_http",
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 20,
                             gtk::Label {
@@ -477,6 +479,7 @@ impl Component for NetworkSettingsModel {
 
                         // HTTPS proxy
                         gtk::Box {
+                            set_widget_name: "setting:/network/proxy_https",
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 20,
                             gtk::Label {
@@ -502,6 +505,7 @@ impl Component for NetworkSettingsModel {
 
                         // SOCKS proxy
                         gtk::Box {
+                            set_widget_name: "setting:/network/proxy_socks",
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 20,
                             gtk::Label {
@@ -527,6 +531,7 @@ impl Component for NetworkSettingsModel {
 
                         // Ignore hosts
                         gtk::Box {
+                            set_widget_name: "setting:/network/proxy_ignore",
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 20,
                             gtk::Label {
@@ -561,6 +566,7 @@ impl Component for NetworkSettingsModel {
                     set_reveal_child: model.proxy_mode == ProxyMode::Automatic,
 
                     gtk::Box {
+                        set_widget_name: "setting:/network/proxy_pac_url",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Label {
@@ -617,6 +623,7 @@ impl Component for NetworkSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/login_network/enabled",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Label {
@@ -637,6 +644,7 @@ impl Component for NetworkSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/login_network/wifi_connection",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Label {
@@ -658,6 +666,7 @@ impl Component for NetworkSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/login_network/connect_vpn",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Label {
@@ -678,6 +687,7 @@ impl Component for NetworkSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/login_network/couple_blocky",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Label {
@@ -698,6 +708,7 @@ impl Component for NetworkSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/login_network/delay_secs",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Label {
@@ -751,6 +762,7 @@ impl Component for NetworkSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/general/network_osd_enabled",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         gtk::Label {

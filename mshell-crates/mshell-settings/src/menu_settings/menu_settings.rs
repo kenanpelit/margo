@@ -118,6 +118,7 @@ impl Component for MenuSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/left_menu_expansion_type",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -158,6 +159,7 @@ impl Component for MenuSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/menus/right_menu_expansion_type",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -359,6 +361,7 @@ fn build_screenshare_section(
         .orientation(gtk::Orientation::Horizontal)
         .spacing(20)
         .build();
+    row.set_widget_name("setting:/menus/screenshare_menu/position");
     boxed_list.append(&row);
 
     let labels = gtk::Box::builder()

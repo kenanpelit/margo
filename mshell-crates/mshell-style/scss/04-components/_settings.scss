@@ -757,7 +757,7 @@
 // A row whose setting differs from its default: a 3px `--tertiary` leading
 // bar (inset, so nothing shifts) — the same structural mark the selected
 // sidebar row uses, in a different role colour so the two never read alike.
-.action-row.setting-changed {
+.setting-changed {
     box-shadow: inset 3px 0 0 0 var(--tertiary);
 }
 

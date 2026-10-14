@@ -681,6 +681,36 @@ mod tests {
     }
 
     #[test]
+    fn every_row_tag_names_a_setting_of_its_page() {
+        // A tag outside the page's scope (typo, wrong page, renamed field)
+        // would never light up.
+        let defaults = serde_json::to_value(Config::default()).expect("Config serializes");
+        for (route, tags) in PAGE_ROW_TAGS {
+            let scope = scope(route).unwrap_or_else(|| panic!("{route}: tagged rows but no scope"));
+            for tag in *tags {
+                if let Some(k) = tag.strip_prefix(CONF_PREFIX) {
+                    assert!(
+                        scope.conf.contains(&k),
+                        "{route}: {tag} is not a key of this page"
+                    );
+                    continue;
+                }
+                assert!(
+                    defaults.pointer(tag).is_some(),
+                    "{route}: {tag} is not a config field"
+                );
+                let related = scope.shell.iter().any(|p| {
+                    let under = |a: &str, b: &str| {
+                        a == b || a.strip_prefix(b).is_some_and(|r| r.starts_with('/'))
+                    };
+                    under(tag, p) || under(p, tag)
+                });
+                assert!(related, "{route}: {tag} is outside this page's settings");
+            }
+        }
+    }
+
+    #[test]
     fn row_covers_matches_self_and_children_only() {
         let c = |k: &str| Changed {
             key: k.into(),

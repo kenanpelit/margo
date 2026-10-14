@@ -222,6 +222,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/frame/enable_frame",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -246,6 +247,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/frame/frameless_gap",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -276,6 +278,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/sizing/frame_color",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -307,6 +310,7 @@ impl Component for BarSettingsModel {
                     // Settings surface, so type/paste the code here instead.
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/sizing/frame_color",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 8,
                         #[watch]
@@ -352,6 +356,7 @@ impl Component for BarSettingsModel {
                     // Frame border (same keyboard-path rationale as fill).
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/sizing/frame_border_color",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 8,
                         #[watch]
@@ -397,6 +402,7 @@ impl Component for BarSettingsModel {
                     // ── Separator colour ────────────────────────────────────
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/sizing/separator_color",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -424,6 +430,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/sizing/separator_color",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 8,
                         #[watch]
@@ -468,6 +475,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/islands",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -495,6 +503,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/slide_duration_ms",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -585,6 +594,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/theme/attributes/sizing/bar_hover_strength",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -636,6 +646,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/top_bar/enabled",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -673,6 +684,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/top_bar/minimum_height",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -697,6 +709,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/top_bar/reveal_by_default",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -737,6 +750,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/top_bar/auto_hide_delay_ms",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         #[watch]
@@ -780,6 +794,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/bottom_bar/enabled",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -817,6 +832,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/bottom_bar/minimum_height",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -841,6 +857,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/bottom_bar/reveal_by_default",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -881,6 +898,7 @@ impl Component for BarSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/bars/bottom_bar/auto_hide_delay_ms",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
                         #[watch]

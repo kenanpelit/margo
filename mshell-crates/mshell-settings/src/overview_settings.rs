@@ -211,6 +211,7 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:overview_style",
                         #[template_child] title { set_label: "Preferred overview" },
                         #[template_child] desc {
                             set_label: "Which overview the toggle_overview keybind opens. The grid and scroller can also be bound directly (toggle_grid_overview / toggle_scroller_overview).",
@@ -239,6 +240,7 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:scroller_overview_zoom",
                         #[template_child] title { set_label: "Zoom" },
                         #[template_child] desc {
                             set_label: "Mini-desktop size = screen × zoom. Lower fits more tags on screen.",
@@ -257,6 +259,7 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:scroller_overview_gap",
                         #[template_child] title { set_label: "Gap" },
                         #[template_child] desc { set_label: "Vertical gap between tag cells, in pixels." },
                         gtk::SpinButton {
@@ -273,6 +276,7 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:scroller_overview_loop",
                         #[template_child] title { set_label: "Loop" },
                         #[template_child] desc {
                             set_label: "Wrap around: scrolling past the last tag continues to the first (and back), instead of stopping at the ends.",
@@ -301,6 +305,7 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:overview_backdrop_color",
                         #[template_child] title { set_label: "Backdrop colour" },
                         #[template_child] desc {
                             set_label: "Solid colour painted behind the scroller-overview cells (used when no backdrop image is set).",
@@ -341,6 +346,7 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:overview_backdrop_image",
                         #[template_child] title { set_label: "Backdrop image" },
                         #[template_child] desc {
                             #[watch]
@@ -379,6 +385,7 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:overview_zoom",
                         #[template_child] title { set_label: "Zoom" },
                         #[template_child] desc { set_label: "Centered sub-rect the flattened grid arranges into." },
                         gtk::SpinButton {
@@ -395,6 +402,7 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:overviewgappi",
                         #[template_child] title { set_label: "Inner gap" },
                         #[template_child] desc { set_label: "Gap between grid thumbnails, in pixels." },
                         gtk::SpinButton {
@@ -411,6 +419,7 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:overviewgappo",
                         #[template_child] title { set_label: "Outer gap" },
                         #[template_child] desc { set_label: "Margin around the grid, in pixels." },
                         gtk::SpinButton {
@@ -427,6 +436,7 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:overview_dim_alpha",
                         #[template_child] title { set_label: "Dim" },
                         #[template_child] desc { set_label: "Opacity of non-selected thumbnails (1.0 = no dim)." },
                         gtk::SpinButton {
@@ -443,6 +453,7 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:overview_transition_ms",
                         #[template_child] title { set_label: "Transition" },
                         #[template_child] desc { set_label: "Open / close duration, in milliseconds." },
                         gtk::SpinButton {
@@ -459,6 +470,7 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:overview_selected_border_multiplier",
                         #[template_child] title { set_label: "Selected thumbnail border" },
                         #[template_child] desc { set_label: "Border thickness multiplier for the hovered/selected thumbnail." },
                         gtk::SpinButton {
@@ -475,6 +487,7 @@ impl Component for OverviewSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:conf:overview_cycle_order",
                         #[template_child] title { set_label: "Cycle order" },
                         #[template_child] desc { set_label: "Order alt+Tab walks the grid thumbnails." },
                         gtk::DropDown {

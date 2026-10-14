@@ -759,6 +759,7 @@ impl Component for PowerSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/idle/suspend_enabled",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -796,6 +797,7 @@ impl Component for PowerSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/idle/suspend_timeout_minutes",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -846,6 +848,7 @@ impl Component for PowerSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/power/low_battery_warning",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 
@@ -883,6 +886,7 @@ impl Component for PowerSettingsModel {
 
                     gtk::Box {
                         add_css_class: "action-row",
+                        set_widget_name: "setting:/power/low_battery_threshold",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
 

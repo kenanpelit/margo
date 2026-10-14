@@ -88,6 +88,7 @@ impl Component for EffectsModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:shadows",
                         #[template_child] title { set_label: "Drop shadows" },
                         gtk::Switch {
                             set_valign: gtk::Align::Center,
@@ -96,6 +97,7 @@ impl Component for EffectsModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:shadow_only_floating",
                         #[template_child] title { set_label: "Only on floating windows" },
                         gtk::Switch {
                             set_valign: gtk::Align::Center,
@@ -104,6 +106,7 @@ impl Component for EffectsModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:layer_shadows",
                         #[template_child] title { set_label: "Shadows on layer surfaces (bar/menus)" },
                         gtk::Switch {
                             set_valign: gtk::Align::Center,
@@ -112,6 +115,7 @@ impl Component for EffectsModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:shadows_size",
                         #[template_child] title { set_label: "Shadow size" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,
@@ -120,6 +124,7 @@ impl Component for EffectsModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:shadows_blur",
                         #[template_child] title { set_label: "Shadow blur" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,
@@ -128,6 +133,7 @@ impl Component for EffectsModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:shadows_position_x",
                         #[template_child] title { set_label: "Shadow offset X" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,
@@ -136,6 +142,7 @@ impl Component for EffectsModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:shadows_position_y",
                         #[template_child] title { set_label: "Shadow offset Y" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,
@@ -159,6 +166,7 @@ impl Component for EffectsModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[template] Row {
+                        set_widget_name: "setting:conf:blur",
                         #[template_child] title { set_label: "Window blur" },
                         gtk::Switch {
                             set_valign: gtk::Align::Center,
@@ -167,6 +175,7 @@ impl Component for EffectsModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:blur_layer",
                         #[template_child] title { set_label: "Layer-surface blur" },
                         gtk::Switch {
                             set_valign: gtk::Align::Center,
@@ -175,6 +184,7 @@ impl Component for EffectsModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:blur_params_num_passes",
                         #[template_child] title { set_label: "Blur strength (passes)" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,
@@ -183,6 +193,7 @@ impl Component for EffectsModel {
                         },
                     },
                     #[template] Row {
+                        set_widget_name: "setting:conf:blur_params_radius",
                         #[template_child] title { set_label: "Blur radius" },
                         gtk::SpinButton {
                             set_valign: gtk::Align::Center,

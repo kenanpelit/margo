@@ -143,6 +143,7 @@ impl Component for DateTimeSettingsModel {
 
                     #[template]
                     Row {
+                        set_widget_name: "setting:/general/clock_format_24_h",
                         #[template_child] title { set_label: "24-hour clock" },
                         #[template_child] desc { set_label: "Show the shell clock in 24-hour format." },
                         #[name = "clock_switch"]
