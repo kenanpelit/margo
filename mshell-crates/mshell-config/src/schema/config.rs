@@ -414,9 +414,11 @@ impl Default for Idle {
 
 /// Session actions (the power menu). Each field is the command
 /// run for that action; an empty string falls back to the
-/// built-in default (`systemctl …` / the in-process lock). Set
-/// e.g. `reboot_command = "osc-safe-reboot"` to route the button
-/// through your own script. Non-empty commands run via `sh -c`.
+/// built-in default: Logout / Reboot / Shutdown go through margo's
+/// `session_end` (every window is closed gracefully first, then
+/// systemd), Suspend runs `systemctl suspend`, Lock the in-process
+/// lock. Set a command to route the button through your own script
+/// instead. Non-empty commands run via `sh -c`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 #[derive(Default)]

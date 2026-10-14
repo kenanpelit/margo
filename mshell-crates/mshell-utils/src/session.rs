@@ -101,11 +101,40 @@ pub fn run_session_action(action: SessionAction) {
         SessionAction::Lock => {
             mshell_session::session_lock::lock_session();
         }
-        SessionAction::Logout => spawn(&["systemctl", "--user", "exit"]),
         SessionAction::Suspend => spawn(&["systemctl", "suspend"]),
-        SessionAction::Reboot => spawn(&["systemctl", "reboot"]),
-        SessionAction::Shutdown => spawn(&["systemctl", "poweroff"]),
+        // margo closes every window first so apps (browsers) exit cleanly;
+        // outside margo (mctl unreachable) fall back to systemd directly.
+        SessionAction::Logout => {
+            session_end("logout", &["systemctl", "--user", "exit"]);
+        }
+        SessionAction::Reboot => session_end("reboot", &["systemctl", "reboot"]),
+        SessionAction::Shutdown => session_end("poweroff", &["systemctl", "poweroff"]),
     }
+}
+
+/// `mctl dispatch session_end <verb>`, or `fallback` when margo can't be
+/// reached.
+fn session_end(verb: &'static str, fallback: &[&str]) {
+    let fallback: Vec<String> = fallback.iter().map(|s| s.to_string()).collect();
+    tokio::spawn(async move {
+        let via_margo = Command::new("mctl")
+            .args(["dispatch", "session_end", verb])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await
+            .is_ok_and(|s| s.success());
+        if via_margo {
+            return;
+        }
+        tracing::warn!(
+            verb,
+            "session_end via margo failed; using systemctl directly"
+        );
+        let argv: Vec<&str> = fallback.iter().map(String::as_str).collect();
+        spawn(&argv);
+    });
 }
 
 fn spawn(argv: &[&str]) {

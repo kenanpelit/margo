@@ -229,7 +229,7 @@ impl Component for SessionSettingsModel {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
-                            set_label: "Empty = systemctl --user exit.",
+                            set_label: "Empty = margo closes every window, then logs out.",
                         },
                     },
                     gtk::Entry {
@@ -293,7 +293,7 @@ impl Component for SessionSettingsModel {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
-                            set_label: "Empty = systemctl reboot. e.g. osc-safe-reboot",
+                            set_label: "Empty = margo closes every window cleanly, then reboots.",
                         },
                     },
                     gtk::Entry {
@@ -325,7 +325,7 @@ impl Component for SessionSettingsModel {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
-                            set_label: "Empty = systemctl poweroff.",
+                            set_label: "Empty = margo closes every window cleanly, then powers off.",
                         },
                     },
                     gtk::Entry {

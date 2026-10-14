@@ -417,8 +417,8 @@ session:
   lock_command: ''
   logout_command: ''
   suspend_command: systemctl suspend -i
-  reboot_command: osc-safe-reboot
-  shutdown_command: systemctl poweroff -i
+  reboot_command: ''
+  shutdown_command: ''
 clipboard:
   max_entries: 1000
   persist: All
