@@ -4650,6 +4650,7 @@ dependencies = [
  "margo-layouts",
  "margo-logging",
  "mctl",
+ "notify",
  "pipewire",
  "regex",
  "rhai",

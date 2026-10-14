@@ -621,6 +621,7 @@ const BOOL_KEYS: &[&str] = &[
     "animation_fade_out",
     "animations",
     "auto_layout",
+    "auto_reload_config",
     "blur",
     "blur_layer",
     "blur_optimized",

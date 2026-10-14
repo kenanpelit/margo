@@ -30,6 +30,19 @@ pub fn parse_config(path: Option<&Path>) -> Result<Config> {
     Ok(cfg)
 }
 
+/// Every file this config currently reads, transitively through
+/// `include`/`source` (main file first) — the watch-list for margo's
+/// config auto-reload (`auto_reload_config`). A config's source tree can
+/// change across edits (a `source` line added/removed), so callers
+/// re-fetch this after every reload rather than caching it once.
+pub fn config_source_files(path: Option<&Path>) -> Result<Vec<PathBuf>> {
+    let resolved = resolve_config_path(path)?;
+    let mut cfg = Config::default();
+    let mut visited = HashSet::new();
+    parse_file(&mut cfg, &resolved, true, &mut visited, &mut Vars::new())?;
+    Ok(visited.into_iter().collect())
+}
+
 /// Like [`parse_config`] but also applies margo's built-in first-party
 /// defaults. The compositor uses this; plain [`parse_config`] stays free
 /// of them so tooling / tests see a faithful view of the user's file.
@@ -820,6 +833,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         }
         "allow_lock_transparent" => cfg.allow_lock_transparent = parse_bool(val),
         "disable_middle_paste" => cfg.disable_middle_paste = parse_bool(val),
+        "auto_reload_config" => cfg.auto_reload_config = parse_bool(val),
         "per_output_frame_clock" => cfg.per_output_frame_clock = parse_bool(val),
         "keymode" => cfg.key_mode = clamp_keyword(val, 27),
 
@@ -1702,6 +1716,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "allow_shortcuts_inhibit",
     "allow_tearing",
     "disable_middle_paste",
+    "auto_reload_config",
     "per_output_frame_clock",
     "animation_clock_close",
     "animation_clock_focus",
@@ -1944,7 +1959,7 @@ pub const OPTION_KEYS: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::{
-        clamp_keyword, expand_tilde_in_env, parse_config, parse_config_str,
+        clamp_keyword, config_source_files, expand_tilde_in_env, parse_config, parse_config_str,
         parse_config_str_with_defaults, parse_key, strip_inline_comment,
     };
 
@@ -2208,6 +2223,28 @@ mod tests {
         // Must not stack-overflow; parse completes and the real option loads.
         let cfg = parse_config(Some(&a)).unwrap();
         assert_eq!(cfg.focuscolor.0[0], 0xc6 as f32 / 255.0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn config_source_files_lists_the_whole_include_tree_once_each() {
+        // The config auto-reload watch-list (margo/src/config_watcher.rs)
+        // needs every file the config tree actually touches, main file
+        // included, each exactly once — even through an A→B→A cycle.
+        let dir = std::env::temp_dir().join(format!("margo-srcfiles-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("config.conf");
+        let b = dir.join("b.conf");
+        std::fs::write(&a, "include = b.conf\nfocuscolor = #c66b25\n").unwrap();
+        std::fs::write(&b, "include = config.conf\n").unwrap();
+
+        let files = config_source_files(Some(&a)).unwrap();
+        let canon_a = std::fs::canonicalize(&a).unwrap();
+        let canon_b = std::fs::canonicalize(&b).unwrap();
+        assert_eq!(files.len(), 2, "{files:?}");
+        assert!(files.contains(&canon_a));
+        assert!(files.contains(&canon_b));
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 

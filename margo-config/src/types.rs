@@ -1087,6 +1087,12 @@ pub struct Config {
     /// after re-enabling (a client that already bound the global before
     /// this flipped keeps using it until it restarts).
     pub disable_middle_paste: bool,
+    /// Watch the config file (and everything it currently `source`s /
+    /// `include`s) for changes and reload automatically — no more manual
+    /// `mctl reload` / `Super+Ctrl+R` after editing. Defaults on, matching
+    /// mango. `MargoState::sync_config_watcher` starts/stops the actual
+    /// filesystem watcher based on this.
+    pub auto_reload_config: bool,
     /// Pace each output by its own refresh rate (per-output frame clock)
     /// instead of the single global render tick. Each output re-arms its own
     /// present timer off its last vblank and only the due output(s) render +
@@ -1423,6 +1429,7 @@ impl Default for Config {
             allow_shortcuts_inhibit: ShortcutsInhibit::Enable,
             allow_lock_transparent: false,
             disable_middle_paste: false,
+            auto_reload_config: true,
             per_output_frame_clock: true,
             key_mode: "default".into(),
 

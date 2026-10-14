@@ -21,6 +21,7 @@ mod a11y;
 mod animation;
 mod backend;
 mod border;
+mod config_watcher;
 mod cursor;
 #[cfg(feature = "dbus")]
 mod dbus;
@@ -574,6 +575,26 @@ fn main() -> Result<()> {
             message,
             line_text: String::new(),
         }];
+    }
+
+    // ── Config auto-reload (`auto_reload_config`) ─────────────────────────────
+    // The watcher's own callback runs on its background thread, not this
+    // one — MargoState isn't Send, so it can't call reload_config()
+    // directly. It only ever sends a settled-batch signal here; the
+    // actual reload happens below, back on the compositor's own thread.
+    let (config_reload_tx, config_reload_rx) = calloop::channel::channel::<()>();
+    if let Err(e) =
+        loop_handle.insert_source(config_reload_rx, |event, _, state: &mut MargoState| {
+            if let calloop::channel::Event::Msg(()) = event
+                && let Err(e) = state.reload_config()
+            {
+                tracing::warn!(error = ?e, "config auto-reload: reload failed");
+            }
+        })
+    {
+        warn!("config auto-reload source insert failed: {e}");
+    } else {
+        margo.set_config_reload_sender(config_reload_tx);
     }
 
     // Hidden workspaces do not participate in an output's normal vblank walk,

@@ -714,6 +714,15 @@ pub struct MargoState {
     /// decrements this and, if zero, re-emits the deferred ping.
     pending_vblanks: u32,
     config_path: Option<PathBuf>,
+    /// `auto_reload_config` (default on) — live filesystem watcher over
+    /// the config file + everything it currently `source`s/`include`s.
+    /// `None` when the setting is off or the watcher itself couldn't be
+    /// created; `sync_config_watcher` (called at startup and after every
+    /// reload) keeps it started/stopped/re-synced to match.
+    config_watcher: Option<crate::config_watcher::ConfigWatcher>,
+    /// Where `config_watcher`'s background thread sends once a batch of
+    /// filesystem changes has settled — see `set_config_reload_sender`.
+    config_reload_tx: Option<calloop::channel::Sender<()>>,
 
     pub config: Config,
     /// Cached "does any window rule carry a title / exclude_title
@@ -1274,6 +1283,10 @@ impl MargoState {
             repaint_ping: None,
             pending_vblanks: 0,
             config_path,
+            // Set up once the full `event_loop` handle exists — see
+            // `main.rs`'s post-construction setup.
+            config_watcher: None,
+            config_reload_tx: None,
             animation_curves,
             input_keyboard,
             input_pointer: Default::default(),
@@ -2127,8 +2140,51 @@ impl MargoState {
         // a changed schedule dir are re-read on this resample.
         self.twilight_schedule_cache = None;
         self.tick_twilight();
+        // `auto_reload_config` itself, or the source/include tree, may
+        // have just changed — start/stop/re-sync the watcher to match.
+        self.sync_config_watcher();
         tracing::info!("config reloaded");
         Ok(())
+    }
+
+    /// Start/stop/re-sync the config auto-reload watcher
+    /// (`auto_reload_config`, default on) to match the live config.
+    /// Called once right after startup (from `main.rs`, once
+    /// `set_config_reload_sender` has wired up where its signal goes)
+    /// and again at the end of every [`reload_config`](Self::reload_config).
+    pub fn sync_config_watcher(&mut self) {
+        if !self.config.auto_reload_config {
+            self.config_watcher = None;
+            return;
+        }
+        let Some(tx) = self.config_reload_tx.clone() else {
+            // Startup ordering: called once before the sender is wired
+            // up (no-op) and once right after (does the real work) —
+            // see `main.rs`. Never hit from `reload_config` itself,
+            // since that can't run before startup finishes.
+            return;
+        };
+        let paths = crate::config_watcher::watch_list(self.config_path.as_deref());
+        match &mut self.config_watcher {
+            Some(watcher) => watcher.update(&paths),
+            None => {
+                self.config_watcher =
+                    crate::config_watcher::ConfigWatcher::new(&paths, move || {
+                        let _ = tx.send(());
+                    });
+            }
+        }
+    }
+
+    /// Wire the signal `sync_config_watcher` sends on a settled
+    /// filesystem change into `reload_tx` — a `calloop::channel`
+    /// whose receiver end `main.rs` has already inserted into the
+    /// event loop, calling `reload_config` on the compositor's own
+    /// thread when a message arrives. Called once, right after the
+    /// event loop (and therefore the channel) exists.
+    pub fn set_config_reload_sender(&mut self, reload_tx: calloop::channel::Sender<()>) {
+        self.config_reload_tx = Some(reload_tx);
+        self.sync_config_watcher();
     }
 
     pub(crate) fn refresh_output_work_area(&mut self, output: &Output) {
