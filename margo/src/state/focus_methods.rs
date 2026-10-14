@@ -9,6 +9,233 @@
 use super::*;
 
 impl MargoState {
+    pub fn focus_surface(&mut self, target: Option<FocusTarget>) {
+        let _span = tracy_client::span!("focus_surface");
+        // Once ext-session-lock has been accepted, only its own surfaces may
+        // acquire focus. This central guard covers new toplevels, popup grabs,
+        // pointer focus changes, and layer focus races in one place. `None`
+        // remains allowed so lock acquisition can clear stale desktop focus.
+        if self.session_locked
+            && target.as_ref().is_some_and(|target| match target {
+                FocusTarget::SessionLock(surface) => !Self::lock_surface_ready(surface),
+                _ => true,
+            })
+        {
+            return;
+        }
+        // W3.4: push to per-monitor focus_history when a new client takes
+        // focus. Store stable ids, prune closed/moved entries, drop the newly
+        // focused id from every old position, and cap the MRU depth.
+        const FOCUS_HISTORY_DEPTH: usize = 5;
+        if let Some(FocusTarget::Window(w)) = &target {
+            let new_idx = self.client_idx(w);
+            if let Some(idx) = new_idx {
+                // MRU recency key for the Super+Tab switcher — but NOT while the
+                // switcher is cycling (preview-focus must not rewrite the MRU
+                // order; only the committed pick does, in `mru_confirm`).
+                if self.mru_switcher.is_none() {
+                    self.focus_counter += 1;
+                    self.clients[idx].last_focus_serial = self.focus_counter;
+                }
+                // Urgency is an attention request, not a standing state —
+                // clear it the moment the window actually becomes the
+                // user's focus (X11 WM_HINTS / GTK urgency-hint
+                // convention). `is_urgent` is still otherwise dead until
+                // `request_activation` (xdg_activation.rs) sets it.
+                self.clients[idx].is_urgent = false;
+                let mon = self.clients[idx].monitor;
+                let client_id = self.clients[idx].id;
+                let clients = &self.clients;
+                for (monitor_idx, monitor) in self.monitors.iter_mut().enumerate() {
+                    monitor.focus_history.retain(|id| {
+                        clients
+                            .iter()
+                            .any(|client| client.id == *id && client.monitor == monitor_idx)
+                            && *id != client_id
+                    });
+                }
+                if mon < self.monitors.len() {
+                    let hist = &mut self.monitors[mon].focus_history;
+                    hist.push_front(client_id);
+                    while hist.len() > FOCUS_HISTORY_DEPTH {
+                        hist.pop_back();
+                    }
+                }
+            }
+        }
+        // Capture the *previously* focused client BEFORE we rewrite
+        // the keyboard focus — we need the old + new pair to drive
+        // the border-colour cross-fade animation below.
+        let prev_focus_idx = self.focused_client_idx();
+
+        // Track focus history per-monitor so toplevel_destroyed can recall
+        // the previously focused window (niri-style).
+        if let Some(FocusTarget::Window(ref w)) = target {
+            if let Some(new_idx) = self.client_idx(w) {
+                let mon_idx = self.clients[new_idx].monitor;
+                if mon_idx < self.monitors.len() {
+                    let cur = self.monitors[mon_idx].selected;
+                    if cur != Some(new_idx) {
+                        self.monitors[mon_idx].prev_selected = cur;
+                        self.monitors[mon_idx].selected = Some(new_idx);
+                    }
+                }
+            }
+        }
+
+        let serial = SERIAL_COUNTER.next_serial();
+        self.set_keyboard_focus(target, serial);
+
+        // Focus highlight cross-fade. When focus moves between two
+        // windows, animate both: the outgoing window's border colour
+        // fades from `focuscolor` toward `bordercolor`, the incoming
+        // one fades the other way. `tick_animations` drives the
+        // sample; `border::refresh` reads the in-flight colour from
+        // `opacity_animation.current_border_color` and renders that
+        // instead of the static color_for() value.
+        //
+        // Per-client `opacity` (focused_opacity / unfocused_opacity)
+        // is animated through the same struct so an unfocused window
+        // also dims smoothly instead of snapping to its dimmer alpha
+        // — same trick mango/dwl uses but with the right curve.
+        let new_focus_idx = self.focused_client_idx();
+        if prev_focus_idx != new_focus_idx
+            && self.config.animations
+            && self.config.animation_duration_focus > 0
+        {
+            let now = crate::utils::now_ms();
+            let dur = self.config.animation_duration_focus;
+            let bordercolor = self.config.bordercolor.0;
+            let focuscolor = self.config.focuscolor.0;
+            // Outgoing: drop focus highlight back to bordercolor +
+            // dim opacity to unfocused.
+            if let Some(idx) = prev_focus_idx {
+                if idx < self.clients.len() {
+                    let initial_color = self.clients[idx].opacity_animation.current_border_color;
+                    let initial_color = if initial_color == [0.0, 0.0, 0.0, 0.0] {
+                        focuscolor
+                    } else {
+                        initial_color
+                    };
+                    let initial_opacity = self.clients[idx].focused_opacity;
+                    self.clients[idx].opacity_animation = OpacityAnimation {
+                        running: true,
+                        initial_opacity,
+                        target_opacity: self.clients[idx].unfocused_opacity,
+                        current_opacity: initial_opacity,
+                        time_started: now,
+                        duration: dur,
+                        initial_border_color: initial_color,
+                        target_border_color: bordercolor,
+                        current_border_color: initial_color,
+                    };
+                }
+            }
+            // Incoming: ramp up to focuscolor + brighten opacity.
+            if let Some(idx) = new_focus_idx {
+                if idx < self.clients.len() {
+                    let initial_color = self.clients[idx].opacity_animation.current_border_color;
+                    let initial_color = if initial_color == [0.0, 0.0, 0.0, 0.0] {
+                        bordercolor
+                    } else {
+                        initial_color
+                    };
+                    let initial_opacity = self.clients[idx].unfocused_opacity;
+                    self.clients[idx].opacity_animation = OpacityAnimation {
+                        running: true,
+                        initial_opacity,
+                        target_opacity: self.clients[idx].focused_opacity,
+                        current_opacity: initial_opacity,
+                        time_started: now,
+                        duration: dur,
+                        initial_border_color: initial_color,
+                        target_border_color: focuscolor,
+                        current_border_color: initial_color,
+                    };
+                }
+            }
+        }
+
+        // Refresh border colors so the focused/unfocused distinction
+        // updates without waiting for the next arrange.
+        let mut repaint_outputs = Vec::with_capacity(2);
+        for idx in [prev_focus_idx, new_focus_idx].into_iter().flatten() {
+            let Some(client) = self.clients.get(idx) else {
+                continue;
+            };
+            let Some(output) = self
+                .monitors
+                .get(client.monitor)
+                .filter(|monitor| monitor.enabled)
+                .map(|monitor| monitor.output.clone())
+            else {
+                continue;
+            };
+            if !repaint_outputs.contains(&output) {
+                repaint_outputs.push(output);
+            }
+            for output in self.space.outputs_for_element(&client.window) {
+                if !repaint_outputs.contains(&output) {
+                    repaint_outputs.push(output);
+                }
+            }
+        }
+        crate::border::refresh(self);
+        if repaint_outputs.is_empty() {
+            self.request_repaint();
+        } else {
+            for output in repaint_outputs {
+                self.request_repaint_output(&output);
+            }
+        }
+
+        // Mark dirty so IPC watch subscribers see the new focus (
+        // waybar-dwl, …). The struct gets its title / appid /
+        // fullscreen / floating fields from `focused_client_idx`,
+        // which we just changed; without this the bar would keep
+        // showing the previously-focused window's title until the
+        // next tag-switch / arrange caused some other broadcast to
+        // fire. mango broadcasts on every focus change too — this
+        // is straight parity.
+        if prev_focus_idx != new_focus_idx {
+            // Raise the newly-focused window in the scene z-order (dwl's
+            // `focusclient` does the same). Invisible for non-overlapping
+            // layouts; for `deck` it's what actually brings the focused
+            // stack card to the front. `focus_stack` re-arranges anyway,
+            // but `exchange_stack`, `focuswindow` over IPC and pointer
+            // focus don't — so do it here, where every focus change lands.
+            self.enforce_z_order();
+            self.recompute_idle_inhibit();
+            self.mark_state_dirty();
+            // Phase 3 scripting: invoke any `on_focus_change`
+            // handlers the user registered in init.rhai. Hooks
+            // see the new focused state via `focused_appid()` /
+            // `focused_title()`. Wrapped in a `prev != new` gate
+            // because focus_surface is called speculatively from
+            // `refresh_keyboard_focus` and we don't want to fire
+            // hooks for no-op refreshes.
+            crate::scripting::fire_focus_change(self);
+
+            // `windowrule = confine_pointer:1` (mango `045c7003`): if the
+            // window we just switched focus to has it and the cursor is
+            // currently outside its bounds, snap to center immediately
+            // instead of waiting for the next motion event — regaining
+            // focus on an already-running game shouldn't leave the
+            // cursor sitting on another monitor for one more frame.
+            if let Some(idx) = new_focus_idx
+                && self.clients[idx].confine_pointer
+            {
+                let (min_x, min_y, max_x, max_y) = self.clients[idx].confine_box();
+                if !(min_x..=max_x).contains(&self.input_pointer.x)
+                    || !(min_y..=max_y).contains(&self.input_pointer.y)
+                {
+                    self.input_pointer.x = (min_x + max_x) / 2.0;
+                    self.input_pointer.y = (min_y + max_y) / 2.0;
+                }
+            }
+        }
+    }
+
     pub(crate) fn lock_surface_ready(
         surface: &smithay::wayland::session_lock::LockSurface,
     ) -> bool {
