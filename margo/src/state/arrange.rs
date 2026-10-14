@@ -589,6 +589,8 @@ impl MargoState {
             scroller_focus_center: self.config.scroller_focus_center,
             scroller_prefer_center: self.config.scroller_prefer_center,
             scroller_prefer_overspread: self.config.scroller_prefer_overspread,
+            center_master_overspread: self.config.center_master_overspread,
+            center_when_single_stack: self.config.center_when_single_stack,
         };
 
         // Overview path — mango-ext pattern (`overview(m) { grid(m); }`).
@@ -1081,6 +1083,8 @@ impl MargoState {
             scroller_focus_center: self.config.scroller_focus_center,
             scroller_prefer_center: self.config.scroller_prefer_center,
             scroller_prefer_overspread: self.config.scroller_prefer_overspread,
+            center_master_overspread: self.config.center_master_overspread,
+            center_when_single_stack: self.config.center_when_single_stack,
         };
 
         for (client_idx, mut rect) in layout::arrange(layout, &ctx) {

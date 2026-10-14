@@ -124,6 +124,8 @@ impl Fixture {
             scroller_focus_center: true,
             scroller_prefer_center: true,
             scroller_prefer_overspread: false,
+            center_master_overspread: true,
+            center_when_single_stack: false,
         }
     }
 }
@@ -139,6 +141,8 @@ struct ArrangeCtxBuilder<'a> {
     scroller_focus_center: bool,
     scroller_prefer_center: bool,
     scroller_prefer_overspread: bool,
+    center_master_overspread: bool,
+    center_when_single_stack: bool,
 }
 
 impl<'a> ArrangeCtxBuilder<'a> {
@@ -172,6 +176,8 @@ impl<'a> ArrangeCtxBuilder<'a> {
             scroller_focus_center: self.scroller_focus_center,
             scroller_prefer_center: self.scroller_prefer_center,
             scroller_prefer_overspread: self.scroller_prefer_overspread,
+            center_master_overspread: self.center_master_overspread,
+            center_when_single_stack: self.center_when_single_stack,
         }
     }
 }

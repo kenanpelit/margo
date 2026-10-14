@@ -37,6 +37,8 @@ fn ctx<'a>(
         scroller_focus_center: true,
         scroller_prefer_center: true,
         scroller_prefer_overspread: false,
+        center_master_overspread: true,
+        center_when_single_stack: false,
     }
 }
 
@@ -833,4 +835,55 @@ fn the_two_axes_clamp_independently() {
 fn an_exact_match_is_a_no_op() {
     let r = FLOAT_SLOT.clamped_to_actual_size(FLOAT_SLOT.width, FLOAT_SLOT.height);
     assert_eq!(r, FLOAT_SLOT);
+}
+
+#[test]
+fn center_tile_master_overspread_toggle() {
+    let gaps = GapConfig {
+        gappih: 0,
+        gappiv: 0,
+        gappoh: 0,
+        gappov: 0,
+    };
+    let props = [1.0];
+    let mut c = ctx(&[0], &gaps, &props, 1, 0.5);
+    c.center_master_overspread = true;
+    let full = arrange(LayoutId::CenterTile, &c);
+    assert_eq!(full[0].1.width, WA.width);
+
+    c.center_master_overspread = false;
+    let r = arrange(LayoutId::CenterTile, &c)[0].1;
+    assert_eq!(r.width, WA.width / 2);
+    assert_eq!(
+        r.x - WA.x,
+        (WA.width - r.width) / 2,
+        "master must be centred"
+    );
+}
+
+#[test]
+fn center_tile_single_stack_centres_master_when_asked() {
+    let gaps = GapConfig {
+        gappih: 0,
+        gappiv: 0,
+        gappoh: 0,
+        gappov: 0,
+    };
+    let props = [1.0, 1.0];
+    let mut c = ctx(&[0, 1], &gaps, &props, 1, 0.5);
+    c.center_when_single_stack = false;
+    let r = arrange(LayoutId::CenterTile, &c);
+    let master = r.iter().find(|(i, _)| *i == 0).unwrap().1;
+    assert_eq!(master.x, WA.x, "master flush left");
+
+    c.center_when_single_stack = true;
+    let r = arrange(LayoutId::CenterTile, &c);
+    let master = r.iter().find(|(i, _)| *i == 0).unwrap().1;
+    let stack = r.iter().find(|(i, _)| *i == 1).unwrap().1;
+    assert_eq!(
+        master.x - WA.x,
+        (WA.width - master.width) / 2,
+        "master centred"
+    );
+    assert!(stack.x >= master.x + master.width, "stack right of master");
 }

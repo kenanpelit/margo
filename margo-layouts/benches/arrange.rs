@@ -31,6 +31,8 @@ fn make_ctx<'a>(tiled: &'a [usize], proportions: &'a [f32], gaps: &'a GapConfig)
         scroller_focus_center: false,
         scroller_prefer_center: false,
         scroller_prefer_overspread: false,
+        center_master_overspread: true,
+        center_when_single_stack: false,
     }
 }
 

@@ -302,13 +302,23 @@ pub fn center_tile(ctx: &ArrangeCtx) -> ArrangeResult {
     let total_w = wa.width - 2 * oh;
     let total_h = wa.height - 2 * ov;
 
-    let master_w = if stack_count > 0 {
-        (total_w as f32 * ctx.mfact) as i32
-    } else {
+    // mango: with no stack the master area fills the width only under
+    // `center_master_overspread`; otherwise it keeps its mfact width,
+    // centred. One stack window sits right of a master that is centred
+    // (`center_when_single_stack`) or flush left.
+    let overspread = stack_count == 0 && ctx.center_master_overspread;
+    let master_w = if overspread {
         total_w
+    } else {
+        (total_w as f32 * ctx.mfact) as i32
+    };
+    let centered = match stack_count {
+        0 => !overspread,
+        1 => ctx.center_when_single_stack,
+        _ => true,
     };
 
-    let side_w = if stack_count >= 2 {
+    let side_w = if centered {
         (total_w - master_w - 2 * ih) / 2
     } else if stack_count == 1 {
         total_w - master_w - ih
@@ -321,7 +331,7 @@ pub fn center_tile(ctx: &ArrangeCtx) -> ArrangeResult {
     let mut result = Vec::with_capacity(n);
 
     // master column (center)
-    let master_x = wa.x + oh + if stack_count >= 2 { side_w + ih } else { 0 };
+    let master_x = wa.x + oh + if centered { side_w + ih } else { 0 };
     stack_evenly(
         &ctx.tiled[..nm],
         master_x,
@@ -346,7 +356,7 @@ pub fn center_tile(ctx: &ArrangeCtx) -> ArrangeResult {
     // right stack
     let rx = wa.x
         + oh
-        + if stack_count >= 2 {
+        + if centered {
             side_w + ih + master_w + ih
         } else {
             master_w + ih
@@ -493,6 +503,8 @@ pub fn tgmix(ctx: &ArrangeCtx) -> ArrangeResult {
         scroller_focus_center: ctx.scroller_focus_center,
         scroller_prefer_center: ctx.scroller_prefer_center,
         scroller_prefer_overspread: ctx.scroller_prefer_overspread,
+        center_master_overspread: true,
+        center_when_single_stack: false,
     };
     let stack_ctx = ArrangeCtx {
         work_area: stack_wa,
@@ -507,6 +519,8 @@ pub fn tgmix(ctx: &ArrangeCtx) -> ArrangeResult {
         scroller_focus_center: ctx.scroller_focus_center,
         scroller_prefer_center: ctx.scroller_prefer_center,
         scroller_prefer_overspread: ctx.scroller_prefer_overspread,
+        center_master_overspread: true,
+        center_when_single_stack: false,
     };
 
     let mut result = tile(&master_ctx);
@@ -1002,6 +1016,8 @@ mod tests {
             scroller_focus_center: true,
             scroller_prefer_center: true,
             scroller_prefer_overspread: false,
+            center_master_overspread: true,
+            center_when_single_stack: false,
         };
 
         let arranged = scroller(&ctx);
@@ -1035,6 +1051,8 @@ mod tests {
             scroller_focus_center: false,
             scroller_prefer_center: false,
             scroller_prefer_overspread: false,
+            center_master_overspread: true,
+            center_when_single_stack: false,
         }
     }
 

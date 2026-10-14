@@ -153,6 +153,8 @@ fn ctx_of<'a>(p: &'a Params, tiled: &'a [usize]) -> ArrangeCtx<'a> {
         scroller_focus_center: p.focus_center,
         scroller_prefer_center: p.prefer_center,
         scroller_prefer_overspread: p.prefer_overspread,
+        center_master_overspread: true,
+        center_when_single_stack: false,
     }
 }
 

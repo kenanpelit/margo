@@ -14,8 +14,6 @@ const NO_EFFECT_FIELDS: &[&str] = &[
     "blur_optimized",
     "button_map",
     "capslock",
-    "center_master_overspread",
-    "center_when_single_stack",
     "cursor_hide_timeout",
     "enable_floating_snap",
     "enable_hotarea",

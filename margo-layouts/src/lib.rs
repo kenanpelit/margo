@@ -279,4 +279,10 @@ pub struct ArrangeCtx<'a> {
     pub scroller_prefer_center: bool,
     /// Prefer edge overspread for first/last scroller clients.
     pub scroller_prefer_overspread: bool,
+    /// Center-tile: with no stack windows the master area fills the
+    /// whole width; otherwise it keeps its `mfact` width, centred.
+    pub center_master_overspread: bool,
+    /// Center-tile: with exactly one stack window keep the master
+    /// centred (left side empty) instead of master-left / stack-right.
+    pub center_when_single_stack: bool,
 }
