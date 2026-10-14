@@ -350,7 +350,7 @@ impl Component for TagLayoutSettingsModel {
                     set_spacing: 16,
                     gtk::Image {
                         add_css_class: "settings-hero-icon",
-                        set_icon_name: Some("view-grid-symbolic"),
+                        set_icon_name: Some("video-joined-displays-symbolic"),
                         set_valign: gtk::Align::Center,
                     },
                     gtk::Box {

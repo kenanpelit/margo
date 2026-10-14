@@ -98,7 +98,7 @@ impl Component for LoginSettingsModel {
                     set_spacing: 16,
                     gtk::Image {
                         add_css_class: "settings-hero-icon",
-                        set_icon_name: Some("system-users-symbolic"),
+                        set_icon_name: Some("avatar-default-symbolic"),
                         set_valign: gtk::Align::Center,
                     },
                     gtk::Box {

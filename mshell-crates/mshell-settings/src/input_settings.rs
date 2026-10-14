@@ -369,7 +369,7 @@ impl Component for InputSettingsModel {
                     set_spacing: 16,
                     gtk::Image {
                         add_css_class: "settings-hero-icon",
-                        set_icon_name: Some("input-keyboard-symbolic"),
+                        set_icon_name: Some("input-mouse-symbolic"),
                         set_valign: gtk::Align::Center,
                     },
                     gtk::Box {
@@ -377,7 +377,7 @@ impl Component for InputSettingsModel {
                         set_valign: gtk::Align::Center,
                         gtk::Label {
                             add_css_class: "settings-hero-title",
-                            set_label: "Input",
+                            set_label: "Input Devices",
                             set_halign: gtk::Align::Start,
                         },
                         gtk::Label {

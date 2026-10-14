@@ -879,7 +879,7 @@ impl Component for KeybindsSettingsModel {
                 set_spacing: 16,
                 gtk::Image {
                     add_css_class: "settings-hero-icon",
-                    set_icon_name: Some("input-keyboard-symbolic"),
+                    set_icon_name: Some("preferences-desktop-keyboard-shortcuts-symbolic"),
                     set_valign: gtk::Align::Center,
                 },
                 gtk::Box {
@@ -887,7 +887,7 @@ impl Component for KeybindsSettingsModel {
                     set_valign: gtk::Align::Center,
                     gtk::Label {
                         add_css_class: "settings-hero-title",
-                        set_label: "Keybinds",
+                        set_label: "Keyboard Shortcuts",
                         set_halign: gtk::Align::Start,
                     },
                     gtk::Label {

@@ -189,7 +189,7 @@ impl Component for BarSettingsModel {
                     set_spacing: 16,
                     gtk::Image {
                         add_css_class: "settings-hero-icon",
-                        set_icon_name: Some("computer-symbolic"),
+                        set_icon_name: Some("sidebar-symbolic"),
                         set_valign: gtk::Align::Center,
                     },
                     gtk::Box {

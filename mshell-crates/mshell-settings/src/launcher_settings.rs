@@ -127,7 +127,6 @@ impl Component for LauncherSettingsModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        add_css_class: "settings-row",
                         add_css_class: "action-row",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
@@ -136,7 +135,7 @@ impl Component for LauncherSettingsModel {
                             set_valign: gtk::Align::Center,
                             set_hexpand: true,
                             gtk::Label {
-                                add_css_class: "label-medium",
+                                add_css_class: "label-medium-bold",
                                 set_label: "Position",
                                 set_halign: gtk::Align::Start,
                             },
@@ -163,7 +162,6 @@ impl Component for LauncherSettingsModel {
                     },
 
                     gtk::Box {
-                        add_css_class: "settings-row",
                         add_css_class: "action-row",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
@@ -172,7 +170,7 @@ impl Component for LauncherSettingsModel {
                             set_valign: gtk::Align::Center,
                             set_hexpand: true,
                             gtk::Label {
-                                add_css_class: "label-medium",
+                                add_css_class: "label-medium-bold",
                                 set_label: "Minimum width",
                                 set_halign: gtk::Align::Start,
                             },
@@ -200,7 +198,6 @@ impl Component for LauncherSettingsModel {
                     },
 
                     gtk::Box {
-                        add_css_class: "settings-row",
                         add_css_class: "action-row",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 20,
@@ -209,7 +206,7 @@ impl Component for LauncherSettingsModel {
                             set_valign: gtk::Align::Center,
                             set_hexpand: true,
                             gtk::Label {
-                                add_css_class: "label-medium",
+                                add_css_class: "label-medium-bold",
                                 set_label: "Height",
                                 set_halign: gtk::Align::Start,
                             },
@@ -249,7 +246,6 @@ impl Component for LauncherSettingsModel {
                     set_orientation: gtk::Orientation::Vertical,
 
                     gtk::Box {
-                        add_css_class: "settings-row",
                         add_css_class: "action-row",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
@@ -258,7 +254,7 @@ impl Component for LauncherSettingsModel {
                             set_valign: gtk::Align::Center,
                             set_hexpand: true,
                             gtk::Label {
-                                add_css_class: "label-medium",
+                                add_css_class: "label-medium-bold",
                                 set_label: "Preview pane",
                                 set_halign: gtk::Align::Start,
                             },
@@ -281,7 +277,6 @@ impl Component for LauncherSettingsModel {
                     },
 
                     gtk::Box {
-                        add_css_class: "settings-row",
                         add_css_class: "action-row",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
@@ -290,7 +285,7 @@ impl Component for LauncherSettingsModel {
                             set_valign: gtk::Align::Center,
                             set_hexpand: true,
                             gtk::Label {
-                                add_css_class: "label-medium",
+                                add_css_class: "label-medium-bold",
                                 set_label: "Compact rows",
                                 set_halign: gtk::Align::Start,
                             },
@@ -313,7 +308,6 @@ impl Component for LauncherSettingsModel {
                     },
 
                     gtk::Box {
-                        add_css_class: "settings-row",
                         add_css_class: "action-row",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
@@ -322,7 +316,7 @@ impl Component for LauncherSettingsModel {
                             set_valign: gtk::Align::Center,
                             set_hexpand: true,
                             gtk::Label {
-                                add_css_class: "label-medium",
+                                add_css_class: "label-medium-bold",
                                 set_label: "Large app icons",
                                 set_halign: gtk::Align::Start,
                             },

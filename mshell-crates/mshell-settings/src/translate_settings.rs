@@ -68,7 +68,7 @@ impl Component for TranslateSettingsModel {
                     set_spacing: 16,
                     gtk::Image {
                         add_css_class: "settings-hero-icon",
-                        set_icon_name: Some("preferences-desktop-locale-symbolic"),
+                        set_icon_name: Some("globe-symbolic"),
                         set_valign: gtk::Align::Center,
                     },
                     gtk::Box {

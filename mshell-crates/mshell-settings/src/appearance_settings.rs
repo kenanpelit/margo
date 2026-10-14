@@ -72,7 +72,7 @@ impl Component for AppearanceModel {
                         set_valign: gtk::Align::Center,
                         gtk::Label {
                             add_css_class: "settings-hero-title",
-                            set_label: "Appearance",
+                            set_label: "Window Style",
                             set_halign: gtk::Align::Start,
                         },
                         gtk::Label {

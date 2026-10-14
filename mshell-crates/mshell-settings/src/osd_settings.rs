@@ -82,7 +82,7 @@ impl Component for OsdSettingsModel {
                     set_spacing: 16,
                     gtk::Image {
                         add_css_class: "settings-hero-icon",
-                        set_icon_name: Some("audio-volume-high-symbolic"),
+                        set_icon_name: Some("notification-symbolic"),
                         set_valign: gtk::Align::Center,
                     },
                     gtk::Box {
@@ -90,7 +90,7 @@ impl Component for OsdSettingsModel {
                         set_valign: gtk::Align::Center,
                         gtk::Label {
                             add_css_class: "settings-hero-title",
-                            set_label: "OSD",
+                            set_label: "On-screen Displays",
                             set_halign: gtk::Align::Start,
                         },
                         gtk::Label {

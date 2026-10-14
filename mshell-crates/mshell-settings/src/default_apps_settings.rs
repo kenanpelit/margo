@@ -104,7 +104,7 @@ impl Component for DefaultAppsSettingsModel {
                         set_valign: gtk::Align::Center,
                         gtk::Label {
                             add_css_class: "settings-hero-title",
-                            set_label: "Default Applications",
+                            set_label: "Default Apps",
                             set_halign: gtk::Align::Start,
                         },
                         gtk::Label {

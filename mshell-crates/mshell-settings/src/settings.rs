@@ -227,6 +227,56 @@ fn build_top_page(route: &str) -> Option<BuiltPage> {
     Some(built)
 }
 
+/// Make a top-level page's hero (icon + title) say exactly what its sidebar
+/// row says, so a renamed or re-iconed row can't drift from the page it
+/// opens. Only touches the standard layout — a `.settings-page` box reached
+/// through first children whose first child is the `.settings-hero`; pages
+/// with their own inner sidebar (Display) are left alone.
+fn sync_page_hero(page: &gtk::Widget, route: &str) {
+    use gtk::prelude::*;
+    let Some((icon, label)) = SIDEBAR.iter().find_map(|e| match e {
+        SidebarEntry::Page {
+            route: r,
+            icon,
+            label,
+        } if *r == route => Some((*icon, *label)),
+        _ => None,
+    }) else {
+        return;
+    };
+    let mut node = Some(page.clone());
+    for _ in 0..4 {
+        match node {
+            Some(ref w) if !w.has_css_class("settings-page") => node = w.first_child(),
+            _ => break,
+        }
+    }
+    let Some(hero) = node
+        .filter(|w| w.has_css_class("settings-page"))
+        .and_then(|w| w.first_child())
+        .filter(|w| w.has_css_class("settings-hero"))
+    else {
+        return;
+    };
+    let mut stack = vec![hero];
+    while let Some(w) = stack.pop() {
+        if w.has_css_class("settings-hero-icon")
+            && let Some(img) = w.downcast_ref::<gtk::Image>()
+        {
+            img.set_icon_name(Some(icon));
+        } else if w.has_css_class("settings-hero-title")
+            && let Some(lbl) = w.downcast_ref::<gtk::Label>()
+        {
+            lbl.set_label(label);
+        }
+        let mut child = w.first_child();
+        while let Some(c) = child {
+            child = c.next_sibling();
+            stack.push(c);
+        }
+    }
+}
+
 #[relm4::component(pub)]
 impl Component for SettingsWindowModel {
     type CommandOutput = SettingsWindowCommandOutput;
@@ -493,6 +543,7 @@ impl Component for SettingsWindowModel {
                     return;
                 }
                 if let Some((widget, tokens)) = build_top_page(route) {
+                    sync_page_hero(&widget, route);
                     // The panel drives visibility through its own sidebar, never
                     // a GtkStackSwitcher, so the page title is unused — add_named
                     // avoids threading dead title strings through every builder.

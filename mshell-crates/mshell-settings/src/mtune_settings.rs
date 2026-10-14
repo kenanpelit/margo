@@ -164,7 +164,7 @@ impl Component for MtuneSettingsModel {
                     set_spacing: 16,
                     gtk::Image {
                         add_css_class: "settings-hero-icon",
-                        set_icon_name: Some("folder-music-symbolic"),
+                        set_icon_name: Some("org.margo.Tune-symbolic"),
                         set_valign: gtk::Align::Center,
                     },
                     gtk::Box {
