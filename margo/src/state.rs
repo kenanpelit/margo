@@ -1011,11 +1011,13 @@ pub struct MargoState {
     /// loop. Set true when the first event of a burst arrives,
     /// cleared by the timer once it actually runs the rescan.
     pub hotplug_rescan_pending: bool,
-    /// `Instant` the pointer entered the current dwell corner. The
-    /// dwell threshold (`Config::hot_corner_dwell_ms`) is checked in
-    /// the same `pointer_motion` handler that sets / clears
-    /// `hot_corner_dwelling`. Cleared together with `hot_corner_dwelling`.
+    /// `Instant` the pointer entered the current dwell corner; `None`
+    /// once the corner has fired (until the pointer leaves and re-enters).
     pub hot_corner_armed_at: Option<std::time::Instant>,
+    /// One-shot timer that fires the dwell for a cursor parked in a
+    /// corner (no further motion needed). Cleared by its own callback
+    /// before the source drops.
+    pub hot_corner_timer: Option<smithay::reexports::calloop::RegistrationToken>,
 }
 
 impl MargoState {
@@ -1419,6 +1421,7 @@ impl MargoState {
             hotplug_last_event_at: None,
             hotplug_rescan_pending: false,
             hot_corner_armed_at: None,
+            hot_corner_timer: None,
             title_rules_exist: config_has_title_rules(&config),
             config,
             theme_baseline: None,

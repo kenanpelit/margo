@@ -73,3 +73,52 @@ fn disabling_the_guard_lets_fullscreen_arm_the_corner_too() {
         "with hot_corner_disable_on_fullscreen off, fullscreen must not suppress the corner"
     );
 }
+
+#[test]
+fn a_cursor_parked_in_the_corner_fires_without_further_motion() {
+    let mut fx = Fixture::with_config(Config {
+        hot_corner_top_left: "toggle_overview".to_string(),
+        hot_corner_dwell_ms: 20,
+        ..Config::default()
+    });
+    fx.add_keyboard();
+    fx.add_output("DP-1", (1920, 1080));
+    fx.server.state.input_pointer.x = 0.0;
+    fx.server.state.input_pointer.y = 0.0;
+
+    update_hot_corner(&mut fx.server.state);
+    assert!(!fx.server.state.monitors[0].is_overview);
+
+    std::thread::sleep(std::time::Duration::from_millis(40));
+    fx.dispatch();
+
+    assert!(
+        fx.server.state.monitors[0].is_overview,
+        "the dwell timer must fire the action with no further motion event"
+    );
+    assert!(fx.server.state.hot_corner_armed_at.is_none());
+    assert!(fx.server.state.hot_corner_timer.is_none());
+}
+
+#[test]
+fn leaving_the_corner_cancels_the_dwell_timer() {
+    let mut fx = Fixture::with_config(Config {
+        hot_corner_top_left: "toggle_overview".to_string(),
+        hot_corner_dwell_ms: 20,
+        ..Config::default()
+    });
+    fx.add_keyboard();
+    fx.add_output("DP-1", (1920, 1080));
+    fx.server.state.input_pointer.x = 0.0;
+    fx.server.state.input_pointer.y = 0.0;
+    update_hot_corner(&mut fx.server.state);
+
+    fx.server.state.input_pointer.x = 500.0;
+    fx.server.state.input_pointer.y = 500.0;
+    update_hot_corner(&mut fx.server.state);
+    assert!(fx.server.state.hot_corner_timer.is_none());
+
+    std::thread::sleep(std::time::Duration::from_millis(40));
+    fx.dispatch();
+    assert!(!fx.server.state.monitors[0].is_overview);
+}
