@@ -131,6 +131,47 @@ pub struct OpenCloseRenderElement {
     program: Option<GlesTexProgram>,
     /// Corner radius in logical pixels. 0 = no clipping.
     radius: f32,
+    /// `Some(begin)`: alpha fades between `begin` and the fully-shown
+    /// end (`animation_fade_in` / `_out` + `fade{in,out}_begin_opacity`).
+    /// `None`: no alpha fade — zoom / slide run at full opacity.
+    fade_begin: Option<f32>,
+}
+
+/// Transition alpha at `progress` (see `OpenCloseRenderElement::with_fade`).
+/// mango: close = begin · (1 − progress), open = begin + (1 − begin) · progress.
+fn fade_alpha(fade_begin: Option<f32>, kind: OpenCloseKind, is_close: bool, progress: f32) -> f32 {
+    let visible = if is_close { 1.0 - progress } else { progress };
+    let alpha = match (fade_begin, kind) {
+        (Some(begin), _) if is_close => begin * visible,
+        (Some(begin), _) => begin + (1.0 - begin) * visible,
+        (None, OpenCloseKind::Fade) => visible,
+        (None, _) => 1.0,
+    };
+    alpha.clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod fade_tests {
+    use super::{OpenCloseKind, fade_alpha};
+
+    #[test]
+    fn open_starts_at_begin_opacity_and_ends_opaque() {
+        assert_eq!(fade_alpha(Some(0.6), OpenCloseKind::Zoom, false, 0.0), 0.6);
+        assert_eq!(fade_alpha(Some(0.6), OpenCloseKind::Zoom, false, 1.0), 1.0);
+        assert!((fade_alpha(Some(0.6), OpenCloseKind::Zoom, false, 0.5) - 0.8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn close_starts_at_begin_opacity_and_ends_transparent() {
+        assert_eq!(fade_alpha(Some(0.5), OpenCloseKind::Zoom, true, 0.0), 0.5);
+        assert_eq!(fade_alpha(Some(0.5), OpenCloseKind::Zoom, true, 1.0), 0.0);
+    }
+
+    #[test]
+    fn disabled_fade_keeps_zoom_opaque_but_fade_kind_still_fades() {
+        assert_eq!(fade_alpha(None, OpenCloseKind::Zoom, false, 0.1), 1.0);
+        assert_eq!(fade_alpha(None, OpenCloseKind::Fade, true, 0.25), 0.75);
+    }
 }
 
 impl OpenCloseRenderElement {
@@ -161,26 +202,25 @@ impl OpenCloseRenderElement {
             commit,
             program,
             radius,
+            fade_begin: Some(if is_close { 1.0 } else { 0.0 }),
         }
+    }
+
+    /// Apply `animation_fade_in` / `animation_fade_out` (`enabled`) and
+    /// the matching `fade*_begin_opacity` (`begin`): an opening window
+    /// fades from `begin` to opaque, a closing one from `begin` to
+    /// transparent. Disabled: zoom / slide keep full opacity; the pure
+    /// `fade` kind still fades, since that is all it does.
+    pub fn with_fade(mut self, enabled: bool, begin: f32) -> Self {
+        self.fade_begin = enabled.then_some(begin.clamp(0.0, 1.0));
+        self
     }
 
     /// Compute the alpha at the current progress.
     fn current_alpha(&self) -> f32 {
         let p = self.progress;
         // Map progress so alpha rises (open) or falls (close) from 0 to 1.
-        let visible = if self.is_close { 1.0 - p } else { p };
-        // For pure-fade we want the curve linear; for zoom we slightly
-        // bias the alpha to be ahead of the scale (so the window is
-        // visible by the time it's near full size, instead of winking
-        // in at the last moment). The bias is a single multiplication
-        // — keep it cheap, the visual difference is the point.
-        match self.kind {
-            OpenCloseKind::Fade => visible,
-            OpenCloseKind::Zoom => (visible * 1.15).min(1.0),
-            OpenCloseKind::Slide(_) => visible,
-        }
-        .clamp(0.0, 1.0)
-            * self.result_alpha
+        fade_alpha(self.fade_begin, self.kind, self.is_close, p) * self.result_alpha
     }
 
     /// Compute the scale factor in [extreme_scale, 1.0] at the current

@@ -1438,6 +1438,10 @@ fn push_closing_clients(
                 smithay::backend::renderer::utils::CommitCounter::default(),
                 cc.border_radius,
                 clipped_surface_program.clone(),
+            )
+            .with_fade(
+                state.config.animation_fade_out,
+                state.config.fadeout_begin_opacity,
             ),
         ));
     }
@@ -2051,6 +2055,10 @@ fn push_client_elements(
                                     smithay::backend::renderer::utils::CommitCounter::default(),
                                     radius,
                                     clipped_surface_program.clone(),
+                                )
+                                .with_fade(
+                                    state.config.animation_fade_in,
+                                    state.config.fadein_begin_opacity,
                                 ),
                             ));
                         }
@@ -2357,7 +2365,16 @@ fn push_layer_elements(
         // notice if we shifted, and the slide-in feel is mostly carried
         // by the alpha curve anyway.
         let layer_alpha = match state.layer_animations.get(&key) {
-            Some(anim) if !anim.is_close => alpha * anim.progress.clamp(0.0, 1.0),
+            Some(anim) if !anim.is_close => {
+                let p = anim.progress.clamp(0.0, 1.0);
+                let faded = if state.config.animation_fade_in {
+                    let begin = state.config.fadein_begin_opacity.clamp(0.0, 1.0);
+                    begin + (1.0 - begin) * p
+                } else {
+                    1.0
+                };
+                alpha * faded
+            }
             _ => alpha,
         };
 
@@ -2514,6 +2531,10 @@ fn push_closing_layers(
                 smithay::backend::renderer::utils::CommitCounter::default(),
                 0.0, // no rounded-corner clip on layers
                 clipped_surface_program.clone(),
+            )
+            .with_fade(
+                state.config.animation_fade_out,
+                state.config.fadeout_begin_opacity,
             ),
         ));
     }
