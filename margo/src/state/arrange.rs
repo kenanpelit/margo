@@ -618,199 +618,8 @@ impl MargoState {
         // it (kills the tab-switch wallpaper flash).
         let mut group_slots: std::collections::HashMap<u32, crate::layout::Rect> =
             std::collections::HashMap::new();
-        for (client_idx, mut rect) in geometries {
-            // Tabbed group: reserve the tab strip's height at the TOP of the
-            // tile and shrink the window content to match, so the strip sits
-            // INSIDE the window's allocation (a title-bar band above the
-            // content) instead of floating in the gap above it — where it slid
-            // under the top bar and ate the outer gap. chip_rects draws the
-            // strip at `geom.y - bar_h`, i.e. exactly this reserved band, now
-            // within the work area. The shrunk rect is recorded so hidden
-            // siblings match it (seamless cycling).
-            if self.clients[client_idx].group_active {
-                if let Some(gid) = self.clients[client_idx].group_id {
-                    let bar_h = self.config.group_bar_height as i32;
-                    if bar_h > 0 && rect.height > bar_h {
-                        rect.y += bar_h;
-                        rect.height -= bar_h;
-                    }
-                    group_slots.insert(gid, rect);
-                }
-            }
-            let old = self.clients[client_idx].geom;
-
-            // If we're already animating toward exactly this target,
-            // leave the in-flight animation alone. arrange_monitor gets
-            // called from many event sources (title change → window-
-            // rule reapply, focus shift, output resize, scroller pan
-            // recompute, …) and a long-running browser like Helium can
-            // tick those off every frame while it's playing video. The
-            // old behaviour was: each call saw `old != rect` (because
-            // `old = c.geom` is the *interpolated* mid-flight value, not
-            // the target), restarted the move animation with `initial
-            // = old`, and reset `time_started = now`. Result: the
-            // animation never finishes — every 16 ms it inches a few
-            // pixels toward the target and then resets, producing the
-            // exact 1-pixel-per-frame oscillation we kept seeing in the
-            // arrange traces (-1794 → -1795 → -1794 → …).
-            let already_animating_to_target = self.clients[client_idx].animation.running
-                && self.clients[client_idx].animation.current == rect;
-
-            let should_animate = self.config.animations
-                && self.config.animation_duration_move > 0
-                && !self.clients[client_idx].no_animation
-                && !self.clients[client_idx].is_tag_switching
-                && old.width > 0
-                && old.height > 0
-                && old != rect
-                && !already_animating_to_target;
-
-            // Diagnostic: every layout decision per visible client.
-            // Fires per-client on every tag switch / move / focus
-            // arrange — at INFO it floods the journal during normal
-            // use (~30-60 lines/sec) and shows up as input latency
-            // and journal contention. Trace level keeps it available
-            // for `RUST_LOG=margo=trace` debugging without polluting
-            // the steady-state log.
-            let actual_geom = self.clients[client_idx].window.geometry().size;
-            tracing::trace!(
-                "arrange[{}]: client_idx={} old={}x{}+{}+{} slot={}x{}+{}+{} actual_buf={}x{} animate={} already_to_target={}",
-                self.clients[client_idx].app_id.as_str(),
-                client_idx,
-                old.width,
-                old.height,
-                old.x,
-                old.y,
-                rect.width,
-                rect.height,
-                rect.x,
-                rect.y,
-                actual_geom.w,
-                actual_geom.h,
-                should_animate,
-                already_animating_to_target,
-            );
-            if should_animate {
-                // Animate the slot fully — both position AND size lerp
-                // from `old` to `rect` over `animation_duration_move`.
-                // Combined with the niri-style crossfade that runs in
-                // parallel (snapshot rendered on top with fading
-                // alpha, scaled to the *current* interpolated slot),
-                // this gives the smooth resize transition the user
-                // sees from niri/Hyprland's animated layouts: the
-                // pre-resize content scales down while the post-
-                // resize content fades up.
-                //
-                // Earlier we used to snap the size to the target on
-                // frame 0 (initial.width = rect.width) so the buffer
-                // and the slot would always match dimensions — but
-                // that left the snapshot fixed at the new slot size
-                // for the entire animation, which meant the snapshot
-                // was rendered at a *different* size from the captured
-                // content for 150 ms and the user saw a stretched/
-                // squished version of the pre-resize image. The
-                // crossfade infrastructure makes the size-snap
-                // unnecessary: we always render BOTH layers at the
-                // interpolated slot, and the buffer/slot mismatch on
-                // the live layer is hidden under the snapshot until
-                // alpha drops.
-                let initial = old;
-                // niri-style resize transition: if the slot size
-                // changes (not just the position), flag a snapshot so
-                // the next render captures the *current* surface tree
-                // to a `GlesTexture`. While the move animation
-                // interpolates the slot from old to new, the render
-                // path draws that snapshot scaled to the live slot
-                // instead of the live surface — the OLD content stays
-                // pinned visually until the client (Electron, slow
-                // ack) commits a buffer at the new size, which drops
-                // the snapshot. Without this, Helium's 50–100 ms
-                // ack-and-reflow window leaks the buffer-vs-slot
-                // mismatch onto the screen.
-                let slot_size_changed = old.width != rect.width || old.height != rect.height;
-                if slot_size_changed && self.clients[client_idx].resize_snapshot.is_none() {
-                    self.clients[client_idx].snapshot_pending = true;
-                }
-                // Spring retarget: if the previous animation was still
-                // running, carry its per-channel velocity forward.
-                // Without this, the integrator would re-start from rest
-                // every time the layout reshuffled mid-flight and the
-                // window would visibly hitch — the whole point of the
-                // spring clock is that retargets stay continuous.
-                // Bezier ignores this field; harmless if it's set.
-                // Decide the animation's hard duration. With bezier
-                // we honour the user's `animation_duration_move`; with
-                // spring we let the physics tell us how long it'll
-                // take to settle to within `epsilon` of the target,
-                // capped between a sane floor and ceiling so a single
-                // bad config value can't produce a 10-second slide.
-                let use_spring = self
-                    .config
-                    .animation_clock_move
-                    .eq_ignore_ascii_case("spring");
-                let duration_ms = if use_spring {
-                    let max_disp = ((rect.x - initial.x).abs())
-                        .max((rect.y - initial.y).abs())
-                        .max((rect.width - initial.width).abs())
-                        .max((rect.height - initial.height).abs())
-                        as f64;
-                    if max_disp <= 0.5 {
-                        // Already at target (sub-pixel). Take the
-                        // bezier-style fallback so we still log a
-                        // meaningful animation start, but the tick
-                        // will settle on the very next frame.
-                        self.config.animation_duration_move.max(1)
-                    } else {
-                        let spring = crate::animation::spring::Spring {
-                            from: 0.0,
-                            to: max_disp,
-                            initial_velocity: 0.0,
-                            params: crate::animation::spring::SpringParams::new(
-                                self.config.animation_spring_damping_ratio,
-                                self.config.animation_spring_stiffness,
-                                0.5, // half-pixel epsilon
-                            ),
-                        };
-                        let dur = spring
-                            .clamped_duration()
-                            .map(|d| d.as_millis() as u32)
-                            // Pathological overdamped → fall back.
-                            .unwrap_or(self.config.animation_duration_move.max(1));
-                        // Clamp: 60 ms floor (one vblank), 1500 ms
-                        // ceiling (anything longer is almost certainly
-                        // a misconfiguration).
-                        dur.clamp(60, 1500)
-                    }
-                } else {
-                    // Overview transitions override the configured
-                    // move duration with a snappier value (set by
-                    // open_overview/close_overview); falls through to
-                    // the user's animation_duration_move otherwise.
-                    self.overview_transition_animation_ms
-                        .unwrap_or(self.config.animation_duration_move)
-                        .max(1)
-                };
-                self.clients[client_idx].animation = ClientAnimation {
-                    should_animate: true,
-                    running: true,
-                    time_started: now,
-                    last_tick_ms: now,
-                    duration: duration_ms,
-                    initial,
-                    current: rect,
-                    action: AnimationType::Move,
-                    ..Default::default()
-                };
-                self.clients[client_idx].geom = initial;
-            } else if already_animating_to_target {
-                // Existing animation still converging on the right
-                // target — leave its `time_started`, `initial`, and the
-                // current interpolated `c.geom` exactly where they are.
-            } else {
-                self.clients[client_idx].animation.running = false;
-                self.clients[client_idx].geom = rect;
-            }
-            self.clients[client_idx].is_tag_switching = false;
+        for (client_idx, rect) in geometries {
+            self.apply_layout_rect(client_idx, rect, now, &mut group_slots);
         }
 
         // Tabbed groups: pre-size every HIDDEN member to its active
@@ -822,22 +631,7 @@ impl MargoState {
         // Pinning their size means the swap shows their correctly-sized
         // last buffer instantly. Guarded on `geom != slot`, so once
         // settled this configures nothing until the slot actually moves.
-        if !group_slots.is_empty() {
-            for i in 0..self.clients.len() {
-                if self.clients[i].monitor != mon_idx || !self.clients[i].is_hidden_group_member() {
-                    continue;
-                }
-                let slot = self.clients[i]
-                    .group_id
-                    .and_then(|gid| group_slots.get(&gid).copied());
-                if let Some(slot) = slot {
-                    if self.clients[i].geom != slot {
-                        self.clients[i].geom = slot;
-                        self.configure_window_size(i, slot);
-                    }
-                }
-            }
-        }
+        self.presize_hidden_group_members(mon_idx, &group_slots);
 
         // Apply fullscreen / floating overrides outside overview. Overview
         // intentionally thumbnails every visible window in the grid.
@@ -901,57 +695,237 @@ impl MargoState {
         for (window, geom, configure_geom) in visible {
             self.space
                 .map_element(window.clone(), (geom.x, geom.y), false);
-
-            if let WindowSurface::Wayland(toplevel) = window.underlying_surface() {
-                tracing::debug!(
-                    "arrange: setting toplevel size {}x{}",
-                    configure_geom.width,
-                    configure_geom.height
-                );
-                toplevel.with_pending_state(|state| {
-                    state.size = Some(Size::from((configure_geom.width, configure_geom.height)));
-                });
-                // Only send the configure if the initial configure has already
-                // gone out. The initial configure must be sent during the first
-                // commit (see CompositorHandler::commit).
-                let initial_sent = with_states(toplevel.wl_surface(), |states| {
-                    states
-                        .data_map
-                        .get::<XdgToplevelSurfaceData>()
-                        .and_then(|d| d.lock().ok().map(|d| d.initial_configure_sent))
-                        .unwrap_or(false)
-                });
-                if initial_sent {
-                    toplevel.send_pending_configure();
-                }
-            } else if let WindowSurface::X11(x11) = window.underlying_surface() {
-                // X11 (XWayland) clients anchor their menus / popups / tooltips
-                // to their OWN absolute position, so they must be told where the
-                // compositor actually placed the toplevel. Wayland clients don't
-                // need this (the compositor owns their position), but an X11
-                // client left thinking it sits elsewhere opens popups detached
-                // from the rendered window — the "menus open in the wrong place
-                // under XWayland" bug. Mirror the scene rect into the X11 client
-                // (guarded so we don't re-configure an already-correct window).
-                if geom.width > 0 && geom.height > 0 {
-                    let rect = smithay::utils::Rectangle::new(
-                        (geom.x, geom.y).into(),
-                        (geom.width, geom.height).into(),
-                    );
-                    if x11.geometry() != rect {
-                        tracing::debug!(
-                            "arrange: configuring x11 window to {}x{}+{}+{}",
-                            geom.width,
-                            geom.height,
-                            geom.x,
-                            geom.y
-                        );
-                        let _ = x11.configure(rect);
-                    }
-                }
-            }
+            configure_arranged_window(&window, geom, configure_geom);
         }
         Some(repaint_outputs)
+    }
+
+    /// Move client `client_idx` to its freshly computed layout `rect`:
+    /// reserve a tab strip for an active group member (recording the slot
+    /// in `group_slots`), then start, retarget or skip the move animation.
+    fn apply_layout_rect(
+        &mut self,
+        client_idx: usize,
+        mut rect: Rect,
+        now: u32,
+        group_slots: &mut std::collections::HashMap<u32, Rect>,
+    ) {
+        // Tabbed group: reserve the tab strip's height at the TOP of the
+        // tile and shrink the window content to match, so the strip sits
+        // INSIDE the window's allocation (a title-bar band above the
+        // content) instead of floating in the gap above it — where it slid
+        // under the top bar and ate the outer gap. chip_rects draws the
+        // strip at `geom.y - bar_h`, i.e. exactly this reserved band, now
+        // within the work area. The shrunk rect is recorded so hidden
+        // siblings match it (seamless cycling).
+        if self.clients[client_idx].group_active {
+            if let Some(gid) = self.clients[client_idx].group_id {
+                let bar_h = self.config.group_bar_height as i32;
+                if bar_h > 0 && rect.height > bar_h {
+                    rect.y += bar_h;
+                    rect.height -= bar_h;
+                }
+                group_slots.insert(gid, rect);
+            }
+        }
+        let old = self.clients[client_idx].geom;
+
+        // If we're already animating toward exactly this target,
+        // leave the in-flight animation alone. arrange_monitor gets
+        // called from many event sources (title change → window-
+        // rule reapply, focus shift, output resize, scroller pan
+        // recompute, …) and a long-running browser like Helium can
+        // tick those off every frame while it's playing video. The
+        // old behaviour was: each call saw `old != rect` (because
+        // `old = c.geom` is the *interpolated* mid-flight value, not
+        // the target), restarted the move animation with `initial
+        // = old`, and reset `time_started = now`. Result: the
+        // animation never finishes — every 16 ms it inches a few
+        // pixels toward the target and then resets, producing the
+        // exact 1-pixel-per-frame oscillation we kept seeing in the
+        // arrange traces (-1794 → -1795 → -1794 → …).
+        let already_animating_to_target = self.clients[client_idx].animation.running
+            && self.clients[client_idx].animation.current == rect;
+
+        let should_animate = self.config.animations
+            && self.config.animation_duration_move > 0
+            && !self.clients[client_idx].no_animation
+            && !self.clients[client_idx].is_tag_switching
+            && old.width > 0
+            && old.height > 0
+            && old != rect
+            && !already_animating_to_target;
+
+        // Diagnostic: every layout decision per visible client.
+        // Fires per-client on every tag switch / move / focus
+        // arrange — at INFO it floods the journal during normal
+        // use (~30-60 lines/sec) and shows up as input latency
+        // and journal contention. Trace level keeps it available
+        // for `RUST_LOG=margo=trace` debugging without polluting
+        // the steady-state log.
+        let actual_geom = self.clients[client_idx].window.geometry().size;
+        tracing::trace!(
+            "arrange[{}]: client_idx={} old={}x{}+{}+{} slot={}x{}+{}+{} actual_buf={}x{} animate={} already_to_target={}",
+            self.clients[client_idx].app_id.as_str(),
+            client_idx,
+            old.width,
+            old.height,
+            old.x,
+            old.y,
+            rect.width,
+            rect.height,
+            rect.x,
+            rect.y,
+            actual_geom.w,
+            actual_geom.h,
+            should_animate,
+            already_animating_to_target,
+        );
+        if should_animate {
+            // Animate the slot fully — both position AND size lerp
+            // from `old` to `rect` over `animation_duration_move`.
+            // Combined with the niri-style crossfade that runs in
+            // parallel (snapshot rendered on top with fading
+            // alpha, scaled to the *current* interpolated slot),
+            // this gives the smooth resize transition the user
+            // sees from niri/Hyprland's animated layouts: the
+            // pre-resize content scales down while the post-
+            // resize content fades up.
+            //
+            // Earlier we used to snap the size to the target on
+            // frame 0 (initial.width = rect.width) so the buffer
+            // and the slot would always match dimensions — but
+            // that left the snapshot fixed at the new slot size
+            // for the entire animation, which meant the snapshot
+            // was rendered at a *different* size from the captured
+            // content for 150 ms and the user saw a stretched/
+            // squished version of the pre-resize image. The
+            // crossfade infrastructure makes the size-snap
+            // unnecessary: we always render BOTH layers at the
+            // interpolated slot, and the buffer/slot mismatch on
+            // the live layer is hidden under the snapshot until
+            // alpha drops.
+            let initial = old;
+            // niri-style resize transition: if the slot size
+            // changes (not just the position), flag a snapshot so
+            // the next render captures the *current* surface tree
+            // to a `GlesTexture`. While the move animation
+            // interpolates the slot from old to new, the render
+            // path draws that snapshot scaled to the live slot
+            // instead of the live surface — the OLD content stays
+            // pinned visually until the client (Electron, slow
+            // ack) commits a buffer at the new size, which drops
+            // the snapshot. Without this, Helium's 50–100 ms
+            // ack-and-reflow window leaks the buffer-vs-slot
+            // mismatch onto the screen.
+            let slot_size_changed = old.width != rect.width || old.height != rect.height;
+            if slot_size_changed && self.clients[client_idx].resize_snapshot.is_none() {
+                self.clients[client_idx].snapshot_pending = true;
+            }
+            // Spring retarget: if the previous animation was still
+            // running, carry its per-channel velocity forward.
+            // Without this, the integrator would re-start from rest
+            // every time the layout reshuffled mid-flight and the
+            // window would visibly hitch — the whole point of the
+            // spring clock is that retargets stay continuous.
+            // Bezier ignores this field; harmless if it's set.
+            // Decide the animation's hard duration. With bezier
+            // we honour the user's `animation_duration_move`; with
+            // spring we let the physics tell us how long it'll
+            // take to settle to within `epsilon` of the target,
+            // capped between a sane floor and ceiling so a single
+            // bad config value can't produce a 10-second slide.
+            let use_spring = self
+                .config
+                .animation_clock_move
+                .eq_ignore_ascii_case("spring");
+            let duration_ms = if use_spring {
+                let max_disp = ((rect.x - initial.x).abs())
+                    .max((rect.y - initial.y).abs())
+                    .max((rect.width - initial.width).abs())
+                    .max((rect.height - initial.height).abs())
+                    as f64;
+                if max_disp <= 0.5 {
+                    // Already at target (sub-pixel). Take the
+                    // bezier-style fallback so we still log a
+                    // meaningful animation start, but the tick
+                    // will settle on the very next frame.
+                    self.config.animation_duration_move.max(1)
+                } else {
+                    let spring = crate::animation::spring::Spring {
+                        from: 0.0,
+                        to: max_disp,
+                        initial_velocity: 0.0,
+                        params: crate::animation::spring::SpringParams::new(
+                            self.config.animation_spring_damping_ratio,
+                            self.config.animation_spring_stiffness,
+                            0.5, // half-pixel epsilon
+                        ),
+                    };
+                    let dur = spring
+                        .clamped_duration()
+                        .map(|d| d.as_millis() as u32)
+                        // Pathological overdamped → fall back.
+                        .unwrap_or(self.config.animation_duration_move.max(1));
+                    // Clamp: 60 ms floor (one vblank), 1500 ms
+                    // ceiling (anything longer is almost certainly
+                    // a misconfiguration).
+                    dur.clamp(60, 1500)
+                }
+            } else {
+                // Overview transitions override the configured
+                // move duration with a snappier value (set by
+                // open_overview/close_overview); falls through to
+                // the user's animation_duration_move otherwise.
+                self.overview_transition_animation_ms
+                    .unwrap_or(self.config.animation_duration_move)
+                    .max(1)
+            };
+            self.clients[client_idx].animation = ClientAnimation {
+                should_animate: true,
+                running: true,
+                time_started: now,
+                last_tick_ms: now,
+                duration: duration_ms,
+                initial,
+                current: rect,
+                action: AnimationType::Move,
+                ..Default::default()
+            };
+            self.clients[client_idx].geom = initial;
+        } else if already_animating_to_target {
+            // Existing animation still converging on the right
+            // target — leave its `time_started`, `initial`, and the
+            // current interpolated `c.geom` exactly where they are.
+        } else {
+            self.clients[client_idx].animation.running = false;
+            self.clients[client_idx].geom = rect;
+        }
+        self.clients[client_idx].is_tag_switching = false;
+    }
+
+    /// Pin every hidden tab-group member on `mon_idx` to its active
+    /// sibling's slot, so cycling the group shows a correctly sized buffer
+    /// at once. Configures nothing once settled (`geom == slot`).
+    fn presize_hidden_group_members(
+        &mut self,
+        mon_idx: usize,
+        group_slots: &std::collections::HashMap<u32, Rect>,
+    ) {
+        for i in 0..self.clients.len() {
+            if self.clients[i].monitor != mon_idx || !self.clients[i].is_hidden_group_member() {
+                continue;
+            }
+            let slot = self.clients[i]
+                .group_id
+                .and_then(|gid| group_slots.get(&gid).copied());
+            if let Some(slot) = slot
+                && self.clients[i].geom != slot
+            {
+                self.clients[i].geom = slot;
+                self.configure_window_size(i, slot);
+            }
+        }
     }
 
     /// Global follow-up to one or more [`arrange_monitor_layout`]
@@ -1217,6 +1191,60 @@ impl MargoState {
         }
         for c in self.clients.iter().filter(|c| c.is_overlay) {
             self.space.raise_element(&c.window, false);
+        }
+    }
+}
+
+/// Tell a just-mapped window its arranged size (Wayland: pending
+/// configure, sent once the initial configure is out) or its absolute
+/// rect (X11, so its popups anchor to where it actually is).
+fn configure_arranged_window(window: &Window, geom: Rect, configure_geom: Rect) {
+    if let WindowSurface::Wayland(toplevel) = window.underlying_surface() {
+        tracing::debug!(
+            "arrange: setting toplevel size {}x{}",
+            configure_geom.width,
+            configure_geom.height
+        );
+        toplevel.with_pending_state(|state| {
+            state.size = Some(Size::from((configure_geom.width, configure_geom.height)));
+        });
+        // Only send the configure if the initial configure has already
+        // gone out. The initial configure must be sent during the first
+        // commit (see CompositorHandler::commit).
+        let initial_sent = with_states(toplevel.wl_surface(), |states| {
+            states
+                .data_map
+                .get::<XdgToplevelSurfaceData>()
+                .and_then(|d| d.lock().ok().map(|d| d.initial_configure_sent))
+                .unwrap_or(false)
+        });
+        if initial_sent {
+            toplevel.send_pending_configure();
+        }
+    } else if let WindowSurface::X11(x11) = window.underlying_surface() {
+        // X11 (XWayland) clients anchor their menus / popups / tooltips
+        // to their OWN absolute position, so they must be told where the
+        // compositor actually placed the toplevel. Wayland clients don't
+        // need this (the compositor owns their position), but an X11
+        // client left thinking it sits elsewhere opens popups detached
+        // from the rendered window — the "menus open in the wrong place
+        // under XWayland" bug. Mirror the scene rect into the X11 client
+        // (guarded so we don't re-configure an already-correct window).
+        if geom.width > 0 && geom.height > 0 {
+            let rect = smithay::utils::Rectangle::new(
+                (geom.x, geom.y).into(),
+                (geom.width, geom.height).into(),
+            );
+            if x11.geometry() != rect {
+                tracing::debug!(
+                    "arrange: configuring x11 window to {}x{}+{}+{}",
+                    geom.width,
+                    geom.height,
+                    geom.x,
+                    geom.y
+                );
+                let _ = x11.configure(rect);
+            }
         }
     }
 }
