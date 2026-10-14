@@ -1399,7 +1399,10 @@ fn main() -> Result<()> {
             }
         }
         layer_animation_outputs = unique_layer_outputs;
-        let animations_changed = {
+        let nothing_animating = animation_clients.is_empty()
+            && state.closing_clients.is_empty()
+            && state.layer_animations.is_empty();
+        let animations_changed = !nothing_animating && {
             let cfg = &state.config;
             let use_spring = cfg.animation_clock_move.eq_ignore_ascii_case("spring");
             // The spring carried in `AnimTickSpec` is a 0→1 *progress*
@@ -1536,17 +1539,25 @@ fn main() -> Result<()> {
                 }
             }
 
-            let animated: Vec<_> = state
-                .clients
-                .iter()
-                .filter(|client| {
-                    state.monitors.get(client.monitor).is_some_and(|monitor| {
-                        state.client_renders_on_output(client, &monitor.output)
-                    })
-                })
-                .map(|client| (client.window.clone(), client.geom))
-                .collect();
-            for (window, geom) in animated {
+            // Only windows whose animated position actually moved this tick
+            // need re-mapping; everything else is already where
+            // `arrange_monitor` (or an earlier tick) put it.
+            let mut remapped = false;
+            for &idx in &animation_clients {
+                let Some(client) = state.clients.get(idx) else {
+                    continue;
+                };
+                let on_its_output = state
+                    .monitors
+                    .get(client.monitor)
+                    .is_some_and(|monitor| state.client_renders_on_output(client, &monitor.output));
+                let loc = smithay::utils::Point::<i32, smithay::utils::Logical>::from((
+                    client.geom.x,
+                    client.geom.y,
+                ));
+                if !on_its_output || state.space.element_location(&client.window) == Some(loc) {
+                    continue;
+                }
                 // Match `arrange_monitor`'s convention exactly:
                 // `Space::map_element` records the location of the
                 // window's *geometry origin* in space coords. Render
@@ -1564,7 +1575,9 @@ fn main() -> Result<()> {
                 // border kadar hızlı hareket etmiyor" symptom — every
                 // animation tick re-positioned the surface
                 // `geometry.loc` short of where the border tracked.
-                state.space.map_element(window, (geom.x, geom.y), false);
+                let window = client.window.clone();
+                state.space.map_element(window, loc, false);
+                remapped = true;
             }
             // `map_element` retains Smithay's old output-membership cache. A
             // boundary-crossing animation must refresh that cache before the
@@ -1583,10 +1596,15 @@ fn main() -> Result<()> {
             // smithay's `space.map_element` always moves the touched
             // element to the top of the stack, so an animated tile
             // would otherwise leap above an unrelated floating window
-            // (CopyQ, pavucontrol). Re-establish the z bands after
-            // every animation tick.
-            state.enforce_z_order();
-            border::refresh(state);
+            // (CopyQ, pavucontrol). Re-establish the z bands whenever
+            // this tick re-mapped something.
+            if remapped {
+                state.enforce_z_order();
+            }
+            // Only animated clients' geometry / focus colour changed.
+            for &idx in &animation_clients {
+                border::refresh_one(state, idx);
+            }
             for output in animation_outputs {
                 state.request_repaint_output(&output);
             }
