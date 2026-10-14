@@ -105,3 +105,27 @@ fn confine_box_insets_by_border_plus_margin_and_never_inverts() {
     let (min_x, min_y, max_x, max_y) = client.confine_box();
     assert!(max_x >= min_x && max_y >= min_y);
 }
+
+#[test]
+fn lone_scroller_column_uses_scroller_proportion_single() {
+    let mut fx = Fixture::new();
+    windows(&mut fx, 1);
+    let curtag = fx.server.state.monitors[0].pertag.curtag;
+    fx.server.state.monitors[0].pertag.ltidxs[curtag] = crate::layout::LayoutId::Scroller;
+    fx.server.state.config.scroller_ignore_proportion_single = true;
+    fx.server.state.arrange_monitor(0);
+    let full = fx.server.state.clients[0].geom.width;
+
+    fx.server.state.config.scroller_ignore_proportion_single = false;
+    fx.server.state.clients[0].scroller_proportion_single = 0.5;
+    fx.server.state.arrange_monitor(0);
+    let single = fx.server.state.clients[0].geom.width;
+
+    assert!(single < full, "single={single} full={full}");
+    let wa = fx.server.state.monitors[0].work_area;
+    let center = fx.server.state.clients[0].geom.x + single / 2;
+    assert!(
+        (center - (wa.x + wa.width / 2)).abs() <= 2,
+        "lone column must stay centred"
+    );
+}

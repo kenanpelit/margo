@@ -138,6 +138,21 @@ impl MargoState {
         }
     }
 
+    /// Per-column scroller width proportions for `tiled`. A lone column
+    /// uses its `scroller_proportion_single` unless
+    /// `scroller_ignore_proportion_single` is set (mango semantics).
+    fn scroller_proportions(&self, tiled: &[usize]) -> Vec<f32> {
+        if let [only] = tiled
+            && !self.config.scroller_ignore_proportion_single
+        {
+            return vec![self.clients[*only].scroller_proportion_single];
+        }
+        tiled
+            .iter()
+            .map(|&i| self.clients[i].scroller_proportion)
+            .collect()
+    }
+
     /// Auto-float / re-tile clients for the `Floating` layout. Runs at
     /// the top of every `arrange_monitor` pass (issue #1).
     ///
@@ -511,10 +526,7 @@ impl MargoState {
                 .collect()
         };
 
-        let scroller_proportions: Vec<f32> = tiled
-            .iter()
-            .map(|&i| self.clients[i].scroller_proportion)
-            .collect();
+        let scroller_proportions = self.scroller_proportions(&tiled);
         let focused_tiled_pos = self.focused_tiled_pos(mon_idx, &tiled, self.focused_client_idx());
 
         if !is_overview
@@ -1053,10 +1065,7 @@ impl MargoState {
             gaps.gappov = bw;
         }
 
-        let scroller_proportions: Vec<f32> = tiled
-            .iter()
-            .map(|&i| self.clients[i].scroller_proportion)
-            .collect();
+        let scroller_proportions = self.scroller_proportions(&tiled);
 
         let ctx = layout::ArrangeCtx {
             work_area,
