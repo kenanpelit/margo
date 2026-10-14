@@ -895,17 +895,19 @@ fn set_hot_corner(state: &mut MargoState, corner: Option<crate::state::HotCorner
     }
     let dwell = std::time::Duration::from_millis(state.config.hot_corner_dwell_ms as u64);
     let timer = calloop::timer::Timer::from_duration(dwell);
-    match state.loop_handle.insert_source(timer, |_, _, state: &mut MargoState| {
-        // Clear before anything else: the source is dropped on return,
-        // and `remove` on a stale token could hit a reused slot.
-        state.hot_corner_timer = None;
-        if hot_corner_blocked(state) {
-            set_hot_corner(state, None);
-        } else {
-            fire_hot_corner_if_due(state);
-        }
-        calloop::timer::TimeoutAction::Drop
-    }) {
+    match state
+        .loop_handle
+        .insert_source(timer, |_, _, state: &mut MargoState| {
+            // Clear before anything else: the source is dropped on return,
+            // and `remove` on a stale token could hit a reused slot.
+            state.hot_corner_timer = None;
+            if hot_corner_blocked(state) {
+                set_hot_corner(state, None);
+            } else {
+                fire_hot_corner_if_due(state);
+            }
+            calloop::timer::TimeoutAction::Drop
+        }) {
         Ok(token) => state.hot_corner_timer = Some(token),
         Err(e) => tracing::warn!("hot corner dwell timer: {e}"),
     }
@@ -915,8 +917,7 @@ fn set_hot_corner(state: &mut MargoState, corner: Option<crate::state::HotCorner
 /// disarm so it doesn't re-fire while the cursor stays put — the user
 /// has to leave and re-enter.
 fn fire_hot_corner_if_due(state: &mut MargoState) {
-    let (Some(corner), Some(armed)) = (state.hot_corner_dwelling, state.hot_corner_armed_at)
-    else {
+    let (Some(corner), Some(armed)) = (state.hot_corner_dwelling, state.hot_corner_armed_at) else {
         return;
     };
     let dwell = std::time::Duration::from_millis(state.config.hot_corner_dwell_ms as u64);
