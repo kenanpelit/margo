@@ -91,10 +91,7 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
             }
         }
 
-        let mon = data.focused_monitor();
-        if mon < data.monitors.len() {
-            data.arrange_monitor(mon);
-        }
+        throttled_grab_arrange(data, &self.window, self.was_tiled);
 
         // Phase 2 drop-target highlight: recomputed after arranging so
         // the candidate's geometry reflects any repack that repositioning
@@ -145,6 +142,7 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
                 data.clients[idx].interactive_grab = false;
             }
             data.drag_swap_target = None;
+            finish_grab_arrange(data, &self.window);
             // Drag-tile-to-tile end of grab. Only kicks in when
             // the grabbed window was tiled (or Mosaic-governed) at
             // start AND the config flag is on; CSD `xdg_toplevel.move`
@@ -242,6 +240,127 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
     fn unset(&mut self, _data: &mut MargoState) {}
 }
 
+// ── Grab arrange throttling ───────────────────────────────────────────────────
+
+/// The monitor `window` lives on (falls back to the focused one).
+fn grab_monitor(data: &MargoState, window: &Window) -> usize {
+    data.clients
+        .iter()
+        .find(|c| c.window == *window)
+        .map(|c| c.monitor)
+        .unwrap_or_else(|| data.focused_monitor())
+}
+
+/// `Ok` when an arrange may run now, `Err(wait)` when the last one was
+/// less than `interval` ago.
+fn grab_arrange_due(
+    last: Option<std::time::Instant>,
+    now: std::time::Instant,
+    interval: std::time::Duration,
+) -> Result<(), std::time::Duration> {
+    match last {
+        Some(t) if now.saturating_duration_since(t) < interval => {
+            Err(interval - now.saturating_duration_since(t))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Re-arrange the grabbed window's monitor at most once per
+/// `drag_{tile,floating}_refresh_interval` ms. A pointer can report
+/// motion at 1000 Hz; arranging (layout, configures, borders, z-order)
+/// on every event floods a resizing client with configures it can't ack
+/// in time. A skipped update is applied by a one-shot timer at the end
+/// of the interval, so the window still lands where the pointer stopped.
+fn throttled_grab_arrange(data: &mut MargoState, window: &Window, tiled: bool) {
+    let interval_ms = if tiled {
+        data.config.drag_tile_refresh_interval
+    } else {
+        data.config.drag_floating_refresh_interval
+    };
+    let interval = std::time::Duration::from_secs_f32(interval_ms.clamp(0.0, 1000.0) / 1000.0);
+    let now = std::time::Instant::now();
+    match grab_arrange_due(data.grab_arrange_last, now, interval) {
+        Ok(()) => {
+            if let Some(token) = data.grab_arrange_timer.take() {
+                data.loop_handle.remove(token);
+            }
+            data.grab_arrange_last = Some(now);
+            let mon = grab_monitor(data, window);
+            if mon < data.monitors.len() {
+                data.arrange_monitor(mon);
+            }
+        }
+        Err(_) if data.grab_arrange_timer.is_some() => {}
+        Err(wait) => {
+            let window = window.clone();
+            let timer = calloop::timer::Timer::from_duration(wait);
+            match data
+                .loop_handle
+                .insert_source(timer, move |_, _, state: &mut MargoState| {
+                    // Clear first: the source is dropped on return.
+                    state.grab_arrange_timer = None;
+                    state.grab_arrange_last = Some(std::time::Instant::now());
+                    let mon = grab_monitor(state, &window);
+                    if mon < state.monitors.len() {
+                        state.arrange_monitor(mon);
+                    }
+                    calloop::timer::TimeoutAction::Drop
+                }) {
+                Ok(token) => data.grab_arrange_timer = Some(token),
+                Err(e) => tracing::warn!("grab arrange timer: {e}"),
+            }
+        }
+    }
+}
+
+/// End of a move/resize grab: drop any pending throttled update and
+/// arrange once with the final geometry.
+fn finish_grab_arrange(data: &mut MargoState, window: &Window) {
+    if let Some(token) = data.grab_arrange_timer.take() {
+        data.loop_handle.remove(token);
+    }
+    data.grab_arrange_last = None;
+    let mon = grab_monitor(data, window);
+    if mon < data.monitors.len() {
+        data.arrange_monitor(mon);
+    }
+}
+
+#[cfg(test)]
+mod throttle_tests {
+    use super::grab_arrange_due;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn first_update_and_updates_past_the_interval_run_immediately() {
+        let now = Instant::now();
+        let interval = Duration::from_millis(8);
+        assert_eq!(grab_arrange_due(None, now, interval), Ok(()));
+        assert_eq!(
+            grab_arrange_due(Some(now - Duration::from_millis(9)), now, interval),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn updates_inside_the_interval_wait_for_the_remainder() {
+        let now = Instant::now();
+        let wait = grab_arrange_due(
+            Some(now - Duration::from_millis(3)),
+            now,
+            Duration::from_millis(8),
+        );
+        assert_eq!(wait, Err(Duration::from_millis(5)));
+    }
+
+    #[test]
+    fn zero_interval_never_throttles() {
+        let now = Instant::now();
+        assert_eq!(grab_arrange_due(Some(now), now, Duration::ZERO), Ok(()));
+    }
+}
+
 // ── Resize grab ───────────────────────────────────────────────────────────────
 
 pub struct ResizeSurfaceGrab {
@@ -319,10 +438,7 @@ impl PointerGrab<MargoState> for ResizeSurfaceGrab {
             data.clients[idx].float_geom.height = new_size.h;
         }
 
-        let mon = data.focused_monitor();
-        if mon < data.monitors.len() {
-            data.arrange_monitor(mon);
-        }
+        throttled_grab_arrange(data, &self.window, false);
     }
 
     fn relative_motion(
@@ -346,6 +462,7 @@ impl PointerGrab<MargoState> for ResizeSurfaceGrab {
             if let Some(idx) = data.clients.iter().position(|c| c.window == self.window) {
                 data.clients[idx].interactive_grab = false;
             }
+            finish_grab_arrange(data, &self.window);
             handle.unset_grab(self, data, event.serial, event.time, true);
         }
     }

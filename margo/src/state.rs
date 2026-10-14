@@ -1018,6 +1018,11 @@ pub struct MargoState {
     /// corner (no further motion needed). Cleared by its own callback
     /// before the source drops.
     pub hot_corner_timer: Option<smithay::reexports::calloop::RegistrationToken>,
+    /// When a move/resize grab last re-arranged (see
+    /// `input::grabs::throttled_grab_arrange`), and the timer that
+    /// applies a throttled update once the interval is over.
+    pub grab_arrange_last: Option<std::time::Instant>,
+    pub grab_arrange_timer: Option<smithay::reexports::calloop::RegistrationToken>,
 }
 
 impl MargoState {
@@ -1422,6 +1427,8 @@ impl MargoState {
             hotplug_rescan_pending: false,
             hot_corner_armed_at: None,
             hot_corner_timer: None,
+            grab_arrange_last: None,
+            grab_arrange_timer: None,
             title_rules_exist: config_has_title_rules(&config),
             config,
             theme_baseline: None,
