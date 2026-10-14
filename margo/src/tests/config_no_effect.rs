@@ -10,7 +10,6 @@ const NO_EFFECT_FIELDS: &[&str] = &[
     "allow_tearing",
     "axis_bind_apply_timeout",
     "axis_bindings",
-    "axis_scroll_factor",
     "blur_optimized",
     "button_map",
     "capslock",
@@ -37,7 +36,6 @@ const NO_EFFECT_FIELDS: &[&str] = &[
     "touch_edge_size_top",
     "touch_gesture_bindings",
     "touch_timeout_ms",
-    "trackpad_scroll_factor",
     "wallpaper_fit",
     "warpcursor",
 ];

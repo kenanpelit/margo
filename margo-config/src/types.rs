@@ -1032,13 +1032,9 @@ pub struct Config {
     pub click_method: ClickMethod,
     pub send_events_mode: u32,
     pub button_map: u32,
-    /// Mouse-wheel scroll factor. The legacy `axis_scroll_factor`
-    /// key sets this AND `trackpad_scroll_factor` (since older
-    /// configs didn't distinguish).
+    /// Scroll multiplier for wheel (and other discrete) scrolling.
     pub axis_scroll_factor: f64,
-    /// Trackpad scroll factor. New in 0.13 — defaults to whatever
-    /// `axis_scroll_factor` was, so existing configs see no
-    /// regression.
+    /// Scroll multiplier for touchpad (finger / continuous) scrolling.
     pub trackpad_scroll_factor: f64,
     pub axis_bind_apply_timeout: u32,
     pub tablet_map_to_mon: Option<String>,

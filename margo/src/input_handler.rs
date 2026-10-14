@@ -1427,6 +1427,12 @@ fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(state: &mut Marg
     // AxisFrame::source() and AxisFrame::value() both use smithay::backend::input types.
     let source = event.source();
     let mut frame = AxisFrame::new(event.time()).source(source);
+    // mango: touchpad scrolls scale by trackpad_scroll_factor, wheels by
+    // axis_scroll_factor.
+    let factor = match source {
+        AxisSource::Finger | AxisSource::Continuous => state.config.trackpad_scroll_factor,
+        _ => state.config.axis_scroll_factor,
+    };
 
     for axis in [Axis::Horizontal, Axis::Vertical] {
         if event.amount_v120(axis).is_none() && event.amount(axis).is_none() {
@@ -1446,9 +1452,9 @@ fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(state: &mut Marg
             continue;
         }
 
-        frame = frame.value(axis, amount);
+        frame = frame.value(axis, amount * factor);
         if let Some(v120) = event.amount_v120(axis) {
-            frame = frame.v120(axis, v120 as i32);
+            frame = frame.v120(axis, (v120 * factor).round() as i32);
         }
     }
 

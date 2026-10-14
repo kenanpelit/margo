@@ -632,7 +632,6 @@ pub const NO_EFFECT_KEYS: &[&str] = &[
     "allow_shortcuts_inhibit",
     "allow_tearing",
     "axis_bind_apply_timeout",
-    "axis_scroll_factor",
     "axisbind",
     "blur_optimized",
     "button_map",
@@ -660,7 +659,6 @@ pub const NO_EFFECT_KEYS: &[&str] = &[
     "touch_edge_size_top",
     "touch_timeoutms",
     "touchgesturebind",
-    "trackpad_scroll_factor",
     "wallpaper_fit",
     "warpcursor",
 ];
