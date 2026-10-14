@@ -155,6 +155,7 @@ features = [
 # review CLI (`cargo install cargo-insta`).
 [dev-dependencies]
 insta = "1"
+tempfile = "3"
 
 [lints]
 workspace = true

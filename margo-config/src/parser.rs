@@ -92,7 +92,7 @@ pub fn apply_first_party_defaults(_cfg: &mut Config) {}
 
 // ── Path resolution ──────────────────────────────────────────────────────────
 
-fn resolve_config_path(explicit: Option<&Path>) -> Result<PathBuf> {
+pub fn resolve_config_path(explicit: Option<&Path>) -> Result<PathBuf> {
     if let Some(p) = explicit {
         return Ok(p.to_path_buf());
     }

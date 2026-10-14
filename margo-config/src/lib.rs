@@ -8,6 +8,6 @@ pub mod validator;
 
 pub use parser::{
     apply_first_party_defaults, config_source_files, parse_config, parse_config_str,
-    parse_config_str_with_defaults, parse_config_with_defaults,
+    parse_config_str_with_defaults, parse_config_with_defaults, resolve_config_path,
 };
 pub use types::*;
