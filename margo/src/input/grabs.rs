@@ -359,6 +359,60 @@ mod throttle_tests {
     }
 }
 
+/// The corner a compositor-initiated resize grabs (`drag_corner`: 0 TL,
+/// 1 TR, 2 BL, 3 BR, anything else = the corner nearest the cursor) and
+/// that corner's position — where `drag_warp_cursor` puts the pointer.
+pub(crate) fn resize_corner(
+    drag_corner: i32,
+    cursor: (f64, f64),
+    geom: crate::layout::Rect,
+) -> (ResizeEdge, Point<f64, Logical>) {
+    let (left, top) = match drag_corner {
+        0 => (true, true),
+        1 => (false, true),
+        2 => (true, false),
+        3 => (false, false),
+        _ => (
+            cursor.0 < geom.x as f64 + geom.width as f64 / 2.0,
+            cursor.1 < geom.y as f64 + geom.height as f64 / 2.0,
+        ),
+    };
+    let edge = match (left, top) {
+        (true, true) => ResizeEdge::TopLeft,
+        (false, true) => ResizeEdge::TopRight,
+        (true, false) => ResizeEdge::BottomLeft,
+        (false, false) => ResizeEdge::BottomRight,
+    };
+    let x = if left { geom.x } else { geom.x + geom.width };
+    let y = if top { geom.y } else { geom.y + geom.height };
+    (edge, Point::from((x as f64, y as f64)))
+}
+
+#[cfg(test)]
+mod corner_tests {
+    use super::resize_corner;
+    use crate::layout::Rect;
+    use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge;
+
+    #[test]
+    fn fixed_corners_map_to_edges_and_positions() {
+        let g = Rect::new(100, 100, 400, 300);
+        let (e, p) = resize_corner(1, (0.0, 0.0), g);
+        assert_eq!(e, ResizeEdge::TopRight);
+        assert_eq!((p.x, p.y), (500.0, 100.0));
+        let (e, p) = resize_corner(2, (0.0, 0.0), g);
+        assert_eq!(e, ResizeEdge::BottomLeft);
+        assert_eq!((p.x, p.y), (100.0, 400.0));
+    }
+
+    #[test]
+    fn auto_picks_the_corner_nearest_the_cursor() {
+        let g = Rect::new(0, 0, 400, 300);
+        assert_eq!(resize_corner(4, (10.0, 290.0), g).0, ResizeEdge::BottomLeft);
+        assert_eq!(resize_corner(4, (390.0, 10.0), g).0, ResizeEdge::TopRight);
+    }
+}
+
 // ── Resize grab ───────────────────────────────────────────────────────────────
 
 pub struct ResizeSurfaceGrab {

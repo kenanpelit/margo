@@ -17,8 +17,6 @@ const NO_EFFECT_FIELDS: &[&str] = &[
     "center_master_overspread",
     "center_when_single_stack",
     "cursor_hide_timeout",
-    "drag_corner",
-    "drag_warp_cursor",
     "enable_floating_snap",
     "enable_hotarea",
     "exchange_cross_monitor",

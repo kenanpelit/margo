@@ -1590,11 +1590,46 @@ impl MargoState {
             c.geom.width.max(1),
             c.geom.height.max(1),
         ));
+        let (edges, corner) = crate::input::grabs::resize_corner(
+            self.config.drag_corner,
+            (self.input_pointer.x, self.input_pointer.y),
+            c.geom,
+        );
         self.clients[idx].interactive_grab = true;
         let Some(pointer) = self.seat.get_pointer() else {
             return;
         };
         let serial = SERIAL_COUNTER.next_serial();
+        // `drag_warp_cursor`: start the drag with the pointer on the
+        // grabbed corner, so the corner tracks the cursor exactly.
+        if self.config.drag_warp_cursor {
+            let old = smithay::utils::Point::from((self.input_pointer.x, self.input_pointer.y));
+            self.input_pointer.x = corner.x;
+            self.input_pointer.y = corner.y;
+            self.clamp_pointer_to_outputs();
+            pointer.motion(
+                self,
+                None,
+                &smithay::input::pointer::MotionEvent {
+                    location: smithay::utils::Point::from((
+                        self.input_pointer.x,
+                        self.input_pointer.y,
+                    )),
+                    serial,
+                    time: smithay::backend::input::InputTime::from_millis(crate::utils::now_ms()),
+                },
+            );
+            pointer.frame(self);
+            for output in self
+                .space
+                .output_under(old)
+                .chain(self.space.output_under(corner))
+                .cloned()
+                .collect::<Vec<_>>()
+            {
+                self.request_repaint_output(&output);
+            }
+        }
         let start_data = smithay::input::pointer::GrabStartData {
             focus: None,
             button: 0x111, // BTN_RIGHT
@@ -1606,8 +1641,7 @@ impl MargoState {
         let grab = crate::input::grabs::ResizeSurfaceGrab {
             start_data,
             window,
-            edges:
-                smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge::BottomRight,
+            edges,
             initial_loc,
             initial_size,
         };
