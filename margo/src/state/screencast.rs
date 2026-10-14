@@ -162,27 +162,25 @@ impl MargoState {
         let render_formats = self.cast_render_formats.clone();
 
         // Lazy-init Screencasting + PipeWire on first cast.
-        if self.screencasting.is_none() {
-            let casting = crate::screencasting::Screencasting::new(&self.loop_handle);
-            self.screencasting = Some(Box::new(casting));
-        }
-        let casting = self.screencasting.as_mut().unwrap();
+        let loop_handle = self.loop_handle.clone();
+        let casting = self.screencasting.get_or_insert_with(|| {
+            Box::new(crate::screencasting::Screencasting::new(&loop_handle))
+        });
 
-        if casting.pipewire.is_none() {
-            let pw_to_compositor = casting.pw_to_compositor.clone();
-            match crate::screencasting::pw_utils::PipeWire::new(
-                self.loop_handle.clone(),
-                pw_to_compositor,
-            ) {
-                Ok(pw) => casting.pipewire = Some(pw),
-                Err(err) => {
-                    tracing::warn!(error = ?err, "StartCast: PipeWire init failed");
-                    self.stop_cast(session_id);
-                    return;
+        let pw = match &mut casting.pipewire {
+            Some(pw) => pw,
+            pipewire @ None => {
+                let pw_to_compositor = casting.pw_to_compositor.clone();
+                match crate::screencasting::pw_utils::PipeWire::new(loop_handle, pw_to_compositor) {
+                    Ok(pw) => pipewire.insert(pw),
+                    Err(err) => {
+                        tracing::warn!(error = ?err, "StartCast: PipeWire init failed");
+                        self.stop_cast(session_id);
+                        return;
+                    }
                 }
             }
-        }
-        let pw = casting.pipewire.as_ref().unwrap();
+        };
 
         match pw.start_cast(
             gbm,
