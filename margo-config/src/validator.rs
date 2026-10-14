@@ -542,6 +542,8 @@ fn is_bind_key(k: &str) -> bool {
 /// it doubles as a suggestion source for `suggest_key`.
 const CSV_SHAPED_KEYS: &[&str] = &[
     "mousebind",
+    "axisbind",
+    "switchbind",
     "gesturebind",
     "touchgesturebind",
     "windowrule",
@@ -627,11 +629,9 @@ fn is_valid_modifier_token(t: &str) -> bool {
 /// starts reading one of these, so an implemented key can't keep warning.
 pub const NO_EFFECT_KEYS: &[&str] = &[
     "allow_tearing",
-    "axisbind",
     "blur_optimized",
     "focus_cross_monitor",
     "focus_cross_tag",
-    "switchbind",
     "syncobj_enable",
     "tablet_map_to_mon",
     "touch_degrees_leniency",
@@ -1347,7 +1347,7 @@ mod tests {
                 is_known_scalar_key(key)
                     || is_csv_shaped_key(key)
                     || is_bind_key(key)
-                    || ["axisbind", "switchbind", "touchgesturebind"].contains(key),
+                    || *key == "touchgesturebind",
                 "{key} is not a key the parser accepts"
             );
         }
@@ -1355,5 +1355,17 @@ mod tests {
         assert!(r.diagnostics.iter().any(|d| d.code == "W006"));
         let r = validate_str("borderpx = 2\n");
         assert!(!r.diagnostics.iter().any(|d| d.code == "W006"));
+    }
+
+    #[test]
+    fn implemented_binds_are_known_and_not_no_effect() {
+        let r = validate_str("axisbind = super,UP,focusstack,-1\nswitchbind = fold,spawn,true\n");
+        assert!(
+            !r.diagnostics
+                .iter()
+                .any(|d| d.code == "W001" || d.code == "W006"),
+            "{:?}",
+            r.diagnostics
+        );
     }
 }
