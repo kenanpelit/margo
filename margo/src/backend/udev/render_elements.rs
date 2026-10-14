@@ -600,7 +600,7 @@ pub fn build_cursor_elements_for_output(
         return (Vec::new(), Point::default());
     };
     let ptr_global = Point::<f64, _>::from((state.input_pointer.x, state.input_pointer.y));
-    if !output_geo.to_f64().contains(ptr_global) {
+    if state.cursor_hidden || !output_geo.to_f64().contains(ptr_global) {
         return (Vec::new(), Point::default());
     }
     let ptr_pos = ptr_global - output_geo.loc.to_f64();
@@ -848,7 +848,7 @@ fn push_cursor_elements(
     elements: &mut Vec<MargoRenderElement>,
 ) {
     let ptr_global = Point::<f64, _>::from((state.input_pointer.x, state.input_pointer.y));
-    if !output_geo.to_f64().contains(ptr_global) {
+    if state.cursor_hidden || !output_geo.to_f64().contains(ptr_global) {
         return;
     }
     let ptr_pos = ptr_global - output_geo.loc.to_f64();

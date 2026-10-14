@@ -746,6 +746,7 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
     state: &mut MargoState,
     event: E,
 ) {
+    state.note_pointer_activity();
     let serial = SERIAL_COUNTER.next_serial();
     let delta = (event.delta_x(), event.delta_y()).into();
     let delta_unaccel = (event.delta_x_unaccel(), event.delta_y_unaccel()).into();
@@ -1013,6 +1014,7 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
     state: &mut MargoState,
     event: E,
 ) {
+    state.note_pointer_activity();
     let serial = SERIAL_COUNTER.next_serial();
     let old_pos = Point::from((state.input_pointer.x, state.input_pointer.y));
     // Absolute devices (tablets in mouse mode, VM pointers) span the
@@ -1145,6 +1147,7 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
     state: &mut MargoState,
     event: E,
 ) {
+    state.note_pointer_activity();
     let serial = SERIAL_COUNTER.next_serial();
     let btn_state = event.state();
     let button = event.button_code();
@@ -1350,6 +1353,7 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
 }
 
 fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(state: &mut MargoState, event: E) {
+    state.note_pointer_activity();
     if state.session_locked {
         let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
         let ptr_focus = pointer_focus_under(state, pos);

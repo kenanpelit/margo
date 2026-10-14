@@ -129,3 +129,25 @@ fn lone_scroller_column_uses_scroller_proportion_single() {
         "lone column must stay centred"
     );
 }
+
+#[test]
+fn cursor_hides_after_timeout_and_returns_on_activity() {
+    let mut fx = Fixture::new();
+    windows(&mut fx, 1);
+    fx.server.state.config.cursor_hide_timeout = 1;
+    fx.server.state.note_pointer_activity();
+    // Pretend the last activity was long ago so the timer's first check
+    // already sees the timeout elapsed.
+    fx.server.state.pointer_activity_at =
+        std::time::Instant::now() - std::time::Duration::from_secs(5);
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    fx.dispatch();
+    assert!(fx.server.state.cursor_hidden);
+
+    fx.server.state.note_pointer_activity();
+    assert!(!fx.server.state.cursor_hidden);
+
+    fx.server.state.config.cursor_hide_timeout = 0;
+    fx.server.state.arm_cursor_hide_timer();
+    assert!(fx.server.state.cursor_hide_timer.is_none());
+}

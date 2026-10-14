@@ -637,7 +637,6 @@ pub const NO_EFFECT_KEYS: &[&str] = &[
     "blur_optimized",
     "button_map",
     "capslock",
-    "cursor_hide_timeout",
     "enable_floating_snap",
     "enable_hotarea",
     "exchange_cross_monitor",

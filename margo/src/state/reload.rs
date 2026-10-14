@@ -232,6 +232,7 @@ impl MargoState {
         // `auto_reload_config` itself, or the source/include tree, may
         // have just changed — start/stop/re-sync the watcher to match.
         self.sync_config_watcher();
+        self.arm_cursor_hide_timer();
         tracing::info!("config reloaded");
         Ok(())
     }

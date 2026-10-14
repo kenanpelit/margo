@@ -494,6 +494,71 @@ impl MargoState {
         }
     }
 
+    /// Pointer moved / clicked / scrolled: re-show a hidden cursor and
+    /// (re)start the `cursor_hide_timeout` countdown.
+    pub(crate) fn note_pointer_activity(&mut self) {
+        self.pointer_activity_at = std::time::Instant::now();
+        if self.cursor_hidden {
+            self.cursor_hidden = false;
+            self.repaint_pointer_output();
+        }
+        self.arm_cursor_hide_timer();
+    }
+
+    /// Ensure the hide countdown is running when `cursor_hide_timeout` is
+    /// set. One timer: it reschedules itself for the remainder whenever
+    /// activity happened since it was armed, so motion at 1000 Hz never
+    /// touches the event loop's source list.
+    pub(crate) fn arm_cursor_hide_timer(&mut self) {
+        let timeout = self.config.cursor_hide_timeout;
+        if timeout == 0 {
+            if let Some(token) = self.cursor_hide_timer.take() {
+                self.loop_handle.remove(token);
+            }
+            if self.cursor_hidden {
+                self.cursor_hidden = false;
+                self.repaint_pointer_output();
+            }
+            return;
+        }
+        if self.cursor_hide_timer.is_some() {
+            return;
+        }
+        let timeout = std::time::Duration::from_secs(u64::from(timeout));
+        let timer = calloop::timer::Timer::from_duration(timeout);
+        match self
+            .loop_handle
+            .insert_source(timer, |_, _, state: &mut MargoState| {
+                let timeout =
+                    std::time::Duration::from_secs(u64::from(state.config.cursor_hide_timeout));
+                let idle = state.pointer_activity_at.elapsed();
+                if state.config.cursor_hide_timeout > 0 && idle < timeout {
+                    return calloop::timer::TimeoutAction::ToDuration(timeout - idle);
+                }
+                // Clear first: the source is dropped on return.
+                state.cursor_hide_timer = None;
+                if state.config.cursor_hide_timeout > 0 && !state.cursor_hidden {
+                    state.cursor_hidden = true;
+                    state.repaint_pointer_output();
+                }
+                calloop::timer::TimeoutAction::Drop
+            }) {
+            Ok(token) => self.cursor_hide_timer = Some(token),
+            Err(e) => tracing::warn!("cursor hide timer: {e}"),
+        }
+    }
+
+    fn repaint_pointer_output(&mut self) {
+        let pos = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+            self.input_pointer.x,
+            self.input_pointer.y,
+        ));
+        let output = self.space.output_under(pos).next().cloned();
+        if let Some(output) = output {
+            self.request_repaint_output(&output);
+        }
+    }
+
     pub(crate) fn pointer_monitor(&self) -> Option<usize> {
         self.monitor_at_point(self.input_pointer.x, self.input_pointer.y)
     }

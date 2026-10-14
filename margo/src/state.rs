@@ -1004,6 +1004,13 @@ pub struct MargoState {
     /// applies a throttled update once the interval is over.
     pub grab_arrange_last: Option<std::time::Instant>,
     pub grab_arrange_timer: Option<smithay::reexports::calloop::RegistrationToken>,
+    /// `cursor_hide_timeout`: the pointer sprite is hidden after that many
+    /// seconds without pointer activity. `pointer_activity_at` is the last
+    /// motion / button / scroll; the timer re-arms itself until the
+    /// timeout has really elapsed since then.
+    pub cursor_hidden: bool,
+    pub pointer_activity_at: std::time::Instant,
+    pub cursor_hide_timer: Option<smithay::reexports::calloop::RegistrationToken>,
 }
 
 impl MargoState {
@@ -1410,6 +1417,9 @@ impl MargoState {
             hot_corner_timer: None,
             grab_arrange_last: None,
             grab_arrange_timer: None,
+            cursor_hidden: false,
+            pointer_activity_at: std::time::Instant::now(),
+            cursor_hide_timer: None,
             title_rules_exist: config_has_title_rules(&config),
             config,
             theme_baseline: None,

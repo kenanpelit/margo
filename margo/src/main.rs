@@ -1663,6 +1663,8 @@ fn main() -> Result<()> {
         margo.set_config_reload_sender(config_reload_tx);
     }
 
+    margo.arm_cursor_hide_timer();
+
     // ── Run the event loop ────────────────────────────────────────────────────
     event_loop.run(None, &mut margo, on_loop_iteration)?;
 
