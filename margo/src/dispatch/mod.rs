@@ -504,7 +504,10 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                 state.activate_window_id(arg.i as u64);
             }
         }
-        "focusstack" | "focusdir" => state.focus_stack(direction_arg(arg)),
+        "focusstack" | "focusdir" => {
+            state.focus_stack(direction_arg(arg));
+            state.warp_cursor_to_focus(false);
+        }
         // dwl's `focuslast` — jump back to the window you were on before
         // the current one; press again to return.
         "focuslast" | "focus_last" | "focus-last" => state.focus_last(),
@@ -513,7 +516,8 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
         // that way — view the adjacent tag instead. Needs the true 4-way
         // direction, not `direction_arg`'s collapsed -1/+1.
         "focus_window_or_workspace" | "focuswindoworworkspace" => {
-            state.focus_window_or_workspace(direction4(arg))
+            state.focus_window_or_workspace(direction4(arg));
+            state.warp_cursor_to_focus(false);
         }
         // niri-style MRU window switcher (Super+Tab). `arg.v` = scope
         // (all|output|workspace), `arg.v2` = filter (all|appid).
@@ -523,8 +527,14 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
         "mru_prev" => {
             state.mru_advance_args(arg.v.as_deref(), arg.v2.as_deref(), MruDirection::Backward)
         }
-        "exchange_client" | "smartmovewin" => state.exchange_stack(direction_arg(arg)),
-        "move_client" => state.move_client(direction4(arg)),
+        "exchange_client" | "smartmovewin" => {
+            state.exchange_stack(direction_arg(arg));
+            state.warp_cursor_to_focus(false);
+        }
+        "move_client" => {
+            state.move_client(direction4(arg));
+            state.warp_cursor_to_focus(false);
+        }
         "view" => state.view_tag(tag_arg(arg)),
         "toggleview" => state.toggle_view_tag(tag_arg(arg)),
         "tag" | "tagsilent" => state.tag_focused(tag_arg(arg)),
@@ -725,8 +735,14 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                 state.input_keyboard.mode = mode.clone();
             }
         }
-        "focusmon" => state.focus_mon(direction_arg(arg)),
-        "tagmon" => state.tag_mon(direction_arg(arg)),
+        "focusmon" => {
+            state.focus_mon(direction_arg(arg));
+            state.warp_cursor_to_focus(true);
+        }
+        "tagmon" => {
+            state.tag_mon(direction_arg(arg));
+            state.warp_cursor_to_focus(true);
+        }
         // Soft-disable / enable an output by name, mirroring the
         // wlr_output_management protocol path. Useful for keybind-
         // driven multi-monitor workflows ("toggle the laptop panel

@@ -1728,6 +1728,13 @@ fn pointer_focus_under(state: &MargoState, pos: Point<f64, Logical>) -> Option<S
     hit_test(state, pos).1
 }
 
+impl MargoState {
+    /// The drilled pointer surface under `pos` (see `pointer_focus_under`).
+    pub(crate) fn pointer_surface_under(&self, pos: Point<f64, Logical>) -> Option<SurfaceHit> {
+        pointer_focus_under(self, pos)
+    }
+}
+
 fn lock_focus_under(state: &MargoState, pos: Point<f64, Logical>) -> Option<FocusHit> {
     let output = state.space.output_under(pos).next()?;
     let (_, surface) = state

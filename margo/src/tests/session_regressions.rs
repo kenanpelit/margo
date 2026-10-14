@@ -196,3 +196,24 @@ fn windows_more(fx: &mut Fixture, n: usize) {
         fx.roundtrip(id);
     }
 }
+
+#[test]
+fn warpcursor_moves_the_pointer_to_the_newly_focused_window() {
+    let mut fx = Fixture::new();
+    windows(&mut fx, 2);
+    fx.server.state.config.warpcursor = true;
+    focus(&mut fx, 0);
+    let arg = margo_config::Arg {
+        i: 1,
+        ..Default::default()
+    };
+    crate::dispatch::dispatch_action(&mut fx.server.state, "focusstack", &arg);
+    let idx = fx.server.state.focused_client_idx().unwrap();
+    let g = fx.server.state.clients[idx].geom;
+    let (px, py) = (
+        fx.server.state.input_pointer.x,
+        fx.server.state.input_pointer.y,
+    );
+    assert!((px - (g.x as f64 + g.width as f64 / 2.0)).abs() < 1.0);
+    assert!((py - (g.y as f64 + g.height as f64 / 2.0)).abs() < 1.0);
+}

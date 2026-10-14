@@ -609,6 +609,92 @@ impl MargoState {
         }
     }
 
+    /// `warpcursor` (mango): after a keyboard focus / exchange / monitor
+    /// action, put the pointer on the centre of the focused window — when
+    /// that centre lies on the window's monitor — or, with
+    /// `monitor_fallback` and nothing focused, the focused monitor's
+    /// work-area centre.
+    pub(crate) fn warp_cursor_to_focus(&mut self, monitor_fallback: bool) {
+        if !self.config.warpcursor {
+            return;
+        }
+        let target = match self.focused_client_idx() {
+            Some(idx) => {
+                let c = &self.clients[idx];
+                // Mid-animation `geom` is an in-between frame; aim for
+                // where the window is going.
+                let r = if c.animation.running {
+                    c.animation.current
+                } else {
+                    c.geom
+                };
+                let (cx, cy) = (
+                    r.x as f64 + r.width as f64 / 2.0,
+                    r.y as f64 + r.height as f64 / 2.0,
+                );
+                let on_monitor = self.monitors.get(c.monitor).is_some_and(|m| {
+                    let a = m.monitor_area;
+                    cx >= a.x as f64
+                        && cx < (a.x + a.width) as f64
+                        && cy >= a.y as f64
+                        && cy < (a.y + a.height) as f64
+                });
+                on_monitor.then_some((cx, cy))
+            }
+            None if monitor_fallback => self.monitors.get(self.focused_monitor()).map(|m| {
+                let w = m.work_area;
+                (
+                    w.x as f64 + w.width as f64 / 2.0,
+                    w.y as f64 + w.height as f64 / 2.0,
+                )
+            }),
+            None => None,
+        };
+        if let Some((x, y)) = target {
+            self.warp_pointer(x, y);
+        }
+    }
+
+    /// Move the pointer to `(x, y)` as if it had moved there: pointer
+    /// focus follows, both cursor positions repaint. Keyboard focus is
+    /// left alone (no sloppy focus).
+    pub(crate) fn warp_pointer(&mut self, x: f64, y: f64) {
+        let old = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+            self.input_pointer.x,
+            self.input_pointer.y,
+        ));
+        self.input_pointer.x = x;
+        self.input_pointer.y = y;
+        self.clamp_pointer_to_outputs();
+        self.refresh_pointer_monitor_tracking();
+        let pos = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+            self.input_pointer.x,
+            self.input_pointer.y,
+        ));
+        let focus = self.pointer_surface_under(pos);
+        if let Some(pointer) = self.seat.get_pointer() {
+            pointer.motion(
+                self,
+                focus,
+                &smithay::input::pointer::MotionEvent {
+                    location: pos,
+                    serial: smithay::utils::SERIAL_COUNTER.next_serial(),
+                    time: smithay::backend::input::InputTime::from_millis(crate::utils::now_ms()),
+                },
+            );
+            pointer.frame(self);
+        }
+        let outputs: Vec<_> = self
+            .space
+            .output_under(old)
+            .chain(self.space.output_under(pos))
+            .cloned()
+            .collect();
+        for output in outputs {
+            self.request_repaint_output(&output);
+        }
+    }
+
     pub(crate) fn pointer_monitor(&self) -> Option<usize> {
         self.monitor_at_point(self.input_pointer.x, self.input_pointer.y)
     }

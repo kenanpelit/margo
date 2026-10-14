@@ -646,7 +646,6 @@ pub const NO_EFFECT_KEYS: &[&str] = &[
     "touch_timeoutms",
     "touchgesturebind",
     "wallpaper_fit",
-    "warpcursor",
 ];
 
 // ── Typed scalar keys ───────────────────────────────────────────────────────
@@ -1356,7 +1355,7 @@ mod tests {
                 "{key} is not a key the parser accepts"
             );
         }
-        let r = validate_str("warpcursor = 1\n");
+        let r = validate_str("tablet_map_to_mon = DP-1\n");
         assert!(r.diagnostics.iter().any(|d| d.code == "W006"));
         let r = validate_str("borderpx = 2\n");
         assert!(!r.diagnostics.iter().any(|d| d.code == "W006"));
