@@ -238,6 +238,18 @@ pub struct FrameSample {
     pub scanout: bool,
 }
 
+/// Backing store for `disable_middle_paste`, read live by the
+/// `wp_primary_selection` global's bind filter (set in `MargoState::new`,
+/// re-synced on every `mctl reload`). A plain static because the filter
+/// closure Smithay stores alongside the global is `'static` and has no
+/// path back to `MargoState` to read the live config through.
+static DISABLE_MIDDLE_PASTE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn middle_paste_disabled() -> bool {
+    DISABLE_MIDDLE_PASTE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub struct MargoState {
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
@@ -1002,7 +1014,12 @@ impl MargoState {
         let mut seat_state = SeatState::new();
         let seat = seat_state.new_wl_seat(&dh, "seat0");
         let data_device_state = DataDeviceState::new::<Self>(&dh);
-        let primary_selection_state = PrimarySelectionState::new::<Self>(&dh);
+        DISABLE_MIDDLE_PASTE.store(
+            config.disable_middle_paste,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        let primary_selection_state =
+            PrimarySelectionState::new_with_filter::<Self, _>(&dh, |_| !middle_paste_disabled());
         let data_control_state =
             DataControlState::new::<Self, _>(&dh, Some(&primary_selection_state), |_| true);
         let ext_data_control_state =
@@ -2003,6 +2020,10 @@ impl MargoState {
 
         self.animation_curves = AnimationCurves::bake(&new_config);
         self.enable_gaps = new_config.enable_gaps;
+        DISABLE_MIDDLE_PASTE.store(
+            new_config.disable_middle_paste,
+            std::sync::atomic::Ordering::Relaxed,
+        );
         // Re-decode the overview backdrop image if the configured path
         // changed (incl. cleared → `None`), so Settings → Overview
         // applies live. Only re-reads the file when the path actually

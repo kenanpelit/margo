@@ -1073,6 +1073,12 @@ pub struct Config {
     pub allow_tearing: TearingMode,
     pub allow_shortcuts_inhibit: ShortcutsInhibit,
     pub allow_lock_transparent: bool,
+    /// Disable middle-click paste by not exposing `wp_primary_selection`
+    /// to clients at all. Wayland apps only — X11 apps go through a
+    /// separate selection mechanism and are unaffected. Restart apps
+    /// after re-enabling (a client that already bound the global before
+    /// this flipped keeps using it until it restarts).
+    pub disable_middle_paste: bool,
     /// Pace each output by its own refresh rate (per-output frame clock)
     /// instead of the single global render tick. Each output re-arms its own
     /// present timer off its last vblank and only the due output(s) render +
@@ -1408,6 +1414,7 @@ impl Default for Config {
             allow_tearing: TearingMode::Disabled,
             allow_shortcuts_inhibit: ShortcutsInhibit::Enable,
             allow_lock_transparent: false,
+            disable_middle_paste: false,
             per_output_frame_clock: true,
             key_mode: "default".into(),
 

@@ -716,6 +716,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
             }
         }
         "allow_lock_transparent" => cfg.allow_lock_transparent = parse_bool(val),
+        "disable_middle_paste" => cfg.disable_middle_paste = parse_bool(val),
         "per_output_frame_clock" => cfg.per_output_frame_clock = parse_bool(val),
         "keymode" => cfg.key_mode = clamp_keyword(val, 27),
 
@@ -1596,6 +1597,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "allow_lock_transparent",
     "allow_shortcuts_inhibit",
     "allow_tearing",
+    "disable_middle_paste",
     "per_output_frame_clock",
     "animation_clock_close",
     "animation_clock_focus",
