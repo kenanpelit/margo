@@ -5,7 +5,10 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.2.0] – 2026-10-21
+
+**Floating windows now get their own border colour when focused, so a
+float sitting over the tiled stack is easy to spot.**
 
 ### Added
 
