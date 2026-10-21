@@ -5,6 +5,14 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `floatingcolor`: border colour of the focused floating window, so a
+  float over the tiled stack stands out. Unset keeps `focuscolor`; the
+  matugen `colors.conf` fills it from the palette's `tertiary` role.
+
 ## [4.1.0] – 2026-10-15
 
 **Settings, reorganised the KDE System Settings way: clearer categories,

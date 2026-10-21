@@ -66,6 +66,10 @@ pub(crate) fn color_for(state: &MargoState, client_idx: usize, focused: bool) ->
         cfg.globalcolor.0
     } else if c.is_fullscreen {
         cfg.maximizescreencolor.0
+    } else if let Some(color) = cfg.floatingcolor.filter(|_| focused && c.is_floating) {
+        // The focused floating window, so a float over the tiled stack is
+        // told apart at a glance. Unset → falls through to `focuscolor`.
+        color.0
     } else if focused || c.is_overview_hovered {
         // Overview hover reuses focuscolor so the user can see at a
         // glance which thumbnail a click would activate without

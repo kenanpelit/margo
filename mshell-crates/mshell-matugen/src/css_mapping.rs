@@ -202,6 +202,7 @@ pub fn to_margo_colors(theme: &MatugenTheme) -> String {
          bordercolor     = {border}\n\
          urgentcolor     = {urgent}\n\
          scratchpadcolor = {scratch}\n\
+         floatingcolor   = {floating}\n\
          globalcolor     = {global}\n\
          overlaycolor    = {overlay}\n\
          shadowscolor    = {shadow}\n",
@@ -209,6 +210,9 @@ pub fn to_margo_colors(theme: &MatugenTheme) -> String {
         border = margo(col!(c.outline), "ff"),
         urgent = margo(col!(c.error), "ff"),
         scratch = margo(col!(c.tertiary), "ff"),
+        // Floats share the scratchpad hue (scratchpads are floats too);
+        // it sits well apart from the `primary` focus border.
+        floating = margo(col!(c.tertiary), "ff"),
         global = margo(col!(c.secondary), "ff"),
         overlay = margo(col!(c.primary_container), "ff"),
         // Window glow: a SUBTLE ambient lift, not a frame. Muted

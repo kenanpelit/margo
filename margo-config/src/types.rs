@@ -964,6 +964,9 @@ pub struct Config {
     pub maximizescreencolor: Rgba,
     pub urgentcolor: Rgba,
     pub scratchpadcolor: Rgba,
+    /// Border of the focused floating window. `None` (unset) keeps the
+    /// plain `focuscolor`, so floats only stand out when asked to.
+    pub floatingcolor: Option<Rgba>,
     pub globalcolor: Rgba,
     pub overlaycolor: Rgba,
     pub shadowscolor: Rgba,
@@ -1329,6 +1332,7 @@ impl Default for Config {
                 0x93_u8 as f32 / 255.0,
                 1.0,
             ]),
+            floatingcolor: None,
             globalcolor: Rgba([
                 0xb1_u8 as f32 / 255.0,
                 0x53_u8 as f32 / 255.0,
