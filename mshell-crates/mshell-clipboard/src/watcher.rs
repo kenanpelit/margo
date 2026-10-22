@@ -710,20 +710,55 @@ delegate_noop!(WatcherState: ignore WlSeat);
 /// Pick the best MIME type from the offered set.
 ///
 /// Prefers text types first, then image types, then falls back to the first
-/// available type.
+/// available type. Matching is case-insensitive and the returned string is
+/// the offer's own spelling (that exact string goes back in `receive`).
+/// App-private formats (e.g. a compressed `application/x-dtsz`) offered
+/// ahead of a `text/plain;charset=UTF-8` must never win, or history stores
+/// unreadable bytes instead of the copied text.
 fn pick_best_mime(offered: &[String]) -> Option<String> {
-    // Try text types first.
-    for preferred in TEXT_MIME_PRIORITY {
-        if offered.iter().any(|m| m == preferred) {
-            return Some(preferred.to_string());
+    let find = |pred: &dyn Fn(&str) -> bool| {
+        offered
+            .iter()
+            .find(|m| pred(&m.trim().to_ascii_lowercase()))
+            .cloned()
+    };
+
+    // Known text types, in priority order; any other `text/plain`
+    // spelling (`text/plain;charset=UTF-8`, …) ranks just after the two
+    // canonical ones and ahead of the X11 atoms, which the history
+    // preview doesn't recognise as text.
+    let lowered: Vec<String> = TEXT_MIME_PRIORITY
+        .iter()
+        .map(|p| p.to_ascii_lowercase())
+        .collect();
+    let (canonical, x11) = lowered.split_at(2);
+    for preferred in canonical {
+        if let Some(m) = find(&|m| m == preferred) {
+            return Some(m);
+        }
+    }
+    if let Some(m) = find(&|m| m.starts_with("text/plain")) {
+        return Some(m);
+    }
+    for preferred in x11 {
+        if let Some(m) = find(&|m| m == preferred) {
+            return Some(m);
         }
     }
 
     // Then image types.
     for preferred in IMAGE_MIME_PRIORITY {
-        if offered.iter().any(|m| m == preferred) {
-            return Some(preferred.to_string());
+        if let Some(m) = find(&|m| m == *preferred) {
+            return Some(m);
         }
+    }
+
+    // Any remaining text or image type before an opaque blob.
+    if let Some(m) = find(&|m| m.starts_with("text/")) {
+        return Some(m);
+    }
+    if let Some(m) = find(&|m| m.starts_with("image/")) {
+        return Some(m);
     }
 
     // Fall back to the first offered type (if any).
@@ -844,4 +879,63 @@ fn build_entry(mime_type: String, data: Vec<u8>) -> Option<ClipboardEntry> {
         data,
         pinned: false,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick_best_mime;
+
+    fn pick(offered: &[&str]) -> Option<String> {
+        pick_best_mime(&offered.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn exact_text_type_wins() {
+        assert_eq!(
+            pick(&[
+                "application/x-dtsz",
+                "text/plain",
+                "text/plain;charset=utf-8"
+            ])
+            .as_deref(),
+            Some("text/plain;charset=utf-8")
+        );
+    }
+
+    #[test]
+    fn text_spelling_beats_private_format() {
+        assert_eq!(
+            pick(&["application/x-dtsz", "text/plain;charset=UTF-8"]).as_deref(),
+            Some("text/plain;charset=UTF-8")
+        );
+        assert_eq!(
+            pick(&["application/x-dtsz", "text/html"]).as_deref(),
+            Some("text/html")
+        );
+    }
+
+    #[test]
+    fn text_plain_spelling_beats_x11_atom() {
+        assert_eq!(
+            pick(&["UTF8_STRING", "text/plain;charset=UTF-8"]).as_deref(),
+            Some("text/plain;charset=UTF-8")
+        );
+    }
+
+    #[test]
+    fn image_before_blob() {
+        assert_eq!(
+            pick(&["application/x-foo", "image/webp"]).as_deref(),
+            Some("image/webp")
+        );
+    }
+
+    #[test]
+    fn opaque_only_falls_back_to_first() {
+        assert_eq!(
+            pick(&["application/x-dtsz", "application/octet-stream"]).as_deref(),
+            Some("application/x-dtsz")
+        );
+        assert_eq!(pick(&[]), None);
+    }
 }

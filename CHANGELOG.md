@@ -5,6 +5,16 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Clipboard history stored some copied text as an unreadable
+  `application/x-dtsz` blob: the type picker only matched exact
+  lowercase text types and otherwise took the app's first (private)
+  format. Matching is now case-insensitive and any `text/plain`
+  spelling, then any `text/*` or `image/*`, wins over opaque formats.
+
 ## [4.2.0] – 2026-10-21
 
 **Floating windows now get their own border colour when focused, so a
