@@ -60,11 +60,36 @@ fn parse_power(raw: &str) -> Vec<PowerAction> {
 
 /// What a `power_controls`-less mlogind would show. The indices match the order
 /// the runner's own defaults land in, so a preview footer reads like the real one.
+/// Whether a key press (GTK key name + modifier state) triggers the power key
+/// `spec` — `F1` or a chord like `Ctrl+Shift+F1`, the same syntax as mlogind's
+/// TUI. Modifiers must match exactly: a chord never fires on the bare key, and
+/// a bare-key entry never fires inside Ctrl+Alt+F<n> (the VT switch, which
+/// margo handles anyway). A misspelt modifier matches nothing.
+pub fn matches(spec: &str, key_name: &str, modifiers: gtk4::gdk::ModifierType) -> bool {
+    use gtk4::gdk::ModifierType as M;
+    let mut parts: Vec<&str> = spec.split('+').map(str::trim).collect();
+    let Some(key) = parts.pop() else {
+        return false;
+    };
+    let mut want = M::empty();
+    for m in parts {
+        want |= match m.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => M::CONTROL_MASK,
+            "shift" => M::SHIFT_MASK,
+            "alt" => M::ALT_MASK,
+            "super" | "meta" => M::SUPER_MASK,
+            _ => return false,
+        };
+    }
+    let held = modifiers & (M::CONTROL_MASK | M::SHIFT_MASK | M::ALT_MASK | M::SUPER_MASK);
+    key == key_name && held == want
+}
+
 fn defaults() -> Vec<PowerAction> {
     [
-        (0, "F1", "Shutdown"),
-        (1, "F2", "Reboot"),
-        (2, "F3", "Suspend"),
+        (0, "Ctrl+F1", "Shutdown"),
+        (1, "Ctrl+F2", "Reboot"),
+        (2, "Ctrl+F3", "Suspend"),
     ]
     .into_iter()
     .map(|(index, key, hint)| PowerAction {
@@ -127,6 +152,19 @@ mod tests {
     #[test]
     fn empty_input_parses_to_nothing() {
         assert!(parse_power("").is_empty());
+    }
+
+    #[test]
+    fn power_keys_match_modifiers_exactly() {
+        use gtk4::gdk::ModifierType as M;
+        let cs = M::CONTROL_MASK | M::SHIFT_MASK;
+        assert!(matches("Ctrl+Shift+F1", "F1", cs));
+        assert!(!matches("Ctrl+Shift+F1", "F1", M::empty()));
+        assert!(!matches("Ctrl+Shift+F1", "F2", cs));
+        // Lock/NumLock state is not a modifier the user is holding.
+        assert!(matches("F1", "F1", M::LOCK_MASK));
+        assert!(!matches("F1", "F1", M::CONTROL_MASK | M::ALT_MASK));
+        assert!(!matches("Ctlr+F1", "F1", M::CONTROL_MASK));
     }
 
     #[test]

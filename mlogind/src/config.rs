@@ -1,4 +1,4 @@
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyModifiers};
 use log::error;
 use ratatui::style::{Color, Modifier};
 use serde::{Deserialize, Serialize, Serializer, de::Error};
@@ -112,12 +112,24 @@ pub fn get_function_key(key: &str) -> Option<KeyCode> {
     })
 }
 
-pub fn get_key(key: &str) -> KeyCode {
-    if let Some(fn_key) = get_function_key(key) {
-        return fn_key;
+/// Parse a power-key spec such as `F1` or `Ctrl+Shift+F1` into the exact
+/// modifier set and function key it names. Modifier names are
+/// case-insensitive (`ctrl`/`control`, `shift`, `alt`, `super`/`meta`).
+/// `None` for anything else, so a typo binds nothing rather than a bare key.
+pub fn parse_key_spec(spec: &str) -> Option<(KeyModifiers, KeyCode)> {
+    let mut parts: Vec<&str> = spec.split('+').map(str::trim).collect();
+    let key = get_function_key(parts.pop()?)?;
+    let mut mods = KeyModifiers::NONE;
+    for m in parts {
+        mods |= match m.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => KeyModifiers::CONTROL,
+            "shift" => KeyModifiers::SHIFT,
+            "alt" => KeyModifiers::ALT,
+            "super" | "meta" => KeyModifiers::SUPER,
+            _ => return None,
+        };
     }
-
-    KeyCode::F(255)
+    Some((mods, key))
 }
 
 macro_rules! partial_struct_field {

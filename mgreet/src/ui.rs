@@ -297,9 +297,12 @@ pub fn build_window(
     let app_weak = app.downgrade();
     let allow_escape_quit = !state.real();
     let state_keys = state.clone();
-    key.connect_key_pressed(move |_, keyval, _, _| {
+    key.connect_key_pressed(move |_, keyval, _, modifiers| {
         if let Some(name) = keyval.name()
-            && let Some(action) = state_keys.power.iter().find(|a| a.key == name.as_str())
+            && let Some(action) = state_keys
+                .power
+                .iter()
+                .find(|a| crate::power::matches(&a.key, name.as_str(), modifiers))
         {
             // Not mid-conversation: a Power frame would land in the runner's PAM
             // conversation callback, where it is not an answer to the prompt PAM

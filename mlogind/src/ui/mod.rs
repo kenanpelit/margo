@@ -610,7 +610,9 @@ impl LoginForm {
                             // `cage` this same form is the unprivileged greeter, and
                             // in `--preview` it must not shut the machine down at
                             // all (it used to — `mlogind --preview` plus F1).
-                            if let Some(index) = self.widgets.key_menu.power_index(key.code) {
+                            if let Some(index) =
+                                self.widgets.key_menu.power_index(key.code, key.modifiers)
+                            {
                                 match conn.as_mut() {
                                     Some(conn) => {
                                         if let Some(msg) = request_power(conn, index, &redraw) {

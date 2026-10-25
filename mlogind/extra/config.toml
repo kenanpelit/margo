@@ -42,28 +42,31 @@ border_color = "$panel_border"
 
 [power_controls]
 hint_margin = 3
-# Extra entries beyond the base Shutdown/Reboot/Suspend below.
+# Extra entries beyond the base Shutdown/Reboot/Suspend below. `key` is a
+# function key with optional modifiers (`F5`, `Ctrl+F1`), matched
+# exactly; the base ones use a chord so a stray F-key or the Ctrl+Alt+F<n>
+# VT switch never powers the machine off.
 entries = []
 
 [[power_controls.base_entries]]
 hint = "Shutdown"
 hint_color = "$muted"
 hint_modifiers = ""
-key = "F1"
+key = "Ctrl+F1"
 cmd = "systemctl poweroff -l"
 
 [[power_controls.base_entries]]
 hint = "Reboot"
 hint_color = "$muted"
 hint_modifiers = ""
-key = "F2"
+key = "Ctrl+F2"
 cmd = "systemctl reboot -l"
 
 [[power_controls.base_entries]]
 hint = "Suspend"
 hint_color = "$muted"
 hint_modifiers = ""
-key = "F3"
+key = "Ctrl+F3"
 cmd = "systemctl suspend -l"
 
 [environment_switcher]
