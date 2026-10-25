@@ -7,6 +7,7 @@ pub mod github_dark;
 pub mod gruvbox_dark_medium;
 pub mod gruvbox_material;
 pub mod horizon;
+pub mod iznik;
 pub mod kanagawa_wave;
 pub mod kenp;
 pub mod margo;

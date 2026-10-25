@@ -18,6 +18,7 @@ pub enum Themes {
     GruvboxDarkMedium,
     GruvboxMaterial,
     Horizon,
+    Iznik,
     KanagawaWave,
     MonokaiClassic,
     NordDark,
@@ -61,6 +62,7 @@ impl Themes {
             Self::GruvboxDarkMedium => "Gruvbox Dark Medium",
             Self::GruvboxMaterial => "Gruvbox Material",
             Self::Horizon => "Horizon",
+            Self::Iznik => "İznik",
             Self::KanagawaWave => "Kanagawa Wave",
             Self::MonokaiClassic => "Monokai Classic",
             Self::NordDark => "Nord Dark",
@@ -93,6 +95,7 @@ impl Themes {
             Self::GruvboxDarkMedium => "GruvboxDarkMedium",
             Self::GruvboxMaterial => "GruvboxMaterial",
             Self::Horizon => "Horizon",
+            Self::Iznik => "Iznik",
             Self::KanagawaWave => "KanagawaWave",
             Self::MonokaiClassic => "MonokaiClassic",
             Self::NordDark => "NordDark",
@@ -145,6 +148,7 @@ impl Themes {
             Self::GruvboxDarkMedium,
             Self::GruvboxMaterial,
             Self::Horizon,
+            Self::Iznik,
             Self::KanagawaWave,
             Self::MonokaiClassic,
             Self::NordDark,
@@ -455,6 +459,8 @@ mod theme_ident_tests {
         for input in ["kenp", "Kenp", "KENP"] {
             assert_eq!(Themes::from_cli(input), Some(Themes::Kenp));
         }
+        // The label's dotted İ is dropped by the skeleton; the ident resolves.
+        assert_eq!(Themes::from_cli("iznik"), Some(Themes::Iznik));
         for input in ["tokyo-night", "tokyo_night", "TokyoNight", "Tokyo Night"] {
             assert_eq!(Themes::from_cli(input), Some(Themes::TokyoNight));
         }

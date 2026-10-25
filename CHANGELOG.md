@@ -5,6 +5,14 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **İznik** colour scheme, after İznik tiles: night-ink navy surfaces,
+  cobalt primary, tile-turquoise secondary, coral-red tertiary (also the
+  floating-window border) and warm ivory text. `mshellctl theme set iznik`.
+
 ## [4.2.1] – 2026-10-25
 
 **Ctrl+Alt+F1…F12 switches to a TTY again, the login screen's power keys

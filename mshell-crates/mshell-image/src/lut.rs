@@ -28,6 +28,7 @@ pub const CLUT_THEMES: &[(&str, Themes)] = &[
     ("gruvbox_dark_medium", Themes::GruvboxDarkMedium),
     ("gruvbox_material", Themes::GruvboxMaterial),
     ("horizon", Themes::Horizon),
+    ("iznik", Themes::Iznik),
     ("kanagawa_wave", Themes::KanagawaWave),
     ("kenp", Themes::Kenp),
     ("margo", Themes::Margo),

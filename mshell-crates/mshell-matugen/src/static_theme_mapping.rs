@@ -8,6 +8,7 @@ use crate::static_themes::github_dark::github_dark;
 use crate::static_themes::gruvbox_dark_medium::gruvbox_dark_medium;
 use crate::static_themes::gruvbox_material::gruvbox_material;
 use crate::static_themes::horizon::horizon;
+use crate::static_themes::iznik::iznik;
 use crate::static_themes::kanagawa_wave::kanagawa_wave;
 use crate::static_themes::kenp::kenp;
 use crate::static_themes::margo::margo;
@@ -51,6 +52,7 @@ pub fn static_theme(theme: &Themes, mshell: Option<MShell>) -> Option<MatugenThe
         Themes::OneMargo => Some(one_margo(mshell)),
         Themes::Oxocarbon => Some(oxocarbon(mshell)),
         Themes::RosePine => Some(rose_pine(mshell)),
+        Themes::Iznik => Some(iznik(mshell)),
         Themes::SolarizedDark => Some(solarized_dark(mshell)),
         Themes::TokyoNight => Some(tokyo_night(mshell)),
         Themes::Vesper => Some(vesper(mshell)),
