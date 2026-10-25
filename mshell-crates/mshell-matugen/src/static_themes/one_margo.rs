@@ -1,8 +1,8 @@
 use crate::json_struct::{Base16, Colors, MShell, MatugenTheme, Palettes, color};
 
-/// One Margo — [`super::margo::margo`] with One Dark's foreground instead
-/// of Margo's own. Every other slot (background, surface, accents, ANSI)
-/// is identical to Margo; only the text/icon colour changes.
+/// One Margo — the former Margo scheme (Dracula-family purple surfaces and
+/// accents) with One Dark's softer foreground; Margo itself was retired in
+/// the v4 catalogue cull, so this file is now self-contained.
 ///
 /// Slot summary:
 ///

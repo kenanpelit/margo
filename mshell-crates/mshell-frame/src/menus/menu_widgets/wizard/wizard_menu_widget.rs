@@ -38,10 +38,9 @@ use super::steps;
 const THEMES: &[(Themes, &str)] = &[
     (Themes::Wallpaper, "Wallpaper (Material You)"),
     (Themes::Default, "Default"),
-    (Themes::Margo, "Margo"),
-    (Themes::Dracula, "Dracula"),
+    (Themes::Iznik, "İznik"),
+    (Themes::RosePine, "Rosé Pine"),
     (Themes::CatppuccinMocha, "Catppuccin Mocha"),
-    (Themes::GruvboxDarkMedium, "Gruvbox Dark"),
     (Themes::KanagawaWave, "Kanagawa Wave"),
     (Themes::TokyoNight, "Tokyo Night"),
 ];

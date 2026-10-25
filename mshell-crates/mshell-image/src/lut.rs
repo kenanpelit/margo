@@ -19,28 +19,17 @@ use tracing::warn;
 /// basename. `Wallpaper` is absent (it grades from the live wallpaper) and
 /// `Default` is absent as its own entry — it shares Kenp's CLUT.
 pub const CLUT_THEMES: &[(&str, Themes)] = &[
-    ("ayu_dark", Themes::AyuDark),
     ("catppuccin_mocha", Themes::CatppuccinMocha),
-    ("dracula", Themes::Dracula),
     ("everforest_dark_medium", Themes::EverforestDarkMedium),
-    ("flexoki", Themes::Flexoki),
-    ("github_dark", Themes::GithubDark),
-    ("gruvbox_dark_medium", Themes::GruvboxDarkMedium),
     ("gruvbox_material", Themes::GruvboxMaterial),
     ("horizon", Themes::Horizon),
     ("iznik", Themes::Iznik),
     ("kanagawa_wave", Themes::KanagawaWave),
     ("kenp", Themes::Kenp),
-    ("margo", Themes::Margo),
-    ("monokai_classic", Themes::MonokaiClassic),
-    ("nord_dark", Themes::NordDark),
     ("one_dark", Themes::OneDark),
     ("one_margo", Themes::OneMargo),
-    ("oxocarbon", Themes::Oxocarbon),
     ("rose_pine", Themes::RosePine),
-    ("solarized_dark", Themes::SolarizedDark),
     ("tokyo_night", Themes::TokyoNight),
-    ("vesper", Themes::Vesper),
 ];
 
 /// Stable CLUT basename for a theme, or `None` for `Wallpaper` (which has no

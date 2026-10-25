@@ -5,13 +5,25 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.3.0] – 2026-10-25
+
+**A new İznik colour scheme, and the catalogue trimmed to the eleven best
+dark schemes.**
 
 ### Added
 
 - **İznik** colour scheme, after İznik tiles: night-ink navy surfaces,
   cobalt primary, tile-turquoise secondary, coral-red tertiary (also the
   floating-window border) and warm ivory text. `mshellctl theme set iznik`.
+
+### Removed
+
+- Colour-scheme catalogue trimmed to eleven: Kenp, Kanagawa Wave, Tokyo
+  Night, İznik, Rosé Pine, Everforest Dark, One Dark, Catppuccin Mocha,
+  Gruvbox Material, Horizon and One Margo (plus Wallpaper and Default).
+  Margo, Dracula, Ayu Dark, Flexoki, GitHub Dark, Gruvbox Dark Medium,
+  Monokai Classic, Nord Dark, Oxocarbon, Solarized Dark and Vesper are gone;
+  a profile still pinned to one moves to Kenp on load (config v4).
 
 ## [4.2.1] – 2026-10-25
 

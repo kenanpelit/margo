@@ -36,7 +36,7 @@ use crate::schema::themes::Themes;
 
 /// The current on-disk profile format version. A profile file with a lower (or
 /// absent → treated as 0) `config_version` is migrated up to this on load.
-pub const CONFIG_VERSION: u32 = 3;
+pub const CONFIG_VERSION: u32 = 4;
 
 /// The YAML key carrying the format version.
 const VERSION_KEY: &str = "config_version";
@@ -81,6 +81,11 @@ fn apply_step(from: u32, doc: &mut Mapping) {
         migrate_v1_to_v2(doc);
     }
     if from == 2 {
+        migrate_v2_to_v3(doc);
+    }
+    if from == 3 {
+        // v3 → v4: the catalogue was culled again to eleven schemes (Margo,
+        // Dracula, Nord, Solarized, … dropped). Same liveness rule as v2 → v3.
         migrate_v2_to_v3(doc);
     }
 }
@@ -292,9 +297,33 @@ idle:
     }
 
     #[test]
+    fn v3_to_v4_rewrites_culled_theme_to_kenp() {
+        for dead in ["Margo", "Dracula", "NordDark", "Vesper", "AyuDark"] {
+            let old = format!("config_version: 3\ntheme:\n  theme: {dead}\n");
+            let m = migrate_yaml(&old).unwrap();
+            let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
+            let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
+            assert_eq!(theme.as_str(), Some("Kenp"), "{dead} rewritten to Kenp");
+        }
+        for live in ["OneMargo", "Iznik", "GruvboxMaterial", "Horizon"] {
+            let old = format!("config_version: 3\ntheme:\n  theme: {live}\n");
+            let m = migrate_yaml(&old).unwrap();
+            let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
+            let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
+            assert_eq!(theme.as_str(), Some(live), "live theme {live} preserved");
+        }
+    }
+
+    #[test]
     fn v2_to_v3_leaves_surviving_themes_untouched() {
         // Both a retained classic and a newly-imported community theme survive.
-        for live in ["TokyoNight", "Vesper", "AyuDark", "Default", "Wallpaper"] {
+        for live in [
+            "TokyoNight",
+            "Horizon",
+            "GruvboxMaterial",
+            "Default",
+            "Wallpaper",
+        ] {
             let old = format!("config_version: 2\ntheme:\n  theme: {live}\n");
             let m = migrate_yaml(&old).unwrap();
             let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
