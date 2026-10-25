@@ -84,8 +84,10 @@ fn apply_step(from: u32, doc: &mut Mapping) {
         migrate_v2_to_v3(doc);
     }
     if from == 3 {
-        // v3 → v4: the catalogue was culled again to eleven schemes (Margo,
-        // Dracula, Nord, Solarized, … dropped). Same liveness rule as v2 → v3.
+        // v3 → v4: the catalogue was culled again to eleven schemes (Dracula,
+        // Nord, Solarized, … dropped; "One Margo" took over the Margo name, and
+        // a stored `OneMargo` still loads via a serde alias). Same liveness
+        // rule as v2 → v3.
         migrate_v2_to_v3(doc);
     }
 }
@@ -298,19 +300,29 @@ idle:
 
     #[test]
     fn v3_to_v4_rewrites_culled_theme_to_kenp() {
-        for dead in ["Margo", "Dracula", "NordDark", "Vesper", "AyuDark"] {
+        for dead in ["Dracula", "NordDark", "Vesper", "AyuDark"] {
             let old = format!("config_version: 3\ntheme:\n  theme: {dead}\n");
             let m = migrate_yaml(&old).unwrap();
             let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
             let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
             assert_eq!(theme.as_str(), Some("Kenp"), "{dead} rewritten to Kenp");
         }
-        for live in ["OneMargo", "Iznik", "GruvboxMaterial", "Horizon"] {
+        for live in ["Margo", "Iznik", "GruvboxMaterial", "Horizon"] {
             let old = format!("config_version: 3\ntheme:\n  theme: {live}\n");
             let m = migrate_yaml(&old).unwrap();
             let out: Value = serde_yaml::from_str(&m.yaml).unwrap();
             let theme = out.get("theme").and_then(|t| t.get("theme")).unwrap();
             assert_eq!(theme.as_str(), Some(live), "live theme {live} preserved");
+        }
+    }
+
+    #[test]
+    fn one_margo_profile_loads_as_margo() {
+        for version in [3, CONFIG_VERSION] {
+            let yaml = format!("config_version: {version}\ntheme:\n  theme: OneMargo\n");
+            let m = migrate_yaml(&yaml).unwrap();
+            let cfg: crate::schema::config::Config = serde_yaml::from_str(&m.yaml).unwrap();
+            assert_eq!(cfg.theme.theme, Themes::Margo, "from v{version}");
         }
     }
 

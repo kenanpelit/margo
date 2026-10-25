@@ -27,7 +27,7 @@ pub const CLUT_THEMES: &[(&str, Themes)] = &[
     ("kanagawa_wave", Themes::KanagawaWave),
     ("kenp", Themes::Kenp),
     ("one_dark", Themes::OneDark),
-    ("one_margo", Themes::OneMargo),
+    ("margo", Themes::Margo),
     ("rose_pine", Themes::RosePine),
     ("tokyo_night", Themes::TokyoNight),
 ];

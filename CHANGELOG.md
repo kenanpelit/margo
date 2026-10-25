@@ -20,8 +20,9 @@ dark schemes.**
 
 - Colour-scheme catalogue trimmed to eleven: Kenp, Kanagawa Wave, Tokyo
   Night, İznik, Rosé Pine, Everforest Dark, One Dark, Catppuccin Mocha,
-  Gruvbox Material, Horizon and One Margo (plus Wallpaper and Default).
-  Margo, Dracula, Ayu Dark, Flexoki, GitHub Dark, Gruvbox Dark Medium,
+  Gruvbox Material, Horizon and Margo (plus Wallpaper and Default). The
+  old "One Margo" is now simply **Margo** (a stored `OneMargo` still loads);
+  the brighter original Margo, Dracula, Ayu Dark, Flexoki, GitHub Dark, Gruvbox Dark Medium,
   Monokai Classic, Nord Dark, Oxocarbon, Solarized Dark and Vesper are gone;
   a profile still pinned to one moves to Kenp on load (config v4).
 

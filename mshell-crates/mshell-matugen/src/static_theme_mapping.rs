@@ -6,8 +6,8 @@ use crate::static_themes::horizon::horizon;
 use crate::static_themes::iznik::iznik;
 use crate::static_themes::kanagawa_wave::kanagawa_wave;
 use crate::static_themes::kenp::kenp;
+use crate::static_themes::margo::margo;
 use crate::static_themes::one_dark::one_dark;
-use crate::static_themes::one_margo::one_margo;
 use crate::static_themes::rose_pine::rose_pine;
 use crate::static_themes::tokyo_night::tokyo_night;
 use mshell_config::schema::themes::Themes;
@@ -30,7 +30,7 @@ pub fn static_theme(theme: &Themes, mshell: Option<MShell>) -> Option<MatugenThe
         Themes::Horizon => Some(horizon(mshell)),
         Themes::KanagawaWave => Some(kanagawa_wave(mshell)),
         Themes::OneDark => Some(one_dark(mshell)),
-        Themes::OneMargo => Some(one_margo(mshell)),
+        Themes::Margo => Some(margo(mshell)),
         Themes::RosePine => Some(rose_pine(mshell)),
         Themes::Iznik => Some(iznik(mshell)),
         Themes::TokyoNight => Some(tokyo_night(mshell)),

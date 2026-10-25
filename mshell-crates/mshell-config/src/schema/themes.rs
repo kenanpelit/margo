@@ -15,7 +15,8 @@ pub enum Themes {
     Iznik,
     KanagawaWave,
     OneDark,
-    OneMargo,
+    #[serde(alias = "OneMargo")]
+    Margo,
     RosePine,
     TokyoNight,
 }
@@ -48,7 +49,7 @@ impl Themes {
             Self::Iznik => "İznik",
             Self::KanagawaWave => "Kanagawa Wave",
             Self::OneDark => "One Dark",
-            Self::OneMargo => "One Margo",
+            Self::Margo => "Margo",
             Self::RosePine => "Rosé Pine",
             Self::TokyoNight => "Tokyo Night",
         }
@@ -70,7 +71,7 @@ impl Themes {
             Self::Iznik => "Iznik",
             Self::KanagawaWave => "KanagawaWave",
             Self::OneDark => "OneDark",
-            Self::OneMargo => "OneMargo",
+            Self::Margo => "Margo",
             Self::RosePine => "RosePine",
             Self::TokyoNight => "TokyoNight",
         }
@@ -94,6 +95,11 @@ impl Themes {
         if target.is_empty() {
             return None;
         }
+        // Renamed in 4.3.0; keeps old profiles (and the v3 → v4 liveness
+        // check in the migration) on the same scheme.
+        if target == "onemargo" {
+            return Some(Self::Margo);
+        }
         Self::all()
             .iter()
             .copied()
@@ -112,7 +118,7 @@ impl Themes {
             Self::Iznik,
             Self::KanagawaWave,
             Self::OneDark,
-            Self::OneMargo,
+            Self::Margo,
             Self::RosePine,
             Self::TokyoNight,
         ]

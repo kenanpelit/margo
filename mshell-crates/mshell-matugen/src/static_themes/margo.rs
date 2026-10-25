@@ -1,8 +1,8 @@
 use crate::json_struct::{Base16, Colors, MShell, MatugenTheme, Palettes, color};
 
-/// One Margo — the former Margo scheme (Dracula-family purple surfaces and
-/// accents) with One Dark's softer foreground; Margo itself was retired in
-/// the v4 catalogue cull, so this file is now self-contained.
+/// Margo — Dracula-family purple surfaces and accents with One Dark's softer
+/// foreground. Shipped as "One Margo" until 4.3.0 replaced the brighter
+/// original Margo with it; profiles still saying `OneMargo` deserialize here.
 ///
 /// Slot summary:
 ///
@@ -16,7 +16,7 @@ use crate::json_struct::{Base16, Colors, MShell, MatugenTheme, Palettes, color};
 /// | secondary           | `#FF79C6` |
 /// | tertiary            | `#8BE9FD` |
 /// | error               | `#FF5555` |
-pub fn one_margo(mshell: MShell) -> MatugenTheme {
+pub fn margo(mshell: MShell) -> MatugenTheme {
     // Foreground (text + icon) — One Dark's `on_surface`/`on_background`.
     // Shared across all on-surface / on-background / inverse-surface /
     // base05-07 slots so a single tweak rolls through every text-bearing

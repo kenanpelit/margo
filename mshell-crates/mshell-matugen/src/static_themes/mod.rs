@@ -5,7 +5,7 @@ pub mod horizon;
 pub mod iznik;
 pub mod kanagawa_wave;
 pub mod kenp;
+pub mod margo;
 pub mod one_dark;
-pub mod one_margo;
 pub mod rose_pine;
 pub mod tokyo_night;
