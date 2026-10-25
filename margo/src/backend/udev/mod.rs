@@ -301,6 +301,18 @@ pub(crate) struct BackendData {
     pub(super) gbm: GbmDevice<DrmDeviceFd>,
     pub(super) primary_node: DrmNode,
     pub(super) renderer_formats: smithay::backend::allocator::format::FormatSet,
+    /// libseat session handle, kept for `chvt` (Ctrl+Alt+F<n>) VT switches.
+    pub(super) session: LibSeatSession,
+}
+
+impl BackendData {
+    /// Ask logind/seatd to switch to virtual terminal `vt`. The session
+    /// then pauses and resumes through the normal libseat event path.
+    pub(crate) fn change_vt(&mut self, vt: i32) {
+        if let Err(e) = self.session.change_vt(vt) {
+            warn!("chvt {vt} failed: {e}");
+        }
+    }
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -716,6 +728,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
         gbm: gbm.clone(),
         primary_node,
         renderer_formats: renderer_formats.clone(),
+        session: session.clone(),
     }));
 
     // ── wp_drm_lease_device_v1 ────────────────────────────────────────────────

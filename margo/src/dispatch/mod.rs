@@ -82,6 +82,13 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
     match action {
         "quit" => state.should_quit = true,
         "session_end" => state.session_end(arg.v.as_deref().unwrap_or("")),
+        // Ctrl+Alt+F<n> (injected by margo-config). Only the udev backend
+        // owns a seat; nested (winit) margo ignores it.
+        "chvt" => {
+            if let Some(backend) = state.udev_backend.as_ref() {
+                backend.borrow_mut().change_vt(arg.ui as i32);
+            }
+        }
         "debug_dump" | "debug-dump" | "diagnose" => state.debug_dump(),
         // Cycle the keyboard to the next configured xkb layout. Driven
         // by a keybind or the shell's keyboard-layout pill (via mctl).

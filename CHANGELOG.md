@@ -9,6 +9,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Ctrl+Alt+F1…F12 never switched VT, on the desktop or the graphical login
+  screen: margo-config injected the `chvt` binds but the action was never
+  implemented. It now asks logind/seatd for the switch.
+- Login screen power keys are now `Ctrl+F1/F2/F3` (Shutdown/Reboot/Suspend)
+  instead of bare F1–F3, and modifiers match exactly in both mgreet and the
+  TUI, so a stray F-key or the VT-switch chord can't power the machine off.
+  Keys accept chords (`Ctrl+F1`) in `power_controls`.
 - Clipboard history stored some copied text as an unreadable
   `application/x-dtsz` blob: the type picker only matched exact
   lowercase text types and otherwise took the app's first (private)

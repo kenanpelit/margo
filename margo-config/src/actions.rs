@@ -1006,6 +1006,16 @@ pub const ACTIONS: &[Action] = &[
                  to switch to a TTY.",
     },
     Action {
+        name: "chvt",
+        aliases: &[],
+        args: "<vt>",
+        group: Group::System,
+        summary: "Switch to virtual terminal <vt> (default bind: Ctrl+Alt+F1…F12).",
+        detail: "Bound automatically on every config; the session pauses \
+                 and resumes through logind/seatd. Ignored when margo runs \
+                 nested (winit).",
+    },
+    Action {
         name: "debug_dump",
         aliases: &["debug-dump", "diagnose"],
         args: "",
