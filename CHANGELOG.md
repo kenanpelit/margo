@@ -5,7 +5,11 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.2.1] – 2026-10-25
+
+**Ctrl+Alt+F1…F12 switches to a TTY again, the login screen's power keys
+move to Ctrl+F1/F2/F3 so a stray F-key can't shut the machine down, and
+clipboard history keeps copied text instead of an app's private blob.**
 
 ### Fixed
 
