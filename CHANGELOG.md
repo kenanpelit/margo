@@ -5,7 +5,12 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.4.0] – 2026-10-27
+
+**Ports from mango 0.18.1–0.18.3: custom monitor modes that actually
+apply, quoted config values, no more leaked shortcut keys, blur on
+translucent fullscreen windows, scratchpads that stay scratchpads when
+an app activates them, and a window title in the switcher.**
 
 ### Added
 
