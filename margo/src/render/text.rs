@@ -157,6 +157,21 @@ pub fn label_element(
     })
 }
 
+/// Width in pixels [`label_element`] would draw `text` at, after the
+/// same ellipsis fit — for centring a label. `None` without a font.
+pub fn label_width(text: &str, height_px: i32, max_width_px: i32) -> Option<i32> {
+    if text.is_empty() || height_px <= 2 || max_width_px <= 2 {
+        return None;
+    }
+    let font = font()?;
+    let px = height_px as f32;
+    let w: f32 = fit_text(font, text, px, max_width_px as f32)
+        .chars()
+        .map(|ch| font.metrics(ch, px).advance_width)
+        .sum();
+    Some(w.ceil() as i32)
+}
+
 /// Rasterise `text` into a premultiplied-alpha RGBA buffer.
 fn build_buffer(
     font: &Font,

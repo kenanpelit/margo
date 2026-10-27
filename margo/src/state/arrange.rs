@@ -1243,10 +1243,18 @@ impl MargoState {
         {
             self.space.raise_element(&w, false);
         }
+        // In overview every window is a grid card in one stacking band
+        // (mango 0fbfef4b): floats / scratchpads / overlays aren't raised
+        // over the tiles, or they'd fly over other cards while sliding
+        // into the grid. Only the focused card is lifted (above). Normal
+        // banding comes back with the arrange that closes the overview.
+        let in_overview =
+            |c: &MargoClient| self.monitors.get(c.monitor).is_some_and(|m| m.is_overview);
         for c in self
             .clients
             .iter()
             .filter(|c| (c.is_floating || c.is_in_scratchpad) && !c.is_overlay)
+            .filter(|c| !in_overview(c))
         {
             self.space.raise_element(&c.window, false);
         }
@@ -1263,7 +1271,11 @@ impl MargoState {
         if let Some(c) = self.clients.iter().find(|c| c.interactive_grab) {
             self.space.raise_element(&c.window, false);
         }
-        for c in self.clients.iter().filter(|c| c.is_overlay) {
+        for c in self
+            .clients
+            .iter()
+            .filter(|c| c.is_overlay && !in_overview(c))
+        {
             self.space.raise_element(&c.window, false);
         }
     }

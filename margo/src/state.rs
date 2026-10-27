@@ -587,6 +587,12 @@ pub struct MargoState {
     /// NOT pay the focus-refresh cost. Cleared in `layer_destroyed`.
     pub layer_kb_interactivity_hashes:
         std::collections::HashMap<smithay::reexports::wayland_server::backend::ObjectId, u64>,
+    /// Layer roots that have committed their first buffer. The first
+    /// one re-picks pointer focus (see `refresh_pointer_focus`) so a
+    /// layer that maps under a still pointer gets `wl_pointer.enter`
+    /// without the user having to move it. Cleared in `layer_destroyed`.
+    pub layer_buffer_mapped:
+        std::collections::HashSet<smithay::reexports::wayland_server::backend::ObjectId>,
     /// Per-output frame-callback sequence number. Bumped once per real
     /// vblank (in `note_vblank`) and once per estimated vblank (when
     /// the timer queued from the empty-render path fires). Surfaces
@@ -1368,6 +1374,7 @@ impl MargoState {
             rule_once_consumed: std::collections::HashSet::new(),
             layer_layout_hashes: std::collections::HashMap::new(),
             layer_kb_interactivity_hashes: std::collections::HashMap::new(),
+            layer_buffer_mapped: std::collections::HashSet::new(),
             frame_callback_sequence: std::collections::HashMap::new(),
             perf_counters: std::collections::HashMap::new(),
             frame_callback_fallback_output: Output::new(

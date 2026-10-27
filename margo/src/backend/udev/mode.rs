@@ -178,6 +178,9 @@ fn find_matching_drm_mode(
 /// Pick a DRM mode for a connector at hotplug.
 ///
 /// Order:
+///   0. `custom:1` rule with `(w, h, refresh)`: a generated CVT mode,
+///      not looked up in the advertised list (mango 4d0fb96a). If the
+///      driver rejects it, [`fallback_for_custom`] picks again without it.
 ///   1. Monitor rule's `(w, h, refresh)` exact match.
 ///   2. Monitor rule's `(w, h)`, highest refresh.
 ///   3. Connector's PREFERRED mode.
@@ -186,6 +189,16 @@ pub(super) fn select_drm_mode(
     conn: &connector::Info,
     rule: Option<&margo_config::MonitorRule>,
 ) -> Option<DrmMode> {
+    if let Some(r) = rule
+        && r.custom_mode
+        && r.width > 0
+        && r.height > 0
+        && r.refresh > 0.0
+        && let Some(m) = cvt_mode(r.width, r.height, r.refresh)
+    {
+        return Some(m);
+    }
+
     let modes = conn.modes();
     if modes.is_empty() {
         return None;
@@ -229,4 +242,127 @@ pub(super) fn select_drm_mode(
     }
 
     Some(modes[0])
+}
+
+/// The mode to retry with when a `custom:1` rule's generated mode was
+/// rejected by the driver: the normal advertised-mode selection.
+/// `None` when the rule wasn't custom (nothing different to try).
+pub(super) fn fallback_for_custom(
+    conn: &connector::Info,
+    rule: Option<&margo_config::MonitorRule>,
+) -> Option<DrmMode> {
+    let r = rule.filter(|r| r.custom_mode)?;
+    let plain = margo_config::MonitorRule {
+        custom_mode: false,
+        ..r.clone()
+    };
+    select_drm_mode(conn, Some(&plain))
+}
+
+/// VESA CVT 1.1 timings (normal blanking, progressive) for
+/// `width`×`height`@`refresh_hz` — the same generator wlroots uses for
+/// custom modes (libxcvt). `None` for sizes DRM can't express.
+pub(super) fn cvt_mode(width: i32, height: i32, refresh_hz: f32) -> Option<DrmMode> {
+    const H_GRANULARITY: i32 = 8;
+    const MIN_V_PORCH: i32 = 3;
+    const MIN_V_BPORCH: i32 = 6;
+    const CLOCK_STEP_KHZ: i64 = 250;
+    const MIN_VSYNC_BP_US: f64 = 550.0;
+    const HSYNC_PERCENTAGE: i32 = 8;
+    const C_PRIME: f64 = 30.0; // (C - J) * K / 256 + J
+    const M_PRIME: f64 = 300.0; // M * K / 256
+
+    if width <= 0 || height <= 0 || refresh_hz <= 0.0 {
+        return None;
+    }
+    let vfield = f64::from(refresh_hz);
+    let hdisplay = width - width % H_GRANULARITY;
+    let vdisplay = height;
+    if hdisplay <= 0 {
+        return None;
+    }
+
+    // Vsync width encodes the aspect ratio.
+    let vsync = if vdisplay % 3 == 0 && vdisplay * 4 / 3 == hdisplay {
+        4
+    } else if vdisplay % 9 == 0 && vdisplay * 16 / 9 == hdisplay {
+        5
+    } else if vdisplay % 10 == 0 && vdisplay * 16 / 10 == hdisplay {
+        6
+    } else if (vdisplay % 4 == 0 && vdisplay * 5 / 4 == hdisplay)
+        || (vdisplay % 9 == 0 && vdisplay * 15 / 9 == hdisplay)
+    {
+        7
+    } else {
+        10
+    };
+
+    // Horizontal period in µs.
+    let hperiod = (1_000_000.0 / vfield - MIN_VSYNC_BP_US) / f64::from(vdisplay + MIN_V_PORCH);
+    if hperiod <= 0.0 {
+        return None;
+    }
+    let vsync_bp = ((MIN_VSYNC_BP_US / hperiod) as i32 + 1).max(vsync + MIN_V_BPORCH);
+    let vtotal = vdisplay + vsync_bp + MIN_V_PORCH;
+
+    let hblank_pct = (C_PRIME - M_PRIME * hperiod / 1000.0).max(20.0);
+    let mut hblank = (f64::from(hdisplay) * hblank_pct / (100.0 - hblank_pct)) as i32;
+    hblank -= hblank % (2 * H_GRANULARITY);
+    let htotal = hdisplay + hblank;
+
+    let hsync_end = hdisplay + hblank / 2;
+    let mut hsync_start = hsync_end - (htotal * HSYNC_PERCENTAGE) / 100;
+    hsync_start += H_GRANULARITY - hsync_start % H_GRANULARITY;
+    let vsync_start = vdisplay + MIN_V_PORCH;
+    let vsync_end = vsync_start + vsync;
+
+    let mut clock = (f64::from(htotal) * 1000.0 / hperiod) as i64;
+    clock -= clock % CLOCK_STEP_KHZ;
+
+    let u16_of = |v: i32| u16::try_from(v).ok();
+    let mut raw = drm_ffi::drm_mode_modeinfo {
+        clock: u32::try_from(clock).ok()?,
+        hdisplay: u16_of(hdisplay)?,
+        hsync_start: u16_of(hsync_start)?,
+        hsync_end: u16_of(hsync_end)?,
+        htotal: u16_of(htotal)?,
+        vdisplay: u16_of(vdisplay)?,
+        vsync_start: u16_of(vsync_start)?,
+        vsync_end: u16_of(vsync_end)?,
+        vtotal: u16_of(vtotal)?,
+        // Hz, like the kernel's drm_mode_vrefresh (rounded).
+        vrefresh: ((clock as f64 * 1000.0) / (f64::from(htotal) * f64::from(vtotal))).round()
+            as u32,
+        flags: drm_ffi::DRM_MODE_FLAG_NHSYNC | drm_ffi::DRM_MODE_FLAG_PVSYNC,
+        type_: drm_ffi::DRM_MODE_TYPE_USERDEF,
+        ..Default::default()
+    };
+    let name = format!("{width}x{height}");
+    for (dst, b) in raw.name.iter_mut().zip(name.bytes().take(31)) {
+        *dst = b as core::ffi::c_char;
+    }
+    Some(DrmMode::from(raw))
+}
+
+#[cfg(test)]
+mod cvt_tests {
+    use super::cvt_mode;
+
+    #[test]
+    fn matches_known_cvt_timings() {
+        // `cvt 1920 1080 60` → 173.00 MHz, 1920 2048 2248 2576, 1080 1083 1088 1120.
+        let m = cvt_mode(1920, 1080, 60.0).unwrap();
+        assert_eq!(m.clock(), 173_000);
+        assert_eq!(m.hsync(), (2048, 2248, 2576));
+        assert_eq!(m.vsync(), (1083, 1088, 1120));
+        assert_eq!(m.size(), (1920, 1080));
+        assert_eq!(m.vrefresh(), 60);
+        assert_eq!(m.name().to_string_lossy(), "1920x1080");
+    }
+
+    #[test]
+    fn rejects_degenerate_input() {
+        assert!(cvt_mode(0, 1080, 60.0).is_none());
+        assert!(cvt_mode(1920, 1080, 0.0).is_none());
+    }
 }

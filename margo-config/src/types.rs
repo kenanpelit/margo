@@ -1081,6 +1081,9 @@ pub struct Config {
     pub idle_inhibit_when_fullscreen: bool,
     pub log_level: i32,
     pub syncobj_enable: bool,
+    /// Minimum ms between re-arranges while dragging / resizing a tiled
+    /// (resp. floating) window. `0` (default) = one per frame of the
+    /// grab's monitor, from its refresh rate (mango ca34a6ac).
     pub drag_tile_refresh_interval: f32,
     pub drag_floating_refresh_interval: f32,
     pub allow_tearing: TearingMode,
@@ -1431,8 +1434,8 @@ impl Default for Config {
             idle_inhibit_when_fullscreen: false,
             log_level: 0,
             syncobj_enable: false,
-            drag_tile_refresh_interval: 8.0,
-            drag_floating_refresh_interval: 8.0,
+            drag_tile_refresh_interval: 0.0,
+            drag_floating_refresh_interval: 0.0,
             allow_tearing: TearingMode::Disabled,
             allow_shortcuts_inhibit: ShortcutsInhibit::Enable,
             allow_lock_transparent: false,

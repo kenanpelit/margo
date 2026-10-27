@@ -55,6 +55,12 @@ impl MargoState {
             return;
         }
 
+        // Scratchpads keep their scratchpad state (mango 565aca89).
+        if self.clients[idx].is_in_scratchpad {
+            self.activate_scratchpad_client(idx);
+            return;
+        }
+
         let mask = self.clients[idx].tags;
         let mon_idx = self.clients[idx].monitor;
         let already_visible = self
@@ -67,6 +73,18 @@ impl MargoState {
             let one_bit = mask & mask.wrapping_neg();
             let target = if one_bit != 0 { one_bit } else { mask };
             self.view_tag(target);
+        }
+
+        // A parked (non-active) group member is unmapped: make it the
+        // group's displayed member instead of focusing a hidden surface
+        // (mango 08a78c91). That also focuses and re-arranges.
+        if self.clients[idx].is_hidden_group_member() {
+            self.activate_group_member(idx);
+            let window = self.clients[idx].window.clone();
+            self.space.raise_element(&window, true);
+            self.enforce_z_order();
+            self.request_repaint();
+            return;
         }
 
         let window = self.clients[idx].window.clone();

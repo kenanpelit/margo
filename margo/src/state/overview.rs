@@ -87,7 +87,39 @@ impl MargoState {
         self.overview_transition_animation_ms = Some(self.overview_transition_ms());
         self.arrange_monitors(&flipped);
         self.overview_transition_animation_ms = None;
+        self.seed_overview_enter_zoom(&flipped);
         self.mark_state_dirty();
+    }
+
+    /// Overview entry (mango 95778786): every card except the selected
+    /// window starts at 1.2× its grid cell, centred on it, and shrinks
+    /// into place, instead of sliding over from wherever it was tiled.
+    /// The selected window keeps the slide so the eye can follow it.
+    fn seed_overview_enter_zoom(&mut self, flipped: &[usize]) {
+        for idx in 0..self.clients.len() {
+            let mon = self.clients[idx].monitor;
+            if !flipped.contains(&mon) || self.monitors[mon].selected == Some(idx) {
+                continue;
+            }
+            let anim = &self.clients[idx].animation;
+            if !anim.running || anim.action != crate::animation::AnimationType::Move {
+                continue;
+            }
+            let target = anim.current;
+            if target.width <= 0 || target.height <= 0 {
+                continue;
+            }
+            let w = (f64::from(target.width) * 1.2).round() as i32;
+            let h = (f64::from(target.height) * 1.2).round() as i32;
+            let start = crate::layout::Rect {
+                x: target.x + (target.width - w) / 2,
+                y: target.y + (target.height - h) / 2,
+                width: w,
+                height: h,
+            };
+            self.clients[idx].animation.initial = start;
+            self.clients[idx].geom = start;
+        }
     }
 
     pub fn close_overview(&mut self, activate_window: Option<Window>) {

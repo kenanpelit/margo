@@ -258,7 +258,9 @@ fn parse_line(
     // key-specific handling — matches mango: expansion applies uniformly
     // to every line's value, `var=` lines included (so a later var can
     // reference an earlier one), not just plain option values.
-    let val = expand_vars(raw_val.trim(), vars);
+    // Quotes come off first (mango `strip_quotes`, before expansion), so
+    // `focuscolor = "0xc66b25ff"` and `default_layout = 'tile'` parse.
+    let val = expand_vars(strip_enclosing_quotes(raw_val.trim()), vars);
     let val = val.as_str();
 
     if key == "var" {
@@ -393,6 +395,18 @@ fn is_bind_key(k: &str) -> bool {
     k[4..]
         .chars()
         .all(|c| matches!(c, 's' | 'l' | 'r' | 'p' | 'c'))
+}
+
+/// Drop one pair of matching enclosing quotes (`"…"` or `'…'`) from an
+/// already-trimmed value, then re-trim. Anything else is returned as-is,
+/// so a quote inside a value (`spawn,sh -c "x"`) is untouched.
+pub(crate) fn strip_enclosing_quotes(val: &str) -> &str {
+    let b = val.as_bytes();
+    if b.len() >= 2 && (b[0] == b'"' || b[0] == b'\'') && b[b.len() - 1] == b[0] {
+        val[1..val.len() - 1].trim()
+    } else {
+        val
+    }
 }
 
 fn split_kv(line: &str) -> Option<(&str, &str)> {
@@ -2000,6 +2014,21 @@ mod tests {
         )
         .unwrap();
         assert_eq!(c.envs.last().map(|(_, v)| v.as_str()), Some("kitty-super"));
+    }
+
+    #[test]
+    fn enclosing_quotes_are_stripped_from_values() {
+        let c = parse_config_str(
+            "default_layout = \"scroller\"\nborderpx = ' 7 '\nexec='kitty'\n",
+            None,
+        )
+        .unwrap();
+        assert_eq!(c.default_layout, "scroller");
+        assert_eq!(c.borderpx, 7);
+        assert_eq!(c.exec.first().map(String::as_str), Some("kitty"));
+        // Mismatched or inner quotes are left alone.
+        let c = parse_config_str("exec=\"a' \nexec=sh -c \"x\"\n", None).unwrap();
+        assert_eq!(c.exec, vec!["\"a'".to_string(), "sh -c \"x\"".to_string()]);
     }
 
     #[test]

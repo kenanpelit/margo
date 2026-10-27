@@ -516,6 +516,23 @@ impl CompositorHandler for MargoState {
                 if kb_changed {
                     self.refresh_keyboard_focus();
                 }
+
+                // First buffer: the layer is now actually on screen, so
+                // a pointer resting over it must enter it. A null-buffer
+                // commit unmaps it: hand the pointer to what's beneath.
+                let has_buffer =
+                    smithay::backend::renderer::utils::with_renderer_surface_state(&root, |rs| {
+                        rs.buffer().is_some()
+                    })
+                    .unwrap_or(false);
+                if has_buffer != self.layer_buffer_mapped.contains(&key) {
+                    if has_buffer {
+                        self.layer_buffer_mapped.insert(key);
+                    } else {
+                        self.layer_buffer_mapped.remove(&key);
+                    }
+                    self.refresh_pointer_focus();
+                }
             }
         }
         // Initial configure for xdg_popups. Toplevel and layer surfaces

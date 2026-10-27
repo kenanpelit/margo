@@ -434,6 +434,13 @@ pub(crate) fn handle_virtual_keyboard(
     }
 }
 
+/// Swallow a pressed key and remember it, so its release is swallowed
+/// too. (Portal global shortcuts track their own releases.)
+fn swallow_key(state: &mut MargoState, keycode: u32) -> FilterResult<()> {
+    state.input_keyboard.swallowed_keys.insert(keycode);
+    FilterResult::Intercept(())
+}
+
 fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoState, event: E) {
     let serial = SERIAL_COUNTER.next_serial();
     let time = event.time();
@@ -470,6 +477,16 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
             serial,
             time,
             |state, modifiers, handle| {
+                // A key whose press a binding swallowed: swallow its release
+                // too (see `KeyboardState::swallowed_keys`). Checked before
+                // everything else so a lock / focus change in between
+                // can't leak it either.
+                if key_state == KeyState::Released
+                    && state.input_keyboard.swallowed_keys.remove(&keycode.raw())
+                {
+                    return FilterResult::Intercept(());
+                }
+
                 // While the session is locked, no compositor keybindings —
                 // EVERY key (press or release) goes straight through to the
                 // focused lock surface so the user can type their password.
@@ -518,7 +535,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                                 let action = kb.action.clone();
                                 let arg = kb.arg.clone();
                                 crate::dispatch::dispatch_action(state, &action, &arg);
-                                return FilterResult::Intercept(());
+                                return swallow_key(state, keycode.raw());
                             }
                             // Binds the user explicitly tagged `l` (lock_apply) —
                             // volume / brightness / media keys marked safe to run
@@ -531,7 +548,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                                 let action = kb.action.clone();
                                 let arg = kb.arg.clone();
                                 crate::dispatch::dispatch_action(state, &action, &arg);
-                                return FilterResult::Intercept(());
+                                return swallow_key(state, keycode.raw());
                             }
                         }
                     }
@@ -685,7 +702,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                         if action != "spawn" {
                             state.active_output_source = crate::state::ActiveOutputSource::Focus;
                         }
-                        return FilterResult::Intercept(());
+                        return swallow_key(state, keycode.raw());
                     }
 
                     // Scroller-overview modal keys. Runs only when no
@@ -695,7 +712,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                     // MRU switcher: Esc cancels (re-focus the original window).
                     if state.is_mru_open() && keysym.raw() == 0xff1b {
                         state.mru_cancel();
-                        return FilterResult::Intercept(());
+                        return swallow_key(state, keycode.raw());
                     }
 
                     if state.is_scroller_overview_open() {
@@ -724,7 +741,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                             _ => false,
                         };
                         if handled {
-                            return FilterResult::Intercept(());
+                            return swallow_key(state, keycode.raw());
                         }
                     }
 

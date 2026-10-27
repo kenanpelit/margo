@@ -1155,6 +1155,62 @@ fn build_mru_switcher_elements(
         }
     }
 
+    // ── Title bar under the panel (mango 7a1f90ed): the selected
+    //    window's title, then its app_id, centred on the output. Shown
+    //    with the labels (`mru_show_labels`).
+    if show_labels
+        && let Some(client) = sw
+            .candidates
+            .get(sw.selected)
+            .and_then(|w| state.clients.iter().find(|c| c.window == *w))
+    {
+        let text = match (client.title.trim(), client.app_id.trim()) {
+            ("", app) => app.to_string(),
+            (title, "") => title.to_string(),
+            (title, app) => format!("{title}  —  {app}"),
+        };
+        const BAR_H: i32 = 34;
+        let text_h = (f64::from(BAR_H) * output_scale * 0.5) as i32;
+        let max_w = ((output_geo.size.w - 120).max(100) as f64 * output_scale) as i32;
+        if let Some(text_w) = crate::render::text::label_width(&text, text_h, max_w) {
+            let text_w_logical = (f64::from(text_w) / output_scale).ceil() as i32;
+            let bar_w = text_w_logical + 2 * 18;
+            let bar_x = (output_geo.size.w - bar_w) / 2;
+            let bar_y = oy + panel_h + 10;
+            let text_pos: Point<i32, Physical> = Point::<i32, Logical>::from((
+                bar_x + 18,
+                bar_y + (BAR_H - (f64::from(text_h) / output_scale).round() as i32) / 2 - 2,
+            ))
+            .to_physical_precise_round(scale);
+            if let Some(el) = crate::render::text::label_element(
+                renderer,
+                &text,
+                text_h,
+                max_w,
+                if accent { accent_rgb } else { [235, 235, 245] },
+                text_pos.to_f64(),
+            ) {
+                out.push(MargoRenderElement::Cursor(el));
+            }
+            if let Some(p) = prog.clone() {
+                let bar = Rectangle::<i32, Logical>::new(
+                    Point::from((bar_x, bar_y)),
+                    smithay::utils::Size::from((bar_w, BAR_H)),
+                )
+                .to_physical_precise_round(scale);
+                out.push(MargoRenderElement::RoundedSolid(
+                    crate::render::rounded_solid::RoundedSolidElement::new(
+                        Id::new(),
+                        bar,
+                        radius,
+                        [0.0, 0.0, 0.0, 0.62],
+                        p,
+                    ),
+                ));
+            }
+        }
+    }
+
     // ── Backing panel: hugs the thumbnail row (preview-sized), scrolls
     //    with it via the same `shift`. Not a full-width band.
     if let Some(p) = prog {
@@ -2247,13 +2303,20 @@ fn push_client_elements(
                 // Where the surface is opaque the blur is fully hidden
                 // (wasted GPU only); where it's translucent the blur
                 // shows through — Hyprland's `blur` policy. Gated on
-                // `Config::blur`, excluded for `no_blur` / fullscreen /
-                // scratchpad clients (a blur there would bleed past
-                // edges that should feel locked to the screen).
+                // `Config::blur`, excluded for `no_blur` / scratchpad
+                // clients (a blur there would bleed past edges that
+                // should feel locked to the screen). Fullscreen skips it
+                // only when the window is opaque — the blur would be
+                // hidden and would cost the direct-scanout path — while a
+                // translucent fullscreen window (kitty with an alpha
+                // background, wp_alpha_modifier) keeps it (mango a30fa7e4).
                 if let Some(client) = client {
                     if state.config.blur
                         && !client.no_blur
-                        && !client.is_fullscreen
+                        && (!client.is_fullscreen
+                            || window
+                                .wl_surface()
+                                .is_some_and(|s| surface_is_translucent(&s)))
                         && !client.is_in_scratchpad
                     {
                         if let (Some(geo), true) = (
@@ -2587,6 +2650,37 @@ fn push_closing_layers(
 /// list to render, so that `selected` always falls inside it (centred when
 /// there's room, clamped at either end otherwise). Pure so it's testable
 /// without a renderer — see [`build_mru_switcher_elements`]'s call site.
+/// Whether `surface` shows what's beneath it: a `wp_alpha_modifier_v1`
+/// multiplier below 1, or a committed buffer whose opaque region doesn't
+/// cover the whole surface (an alpha buffer with no full `opaque_region`).
+fn surface_is_translucent(
+    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+) -> bool {
+    use smithay::wayland::alpha_modifier::AlphaModifierSurfaceCachedState;
+    let faded = smithay::wayland::compositor::with_states(surface, |states| {
+        states
+            .cached_state
+            .get::<AlphaModifierSurfaceCachedState>()
+            .current()
+            .multiplier()
+            .is_some_and(|m| m < u32::MAX)
+    });
+    if faded {
+        return true;
+    }
+    smithay::backend::renderer::utils::with_renderer_surface_state(surface, |rs| {
+        let Some(size) = rs.surface_size() else {
+            return false;
+        };
+        !rs.opaque_regions().is_some_and(|regions| {
+            regions
+                .iter()
+                .any(|r| r.contains_rect(Rectangle::from_size(size)))
+        })
+    })
+    .unwrap_or(false)
+}
+
 fn mru_window_start(selected: usize, total: usize, max: usize) -> usize {
     if total <= max {
         0

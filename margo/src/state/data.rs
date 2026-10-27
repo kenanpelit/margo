@@ -172,6 +172,10 @@ pub struct MargoClient {
     pub is_in_scratchpad: bool,
     pub is_scratchpad_show: bool,
     pub is_named_scratchpad: bool,
+    /// A window rule gave this client a size (`width` / `height` or a
+    /// fraction). A scratchpad then keeps that size; otherwise it is
+    /// sized from `scratchpad_*_ratio` on every show (mango b12b06f0).
+    pub has_rule_size: bool,
     pub is_term: bool,
     pub no_swallow: bool,
     /// `windowrule = confine_pointer:1, …` — see the field doc on
@@ -337,6 +341,7 @@ impl MargoClient {
             is_in_scratchpad: false,
             is_scratchpad_show: false,
             is_named_scratchpad: false,
+            has_rule_size: false,
             is_term: false,
             no_swallow: false,
             confine_pointer: false,

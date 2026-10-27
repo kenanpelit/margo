@@ -261,6 +261,7 @@ impl WlrLayerShellHandler for MargoState {
         // layer in steady state.
         self.layer_layout_hashes.remove(&wl_surf.id());
         self.layer_kb_interactivity_hashes.remove(&wl_surf.id());
+        self.layer_buffer_mapped.remove(&wl_surf.id());
 
         if layer_visible {
             self.refresh_output_work_area(&output);
@@ -308,6 +309,10 @@ impl WlrLayerShellHandler for MargoState {
                 None => self.focus_surface(None),
             }
         }
+
+        // The layer is gone from under a still pointer: hand the pointer
+        // to whatever is beneath it now.
+        self.refresh_pointer_focus();
 
         tracing::info!("layer surface destroyed");
     }

@@ -706,6 +706,40 @@ impl MargoState {
         }
     }
 
+    /// Re-pick the surface under a pointer that hasn't moved and send
+    /// it a synthetic motion, so a surface that appeared or vanished
+    /// under it gets `wl_pointer.enter` / `leave` now rather than on the
+    /// next real motion (mango a3990ecf: slurp's crosshair only showed
+    /// after moving the mouse). No sloppy focus — the user didn't move.
+    /// Skipped during a pointer grab (drag, resize, DnD), which owns
+    /// pointer focus, and while locked.
+    pub(crate) fn refresh_pointer_focus(&mut self) {
+        if self.session_locked {
+            return;
+        }
+        let Some(pointer) = self.seat.get_pointer() else {
+            return;
+        };
+        if pointer.is_grabbed() {
+            return;
+        }
+        let pos = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+            self.input_pointer.x,
+            self.input_pointer.y,
+        ));
+        let focus = self.pointer_surface_under(pos);
+        pointer.motion(
+            self,
+            focus,
+            &smithay::input::pointer::MotionEvent {
+                location: pos,
+                serial: smithay::utils::SERIAL_COUNTER.next_serial(),
+                time: smithay::backend::input::InputTime::from_millis(crate::utils::now_ms()),
+            },
+        );
+        pointer.frame(self);
+    }
+
     pub(crate) fn pointer_monitor(&self) -> Option<usize> {
         self.monitor_at_point(self.input_pointer.x, self.input_pointer.y)
     }

@@ -160,9 +160,12 @@ impl MargoState {
         c.is_fullscreen = false;
         c.is_maximized_screen = false;
 
-        // Decide width/height: prefer windowrule values if they
-        // were set, fall back to `scratchpad_*_ratio * work_area`.
-        let (w, h) = if c.float_geom.width > 0 && c.float_geom.height > 0 {
+        // Decide width/height: a window rule's size wins, otherwise
+        // `scratchpad_*_ratio * work_area`. Keyed on `has_rule_size`, not
+        // on a non-zero `float_geom` — that is also filled by an
+        // `isfloating:1` rule's 60 % default or by earlier floating, which
+        // used to make the ratios dead (mango b12b06f0).
+        let (w, h) = if c.has_rule_size && c.float_geom.width > 0 && c.float_geom.height > 0 {
             (
                 c.float_geom.width.min(work_area.width.max(1)),
                 c.float_geom.height.min(work_area.height.max(1)),
@@ -221,6 +224,59 @@ impl MargoState {
         self.request_repaint();
     }
 
+    /// `single_scratchpad`: only ONE scratchpad may be visible at a
+    /// time, so hide every other shown one on the same monitor (or
+    /// everywhere with `scratchpad_cross_monitor`) before showing `idx`.
+    fn hide_other_scratchpads_if_single(&mut self, idx: usize) {
+        if !self.config.single_scratchpad || idx >= self.clients.len() {
+            return;
+        }
+        let mon_idx = self.clients[idx].monitor;
+        let to_hide: Vec<usize> = self
+            .clients
+            .iter()
+            .enumerate()
+            .filter(|(i, c)| {
+                *i != idx
+                    && c.is_in_scratchpad
+                    && c.is_scratchpad_show
+                    && (self.config.scratchpad_cross_monitor || c.monitor == mon_idx)
+            })
+            .map(|(i, _)| i)
+            .collect();
+        for i in to_hide {
+            self.hide_scratchpad_client(i);
+        }
+    }
+
+    /// An activation request (xdg-activation, foreign-toplevel, IPC
+    /// `focuswindow`) for a scratchpad client. It stays a scratchpad
+    /// (mango 565aca89): a shown one on the current tagset is just
+    /// focused, a hidden one is shown the way its toggle would show it.
+    /// Pulling it out of the scratchpad instead would focus an unmapped
+    /// surface.
+    pub(crate) fn activate_scratchpad_client(&mut self, idx: usize) {
+        if idx >= self.clients.len() || !self.clients[idx].is_in_scratchpad {
+            return;
+        }
+        let c = &self.clients[idx];
+        let visible = c.is_scratchpad_show
+            && self
+                .monitors
+                .get(c.monitor)
+                .is_some_and(|m| c.tags & m.current_tagset() != 0);
+        if visible {
+            let window = self.clients[idx].window.clone();
+            self.focus_surface(Some(FocusTarget::Window(window.clone())));
+            self.space.raise_element(&window, true);
+            self.enforce_z_order();
+        } else {
+            self.hide_other_scratchpads_if_single(idx);
+            self.show_scratchpad_client(idx);
+        }
+        self.request_repaint();
+    }
+
     /// Toggle the show/hide state of a single scratchpad client.
     fn switch_scratchpad_state(&mut self, idx: usize) {
         if idx >= self.clients.len() {
@@ -270,24 +326,7 @@ impl MargoState {
         // ONE named scratchpad may be visible at a time. Hide every
         // other shown scratchpad on the same monitor before switching
         // the target's state.
-        if self.config.single_scratchpad {
-            let mon_idx = self.clients[idx].monitor;
-            let to_hide: Vec<usize> = self
-                .clients
-                .iter()
-                .enumerate()
-                .filter(|(i, c)| {
-                    *i != idx
-                        && c.is_in_scratchpad
-                        && c.is_scratchpad_show
-                        && (self.config.scratchpad_cross_monitor || c.monitor == mon_idx)
-                })
-                .map(|(i, _)| i)
-                .collect();
-            for i in to_hide {
-                self.hide_scratchpad_client(i);
-            }
-        }
+        self.hide_other_scratchpads_if_single(idx);
 
         // First-time toggle: mark the client as `is_in_scratchpad` so
         // future toggles see it as a scratchpad. Then flip the

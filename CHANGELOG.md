@@ -5,6 +5,53 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Ports from mango 0.18.1–0.18.3:
+  - `monitorrule … custom:1` now works: margo generates the exact
+    width × height @ refresh mode (CVT) even if the panel doesn't
+    advertise it, and falls back to an advertised mode if the driver
+    refuses it.
+  - The window switcher shows the selected window's title and app id
+    under the thumbnails (with `mru_show_labels`).
+  - Opening the overview zooms the cards in from slightly larger;
+    the focused window still slides into place.
+- `mctl check-config` warns (W007) about monitorrule fields that only
+  work together: `width` without `height`, `refresh` without a size,
+  `custom:1` without a full mode, `x` without `y`.
+
+### Changed
+
+- `drag_tile_refresh_interval` / `drag_floating_refresh_interval` default
+  to `0`, which means one update per frame at the monitor's refresh
+  rate. An explicit value still overrides it.
+
+### Fixed
+
+- Config values in quotes (`focuscolor = "0x…"`, `default_layout = 'tile'`)
+  are read without the quotes.
+- The key of a keybinding no longer leaks its release to the focused app
+  (e.g. Alt+Space's Space release reaching Chrome).
+- Translucent fullscreen windows (kitty with a transparent background,
+  `wp_alpha_modifier`) keep their blur; opaque ones still skip it.
+- Activating a hidden scratchpad (a notification click, the dock,
+  `focuswindow`) shows it as a scratchpad instead of focusing an unmapped
+  window. Activating a hidden tab-group member switches the group to it.
+- `scratchpad_width_ratio` / `scratchpad_height_ratio` apply whenever no
+  window rule gives the scratchpad a size, even if the window had already
+  been floating.
+- A window rule's floating size is no longer shrunk or grown to the app's
+  own min/max size hints; only the rule's `min_*` / `max_*` bound it.
+- A layer surface that opens or closes under a still pointer gets
+  pointer enter/leave right away (slurp's crosshair showed only after
+  moving the mouse).
+- In the overview, floating and overlay windows no longer fly over the
+  other cards while sliding into the grid.
+- A close animation could briefly show on another output after a monitor
+  was unplugged.
+
 ## [4.3.0] – 2026-10-25
 
 **A new İznik colour scheme, and the catalogue trimmed to the eleven best

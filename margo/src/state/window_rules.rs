@@ -332,6 +332,11 @@ impl MargoState {
         // Visual rules below keep applying on every reapply.
         let place = !client.rule_placement_done;
         let mut placed = false;
+        // Size bounds that came from a rule. The floating geometry is
+        // clamped to these only — never to the app's own xdg min/max
+        // hints, which are already loaded into `client.min_*` and would
+        // override an explicit rule size (mango 85f9fd76).
+        let (mut rule_min_w, mut rule_min_h, mut rule_max_w, mut rule_max_h) = (0, 0, 0, 0);
         for (rule_idx, rule) in rules {
             // `windowrule-once`: this rule applies to the first client
             // that ever matches it, then is consumed for the rest of
@@ -462,15 +467,19 @@ impl MargoState {
             // Niri-style additions.
             if rule.min_width > 0 {
                 client.min_width = rule.min_width;
+                rule_min_w = rule.min_width;
             }
             if rule.min_height > 0 {
                 client.min_height = rule.min_height;
+                rule_min_h = rule.min_height;
             }
             if rule.max_width > 0 {
                 client.max_width = rule.max_width;
+                rule_max_w = rule.max_width;
             }
             if rule.max_height > 0 {
                 client.max_height = rule.max_height;
+                rule_max_h = rule.max_height;
             }
             if let Some(focused) = rule.open_focused {
                 // open_focused=false → equivalent to no_focus=true
@@ -489,6 +498,15 @@ impl MargoState {
                 client.is_floating = true;
                 client.float_geom =
                     Self::rule_float_geometry_for(monitors, client.monitor, rule, focus_anchor);
+            }
+            // A rule that sizes the window owns its scratchpad size too;
+            // without one the scratchpad uses `scratchpad_*_ratio`.
+            if rule.width > 0
+                || rule.height > 0
+                || rule.width_fraction.is_some()
+                || rule.height_fraction.is_some()
+            {
+                client.has_rule_size = true;
             }
             if rule.once {
                 once_consumed.insert(*rule_idx);
@@ -515,14 +533,14 @@ impl MargoState {
                 Self::rule_float_geometry_for(monitors, client.monitor, &empty_rule, focus_anchor);
         }
         // After all matched rules are applied, clamp the floating geometry
-        // to any size constraints picked up.
+        // to the size constraints the rules set.
         clamp_size(
             &mut client.float_geom.width,
             &mut client.float_geom.height,
-            client.min_width,
-            client.min_height,
-            client.max_width,
-            client.max_height,
+            rule_min_w,
+            rule_min_h,
+            rule_max_w,
+            rule_max_h,
         );
     }
 

@@ -233,7 +233,7 @@ pub(super) fn setup_connector(
         .cloned();
 
     let drm_mode = select_drm_mode(conn_info, rule.as_ref())?;
-    let wl_mode = OutputMode::from(drm_mode);
+    let mut wl_mode = OutputMode::from(drm_mode);
 
     let scale = rule.as_ref().map(|r| r.scale).unwrap_or(1.0);
     let transform = smithay_transform(rule.as_ref().map(|r| r.transform).unwrap_or(0));
@@ -293,7 +293,22 @@ pub(super) fn setup_connector(
     output.set_preferred(wl_mode);
     state.space.map_output(&output, position);
 
-    let drm_surface = match drm.create_surface(crtc_h, drm_mode, &[conn_handle]) {
+    let created = drm
+        .create_surface(crtc_h, drm_mode, &[conn_handle])
+        .or_else(|e| {
+            // A `custom:1` mode the driver won't take: fall back to the
+            // advertised mode the rule would otherwise pick.
+            let Some(fallback) = super::mode::fallback_for_custom(conn_info, rule.as_ref()) else {
+                return Err(e);
+            };
+            warn!("custom mode for {output_name} rejected ({e}); using an advertised mode");
+            let surface = drm.create_surface(crtc_h, fallback, &[conn_handle])?;
+            wl_mode = OutputMode::from(fallback);
+            output.change_current_state(Some(wl_mode), None, None, None);
+            output.set_preferred(wl_mode);
+            Ok(surface)
+        });
+    let drm_surface = match created {
         Ok(s) => s,
         Err(e) => {
             warn!("hotplug create_surface for {output_name}: {e}");
@@ -421,6 +436,16 @@ fn migrate_clients_off_output(state: &mut MargoState, removed: &Output) {
     let Some(removed_idx) = removed_idx else {
         return;
     };
+
+    // Close animations are drawn by monitor index: drop the removed
+    // output's (nothing left to draw them on) and shift the rest, or a
+    // snapshot would flash on whichever output inherits the index.
+    state.closing_clients.retain(|cc| cc.monitor != removed_idx);
+    for cc in state.closing_clients.iter_mut() {
+        if cc.monitor > removed_idx {
+            cc.monitor -= 1;
+        }
+    }
 
     let target_idx = state
         .monitors

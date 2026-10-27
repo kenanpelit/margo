@@ -233,13 +233,13 @@ impl Component for BehaviourModel {
                             connect_active_notify[sender] => move |s| sender.input(BehaviourInput::SetBool("drag_warp_cursor", s.is_active())) } },
                     #[template] Row {
                         set_widget_name: "setting:conf:drag_tile_refresh_interval",
-                        #[template_child] title { set_label: "Tile drag refresh interval (ms)" },
-                        gtk::SpinButton { set_valign: gtk::Align::Center, set_digits: 1, set_adjustment: &adj(model.drag_tile_refresh_interval, 1.0, 60.0, 0.5),
+                        #[template_child] title { set_label: "Tile drag refresh interval (ms, 0 = per frame)" },
+                        gtk::SpinButton { set_valign: gtk::Align::Center, set_digits: 1, set_adjustment: &adj(model.drag_tile_refresh_interval, 0.0, 60.0, 0.5),
                             connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetF("drag_tile_refresh_interval", s.value(), 1)) } },
                     #[template] Row {
                         set_widget_name: "setting:conf:drag_floating_refresh_interval",
-                        #[template_child] title { set_label: "Floating drag refresh interval (ms)" },
-                        gtk::SpinButton { set_valign: gtk::Align::Center, set_digits: 1, set_adjustment: &adj(model.drag_floating_refresh_interval, 1.0, 60.0, 0.5),
+                        #[template_child] title { set_label: "Floating drag refresh interval (ms, 0 = per frame)" },
+                        gtk::SpinButton { set_valign: gtk::Align::Center, set_digits: 1, set_adjustment: &adj(model.drag_floating_refresh_interval, 0.0, 60.0, 0.5),
                             connect_value_changed[sender] => move |s| sender.input(BehaviourInput::SetF("drag_floating_refresh_interval", s.value(), 1)) } },
                 },
 
@@ -397,8 +397,8 @@ impl Component for BehaviourModel {
             drag_tile_to_tile: read_bool("drag_tile_to_tile", true),
             mosaic_auto_overflow_tag: read_bool("mosaic_auto_overflow_tag", true),
             drag_warp_cursor: read_bool("drag_warp_cursor", true),
-            drag_tile_refresh_interval: read_f64("drag_tile_refresh_interval", 8.0),
-            drag_floating_refresh_interval: read_f64("drag_floating_refresh_interval", 8.0),
+            drag_tile_refresh_interval: read_f64("drag_tile_refresh_interval", 0.0),
+            drag_floating_refresh_interval: read_f64("drag_floating_refresh_interval", 0.0),
             enable_floating_snap: read_bool("enable_floating_snap", true),
             snap_distance: read_int("snap_distance", 30) as f64,
             hot_corner_dwell: read_int("hot_corner_dwell_ms", 100) as f64,

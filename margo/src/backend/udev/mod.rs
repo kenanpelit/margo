@@ -499,7 +499,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
             warn!("no suitable mode for {output_name}");
             continue;
         };
-        let wl_mode = OutputMode::from(drm_mode);
+        let mut wl_mode = OutputMode::from(drm_mode);
 
         let scale = rule.as_ref().map(|r| r.scale).unwrap_or(1.0);
         let transform = smithay_transform(rule.as_ref().map(|r| r.transform).unwrap_or(0));
@@ -561,7 +561,22 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
         state.space.map_output(&output, position);
 
         // Create DRM surface for this output
-        let drm_surface = match drm.create_surface(crtc, drm_mode, &[*conn_handle]) {
+        let created = drm
+            .create_surface(crtc, drm_mode, &[*conn_handle])
+            .or_else(|e| {
+                // A `custom:1` mode the driver won't take: fall back to the
+                // advertised mode the rule would otherwise pick.
+                let Some(fallback) = mode::fallback_for_custom(&conn_info, rule.as_ref()) else {
+                    return Err(e);
+                };
+                warn!("custom mode for {output_name} rejected ({e}); using an advertised mode");
+                let surface = drm.create_surface(crtc, fallback, &[*conn_handle])?;
+                wl_mode = OutputMode::from(fallback);
+                output.change_current_state(Some(wl_mode), None, None, None);
+                output.set_preferred(wl_mode);
+                Ok(surface)
+            });
+        let drm_surface = match created {
             Ok(s) => s,
             Err(e) => {
                 warn!("create_surface for {output_name}: {e}");

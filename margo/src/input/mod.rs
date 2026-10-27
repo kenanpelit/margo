@@ -18,6 +18,11 @@ pub struct KeyboardState {
     pub repeat_rate: i32,
     /// Repeat delay (ms before first repeat).
     pub repeat_delay: i32,
+    /// Keycodes whose press a compositor binding swallowed. Their
+    /// release is swallowed too, so a client never gets a release for a
+    /// key it never saw pressed (mango `6a73450b`: Alt+Space's Space
+    /// release leaking into Chrome).
+    pub swallowed_keys: std::collections::HashSet<u32>,
 }
 
 impl KeyboardState {

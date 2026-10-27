@@ -22,7 +22,7 @@ use smithay::{
     },
 };
 
-use crate::state::{FocusTarget, MargoState};
+use crate::state::MargoState;
 
 impl XdgActivationHandler for MargoState {
     fn activation_state(&mut self) -> &mut XdgActivationState {
@@ -98,36 +98,19 @@ impl XdgActivationHandler for MargoState {
             return;
         }
 
-        // Switch to the client's tag iff it isn't already visible —
-        // see the module comment about browsers and the toggle-back
-        // semantic.
+        // Same path as foreign-toplevel / IPC activation: switch to the
+        // client's tag iff it isn't already visible (see the module
+        // comment about browsers and the toggle-back semantic), keep a
+        // scratchpad a scratchpad, swap in a parked group member, then
+        // focus + raise + arrange.
         let mask = self.clients[idx].tags;
-        let mon_idx = self.clients[idx].monitor;
-        let already_visible = self
-            .monitors
-            .get(mon_idx)
-            .map(|m| (mask & m.current_tagset()) != 0)
-            .unwrap_or(false);
-        if !already_visible {
-            let one_bit = mask & mask.wrapping_neg();
-            let target = if one_bit != 0 { one_bit } else { mask };
-            self.view_tag(target);
-        }
-
-        // Focus + raise. focus_surface tracks selected/prev-selected
-        // history per monitor.
-        let window = self.clients[idx].window.clone();
-        self.focus_surface(Some(FocusTarget::Window(window.clone())));
-        self.space.raise_element(&window, true);
-        self.enforce_z_order();
-        self.request_repaint();
+        self.activate_window_idx(idx);
 
         tracing::info!(
-            "xdg_activation: activated app_id={} idx={} tag={:#x} already_visible={}",
+            "xdg_activation: activated app_id={} idx={} tag={:#x}",
             self.clients[idx].app_id,
             idx,
             mask,
-            already_visible,
         );
     }
 }

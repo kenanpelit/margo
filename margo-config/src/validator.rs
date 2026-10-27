@@ -180,13 +180,19 @@ fn validate_text(
         let raw_key = &raw[..eq_pos];
         let raw_val = &raw[eq_pos + 1..];
         let key = raw_key.trim();
-        let val_trim_offset = raw_val.len() - raw_val.trim_start().len();
+        let mut val_trim_offset = raw_val.len() - raw_val.trim_start().len();
         // Reuse the parser's stripper so the validator sees the exact
         // same value the parser will — critically, its hex-colour guard
         // keeps `focuscolor = #c66b25` from being mistaken for a comment.
-        let val = crate::parser::strip_inline_comment(raw_val)
-            .trim()
-            .to_string();
+        // Enclosing quotes come off too, exactly as in the parser.
+        let commentless = crate::parser::strip_inline_comment(raw_val).trim();
+        let unquoted = crate::parser::strip_enclosing_quotes(commentless);
+        if unquoted.len() != commentless.len() {
+            // Keep carets on the value: skip the opening quote and any
+            // whitespace that followed it.
+            val_trim_offset += commentless[1..].len() - commentless[1..].trim_start().len() + 1;
+        }
+        let val = unquoted.to_string();
 
         // include/source path resolution check.
         if key == "include" || key == "source" {
@@ -216,6 +222,26 @@ fn validate_text(
         // CSV-shaped values get the trailing/doubled comma check.
         if is_csv_shaped_key(key) {
             check_csv_commas(path, lineno, raw, eq_pos, &val, val_trim_offset, report);
+        }
+
+        // W007: monitorrule fields that only work together (mango
+        // 4d0fb96a). margo keeps the rule — `width`+`height` without
+        // `refresh` still picks the highest rate — but says what's
+        // ignored instead of leaving the user guessing.
+        if (key == "monitorrule" || key == "monitor")
+            && let Some(msg) = monitorrule_problem(&val)
+        {
+            let val_start = eq_pos + 1 + val_trim_offset + 1;
+            report.push(ConfigDiagnostic {
+                path: path.to_path_buf(),
+                line: lineno,
+                col: val_start,
+                end_col: val_start + val.len().max(1),
+                severity: Severity::Warning,
+                code: "W007".into(),
+                message: msg.to_string(),
+                line_text: raw.to_string(),
+            });
         }
 
         // `bind` arity: needs at least MODS,KEY,ACTION. A 1- or 2-field
@@ -442,6 +468,40 @@ fn validate_text(
         }
     }
     Ok(())
+}
+
+/// The first monitorrule field combination the compositor can't honour.
+fn monitorrule_problem(val: &str) -> Option<&'static str> {
+    let mut has = std::collections::HashSet::new();
+    let mut custom = false;
+    for field in val.split(',') {
+        let Some((k, v)) = field.split_once(':') else {
+            continue;
+        };
+        let k = k.trim().to_ascii_lowercase();
+        if k == "custom" {
+            custom = matches!(v.trim(), "1" | "true" | "yes" | "on");
+        }
+        has.insert(k);
+    }
+    let (w, h, r) = (
+        has.contains("width"),
+        has.contains("height"),
+        has.contains("refresh"),
+    );
+    if w != h {
+        Some(
+            "monitorrule sets only one of `width` / `height` — set both or the mode part is ignored",
+        )
+    } else if custom && !(w && r) {
+        Some("monitorrule `custom:1` needs `width`, `height` and `refresh` — it is ignored")
+    } else if r && !w {
+        Some("monitorrule `refresh` has no effect without `width` and `height`")
+    } else if has.contains("x") != has.contains("y") {
+        Some("monitorrule sets only one of `x` / `y` — set both or the position is automatic")
+    } else {
+        None
+    }
 }
 
 fn check_csv_commas(
@@ -1040,6 +1100,34 @@ mod tests {
     fn valid_enum_value_is_clean() {
         let r = validate_str("overview_style = scroller\ntwilight_mode = manual\n");
         assert!(!r.has_errors() && !r.has_warnings());
+    }
+
+    #[test]
+    fn quoted_values_validate_like_the_parser_reads_them() {
+        let r = validate_str("overview_style = \"scroller\"\nborderpx = '4'\n");
+        assert!(!r.has_errors() && !r.has_warnings());
+        // A bad value inside quotes still warns, caret on the value.
+        let r = validate_str("overview_style = \"blah\"\n");
+        let w = r.warnings().find(|w| w.code == "W002").expect("W002");
+        assert_eq!(w.col, 19, "caret should skip the opening quote");
+    }
+
+    #[test]
+    fn monitorrule_field_pairs_warn() {
+        let w7 = |line: &str| validate_str(line).warnings().any(|w| w.code == "W007");
+        assert!(!w7(
+            "monitorrule = name:DP-3, width:2560, height:1440, refresh:60, x:0, y:0\n"
+        ));
+        assert!(!w7("monitorrule = name:DP-3, width:2560, height:1440\n"));
+        assert!(w7("monitorrule = name:DP-3, width:2560\n"));
+        assert!(w7("monitorrule = name:HDMI-A-1, refresh:144\n"));
+        assert!(w7("monitorrule = name:DP-3, x:0\n"));
+        assert!(w7(
+            "monitorrule = name:DP-3, width:2560, height:1440, custom:1\n"
+        ));
+        assert!(!w7(
+            "monitorrule = name:DP-3, width:2560, height:1440, refresh:75, custom:1\n"
+        ));
     }
 
     #[test]

@@ -387,19 +387,42 @@ fn grab_arrange_due(
     }
 }
 
+/// Minimum time between grab re-arranges on `mon`: the configured
+/// `drag_{tile,floating}_refresh_interval` when set (> 0), otherwise one
+/// frame of the monitor's current mode (mango ca34a6ac) — 60 Hz when the
+/// mode is unknown.
+fn grab_arrange_interval(data: &MargoState, mon: usize, tiled: bool) -> std::time::Duration {
+    let configured = if tiled {
+        data.config.drag_tile_refresh_interval
+    } else {
+        data.config.drag_floating_refresh_interval
+    };
+    if configured > 0.0 {
+        return std::time::Duration::from_secs_f32(configured.min(1000.0) / 1000.0);
+    }
+    let refresh_mhz = data
+        .monitors
+        .get(mon)
+        .and_then(|m| m.output.current_mode())
+        .map_or(0, |mode| mode.refresh);
+    frame_interval(refresh_mhz)
+}
+
+/// One frame at `refresh_mhz` (mHz, as smithay reports a mode),
+/// 60 Hz when unknown, never below 1 ms.
+fn frame_interval(refresh_mhz: i32) -> std::time::Duration {
+    let mhz = if refresh_mhz > 0 { refresh_mhz } else { 60_000 };
+    std::time::Duration::from_secs_f64((1000.0 / f64::from(mhz)).max(0.001))
+}
+
 /// Re-arrange the grabbed window's monitor at most once per
-/// `drag_{tile,floating}_refresh_interval` ms. A pointer can report
+/// [`grab_arrange_interval`]. A pointer can report
 /// motion at 1000 Hz; arranging (layout, configures, borders, z-order)
 /// on every event floods a resizing client with configures it can't ack
 /// in time. A skipped update is applied by a one-shot timer at the end
 /// of the interval, so the window still lands where the pointer stopped.
 fn throttled_grab_arrange(data: &mut MargoState, window: &Window, tiled: bool) {
-    let interval_ms = if tiled {
-        data.config.drag_tile_refresh_interval
-    } else {
-        data.config.drag_floating_refresh_interval
-    };
-    let interval = std::time::Duration::from_secs_f32(interval_ms.clamp(0.0, 1000.0) / 1000.0);
+    let interval = grab_arrange_interval(data, grab_monitor(data, window), tiled);
     let now = std::time::Instant::now();
     match grab_arrange_due(data.grab_arrange_last, now, interval) {
         Ok(()) => {
@@ -450,8 +473,17 @@ fn finish_grab_arrange(data: &mut MargoState, window: &Window) {
 
 #[cfg(test)]
 mod throttle_tests {
-    use super::grab_arrange_due;
+    use super::{frame_interval, grab_arrange_due};
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn auto_interval_is_one_frame_of_the_mode() {
+        let ms = |mhz| frame_interval(mhz).as_secs_f64() * 1000.0;
+        assert!((ms(60_000) - 16.667).abs() < 0.01);
+        assert!((ms(144_000) - 6.944).abs() < 0.01);
+        // Unknown refresh falls back to 60 Hz.
+        assert!((ms(0) - 16.667).abs() < 0.01);
+    }
 
     #[test]
     fn first_update_and_updates_past_the_interval_run_immediately() {
