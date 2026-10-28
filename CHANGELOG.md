@@ -5,6 +5,34 @@ All notable changes to **margo** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.5.0] – 2026-10-28
+
+**mdots shows what an update would bring in before it installs anything,
+and Flatpaks can come from a remote other than flathub.**
+
+### Added
+
+- `mdots update --check` lists the available pacman, AUR and Flatpak
+  updates (with the installed version beside the new one) and then asks
+  `Continue Update? [Y/n]`. It only reads: `checkupdates` when
+  pacman-contrib is installed (else the cached databases), the AUR
+  helper's `-Qua`, and `flatpak remote-ls --updates`. With `--json` it
+  prints the report (`package_manager`, `flatpak`, `total_updates`) and
+  updates nothing, which suits a status-bar indicator; without a
+  terminal it never continues. A source that can't be checked shows as a
+  warning instead of failing the check.
+- `flatpak_remote` in the host file picks the remote Flatpaks install
+  from, and a package can set its own:
+  `{ name: org.gnome.Builder, type: flatpak, remote: gnome-nightly }`.
+  Unset, it stays flathub; an imported config never changes it.
+
+### Changed
+
+- Every mdots sync path now installs Flatpaks from that remote; the
+  plan-based sync used to pass none at all.
+- The mdots shell completions are regenerated (they now also cover
+  `mdots diff` and `mdots doctor`).
+
 ## [4.4.0] – 2026-10-27
 
 **Ports from mango 0.18.1–0.18.3: custom monitor modes that actually
