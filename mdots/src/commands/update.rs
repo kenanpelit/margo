@@ -1,13 +1,48 @@
 use anyhow::{Context, Result};
 use colored::*;
+use std::io::{self, IsTerminal, Write};
 use std::process::Command;
 
 use crate::config::{load_config, ConfigPaths};
 
-pub fn run(paths: &ConfigPaths, no_backup: bool, no_hooks: bool, devel: bool) -> Result<()> {
+pub fn run(
+    paths: &ConfigPaths,
+    no_backup: bool,
+    no_hooks: bool,
+    devel: bool,
+    check: bool,
+    json: bool,
+) -> Result<()> {
     // Load config and create backend
     let config = load_config(paths)?;
     let backend = crate::backend::create_backend(&config)?;
+
+    // --check: list what would be updated (read-only), then ask whether to go on. With --json it only reports, for scripts.
+    if check {
+        if !json {
+            println!();
+            println!("{}", "Checking for updates...".blue().bold());
+        }
+        let report = crate::commands::update_check::collect(&config, backend.as_ref());
+        crate::commands::update_check::print_report(&report, json)?;
+        if json || report.total_updates() == 0 {
+            return Ok(());
+        }
+        if !io::stdin().is_terminal() {
+            println!();
+            println!(
+                "{}",
+                "Non-interactive input; not continuing. Run `mdots update` to apply the updates."
+                    .yellow()
+            );
+            return Ok(());
+        }
+        if !prompt_continue_update()? {
+            println!();
+            println!("{}", "Check only — no changes made.".yellow());
+            return Ok(());
+        }
+    }
 
     println!();
     println!("{}", "=== System Update ===".blue().bold());
@@ -92,6 +127,22 @@ pub fn run(paths: &ConfigPaths, no_backup: bool, no_hooks: bool, devel: bool) ->
     }
 
     Ok(())
+}
+
+/// `Continue Update? [Y/n]`: Enter or y goes on; n, anything else or end of input stops.
+fn prompt_continue_update() -> Result<bool> {
+    println!();
+    print!("Continue Update? [Y/n] ");
+    io::stdout().flush()?;
+    let mut input = String::new();
+    if io::stdin().read_line(&mut input)? == 0 {
+        return Ok(false);
+    }
+    Ok(is_yes(&input))
+}
+
+fn is_yes(input: &str) -> bool {
+    matches!(input.trim().to_lowercase().as_str(), "" | "y" | "yes")
 }
 
 fn is_flatpak_installed() -> bool {
@@ -228,4 +279,19 @@ fn execute_update_hook(
     println!("{}", "✓ Hook completed successfully".green());
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_yes;
+
+    #[test]
+    fn continue_prompt_defaults_to_yes() {
+        for input in ["\n", "y\n", "Y", " yes \n"] {
+            assert!(is_yes(input), "{input:?}");
+        }
+        for input in ["n\n", "no", "q", "x\n"] {
+            assert!(!is_yes(input), "{input:?}");
+        }
+    }
 }

@@ -139,6 +139,10 @@ enum Commands {
         /// Update VCS packages (e.g., -git packages) by passing --devel to AUR helper
         #[arg(long)]
         devel: bool,
+
+        /// List the available pacman, AUR and Flatpak updates, then ask whether to continue (with --json: report only)
+        #[arg(long)]
+        check: bool,
     },
 
     /// Add unmanaged installed packages to system-packages.yaml
@@ -657,8 +661,9 @@ fn main() -> Result<()> {
             no_backup,
             no_hooks,
             devel,
+            check,
         } => {
-            commands::update::run(&paths, no_backup, no_hooks, devel)?;
+            commands::update::run(&paths, no_backup, no_hooks, devel, check, cli.json)?;
         }
         Commands::Merge {
             dry_run,

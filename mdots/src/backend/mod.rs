@@ -1,9 +1,20 @@
 pub mod pacman;
 
 use anyhow::Result;
+use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::config::{Config, PackageManagerType};
+
+/// A package with an update available from a package source (`mdots update --check`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PackageUpdate {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub available: Option<String>,
+}
 
 /// Trait abstracting native package manager operations.
 /// Flatpak operations are handled separately (same on all distros).
@@ -25,6 +36,9 @@ pub trait PkgBackend {
 
     /// Full system update (interactive)
     fn system_update(&self, devel: bool) -> Result<bool>;
+
+    /// List packages with updates available, without installing anything (read-only).
+    fn check_updates(&self) -> Result<Vec<PackageUpdate>>;
 
     /// Get all installed packages with their versions
     fn get_installed_packages(&self) -> Result<HashMap<String, String>>;
