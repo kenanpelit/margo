@@ -7,7 +7,8 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use crate::config::{
-    load_config, Config, ConfigPaths, FlatpakScope, ModuleProcessing, PackageType, ServicesConfig,
+    load_config, resolve_flatpak_remote, Config, ConfigPaths, FlatpakScope, ModuleProcessing,
+    PackageType, ServicesConfig,
 };
 use crate::defaults::{
     create_updated_state as create_updated_defaults_state, load_defaults_state,
@@ -172,6 +173,8 @@ struct SyncPlan {
     to_remove: Vec<String>,
     flatpak_to_install: Vec<String>,
     flatpak_to_remove: Vec<String>,
+    /// The `remote:` of each Flatpak to install that names its own (else the host's `flatpak_remote` / flathub applies).
+    flatpak_remotes: HashMap<String, String>,
 }
 
 impl SyncPlan {
@@ -400,6 +403,7 @@ fn install_module_packages(
     paths: &ConfigPaths,
     packages: &[Package],
     flatpak_scope: &FlatpakScope,
+    host_flatpak_remote: Option<&str>,
 ) -> Result<InstallationSummary> {
     let mut summary = InstallationSummary::new();
 
@@ -444,7 +448,13 @@ fn install_module_packages(
 
         for pkg in flatpak_pkgs {
             let status = std::process::Command::new("flatpak")
-                .args(["install", "-y", scope_flag, "flathub", &pkg.name])
+                .args([
+                    "install",
+                    "-y",
+                    scope_flag,
+                    resolve_flatpak_remote(pkg.remote.as_deref(), host_flatpak_remote),
+                    &pkg.name,
+                ])
                 .stdin(std::process::Stdio::inherit())
                 .stdout(std::process::Stdio::inherit())
                 .stderr(std::process::Stdio::inherit())
@@ -532,6 +542,7 @@ fn install_module_packages_strict_order(
     paths: &ConfigPaths,
     packages: &[Package],
     flatpak_scope: &FlatpakScope,
+    host_flatpak_remote: Option<&str>,
     module_name: &str,
     module_num: usize,
     total_modules: usize,
@@ -596,7 +607,13 @@ fn install_module_packages_strict_order(
 
         let start = std::time::Instant::now();
         let result = std::process::Command::new("flatpak")
-            .args(["install", "-y", scope_flag, "flathub", &pkg.name])
+            .args([
+                "install",
+                "-y",
+                scope_flag,
+                resolve_flatpak_remote(pkg.remote.as_deref(), host_flatpak_remote),
+                &pkg.name,
+            ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status();
@@ -767,6 +784,7 @@ fn sync_modules_sequential(
                         paths,
                         &packages_to_install,
                         &config.flatpak_scope,
+                        config.flatpak_remote.as_deref(),
                         module_name,
                         module_num,
                         total_modules,
@@ -783,7 +801,12 @@ fn sync_modules_sequential(
                         },
                         total_packages
                     );
-                    install_module_packages(paths, &packages_to_install, &config.flatpak_scope)?
+                    install_module_packages(
+                        paths,
+                        &packages_to_install,
+                        &config.flatpak_scope,
+                        config.flatpak_remote.as_deref(),
+                    )?
                 };
 
                 // Print summary
@@ -1396,11 +1419,17 @@ pub fn run(paths: &ConfigPaths, opts: SyncOptions) -> Result<()> {
         );
     }
 
+    let flatpak_remotes = declared
+        .iter()
+        .filter(|p| matches!(p.package_type, PackageType::Flatpak))
+        .filter_map(|p| Some((p.name.clone(), p.remote.clone()?)))
+        .collect();
     let plan = SyncPlan {
         to_install,
         to_remove,
         flatpak_to_install,
         flatpak_to_remove,
+        flatpak_remotes,
     };
     let no_package_changes = plan.is_empty();
 
@@ -1625,7 +1654,16 @@ fn execute_sync(paths: &ConfigPaths, plan: &SyncPlan, json: bool) -> Result<()> 
         };
 
         for pkg in flatpak_to_install {
-            execute_command("flatpak", &["install", "-y", scope_flag, pkg], json, false)?;
+            let remote = resolve_flatpak_remote(
+                plan.flatpak_remotes.get(pkg).map(String::as_str),
+                config.flatpak_remote.as_deref(),
+            );
+            execute_command(
+                "flatpak",
+                &["install", "-y", scope_flag, remote, pkg],
+                json,
+                false,
+            )?;
         }
     }
 
@@ -2957,6 +2995,7 @@ mod tests {
         Package {
             name: name.to_string(),
             package_type: ty,
+            remote: None,
         }
     }
 

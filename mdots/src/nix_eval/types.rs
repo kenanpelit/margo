@@ -413,11 +413,13 @@ impl NixPackageEntry {
                     PackageEntry::WithType {
                         name: stripped.to_string(),
                         r#type: Some(PackageType::Flatpak),
+                        remote: None,
                     }
                 } else if let Some(stripped) = name.strip_prefix("nix:") {
                     PackageEntry::WithType {
                         name: stripped.to_string(),
                         r#type: Some(PackageType::Nix),
+                        remote: None,
                     }
                 } else {
                     PackageEntry::Simple(name.clone())
@@ -432,6 +434,7 @@ impl NixPackageEntry {
                 PackageEntry::WithType {
                     name: name.clone(),
                     r#type: pkg_type,
+                    remote: None,
                 }
             }
         }
@@ -458,6 +461,7 @@ impl NixConfigRaw {
             packages.push(PackageEntry::WithType {
                 name: fp.clone(),
                 r#type: Some(PackageType::Flatpak),
+                remote: None,
             });
         }
 
@@ -465,6 +469,7 @@ impl NixConfigRaw {
             packages.push(PackageEntry::WithType {
                 name: np.clone(),
                 r#type: Some(PackageType::Nix),
+                remote: None,
             });
         }
 
@@ -638,6 +643,7 @@ impl NixConfigRaw {
             sync_sudo: self.sync_sudo,
             auto_commit: self.auto_commit,
             nix,
+            flatpak_remote: None,
         }
     }
 }
@@ -651,6 +657,7 @@ impl NixModuleRaw {
             packages.push(PackageEntry::WithType {
                 name: fp.clone(),
                 r#type: Some(PackageType::Flatpak),
+                remote: None,
             });
         }
 
@@ -658,6 +665,7 @@ impl NixModuleRaw {
             packages.push(PackageEntry::WithType {
                 name: np.clone(),
                 r#type: Some(PackageType::Nix),
+                remote: None,
             });
         }
 

@@ -59,6 +59,10 @@ pub struct Config {
     #[serde(default = "default_flatpak_scope")]
     pub flatpak_scope: FlatpakScope,
 
+    /// Flatpak remote apps are installed from, unless a package sets its own `remote:` (default: flathub)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flatpak_remote: Option<String>,
+
     /// Automatically prune packages during sync (default: false)
     #[serde(default)]
     pub auto_prune: bool,
@@ -239,7 +243,7 @@ impl Config {
             self.package_manager = other.package_manager;
         }
 
-        // Note: host, snapper_config, flatpak_scope, auto_prune from main file always win
+        // Note: host, snapper_config, flatpak_scope, flatpak_remote, auto_prune from main file always win
         // This prevents imports from accidentally changing core settings
     }
 }
@@ -249,6 +253,21 @@ impl Config {
 pub enum FlatpakScope {
     User,
     System,
+}
+
+/// The Flatpak remote used when neither the package nor the host names one.
+pub const DEFAULT_FLATPAK_REMOTE: &str = "flathub";
+
+/// The remote a Flatpak is installed from: the package's own `remote:`, else the host's `flatpak_remote`, else flathub. A blank
+/// value counts as unset.
+pub fn resolve_flatpak_remote<'a>(
+    package_remote: Option<&'a str>,
+    host_remote: Option<&'a str>,
+) -> &'a str {
+    let set = |remote: Option<&'a str>| remote.map(str::trim).filter(|remote| !remote.is_empty());
+    set(package_remote)
+        .or(set(host_remote))
+        .unwrap_or(DEFAULT_FLATPAK_REMOTE)
 }
 
 impl FlatpakScope {
@@ -762,6 +781,9 @@ pub enum PackageEntry {
         name: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         r#type: Option<PackageType>,
+        /// Flatpak only: the remote to install it from (overrides the host's `flatpak_remote`)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        remote: Option<String>,
     },
 }
 
@@ -794,6 +816,14 @@ impl PackageEntry {
                 }
             }
             PackageEntry::WithType { r#type, .. } => r#type.clone().unwrap_or(PackageType::Native),
+        }
+    }
+
+    /// The package's own Flatpak remote (`remote:`), if it names one.
+    pub fn remote(&self) -> Option<&str> {
+        match self {
+            PackageEntry::Simple(_) => None,
+            PackageEntry::WithType { remote, .. } => remote.as_deref(),
         }
     }
 }
@@ -1883,7 +1913,7 @@ fn package_list_to_lua(list: &PackageList) -> String {
 fn format_package_entry_lua(entry: &PackageEntry) -> String {
     match entry {
         PackageEntry::Simple(name) => lua_string(name),
-        PackageEntry::WithType { name, r#type } => match r#type {
+        PackageEntry::WithType { name, r#type, .. } => match r#type {
             Some(PackageType::Flatpak) => {
                 format!("{{ name = {}, type = \"flatpak\" }}", lua_string(name))
             }
@@ -2534,6 +2564,43 @@ mod tests {
     }
 
     #[test]
+    fn flatpak_remote_package_beats_host_beats_flathub() {
+        assert_eq!(resolve_flatpak_remote(None, None), "flathub");
+        assert_eq!(resolve_flatpak_remote(None, Some("fedora")), "fedora");
+        assert_eq!(
+            resolve_flatpak_remote(Some("gnome-nightly"), Some("fedora")),
+            "gnome-nightly"
+        );
+        // A blank value is unset, not an empty remote name.
+        assert_eq!(resolve_flatpak_remote(Some("  "), Some("")), "flathub");
+    }
+
+    #[test]
+    fn package_entry_reads_a_flatpak_remote() {
+        let entries: Vec<PackageEntry> = serde_yaml::from_str(
+            "- vim\n- name: org.gnome.Builder\n  type: flatpak\n  remote: gnome-nightly\n- name: io.ente.auth\n  type: flatpak\n",
+        )
+        .unwrap();
+        assert_eq!(entries[0].remote(), None);
+        assert_eq!(entries[1].remote(), Some("gnome-nightly"));
+        assert_eq!(entries[1].package_type(), PackageType::Flatpak);
+        assert_eq!(entries[2].remote(), None);
+        // Written back only when set.
+        assert!(!serde_yaml::to_string(&entries[2])
+            .unwrap()
+            .contains("remote"));
+    }
+
+    #[test]
+    fn flatpak_remote_is_read_from_the_host_and_kept_over_imports() {
+        let mut main = cfg("host: main\nflatpak_remote: fedora");
+        assert_eq!(main.flatpak_remote.as_deref(), Some("fedora"));
+        main.merge(cfg("host: other\nflatpak_remote: elsewhere"));
+        assert_eq!(main.flatpak_remote.as_deref(), Some("fedora"));
+        assert_eq!(cfg("host: x").flatpak_remote, None);
+    }
+
+    #[test]
     fn test_package_entry_flatpak_prefix() {
         let entry = PackageEntry::Simple("flatpak:com.spotify.Client".to_string());
         assert_eq!(entry.name(), "com.spotify.Client");
@@ -2545,6 +2612,7 @@ mod tests {
         let entry = PackageEntry::WithType {
             name: "vim".to_string(),
             r#type: Some(PackageType::Native),
+            remote: None,
         };
         assert_eq!(entry.name(), "vim");
         assert_eq!(entry.package_type(), PackageType::Native);

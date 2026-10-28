@@ -22,6 +22,12 @@ _mdots() {
             mdots,completion)
                 cmd="mdots__subcmd__completion"
                 ;;
+            mdots,diff)
+                cmd="mdots__subcmd__diff"
+                ;;
+            mdots,doctor)
+                cmd="mdots__subcmd__doctor"
+                ;;
             mdots,edit)
                 cmd="mdots__subcmd__edit"
                 ;;
@@ -165,6 +171,12 @@ _mdots() {
                 ;;
             mdots__subcmd__help,completion)
                 cmd="mdots__subcmd__help__subcmd__completion"
+                ;;
+            mdots__subcmd__help,diff)
+                cmd="mdots__subcmd__help__subcmd__diff"
+                ;;
+            mdots__subcmd__help,doctor)
+                cmd="mdots__subcmd__help__subcmd__doctor"
                 ;;
             mdots__subcmd__help,edit)
                 cmd="mdots__subcmd__help__subcmd__edit"
@@ -617,7 +629,7 @@ _mdots() {
 
     case "${cmd}" in
         mdots)
-            opts="-j -h -V --json --help --version init install remove status sync module service secrets update merge migrate find forget validate save-config restore-config hooks repo backup restore self-update nix search edit tui generate source completion man help"
+            opts="-j -h -V --json --help --version init install remove status diff sync module service secrets update merge migrate find forget validate save-config restore-config hooks repo backup restore self-update nix search edit tui generate source completion man doctor help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -758,6 +770,34 @@ _mdots() {
             ;;
         mdots__subcmd__completion)
             opts="-j -h --json --help bash elvish fish powershell zsh"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mdots__subcmd__diff)
+            opts="-j -h --json --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mdots__subcmd__doctor)
+            opts="-j -h --json --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -967,7 +1007,7 @@ _mdots() {
             return 0
             ;;
         mdots__subcmd__help)
-            opts="init install remove status sync module service secrets update merge migrate find forget validate save-config restore-config hooks repo backup restore self-update nix search edit tui generate source completion man help"
+            opts="init install remove status diff sync module service secrets update merge migrate find forget validate save-config restore-config hooks repo backup restore self-update nix search edit tui generate source completion man doctor help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1037,6 +1077,34 @@ _mdots() {
             return 0
             ;;
         mdots__subcmd__help__subcmd__completion)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mdots__subcmd__help__subcmd__diff)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mdots__subcmd__help__subcmd__doctor)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -3375,7 +3443,7 @@ _mdots() {
             return 0
             ;;
         mdots__subcmd__update)
-            opts="-j -h --no-backup --no-hooks --devel --json --help"
+            opts="-j -h --no-backup --no-hooks --devel --check --json --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

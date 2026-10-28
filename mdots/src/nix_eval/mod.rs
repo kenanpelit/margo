@@ -76,12 +76,14 @@ pub fn load_nix_directory_module(path: &Path) -> Result<(ModuleManifest, Vec<Pac
         packages.push(PackageEntry::WithType {
             name: fp.clone(),
             r#type: Some(PackageType::Flatpak),
+            remote: None,
         });
     }
     for np in &raw.nix_packages {
         packages.push(PackageEntry::WithType {
             name: np.clone(),
             r#type: Some(PackageType::Nix),
+            remote: None,
         });
     }
 

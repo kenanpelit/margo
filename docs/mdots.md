@@ -60,6 +60,7 @@ enabled_modules:
   - window-managers/margo
 
 flatpak_scope: user              # "user" (default) or "system"
+flatpak_remote: flathub          # remote Flatpaks install from (default: flathub); a package's `remote:` wins
 auto_prune: false                # remove untracked packages on sync
 
 # AUR / pacman
@@ -135,6 +136,7 @@ packages:
   - nix:ripgrep                         # Nix package
   - { name: code, type: native }        # explicit type
   - { name: com.visualstudio.code, type: flatpak }
+  - { name: org.gnome.Builder, type: flatpak, remote: gnome-nightly }   # from another remote
 ```
 
 ## Lua API
@@ -284,6 +286,7 @@ mdots nix status         # show Nix and Home Manager status
 | `mdots remove <PACKAGE>` | Remove a package and untrack it from mdots. |
 | `mdots forget <PACKAGE>` | Remove a package from mdots tracking without uninstalling it. |
 | `mdots update` | Update the system (respects version constraints; runs pre/post hooks if configured). |
+| `mdots update --check` | List the pacman, AUR and Flatpak updates first (read-only: `checkupdates`, `<aur helper> -Qua`, `flatpak remote-ls --updates`), then ask `Continue Update? [Y/n]`. With `--json` it prints the report (`package_manager`, `flatpak`, `total_updates`) and exits without updating. |
 | `mdots search` | Interactive TUI package search. |
 | `mdots edit` | Interactive TUI config-file selector (opens the chosen file in `$EDITOR`). |
 | `mdots merge` | Add currently installed but untracked packages into `system-packages.yaml`. |

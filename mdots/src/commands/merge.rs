@@ -644,6 +644,7 @@ fn run_packages_merge(paths: &ConfigPaths, dry_run: bool, include_deps: bool) ->
                 .push(crate::config::PackageEntry::WithType {
                     name: pkg.clone(),
                     r#type: Some(crate::config::PackageType::Flatpak),
+                    remote: None,
                 });
             added_count += 1;
         }
@@ -1021,6 +1022,7 @@ fn run_services_merge(paths: &ConfigPaths, dry_run: bool, user_scope: bool) -> R
             sync_sudo: false,
             auto_commit: false,
             nix: crate::config::NixConfig::default(),
+            flatpak_remote: None,
         }
     };
 
@@ -1353,6 +1355,7 @@ fn run_defaults_merge(paths: &ConfigPaths, dry_run: bool) -> Result<()> {
             sync_sudo: false,
             auto_commit: false,
             nix: crate::config::NixConfig::default(),
+            flatpak_remote: None,
         }
     };
 

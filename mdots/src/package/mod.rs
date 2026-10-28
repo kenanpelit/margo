@@ -9,6 +9,8 @@ use crate::config::{Config, ConfigPaths, PackageEntry, PackageType};
 pub struct Package {
     pub name: String,
     pub package_type: PackageType,
+    /// Flatpak only: the package's own remote (see Config::flatpak_remote_for)
+    pub remote: Option<String>,
 }
 
 impl From<&PackageEntry> for Package {
@@ -16,6 +18,7 @@ impl From<&PackageEntry> for Package {
         Self {
             name: entry.name().to_string(),
             package_type: entry.package_type(),
+            remote: entry.remote().map(str::to_string),
         }
     }
 }

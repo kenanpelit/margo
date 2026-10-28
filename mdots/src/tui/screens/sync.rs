@@ -466,6 +466,7 @@ mod tests {
         Package {
             name: name.to_string(),
             package_type: pkg_type,
+            remote: None,
         }
     }
 

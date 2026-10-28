@@ -708,6 +708,7 @@ fn extract_module_config(path: &Path, table: &Table) -> Result<LuaModule> {
         packages.push(PackageEntry::WithType {
             name: fp.clone(),
             r#type: Some(PackageType::Flatpak),
+            remote: None,
         });
     }
 
@@ -720,6 +721,7 @@ fn extract_module_config(path: &Path, table: &Table) -> Result<LuaModule> {
         packages.push(PackageEntry::WithType {
             name: np.clone(),
             r#type: Some(PackageType::Nix),
+            remote: None,
         });
     }
 
@@ -849,11 +851,13 @@ fn extract_packages(table: &Table) -> Result<Vec<PackageEntry>> {
                     packages.push(PackageEntry::WithType {
                         name: name.to_string(),
                         r#type: Some(PackageType::Flatpak),
+                        remote: None,
                     });
                 } else if let Some(name) = pkg_str.strip_prefix("nix:") {
                     packages.push(PackageEntry::WithType {
                         name: name.to_string(),
                         r#type: Some(PackageType::Nix),
+                        remote: None,
                     });
                 } else {
                     packages.push(PackageEntry::Simple(pkg_str));
@@ -873,6 +877,7 @@ fn extract_packages(table: &Table) -> Result<Vec<PackageEntry>> {
                             "nix" => PackageType::Nix,
                             _ => PackageType::Native,
                         }),
+                        remote: None,
                     });
                 } else {
                     packages.push(PackageEntry::Simple(name));
@@ -1403,6 +1408,7 @@ fn extract_config(table: &Table) -> Result<Config> {
         backup_tool,
         snapper_config,
         flatpak_scope,
+        flatpak_remote: table.get::<Option<String>>("flatpak_remote").ok().flatten(),
         auto_prune,
         module_processing,
         strict_package_order,
@@ -1449,11 +1455,13 @@ fn extract_packages_optional(table: &Table) -> Result<Vec<PackageEntry>> {
                     packages.push(PackageEntry::WithType {
                         name: name.to_string(),
                         r#type: Some(PackageType::Flatpak),
+                        remote: None,
                     });
                 } else if let Some(name) = pkg_str.strip_prefix("nix:") {
                     packages.push(PackageEntry::WithType {
                         name: name.to_string(),
                         r#type: Some(PackageType::Nix),
+                        remote: None,
                     });
                 } else {
                     packages.push(PackageEntry::Simple(pkg_str));
@@ -1471,6 +1479,7 @@ fn extract_packages_optional(table: &Table) -> Result<Vec<PackageEntry>> {
                             "nix" => PackageType::Nix,
                             _ => PackageType::Native,
                         }),
+                        remote: None,
                     });
                 } else {
                     packages.push(PackageEntry::Simple(name));
@@ -1519,6 +1528,7 @@ fn extract_additional_packages(table: &Table) -> Result<Vec<PackageEntry>> {
                             "flatpak" => PackageType::Flatpak,
                             _ => PackageType::Native,
                         }),
+                        remote: None,
                     });
                 } else {
                     packages.push(PackageEntry::Simple(name));
