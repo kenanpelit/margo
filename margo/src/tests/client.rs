@@ -402,6 +402,24 @@ impl Client {
         output
     }
 
+    /// Bind the `n`-th advertised `wl_output` (0-based, registry order) —
+    /// `bind_output` always picks the first, which can't cover a second
+    /// monitor.
+    pub fn bind_output_nth(&mut self, n: usize) -> WlOutput {
+        let registry = self.display.get_registry(&self.qh, ());
+        let global = self
+            .state
+            .globals
+            .values()
+            .filter(|g| g.interface == WlOutput::interface().name)
+            .nth(n)
+            .unwrap_or_else(|| panic!("no wl_output #{n} advertised"));
+        let output =
+            registry.bind::<WlOutput, _, _>(global.name, global.version.min(4), &self.qh, ());
+        self.connection.flush().expect("client flush");
+        output
+    }
+
     /// Request a lock surface for `output` on an already-acquired
     /// `lock`. The `ExtSessionLockSurfaceV1` dispatch impl below
     /// auto-acks the compositor's configure, so a roundtrip after

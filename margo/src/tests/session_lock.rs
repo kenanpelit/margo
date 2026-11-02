@@ -261,3 +261,59 @@ fn force_unlock_allowed_policy() {
     ));
     assert!(force_unlock_allowed(true, 0, Some(GRACE)));
 }
+
+#[test]
+fn removing_the_focused_monitor_moves_focus_to_a_remaining_lock_surface() {
+    // Lid closed with the external monitor docked while locked: the lock
+    // surface holding keyboard focus goes away with its output. Keyboard
+    // focus has to move to the lock surface that is left, or the password
+    // prompt there never sees a key until the pointer happens to move.
+    use crate::state::FocusTarget;
+
+    let mut fx = Fixture::new();
+    fx.add_keyboard();
+    fx.add_output("eDP-1", (1920, 1080));
+    fx.add_output("DP-1", (1920, 1080));
+    let id = fx.add_client();
+
+    let lock = fx.client(id).create_session_lock();
+    let mut kept = Vec::new();
+    for n in 0..2 {
+        let (_compositor, surface) = fx.client(id).create_surface();
+        let output = fx.client(id).bind_output_nth(n);
+        let lock_surface = fx.client(id).create_lock_surface(&lock, &surface, &output);
+        fx.roundtrip(id);
+        let buffer = fx.client(id).create_shm_buffer(1920, 1080);
+        surface.attach(Some(&buffer), 0, 0);
+        surface.commit();
+        fx.client(id).flush();
+        fx.roundtrip(id);
+        kept.push((surface, output, lock_surface, buffer));
+    }
+    assert_eq!(fx.server.state.lock_surfaces.len(), 2);
+
+    let focused_output = |fx: &mut Fixture| {
+        let focus = fx
+            .server
+            .state
+            .seat
+            .get_keyboard()
+            .and_then(|k| k.current_focus());
+        let Some(FocusTarget::SessionLock(focused)) = focus else {
+            return None;
+        };
+        fx.server
+            .state
+            .lock_surfaces
+            .iter()
+            .find(|(_, s)| s == &focused)
+            .map(|(o, _)| o.clone())
+    };
+
+    let before = focused_output(&mut fx).expect("a lock surface holds keyboard focus");
+    fx.server.state.remove_output(&before);
+
+    let after = focused_output(&mut fx)
+        .expect("focus must move to the lock surface on the remaining monitor");
+    assert_ne!(after, before);
+}

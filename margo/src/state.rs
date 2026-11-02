@@ -1633,6 +1633,13 @@ impl MargoState {
         // Hotplug-out: refresh the shared D-Bus snapshot so
         // xdp-gnome's chooser dialog drops the now-gone output.
         self.refresh_ipc_outputs();
+        // Locked, with keyboard focus on the lock surface of the monitor that
+        // just went (lid closed while docked): move focus to a remaining lock
+        // surface now. Otherwise the password prompt left on screen gets no
+        // keys until the pointer happens to move.
+        if self.session_locked {
+            self.refresh_keyboard_focus();
+        }
         self.request_repaint();
     }
 
