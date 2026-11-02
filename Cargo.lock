@@ -5141,6 +5141,7 @@ dependencies = [
 name = "mshell-cache"
 version = "4.5.0"
 dependencies = [
+ "gtk4",
  "mshell-config",
  "mshell-image",
  "reactive_graph",
