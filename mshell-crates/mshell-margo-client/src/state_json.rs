@@ -164,20 +164,20 @@ pub fn socket_path() -> std::path::PathBuf {
 /// compositor answers in microseconds; this only bites when margo's
 /// single-threaded event loop is too busy to service the IPC socket
 /// promptly — most visibly right after resume, when it's draining an
-/// input backlog. Several callers (`margo_layout` bar pill on a 500 ms
-/// `glib::timeout_add_local` tick, launcher tag/window providers) run
-/// this on the **GTK main thread**, so without a deadline an
+/// input backlog. Several callers (the layout menu's one-shot row
+/// build, launcher tag/window providers) run this on the **GTK main
+/// thread**, so without a deadline an
 /// unresponsive compositor froze the whole shell — no log, just a dead
 /// UI until margo caught up (the observed post-suspend "mshell 1-2 dk
 /// dondu" symptom). With the cap the worst case is a 250 ms main-thread
-/// stall per tick; every caller already treats `None` as "use the
+/// stall per call; every caller already treats `None` as "use the
 /// last-known / default state".
 const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// One-shot `get state` over margo's IPC socket. Returns `None` when
 /// the compositor isn't running, is too slow to answer within
 /// [`READ_TIMEOUT`], or the reply doesn't parse. Used by the
-/// synchronous callers (launcher tag/window providers, layout pill)
+/// synchronous callers (launcher tag/window providers, layout menu)
 /// that want a quick snapshot without subscribing.
 pub fn read() -> Option<StateJson> {
     use std::io::{BufRead, BufReader, Write};

@@ -19,7 +19,9 @@
 //! dispatch path that actually flips the focused output's
 //! layout) and emits `CloseMenu` so the drawer collapses.
 
+use futures::StreamExt;
 use mshell_margo_client::read_state_json;
+use mshell_services::margo_service;
 use relm4::{
     Component, ComponentParts, ComponentSender, gtk, gtk::gdk, gtk::glib, gtk::prelude::*,
 };
@@ -28,24 +30,18 @@ use std::rc::Rc;
 use std::time::Duration;
 use tracing::warn;
 
-const ACTIVE_POLL_INTERVAL: Duration = Duration::from_millis(500);
-
 pub(crate) struct MargoLayoutMenuWidgetModel {
-    /// Bare button refs so the poll-tick handler can flip CSS
-    /// classes by index without walking the GTK widget tree.
+    /// Bare button refs so a layout change can flip CSS classes by
+    /// index without walking the GTK widget tree.
     buttons: Rc<RefCell<Vec<gtk::Button>>>,
     /// `buttons[i]`'s canonical layout index (its position in
     /// `state.layouts` — what `mctl layout <N>` wants). Rows are
     /// displayed in `circle_layout` order, so a row's screen position
     /// no longer equals its layout index.
     row_canonical: Vec<usize>,
-    /// Last-seen active layout index. Kept across ticks so the
-    /// poller only fires a re-render when the value actually
-    /// changes (avoids per-frame churn while the menu is open).
-    last_active: Rc<RefCell<Option<usize>>>,
-    /// Cleanup handle: when the controller drops, the timer
-    /// closure is released and the periodic tick stops.
-    _timeout: Option<glib::SourceId>,
+    /// Last-seen active layout index, so a change only re-renders
+    /// when the value actually differs.
+    last_active: Option<usize>,
     /// Row index currently held by the keyboard focus-walk. Tracked
     /// in the model (not GTK) so Tab / Ctrl+N wrap deterministically
     /// even when no row has grabbed focus yet — same scheme as the
@@ -60,9 +56,6 @@ pub(crate) enum MargoLayoutMenuWidgetInput {
     /// position), not the row's on-screen position. Triggered by a
     /// row click.
     Activate(usize),
-    /// Live update from the poll-tick — refresh the `.selected`
-    /// class on each row based on the new index.
-    LayoutChanged(Option<usize>),
     /// Move keyboard focus to the next row (Tab / Down / Ctrl+N /
     /// Ctrl+J), wrapping at the end.
     FocusNext,
@@ -84,11 +77,18 @@ pub(crate) enum MargoLayoutMenuWidgetOutput {
     CloseMenu,
 }
 
+#[derive(Debug)]
+pub(crate) enum MargoLayoutMenuWidgetCommandOutput {
+    /// margo pushed a new active layout index for the focused output —
+    /// refresh the `.selected` class on each row.
+    LayoutChanged(Option<usize>),
+}
+
 pub(crate) struct MargoLayoutMenuWidgetInit {}
 
 #[relm4::component(pub(crate))]
 impl Component for MargoLayoutMenuWidgetModel {
-    type CommandOutput = ();
+    type CommandOutput = MargoLayoutMenuWidgetCommandOutput;
     type Input = MargoLayoutMenuWidgetInput;
     type Output = MargoLayoutMenuWidgetOutput;
     type Init = MargoLayoutMenuWidgetInit;
@@ -134,7 +134,6 @@ impl Component for MargoLayoutMenuWidgetModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let buttons_cell: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
-        let last_active_cell: Rc<RefCell<Option<usize>>> = Rc::new(RefCell::new(None));
 
         // Build the row list from state.json so user-customised
         // layout vectors are honoured, ordered by the compositor's
@@ -183,33 +182,32 @@ impl Component for MargoLayoutMenuWidgetModel {
         }
         *buttons_cell.borrow_mut() = button_vec;
 
-        // Initial highlight + poll tick.
-        let initial = current_active_layout_idx();
-        *last_active_cell.borrow_mut() = initial;
+        // Initial highlight from the service snapshot, then follow margo's
+        // pushed state: no timer, so a closed menu does no work (it only
+        // reacts when the layout actually changes). The watch is
+        // change-only, so subscribe first, then re-prime once.
+        let initial = active_layout_idx();
         apply_active_class(&buttons_cell.borrow(), &row_canonical, initial);
-
-        // The send must be fallible and must stop the source on failure.
-        // Holding the `SourceId` only stops the timer when the model is
-        // explicitly dropped, but a relm4 controller teardown doesn't
-        // guarantee Drop-then-next-tick ordering, and an in-flight tick on a
-        // half-dropped controller would abort mshell with "The runtime of the
-        // component was shutdown" — taking the whole shell with it. The bar
-        // twin of this poller (bars/bar_widgets/margo_layout.rs) does the same.
-        let sender_tick = sender.clone();
-        let last_active_tick = last_active_cell.clone();
-        let timeout = glib::timeout_add_local(ACTIVE_POLL_INTERVAL, move || {
-            let next = current_active_layout_idx();
-            let mut last = last_active_tick.borrow_mut();
-            if *last != next
-                && sender_tick
-                    .input_sender()
-                    .send(MargoLayoutMenuWidgetInput::LayoutChanged(next))
-                    .is_err()
-            {
-                return glib::ControlFlow::Break;
+        sender.command(|out, shutdown| async move {
+            let mut stream = margo_service().active_layout.watch();
+            let _ = out.send(MargoLayoutMenuWidgetCommandOutput::LayoutChanged(
+                active_layout_idx(),
+            ));
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    next = stream.next() => match next {
+                        Some(layout) => {
+                            let _ = out.send(MargoLayoutMenuWidgetCommandOutput::LayoutChanged(
+                                layout.map(|l| l.idx),
+                            ));
+                        }
+                        None => break,
+                    },
+                }
             }
-            *last = next;
-            glib::ControlFlow::Continue
         });
 
         // Keyboard focus-walk (Tab / Shift+Tab, the arrow keys, Ctrl+N /
@@ -260,8 +258,7 @@ impl Component for MargoLayoutMenuWidgetModel {
         let model = MargoLayoutMenuWidgetModel {
             buttons: buttons_cell,
             row_canonical,
-            last_active: last_active_cell,
-            _timeout: Some(timeout),
+            last_active: initial,
             focused: 0,
         };
 
@@ -272,11 +269,11 @@ impl Component for MargoLayoutMenuWidgetModel {
         match message {
             MargoLayoutMenuWidgetInput::Activate(idx) => {
                 // `idx` is the canonical layout index — what `mctl
-                // layout` wants, and what the poll tick reports back.
+                // layout` wants, and what margo's state push reports back.
                 // Optimistic highlight: paint the matching row selected
-                // immediately so the click feels snappy. The poll tick
-                // will reconcile if margo rejects the dispatch.
-                *self.last_active.borrow_mut() = Some(idx);
+                // immediately so the click feels snappy. The next state
+                // push reconciles if margo rejects the dispatch.
+                self.last_active = Some(idx);
                 apply_active_class(&self.buttons.borrow(), &self.row_canonical, Some(idx));
                 tokio::spawn(async move {
                     let mut command = tokio::process::Command::new("mctl");
@@ -288,9 +285,6 @@ impl Component for MargoLayoutMenuWidgetModel {
                     }
                 });
                 let _ = sender.output(MargoLayoutMenuWidgetOutput::CloseMenu);
-            }
-            MargoLayoutMenuWidgetInput::LayoutChanged(idx) => {
-                apply_active_class(&self.buttons.borrow(), &self.row_canonical, idx);
             }
             MargoLayoutMenuWidgetInput::FocusNext => {
                 let buttons = self.buttons.borrow();
@@ -325,23 +319,28 @@ impl Component for MargoLayoutMenuWidgetModel {
             }
         }
     }
+
+    fn update_cmd(
+        &mut self,
+        message: Self::CommandOutput,
+        _sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        match message {
+            MargoLayoutMenuWidgetCommandOutput::LayoutChanged(idx) => {
+                if self.last_active != idx {
+                    self.last_active = idx;
+                    apply_active_class(&self.buttons.borrow(), &self.row_canonical, idx);
+                }
+            }
+        }
+    }
 }
 
-/// Read the focused output's `layout_idx` from state.json. Returns
-/// `None` when state.json is missing or the index is past the
-/// layouts list (transient during config reload).
-fn current_active_layout_idx() -> Option<usize> {
-    let state = read_state_json()?;
-    let focused = state
-        .outputs
-        .iter()
-        .find(|o| o.name == state.active_output)?;
-    let idx = focused.layout_idx;
-    if idx < state.layouts.len() {
-        Some(idx)
-    } else {
-        None
-    }
+/// The focused output's canonical layout index, from the service
+/// snapshot. `None` before the first state frame or mid-reload.
+fn active_layout_idx() -> Option<usize> {
+    margo_service().active_layout.get().map(|l| l.idx)
 }
 
 /// Highlight the row whose *canonical* layout index matches `active`.

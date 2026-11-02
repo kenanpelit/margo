@@ -448,6 +448,15 @@ pub enum MargoEvent {
 
 // ── Service ──────────────────────────────────────────────────────────────────
 
+/// A tiling layout as the focused output reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveLayout {
+    /// Canonical index into `state.layouts` (what `mctl layout <N>` takes).
+    pub idx: usize,
+    /// Layout id, e.g. `"tile"`, `"scroller"`.
+    pub name: String,
+}
+
 /// The compositor handle the rest of mshell talks to. Created
 /// once at startup via [`MargoService::new`] and stashed in
 /// a `OnceLock` over in `mshell-services`.
@@ -466,6 +475,11 @@ pub struct MargoService {
     /// compositor has observed a key event. The keyboard-layout bar
     /// pill reads this.
     pub keyboard_layout: Reactive<String>,
+    /// The focused output's tiling layout. `None` until the first
+    /// snapshot, or while the output's `layout_idx` is past the
+    /// layouts list (transient during a config reload). The layout
+    /// pill and menu watch this instead of polling `get state`.
+    pub active_layout: Reactive<Option<ActiveLayout>>,
     /// Diagnostics from the most recent config parse/reload, mirrored
     /// from state.json's `config_errors` field. Empty when the config
     /// is clean. Includes `W004` (duplicate keybind) warnings, which
@@ -504,6 +518,7 @@ impl MargoService {
             monitors: Reactive::new(Vec::new()),
             focused_client: Reactive::new(None),
             keyboard_layout: Reactive::new(String::new()),
+            active_layout: Reactive::new(None),
             config_errors: Reactive::new(Vec::new()),
             event_tx,
         });

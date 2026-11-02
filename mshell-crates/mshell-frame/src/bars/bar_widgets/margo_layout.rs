@@ -12,33 +12,28 @@
 //! contiguous with every other menu surface.
 //!
 //! The icon reflects whichever layout is currently active on the
-//! focused output (polled every 500 ms from state.json) so the
-//! pill is glanceable: at-a-cursor you can read the layout
-//! without opening the menu.
+//! focused output (pushed by margo's `watch state` stream through
+//! `margo_service().active_layout`) so the pill is glanceable:
+//! at-a-cursor you can read the layout without opening the menu.
 
-use mshell_margo_client::read_state_json;
-use relm4::{
-    Component, ComponentParts, ComponentSender, gtk, gtk::Orientation, gtk::glib, gtk::prelude::*,
-};
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::time::Duration;
-
-const ACTIVE_POLL_INTERVAL: Duration = Duration::from_millis(500);
+use futures::StreamExt;
+use mshell_margo_client::ActiveLayout;
+use mshell_services::margo_service;
+use relm4::{Component, ComponentParts, ComponentSender, gtk, gtk::Orientation, gtk::prelude::*};
 
 pub(crate) struct MargoLayoutModel {
-    /// Last-seen active layout index. Used by the poll tick to
-    /// skip GTK calls when nothing actually changed.
-    last_active: Rc<RefCell<Option<usize>>>,
-    /// Keeps the periodic poll alive — drops with the controller.
-    _timeout: Option<glib::SourceId>,
+    /// Last-seen active layout. Skips GTK calls when nothing changed.
+    last_active: Option<ActiveLayout>,
+}
+
+#[derive(Debug)]
+pub(crate) enum MargoLayoutCommandOutput {
+    /// The focused output's layout changed.
+    LayoutChanged(Option<ActiveLayout>),
 }
 
 #[derive(Debug)]
 pub(crate) enum MargoLayoutInput {
-    /// Periodic refresh — recompute the active layout index and
-    /// update the icon if it changed.
-    Tick,
     /// User clicked the pill — propagate via output to the bar +
     /// frame, which opens / closes the layout menu.
     Clicked,
@@ -62,7 +57,7 @@ pub(crate) struct MargoLayoutInit {
 
 #[relm4::component(pub(crate))]
 impl Component for MargoLayoutModel {
-    type CommandOutput = ();
+    type CommandOutput = MargoLayoutCommandOutput;
     type Input = MargoLayoutInput;
     type Output = MargoLayoutOutput;
     type Init = MargoLayoutInit;
@@ -92,53 +87,44 @@ impl Component for MargoLayoutModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let last_active_cell: Rc<RefCell<Option<usize>>> = Rc::new(RefCell::new(None));
-
         let widgets = view_output!();
 
-        // Seed the initial icon from state.json before the first
-        // poll tick fires so the pill never flashes the generic
-        // `view-list-symbolic` placeholder when the real layout
-        // is already known.
-        let initial = current_active_layout_idx();
-        *last_active_cell.borrow_mut() = initial;
-        if let Some(idx) = initial {
-            apply_active_icon(&widgets.button, idx);
+        // Seed the icon from the service's current snapshot so the pill
+        // never flashes the generic placeholder when the layout is known.
+        let initial = margo_service().active_layout.get();
+        if let Some(layout) = &initial {
+            widgets.button.set_icon_name(icon_for_layout(&layout.name));
         }
 
-        // Per-output active-layout poller — 500 ms tick, fires
-        // `Tick` if the live layout index differs from the last
-        // observation. Cheap enough to leave on permanently:
-        // state.json reads are <1 ms.
-        //
-        // `input_sender().send()` (Result) instead of
-        // `sender_tick.input()` (panics on closed channel) so
-        // the timer self-cancels when the bar rebuild path
-        // drops this controller — the existing `_timeout:
-        // SourceId` only stops the source when the model is
-        // explicitly dropped, but a relm4 controller teardown
-        // doesn't guarantee Drop-then-next-tick ordering, and
-        // an in-flight tick on a half-dropped controller would
-        // abort mshell with "The runtime of the component was
-        // shutdown".
-        let sender_tick = sender.clone();
-        let timeout = glib::timeout_add_local(ACTIVE_POLL_INTERVAL, move || {
-            if sender_tick
-                .input_sender()
-                .send(MargoLayoutInput::Tick)
-                .is_err()
-            {
-                return glib::ControlFlow::Break;
+        // Event-driven: margo pushes a state frame on every change and the
+        // service mirrors the focused output's layout. The watch is
+        // change-only, so subscribe first, then re-prime once to close the
+        // startup race. Ends with the component (relm4 shutdown).
+        sender.command(|out, shutdown| async move {
+            let mut stream = margo_service().active_layout.watch();
+            let _ = out.send(MargoLayoutCommandOutput::LayoutChanged(
+                margo_service().active_layout.get(),
+            ));
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    next = stream.next() => match next {
+                        Some(layout) => {
+                            let _ = out.send(MargoLayoutCommandOutput::LayoutChanged(layout));
+                        }
+                        None => break,
+                    },
+                }
             }
-            glib::ControlFlow::Continue
         });
 
         // `params.orientation` is part of the bar-widget init
         // ABI but isn't used here — the pill is a single icon.
         let _ = params.orientation;
         let model = MargoLayoutModel {
-            last_active: last_active_cell,
-            _timeout: Some(timeout),
+            last_active: initial,
         };
 
         let _ = root;
@@ -147,74 +133,37 @@ impl Component for MargoLayoutModel {
 
     fn update_with_view(
         &mut self,
-        widgets: &mut Self::Widgets,
+        _widgets: &mut Self::Widgets,
         message: Self::Input,
         sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
         match message {
-            MargoLayoutInput::Tick => {
-                let next = current_active_layout_idx();
-                let mut last = self.last_active.borrow_mut();
-                if *last != next {
-                    *last = next;
-                    if let Some(idx) = next {
-                        apply_active_icon(&widgets.button, idx);
-                    }
-                }
-            }
             MargoLayoutInput::Clicked => {
                 let _ = sender.output(MargoLayoutOutput::Clicked);
             }
         }
     }
-}
 
-/// Read the focused output's `layout_idx` from state.json. Returns
-/// `None` when state.json is missing or the index is past the
-/// layouts list (transient during config reload).
-fn current_active_layout_idx() -> Option<usize> {
-    let state = read_state_json()?;
-    let focused = state
-        .outputs
-        .iter()
-        .find(|o| o.name == state.active_output)?;
-    let idx = focused.layout_idx;
-    if idx < state.layouts.len() {
-        Some(idx)
-    } else {
-        None
+    fn update_cmd_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::CommandOutput,
+        _sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        match message {
+            MargoLayoutCommandOutput::LayoutChanged(next) => {
+                // `None` is transient (mid-reload): keep the last icon.
+                if next.is_some() && self.last_active != next {
+                    if let Some(layout) = &next {
+                        widgets.button.set_icon_name(icon_for_layout(&layout.name));
+                    }
+                    self.last_active = next;
+                }
+            }
+        }
     }
-}
-
-/// Read the layout name at `idx` from state.json (or fall back to
-/// the wired-in default list when state.json is unavailable) and
-/// apply the matching symbolic icon to the bar button so the pill
-/// always reflects the live layout.
-fn apply_active_icon(button: &gtk::Button, idx: usize) {
-    let name = read_state_json()
-        .and_then(|s| s.layouts.get(idx).cloned())
-        .unwrap_or_else(|| default_layout_names().get(idx).cloned().unwrap_or_default());
-    button.set_icon_name(icon_for_layout(&name));
-}
-
-fn default_layout_names() -> Vec<String> {
-    [
-        "tile",
-        "scroller",
-        "grid",
-        "monocle",
-        "deck",
-        "center_tile",
-        "right_tile",
-        "tgmix",
-        "dwindle",
-        "floating",
-        "mosaic",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect()
 }
 
 fn icon_for_layout(id: &str) -> &'static str {

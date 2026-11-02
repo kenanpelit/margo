@@ -18,8 +18,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::state_json::{RawClient, RawOutput, StateJson, lowest_tag, monitor_id, socket_path};
 use crate::{
-    Address, Client, ClientLocation, ClientSize, FullscreenMode, MargoEvent, MargoService, Monitor,
-    Reactive, Workspace, WorkspaceInfo,
+    ActiveLayout, Address, Client, ClientLocation, ClientSize, FullscreenMode, MargoEvent,
+    MargoService, Monitor, Reactive, Workspace, WorkspaceInfo,
 };
 
 /// Backoff between socket reconnect attempts.
@@ -133,6 +133,12 @@ fn apply(service: &MargoService, state: &StateJson) {
     // broadcasts unconditionally, so guard on an actual change).
     if service.keyboard_layout.get() != state.keyboard_layout {
         service.keyboard_layout.set(state.keyboard_layout.clone());
+    }
+
+    // Mirror the focused output's layout (change-only).
+    let layout = active_layout(state);
+    if service.active_layout.get() != layout {
+        service.active_layout.set(layout);
     }
 
     // Mirror config diagnostics (change-only). This only actually
@@ -709,9 +715,49 @@ fn focus_history_position(output: &RawOutput, client: &RawClient) -> Option<usiz
     }
 }
 
+/// The focused output's layout, or `None` when the active output is
+/// missing or its `layout_idx` is past the layouts list.
+fn active_layout(state: &StateJson) -> Option<ActiveLayout> {
+    let focused = state
+        .outputs
+        .iter()
+        .find(|o| o.name == state.active_output)?;
+    let name = state.layouts.get(focused.layout_idx)?;
+    Some(ActiveLayout {
+        idx: focused.layout_idx,
+        name: name.clone(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn active_layout_follows_the_focused_output() {
+        let mut out = test_output(Vec::new(), Vec::new());
+        out.layout_idx = 1;
+        let mut other = test_output(Vec::new(), Vec::new());
+        other.name = "HDMI-A-1".into();
+        other.layout_idx = 2;
+        let mut state = test_state(out, Vec::new());
+        state.outputs.push(other);
+        state.layouts = vec!["tile".into(), "scroller".into(), "grid".into()];
+        assert_eq!(
+            active_layout(&state),
+            Some(ActiveLayout {
+                idx: 1,
+                name: "scroller".into()
+            })
+        );
+        state.active_output = "HDMI-A-1".into();
+        assert_eq!(active_layout(&state).map(|l| l.idx), Some(2));
+        // Index past the list (mid-reload) and unknown output → None.
+        state.layouts.truncate(2);
+        assert_eq!(active_layout(&state), None);
+        state.active_output = "nope".into();
+        assert_eq!(active_layout(&state), None);
+    }
 
     fn test_output(
         focus_history: Vec<String>,
