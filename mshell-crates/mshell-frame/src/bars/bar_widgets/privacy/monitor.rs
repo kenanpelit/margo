@@ -502,11 +502,15 @@ impl CameraWake {
 
 /// Classify one read's worth of events from the camera inotify fd: a
 /// `video*` node created/deleted in `/dev` is a hotplug, an open/close on a
-/// watched node a change. Other `/dev` churn is ignored.
+/// watched node a change. Other `/dev` churn is ignored. A queue overflow
+/// means events were dropped, so it counts as both.
 fn classify_camera_events(events: &[InotifyEvent]) -> CameraWake {
     let mut wake = CameraWake::default();
     for ev in events {
-        if ev.mask & CAM_DIR_MASK != 0 {
+        if ev.mask & libc::IN_Q_OVERFLOW != 0 {
+            wake.hotplug = true;
+            wake.changed = true;
+        } else if ev.mask & CAM_DIR_MASK != 0 {
             if ev.name.starts_with("video") {
                 wake.hotplug = true;
                 wake.changed = true;
@@ -943,6 +947,12 @@ mod tests {
         );
         // A watch dropped with its (unplugged) node is not itself a change.
         assert_eq!(classify_camera_events(&[ev(libc::IN_IGNORED, "")]), none);
+        // The kernel queue overflowed: opens/closes and hotplugs may have
+        // been lost, so re-probe and re-watch.
+        assert_eq!(
+            classify_camera_events(&[ev(libc::IN_Q_OVERFLOW, "")]),
+            plugged
+        );
         // Batches combine.
         assert_eq!(
             classify_camera_events(&[ev(libc::IN_CREATE, "tty1"), ev(libc::IN_OPEN, "")]),
