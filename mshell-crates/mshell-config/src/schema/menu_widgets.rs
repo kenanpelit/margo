@@ -267,7 +267,7 @@ impl MenuWidget {
             MenuWidget::Session,
             MenuWidget::Screenshots,
             MenuWidget::ScreenRecording,
-            MenuWidget::Spacer(SpacerConfig { size: 16 }),
+            MenuWidget::Spacer(SpacerConfig::default()),
             MenuWidget::SectionLabel(SectionLabelConfig::default()),
             MenuWidget::PanelHeader(PanelHeaderConfig::default()),
             MenuWidget::SystemStatus,
@@ -286,6 +286,7 @@ impl MenuWidget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema, Default)]
+#[serde(default)]
 pub struct QuickActionsConfig {
     pub widgets: Vec<QuickActionWidget>,
 }
@@ -392,8 +393,16 @@ impl QuickActionWidget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
+#[serde(default)]
 pub struct SpacerConfig {
     pub size: i32,
+}
+
+impl Default for SpacerConfig {
+    /// The size the Settings widget palette inserts a new spacer at.
+    fn default() -> Self {
+        Self { size: 16 }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
@@ -446,6 +455,7 @@ impl Default for PanelHeaderConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
+#[serde(default)]
 pub struct ContainerConfig {
     pub widgets: Vec<MenuWidget>,
     pub spacing: i32,
@@ -478,5 +488,33 @@ impl Default for ContainerConfig {
             homogeneous: false,
             fill: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A hand-written (or older) profile that lists a `Container` / `Spacer` /
+    /// `QuickActions` item with only some keys must still parse: figment's deep
+    /// merge doesn't reach inside list items, so a missing key there is not
+    /// filled from `Config::default()` — the struct itself has to default it.
+    /// Before `#[serde(default)]` this failed the whole profile at startup.
+    #[test]
+    fn list_item_configs_parse_with_missing_fields() {
+        let yaml = "- !Container\n  widgets: [Weather]\n- !Spacer {}\n- !QuickActions {}\n";
+        let widgets: Vec<MenuWidget> =
+            serde_yaml::from_str(yaml).expect("partial list items parse");
+        assert_eq!(
+            widgets,
+            vec![
+                MenuWidget::Container(ContainerConfig {
+                    widgets: vec![MenuWidget::Weather],
+                    ..ContainerConfig::default()
+                }),
+                MenuWidget::Spacer(SpacerConfig::default()),
+                MenuWidget::QuickActions(QuickActionsConfig::default()),
+            ]
+        );
     }
 }

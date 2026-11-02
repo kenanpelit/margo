@@ -18,6 +18,7 @@ pub struct ConfigManager {
     active_profile: ArcStore<Option<String>>,
     available_profiles: ArcStore<Vec<String>>,
     config: ArcStore<Config>,
+    degraded: DegradedFlag,
 }
 
 static CONFIG_MANAGER: OnceLock<ConfigManager> = OnceLock::new();
@@ -46,12 +47,34 @@ impl ConfigManager {
             write_active_profile_to_cache(None);
             active_profile = None;
         }
-        let config = ArcStore::new(
-            load_effective_config(active_profile.as_deref()).unwrap_or_else(|e| {
-                error!("Error loading config: {}", e);
-                Config::default()
-            }),
-        );
+        // No cached name (e.g. ~/.cache wiped) but a default profile on disk:
+        // load it. Starting from bare defaults here would make the first
+        // toggle write `defaults + toggle` over the user's default.yaml.
+        if active_profile.is_none() && default_config_path().exists() {
+            active_profile = Some(DEFAULT_PROFILE_NAME.to_string());
+        }
+        let (config, degraded) = match load_effective_config(active_profile.as_deref()) {
+            Ok(config) => (config, false),
+            Err(e) => {
+                error!(error = %e, "config: failed to load the profile; running on defaults, not saving changes");
+                if let Some(name) = active_profile.as_deref() {
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |d| d.as_secs());
+                    match quarantine_broken_profile(&profile_path(name), ts) {
+                        Ok(copy) => {
+                            info!(copy = %copy.display(), "config: kept a copy of the broken profile")
+                        }
+                        Err(e) => {
+                            error!(error = %e, "config: could not copy the broken profile aside")
+                        }
+                    }
+                }
+                (Config::default(), true)
+            }
+        };
+        let config = ArcStore::new(config);
+        let degraded = DegradedFlag::new(degraded);
         let active_profile = ArcStore::new(active_profile);
 
         let available_profiles = ArcStore::new(list_available_profiles());
@@ -60,7 +83,19 @@ impl ConfigManager {
             active_profile,
             available_profiles,
             config,
+            degraded,
         }
+    }
+
+    /// True while the live config does not reflect the active profile file
+    /// (it failed to load); changes then apply in memory but aren't saved.
+    pub fn is_degraded(&self) -> bool {
+        self.degraded.get()
+    }
+
+    /// Reactive view of [`is_degraded`](Self::is_degraded).
+    pub fn config_degraded(&self) -> ArcStore<bool> {
+        self.degraded.store()
     }
 
     pub fn config(&self) -> ArcStore<Config> {
@@ -201,6 +236,22 @@ impl ConfigManager {
             None => default_config_path(),
         };
 
+        // The live config didn't come from this file (it failed to load):
+        // persisting would replace it with `defaults + this change`. Apply the
+        // change for this session only; the next successful load lifts this.
+        if self.degraded.get() {
+            tracing::warn!(
+                caller = %caller,
+                path = %layer_path.display(),
+                "update_config: config degraded, change applied in memory but not saved"
+            );
+            self.degraded.notify_refused(&layer_path);
+            drop(active);
+            crate::plugin_bridge::resync_plugin_widgets(&mut updated);
+            self.config.patch(updated);
+            return;
+        }
+
         tracing::debug!(
             active = ?active.as_deref(),
             path = %layer_path.display(),
@@ -238,10 +289,14 @@ impl ConfigManager {
         match load_effective_config(active) {
             Ok(new_cfg) => {
                 self.config.patch(new_cfg);
+                self.degraded.set(false);
                 info!("Config reloaded");
             }
             Err(e) => {
                 error!(error = %e, "config: reload failed (keeping last-good)");
+                // Last-good may belong to another profile (a failed switch)
+                // or predate the user's hand-edit — don't persist over it.
+                self.degraded.set(true);
             }
         }
     }
@@ -250,6 +305,7 @@ impl ConfigManager {
         let active_profile = self.active_profile.clone();
         let available_profiles = self.available_profiles.clone();
         let config = self.config.clone();
+        let degraded = self.degraded.clone();
 
         thread::spawn(move || {
             let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
@@ -276,7 +332,114 @@ impl ConfigManager {
 
             let _ = watcher.watch(&prof_dir, RecursiveMode::NonRecursive);
 
-            watch_config_loop(rx, active_profile, available_profiles, config);
+            watch_config_loop(rx, active_profile, available_profiles, config, degraded);
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_home::TempHome;
+
+    fn write_profile(name: &str, body: &str) -> std::path::PathBuf {
+        let path = profile_path(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, body).unwrap();
+        write_active_profile_to_cache(Some(name));
+        path
+    }
+
+    fn broken_copies(name: &str) -> Vec<std::path::PathBuf> {
+        let prefix = format!("{name}.yaml.broken-");
+        fs::read_dir(profiles_dir())
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with(&prefix))
+            })
+            .collect()
+    }
+
+    /// A profile that fails to parse at startup must not be replaced by
+    /// `defaults + one toggle` the first time a setting changes: the manager
+    /// starts degraded, keeps a `.broken-<ts>` copy, applies changes in memory
+    /// only, and resumes persisting once the file loads again.
+    #[test]
+    fn startup_parse_error_never_overwrites_the_profile() {
+        let _home = TempHome::new("degraded-test");
+        // `osd.width` must be an integer — a type error fails the extract.
+        let broken = "osd:\n  width: not-a-number\n";
+        let path = write_profile("work", broken);
+
+        let mgr = ConfigManager::new();
+        assert!(mgr.is_degraded(), "a parse error marks the config degraded");
+        let copies = broken_copies("work");
+        assert_eq!(copies.len(), 1, "one quarantine copy");
+        assert_eq!(fs::read_to_string(&copies[0]).unwrap(), broken);
+
+        let width = mgr.config.read_untracked().osd.width;
+        mgr.update_config(|c| c.osd.width = width + 5);
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            broken,
+            "degraded: the broken profile is left for the user to fix"
+        );
+        assert_eq!(
+            mgr.config.read_untracked().osd.width,
+            width + 5,
+            "the change still applies for this session"
+        );
+
+        // The user fixes the file; a successful reload lifts the guard.
+        fs::write(&path, "osd:\n  width: 333\n").unwrap();
+        mgr.reload_config();
+        assert!(!mgr.is_degraded(), "a clean reload clears degraded");
+        mgr.update_config(|c| c.osd.distance += 1);
+        let saved = fs::read_to_string(&path).unwrap();
+        assert!(
+            saved.contains("width: 333"),
+            "kept the user's value: {saved}"
+        );
+        assert!(saved.contains("distance"), "persisted the change: {saved}");
+    }
+
+    /// Switching to a profile that fails to load keeps the previous profile's
+    /// config live; persisting that into the new profile would clobber it.
+    #[test]
+    fn failed_profile_switch_does_not_write_old_config_into_new_profile() {
+        let _home = TempHome::new("degraded-switch-test");
+        write_profile("good", "osd:\n  width: 321\n");
+        let mgr = ConfigManager::new();
+        assert!(!mgr.is_degraded());
+
+        let bad_body = "osd:\n  width: [1, 2]\n";
+        let bad = profile_path("bad");
+        fs::write(&bad, bad_body).unwrap();
+        mgr.set_active_profile(Some("bad".to_string()));
+        assert!(mgr.is_degraded(), "the failed load marks degraded");
+
+        mgr.update_config(|c| c.osd.distance += 1);
+        assert_eq!(fs::read_to_string(&bad).unwrap(), bad_body);
+    }
+
+    /// With no cached active profile but an existing `default.yaml`, the
+    /// manager loads that file rather than showing bare defaults — otherwise
+    /// the first toggle writes `defaults + toggle` over it.
+    #[test]
+    fn missing_cache_adopts_existing_default_profile() {
+        let _home = TempHome::new("nocache-test");
+        let path = default_config_path();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "osd:\n  width: 444\n").unwrap();
+
+        let mgr = ConfigManager::new();
+        assert_eq!(mgr.config.read_untracked().osd.width, 444);
+        mgr.update_config(|c| c.osd.distance += 1);
+        let saved = fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("width: 444"), "user value kept: {saved}");
     }
 }

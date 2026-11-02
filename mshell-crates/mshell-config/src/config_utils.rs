@@ -3,7 +3,11 @@ use figment::{
     providers::{Format, Serialized, Yaml},
 };
 use std::{
-    sync::mpsc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     time::{Duration, Instant},
 };
 use tracing::info;
@@ -16,7 +20,7 @@ use crate::schema::config::Config;
 use reactive_graph::prelude::ReadUntracked;
 use serde_yaml::{Mapping, Value};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub(crate) fn read_active_profile_from_cache() -> Option<String> {
     let p = active_profile_cache_path();
@@ -75,31 +79,17 @@ pub fn list_available_profiles() -> Vec<String> {
     out
 }
 
-/// Run the migration pre-pass on a profile file: if it exists and migrating it
-/// changes anything, write the upgraded YAML back atomically (symlink-safe).
-/// A missing file or a clean parse/migrate failure is a no-op — figment then
-/// falls back to defaults / last-good as it already does.
-fn migrate_profile_file(path: &Path) {
-    let Ok(raw) = fs::read_to_string(path) else {
-        return;
-    };
-    match crate::migration::migrate_yaml(&raw) {
-        Ok(m) if m.changed => {
-            if let Err(e) = crate::atomic_write::atomic_write(path, m.yaml.as_bytes()) {
-                tracing::error!(error = %e, "config: profile migration write-back failed");
-            } else {
-                info!(
-                    "Migrated profile {} from config_version {} to {}",
-                    path.display(),
-                    m.from,
-                    crate::migration::CONFIG_VERSION
-                );
-            }
-        }
-        Ok(_) => {}
-        Err(e) => {
-            tracing::error!(error = %e, "config: profile migration parse failed (leaving as-is)")
-        }
+/// Write a migrated profile back atomically (symlink-safe).
+fn write_back_migration(path: &Path, m: &crate::migration::Migrated) {
+    if let Err(e) = crate::atomic_write::atomic_write(path, m.yaml.as_bytes()) {
+        tracing::error!(error = %e, "config: profile migration write-back failed");
+    } else {
+        info!(
+            "Migrated profile {} from config_version {} to {}",
+            path.display(),
+            m.from,
+            crate::migration::CONFIG_VERSION
+        );
     }
 }
 
@@ -107,21 +97,122 @@ pub(crate) fn load_effective_config(
     active_profile: Option<&str>,
 ) -> Result<Config, figment::Error> {
     let mut figment = Figment::from(Serialized::defaults(Config::default()));
+    let mut write_back = None;
 
     if let Some(name) = active_profile {
         let path = profile_path(name);
-        // Migration pre-pass: bring an older on-disk profile up to the current
-        // format before figment reads it, writing the upgraded YAML back once
-        // (idempotent — a current profile is left untouched). See migration.rs.
-        migrate_profile_file(&path);
-        figment = figment.merge(Yaml::file(path));
+        match fs::read_to_string(&path) {
+            Ok(raw) => {
+                // Migration pre-pass: bring an older on-disk profile up to the
+                // current format before figment reads it (idempotent — a
+                // current profile is unchanged). See migration.rs. The upgraded
+                // YAML is written back only once it has extracted cleanly
+                // below: a profile that doesn't load must stay byte-for-byte
+                // what the user wrote.
+                let migrated = match crate::migration::migrate_yaml(&raw) {
+                    Ok(m) => Some(m),
+                    Err(e) => {
+                        tracing::error!(error = %e, "config: profile migration parse failed (leaving as-is)");
+                        None
+                    }
+                };
+                let text = migrated.as_ref().map_or(raw.as_str(), |m| m.yaml.as_str());
+                figment = figment.merge(Yaml::string(text));
+                write_back = migrated.filter(|m| m.changed).map(|m| (path, m));
+            }
+            // Missing (or unreadable) file: figment's own file provider keeps
+            // the previous behaviour (missing = no layer).
+            Err(_) => figment = figment.merge(Yaml::file(path)),
+        }
     }
 
     let mut config = figment.extract::<Config>()?;
+    if let Some((path, m)) = write_back {
+        write_back_migration(&path, &m);
+    }
     // Plugin widgets are derived from the plugin manager's own files, not the
     // profile — fold the enabled ones in on every load.
     crate::plugin_bridge::resync_plugin_widgets(&mut config);
     Ok(config)
+}
+
+/// "The live config does not reflect the active profile file" — set when a
+/// load fails (startup parse error, a broken hand-edit picked up by the
+/// watcher, a profile switch that fails to load), cleared by the next
+/// successful load. While set, `update_config` applies changes in memory but
+/// refuses to persist them: writing would replace the user's file with
+/// `defaults + this change` (startup) or with another profile's config
+/// (failed switch).
+#[derive(Clone)]
+pub(crate) struct DegradedFlag {
+    state: ArcStore<bool>,
+    /// Whether the "changes are not being saved" toast was shown for the
+    /// current degraded spell.
+    notified: Arc<AtomicBool>,
+}
+
+impl DegradedFlag {
+    pub(crate) fn new(degraded: bool) -> Self {
+        Self {
+            state: ArcStore::new(degraded),
+            notified: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub(crate) fn get(&self) -> bool {
+        *self.state.read_untracked()
+    }
+
+    pub(crate) fn store(&self) -> ArcStore<bool> {
+        self.state.clone()
+    }
+
+    pub(crate) fn set(&self, degraded: bool) {
+        if self.get() != degraded {
+            self.state.patch(degraded);
+            if degraded {
+                tracing::warn!(
+                    "config: degraded — profile changes are not persisted until it loads"
+                );
+            } else {
+                info!("config: profile loads again; persisting resumed");
+            }
+        }
+        if !degraded {
+            self.notified.store(false, Ordering::Relaxed);
+        }
+    }
+
+    /// Toast once per degraded spell that a change was not saved. Retries on a
+    /// later refusal if no toast surface was listening yet.
+    pub(crate) fn notify_refused(&self, path: &Path) {
+        if self.notified.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        let delivered = crate::toast::try_push_toast(crate::toast::ToastEvent {
+            icon: "dialog-warning-symbolic".to_string(),
+            title: "Settings not saved".to_string(),
+            body: Some(format!(
+                "{} failed to load — fix it; changes apply until restart only",
+                path.display()
+            )),
+            severity: crate::toast::ToastSeverity::Warn,
+        });
+        if !delivered {
+            self.notified.store(false, Ordering::Relaxed);
+        }
+    }
+}
+
+/// Copy a profile that failed to parse aside as `<file>.broken-<unix_ts>`
+/// (next to it), so the user keeps a pristine copy of what they wrote however
+/// the shell later handles the original. Returns the copy's path.
+pub(crate) fn quarantine_broken_profile(path: &Path, unix_ts: u64) -> std::io::Result<PathBuf> {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".broken-{unix_ts}"));
+    let copy = path.with_file_name(name);
+    fs::copy(path, &copy)?;
+    Ok(copy)
 }
 
 pub(crate) fn watch_config_loop(
@@ -129,6 +220,7 @@ pub(crate) fn watch_config_loop(
     active_profile: ArcStore<Option<String>>,
     available_profiles: ArcStore<Vec<String>>,
     config: ArcStore<Config>,
+    degraded: DegradedFlag,
 ) {
     let mut pending = false;
     let mut last_event_at = Instant::now();
@@ -161,6 +253,7 @@ pub(crate) fn watch_config_loop(
             let active = active.as_deref();
             match load_effective_config(active) {
                 Ok(new_cfg) => {
+                    degraded.set(false);
                     // The profile-list store is cheap and may have changed even
                     // when the effective config did not (a profile file added /
                     // removed), so always refresh it.
@@ -181,7 +274,8 @@ pub(crate) fn watch_config_loop(
                     info!("New config loaded in watch loop");
                 }
                 Err(e) => {
-                    tracing::error!(error = %e, "config: reload failed (keeping last-good)")
+                    tracing::error!(error = %e, "config: reload failed (keeping last-good)");
+                    degraded.set(true);
                 }
             }
         }
@@ -405,22 +499,7 @@ mod tests {
     /// and restores the env — no other test in this crate reads `$HOME`.
     #[test]
     fn seed_bundled_profile_creates_default_and_preserves_existing() {
-        use std::sync::Mutex;
-        static HOME_LOCK: Mutex<()> = Mutex::new(());
-        let _guard = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let home =
-            std::env::temp_dir().join(format!("margo-seed-test-{}-{nanos}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&home);
-        std::fs::create_dir_all(&home).unwrap();
-
-        let prev = std::env::var_os("HOME");
-        // SAFETY: single-threaded within the HOME_LOCK; restored below.
-        unsafe { std::env::set_var("HOME", &home) };
+        let _home = crate::test_home::TempHome::new("seed-test");
 
         // Empty dir → seeding creates the profile, and it parses as Config.
         let path = crate::paths::profile_path("default");
@@ -449,12 +528,26 @@ mod tests {
         // An unknown profile name seeds nothing.
         assert!(!seed_bundled_profile("no-such-profile"));
         assert!(!crate::paths::profile_path("no-such-profile").exists());
+    }
 
-        // Restore the environment for any later test.
-        match prev {
-            Some(v) => unsafe { std::env::set_var("HOME", v) },
-            None => unsafe { std::env::remove_var("HOME") },
-        }
-        let _ = std::fs::remove_dir_all(&home);
+    /// A profile that failed to parse is copied aside verbatim as
+    /// `<name>.yaml.broken-<ts>` — a name `list_available_profiles` and the
+    /// watcher both ignore, so it never shows up as a profile of its own.
+    #[test]
+    fn quarantine_copies_broken_profile_aside() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("work.yaml");
+        std::fs::write(&path, "bars: [oops\n").unwrap();
+
+        let copy = quarantine_broken_profile(&path, 1_700_000_000).expect("copied");
+
+        assert_eq!(copy, dir.path().join("work.yaml.broken-1700000000"));
+        assert_eq!(std::fs::read_to_string(&copy).unwrap(), "bars: [oops\n");
+        assert!(path.exists(), "the original stays for the user to fix");
+        assert_ne!(
+            copy.extension().and_then(|e| e.to_str()),
+            Some("yaml"),
+            "not picked up as a profile"
+        );
     }
 }

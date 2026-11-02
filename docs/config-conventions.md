@@ -140,6 +140,16 @@ Touch all four or the knob silently no-ops / fails validation:
    `CONFIG_VERSION` in `mshell-config/src/migration.rs` and add a
    `migrate_vN_to_vN1` step plus its round-trip test (the module doc lists the
    steps). It runs once per profile on load and the result is written back.
+4. A struct that appears **inside a list** (a `MenuWidget::Container(…)`
+   payload, a list-item config) needs a container-level `#[serde(default)]`:
+   figment's deep merge never reaches into list items, so a missing key there
+   fails the whole profile.
+5. A profile that fails to load leaves the shell **degraded**: it runs on
+   defaults (startup) or last-good (reload / profile switch), keeps a copy as
+   `<name>.yaml.broken-<unix-ts>`, and `update_config` applies changes in
+   memory only (one toast) until the file loads again — it never overwrites
+   the user's file with `defaults + one change`. The migration write-back
+   happens only after the migrated profile extracts cleanly.
 
 ## 6. Precedence & live-apply rules
 
