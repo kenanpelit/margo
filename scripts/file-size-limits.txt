@@ -1,0 +1,8 @@
+# Line limits enforced by scripts/file-size-gate.sh: `<path> <max-lines>`.
+# Raising a number needs a `FILE-SIZE-RAISE: <reason>` commit trailer;
+# lowering one needs nothing. Prefer moving code into the module that owns
+# it over raising a limit.
+
+# MargoState's struct, constructor and the few methods with no better home.
+# Subsystem code lives in margo/src/state/*.rs.
+margo/src/state.rs 1300

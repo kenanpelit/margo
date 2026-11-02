@@ -132,6 +132,17 @@ jobs:
           ./scripts/test-panic-baseline-guard.sh
           ./scripts/panic-ratchet.sh
 
+      - name: file size (gate)
+        # margo/src/state.rs (and any other file listed in
+        # scripts/file-size-limits.txt) may not exceed its line limit; a
+        # commit that raises a limit must carry a `FILE-SIZE-RAISE: <reason>`
+        # trailer, checked from the PR base or, on a push, the previous tip.
+        env:
+          FILE_SIZE_GATE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          ./scripts/test-file-size-gate.sh
+          ./scripts/file-size-gate.sh
+
       - name: mtune de-brand (gate)
         # The mtune/ tree is a fork of an upstream GPL-3.0 GTK player; the
         # upstream project name and app-id namespace must not survive it.

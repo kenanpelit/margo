@@ -53,9 +53,15 @@ files, and overlapping feature mechanisms.**
   registry that also emits the struct fields + `ComponentParts` assigns so the
   page-list lives in exactly one table (blocked on the heterogeneous typed
   `Controller<…>` fields + the `#[relm4::component]` struct context).
-- [ ] **Split the god files — `state.rs`.** *Reopened (4.5.0):* the file has
-  grown back to **2864** lines with a wide `pub` field surface (~160 fields),
-  just under the <3k bar again. Earlier pass (1.0.6): 4045 → 2441, lifted into
+- [x] **Split the god files — `state.rs`.** ✅ Second pass: it had grown back
+  to ~2986 lines with ~160 `pub` fields; now **1201**. `MargoState`'s fields are
+  grouped into `protocols: Protocols` (the 59 protocol globals,
+  `state/protocols.rs`), `ipc: IpcServer`, `input_timers: InputTimers`,
+  `twilight: Twilight` and `output_pending: OutputPending`, each with its own
+  constructor; repaint / frame-callback code moved to `state/repaint.rs`.
+  `scripts/file-size-gate.sh` (in `just check` and CI) now fails if `state.rs`
+  passes its limit in `scripts/file-size-limits.txt`; raising the limit needs a
+  `FILE-SIZE-RAISE:` trailer. Earlier pass (1.0.6): 4045 → 2441, lifted into
   sibling `impl MargoState` blocks:
   `state/window_rules.rs` (window/tag rules + placement), `state/arrange.rs`
   (the tiling-arrange cluster incl. the ~526-line `arrange_monitor`),
