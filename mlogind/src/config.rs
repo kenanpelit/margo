@@ -261,6 +261,10 @@ toml_config_struct! { BackgroundConfig, PartialBackgroundConfig, RoughBackground
 
 toml_config_struct! { PowerControlConfig, PartialPowerControlConfig, RoughPowerControlConfig,
     hint_margin => u16,
+    // Run power actions even while another user is logged in or a `block`
+    // inhibitor covers them. Off: the greeter refuses, like logind does for an
+    // unprivileged caller (see runner::power_guard).
+    ignore_inhibitors => bool,
     base_entries => PowerControlVec [PartialPowerControlVec, RoughPowerControlVec],
     entries => PowerControlVec [PartialPowerControlVec, RoughPowerControlVec],
 }

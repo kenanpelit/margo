@@ -38,6 +38,7 @@ use crate::post_login::{
 
 mod converse;
 mod greeter_session;
+mod power_guard;
 pub mod session_active;
 
 use converse::{Abort, GreeterConv};
@@ -405,6 +406,10 @@ fn power_entries(config: &Config) -> Vec<&PowerControl> {
 
 /// Run the configured power action at `index`, as root, and always answer.
 ///
+/// Unless `power_controls.ignore_inhibitors` is set, refuse while another user
+/// is logged in or a block inhibitor covers the action: root would otherwise
+/// skip both of logind's checks (see [`power_guard`]).
+///
 /// The greeter sends an index, never a command: it is unprivileged, we are not,
 /// and letting it name what we run would hand back in one line exactly the
 /// privilege it just gave up.
@@ -423,6 +428,18 @@ fn run_power(config: &Config, index: u32, conn: &mut Conn<FdTransport>) {
         });
         return;
     };
+
+    if !config.power_controls.ignore_inhibitors
+        && let Some(reason) = power_guard::check(power_guard::kind_of(&entry.cmd))
+    {
+        warn!(
+            "runner: refusing power action '{}': {reason} (power_controls.ignore_inhibitors \
+             overrides)",
+            entry.hint
+        );
+        let _ = conn.send_event(&Event::Error { text: reason });
+        return;
+    }
 
     info!(
         "runner: running power action '{}': {}",

@@ -43,6 +43,12 @@ border_color = "$panel_border"
 
 [power_controls]
 hint_margin = 3
+# The runner runs power actions as root, which logind would let through a
+# logged-in user's session and any inhibitor. With this off (the default) a
+# power key is refused while another user is logged in or a `block` inhibitor
+# (an update, a backup, `systemd-inhibit`) covers it; set it to true to run the
+# command regardless, like `systemctl --ignore-inhibitors`.
+ignore_inhibitors = false
 # Extra entries beyond the base Shutdown/Reboot/Suspend below. `key` is a
 # function key with optional modifiers (`F5`, `Ctrl+F1`), matched
 # exactly; the base ones use a chord so a stray F-key or the Ctrl+Alt+F<n>

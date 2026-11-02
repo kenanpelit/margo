@@ -3,7 +3,9 @@
  * mlogind's own greeters do NOT rely on this: their F-key footer sends
  * `Request::Power { index }` to the root session runner, which resolves the
  * index against /etc/mlogind/config.toml and runs the command itself. That path
- * needs no polkit and works with polkitd stopped.
+ * needs no polkit and works with polkitd stopped; because root would skip
+ * logind's checks, the runner itself refuses while another user is logged in or
+ * a block inhibitor is held (power_controls.ignore_inhibitors overrides).
  *
  * This rule exists for everything else that may run inside the greeter's logind
  * session — an accessibility helper, a future lock screen, a `loginctl` call
