@@ -115,8 +115,12 @@ impl State {
 /// A missing or unparsable value means nobody is orchestrating us — a UI dry-run.
 fn runner_socket() -> Option<OwnedFd> {
     let raw: RawFd = std::env::var("MLOGIND_SOCK_FD").ok()?.parse().ok()?;
-    // SAFETY: the runner passed us this descriptor and closed its own copy, so
-    // we are its sole owner.
+    // SAFETY: the descriptor was inherited for exactly this purpose and nothing
+    // else in this process refers to it. We are not its only holder: the
+    // runner keeps its end of the pair, and the startup shell that launched us
+    // (with the mkeys/mctl it runs) still holds an inherited copy of ours —
+    // margo itself drops its copy once that shell is spawned, and nothing else
+    // margo starts receives it.
     let fd = unsafe { OwnedFd::from_raw_fd(raw) };
     // The fd was left inheritable so it could ride the runner's exec into us.
     // Now that we own it, re-arm close-on-exec: this socket carries PAM's

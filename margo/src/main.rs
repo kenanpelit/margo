@@ -1192,6 +1192,16 @@ fn main() -> Result<()> {
         // SAFETY: still single-threaded during argument/config bootstrap.
         unsafe { std::env::remove_var("MARGO_HEARTBEAT_USEC") };
     }
+    // mlogind's greeter host: the runner's PAM conversation socket, which margo
+    // only carries to its startup command (mgreet). Take it out of the
+    // environment and keep it close-on-exec here, so exec-once commands, binds
+    // and every other child margo spawns never inherit a socket that carries
+    // the password.
+    let greeter_sock = utils::take_handoff_fd("MLOGIND_SOCK_FD");
+    if std::env::var_os("MLOGIND_SOCK_FD").is_some() {
+        // SAFETY: still single-threaded during argument/config bootstrap.
+        unsafe { std::env::remove_var("MLOGIND_SOCK_FD") };
+    }
 
     // First-run bootstrap: write a usable default config if none exists, so a
     // brand-new session works no matter HOW margo is launched — a login manager
@@ -1563,8 +1573,13 @@ fn main() -> Result<()> {
         }
     }
     if let Some(cmd) = args.startup_command {
-        utils::spawn_shell(&cmd)?;
+        match greeter_sock.as_ref() {
+            Some(sock) => utils::spawn_shell_with_fd(&cmd, "MLOGIND_SOCK_FD", sock)?,
+            None => utils::spawn_shell(&cmd)?,
+        }
     }
+    // Our copy goes now: once mgreet exits, the runner must read EOF.
+    drop(greeter_sock);
 
     // ── AccessKit a11y adapter ────────────────────────────────────────────────
     // Spin up the screen-reader bridge thread before any clients

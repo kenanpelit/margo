@@ -105,12 +105,17 @@ pub fn socketpair() -> io::Result<(OwnedFd, OwnedFd)> {
 
 use std::os::fd::FromRawFd;
 
-/// Let the greeter inherit this fd across `exec`.
+/// Let one child inherit `fd` across its `exec`, by clearing close-on-exec in
+/// that child only. Meant for a `pre_exec` hook: one `fcntl`, async-signal-safe.
 ///
-/// `mlogind` is single-threaded, so nothing can `exec` between the `fcntl` and
-/// `Command::spawn`, and no `pre_exec` closure is needed.
-fn clear_cloexec(fd: RawFd) -> io::Result<()> {
-    // SAFETY: `fd` is an open descriptor we own.
+/// The old code cleared the flag on the runner's own descriptor before forking
+/// the greeter session, so every process started from there on — PAM modules'
+/// helpers in the greeter-session process, the greeter host, everything the
+/// host spawned — inherited the socket that carries PAM's prompts and the
+/// password. Now the runner's copy stays close-on-exec and only the host gets
+/// one.
+pub(crate) fn inherit_across_exec(fd: RawFd) -> io::Result<()> {
+    // SAFETY: F_SETFD on a descriptor number touches no memory.
     if unsafe { libc::fcntl(fd, libc::F_SETFD, 0) } < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -242,9 +247,10 @@ fn spawn_greeter(
     std::fs::set_permissions(&runtime_dir, std::fs::Permissions::from_mode(0o755))?;
 
     // atrium's `CREDENTIALS_FD` idiom: the socket rides across `exec` on a
-    // known number, announced in the environment.
-    clear_cloexec(gfd.as_raw_fd())?;
-    let sock_fd = gfd.as_raw_fd().to_string();
+    // known number, announced in the environment — into the host only (see
+    // `inherit_across_exec`, applied to `cmd` below).
+    let gfd_raw = gfd.as_raw_fd();
+    let sock_fd = gfd_raw.to_string();
 
     // `Host::Tty` returned above, so this is Gui-or-Cage. An `if` rather than a
     // `match` with an `unreachable!` arm: the login gate takes no panics.
@@ -320,6 +326,12 @@ fn spawn_greeter(
     // session now, so libseat finds its logind backend by itself. Those two lines
     // were the entire reason `seatd` had to be started by hand.
     cmd.env("MLOGIND_SOCK_FD", &sock_fd);
+    // SAFETY: the hook makes one fcntl call on a descriptor number.
+    unsafe {
+        std::os::unix::process::CommandExt::pre_exec(&mut cmd, move || {
+            inherit_across_exec(gfd_raw)
+        });
+    }
     // Match the greeter keyboard to the machine's console layout.
     for (key, val) in crate::vconsole_xkb_env() {
         cmd.env(key, val);
@@ -340,7 +352,7 @@ fn spawn_greeter(
         return Err(io::Error::last_os_error().into());
     }
     if pid == 0 {
-        // A fork is not an exec, so CLOEXEC did nothing for our inherited copy
+        // A fork is not an exec, so CLOEXEC does nothing for our inherited copy
         // of the runner's end. Close it, or the greeter exiting never reads as
         // EOF and `serve` waits forever.
         // SAFETY: this child never touches that descriptor again.
@@ -733,6 +745,35 @@ fn start_session<C: pam::Converse>(
 
 #[cfg(test)]
 mod tests {
+    use super::{inherit_across_exec, socketpair};
+    use std::os::fd::AsRawFd;
+    use std::os::unix::process::CommandExt;
+    use std::process::Command;
+
+    fn has_fd(fd: i32, hook: bool) -> bool {
+        let mut cmd = Command::new("/bin/sh");
+        cmd.arg("-c").arg(format!("[ -e /proc/self/fd/{fd} ]"));
+        if hook {
+            // SAFETY: inherit_across_exec is a single fcntl.
+            unsafe { cmd.pre_exec(move || inherit_across_exec(fd)) };
+        }
+        cmd.status().unwrap().success()
+    }
+
+    #[test]
+    fn only_the_child_with_the_hook_inherits_the_greeter_socket() {
+        let (_runner, greeter) = socketpair().unwrap();
+        let fd = greeter.as_raw_fd();
+        assert!(has_fd(fd, true), "the greeter host must get the socket");
+        assert!(!has_fd(fd, false), "nothing else the runner spawns may");
+        // SAFETY: F_GETFD only reads the flags.
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        assert_ne!(
+            flags & libc::FD_CLOEXEC,
+            0,
+            "the runner's copy stays CLOEXEC"
+        );
+    }
     use super::greeter_startup;
     use std::path::Path;
 

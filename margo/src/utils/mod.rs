@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use std::ffi::OsStr;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -72,6 +73,49 @@ where
 /// Spawn a shell command via `sh -c` (detached + reaped, see [`spawn`]).
 pub fn spawn_shell(cmd: &str) -> Result<()> {
     let command = Command::new("setsid");
+    spawn_detached(command, |c| {
+        c.arg("--fork").arg("sh").arg("-c").arg(cmd);
+    })
+}
+
+/// Take a descriptor a parent handed us through `$var` (a decimal fd number):
+/// mark it close-on-exec so nothing margo spawns inherits it by accident, and
+/// return it. `None` when the variable is unset, not a number, names one of the
+/// std streams, or the fd is not open.
+pub fn take_handoff_fd(var: &str) -> Option<OwnedFd> {
+    let raw: RawFd = std::env::var(var).ok()?.trim().parse().ok()?;
+    if raw <= 2 {
+        return None;
+    }
+    // SAFETY: F_GETFD / F_SETFD only read and set the descriptor's flags.
+    let flags = unsafe { libc::fcntl(raw, libc::F_GETFD) };
+    if flags < 0 {
+        return None;
+    }
+    // SAFETY: as above.
+    unsafe { libc::fcntl(raw, libc::F_SETFD, flags | libc::FD_CLOEXEC) };
+    // SAFETY: the parent handed this open descriptor to us and nothing else in
+    // margo refers to it.
+    Some(unsafe { OwnedFd::from_raw_fd(raw) })
+}
+
+/// [`spawn_shell`], but `fd` crosses into this one child (and its children),
+/// announced as `$var`. Everything else margo spawns keeps the descriptor
+/// closed, because it stays close-on-exec in margo itself.
+pub fn spawn_shell_with_fd(cmd: &str, var: &str, fd: &OwnedFd) -> Result<()> {
+    use std::os::unix::process::CommandExt;
+    let raw = fd.as_raw_fd();
+    let mut command = Command::new("setsid");
+    command.env(var, raw.to_string());
+    // SAFETY: the hook makes one fcntl call on a descriptor number.
+    unsafe {
+        command.pre_exec(move || {
+            if libc::fcntl(raw, libc::F_SETFD, 0) < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
     spawn_detached(command, |c| {
         c.arg("--fork").arg("sh").arg("-c").arg(cmd);
     })
@@ -337,5 +381,77 @@ mod child_env_tests {
             cmd.get_envs()
                 .any(|(k, v)| k == "MARGO_CHILD_ENV_TEST" && v == Some(OsStr::new("two")))
         );
+    }
+}
+
+#[cfg(test)]
+mod handoff_fd_tests {
+    use super::*;
+
+    /// Wait for the detached `setsid --fork` child to write its verdict.
+    fn verdict(path: &std::path::Path) -> String {
+        for _ in 0..200 {
+            if let Ok(text) = std::fs::read_to_string(path)
+                && text.ends_with('\n')
+            {
+                return text;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("the spawned shell never wrote {}", path.display());
+    }
+
+    #[test]
+    fn only_the_startup_child_inherits_the_greeter_socket() {
+        let dir = std::env::temp_dir().join(format!("margo-handoff-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b) = std::os::unix::net::UnixStream::pair().unwrap();
+        // As mlogind hands it over: an inheritable descriptor.
+        let fd: OwnedFd = b.into();
+        // SAFETY: clearing the flags on a descriptor we own.
+        unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, 0) };
+        let raw = fd.as_raw_fd();
+        // SAFETY: take_handoff_fd adopts it below; forget our handle first.
+        std::mem::forget(fd);
+        // SAFETY: test-only env mutation; this test is the only reader.
+        unsafe { std::env::set_var("MARGO_TEST_HANDOFF_FD", raw.to_string()) };
+        let fd = take_handoff_fd("MARGO_TEST_HANDOFF_FD").expect("an open fd is adopted");
+        // SAFETY: F_GETFD only reads the flags.
+        let flags = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFD) };
+        assert_ne!(
+            flags & libc::FD_CLOEXEC,
+            0,
+            "margo's own copy is close-on-exec"
+        );
+
+        let check = |out: &std::path::Path| {
+            format!(
+                "if [ -e /proc/self/fd/{raw} ] && [ \"$MLOGIND_SOCK_FD\" = {raw} ]; then echo yes > {o}; else echo no > {o}; fi",
+                o = out.display()
+            )
+        };
+        let with = dir.join("with");
+        spawn_shell_with_fd(&check(&with), "MLOGIND_SOCK_FD", &fd).unwrap();
+        assert_eq!(verdict(&with), "yes\n");
+
+        let without = dir.join("without");
+        spawn_shell(&check(&without)).unwrap();
+        assert_eq!(
+            verdict(&without),
+            "no\n",
+            "exec_once and binds must not get it"
+        );
+
+        drop((a, fd));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_missing_or_bogus_handoff_is_none() {
+        assert!(take_handoff_fd("MARGO_TEST_HANDOFF_UNSET").is_none());
+        // SAFETY: test-only env mutation.
+        unsafe { std::env::set_var("MARGO_TEST_HANDOFF_STDOUT", "1") };
+        assert!(take_handoff_fd("MARGO_TEST_HANDOFF_STDOUT").is_none());
     }
 }

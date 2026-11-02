@@ -536,12 +536,14 @@ fn run_greeter(config: Config) -> Result<(), Box<dyn Error>> {
 /// Adopt the socket the runner left us on `$MLOGIND_SOCK_FD`.
 ///
 /// atrium's `CREDENTIALS_FD` idiom: the fd rides across `exec` (the runner
-/// cleared `FD_CLOEXEC`) and the number arrives in the environment. A missing
-/// or unparsable value means nobody is orchestrating us — a UI dry-run.
+/// cleared `FD_CLOEXEC` in the host's child only) and the number arrives in the
+/// environment. A missing or unparsable value means nobody is orchestrating us
+/// — a UI dry-run.
 fn greeter_socket() -> Option<OwnedFd> {
     let raw: RawFd = std::env::var("MLOGIND_SOCK_FD").ok()?.parse().ok()?;
-    // SAFETY: the runner passed us this descriptor and closed its own copy, so
-    // we are its sole owner.
+    // SAFETY: the descriptor was inherited for exactly this purpose and nothing
+    // else in this process refers to it. cage and foot, which exec'd us, still
+    // hold inherited copies; nothing else does.
     Some(unsafe { OwnedFd::from_raw_fd(raw) })
 }
 
