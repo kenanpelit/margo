@@ -119,27 +119,34 @@ impl CaptureBackend {
 
         let full = self.capture_output_raw(&win.output)?;
 
-        // Window coords are global; convert to output-local.
-        let local_x = (win.x - output_info.x).max(0) as u32;
-        let local_y = (win.y - output_info.y).max(0) as u32;
-        let w = (win.width as u32).min(full.width().saturating_sub(local_x));
-        let h = (win.height as u32).min(full.height().saturating_sub(local_y));
-
-        if w == 0 || h == 0 {
+        // Window coords are global and logical; convert to output-local
+        // buffer pixels.
+        let local_x = (win.x - output_info.x).max(0);
+        let local_y = (win.y - output_info.y).max(0);
+        let Some((x, y, w, h)) = clamp_crop(
+            logical_to_buffer((local_x, local_y, win.width, win.height), output_info.scale),
+            (full.width(), full.height()),
+        ) else {
             return Err(ScreenshotError::CaptureFailed(
                 "window has zero size".into(),
             ));
-        }
+        };
 
-        Ok(image::imageops::crop_imm(&full, local_x, local_y, w, h).to_image())
+        Ok(image::imageops::crop_imm(&full, x, y, w, h).to_image())
     }
 
     /// Capture a user-selected region by cropping the relevant output.
     pub fn capture_region(&self, region: &RegionSelection) -> Result<image::RgbaImage> {
+        // The selector reports output-local logical pixels; the frame is
+        // in buffer pixels.
+        let scale = query_outputs()?
+            .iter()
+            .find(|o| o.name == region.output)
+            .map_or(1.0, |o| o.scale);
         let full = self.capture_output_raw(&region.output)?;
 
         let Some((x, y, w, h)) = clamp_crop(
-            (region.x, region.y, region.width, region.height),
+            logical_to_buffer((region.x, region.y, region.width, region.height), scale),
             (full.width(), full.height()),
         ) else {
             return Err(ScreenshotError::CaptureFailed(
@@ -274,6 +281,24 @@ impl CaptureBackend {
 
         Ok(image)
     }
+}
+
+/// Logical rect `(x, y, w, h)` → the buffer-pixel rect covering it on an
+/// output with the given scale (screencopy frames are buffer pixels).
+/// Edges are rounded outwards so a fractional scale never drops the
+/// partly covered pixel row/column. A non-positive or non-finite scale
+/// is treated as 1.
+fn logical_to_buffer((x, y, w, h): (i32, i32, i32, i32), scale: f64) -> (i32, i32, i32, i32) {
+    let s = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    let x0 = (x as f64 * s).floor();
+    let y0 = (y as f64 * s).floor();
+    let x1 = ((x + w) as f64 * s).ceil();
+    let y1 = ((y + h) as f64 * s).ceil();
+    (x0 as i32, y0 as i32, (x1 - x0) as i32, (y1 - y0) as i32)
 }
 
 /// Clamp crop rect `(x, y, w, h)` to a `(width, height)` image. `None`
@@ -517,6 +542,36 @@ mod tests {
         );
         assert_eq!(clamp_crop((0, 0, 0, 10), (100, 100)), None);
         assert_eq!(clamp_crop((0, 0, 10, 10), (0, 0)), None);
+    }
+
+    #[test]
+    fn logical_rects_scale_to_buffer_pixels() {
+        let r = (100, 50, 640, 480);
+        assert_eq!(logical_to_buffer(r, 1.0), r);
+        assert_eq!(logical_to_buffer(r, 2.0), (200, 100, 1280, 960));
+        // 1.25: 100*1.25 = 125, (100+640)*1.25 = 925 → 800 wide.
+        assert_eq!(logical_to_buffer(r, 1.25), (125, 62, 800, 601));
+        // Fractional edges round outwards.
+        assert_eq!(logical_to_buffer((1, 1, 1, 1), 1.5), (1, 1, 2, 2));
+    }
+
+    #[test]
+    fn bogus_scale_is_treated_as_one() {
+        let r = (10, 20, 30, 40);
+        for s in [0.0, -2.0, f64::NAN, f64::INFINITY] {
+            assert_eq!(logical_to_buffer(r, s), r, "{s}");
+        }
+    }
+
+    #[test]
+    fn hidpi_region_crops_the_selected_pixels() {
+        // A 1920x1080 logical output at 200 % yields a 3840x2160 frame;
+        // the bottom-right logical quarter must map to the bottom-right
+        // buffer quarter, not a quarter-sized patch in the middle.
+        assert_eq!(
+            clamp_crop(logical_to_buffer((960, 540, 960, 540), 2.0), (3840, 2160)),
+            Some((1920, 1080, 1920, 1080))
+        );
     }
 
     fn convert(data: &[u8], w: u32, h: u32, stride: u32, f: wl_shm::Format) -> Vec<[u8; 4]> {
