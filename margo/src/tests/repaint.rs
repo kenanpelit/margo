@@ -1150,3 +1150,33 @@ fn cursor_commit_repaints_only_the_pointer_output() {
             .is_none_or(|clock| !clock.dirty),
     );
 }
+
+#[test]
+fn output_clocks_follow_enabled_monitors() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    fx.add_output("DP-2", (1920, 1080));
+    fx.server.state.ensure_output_clocks();
+    let mut names: Vec<_> = fx.server.state.per_output_clocks.keys().cloned().collect();
+    names.sort();
+    assert_eq!(names, ["DP-1", "DP-2"]);
+
+    // In sync: a repeat call keeps the existing clocks (and their state).
+    fx.server
+        .state
+        .per_output_clocks
+        .get_mut("DP-1")
+        .expect("DP-1 clock")
+        .dirty = true;
+    fx.server.state.ensure_output_clocks();
+    assert!(fx.server.state.per_output_clocks["DP-1"].dirty);
+
+    // A disabled monitor loses its clock; re-enabling brings a fresh one.
+    fx.server.state.monitors[1].enabled = false;
+    fx.server.state.ensure_output_clocks();
+    assert!(!fx.server.state.per_output_clocks.contains_key("DP-2"));
+    assert!(fx.server.state.per_output_clocks["DP-1"].dirty);
+    fx.server.state.monitors[1].enabled = true;
+    fx.server.state.ensure_output_clocks();
+    assert!(fx.server.state.per_output_clocks.contains_key("DP-2"));
+}

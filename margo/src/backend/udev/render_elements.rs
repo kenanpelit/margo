@@ -1565,7 +1565,7 @@ fn push_closing_clients(
 fn push_group_tabs(
     renderer: &mut GlesRenderer,
     state: &MargoState,
-    client: Option<&MargoClient>,
+    client: Option<(usize, &MargoClient)>,
     output_geo: Rectangle<i32, Logical>,
     output_scale: f64,
     elements: &mut Vec<MargoRenderElement>,
@@ -1574,7 +1574,9 @@ fn push_group_tabs(
     if bar_h <= 0 {
         return;
     }
-    let Some(client) = client else { return };
+    let Some((active_idx, client)) = client else {
+        return;
+    };
     // Only the visible (active) member carries the strip; hidden
     // members aren't rendered at all.
     let Some(gid) = client.group_id else { return };
@@ -1591,11 +1593,6 @@ fn push_group_tabs(
     if members.len() < 2 {
         return;
     }
-    let active_idx = state
-        .clients
-        .iter()
-        .position(|c| std::ptr::eq(c, client))
-        .unwrap_or(members[0]);
 
     // App-name label on each chip (fontdue → MemoryRenderBuffer). Pushed
     // BEFORE the solid chips so it sits at a lower index → drawn on top of
@@ -1690,7 +1687,7 @@ fn push_group_tabs(
 fn push_drag_swap_highlight(
     renderer: &mut GlesRenderer,
     state: &MargoState,
-    client: Option<&MargoClient>,
+    client: Option<(usize, &MargoClient)>,
     output_geo: Rectangle<i32, Logical>,
     output_scale: f64,
     elements: &mut Vec<MargoRenderElement>,
@@ -1698,18 +1695,16 @@ fn push_drag_swap_highlight(
     let Some(target_id) = state.drag_swap_target else {
         return;
     };
-    let Some(client) = client else { return };
+    let Some((client_idx, client)) = client else {
+        return;
+    };
     if client.id != target_id {
         return;
     }
     let Some(prog) = crate::render::rounded_solid::shader(renderer) else {
         return;
     };
-    let radius = state
-        .client_idx(&client.window)
-        .map(|idx| state.client_radius(idx))
-        .unwrap_or(0.0)
-        * output_scale as f32;
+    let radius = state.client_radius(client_idx) * output_scale as f32;
     elements.push(MargoRenderElement::RoundedSolid(
         crate::render::drag_highlight::render_element(
             client.geom,
@@ -1813,9 +1808,15 @@ fn push_client_elements(
     // Index clients by window once per output per frame. The per-window
     // body below resolved its client with a linear `clients.iter().find`,
     // making this loop O(windows × clients) every frame — quadratic in the
-    // open-window count. The map makes each lookup O(1).
-    let client_by_window: std::collections::HashMap<_, _> =
-        state.clients.iter().map(|c| (&c.window, c)).collect();
+    // open-window count. The map makes each lookup O(1), and carries the
+    // client's index so the radius / group-tab / drag-highlight helpers
+    // below don't re-scan `clients` for it either.
+    let client_by_window: std::collections::HashMap<_, _> = state
+        .clients
+        .iter()
+        .enumerate()
+        .map(|(idx, c)| (&c.window, (idx, c)))
+        .collect();
 
     for window in state.space.elements_for_output(output).rev() {
         if only_window.is_some_and(|only| only != window) {
@@ -1827,7 +1828,9 @@ fn push_client_elements(
         let render_location = location - window.geometry().loc;
         let physical_location = (render_location - output_geo.loc).to_physical_precise_round(scale);
 
-        let client = client_by_window.get(&window).copied();
+        let client_entry = client_by_window.get(&window).copied();
+        let client_idx = client_entry.map(|(idx, _)| idx);
+        let client = client_entry.map(|(_, c)| c);
 
         // Overview alpha: while overview is open, every non-selected
         // thumbnail renders dimmed (config `overview_dim_alpha`,
@@ -1885,8 +1888,7 @@ fn push_client_elements(
             continue;
         }
 
-        let radius = client
-            .and_then(|c| state.client_idx(&c.window))
+        let radius = client_idx
             .map(|idx| state.client_radius(idx))
             .unwrap_or(0.0);
         // Clip the surface tree to the same `min(geometry.size, slot)`
@@ -1972,11 +1974,18 @@ fn push_client_elements(
                     }
                 }
 
-                push_group_tabs(renderer, state, client, output_geo, output_scale, elements);
+                push_group_tabs(
+                    renderer,
+                    state,
+                    client_entry,
+                    output_geo,
+                    output_scale,
+                    elements,
+                );
                 push_drag_swap_highlight(
                     renderer,
                     state,
-                    client,
+                    client_entry,
                     output_geo,
                     output_scale,
                     elements,
@@ -2377,11 +2386,18 @@ fn push_client_elements(
                     }
                 }
 
-                push_group_tabs(renderer, state, client, output_geo, output_scale, elements);
+                push_group_tabs(
+                    renderer,
+                    state,
+                    client_entry,
+                    output_geo,
+                    output_scale,
+                    elements,
+                );
                 push_drag_swap_highlight(
                     renderer,
                     state,
-                    client,
+                    client_entry,
                     output_geo,
                     output_scale,
                     elements,

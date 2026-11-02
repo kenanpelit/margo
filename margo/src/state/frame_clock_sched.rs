@@ -55,16 +55,27 @@ impl MargoState {
         if !self.per_output_frame_clock_enabled() {
             return;
         }
-        let names: Vec<String> = self
-            .monitors
-            .iter()
-            .filter(|monitor| monitor.enabled)
-            .map(|monitor| monitor.name.clone())
-            .collect();
-        self.per_output_clocks
-            .retain(|name, _| names.contains(name));
-        for name in names {
-            self.per_output_clocks.entry(name).or_default();
+        // Runs on every repaint request, so the in-sync case (no hotplug)
+        // must not allocate: one pass over the monitors, no name clones.
+        let enabled = self.monitors.iter().filter(|monitor| monitor.enabled);
+        let in_sync = enabled.clone().count() == self.per_output_clocks.len()
+            && enabled
+                .clone()
+                .all(|monitor| self.per_output_clocks.contains_key(&monitor.name));
+        if in_sync {
+            return;
+        }
+        let monitors = &self.monitors;
+        self.per_output_clocks.retain(|name, _| {
+            monitors
+                .iter()
+                .any(|monitor| monitor.enabled && monitor.name == *name)
+        });
+        for monitor in monitors.iter().filter(|monitor| monitor.enabled) {
+            if !self.per_output_clocks.contains_key(&monitor.name) {
+                self.per_output_clocks
+                    .insert(monitor.name.clone(), Default::default());
+            }
         }
     }
 
@@ -197,16 +208,11 @@ impl MargoState {
         // shared arm. Hot callers that already hold the output
         // (`mark_all_clocks_dirty`) skip this lookup via
         // `arm_present_timer_for`.
-        let Some((output, interval)) =
-            self.monitors
-                .iter()
-                .find(|m| m.output.name() == name)
-                .map(|m| {
-                    let out = m.output.clone();
-                    let interval = Self::output_refresh_interval(&out);
-                    (out, interval)
-                })
-        else {
+        let Some((output, interval)) = self.monitors.iter().find(|m| m.name == name).map(|m| {
+            let out = m.output.clone();
+            let interval = Self::output_refresh_interval(&out);
+            (out, interval)
+        }) else {
             return;
         };
         self.arm_present_timer_for(name, &output, interval);
@@ -311,7 +317,7 @@ impl MargoState {
             .map(|m| {
                 let out = m.output.clone();
                 let interval = Self::output_refresh_interval(&out);
-                (out.name(), out, interval)
+                (m.name.clone(), out, interval)
             })
             .collect();
         for (name, output, interval) in candidates {

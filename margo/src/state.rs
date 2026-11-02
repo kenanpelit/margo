@@ -2277,11 +2277,12 @@ impl MargoState {
         };
 
         if !self.session_locked {
-            self.space.elements().for_each(|window| {
-                if self.space.outputs_for_element(window).contains(output) {
-                    window.send_frame(output, time, throttle, should_send);
-                }
-            });
+            // `elements_for_output` filters on the same per-element output
+            // map `outputs_for_element` reads, without cloning that map
+            // into a fresh Vec for every window on every vblank.
+            for window in self.space.elements_for_output(output) {
+                window.send_frame(output, time, throttle, should_send);
+            }
 
             // Warm-up nudge: for `warmup_hidden_ms` after a window first maps, keep
             // delivering frame callbacks to it even while it sits on a hidden tag
