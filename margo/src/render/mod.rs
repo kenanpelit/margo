@@ -9,6 +9,7 @@ pub mod hdr_metadata;
 pub mod icc_lut;
 pub mod linear_composite;
 pub mod namespaced;
+pub mod offscreen_pool;
 pub mod open_close;
 pub mod resize_render;
 pub mod rounded_border;

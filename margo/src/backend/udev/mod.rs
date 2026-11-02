@@ -1534,10 +1534,8 @@ pub(super) fn serve_screencopies(
         return;
     }
 
-    // The output's full physical mode size — the SHM path renders this
-    // into the offscreen target, then `copy_framebuffer` reads back only
-    // the client-requested sub-region (region_loc + buffer_size).
-    let Some(output_size) = od.output.current_mode().map(|m| m.size) else {
+    // An output without a mode can't be captured: fail its queued frames.
+    if od.output.current_mode().is_none() {
         state.screencopy_state.with_queues_mut(|queue| {
             while queue
                 .screencopies()
@@ -1548,7 +1546,7 @@ pub(super) fn serve_screencopies(
             }
         });
         return;
-    };
+    }
     let scale = od.output.current_scale().fractional_scale();
 
     // `block_out_from_screencast` windows must be blacked out in every
@@ -1598,15 +1596,7 @@ pub(super) fn serve_screencopies(
 
     for (screencopy, damage) in ready {
         let elements = elements_for(screencopy.overlay_cursor());
-        render_screencopy(
-            renderer,
-            screencopy,
-            elements,
-            output_size,
-            scale,
-            &damage,
-            now,
-        );
+        render_screencopy(renderer, screencopy, elements, scale, &damage, now);
     }
 }
 
@@ -1646,13 +1636,12 @@ fn render_screencopy(
     renderer: &mut GlesRenderer,
     screencopy: crate::protocols::screencopy::Screencopy,
     elements_to_render: &[MargoRenderElement],
-    output_size: smithay::utils::Size<i32, Physical>,
     scale: f64,
     damage: &[smithay::utils::Rectangle<i32, Physical>],
     now: std::time::Duration,
 ) {
     use smithay::backend::renderer::{
-        Bind, ExportMem, Offscreen, damage::OutputDamageTracker as DamageTracker,
+        Bind, ExportMem, damage::OutputDamageTracker as DamageTracker,
     };
     let size = screencopy.buffer_size();
     let region_loc = screencopy.region_loc();
@@ -1723,22 +1712,28 @@ fn render_screencopy(
     }
 
     // ── SHM path (renderbuffer + read-back + memcpy) ─────────────
-    // Render the FULL output (not just the region). We crop on read-back
-    // via `copy_framebuffer`. Renderbuffer matches the output mode.
-    let buf_size =
-        smithay::utils::Size::<i32, smithay::utils::Buffer>::from((output_size.w, output_size.h));
+    // Render only the requested region, the same way as the dmabuf path:
+    // shift the world by -region_loc and run the damage tracker at the
+    // client's buffer size, so a region capture doesn't pay for a
+    // full-output render. The renderbuffer comes from a size-keyed pool
+    // instead of being allocated per captured frame.
+    use smithay::backend::renderer::element::utils::{Relocate, RelocateRenderElement};
+    let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from((size.w, size.h));
+    let translate: smithay::utils::Point<i32, smithay::utils::Physical> =
+        (-region_loc.x, -region_loc.y).into();
+    let relocated: Vec<RelocateRenderElement<&MargoRenderElement>> = elements_to_render
+        .iter()
+        .map(|e| RelocateRenderElement::from_element(e, translate, Relocate::Relative))
+        .collect();
 
-    let mut renderbuffer = match <GlesRenderer as Offscreen<
-        smithay::backend::renderer::gles::GlesRenderbuffer,
-    >>::create_buffer(
-        renderer, drm_fourcc::DrmFourcc::Xrgb8888, buf_size
-    ) {
-        Ok(rb) => rb,
-        Err(e) => {
-            warn!("screencopy: create_buffer failed: {e:?}");
-            return;
-        }
-    };
+    let mut renderbuffer =
+        match crate::render::offscreen_pool::take_capture_renderbuffer(renderer, buf_size) {
+            Ok(rb) => rb,
+            Err(e) => {
+                warn!("screencopy: create_buffer failed: {e:?}");
+                return;
+            }
+        };
 
     let mut target = match renderer.bind(&mut renderbuffer) {
         Ok(t) => t,
@@ -1748,24 +1743,17 @@ fn render_screencopy(
         }
     };
 
-    let mut tracker = DamageTracker::new(output_size, scale, Transform::Normal);
-    let render_result = tracker.render_output(
-        renderer,
-        &mut target,
-        0,
-        elements_to_render,
-        [0.0, 0.0, 0.0, 1.0],
-    );
+    let mut tracker = DamageTracker::new(size, scale, Transform::Normal);
+    let render_result =
+        tracker.render_output(renderer, &mut target, 0, &relocated, [0.0, 0.0, 0.0, 1.0]);
     if let Err(e) = render_result {
         warn!("screencopy: render_output failed: {e:?}");
         return;
     }
 
-    // Crop on copy: pull out the requested sub-region (or the full
-    // output if region_loc=(0,0) and size==output_size).
     let region = smithay::utils::Rectangle::new(
-        smithay::utils::Point::<i32, smithay::utils::Buffer>::from((region_loc.x, region_loc.y)),
-        smithay::utils::Size::<i32, smithay::utils::Buffer>::from((size.w, size.h)),
+        smithay::utils::Point::<i32, smithay::utils::Buffer>::from((0, 0)),
+        buf_size,
     );
     let mapping = match renderer.copy_framebuffer(&target, region, drm_fourcc::DrmFourcc::Xrgb8888)
     {
@@ -1784,6 +1772,8 @@ fn render_screencopy(
             return;
         }
     };
+    // The read-back is complete; the renderbuffer can serve the next capture.
+    crate::render::offscreen_pool::return_capture_renderbuffer(buf_size, renderbuffer);
 
     // Write into the SHM buffer. The dmabuf branch is handled
     // earlier in the loop with a zero-copy bind+render path; by

@@ -69,7 +69,7 @@ pub(super) fn drain_image_copy_frames(
     state: &mut MargoState,
 ) {
     use smithay::backend::renderer::damage::OutputDamageTracker as DamageTracker;
-    use smithay::backend::renderer::{Bind, ExportMem, Offscreen};
+    use smithay::backend::renderer::{Bind, ExportMem};
     use smithay::wayland::image_copy_capture::CaptureFailureReason;
 
     let drained: Vec<_> = state.pending_image_copy_frames.drain(..).collect();
@@ -188,21 +188,18 @@ pub(super) fn drain_image_copy_frames(
         let output_size =
             smithay::utils::Size::<i32, smithay::utils::Physical>::from((buf_size.w, buf_size.h));
 
-        // Allocate an offscreen renderbuffer and render the scene
-        // into it. Identical shape to the SHM arm of
-        // `serve_screencopies` — see that function for context.
-        let mut renderbuffer = match <GlesRenderer as Offscreen<
-            smithay::backend::renderer::gles::GlesRenderbuffer,
-        >>::create_buffer(
-            renderer, drm_fourcc::DrmFourcc::Xrgb8888, buf_size
-        ) {
-            Ok(rb) => rb,
-            Err(e) => {
-                warn!("image_copy_capture: create_buffer failed: {e:?}");
-                frame.fail(CaptureFailureReason::Unknown);
-                continue;
-            }
-        };
+        // Borrow a pooled offscreen renderbuffer (one allocation per
+        // capture size, not per frame) and render the scene into it.
+        // Same shape as the SHM arm of `serve_screencopies`.
+        let mut renderbuffer =
+            match crate::render::offscreen_pool::take_capture_renderbuffer(renderer, buf_size) {
+                Ok(rb) => rb,
+                Err(e) => {
+                    warn!("image_copy_capture: create_buffer failed: {e:?}");
+                    frame.fail(CaptureFailureReason::Unknown);
+                    continue;
+                }
+            };
         let mut target = match renderer.bind(&mut renderbuffer) {
             Ok(t) => t,
             Err(e) => {
@@ -247,6 +244,7 @@ pub(super) fn drain_image_copy_frames(
                 continue;
             }
         };
+        crate::render::offscreen_pool::return_capture_renderbuffer(buf_size, renderbuffer);
 
         // Write into the client's wl_buffer (SHM only — DMA-BUF
         // is Step 2.1).
