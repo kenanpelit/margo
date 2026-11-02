@@ -30,8 +30,38 @@ pub fn request_once(req: &str) -> std::io::Result<serde_json::Value> {
     request_once_at(socket_path(), req)
 }
 
+/// Refuse a request that can't be sent as one protocol line.
+///
+/// The protocol is one request per `\n`-terminated line, so a control
+/// character in an argument (`mctl dispatch spawn "$x"` with a newline in
+/// `$x`) would end the request early and smuggle the rest in as a second
+/// request. Tabs are plain whitespace to the server and stay allowed.
+pub fn validate_request(req: &str) -> std::io::Result<()> {
+    if let Some(c) = req.chars().find(|&c| c.is_control() && c != '\t') {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("request contains a control character ({c:?}); refusing to send it"),
+        ));
+    }
+    Ok(())
+}
+
+/// Why a `dispatch` reply is not a success, or `None` when margo said
+/// `ok: true`. A reply without `ok: true` is a failure even when it carries
+/// no `error` text.
+pub fn dispatch_reply_error(reply: &serde_json::Value) -> Option<String> {
+    if reply.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+        return None;
+    }
+    Some(match reply.get("error").and_then(|v| v.as_str()) {
+        Some(err) => err.to_string(),
+        None => format!("margo did not confirm (reply: {reply})"),
+    })
+}
+
 /// [`request_once`] against an explicit socket path (testable seam).
 pub fn request_once_at(path: impl AsRef<Path>, req: &str) -> std::io::Result<serde_json::Value> {
+    validate_request(req)?;
     let mut sock = UnixStream::connect(path)?;
     // Bound the round-trip so a wedged compositor (accepts the socket but
     // never replies) can't hang mctl — and every script/pill that shells out
@@ -71,6 +101,7 @@ pub fn watch_stream_at(
     req: &str,
     mut on_frame: impl FnMut(serde_json::Value) -> bool,
 ) -> std::io::Result<()> {
+    validate_request(req)?;
     let mut sock = UnixStream::connect(path)?;
     sock.write_all(req.as_bytes())?;
     sock.write_all(b"\n")?;
@@ -80,10 +111,15 @@ pub fn watch_stream_at(
         if line.trim().is_empty() {
             continue;
         }
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim())
-            && !on_frame(v)
-        {
-            break;
+        match serde_json::from_str::<serde_json::Value>(line.trim()) {
+            Ok(v) => {
+                if !on_frame(v) {
+                    break;
+                }
+            }
+            // Keep the stream alive, but say so: a silently dropped frame
+            // looks like margo simply not reporting a change.
+            Err(e) => eprintln!("mctl: skipping malformed frame from margo: {e}"),
         }
     }
     Ok(())
@@ -147,6 +183,36 @@ mod tests {
 
         srv.join().unwrap();
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_request_with_a_newline_is_refused_before_it_is_sent() {
+        // The protocol is one request per line: an argument carrying `\n`
+        // would smuggle a second request (`spawn x\ndispatch quit`).
+        let path = temp_sock("inject");
+        let listener = UnixListener::bind(&path).unwrap();
+        listener.set_nonblocking(true).unwrap();
+
+        for req in [
+            "dispatch spawn a\ndispatch quit",
+            "get state\r",
+            "dispatch x \u{0}",
+        ] {
+            let err = request_once_at(&path, req).unwrap_err();
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput, "{req:?}");
+            let err = watch_stream_at(&path, req, |_| true).unwrap_err();
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput, "{req:?}");
+        }
+        assert!(
+            listener.accept().is_err(),
+            "nothing may reach margo for a refused request"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_tab_is_plain_whitespace_and_allowed() {
+        assert!(validate_request("dispatch\tview 4").is_ok());
     }
 
     #[test]

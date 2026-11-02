@@ -136,9 +136,7 @@ pub fn dispatch(action: &str, args: &[&str]) -> Result<()> {
     let req = build_dispatch_request(action, args);
     let reply = mctl::ipc_client::request_once(&req)
         .map_err(|e| anyhow::anyhow!("dispatching `{action}`: {e}"))?;
-    if reply.get("ok").and_then(Value::as_bool) != Some(true)
-        && let Some(err) = reply.get("error").and_then(Value::as_str)
-    {
+    if let Some(err) = mctl::ipc_client::dispatch_reply_error(&reply) {
         bail!("dispatch {action}: {err}");
     }
     Ok(())

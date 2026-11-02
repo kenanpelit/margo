@@ -2685,12 +2685,16 @@ fn send_dispatch(action: &str, args: &[&str]) -> Result<()> {
         req.push_str(a);
     }
     let reply = mctl::ipc_client::request_once(&req)?;
-    if reply.get("ok").and_then(|v| v.as_bool()) != Some(true)
-        && let Some(err) = reply.get("error").and_then(|v| v.as_str())
-    {
-        bail!("dispatch {action}: {err}");
+    check_dispatch_reply(action, &reply)
+}
+
+/// A dispatch succeeded only if margo said `ok: true`; anything else is a
+/// failure, with margo's `error` text when it sent one.
+fn check_dispatch_reply(action: &str, reply: &serde_json::Value) -> Result<()> {
+    match mctl::ipc_client::dispatch_reply_error(reply) {
+        None => Ok(()),
+        Some(err) => bail!("dispatch {action}: {err}"),
     }
-    Ok(())
 }
 
 fn read_state_file() -> Result<serde_json::Value> {
@@ -3078,6 +3082,20 @@ fn cmd_focused(json_out: bool) -> Result<()> {
 mod tests {
     use super::{Args, Command, ConfigCmd, default_rollback_index, diff_stat_vs_current};
     use clap::Parser;
+
+    #[test]
+    fn dispatch_reply_needs_an_explicit_ok() {
+        use super::check_dispatch_reply;
+        use serde_json::json;
+        assert!(check_dispatch_reply("view", &json!({ "ok": true })).is_ok());
+        let err = check_dispatch_reply("frob", &json!({ "error": "unknown action: frob" }))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown action"), "{err}");
+        // `ok:false` with no `error` used to be reported as success.
+        assert!(check_dispatch_reply("view", &json!({ "ok": false })).is_err());
+        assert!(check_dispatch_reply("view", &json!({})).is_err());
+    }
 
     #[test]
     fn config_list_parses() {
