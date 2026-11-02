@@ -94,9 +94,10 @@ Expected lines (substring match):
       with each keystroke. Keyboard-input regressions historically
       manifested here first.
 * [ ] Press Enter → unlock, your previous focus is restored.
-* [ ] Repeat with a stuck lock: kill the lock client (`pkill -9 qs`),
-      then `super+ctrl+alt+BackSpace` (the user's `force_unlock` bind)
-      tears the lock surface down.
+* [ ] With the lock screen up and working, `mctl dispatch force_unlock`
+      (or a `force_unlock` bind) does nothing — the log says it was ignored.
+* [ ] Repeat with a stuck lock: kill the lock client (`pkill -9 mlock`),
+      then `force_unlock` (bind or `mctl dispatch`) tears the lock down.
 
 ## 6. Window rules
 

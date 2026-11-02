@@ -10,6 +10,7 @@ use smithay::{
     backend::input::InputTime,
     input::pointer::CursorImageStatus,
     output::Output,
+    reexports::wayland_server::Resource,
     reexports::wayland_server::protocol::wl_output::WlOutput,
     utils::{SERIAL_COUNTER, Size},
     wayland::session_lock::{
@@ -30,7 +31,25 @@ impl SessionLockHandler for MargoState {
             self.session_locked,
             self.lock_surfaces.len()
         );
+        // Only one live locker at a time (niri does the same). Confirming a
+        // second lock would make it the owner, and its `unlock_and_destroy`
+        // would then unlock the session the first locker is holding.
+        // Dropping `confirmation` sends `finished` to the refused client.
+        if self.session_locked
+            && self
+                .session_lock_owner
+                .as_ref()
+                .is_some_and(|lock| lock.is_alive())
+        {
+            tracing::warn!("session_lock: refusing lock, already locked by a live client");
+            return;
+        }
+        let lock = confirmation.ext_session_lock().clone();
         confirmation.lock();
+        self.session_lock_owner = Some(lock);
+        // Restart the no-surface grace for a replacement locker too: it
+        // needs the same time to create its surfaces as the first one did.
+        self.session_locked_at = Some(std::time::Instant::now());
         self.session_locked = true;
         // The protocol is now locked even before the client creates its first
         // lock surface. Clear any desktop focus immediately so keys arriving
@@ -54,6 +73,8 @@ impl SessionLockHandler for MargoState {
     fn unlock(&mut self) {
         tracing::info!("session_lock: unlock() called");
         self.session_locked = false;
+        self.session_lock_owner = None;
+        self.session_locked_at = None;
         self.lock_surfaces.clear();
         // Toplevels may have completed their initial configure while locked.
         // They stayed deliberately deferred so they could neither map nor

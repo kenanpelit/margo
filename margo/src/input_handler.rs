@@ -494,10 +494,11 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                 // keystroke and there's no way to unlock.
                 if state.session_locked {
                     // Whitelisted escape hatch: a `force_unlock`
-                    // keybind always wins, even while the session is
-                    // locked, so the user has a way to recover from a
-                    // wedged lock screen without rebooting. Everything
-                    // else is forwarded straight to the lock surface.
+                    // keybind is matched even while the session is
+                    // locked, so the user can recover from a crashed
+                    // locker without a TTY. `force_unlock` itself
+                    // refuses while a live locker shows its surface.
+                    // Everything else is forwarded to the lock surface.
                     // Synthetic keys never reach a binding over the lock:
                     // a client with a virtual keyboard must not be able to
                     // `force_unlock` or run lock-safe actions.

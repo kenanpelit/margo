@@ -183,7 +183,7 @@ Comma-separated aliases are interchangeable. Generated from the same source as
 | `theme`, `set_theme` | `<preset>` | Live-swap preset: `default` / `minimal` / `gaudy`. |
 | `session_save` / `session_load` | | Save / restore per-monitor tag + layout state. |
 | `setkeymode` | `<MODE>` | Switch keymode (vim-like mode sets). |
-| `force_unlock` | | Tear down a stuck `ext_session_lock`. |
+| `force_unlock` | | Tear down a stuck `ext_session_lock` (only when the locker died or showed no surface for 10 s). |
 | `quit` | | Exit the compositor cleanly. |
 | `debug_dump`, `diagnose` | | Dump compositor state to the log. |
 

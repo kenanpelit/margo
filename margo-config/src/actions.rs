@@ -1001,9 +1001,10 @@ pub const ACTIONS: &[Action] = &[
         args: "",
         group: Group::System,
         summary: "Tear down a stuck `ext_session_lock` from the compositor side.",
-        detail: "Useful when noctalia / Quickshell can't accept keyboard \
-                 input on the lock screen and the user would otherwise have \
-                 to switch to a TTY.",
+        detail: "Only acts on a stuck lock: the locking client died, or it \
+                 has shown no lock surface for 10 s. While a live lock screen \
+                 is up the request is ignored, so it can't skip the password. \
+                 Not bound by default.",
     },
     Action {
         name: "chvt",
