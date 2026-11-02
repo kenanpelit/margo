@@ -16,7 +16,7 @@ use tracing::info;
 
 pub struct LockScreenManagerModel {
     lock_screens: Vec<Controller<LockScreenModel>>,
-    fingerprint_active: bool,
+    fingerprint: FingerprintSession,
     fingerprint_cancel: Option<tokio::sync::oneshot::Sender<()>>,
     enable_idle_inhibitor_on_unlock: bool,
     _monitor_added_lock_signal_handler_id: SignalHandlerId,
@@ -98,7 +98,7 @@ impl Component for LockScreenManagerModel {
 
         let model = LockScreenManagerModel {
             lock_screens: Vec::new(),
-            fingerprint_active: false,
+            fingerprint: FingerprintSession::Idle,
             fingerprint_cancel: None,
             enable_idle_inhibitor_on_unlock: false,
             _monitor_added_lock_signal_handler_id: monitor_added_lock_signal_handler_id,
@@ -114,7 +114,7 @@ impl Component for LockScreenManagerModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             LockScreenManagerInput::LockScreenCreated(controller) => {
-                if let Some(input) = input_for_new_screen(self.fingerprint_active) {
+                if let Some(input) = input_for_new_screen(self.fingerprint) {
                     controller.sender().emit(input);
                 }
                 self.lock_screens.push(controller);
@@ -125,12 +125,12 @@ impl Component for LockScreenManagerModel {
                 tokio::spawn(async move {
                     let _ = inhibitor.disable().await;
                 });
-                self.fingerprint_active = true;
+                self.fingerprint = FingerprintSession::Active;
                 self.start_fingerprint_auth(&sender);
             }
             LockScreenManagerInput::SessionUnlocked => {
                 info!("Session unlocked");
-                self.fingerprint_active = false;
+                self.fingerprint = FingerprintSession::Idle;
                 if let Some(cancel) = self.fingerprint_cancel.take() {
                     let _ = cancel.send(());
                 }
@@ -143,7 +143,7 @@ impl Component for LockScreenManagerModel {
                 }
             }
             LockScreenManagerInput::CancelFingerprint => {
-                self.fingerprint_active = false;
+                self.fingerprint = FingerprintSession::Ended;
                 if let Some(cancel) = self.fingerprint_cancel.take() {
                     let _ = cancel.send(());
                 }
@@ -177,7 +177,7 @@ impl Component for LockScreenManagerModel {
                 if let FingerprintEvent::Error(e) = &event {
                     info!("Fingerprint error: {e}");
                 }
-                match route_fingerprint_event(&event) {
+                match route_fingerprint_event(&event, &mut self.fingerprint) {
                     FingerprintRoute::Screens(input) => {
                         for ls in &self.lock_screens {
                             ls.emit(input.clone());
@@ -284,10 +284,28 @@ impl LockScreenManagerModel {
     }
 }
 
+/// Where the fingerprint path of the current lock stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FingerprintSession {
+    /// Not locked, or locked but the lock hasn't been confirmed yet.
+    Idle,
+    /// fprintd is (being) asked for a finger.
+    Active,
+    /// fprintd failed or the user chose "Use password instead".
+    Ended,
+}
+
 /// What a freshly created lock screen (a monitor hot-plugged, or a surface
-/// created after the lock began) should be told so it matches the others.
-fn input_for_new_screen(fingerprint_active: bool) -> Option<LockScreenInput> {
-    fingerprint_active.then_some(LockScreenInput::FingerprintReady)
+/// created after the lock began) should be told so it matches the others:
+/// the fingerprint prompt while that session runs, the password entry once it
+/// has ended. Before the lock is confirmed, nothing — the session start and
+/// fprintd's answer are fanned out to every screen.
+fn input_for_new_screen(fingerprint: FingerprintSession) -> Option<LockScreenInput> {
+    match fingerprint {
+        FingerprintSession::Idle => None,
+        FingerprintSession::Active => Some(LockScreenInput::FingerprintReady),
+        FingerprintSession::Ended => Some(LockScreenInput::ShowPasswordEntry),
+    }
 }
 
 /// Where a fingerprint event goes.
@@ -300,8 +318,12 @@ enum FingerprintRoute {
     Ignore,
 }
 
-/// Route one fprintd event.
-fn route_fingerprint_event(event: &FingerprintEvent) -> FingerprintRoute {
+/// Route one fprintd event, marking the fingerprint session ended when the
+/// event ends it.
+fn route_fingerprint_event(
+    event: &FingerprintEvent,
+    fingerprint: &mut FingerprintSession,
+) -> FingerprintRoute {
     match event {
         FingerprintEvent::Ready => FingerprintRoute::Screens(LockScreenInput::FingerprintReady),
         FingerprintEvent::Scanning => {
@@ -312,7 +334,10 @@ fn route_fingerprint_event(event: &FingerprintEvent) -> FingerprintRoute {
         // The scanner loop retries these itself; nothing reaches here.
         FingerprintEvent::UnknownError => FingerprintRoute::Ignore,
         // Fingerprint unavailable: the lock screens fall back to password.
-        FingerprintEvent::Error(_) => FingerprintRoute::Screens(LockScreenInput::ShowPasswordEntry),
+        FingerprintEvent::Error(_) => {
+            *fingerprint = FingerprintSession::Ended;
+            FingerprintRoute::Screens(LockScreenInput::ShowPasswordEntry)
+        }
     }
 }
 
@@ -321,16 +346,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_screen_joins_an_active_fingerprint_session() {
+    fn new_screen_after_fingerprint_fallback_shows_the_password_entry() {
+        // fprintd failed (or the user picked "Use password instead") and then
+        // a monitor was plugged in / its lock surface arrived late: the new
+        // screen must offer the password entry, not an empty stack.
+        let mut session = FingerprintSession::Active;
+        route_fingerprint_event(&FingerprintEvent::Error("no device".into()), &mut session);
+        assert_eq!(session, FingerprintSession::Ended);
         assert!(matches!(
-            input_for_new_screen(true),
+            input_for_new_screen(session),
+            Some(LockScreenInput::ShowPasswordEntry)
+        ));
+    }
+
+    #[test]
+    fn new_screen_follows_the_fingerprint_session() {
+        assert!(input_for_new_screen(FingerprintSession::Idle).is_none());
+        assert!(matches!(
+            input_for_new_screen(FingerprintSession::Active),
             Some(LockScreenInput::FingerprintReady)
         ));
     }
 
     #[test]
+    fn non_terminal_fingerprint_events_keep_the_session_active() {
+        for event in [
+            FingerprintEvent::Ready,
+            FingerprintEvent::Scanning,
+            FingerprintEvent::NoMatch,
+            FingerprintEvent::UnknownError,
+            FingerprintEvent::Match,
+        ] {
+            let mut session = FingerprintSession::Active;
+            route_fingerprint_event(&event, &mut session);
+            assert_eq!(session, FingerprintSession::Active, "{event:?}");
+        }
+    }
+
+    #[test]
     fn fingerprint_events_fan_out_to_the_screens() {
-        let route = |e| route_fingerprint_event(&e);
+        let mut session = FingerprintSession::Active;
+        let mut route = |e| route_fingerprint_event(&e, &mut session);
         assert!(matches!(
             route(FingerprintEvent::Ready),
             FingerprintRoute::Screens(LockScreenInput::FingerprintReady)
