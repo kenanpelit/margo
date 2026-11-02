@@ -52,3 +52,27 @@ fn xdg_output_manager_advertises_per_output_metadata() {
         names,
     );
 }
+
+#[test]
+fn pointer_clamp_survives_extreme_output_geometry() {
+    // An output moved next to i32::MAX made `x + width` overflow (a panic:
+    // release builds keep overflow checks), and a zero-sized output made
+    // `f64::clamp(min, max)` panic with min > max.
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    let state = &mut fx.server.state;
+
+    state.monitors[0].monitor_area.x = i32::MAX - 10;
+    state.monitors[0].monitor_area.y = i32::MAX - 10;
+    state.clamp_pointer_to_outputs();
+    assert!(state.input_pointer.x.is_finite() && state.input_pointer.y.is_finite());
+
+    state.monitors[0].monitor_area.x = 0;
+    state.monitors[0].monitor_area.y = 0;
+    state.monitors[0].monitor_area.width = 0;
+    state.monitors[0].monitor_area.height = 0;
+    state.input_pointer.x = 500.0;
+    state.input_pointer.y = 500.0;
+    state.clamp_pointer_to_outputs();
+    assert_eq!((state.input_pointer.x, state.input_pointer.y), (0.0, 0.0));
+}

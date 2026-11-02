@@ -109,6 +109,28 @@ pub struct PendingHeadConfig {
     /// state but rejected at apply time because we don't do mode
     /// changes yet.
     mode: Option<(i32, i32, i32)>,
+    /// A request carried a value margo refuses (see [`valid_scale`],
+    /// [`valid_position`]); the whole configuration then fails.
+    invalid: bool,
+}
+
+/// Smallest / largest output scale a client may set.
+pub const SCALE_RANGE: std::ops::RangeInclusive<f64> = 0.25..=10.0;
+/// Largest |x| / |y| a client may move an output to (logical px). Far
+/// beyond any real layout, and small enough that `x + width` and the
+/// pointer clamp can't overflow i32.
+pub const MAX_POSITION: i32 = 1 << 20;
+
+/// Whether `scale` is a usable output scale: finite and in [`SCALE_RANGE`].
+/// 0, NaN or inf used to reach `Output::change_current_state` and every
+/// size computed from it.
+pub fn valid_scale(scale: f64) -> bool {
+    scale.is_finite() && SCALE_RANGE.contains(&scale)
+}
+
+/// Whether `(x, y)` is a usable output position (|x|, |y| ≤ [`MAX_POSITION`]).
+pub fn valid_position(x: i32, y: i32) -> bool {
+    (-MAX_POSITION..=MAX_POSITION).contains(&x) && (-MAX_POSITION..=MAX_POSITION).contains(&y)
 }
 
 pub enum OutputConfigurationHeadState {
@@ -513,6 +535,10 @@ where
                 client_data
                     .configs
                     .insert(cfg.clone(), ConfigurationState::Finished);
+                if pending.values().any(|p| p.invalid) {
+                    cfg.failed();
+                    return;
+                }
                 let ok = state.apply_output_pending(pending);
                 if ok {
                     cfg.succeeded();
@@ -526,7 +552,9 @@ where
                 // doesn't touch features we don't support
                 // (mode/enable). Anything else: reject.
                 if let Some(ConfigurationState::Ongoing(map)) = client_data.configs.get(cfg) {
-                    let supportable = map.values().all(|p| p.enabled && p.mode.is_none());
+                    let supportable = map
+                        .values()
+                        .all(|p| p.enabled && p.mode.is_none() && !p.invalid);
                     if supportable {
                         cfg.succeeded();
                     } else {
@@ -583,7 +611,12 @@ where
 
         match request {
             zwlr_output_configuration_head_v1::Request::SetScale { scale } => {
-                pending.scale = Some(scale);
+                if valid_scale(scale) {
+                    pending.scale = Some(scale);
+                } else {
+                    tracing::warn!(scale, "output_management: rejecting invalid scale");
+                    pending.invalid = true;
+                }
             }
             zwlr_output_configuration_head_v1::Request::SetTransform {
                 transform: WEnum::Value(t),
@@ -591,7 +624,12 @@ where
                 pending.transform = Some(t);
             }
             zwlr_output_configuration_head_v1::Request::SetPosition { x, y } => {
-                pending.position = Some((x, y));
+                if valid_position(x, y) {
+                    pending.position = Some((x, y));
+                } else {
+                    tracing::warn!(x, y, "output_management: rejecting out-of-range position");
+                    pending.invalid = true;
+                }
             }
             zwlr_output_configuration_head_v1::Request::SetMode { mode } => {
                 if let Some(m) = mode.data::<()>() {
@@ -710,4 +748,36 @@ macro_rules! delegate_output_management {
             ] => $crate::protocols::output_management::OutputManagementManagerState
         );
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_finite_sane_scales_are_accepted() {
+        for ok in [0.25, 1.0, 1.5, 2.0, 10.0] {
+            assert!(valid_scale(ok), "{ok}");
+        }
+        for bad in [
+            0.0,
+            -1.0,
+            0.1,
+            10.5,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ] {
+            assert!(!valid_scale(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn positions_are_bounded() {
+        assert!(valid_position(0, 0));
+        assert!(valid_position(-MAX_POSITION, MAX_POSITION));
+        assert!(!valid_position(i32::MAX, 0));
+        assert!(!valid_position(0, i32::MIN));
+        assert!(!valid_position(MAX_POSITION + 1, 0));
+    }
 }

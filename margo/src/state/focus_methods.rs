@@ -782,21 +782,28 @@ impl MargoState {
             return;
         }
 
-        let mut min_x = self.monitors[0].monitor_area.x;
-        let mut min_y = self.monitors[0].monitor_area.y;
-        let mut max_x = self.monitors[0].monitor_area.x + self.monitors[0].monitor_area.width;
-        let mut max_y = self.monitors[0].monitor_area.y + self.monitors[0].monitor_area.height;
-
+        // i64: `x + width` of an output placed near i32::MAX overflows i32
+        // (a panic — release builds keep overflow checks).
+        let edges = |a: crate::layout::Rect| {
+            let (x, y) = (i64::from(a.x), i64::from(a.y));
+            (x, y, x + i64::from(a.width), y + i64::from(a.height))
+        };
+        let (mut min_x, mut min_y, mut max_x, mut max_y) = edges(self.monitors[0].monitor_area);
         for mon in &self.monitors[1..] {
-            let area = mon.monitor_area;
-            min_x = min_x.min(area.x);
-            min_y = min_y.min(area.y);
-            max_x = max_x.max(area.x + area.width);
-            max_y = max_y.max(area.y + area.height);
+            let (x0, y0, x1, y1) = edges(mon.monitor_area);
+            min_x = min_x.min(x0);
+            min_y = min_y.min(y0);
+            max_x = max_x.max(x1);
+            max_y = max_y.max(y1);
         }
 
-        self.input_pointer.x = self.input_pointer.x.clamp(min_x as f64, (max_x - 1) as f64);
-        self.input_pointer.y = self.input_pointer.y.clamp(min_y as f64, (max_y - 1) as f64);
+        // `f64::clamp` panics when min > max — a zero-sized output gives
+        // `max - 1 < min`.
+        let (min_x, min_y) = (min_x as f64, min_y as f64);
+        let max_x = ((max_x - 1) as f64).max(min_x);
+        let max_y = ((max_y - 1) as f64).max(min_y);
+        self.input_pointer.x = self.input_pointer.x.clamp(min_x, max_x);
+        self.input_pointer.y = self.input_pointer.y.clamp(min_y, max_y);
     }
 }
 
