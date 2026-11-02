@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 //! Software cursor loading and rendering.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Read;
 
@@ -25,36 +26,106 @@ pub struct CursorImage {
     pub height: i32,
     pub hotspot_x: i32,
     pub hotspot_y: i32,
+    /// The XCursor image's nominal size (what the theme calls it, e.g. 48
+    /// for the 48 px variant); `width`/`height` may differ.
+    pub nominal_size: u32,
 }
 
 impl CursorImage {
-    pub fn to_memory_buffer(&self) -> MemoryRenderBuffer {
+    pub fn to_memory_buffer(&self, buffer_scale: i32) -> MemoryRenderBuffer {
         MemoryRenderBuffer::from_slice(
             &self.pixels,
             DrmFourcc::Argb8888,
             Size::<i32, Buffer>::from((self.width, self.height)),
-            1,
+            buffer_scale,
             Transform::Normal,
             None,
         )
     }
 }
 
+// ── Scale / hotspot geometry (pure) ───────────────────────────────────────────
+
+/// Integer buffer scale to load a cursor at for an output of `output_scale`:
+/// the next whole scale up, so a 1.5× output gets a 2× image downscaled
+/// (sharp) rather than a 1× image upscaled (blurry). Capped at 8×.
+pub fn cursor_buffer_scale(output_scale: f64) -> i32 {
+    if !output_scale.is_finite() || output_scale <= 1.0 {
+        return 1;
+    }
+    (output_scale.ceil() as i32).clamp(1, 8)
+}
+
+/// Buffer scale an image loaded for `wanted` actually has. Themes don't
+/// ship every size: asking for 48 px (24 px at 2×) may return the 24 px
+/// image, which must then be drawn at buffer scale 1 to keep its logical
+/// size — upscaled, but not shrunk to half size.
+pub fn effective_buffer_scale(nominal_size: u32, image_nominal_size: u32, wanted: i32) -> i32 {
+    if nominal_size == 0 {
+        return 1;
+    }
+    let ratio = (f64::from(image_nominal_size) / f64::from(nominal_size)).round() as i32;
+    ratio.clamp(1, wanted.max(1))
+}
+
+/// Physical location of the cursor image's top-left corner so that its
+/// hotspot pixel lands exactly on the pointer at `pos`.
+///
+/// The image is drawn at its logical size (buffer px / `buffer_scale`)
+/// times `output_scale`, so the hotspot sits `hotspot / buffer_scale`
+/// logical units from the corner. It does not depend on the output scale.
+pub fn cursor_render_location(
+    pos: Point<f64, Logical>,
+    hotspot: Point<i32, Buffer>,
+    buffer_scale: i32,
+    output_scale: f64,
+) -> Point<f64, Physical> {
+    let bs = f64::from(buffer_scale.max(1));
+    let corner = Point::<f64, Logical>::from((
+        pos.x - f64::from(hotspot.x) / bs,
+        pos.y - f64::from(hotspot.y) / bs,
+    ));
+    corner.to_physical(output_scale)
+}
+
 // ── CursorManager ─────────────────────────────────────────────────────────────
+
+/// One loaded cursor image, uploaded at a given buffer scale.
+#[derive(Clone)]
+struct CursorSprite {
+    buffer: MemoryRenderBuffer,
+    hotspot: Point<i32, Buffer>,
+    buffer_scale: i32,
+}
+
+impl CursorSprite {
+    fn new(image: &CursorImage, buffer_scale: i32) -> Self {
+        Self {
+            buffer: image.to_memory_buffer(buffer_scale),
+            hotspot: Point::from((image.hotspot_x, image.hotspot_y)),
+            buffer_scale,
+        }
+    }
+}
 
 /// Renders the named cursor the focused client last requested (via
 /// `wp_cursor_shape_v1` or `wl_pointer.set_cursor` → `CursorImageStatus::
 /// Named`). Themed XCursor images are loaded lazily by name and cached, so
 /// e.g. a browser asking for the `pointer` (hand) over a link actually
 /// changes the on-screen cursor — previously only the fixed `default` arrow
-/// was ever drawn.
+/// was ever drawn. Each name is loaded once per buffer scale in use
+/// (see [`cursor_buffer_scale`]), so scaled outputs get a sharp image.
 pub struct CursorManager {
-    /// Name → (image, GPU buffer), keyed by the requested cursor name.
-    /// "default" is always present (theme or embedded fallback).
-    cache: HashMap<String, (CursorImage, MemoryRenderBuffer)>,
+    /// Requested name → theme icon that resolved it (`None`: the embedded
+    /// arrow). "default" is always present.
+    resolved: HashMap<String, Option<String>>,
+    /// (requested name, wanted buffer scale) → uploaded sprite. Behind a
+    /// `RefCell` because the render path only has `&self` and loads a
+    /// missing scale on first use.
+    sprites: RefCell<HashMap<(String, i32), CursorSprite>>,
     /// The name currently being drawn.
     current: String,
-    /// Nominal cursor size in px (closest theme image is picked).
+    /// Nominal cursor size in logical px (closest theme image is picked).
     size: u32,
 }
 
@@ -65,12 +136,17 @@ impl CursorManager {
             .and_then(|s| s.parse().ok())
             .filter(|n| *n > 0)
             .unwrap_or(24);
-        let image = load_from_theme("default", size).unwrap_or_else(embedded_arrow);
-        let buffer = image.to_memory_buffer();
-        let mut cache = HashMap::new();
-        cache.insert("default".to_string(), (image, buffer));
+        let (theme_name, image) = match load_from_theme("default", size) {
+            Some(image) => (Some("default".to_string()), image),
+            None => (None, embedded_arrow()),
+        };
+        let mut resolved = HashMap::new();
+        resolved.insert("default".to_string(), theme_name);
+        let mut sprites = HashMap::new();
+        sprites.insert(("default".to_string(), 1), CursorSprite::new(&image, 1));
         Self {
-            cache,
+            resolved,
+            sprites: RefCell::new(sprites),
             current: "default".to_string(),
             size,
         }
@@ -81,34 +157,57 @@ impl CursorManager {
     /// keeps the previous cursor (falling back to `default`) if no variant
     /// resolves in the active theme.
     pub fn set_named(&mut self, primary: &str, alts: &[&str]) {
-        if self.current == primary && self.cache.contains_key(primary) {
+        if self.current == primary && self.resolved.contains_key(primary) {
             return;
         }
-        if !self.cache.contains_key(primary)
-            && let Some(image) = std::iter::once(primary)
+        if !self.resolved.contains_key(primary)
+            && let Some((name, image)) = std::iter::once(primary)
                 .chain(alts.iter().copied())
-                .find_map(|name| load_from_theme(name, self.size))
+                .find_map(|name| load_from_theme(name, self.size).map(|image| (name, image)))
         {
-            let buffer = image.to_memory_buffer();
-            self.cache.insert(primary.to_string(), (image, buffer));
+            self.resolved
+                .insert(primary.to_string(), Some(name.to_string()));
+            self.sprites
+                .get_mut()
+                .insert((primary.to_string(), 1), CursorSprite::new(&image, 1));
         }
-        self.current = if self.cache.contains_key(primary) {
+        self.current = if self.resolved.contains_key(primary) {
             primary.to_string()
         } else {
             "default".to_string()
         };
     }
 
-    fn current_entry(&self) -> &(CursorImage, MemoryRenderBuffer) {
-        self.cache
-            .get(self.current.as_str())
-            .or_else(|| self.cache.get("default"))
-            .expect("default cursor is always cached")
-    }
-
-    pub fn hotspot(&self) -> Point<i32, Physical> {
-        let (image, _) = self.current_entry();
-        Point::from((image.hotspot_x, image.hotspot_y))
+    /// The current cursor's sprite for buffer scale `wanted`, loading it from
+    /// the theme on first use. Falls back to the 1× sprite when the theme
+    /// can't provide it.
+    fn sprite(&self, wanted: i32) -> CursorSprite {
+        let key = (self.current.clone(), wanted);
+        if let Some(sprite) = self.sprites.borrow().get(&key) {
+            return sprite.clone();
+        }
+        let loaded = match self.resolved.get(&self.current) {
+            Some(Some(theme_name)) if wanted > 1 => {
+                load_from_theme(theme_name, self.size.saturating_mul(wanted as u32)).map(|image| {
+                    let bs = effective_buffer_scale(self.size, image.nominal_size, wanted);
+                    CursorSprite::new(&image, bs)
+                })
+            }
+            _ => None,
+        };
+        let mut sprites = self.sprites.borrow_mut();
+        let sprite = match loaded {
+            Some(sprite) => sprite,
+            None => sprites
+                .get(&(self.current.clone(), 1))
+                .or_else(|| sprites.get(&("default".to_string(), 1)))
+                .cloned()
+                .unwrap_or_else(|| CursorSprite::new(&embedded_arrow(), 1)),
+        };
+        // Cache the fallback too, so a theme without the size isn't
+        // re-read on every frame.
+        sprites.insert(key, sprite.clone());
+        sprite
     }
 
     pub fn render_element(
@@ -117,15 +216,12 @@ impl CursorManager {
         pos: Point<f64, Logical>,
         scale: f64,
     ) -> Option<MemoryRenderBufferRenderElement<GlesRenderer>> {
-        let (_, buffer) = self.current_entry();
-        let hs = self.hotspot();
-        let offset = Point::<f64, Logical>::from((-(hs.x as f64 / scale), -(hs.y as f64 / scale)));
-        let adjusted = pos + offset;
-        let render_pos = Point::<f64, Physical>::from((adjusted.x * scale, adjusted.y * scale));
+        let sprite = self.sprite(cursor_buffer_scale(scale));
+        let render_pos = cursor_render_location(pos, sprite.hotspot, sprite.buffer_scale, scale);
         MemoryRenderBufferRenderElement::from_buffer(
             renderer,
             render_pos,
-            buffer,
+            &sprite.buffer,
             None,
             None,
             None,
@@ -167,6 +263,7 @@ fn load_from_theme(cursor_name: &str, size: u32) -> Option<CursorImage> {
         height: img.height as i32,
         hotspot_x: img.xhot as i32,
         hotspot_y: img.yhot as i32,
+        nominal_size: img.size,
     })
 }
 
@@ -210,5 +307,68 @@ fn embedded_arrow() -> CursorImage {
         height: 16,
         hotspot_x: 0,
         hotspot_y: 0,
+        nominal_size: 16,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Where the hotspot pixel ends up on screen, in physical px.
+    fn hotspot_on_screen(
+        pos: Point<f64, Logical>,
+        hotspot: Point<i32, Buffer>,
+        buffer_scale: i32,
+        output_scale: f64,
+    ) -> Point<f64, Physical> {
+        let corner = cursor_render_location(pos, hotspot, buffer_scale, output_scale);
+        // Buffer px → logical (÷ buffer scale) → physical (× output scale).
+        let k = output_scale / f64::from(buffer_scale);
+        Point::from((
+            corner.x + f64::from(hotspot.x) * k,
+            corner.y + f64::from(hotspot.y) * k,
+        ))
+    }
+
+    #[test]
+    fn hotspot_lands_on_the_pointer_at_every_scale() {
+        // Regression: the offset was hotspot / output_scale, so on a 2×
+        // output with a 1× image the click point drew half a hotspot off.
+        let pos = Point::<f64, Logical>::from((100.0, 50.0));
+        let hotspot = Point::<i32, Buffer>::from((8, 6));
+        for (buffer_scale, output_scale) in
+            [(1, 1.0), (1, 2.0), (1, 1.5), (2, 2.0), (2, 1.5), (3, 3.0)]
+        {
+            let on_screen = hotspot_on_screen(pos, hotspot, buffer_scale, output_scale);
+            let want = pos.to_physical(output_scale);
+            assert!(
+                (on_screen.x - want.x).abs() < 1e-9 && (on_screen.y - want.y).abs() < 1e-9,
+                "buffer scale {buffer_scale}, output scale {output_scale}: hotspot at {on_screen:?}, pointer at {want:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn buffer_scale_rounds_up_for_sharp_cursors() {
+        assert_eq!(cursor_buffer_scale(1.0), 1);
+        assert_eq!(cursor_buffer_scale(0.5), 1);
+        assert_eq!(cursor_buffer_scale(1.25), 2);
+        assert_eq!(cursor_buffer_scale(2.0), 2);
+        assert_eq!(cursor_buffer_scale(2.5), 3);
+        assert_eq!(cursor_buffer_scale(f64::NAN), 1);
+        assert_eq!(cursor_buffer_scale(100.0), 8);
+    }
+
+    #[test]
+    fn effective_scale_keeps_the_logical_size() {
+        // The theme had the 48 px image for a 24 px cursor at 2×.
+        assert_eq!(effective_buffer_scale(24, 48, 2), 2);
+        // Only the 24 px image exists: draw it at 1× (upscaled), not as a
+        // half-size cursor.
+        assert_eq!(effective_buffer_scale(24, 24, 2), 1);
+        // A bigger image than asked for never exceeds the wanted scale.
+        assert_eq!(effective_buffer_scale(24, 96, 2), 2);
+        assert_eq!(effective_buffer_scale(0, 48, 2), 1);
     }
 }
