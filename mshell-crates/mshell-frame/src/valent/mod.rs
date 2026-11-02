@@ -183,30 +183,39 @@ async fn daemon_available() -> bool {
 
 fn parse_devices(raw: &str) -> Vec<Device> {
     static DEV_RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(
-            r"objectpath\s+'([^']+/Device/[^']+)'\s*:\s*\{'ca\.andyholmes\.Valent\.Device'\s*:\s*\{([^}]*)\}",
-        )
-        .expect("valent device regex")
+        Regex::new(r"objectpath\s+'([^']+/Device/[^']+)'").expect("valent device regex")
     });
-    static ID_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"'Id':\s*<'([^']+)'>").unwrap());
-    static NAME_RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"'Name':\s*<'([^']+)'>").unwrap());
+    static ID_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"'Id':\s*<").unwrap());
+    static NAME_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"'Name':\s*<").unwrap());
     static STATE_RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"'State':\s*<uint32\s+(\d+)>").unwrap());
+    const DEVICE_IFACE: &str = "'ca.andyholmes.Valent.Device'";
+
+    // Each device object runs from its `objectpath '…'` to the next one.
+    let objects: Vec<(usize, usize, &str)> = DEV_RE
+        .captures_iter(raw)
+        .filter_map(|cap| {
+            let whole = cap.get(0)?;
+            Some((whole.start(), whole.end(), cap.get(1)?.as_str()))
+        })
+        .collect();
 
     let mut devices = Vec::new();
-    for cap in DEV_RE.captures_iter(raw) {
-        let path = &cap[1];
-        let props = &cap[2];
+    for (i, &(_, body_start, path)) in objects.iter().enumerate() {
+        let body_end = objects.get(i + 1).map_or(raw.len(), |o| o.0);
+        let body = &raw[body_start..body_end];
+        // The Device interface's property dict, wherever it sits among the
+        // object's interfaces.
+        let Some(props) = body.find(DEVICE_IFACE).and_then(|at| {
+            let after = &body[at + DEVICE_IFACE.len()..];
+            gvariant_dict_body(&after[after.find('{')?..])
+        }) else {
+            continue;
+        };
 
-        let id = ID_RE
-            .captures(props)
-            .map(|c| c[1].to_string())
+        let id = gvariant_string_after(props, &ID_RE)
             .unwrap_or_else(|| path.split("/Device/").nth(1).unwrap_or(path).to_string());
-        let name = NAME_RE
-            .captures(props)
-            .map(|c| c[1].to_string())
-            .unwrap_or_else(|| id.clone());
+        let name = gvariant_string_after(props, &NAME_RE).unwrap_or_else(|| id.clone());
         let state: u32 = STATE_RE
             .captures(props)
             .and_then(|c| c[1].parse().ok())
@@ -226,6 +235,92 @@ fn parse_devices(raw: &str) -> Vec<Device> {
         });
     }
     devices
+}
+
+/// The GVariant string literal right after the first match of `key_re`
+/// (which ends just before the literal), unescaped.
+fn gvariant_string_after(text: &str, key_re: &Regex) -> Option<String> {
+    let m = key_re.find(text)?;
+    gvariant_string_literal(&text[m.end()..])
+}
+
+/// Parse a GVariant text-format string literal at the start of `s`:
+/// `'…'`, or `"…"` (what `g_variant_print` uses when the string contains
+/// a `'`), with backslash escapes. `None` if it isn't one or never ends.
+fn gvariant_string_literal(s: &str) -> Option<String> {
+    let quote = s.chars().next().filter(|c| *c == '\'' || *c == '"')?;
+    let mut out = String::new();
+    let mut chars = s.chars().skip(1);
+    while let Some(c) = chars.next() {
+        if c == quote {
+            return Some(out);
+        }
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        let esc = chars.next()?;
+        let hex_digits = match esc {
+            'u' => 4,
+            'U' => 8,
+            _ => 0,
+        };
+        if hex_digits == 0 {
+            out.push(match esc {
+                'n' => '\n',
+                't' => '\t',
+                'r' => '\r',
+                'a' => '\u{7}',
+                'b' => '\u{8}',
+                'f' => '\u{c}',
+                'v' => '\u{b}',
+                other => other,
+            });
+            continue;
+        }
+        let mut code = 0u32;
+        for _ in 0..hex_digits {
+            code = code * 16 + chars.next()?.to_digit(16)?;
+        }
+        out.push(char::from_u32(code)?);
+    }
+    None
+}
+
+/// Contents of the `{…}` block at the start of `s`, skipping braces that
+/// sit inside quoted strings. `None` when `s` doesn't start with `{` or
+/// the block never closes.
+fn gvariant_dict_body(s: &str) -> Option<&str> {
+    if !s.starts_with('{') {
+        return None;
+    }
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (i, c) in s.char_indices() {
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == q {
+                quote = None;
+            }
+            continue;
+        }
+        match c {
+            '\'' | '"' => quote = Some(c),
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&s[1..i]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// `org.gtk.Actions.Describe battery.state` →
@@ -491,6 +586,67 @@ mod tests {
             parse_devices("({objectpath '/ca/andyholmes/Valent': {'org.gtk.Actions': {}}},)")
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn names_with_apostrophes_are_parsed() {
+        // g_variant_print switches to double quotes when the string
+        // contains a `'`; the old `'([^']+)'` regex fell back to the id.
+        let raw = "({objectpath '/ca/andyholmes/Valent/Device/p1': \
+                   {'ca.andyholmes.Valent.Device': {'Id': <'p1'>, \
+                   'Name': <\"Kenan's Pixel\">, 'State': <uint32 3>}}},)";
+        assert_eq!(parse_devices(raw)[0].name, "Kenan's Pixel");
+        // Both quote kinds: single-quoted with `\'`.
+        let raw = "({objectpath '/ca/andyholmes/Valent/Device/p2': \
+                   {'ca.andyholmes.Valent.Device': {'Id': <'p2'>, \
+                   'Name': <'Bob\\'s \"work\" phone'>, 'State': <uint32 1>}}},)";
+        assert_eq!(parse_devices(raw)[0].name, "Bob's \"work\" phone");
+    }
+
+    #[test]
+    fn names_with_braces_and_non_ascii_are_parsed() {
+        let raw = "({objectpath '/ca/andyholmes/Valent/Device/p3': \
+                   {'ca.andyholmes.Valent.Device': {'Id': <'p3'>, \
+                   'Name': <'Çağrı {tab}'>, 'State': <uint32 3>}}},)";
+        let d = parse_devices(raw).pop().unwrap();
+        assert_eq!(d.name, "Çağrı {tab}");
+        assert!(d.reachable && d.paired, "props after the brace still read");
+        assert_eq!(
+            gvariant_string_literal(r"'tab\there \u00e7'").as_deref(),
+            Some("tab\there ç")
+        );
+    }
+
+    #[test]
+    fn device_interface_need_not_come_first() {
+        let raw = "({objectpath '/ca/andyholmes/Valent/Device/p4': \
+                   {'org.freedesktop.DBus.Properties': {}, \
+                   'ca.andyholmes.Valent.Device': {'Id': <'p4'>, 'Name': <'Tab'>, \
+                   'State': <uint32 2>}, \
+                   'org.example.Other': {'Name': <'not the device name'>}}},)";
+        let d = parse_devices(raw).pop().unwrap();
+        assert_eq!((d.id.as_str(), d.name.as_str()), ("p4", "Tab"));
+        assert!(d.paired && !d.reachable);
+    }
+
+    #[test]
+    fn objects_without_the_device_interface_are_skipped() {
+        let raw = "({objectpath '/ca/andyholmes/Valent/Device/x': \
+                   {'org.freedesktop.DBus.Properties': {}}, \
+                   objectpath '/ca/andyholmes/Valent/Device/y': \
+                   {'ca.andyholmes.Valent.Device': {'Id': <'y'>}}},)";
+        let ids: Vec<_> = parse_devices(raw).into_iter().map(|d| d.id).collect();
+        assert_eq!(ids, ["y"]);
+    }
+
+    #[test]
+    fn unterminated_literals_and_blocks_are_rejected() {
+        assert_eq!(gvariant_string_literal("'open"), None);
+        assert_eq!(gvariant_string_literal("bare"), None);
+        assert_eq!(gvariant_string_literal(r"'\u12'"), None);
+        assert_eq!(gvariant_dict_body("{'a': <'}'>"), None);
+        assert_eq!(gvariant_dict_body("x{}"), None);
+        assert_eq!(gvariant_dict_body("{'a': <'}'>} tail"), Some("'a': <'}'>"));
     }
 
     #[test]
