@@ -60,6 +60,17 @@ fn mcookie() -> String {
     format!("{cookie:032x}")
 }
 
+/// Split a configured `xserver_path` / `xauth_path` into program and leading
+/// arguments on whitespace (`/usr/bin/X -nolisten tcp` keeps working), with no
+/// shell in between. Both used to go through `sh -c` with the display and the
+/// cookie interpolated into the line, so a `display` from the config was
+/// parsed as shell, as root. `None` for an empty setting.
+fn split_command(configured: &str) -> Option<(String, Vec<String>)> {
+    let mut words = configured.split_whitespace().map(str::to_string);
+    let program = words.next()?;
+    Some((program, words.collect()))
+}
+
 static X_HAS_STARTED: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
 fn handle_sigusr1(_: i32) {
@@ -91,14 +102,16 @@ pub fn setup_x(user_info: &UserInfo, config: &Config) -> Result<SessionChild, XS
     // a `root` permission `.Xauthority` file there.
     let _ = remove_file(&xauth_path);
 
-    Command::new(&config.system_shell)
-        .arg("-c")
-        .arg(format!(
-            "{} add {} . {}",
-            &config.x11.xauth_path,
-            display_value,
-            mcookie()
-        ))
+    let (xauth, mut xauth_args) =
+        split_command(&config.x11.xauth_path).ok_or(XSetupError::FillingXAuth)?;
+    xauth_args.extend([
+        "add".to_string(),
+        display_value.clone(),
+        ".".to_string(),
+        mcookie(),
+    ]);
+    Command::new(xauth)
+        .args(&xauth_args)
         .uid(user_info.uid)
         .gid(user_info.primary_gid)
         .stdout(Stdio::null()) // TODO: Maybe this should be logged or something?
@@ -133,16 +146,15 @@ pub fn setup_x(user_info: &UserInfo, config: &Config) -> Result<SessionChild, XS
         libc::signal(SIGUSR1, SIG_IGN);
     }
 
-    let mut child = Command::new(&config.system_shell);
+    let (xserver, mut xserver_args) =
+        split_command(&config.x11.xserver_path).ok_or(XSetupError::XServerStart)?;
+    xserver_args.extend([display_value, format!("vt{doubledigit_vtnr}")]);
+    let mut child = Command::new(xserver);
+    child.args(&xserver_args);
 
     let log_path = config
         .do_log
         .then_some(Path::new(&config.x11.xserver_log_path));
-
-    child.arg("-c").arg(format!(
-        "{} {display_value} vt{doubledigit_vtnr}",
-        &config.x11.xserver_path
-    ));
 
     let mut child = SessionChild::spawn(child, log_path).map_err(|err| {
         error!("Failed to start X server. Reason: {}", err);
@@ -202,4 +214,36 @@ pub fn setup_x(user_info: &UserInfo, config: &Config) -> Result<SessionChild, XS
     info!("X server is running");
 
     Ok(child)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_command;
+
+    #[test]
+    fn a_plain_path_is_the_program_with_no_arguments() {
+        assert_eq!(
+            split_command("/usr/bin/X"),
+            Some(("/usr/bin/X".to_string(), vec![]))
+        );
+    }
+
+    #[test]
+    fn configured_flags_survive_without_a_shell() {
+        assert_eq!(
+            split_command("/usr/bin/X  -nolisten tcp"),
+            Some((
+                "/usr/bin/X".to_string(),
+                vec!["-nolisten".to_string(), "tcp".to_string()]
+            ))
+        );
+        // Shell syntax is just text now: no command substitution, no `;`.
+        let (_, args) = split_command("/usr/bin/X $(id);reboot").unwrap();
+        assert_eq!(args, vec!["$(id);reboot".to_string()]);
+    }
+
+    #[test]
+    fn an_empty_setting_is_refused() {
+        assert_eq!(split_command("   "), None);
+    }
 }
