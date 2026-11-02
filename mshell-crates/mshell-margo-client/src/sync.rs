@@ -897,3 +897,395 @@ mod tests {
         );
     }
 }
+
+/// `apply` driven by `watch state`-style frames: a fresh service, a
+/// sequence of snapshots, and checks on the reactive model plus the
+/// synthetic events it broadcasts.
+#[cfg(test)]
+mod apply_tests {
+    use super::*;
+    use crate::state_json::RawFocusHistoryEntry;
+    use tokio::sync::broadcast::Receiver;
+
+    fn service() -> MargoService {
+        let (event_tx, _) = tokio::sync::broadcast::channel(256);
+        MargoService {
+            workspaces: Reactive::new(Vec::new()),
+            clients: Reactive::new(Vec::new()),
+            monitors: Reactive::new(Vec::new()),
+            focused_client: Reactive::new(None),
+            keyboard_layout: Reactive::new(String::new()),
+            config_errors: Reactive::new(Vec::new()),
+            event_tx,
+        }
+    }
+
+    fn drain(rx: &mut Receiver<MargoEvent>) -> Vec<MargoEvent> {
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    }
+
+    fn output(name: &str, active: bool, tag_mask: u32, history: &[u64]) -> RawOutput {
+        RawOutput {
+            name: name.into(),
+            active,
+            active_tag_mask: tag_mask,
+            occupied_tag_mask: 0,
+            focus_history: Vec::new(),
+            focus_history_v2: history
+                .iter()
+                .map(|&id| RawFocusHistoryEntry {
+                    id,
+                    app_id: String::new(),
+                })
+                .collect(),
+            layout_idx: 0,
+            width: 1920,
+            height: 1080,
+            x: 0,
+            y: 0,
+            scale: 1.0,
+            mode: None,
+            wallpaper: String::new(),
+            wallpapers_by_tag: Vec::new(),
+        }
+    }
+
+    fn client(id: u64, app: &str, monitor: &str, tags: u32) -> RawClient {
+        RawClient {
+            id,
+            app_id: app.into(),
+            title: format!("{app} window"),
+            monitor: monitor.into(),
+            tags,
+            width: 800,
+            height: 600,
+            ..Default::default()
+        }
+    }
+
+    /// Two outputs: DP-1 (focused, tag 1: kitty + firefox), HDMI-A-1
+    /// (tag 2: mpv). kitty (id 1) is focused.
+    fn frame() -> StateJson {
+        let mut dp1 = output("DP-1", true, 0b1, &[1, 2]);
+        dp1.occupied_tag_mask = 0b1;
+        let mut hdmi = output("HDMI-A-1", false, 0b10, &[3]);
+        hdmi.occupied_tag_mask = 0b10;
+        hdmi.x = 1920;
+        StateJson {
+            active_output: "DP-1".into(),
+            focused_idx: Some(0),
+            layouts: vec!["tile".into(), "scroller".into()],
+            circle_layouts: Vec::new(),
+            outputs: vec![dp1, hdmi],
+            clients: vec![
+                client(1, "kitty", "DP-1", 0b1),
+                client(2, "firefox", "DP-1", 0b1),
+                client(3, "mpv", "HDMI-A-1", 0b10),
+            ],
+            tag_count: 9,
+            keyboard_layout: "English (US)".into(),
+            config_errors: Vec::new(),
+        }
+    }
+
+    fn ws(svc: &MargoService, id: i64) -> Arc<Workspace> {
+        svc.workspaces
+            .get()
+            .into_iter()
+            .find(|w| w.id.get() == id)
+            .unwrap_or_else(|| panic!("no workspace {id}"))
+    }
+
+    fn client_by_id(svc: &MargoService, id: u64) -> Arc<Client> {
+        svc.clients
+            .get()
+            .into_iter()
+            .find(|c| c.address.get().margo_id() == Some(id))
+            .unwrap_or_else(|| panic!("no client {id}"))
+    }
+
+    #[test]
+    fn first_frame_builds_the_model_and_announces_everything() {
+        let svc = service();
+        let mut rx = svc.event_tx.subscribe();
+        apply(&svc, &frame());
+
+        assert_eq!(svc.workspaces.get().len(), 9);
+        assert_eq!(svc.monitors.get().len(), 2);
+        assert_eq!(svc.clients.get().len(), 3);
+        assert_eq!(svc.keyboard_layout.get(), "English (US)");
+
+        let tag1 = ws(&svc, 1);
+        assert_eq!(tag1.windows.get(), 2);
+        assert_eq!(tag1.monitor.get(), "DP-1");
+        assert_eq!(tag1.tiled_layout.get(), "tile");
+        assert_eq!(tag1.last_window.get(), Some(Address::new("1".into())));
+        assert_eq!(tag1.last_window_title.get(), "kitty window");
+        let tag2 = ws(&svc, 2);
+        assert_eq!(
+            (tag2.windows.get(), tag2.monitor.get()),
+            (1, "HDMI-A-1".into())
+        );
+        assert_eq!(ws(&svc, 5).windows.get(), 0);
+        assert_eq!(
+            ws(&svc, 5).monitor.get(),
+            "DP-1",
+            "unowned tags sit on the active output"
+        );
+
+        let mons = svc.monitors.get();
+        let dp1 = mons.iter().find(|m| m.name.get() == "DP-1").unwrap();
+        assert!(dp1.focused.get());
+        assert_eq!(dp1.active_workspace.get().id, 1);
+        assert_eq!(dp1.refresh_rate.get(), 60.0, "no mode → 60 Hz");
+
+        assert_eq!(client_by_id(&svc, 1).focus_history_id.get(), 0);
+        assert_eq!(client_by_id(&svc, 2).focus_history_id.get(), 1);
+        assert_eq!(
+            svc.focused_client.get().map(|c| c.address.get()),
+            Some(Address::new("1".into()))
+        );
+
+        let events = drain(&mut rx);
+        let count = |f: fn(&MargoEvent) -> bool| events.iter().filter(|e| f(e)).count();
+        assert_eq!(
+            count(|e| matches!(e, MargoEvent::CreateWorkspaceV2 { .. })),
+            9
+        );
+        assert_eq!(count(|e| matches!(e, MargoEvent::MonitorAddedV2 { .. })), 2);
+        assert_eq!(count(|e| matches!(e, MargoEvent::OpenWindow { .. })), 3);
+        assert_eq!(
+            count(|e| matches!(e, MargoEvent::WorkspaceV2 { id: 1, .. })),
+            1
+        );
+        assert_eq!(count(|e| matches!(e, MargoEvent::ActiveWindowV2 { .. })), 1);
+    }
+
+    #[test]
+    fn identical_frame_is_silent_and_keeps_identity() {
+        let svc = service();
+        apply(&svc, &frame());
+        let (ws_before, mons_before, clients_before) =
+            (svc.workspaces.get(), svc.monitors.get(), svc.clients.get());
+        let mut rx = svc.event_tx.subscribe();
+
+        apply(&svc, &frame());
+
+        assert!(
+            drain(&mut rx).is_empty(),
+            "no events for an unchanged frame"
+        );
+        assert!(!vec_membership_differs(&ws_before, &svc.workspaces.get()));
+        assert!(!vec_membership_differs(&mons_before, &svc.monitors.get()));
+        assert!(!vec_membership_differs(&clients_before, &svc.clients.get()));
+    }
+
+    #[test]
+    fn title_change_updates_in_place() {
+        let svc = service();
+        apply(&svc, &frame());
+        let kitty = client_by_id(&svc, 1);
+        let mut rx = svc.event_tx.subscribe();
+
+        let mut next = frame();
+        next.clients[0].title = "vim".into();
+        apply(&svc, &next);
+
+        assert!(Arc::ptr_eq(&kitty, &client_by_id(&svc, 1)));
+        assert_eq!(kitty.title.get(), "vim");
+        assert_eq!(ws(&svc, 1).last_window_title.get(), "vim");
+        assert!(drain(&mut rx).is_empty());
+    }
+
+    #[test]
+    fn closing_a_window_keeps_the_survivors_identity() {
+        let svc = service();
+        apply(&svc, &frame());
+        let mpv = client_by_id(&svc, 3);
+        let mut rx = svc.event_tx.subscribe();
+
+        // firefox closes: every later client's slot `idx` shifts down.
+        let mut next = frame();
+        next.clients.remove(1);
+        for (i, c) in next.clients.iter_mut().enumerate() {
+            c.idx = i as i32;
+        }
+        next.outputs[0].focus_history_v2.truncate(1);
+        apply(&svc, &next);
+
+        assert!(Arc::ptr_eq(&mpv, &client_by_id(&svc, 3)));
+        assert_eq!(svc.clients.get().len(), 2);
+        assert_eq!(ws(&svc, 1).windows.get(), 1);
+        let events = drain(&mut rx);
+        assert!(matches!(
+            events.as_slice(),
+            [MargoEvent::CloseWindow { address }] if address.margo_id() == Some(2)
+        ));
+    }
+
+    #[test]
+    fn minimized_and_fullscreen_windows_per_tag() {
+        let svc = service();
+        let mut f = frame();
+        f.clients[1].minimized = true;
+        f.clients[2].fullscreen = true;
+        apply(&svc, &f);
+        assert_eq!(
+            ws(&svc, 1).windows.get(),
+            1,
+            "minimized windows aren't counted"
+        );
+        assert!(ws(&svc, 2).fullscreen.get());
+        assert!(!ws(&svc, 1).fullscreen.get());
+        assert!(client_by_id(&svc, 2).hidden.get());
+        assert!(!client_by_id(&svc, 2).mapped.get());
+    }
+
+    #[test]
+    fn global_window_counts_on_every_tag_it_carries() {
+        let svc = service();
+        let mut f = frame();
+        f.clients[2].tags = 0b111;
+        apply(&svc, &f);
+        assert_eq!(ws(&svc, 1).windows.get(), 3);
+        assert_eq!(ws(&svc, 2).windows.get(), 1);
+        assert_eq!(ws(&svc, 3).windows.get(), 1);
+        assert_eq!(client_by_id(&svc, 3).workspace.get().id, 1, "lowest tag");
+    }
+
+    #[test]
+    fn tag_switch_emits_workspace_event() {
+        let svc = service();
+        apply(&svc, &frame());
+        let mut rx = svc.event_tx.subscribe();
+        let mut next = frame();
+        next.outputs[0].active_tag_mask = 0b100;
+        apply(&svc, &next);
+        let events = drain(&mut rx);
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, MargoEvent::WorkspaceV2 { id: 3, .. })),
+            "{events:?}"
+        );
+    }
+
+    #[test]
+    fn compositor_restart_empties_then_rebuilds() {
+        let svc = service();
+        apply(&svc, &frame());
+        let mut rx = svc.event_tx.subscribe();
+
+        // Reconnect to a margo that is still starting: no outputs yet.
+        let mut empty = frame();
+        empty.outputs.clear();
+        empty.clients.clear();
+        empty.focused_idx = None;
+        apply(&svc, &empty);
+        assert!(svc.monitors.get().is_empty());
+        assert!(svc.clients.get().is_empty());
+        assert!(svc.focused_client.get().is_none());
+        assert_eq!(svc.workspaces.get().len(), 9, "tags persist");
+        let events = drain(&mut rx);
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, MargoEvent::MonitorRemovedV2 { .. }))
+                .count(),
+            2
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, MargoEvent::CloseWindow { .. }))
+                .count(),
+            3
+        );
+
+        apply(&svc, &frame());
+        assert_eq!(svc.monitors.get().len(), 2);
+        assert_eq!(svc.clients.get().len(), 3);
+        assert!(svc.focused_client.get().is_some());
+    }
+
+    #[test]
+    fn out_of_range_focus_index_means_nothing_focused() {
+        for idx in [Some(-1), Some(99), None] {
+            let svc = service();
+            let mut f = frame();
+            f.focused_idx = idx;
+            apply(&svc, &f);
+            assert!(svc.focused_client.get().is_none(), "{idx:?}");
+        }
+    }
+
+    #[test]
+    fn tag_count_changes_create_and_destroy_workspaces() {
+        let svc = service();
+        apply(&svc, &frame());
+        let mut rx = svc.event_tx.subscribe();
+        let mut f = frame();
+        f.tag_count = 4;
+        apply(&svc, &f);
+        assert_eq!(svc.workspaces.get().len(), 4);
+        let destroyed = drain(&mut rx)
+            .into_iter()
+            .filter(|e| matches!(e, MargoEvent::DestroyWorkspaceV2 { .. }))
+            .count();
+        assert_eq!(destroyed, 5);
+    }
+
+    #[test]
+    fn keyboard_layout_and_config_errors_are_mirrored() {
+        let svc = service();
+        let mut f = frame();
+        f.config_errors = vec![crate::state_json::RawConfigDiagnostic {
+            path: "/c/config.conf".into(),
+            line: 3,
+            severity: "warning".into(),
+            code: "W004".into(),
+            message: "duplicate bind".into(),
+        }];
+        apply(&svc, &f);
+        assert_eq!(svc.config_errors.get().len(), 1);
+        f.config_errors.clear();
+        f.keyboard_layout = "Turkish".into();
+        apply(&svc, &f);
+        assert!(svc.config_errors.get().is_empty());
+        assert_eq!(svc.keyboard_layout.get(), "Turkish");
+    }
+
+    /// A frame as margo serialises it (extra fields included), parsed and
+    /// applied the way the `watch state` task does.
+    #[test]
+    fn recorded_json_frame_applies() {
+        let line = r#"{"version":1,"active_output":"eDP-1","focused_idx":0,
+            "layouts":["tile","scroller"],"tag_count":9,"keyboard_layout":"",
+            "outputs":[{"name":"eDP-1","active":true,"x":0,"y":0,"width":2560,
+              "height":1600,"scale":1.5,"transform":0,
+              "mode":{"physical_width":2560,"physical_height":1600,"refresh_mhz":165000},
+              "layout_idx":1,"active_tag_mask":4,"prev_tag_mask":1,
+              "occupied_tag_mask":5,"is_overview":false,"wallpaper":"",
+              "wallpapers_by_tag":[],"scratchpad_visible":0,"scratchpad_hidden":0,
+              "focus_history":["foot"],"focus_history_v2":[{"id":17,"app_id":"foot"}]}],
+            "clients":[{"id":17,"idx":0,"monitor":"eDP-1","monitor_idx":0,"tags":4,
+              "app_id":"foot","title":"~","x":10,"y":20,"width":1000,"height":700,
+              "floating":false,"floated_by_layout":false,"fullscreen":false,
+              "minimized":false,"urgent":false,"scratchpad":false,"global":false,
+              "focused":true,"pid":4242,"scanout":false,"group_id":null,
+              "group_active":false}],
+            "config_errors":[]}"#;
+        let state: StateJson = serde_json::from_str(line).expect("margo frame parses");
+        let svc = service();
+        apply(&svc, &state);
+        let mon = svc.monitors.get().pop().unwrap();
+        assert_eq!(mon.active_workspace.get().id, 3);
+        assert_eq!(mon.refresh_rate.get(), 165.0);
+        assert_eq!(mon.scale.get(), 1.5);
+        assert_eq!(ws(&svc, 3).tiled_layout.get(), "scroller");
+        let foot = client_by_id(&svc, 17);
+        assert_eq!((foot.pid.get(), foot.workspace.get().id), (4242, 3));
+        assert_eq!(foot.at.get(), ClientLocation { x: 10, y: 20 });
+        assert_eq!(svc.focused_client.get().map(|c| c.pid.get()), Some(4242));
+    }
+}
