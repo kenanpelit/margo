@@ -129,6 +129,9 @@ pub struct ScrollerOverview {
     last_tick_ms: u32,
     /// Per-monitor scroll state, indexed by monitor index.
     pub mon: Vec<MonitorScroll>,
+    /// Stable render-element id of the full-output backdrop, so an
+    /// unchanged backdrop isn't re-damaged every frame.
+    pub backdrop_id: smithay::backend::renderer::element::Id,
 }
 
 /// Idle gap (ms) after the last scroll delta before momentum + snap kick in.
@@ -194,6 +197,7 @@ impl MargoState {
             anim_started_ms: now,
             last_tick_ms: now,
             mon,
+            backdrop_id: smithay::backend::renderer::element::Id::new(),
         });
         self.request_repaint();
     }

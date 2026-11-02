@@ -978,18 +978,13 @@ pub(super) fn build_window_cast_elements(
     elements
 }
 
-/// Build the render-element list for an output while the **scroller
-/// overview** is open: a niri-style grey backdrop with every tag's
-/// windows scaled down live (via `RescaleRenderElement` — no window
-/// resize) into a vertical strip of per-tag cells, the selected tag
-/// centered. Cursor stays on top. Replaces the normal window/layer
-/// compositing for this output.
-/// MRU window-switcher overlay: a centred row of live, scaled-down window
+/// MRU window-switcher overlay: a centred row of scaled-down window
 /// thumbnails drawn on top of the normal desktop while the switcher is open,
-/// the selected one ringed with the accent colour. Reuses the scroller
-/// overview's live-surface Rescale+Relocate path (no off-screen capture), so
-/// it's damage-tracked and cheap. Returned elements are appended above windows
-/// but below the cursor.
+/// the selected one ringed with the accent colour. Thumbnails are off-screen
+/// captures cached per window (`take_mru_thumbnails`, re-captured only when
+/// the window commits); every element keeps a stable id with a commit counter
+/// that changes only with its content, so an idle switcher costs no damage.
+/// Returned elements are appended above windows but below the cursor.
 fn build_mru_switcher_elements(
     renderer: &mut GlesRenderer,
     state: &MargoState,
@@ -997,7 +992,6 @@ fn build_mru_switcher_elements(
     output_scale: f64,
 ) -> Vec<MargoRenderElement> {
     use crate::render::open_close::{OpenCloseKind, OpenCloseRenderElement};
-    use smithay::backend::renderer::element::Id;
     use smithay::backend::renderer::utils::CommitCounter;
 
     let Some(sw) = state.mru_switcher.as_ref() else {
@@ -1106,13 +1100,15 @@ fn build_mru_switcher_elements(
         // OpenCloseRenderElement (Fade, progress=1, alpha=1) just blits the
         // texture into `geometry` — works for windows on other tags because
         // the snapshot was taken off-screen before render.
-        if let Some((_, tex)) = sw.thumbs.iter().find(|(w, _)| w == win) {
+        if let Some(thumb) = sw.thumb(win)
+            && let (Some(tex), Some(key)) = (thumb.capture.current(), thumb.capture.key())
+        {
             let geom = Rectangle::<i32, Logical>::new(
                 Point::from((cell_x, cell_y)),
                 smithay::utils::Size::from((*tw, th)),
             );
             out.push(MargoRenderElement::OpenClose(OpenCloseRenderElement::new(
-                Id::new(),
+                thumb.id.clone(),
                 tex.clone(),
                 geom,
                 scale,
@@ -1121,7 +1117,7 @@ fn build_mru_switcher_elements(
                 OpenCloseKind::Fade,
                 false,
                 1.0,
-                CommitCounter::default(),
+                CommitCounter::from(key as usize),
                 0.0,
                 None,
             )));
@@ -1160,12 +1156,13 @@ fn build_mru_switcher_elements(
             .to_physical_precise_round(scale);
             out.push(MargoRenderElement::RoundedSolid(
                 crate::render::rounded_solid::RoundedSolidElement::new(
-                    Id::new(),
+                    sw.chrome_ids.ring.clone(),
                     ring,
                     radius,
                     ring_color,
                     p,
-                ),
+                )
+                .with_commit(color_commit(ring_color)),
             ));
         }
     }
@@ -1215,7 +1212,7 @@ fn build_mru_switcher_elements(
                 .to_physical_precise_round(scale);
                 out.push(MargoRenderElement::RoundedSolid(
                     crate::render::rounded_solid::RoundedSolidElement::new(
-                        Id::new(),
+                        sw.chrome_ids.title_bar.clone(),
                         bar,
                         radius,
                         [0.0, 0.0, 0.0, 0.62],
@@ -1236,7 +1233,7 @@ fn build_mru_switcher_elements(
         .to_physical_precise_round(scale);
         out.push(MargoRenderElement::RoundedSolid(
             crate::render::rounded_solid::RoundedSolidElement::new(
-                Id::new(),
+                sw.chrome_ids.panel.clone(),
                 panel,
                 radius,
                 [0.0, 0.0, 0.0, 0.62],
@@ -1257,9 +1254,9 @@ fn build_mru_switcher_elements(
         );
         out.push(MargoRenderElement::Solid(
             smithay::backend::renderer::element::solid::SolidColorRenderElement::new(
-                Id::new(),
+                sw.chrome_ids.dim.clone(),
                 full,
-                CommitCounter::default(),
+                color_commit([0.0, 0.0, 0.0, dim]),
                 [0.0, 0.0, 0.0, dim],
                 smithay::backend::renderer::element::Kind::Unspecified,
             ),
@@ -1282,7 +1279,6 @@ fn build_scroller_overview_elements(
     use smithay::backend::renderer::element::utils::{
         Relocate, RelocateRenderElement, RescaleRenderElement,
     };
-    use smithay::backend::renderer::utils::CommitCounter;
     use smithay::utils::{Physical, Size};
 
     let scale = Scale::from(output_scale);
@@ -1327,6 +1323,12 @@ fn build_scroller_overview_elements(
         }
     }
 
+    // Stable across frames (see `ScrollerOverview::backdrop_id`).
+    let backdrop_id = state
+        .scroller_overview
+        .as_ref()
+        .map(|overview| overview.backdrop_id.clone())
+        .unwrap_or_else(smithay::backend::renderer::element::Id::new);
     let Some(mon_idx) = state.monitors.iter().position(|m| m.output == od.output) else {
         // No monitor for this output — just dim it.
         let dst = Rectangle::<i32, Physical>::new(
@@ -1334,9 +1336,9 @@ fn build_scroller_overview_elements(
             Size::from((output_geo.size.w, output_geo.size.h)).to_physical_precise_round(scale),
         );
         elements.push(MargoRenderElement::Solid(SolidColorRenderElement::new(
-            smithay::backend::renderer::element::Id::new(),
+            backdrop_id,
             dst,
-            CommitCounter::default(),
+            color_commit(state.config.overview_backdrop_color.0),
             state.config.overview_backdrop_color.0,
             Kind::Unspecified,
         )));
@@ -1487,9 +1489,9 @@ fn build_scroller_overview_elements(
         Size::from((output_geo.size.w, output_geo.size.h)).to_physical_precise_round(scale),
     );
     elements.push(MargoRenderElement::Solid(SolidColorRenderElement::new(
-        smithay::backend::renderer::element::Id::new(),
+        backdrop_id,
         backdrop,
-        CommitCounter::default(),
+        color_commit(state.config.overview_backdrop_color.0),
         state.config.overview_backdrop_color.0,
         Kind::Unspecified,
     )));
@@ -2700,6 +2702,16 @@ fn push_closing_layers(
     }
 }
 
+/// Commit counter for an element that keeps one id across frames and can
+/// only change in place by colour: equal colours give equal counters, so the
+/// damage tracker repaints the element exactly when its colour changed.
+fn color_commit(color: [f32; 4]) -> smithay::backend::renderer::utils::CommitCounter {
+    let key = color.iter().fold(0usize, |acc, c| {
+        acc.wrapping_mul(31).wrapping_add(c.to_bits() as usize)
+    });
+    smithay::backend::renderer::utils::CommitCounter::from(key)
+}
+
 /// First index of the `max`-wide slice of the full `total`-long candidate
 /// list to render, so that `selected` always falls inside it (centred when
 /// there's room, clamped at either end otherwise). Pure so it's testable
@@ -2788,5 +2800,20 @@ mod mru_window_tests {
             );
             assert!(start + max <= total, "window must not run past `total`");
         }
+    }
+}
+
+#[cfg(test)]
+mod overlay_commit_tests {
+    use super::color_commit;
+
+    #[test]
+    fn color_commit_changes_only_with_the_colour() {
+        let a = [0.0, 0.0, 0.0, 0.5];
+        // Same colour across frames → same counter → no damage for a
+        // stable-id element.
+        assert_eq!(color_commit(a), color_commit(a));
+        assert_ne!(color_commit(a), color_commit([0.0, 0.0, 0.0, 0.6]));
+        assert_ne!(color_commit(a), color_commit([0.1, 0.0, 0.0, 0.5]));
     }
 }

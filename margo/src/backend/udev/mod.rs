@@ -1443,33 +1443,54 @@ pub(super) fn take_pending_open_close_captures(
 /// Capture an off-screen snapshot of each MRU-switcher candidate BEFORE render,
 /// so the thumbnail overlay shows a real preview of every window from the first
 /// frame — including windows on other tags (a live surface element can't, which
-/// is why they used to draw blank until you cycled onto them). Cheap: only runs
-/// while the switcher is open (≤8 windows) and the switcher only repaints on a
-/// selection change. Capturing here (not mid-element-build) keeps the renderer
-/// binding sane — same call site as `take_pending_snapshots`.
+/// is why they used to draw blank until you cycled onto them). Capturing here
+/// (not mid-element-build) keeps the renderer binding sane — same call site as
+/// `take_pending_snapshots`.
+///
+/// Runs on every rendered frame of every output while the switcher is open,
+/// so each thumbnail is cached by content key and re-captured only when its
+/// window committed (or resized). Captures use the largest enabled output
+/// scale, not this output's, so outputs with different scales share one
+/// capture instead of re-capturing in turn.
 pub(super) fn take_mru_thumbnails(
     renderer: &mut GlesRenderer,
-    od: &OutputDevice,
+    _od: &OutputDevice,
     state: &mut MargoState,
 ) {
-    let Some(cands) = state.mru_switcher.as_ref().map(|s| s.candidates.clone()) else {
+    if state.mru_switcher.is_none() {
+        return;
+    }
+    let capture_scale: smithay::utils::Scale<f64> = state
+        .monitors
+        .iter()
+        .filter(|monitor| monitor.enabled)
+        .map(|monitor| monitor.output.current_scale().fractional_scale())
+        .fold(1.0, f64::max)
+        .into();
+    let Some(sw) = state.mru_switcher.as_mut() else {
         return;
     };
-    let output_scale = od.output.current_scale().fractional_scale().into();
-    let mut thumbs = Vec::with_capacity(cands.len());
-    for win in cands {
+    for win in sw.candidates.clone() {
         let size = win.geometry().size;
         if size.w <= 0 || size.h <= 0 {
             continue;
         }
-        if let Ok(tex) =
-            crate::render::window_capture::capture_window(renderer, &win, size, output_scale)
-        {
-            thumbs.push((win, tex));
+        let key = crate::render::window_capture::window_content_key(&win, size, capture_scale);
+        let thumb = sw.thumb_mut(&win);
+        if thumb.capture.key() == Some(key) {
+            continue;
         }
-    }
-    if let Some(sw) = state.mru_switcher.as_mut() {
-        sw.thumbs = thumbs;
+        if let Err(e) = thumb.capture.get_or_capture(key, |reuse| {
+            crate::render::window_capture::capture_window_reusing(
+                renderer,
+                &win,
+                size,
+                capture_scale,
+                reuse,
+            )
+        }) {
+            tracing::debug!("mru thumbnail capture failed: {e:?}");
+        }
     }
 }
 

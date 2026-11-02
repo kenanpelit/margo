@@ -13,8 +13,11 @@
 //! handles; we resolve them back to a live client index at each step.
 
 use margo_config::Modifiers;
+use smithay::backend::renderer::element::Id;
 use smithay::backend::renderer::gles::GlesTexture;
 use smithay::desktop::Window;
+
+use crate::render::window_capture::CaptureSlot;
 
 use crate::state::MargoState;
 
@@ -62,8 +65,62 @@ pub struct MruSwitcher {
     /// Off-screen snapshots of each candidate, captured before render (see
     /// `take_mru_thumbnails`). Keyed by window so even windows on other tags
     /// show a real preview from the first frame — not a blank that only fills
-    /// in once you cycle onto it.
-    pub thumbs: Vec<(Window, GlesTexture)>,
+    /// in once you cycle onto it. Re-captured only when the window commits.
+    pub thumbs: Vec<MruThumb>,
+    /// Stable render-element ids for the switcher's chrome, created when it
+    /// opens, so unchanged chrome isn't re-damaged every frame.
+    pub chrome_ids: MruChromeIds,
+}
+
+/// One candidate's cached thumbnail.
+pub struct MruThumb {
+    pub window: Window,
+    pub capture: CaptureSlot<GlesTexture>,
+    /// Stable render-element id of the thumbnail.
+    pub id: Id,
+}
+
+/// Stable element ids for the switcher's own chrome.
+#[derive(Clone)]
+pub struct MruChromeIds {
+    pub ring: Id,
+    pub title_bar: Id,
+    pub panel: Id,
+    pub dim: Id,
+}
+
+impl MruChromeIds {
+    fn new() -> Self {
+        Self {
+            ring: Id::new(),
+            title_bar: Id::new(),
+            panel: Id::new(),
+            dim: Id::new(),
+        }
+    }
+}
+
+impl MruSwitcher {
+    /// The thumbnail slot for `window`, created on first use.
+    pub fn thumb_mut(&mut self, window: &Window) -> &mut MruThumb {
+        let idx = match self.thumbs.iter().position(|t| t.window == *window) {
+            Some(idx) => idx,
+            None => {
+                self.thumbs.push(MruThumb {
+                    window: window.clone(),
+                    capture: CaptureSlot::default(),
+                    id: Id::new(),
+                });
+                self.thumbs.len() - 1
+            }
+        };
+        &mut self.thumbs[idx]
+    }
+
+    /// The cached thumbnail of `window`, if one was captured.
+    pub fn thumb(&self, window: &Window) -> Option<&MruThumb> {
+        self.thumbs.iter().find(|t| t.window == *window)
+    }
 }
 
 pub fn parse_scope(s: &str) -> MruScope {
@@ -153,6 +210,7 @@ impl MargoState {
                 scope,
                 filter,
                 thumbs: Vec::new(),
+                chrome_ids: MruChromeIds::new(),
             });
         }
         let len = self
@@ -219,7 +277,7 @@ impl MargoState {
         if let Some(sw) = self.mru_switcher.as_mut() {
             if let Some(pos) = sw.candidates.iter().position(|w| w == win) {
                 sw.candidates.remove(pos);
-                sw.thumbs.retain(|(w, _)| w != win);
+                sw.thumbs.retain(|t| t.window != *win);
                 if sw.candidates.len() < 2 {
                     self.mru_switcher = None;
                     self.request_repaint();

@@ -65,6 +65,11 @@ impl<T: Clone> CaptureSlot<T> {
         Ok(value)
     }
 
+    /// The cached capture, if any.
+    pub fn current(&self) -> Option<&T> {
+        self.entry.as_ref().map(|(_, value)| value)
+    }
+
     /// Key of the cached capture, if any.
     pub fn key(&self) -> Option<u64> {
         self.entry.as_ref().map(|(key, _)| *key)
