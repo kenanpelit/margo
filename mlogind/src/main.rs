@@ -89,7 +89,7 @@ fn merge_in_configuration(config: &mut Config, cli: &Cli) {
                 load_variables_path.display()
             );
 
-            Some(variables)
+            variables
         }
         Err(err) => {
             // If we have given it a specific config path, it should crash if this file cannot be
@@ -111,8 +111,19 @@ fn merge_in_configuration(config: &mut Config, cli: &Cli) {
             // Never fall through with no palette: substitute margo's baked
             // Dracula variables so a stale/absent `/etc/mlogind/variables.toml`
             // can't leave the greeter on ratatui's bare defaults.
-            Some(config::Variables::baked_default())
+            config::Variables::baked_default()
         }
+    };
+
+    // The palette `theme_sync` published from the last user's desktop. It is
+    // sanitised when written; do it again on read — root trusts no file a user
+    // shaped. An explicit `--variables` path is authoritative and skips it.
+    let synced = if cli.variables.is_none() {
+        std::fs::read_to_string(theme_sync::variables_path())
+            .ok()
+            .and_then(|text| config::Variables::sanitize_synced(&text))
+    } else {
+        None
     };
 
     let load_config_path = cli
@@ -120,12 +131,40 @@ fn merge_in_configuration(config: &mut Config, cli: &Cli) {
         .as_deref()
         .unwrap_or_else(|| Path::new(DEFAULT_CONFIG_PATH));
 
-    match config::PartialConfig::from_file(load_config_path, variables.as_ref()) {
-        Ok(partial_config) => {
+    let baked = config::Variables::baked_default();
+    let admin = variables;
+    let merged = synced.map(|synced| {
+        let mut merged = admin.clone();
+        merged.overlay(synced);
+        merged
+    });
+    let mut candidates: Vec<&config::Variables> = Vec::new();
+    candidates.extend(merged.as_ref());
+    candidates.push(&admin);
+    candidates.push(&baked);
+
+    let loaded = std::fs::read_to_string(load_config_path)
+        .map_err(Box::<dyn Error>::from)
+        .and_then(|contents| {
+            config::PartialConfig::from_str_with_variables(&contents, &candidates)
+        });
+    match loaded {
+        Ok((partial_config, used)) => {
             info!(
                 "Successfully loaded configuration file from '{}'",
                 load_config_path.display()
             );
+            if used > 0 {
+                warn!(
+                    "Theme variables could not be substituted into '{}'; fell back to {}",
+                    load_config_path.display(),
+                    if candidates.len() - used == 1 {
+                        "the built-in variables"
+                    } else {
+                        "the administrator's variables without the synced palette"
+                    }
+                );
+            }
             config.merge_in_partial(partial_config)
         }
         Err(err) => {

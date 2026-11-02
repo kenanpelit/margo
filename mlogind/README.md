@@ -86,6 +86,7 @@ sudo XDG_RUNTIME_DIR=/run/mlogind LIBSEAT_BACKEND=seatd cage -s -- foot mlogind 
 |---|---|
 | Main config | `/etc/mlogind/config.toml` |
 | Variables | `/etc/mlogind/variables.toml` |
+| Synced palette (machine-written) | `/var/lib/mgreet/variables.toml` |
 | Wayland session scripts | `/etc/mlogind/wayland` |
 | WM / X session scripts | `/etc/mlogind/wms` |
 | X setup script | `/etc/mlogind/xsetup.sh` |
@@ -161,12 +162,18 @@ sudo install -m644 extra/sessions/margo.desktop /usr/share/wayland-sessions/marg
 mlogind reads its colours from `$`-variables in
 `/etc/mlogind/variables.toml`. To match the active wallpaper, margo's
 matugen writes the live palette to
-`~/.config/margo/mlogind-variables.toml` on every theme change; push it to
-the greeter with:
+`~/.config/margo/mlogind-variables.toml` on every theme change; mlogind
+publishes it after every login, or push it by hand with:
 
 ```bash
-sudo mlogind sync-theme   # copies your palette → /etc/mlogind/variables.toml
+sudo mlogind sync-theme   # validated palette → /var/lib/mgreet/variables.toml
 ```
+
+The synced file overlays `/etc/mlogind/variables.toml` and only carries the
+known colour keys (`#rrggbb`) and short plain field titles; anything else in
+the user's file is dropped. If substituting the variables into `config.toml`
+still fails, mlogind retries with the admin's variables alone, then the
+built-in ones — it never drops `config.toml` itself over a palette.
 
 ## Fingerprint
 

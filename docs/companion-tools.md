@@ -229,11 +229,11 @@ A first-party **login / display manager**, forked from [lemurs](https://github.c
 
 ```bash
 mlogind --preview        # draw the greeter in the current session (no login, no root)
-sudo mlogind sync-theme   # repaint /etc/mlogind/variables.toml from the active wallpaper
+sudo mlogind sync-theme   # publish the active wallpaper palette to /var/lib/mgreet/variables.toml
 ```
 
 - **Greeter host.** `[display] host` in `/etc/mlogind/config.toml` picks how the greeter reaches the screen: `gui` (the shipped default — the GTK4 [`mgreet`](#mgreet) greeter under a throwaway root `margo`, a login card on every monitor at its own native mode), `cage` (a `cage` wlroots kiosk hosting a terminal greeter), or `tty` (the in-process `ratatui` greeter straight to the VT). `gui` auto-falls back to `cage`, then `tty`, if `margo` / `mgreet` / `mctl` can't start — so it never locks you out.
-- **Theming.** Colours are `$`-variables resolved from `/etc/mlogind/variables.toml`, mapped from the margo **matugen** palette — the active session stands out in the accent colour. `mlogind sync-theme` copies the live wallpaper palette (margo writes it to `~/.config/margo/mlogind-variables.toml` on every theme change) into the greeter, so the login screen tracks the desktop.
+- **Theming.** Colours are `$`-variables resolved from `/etc/mlogind/variables.toml`, mapped from the margo **matugen** palette — the active session stands out in the accent colour. `mlogind sync-theme` (also run after every login) validates the live wallpaper palette (margo writes it to `~/.config/margo/mlogind-variables.toml` on every theme change) and publishes it as `/var/lib/mgreet/variables.toml`, which overlays the admin's file, so the login screen tracks the desktop.
 - **Power controls.** `F1` Shutdown · `F2` Reboot · `F3` Suspend.
 - **Fingerprint (opt-in).** Handled at the PAM level — uncomment `pam_fprintd.so` in `/etc/pam.d/mlogind` after `fprintd-enroll`.
 - **Packaging.** Config + PAM + the systemd unit install to `/etc/mlogind/`, `/etc/pam.d/mlogind`, and `/usr/lib/systemd/system/mlogind.service`, but the package never enables it — switching login managers is a deliberate `systemctl disable --now <old-dm> && systemctl enable mlogind`. Defaults to `tty2`; for another VT add a drop-in under `/etc/systemd/system/mlogind.service.d/`.

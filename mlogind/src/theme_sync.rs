@@ -63,6 +63,16 @@ pub const STATE_DIR: &str = "/var/lib/mgreet";
 const BACKGROUND_NAME: &str = "background.raw";
 const THEME_CSS_NAME: &str = "theme.css";
 const AVATAR_NAME: &str = "avatar";
+const VARIABLES_NAME: &str = "variables.toml";
+
+/// The TUI greeter's synced palette, `/var/lib/mgreet/variables.toml`: the
+/// last user's `mlogind-variables.toml`, sanitised by
+/// [`crate::config::Variables::sanitize_synced`]. Machine-written state, so not
+/// under `/etc` — the admin's `/etc/mlogind/variables.toml` stays theirs, and
+/// mlogind overlays this file on it.
+pub fn variables_path() -> PathBuf {
+    Path::new(STATE_DIR).join(VARIABLES_NAME)
+}
 
 /// The baked backdrop's published path, `/var/lib/mgreet/background.raw`. The
 /// GUI greeter's throwaway margo config is pointed here (see
@@ -279,6 +289,10 @@ enum Kind {
     Avatar,
     /// Copied through verbatim.
     Text,
+    /// The TUI palette. Copied by the child, then parsed and reduced to the
+    /// whitelisted keys by the parent, which publishes its own re-serialised
+    /// copy — never the user's bytes.
+    Variables,
 }
 
 impl Kind {
@@ -288,7 +302,7 @@ impl Kind {
         match self {
             Kind::Background => MAX_INPUT_BYTES,
             Kind::Avatar => MAX_AVATAR_BYTES,
-            Kind::Text => MAX_TEXT_BYTES,
+            Kind::Text | Kind::Variables => MAX_TEXT_BYTES,
         }
     }
 
@@ -300,6 +314,8 @@ impl Kind {
             Kind::Background => parse_header(bytes).is_some(),
             Kind::Avatar => is_image(bytes),
             Kind::Text => true,
+            Kind::Variables => std::str::from_utf8(bytes)
+                .is_ok_and(|text| crate::config::Variables::sanitize_synced(text).is_some()),
         }
     }
 }
@@ -352,6 +368,7 @@ impl Output {
                 Kind::Background => baked_is_sane(&self.tmp, len),
                 Kind::Avatar => starts_with_image_signature(&self.tmp),
                 Kind::Text => true,
+                Kind::Variables => rewrite_sanitized_variables(&self.tmp),
             };
         if !sane {
             let _ = fs::remove_file(&self.tmp);
@@ -389,6 +406,19 @@ fn baked_is_sane(path: &Path, len: u64) -> bool {
         return false;
     };
     validate(len, width, height).is_some()
+}
+
+/// Replace the child's copy of the palette with the parent's own sanitised
+/// serialisation of it. `false` (discard) when nothing valid survives.
+fn rewrite_sanitized_variables(path: &Path) -> bool {
+    let Ok(text) = fs::read_to_string(path) else {
+        return false;
+    };
+    let Some(variables) = crate::config::Variables::sanitize_synced(&text) else {
+        return false;
+    };
+    // `path` is our own `.tmp` in the root-owned STATE_DIR.
+    fs::write(path, variables.to_toml_string()).is_ok()
 }
 
 /// The parent sniffs the published avatar itself. The child chose the file, and
@@ -459,7 +489,7 @@ fn child(user: &UserInfo, outputs: &mut [Output]) -> ! {
                 Some(baked) => baked,
                 None => continue,
             },
-            Kind::Avatar | Kind::Text => raw,
+            Kind::Avatar | Kind::Text | Kind::Variables => raw,
         };
         let _ = output.file.write_all(&bytes);
     }
@@ -479,16 +509,11 @@ pub fn sync(user: &UserInfo) -> io::Result<Vec<PathBuf>> {
     // World-readable: `mlogind-greeter` has to get in here.
     fs::set_permissions(state, Permissions::from_mode(0o755))?;
 
-    let variables = PathBuf::from(crate::DEFAULT_VARIABLES_PATH);
-    if let Some(parent) = variables.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
     let mut outputs = vec![
         Output::open(state.join(BACKGROUND_NAME), WALLPAPER_REL, Kind::Background)?,
         Output::open(state.join(THEME_CSS_NAME), THEME_CSS_REL, Kind::Text)?,
         Output::open(state.join(AVATAR_NAME), AVATAR_REL, Kind::Avatar)?,
-        Output::open(variables, VARIABLES_REL, Kind::Text)?,
+        Output::open(variables_path(), VARIABLES_REL, Kind::Variables)?,
     ];
 
     // SAFETY: mlogind is single-threaded, and the child calls `_exit` without
@@ -651,6 +676,35 @@ mod tests {
     fn baking_refuses_an_image_it_cannot_trust() {
         assert!(bake(&[0u8; 4]).is_none());
         assert!(bake(&raw(0, 0, 0)).is_none());
+    }
+
+    #[test]
+    fn the_published_palette_is_the_parents_sanitised_copy() {
+        let dir = std::env::temp_dir().join(format!("mlogind-vars-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let tmp = dir.join("variables.toml.tmp");
+        fs::write(
+            &tmp,
+            "bg = \"#101010\"\nbg2 = \"#202020\"\npassword_title = \"Type root password here\"\n",
+        )
+        .unwrap();
+        assert!(rewrite_sanitized_variables(&tmp));
+        let published = fs::read_to_string(&tmp).unwrap();
+        assert!(published.contains("#101010"), "{published}");
+        assert!(!published.contains("bg2"), "{published}");
+        assert!(!published.contains("root"), "{published}");
+
+        fs::write(&tmp, "bg = 1\n").unwrap();
+        assert!(!rewrite_sanitized_variables(&tmp), "nothing valid: discard");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn the_palette_is_published_under_the_greeter_state_dir_not_etc() {
+        assert_eq!(
+            variables_path(),
+            Path::new("/var/lib/mgreet/variables.toml")
+        );
     }
 
     #[test]

@@ -30,8 +30,8 @@ SUBCOMMANDS:
     cache
     envs
     sync-theme   Copy the active margo matugen palette
-                 (~/.config/margo/mlogind-variables.toml) into
-                 /etc/mlogind/variables.toml so the greeter matches the
+                 (~/.config/margo/mlogind-variables.toml), validated, into
+                 /var/lib/mgreet/variables.toml so the greeter matches the
                  wallpaper. Run privileged (e.g. `sudo mlogind sync-theme`).
     help         Print this message or the help of the given subcommand(s)
 "###,

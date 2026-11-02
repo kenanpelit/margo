@@ -200,7 +200,7 @@ macro_rules! toml_config_struct {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(transparent)]
 pub struct Variables(toml::value::Table);
 
@@ -218,9 +218,9 @@ toml_config_struct! { Config, PartialConfig, RoughConfig,
     // The unprivileged system user the greeter (margo+mgreet, or cage+foot) runs
     // as. Its logind session is created either way; only the setuid is
     // conditional. Empty string → the greeter stays root. A user named here but
-    // absent from /etc/passwd logs an error and the greeter stays root too: a
-    // machine nobody can log into is worse than a greeter with too much
-    // privilege, and the error is loud.
+    // absent from /etc/passwd logs an error and the graphical greeter refuses to
+    // start, so the daemon falls back to the TTY greeter: people can still log
+    // in, and the GTK stack never runs as root by accident.
     greeter_user => String,
     // PAM stack used to open the greeter's logind session. Authenticates nothing
     // (pam_permit); pam_systemd in its session phase is the point.
@@ -564,30 +564,117 @@ impl Default for Config {
 }
 
 impl PartialConfig {
-    /// Facilitates the loading of the entire configuration
-    pub fn from_file(
-        path: &Path,
-        variables: Option<&Variables>,
-    ) -> Result<PartialConfig, Box<dyn std::error::Error>> {
-        let mut file = File::open(path)?;
-        let mut contents = String::new();
-
-        file.read_to_string(&mut contents)?;
-
-        match variables {
-            Some(variables) => {
-                let rough = toml::from_str::<RoughConfig>(&contents)?;
-                Ok(rough.into_partial(variables)?)
+    /// Parse `config.toml` and substitute the first variable set that works.
+    ///
+    /// `candidates` runs from most to least specific — synced palette over the
+    /// admin's variables, the admin's alone, the baked defaults. A substitution
+    /// error (a wrongly typed value, an unset variable, a self-reference past the
+    /// depth limit) then costs the palette, not the configuration: the old code
+    /// gave up on `config.toml` altogether and fell back to the built-in config,
+    /// silently losing the administrator's power keys, `pam_service`, autologin,
+    /// TTY and greeter user. Returns the index of the candidate used. A file that
+    /// is not valid TOML is still an error — no palette fixes that.
+    pub fn from_str_with_variables(
+        contents: &str,
+        candidates: &[&Variables],
+    ) -> Result<(PartialConfig, usize), Box<dyn std::error::Error>> {
+        let mut last_err: Option<VariableInsertionError> = None;
+        for (index, variables) in candidates.iter().enumerate() {
+            let rough = toml::from_str::<RoughConfig>(contents)?;
+            match rough.into_partial(variables) {
+                Ok(partial) => return Ok((partial, index)),
+                Err(err) => last_err = Some(err),
             }
-            None => Ok(toml::from_str::<PartialConfig>(&contents)?),
+        }
+        match last_err {
+            Some(err) => Err(err.into()),
+            None => Ok((toml::from_str::<PartialConfig>(contents)?, 0)),
         }
     }
 }
 
+/// Colour keys a synced (user-written) palette may set: exactly the colours
+/// `extra/variables.toml` defines and `extra/config.toml` references.
+const SYNCED_COLOR_KEYS: &[&str] = &[
+    "bg",
+    "panel_border",
+    "field_border",
+    "text",
+    "subtext",
+    "muted",
+    "accent",
+    "accent_soft",
+    "danger",
+];
+/// Text keys a synced palette may set. They become field titles on the login
+/// screen, which is why they are held to [`is_plain_title`].
+const SYNCED_TITLE_KEYS: &[&str] = &["login_title", "password_title"];
+/// Long enough for "Benutzername" or "Contraseña", too short for a sentence
+/// telling the next person at the screen what to type.
+const MAX_TITLE_CHARS: usize = 16;
+
+/// `#rrggbb` — the only form matugen writes and [`str_to_color`] parses as hex.
+fn is_hex_color(value: &str) -> bool {
+    value.len() == 7 && value.starts_with('#') && value[1..].bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// A short label: letters, digits, spaces and a little punctuation, no control
+/// characters, no `$` (it would start a variable reference).
+fn is_plain_title(value: &str) -> bool {
+    let count = value.chars().count();
+    (1..=MAX_TITLE_CHARS).contains(&count)
+        && value.trim() == value
+        && value
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == ' ' || "-_.'()".contains(c))
+}
+
 impl Variables {
+    /// Keep the trustworthy part of a palette someone other than the
+    /// administrator wrote — `~/.config/margo/mlogind-variables.toml`, copied
+    /// out of the last user's home by `theme_sync`.
+    ///
+    /// Only the known keys survive, and only with a value of the right shape:
+    /// a `#rrggbb` string for colours, a short plain title for the field
+    /// titles. Anything else (`bg = 1`, `accent = "$accent"`, a key the config
+    /// never references, a paragraph of text in `password_title`) is dropped,
+    /// so substituting the result into `config.toml` cannot fail because of it
+    /// and the greeter's labels can't be turned into instructions. `None` when
+    /// the text is not TOML or nothing valid is left.
+    pub fn sanitize_synced(text: &str) -> Option<Variables> {
+        let table: toml::value::Table = toml::from_str(text).ok()?;
+        let kept: toml::value::Table = table
+            .into_iter()
+            .filter(|(key, value)| {
+                let Some(value) = value.as_str() else {
+                    return false;
+                };
+                if SYNCED_COLOR_KEYS.contains(&key.as_str()) {
+                    is_hex_color(value)
+                } else if SYNCED_TITLE_KEYS.contains(&key.as_str()) {
+                    is_plain_title(value)
+                } else {
+                    false
+                }
+            })
+            .collect();
+        (!kept.is_empty()).then_some(Variables(kept))
+    }
+
+    /// Serialise for publishing. Every value is a validated string, so this
+    /// only fails on an allocation failure; an empty string is the safe answer.
+    pub fn to_toml_string(&self) -> String {
+        toml::to_string(&self.0).unwrap_or_default()
+    }
+
+    /// `other`'s keys win over ours.
+    pub fn overlay(&mut self, other: Variables) {
+        self.0.extend(other.0);
+    }
+
     /// margo's baseline Dracula palette, baked into the binary from
     /// `extra/variables.toml`. Used to fully resolve the in-code default theme
-    /// and as the fallback when no `/etc/mlogind/variables.toml` is synced, so
+    /// and as the fallback when no `/etc/mlogind/variables.toml` exists, so
     /// the greeter never falls back to the bare ratatui defaults.
     pub fn baked_default() -> Variables {
         toml::from_str(include_str!("../extra/variables.toml"))
@@ -891,7 +978,106 @@ impl<'a> Iterator for VariableIterator<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::VariableIterator;
+    use super::{PartialConfig, VariableIterator, Variables};
+
+    const BAKED_CONFIG: &str = include_str!("../extra/config.toml");
+
+    fn vars(text: &str) -> Variables {
+        toml::from_str(text).expect("test variables parse")
+    }
+
+    #[test]
+    fn a_synced_palette_keeps_only_known_keys_with_valid_values() {
+        let v = Variables::sanitize_synced(
+            "bg = \"#112233\"\n\
+             accent = \"#ABCDEF\"\n\
+             text = 1\n\
+             muted = \"$accent\"\n\
+             danger = \"red; drop\"\n\
+             pam_service = \"evil\"\n\
+             login_title = \"Kullanıcı\"\n",
+        )
+        .expect("two colours and a title are valid");
+        let table = &v.0;
+        assert_eq!(table.len(), 3, "{table:?}");
+        assert_eq!(table["bg"].as_str(), Some("#112233"));
+        assert_eq!(table["accent"].as_str(), Some("#ABCDEF"));
+        assert_eq!(table["login_title"].as_str(), Some("Kullanıcı"));
+    }
+
+    #[test]
+    fn a_synced_title_must_be_a_short_plain_label() {
+        for bad in [
+            "Enter your root password below",
+            "Pass\u{1b}[2J",
+            "Line\nbreak",
+            "",
+            " Padded",
+            "$password_title",
+        ] {
+            let text = format!("password_title = {}", toml::Value::from(bad));
+            assert!(
+                Variables::sanitize_synced(&text).is_none(),
+                "{bad:?} must be refused"
+            );
+        }
+        assert!(Variables::sanitize_synced("password_title = \"Şifre\"").is_some());
+    }
+
+    #[test]
+    fn a_synced_palette_that_is_not_toml_or_has_nothing_valid_is_none() {
+        assert!(Variables::sanitize_synced("not = = toml").is_none());
+        assert!(Variables::sanitize_synced("bg = 1").is_none());
+        assert!(Variables::sanitize_synced("").is_none());
+    }
+
+    #[test]
+    fn the_sanitised_palette_round_trips_through_its_serialisation() {
+        let v = Variables::sanitize_synced("bg = \"#000000\"\npassword_title = \"PIN\"").unwrap();
+        let again = Variables::sanitize_synced(&v.to_toml_string()).unwrap();
+        assert_eq!(v.0, again.0);
+    }
+
+    #[test]
+    fn a_broken_palette_costs_the_palette_not_the_configuration() {
+        // `bg = 1` used to make `config.toml` fail to load, and mlogind then
+        // ran on the built-in config: the admin's pam_service, power keys,
+        // autologin, tty and greeter user silently gone.
+        let config = format!("pam_service = \"site-login\"\n{BAKED_CONFIG}").replacen(
+            "pam_service = \"mlogind\"\n",
+            "",
+            1,
+        );
+        let mut broken = Variables::baked_default();
+        broken.overlay(vars("bg = 1"));
+        let baked = Variables::baked_default();
+
+        let (partial, used) = PartialConfig::from_str_with_variables(&config, &[&broken, &baked])
+            .expect("the baked variables still substitute");
+        assert_eq!(used, 1, "fell back to the second candidate");
+        assert_eq!(partial.pam_service.as_deref(), Some("site-login"));
+    }
+
+    #[test]
+    fn a_working_palette_is_used_first() {
+        let synced = Variables::baked_default();
+        let baked = Variables::baked_default();
+        let (_, used) =
+            PartialConfig::from_str_with_variables(BAKED_CONFIG, &[&synced, &baked]).unwrap();
+        assert_eq!(used, 0);
+    }
+
+    #[test]
+    fn an_unset_variable_in_every_candidate_is_an_error() {
+        let empty = vars("");
+        assert!(PartialConfig::from_str_with_variables(BAKED_CONFIG, &[&empty]).is_err());
+    }
+
+    #[test]
+    fn a_config_that_is_not_toml_is_an_error_whatever_the_palette() {
+        let baked = Variables::baked_default();
+        assert!(PartialConfig::from_str_with_variables("tty = = 2", &[&baked]).is_err());
+    }
 
     #[test]
     fn test_variable_iterator() {

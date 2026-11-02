@@ -413,7 +413,8 @@ fn write_margo_colors(theme: &MatugenTheme) {
 /// Mirror the palette into `~/.config/margo/mlogind-variables.toml` so the
 /// TUI login manager can match the wallpaper. mlogind runs pre-login as
 /// root and can't read this user file directly, so `mlogind sync-theme`
-/// (run privileged) is what copies it into `/etc/mlogind/variables.toml`.
+/// (run privileged, and after every login) validates it and publishes it as
+/// `/var/lib/mgreet/variables.toml`.
 /// Best-effort + idempotent, exactly like [`write_margo_colors`].
 fn write_mlogind_variables(theme: &MatugenTheme) {
     let Some(home) = std::env::var_os("HOME") else {
