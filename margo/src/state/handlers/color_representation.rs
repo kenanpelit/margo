@@ -12,7 +12,7 @@ use crate::{
 
 impl ColorRepresentationHandler for MargoState {
     fn color_representation_state(&mut self) -> &mut ColorRepresentationState {
-        &mut self.color_representation_state
+        &mut self.protocols.color_representation
     }
 }
 delegate_color_representation!(MargoState);

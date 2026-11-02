@@ -40,7 +40,7 @@ fn color_management_state_exists_for_phase_2_wireup() {
     // existence so a future "delete unused field" cleanup pass
     // doesn't silently break the Phase 2 unblock.
     let fx = Fixture::new();
-    let _ = &fx.server.state.color_management_state;
+    let _ = &fx.server.state.protocols.color_management;
 }
 
 #[test]
@@ -68,7 +68,8 @@ fn color_management_set_enabled_toggles_the_global_live() {
 
     fx.server
         .state
-        .color_management_state
+        .protocols
+        .color_management
         .set_enabled::<MargoState>(&display_handle, true);
     let enabled = fx.add_client();
     fx.roundtrip(enabled);
@@ -82,7 +83,8 @@ fn color_management_set_enabled_toggles_the_global_live() {
 
     fx.server
         .state
-        .color_management_state
+        .protocols
+        .color_management
         .set_enabled::<MargoState>(&display_handle, false);
     let after = fx.add_client();
     fx.roundtrip(after);
@@ -107,11 +109,13 @@ fn color_management_set_enabled_is_idempotent() {
     let display_handle = fx.server.state.display_handle.clone();
     fx.server
         .state
-        .color_management_state
+        .protocols
+        .color_management
         .set_enabled::<MargoState>(&display_handle, false);
     fx.server
         .state
-        .color_management_state
+        .protocols
+        .color_management
         .set_enabled::<MargoState>(&display_handle, false);
 
     let id = fx.add_client();

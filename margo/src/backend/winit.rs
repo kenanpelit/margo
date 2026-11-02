@@ -51,36 +51,40 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
             match DmabufFeedbackBuilder::new(node.dev_id(), dmabuf_formats.clone()).build() {
                 Ok(feedback) => {
                     let global = state
-                        .dmabuf_state
+                        .protocols
+                        .dmabuf
                         .create_global_with_default_feedback::<MargoState>(
                             &state.display_handle,
                             &feedback,
                         );
-                    state.dmabuf_global = Some(global);
+                    state.protocols.dmabuf_global = Some(global);
                     info!("nested linux-dmabuf v5 enabled with default feedback");
                 }
                 Err(err) => {
                     warn!("failed to build nested dmabuf feedback, falling back to v3: {err:?}");
                     let global = state
-                        .dmabuf_state
+                        .protocols
+                        .dmabuf
                         .create_global::<MargoState>(&state.display_handle, dmabuf_formats);
-                    state.dmabuf_global = Some(global);
+                    state.protocols.dmabuf_global = Some(global);
                 }
             }
         }
         Ok(None) => {
             warn!("failed to query nested render node, falling back to linux-dmabuf v3");
             let global = state
-                .dmabuf_state
+                .protocols
+                .dmabuf
                 .create_global::<MargoState>(&state.display_handle, dmabuf_formats);
-            state.dmabuf_global = Some(global);
+            state.protocols.dmabuf_global = Some(global);
         }
         Err(err) => {
             warn!("failed to query nested EGL device, falling back to linux-dmabuf v3: {err:?}");
             let global = state
-                .dmabuf_state
+                .protocols
+                .dmabuf
                 .create_global::<MargoState>(&state.display_handle, dmabuf_formats);
-            state.dmabuf_global = Some(global);
+            state.protocols.dmabuf_global = Some(global);
         }
     }
 

@@ -60,7 +60,7 @@ pub(super) fn rescan_outputs(backend_data: &Rc<RefCell<BackendData>>, state: &mu
                 ?conn,
                 "non-desktop connector unplugged; withdrawing lease offer"
             );
-            if let Some(ls) = state.drm_lease_state.as_mut() {
+            if let Some(ls) = state.protocols.drm_lease.as_mut() {
                 ls.withdraw_connector(*conn);
             }
         }
@@ -134,7 +134,7 @@ pub(super) fn rescan_outputs(backend_data: &Rc<RefCell<BackendData>>, state: &mu
                 );
                 tracing::info!(connector = %name, "non-desktop connector plugged; offering for DRM lease");
                 bd.non_desktop_connectors.push(*conn_handle);
-                if let Some(ls) = state.drm_lease_state.as_mut() {
+                if let Some(ls) = state.protocols.drm_lease.as_mut() {
                     ls.add_connector::<MargoState>(
                         *conn_handle,
                         name,

@@ -13,7 +13,7 @@ use crate::state::MargoState;
 
 impl VirtualPointerHandler for MargoState {
     fn virtual_pointer_manager_state(&mut self) -> &mut VirtualPointerManagerState {
-        &mut self.virtual_pointer_state
+        &mut self.protocols.virtual_pointer
     }
 
     fn on_virtual_pointer_motion(&mut self, event: VirtualPointerMotionEvent) {

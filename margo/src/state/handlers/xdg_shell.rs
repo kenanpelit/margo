@@ -54,7 +54,7 @@ use crate::state::{ClosingClient, FocusTarget, MargoClient, MargoState};
 
 impl XdgShellHandler for MargoState {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
-        &mut self.xdg_shell_state
+        &mut self.protocols.xdg_shell
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
@@ -82,7 +82,7 @@ impl XdgShellHandler for MargoState {
         // "open → snap to rule-driven geometry" flicker.
         client.is_initial_map_pending = true;
 
-        let ft_handle = self.foreign_toplevel_list.new_toplevel::<Self>(
+        let ft_handle = self.protocols.foreign_toplevel_list.new_toplevel::<Self>(
             crate::utils::clamp_wire_str(&title),
             crate::utils::clamp_wire_str(&app_id),
         );

@@ -42,7 +42,7 @@ impl ImageCaptureSourceHandler for MargoState {
 
 impl OutputCaptureSourceHandler for MargoState {
     fn output_capture_source_state(&mut self) -> &mut OutputCaptureSourceState {
-        &mut self.output_capture_source_state
+        &mut self.protocols.output_capture_source
     }
 
     fn output_source_created(
@@ -58,7 +58,7 @@ impl OutputCaptureSourceHandler for MargoState {
 
 impl ToplevelCaptureSourceHandler for MargoState {
     fn toplevel_capture_source_state(&mut self) -> &mut ToplevelCaptureSourceState {
-        &mut self.toplevel_capture_source_state
+        &mut self.protocols.toplevel_capture_source
     }
 
     fn toplevel_source_created(
@@ -75,7 +75,7 @@ impl ToplevelCaptureSourceHandler for MargoState {
 
 impl ImageCopyCaptureHandler for MargoState {
     fn image_copy_capture_state(&mut self) -> &mut ImageCopyCaptureState {
-        &mut self.image_copy_capture_state
+        &mut self.protocols.image_copy_capture
     }
 
     fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {

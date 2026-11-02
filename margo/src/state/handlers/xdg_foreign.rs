@@ -15,6 +15,6 @@ use crate::state::MargoState;
 
 impl XdgForeignHandler for MargoState {
     fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
-        &mut self.xdg_foreign_state
+        &mut self.protocols.xdg_foreign
     }
 }

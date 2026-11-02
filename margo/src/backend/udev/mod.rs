@@ -386,20 +386,22 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
     match DmabufFeedbackBuilder::new(primary_node.dev_id(), dmabuf_formats.clone()).build() {
         Ok(feedback) => {
             let global = state
-                .dmabuf_state
+                .protocols
+                .dmabuf
                 .create_global_with_default_feedback::<MargoState>(
                     &state.display_handle,
                     &feedback,
                 );
-            state.dmabuf_global = Some(global);
+            state.protocols.dmabuf_global = Some(global);
             info!("linux-dmabuf v5 enabled with default feedback");
         }
         Err(err) => {
             warn!("failed to build dmabuf feedback, falling back to v3: {err:?}");
             let global = state
-                .dmabuf_state
+                .protocols
+                .dmabuf
                 .create_global::<MargoState>(&state.display_handle, dmabuf_formats);
-            state.dmabuf_global = Some(global);
+            state.protocols.dmabuf_global = Some(global);
         }
     }
 
@@ -418,9 +420,10 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
     // eventfds.
     if state.config.syncobj_enable {
         if smithay::wayland::drm_syncobj::supports_syncobj_eventfd(&drm_fd) {
-            state.drm_syncobj_state = Some(smithay::wayland::drm_syncobj::DrmSyncobjState::new::<
-                MargoState,
-            >(&state.display_handle, drm_fd.clone()));
+            state.protocols.drm_syncobj =
+                Some(smithay::wayland::drm_syncobj::DrmSyncobjState::new::<
+                    MargoState,
+                >(&state.display_handle, drm_fd.clone()));
             info!("linux-drm-syncobj-v1 advertised (syncobj_enable = 1)");
         } else {
             warn!("syncobj_enable = 1 but the DRM device lacks syncobj eventfd support");
@@ -767,7 +770,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                 }
             }
             drop(bd);
-            state.drm_lease_state = Some(lease_state);
+            state.protocols.drm_lease = Some(lease_state);
         }
         Err(e) => warn!("wp_drm_lease_device_v1 unavailable: {e}"),
     }
@@ -1005,7 +1008,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                     if let Some(li) = state.libinput.as_mut() {
                         li.suspend();
                     }
-                    if let Some(ls) = state.drm_lease_state.as_mut() {
+                    if let Some(ls) = state.protocols.drm_lease.as_mut() {
                         ls.suspend();
                     }
                     state.libinput_devices.clear();
@@ -1017,7 +1020,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                             warn!("libinput resume failed");
                         }
                     }
-                    if let Some(ls) = state.drm_lease_state.as_mut() {
+                    if let Some(ls) = state.protocols.drm_lease.as_mut() {
                         ls.resume::<MargoState>();
                     }
                     state.arrange_all();
@@ -1517,7 +1520,7 @@ pub(super) fn serve_screencopies(
     let output = od.output.clone();
 
     let (mut want_cursor, mut want_plain) = (false, false);
-    for queue in state.screencopy_state.queues() {
+    for queue in state.protocols.screencopy.queues() {
         for sc in queue
             .screencopies()
             .iter()
@@ -1536,7 +1539,7 @@ pub(super) fn serve_screencopies(
 
     // An output without a mode can't be captured: fail its queued frames.
     if od.output.current_mode().is_none() {
-        state.screencopy_state.with_queues_mut(|queue| {
+        state.protocols.screencopy.with_queues_mut(|queue| {
             while queue
                 .screencopies()
                 .first()
@@ -1567,7 +1570,7 @@ pub(super) fn serve_screencopies(
     };
 
     let mut ready = Vec::new();
-    state.screencopy_state.with_queues_mut(|queue| {
+    state.protocols.screencopy.with_queues_mut(|queue| {
         while let Some(head) = queue.screencopies().first() {
             if head.output() != &output {
                 break;
@@ -1838,7 +1841,8 @@ use smithay::wayland::drm_lease::{
 
 impl DrmLeaseHandler for MargoState {
     fn drm_lease_state(&mut self, _node: DrmNode) -> &mut DrmLeaseState {
-        self.drm_lease_state
+        self.protocols
+            .drm_lease
             .as_mut()
             .expect("drm_lease global is only registered by the udev backend")
     }

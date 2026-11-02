@@ -43,7 +43,7 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
             | InputEvent::TouchUp { .. }
     ) {
         let seat = state.seat.clone();
-        state.idle_notifier_state.notify_activity(&seat);
+        state.protocols.idle_notifier.notify_activity(&seat);
         // Safety net: any real input wakes a DPMS-off panel, so a manual /
         // idle-daemon screen-off can never strand the user on black. Swallow
         // the waking event so the keystroke / click that turns the screen
@@ -1801,7 +1801,7 @@ fn exclusive_keyboard_layer(state: &MargoState) -> Option<FocusTarget> {
             .map(|(_, s)| FocusTarget::SessionLock(s.clone()));
     }
 
-    for layer in state.layer_shell_state.layer_surfaces().rev() {
+    for layer in state.protocols.layer_shell.layer_surfaces().rev() {
         let exclusive = layer.with_cached_state(|data| {
             data.keyboard_interactivity == KeyboardInteractivity::Exclusive
                 && matches!(data.layer, WlrLayer::Top | WlrLayer::Overlay)
@@ -1836,7 +1836,7 @@ fn exclusive_keyboard_layer(state: &MargoState) -> Option<FocusTarget> {
 /// an idempotent `mshellctl menu close-all` spawn, so a false positive
 /// costs nothing.
 fn top_menu_layer_open(state: &MargoState) -> bool {
-    state.layer_shell_state.layer_surfaces().any(|layer| {
+    state.protocols.layer_shell.layer_surfaces().any(|layer| {
         layer.with_cached_state(|data| {
             data.keyboard_interactivity == KeyboardInteractivity::Exclusive
                 && data.layer == WlrLayer::Top

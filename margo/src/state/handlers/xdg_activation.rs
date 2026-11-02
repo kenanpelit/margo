@@ -26,7 +26,7 @@ use crate::state::MargoState;
 
 impl XdgActivationHandler for MargoState {
     fn activation_state(&mut self) -> &mut XdgActivationState {
-        &mut self.xdg_activation_state
+        &mut self.protocols.xdg_activation
     }
 
     fn token_created(&mut self, _token: XdgActivationToken, data: XdgActivationTokenData) -> bool {

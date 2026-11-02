@@ -69,7 +69,7 @@ use crate::state::{MargoClientData, MargoState};
 
 impl CompositorHandler for MargoState {
     fn compositor_state(&mut self) -> &mut CompositorState {
-        &mut self.compositor_state
+        &mut self.protocols.compositor
     }
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
         if let Some(state) = client.get_data::<XWaylandClientData>() {

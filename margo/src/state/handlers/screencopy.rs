@@ -16,14 +16,14 @@ use crate::{
 
 impl ScreencopyHandler for MargoState {
     fn screencopy_state(&mut self) -> &mut ScreencopyManagerState {
-        &mut self.screencopy_state
+        &mut self.protocols.screencopy
     }
 
     fn frame(&mut self, manager: &ZwlrScreencopyManagerV1, screencopy: Screencopy) {
         // Defer the actual buffer copy to the backend's render path —
         // the queue holds the screencopy until the next frame is
         // rendered for that output.
-        self.screencopy_state.push(manager, screencopy);
+        self.protocols.screencopy.push(manager, screencopy);
         self.request_repaint();
     }
 }

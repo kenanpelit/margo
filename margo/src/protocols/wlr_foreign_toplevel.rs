@@ -156,10 +156,10 @@ pub fn refresh(state: &mut MargoState) {
                 Some(i) == focused_idx,
             ))
         }));
-    if state.wlr_foreign_toplevel.last_fingerprint == Some(fingerprint) {
+    if state.protocols.wlr_foreign_toplevel.last_fingerprint == Some(fingerprint) {
         return;
     }
-    state.wlr_foreign_toplevel.last_fingerprint = Some(fingerprint);
+    state.protocols.wlr_foreign_toplevel.last_fingerprint = Some(fingerprint);
 
     struct Snap {
         surface: WlSurface,
@@ -190,7 +190,7 @@ pub fn refresh(state: &mut MargoState) {
         });
     }
 
-    let proto = &mut state.wlr_foreign_toplevel;
+    let proto = &mut state.protocols.wlr_foreign_toplevel;
 
     // Closed windows: notify + drop.
     proto.toplevels.retain(|surface, data| {

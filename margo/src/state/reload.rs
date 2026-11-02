@@ -196,7 +196,8 @@ impl MargoState {
         // `ColorManagementState::set_enabled`.
         if new_config.color_management != self.config.color_management {
             let display_handle = self.display_handle.clone();
-            self.color_management_state
+            self.protocols
+                .color_management
                 .set_enabled::<Self>(&display_handle, new_config.color_management);
         }
         self.config = new_config;

@@ -365,7 +365,7 @@ impl MargoState {
         // Scan Overlay first, then Top.
         use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer as WlrLayer};
         for want in [WlrLayer::Overlay, WlrLayer::Top] {
-            for layer in self.layer_shell_state.layer_surfaces().rev() {
+            for layer in self.protocols.layer_shell.layer_surfaces().rev() {
                 let exclusive = layer.with_cached_state(|data| {
                     data.keyboard_interactivity == KeyboardInteractivity::Exclusive
                         && data.layer == want

@@ -240,10 +240,10 @@ pub fn refresh(state: &mut MargoState) {
             .iter()
             .map(|m| (&m.output, m.name.as_str(), m.current_tagset())),
     );
-    if state.ext_workspace_state.last_fingerprint == Some(fingerprint) {
+    if state.protocols.ext_workspace.last_fingerprint == Some(fingerprint) {
         return;
     }
-    state.ext_workspace_state.last_fingerprint = Some(fingerprint);
+    state.protocols.ext_workspace.last_fingerprint = Some(fingerprint);
     // Monitor snapshot — avoid borrowing `state` while we mutate the proto.
     struct MonSnap {
         output: Output,
@@ -264,7 +264,7 @@ pub fn refresh(state: &mut MargoState) {
         .collect();
     let live_outputs: HashSet<Output> = mons.iter().map(|m| m.output.clone()).collect();
 
-    let proto = &mut state.ext_workspace_state;
+    let proto = &mut state.protocols.ext_workspace;
     let mut changed = false;
 
     // Drop workspaces on disconnected monitors.

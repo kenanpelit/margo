@@ -40,7 +40,7 @@ use crate::state::{FocusTarget, MargoState};
 
 impl XWaylandShellHandler for MargoState {
     fn xwayland_shell_state(&mut self) -> &mut XWaylandShellState {
-        &mut self.xwayland_shell_state
+        &mut self.protocols.xwayland_shell
     }
 }
 

@@ -111,7 +111,7 @@ impl MargoState {
 
 impl WlrForeignToplevelHandler for MargoState {
     fn wlr_foreign_toplevel_state(&mut self) -> &mut WlrForeignToplevelState {
-        &mut self.wlr_foreign_toplevel
+        &mut self.protocols.wlr_foreign_toplevel
     }
 
     fn wlr_ftl_activate(&mut self, surface: WlSurface) {

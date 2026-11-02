@@ -15,7 +15,7 @@ use crate::{
 
 impl ColorManagementHandler for MargoState {
     fn color_management_state(&mut self) -> &mut ColorManagementState {
-        &mut self.color_management_state
+        &mut self.protocols.color_management
     }
 }
 delegate_color_management!(MargoState);

@@ -25,7 +25,7 @@ use crate::state::MargoState;
 
 impl DmabufHandler for MargoState {
     fn dmabuf_state(&mut self) -> &mut DmabufState {
-        &mut self.dmabuf_state
+        &mut self.protocols.dmabuf
     }
 
     fn dmabuf_imported(
@@ -53,6 +53,6 @@ impl DmabufHandler for MargoState {
 
 impl DrmSyncobjHandler for MargoState {
     fn drm_syncobj_state(&mut self) -> Option<&mut DrmSyncobjState> {
-        self.drm_syncobj_state.as_mut()
+        self.protocols.drm_syncobj.as_mut()
     }
 }

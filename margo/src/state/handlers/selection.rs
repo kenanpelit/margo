@@ -59,7 +59,7 @@ impl SelectionHandler for MargoState {
 
 impl DataDeviceHandler for MargoState {
     fn data_device_state(&mut self) -> &mut DataDeviceState {
-        &mut self.data_device_state
+        &mut self.protocols.data_device
     }
 }
 impl WaylandDndGrabHandler for MargoState {}
@@ -67,18 +67,18 @@ impl DndGrabHandler for MargoState {}
 
 impl PrimarySelectionHandler for MargoState {
     fn primary_selection_state(&mut self) -> &mut PrimarySelectionState {
-        &mut self.primary_selection_state
+        &mut self.protocols.primary_selection
     }
 }
 
 impl DataControlHandler for MargoState {
     fn data_control_state(&mut self) -> &mut DataControlState {
-        &mut self.data_control_state
+        &mut self.protocols.data_control
     }
 }
 
 impl ExtDataControlHandler for MargoState {
     fn data_control_state(&mut self) -> &mut ExtDataControlState {
-        &mut self.ext_data_control_state
+        &mut self.protocols.ext_data_control
     }
 }

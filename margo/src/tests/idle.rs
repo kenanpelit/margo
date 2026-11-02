@@ -115,7 +115,7 @@ fn invisible_protocol_inhibitor_is_ignored_by_default() {
     fx.server.state.recompute_idle_inhibit();
 
     assert!(
-        !fx.server.state.idle_notifier_state.is_inhibited(),
+        !fx.server.state.protocols.idle_notifier.is_inhibited(),
         "an invisible client's protocol inhibit must not count by default"
     );
 }
@@ -138,7 +138,7 @@ fn idleinhibit_ignore_visible_lets_invisible_clients_count() {
     fx.server.state.recompute_idle_inhibit();
 
     assert!(
-        fx.server.state.idle_notifier_state.is_inhibited(),
+        fx.server.state.protocols.idle_notifier.is_inhibited(),
         "idleinhibit_ignore_visible=true must let an invisible inhibitor count"
     );
 }
@@ -156,13 +156,13 @@ fn idle_inhibit_when_focus_rule_inhibits_without_a_protocol_request() {
     fx.server.state.recompute_idle_inhibit();
 
     assert!(
-        fx.server.state.idle_notifier_state.is_inhibited(),
+        fx.server.state.protocols.idle_notifier.is_inhibited(),
         "idle_inhibit_when_focus must inhibit while focused, no protocol request needed"
     );
 
     fx.server.state.focus_surface(None);
     assert!(
-        !fx.server.state.idle_notifier_state.is_inhibited(),
+        !fx.server.state.protocols.idle_notifier.is_inhibited(),
         "losing focus must drop a focus-only inhibit"
     );
 }
@@ -180,7 +180,7 @@ fn idle_inhibit_when_fullscreen_inhibits_the_focused_fullscreen_client() {
         .state
         .focus_surface(Some(FocusTarget::Window(win)));
     assert!(
-        !fx.server.state.idle_notifier_state.is_inhibited(),
+        !fx.server.state.protocols.idle_notifier.is_inhibited(),
         "not fullscreen yet — must not be inhibited"
     );
 
@@ -188,7 +188,7 @@ fn idle_inhibit_when_fullscreen_inhibits_the_focused_fullscreen_client() {
     fx.server.state.recompute_idle_inhibit();
 
     assert!(
-        fx.server.state.idle_notifier_state.is_inhibited(),
+        fx.server.state.protocols.idle_notifier.is_inhibited(),
         "a focused fullscreen client must inhibit idle with the config flag on"
     );
 }
@@ -204,7 +204,7 @@ fn idle_inhibit_when_fullscreen_is_off_by_default() {
         .focus_surface(Some(FocusTarget::Window(win)));
 
     assert!(
-        !fx.server.state.idle_notifier_state.is_inhibited(),
+        !fx.server.state.protocols.idle_notifier.is_inhibited(),
         "fullscreen must not inhibit idle unless idle_inhibit_when_fullscreen is on"
     );
 }

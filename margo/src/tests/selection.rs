@@ -47,7 +47,7 @@ fn data_device_state_initializes_cleanly() {
     let fx = Fixture::new();
     // Smoke: state field is reachable. Its internals are private
     // to smithay's selection module; we just ensure it's there.
-    let _ = &fx.server.state.data_device_state;
-    let _ = &fx.server.state.primary_selection_state;
-    let _ = &fx.server.state.data_control_state;
+    let _ = &fx.server.state.protocols.data_device;
+    let _ = &fx.server.state.protocols.primary_selection;
+    let _ = &fx.server.state.protocols.data_control;
 }

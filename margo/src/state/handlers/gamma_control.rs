@@ -17,7 +17,7 @@ use crate::{
 
 impl GammaControlHandler for MargoState {
     fn gamma_control_manager_state(&mut self) -> &mut GammaControlManagerState {
-        &mut self.gamma_control_manager_state
+        &mut self.protocols.gamma_control_manager
     }
 
     fn get_gamma_size(&mut self, output: &Output) -> Option<u32> {

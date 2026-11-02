@@ -11,7 +11,7 @@ use crate::state::MargoState;
 
 impl ExtWorkspaceHandler for MargoState {
     fn ext_workspace_manager_state(&mut self) -> &mut ExtWorkspaceManagerState {
-        &mut self.ext_workspace_state
+        &mut self.protocols.ext_workspace
     }
 
     fn activate_workspace(&mut self, output: Output, tag_idx: usize) {

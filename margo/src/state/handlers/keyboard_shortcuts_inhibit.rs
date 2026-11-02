@@ -25,7 +25,7 @@ use crate::state::MargoState;
 
 impl KeyboardShortcutsInhibitHandler for MargoState {
     fn keyboard_shortcuts_inhibit_state(&mut self) -> &mut KeyboardShortcutsInhibitState {
-        &mut self.keyboard_shortcuts_inhibit_state
+        &mut self.protocols.keyboard_shortcuts_inhibit
     }
 
     fn new_inhibitor(&mut self, inhibitor: KeyboardShortcutsInhibitor) {

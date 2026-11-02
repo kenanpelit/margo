@@ -54,8 +54,8 @@ fn dmabuf_state_exists_but_global_is_optional() {
     // either one.
     let fx = Fixture::new();
     assert!(
-        fx.server.state.drm_syncobj_state.is_none(),
+        fx.server.state.protocols.drm_syncobj.is_none(),
         "DrmSyncobjState must start None; udev backend stands it up after testing kernel support",
     );
-    let _ = &fx.server.state.dmabuf_state;
+    let _ = &fx.server.state.protocols.dmabuf;
 }

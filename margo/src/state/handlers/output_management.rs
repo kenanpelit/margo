@@ -18,7 +18,7 @@ use crate::{
 
 impl OutputManagementHandler for MargoState {
     fn output_management_state(&mut self) -> &mut OutputManagementManagerState {
-        &mut self.output_management_state
+        &mut self.protocols.output_management
     }
 
     fn apply_output_pending(

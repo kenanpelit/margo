@@ -15,6 +15,6 @@ use crate::state::MargoState;
 
 impl KdeDecorationHandler for MargoState {
     fn kde_decoration_state(&self) -> &KdeDecorationState {
-        &self.kde_decoration_state
+        &self.protocols.kde_decoration
     }
 }

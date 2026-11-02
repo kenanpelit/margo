@@ -42,7 +42,8 @@ impl MargoState {
             self.pending_dpms.push((o.clone(), want_on));
             // Tell wlr-output-power clients (swayidle etc.) about the change,
             // whatever triggered it (protocol, keybind, or mctl).
-            self.output_power_manager_state
+            self.protocols
+                .output_power_manager
                 .output_power_changed(o, want_on);
         }
         self.any_dpms_off = !want_on;

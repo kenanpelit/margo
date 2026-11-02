@@ -4,7 +4,7 @@
 //! `zwlr-screencopy-unstable-v1` is what `grim` / `wf-recorder` /
 //! OBS bind for full-output / region capture. Margo's handler
 //! defers the actual buffer copy to the backend's render path:
-//! `frame()` pushes the screencopy onto `state.screencopy_state`,
+//! `frame()` pushes the screencopy onto `state.protocols.screencopy`,
 //! which the udev backend drains at the next repaint.
 //!
 //! Without a render backend the drain side is unobservable, but

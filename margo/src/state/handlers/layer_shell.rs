@@ -24,7 +24,7 @@ use crate::{
 
 impl WlrLayerShellHandler for MargoState {
     fn shell_state(&mut self) -> &mut WlrLayerShellState {
-        &mut self.layer_shell_state
+        &mut self.protocols.layer_shell
     }
     fn new_layer_surface(
         &mut self,

@@ -22,7 +22,7 @@ use crate::state::MargoState;
 
 impl IdleNotifierHandler for MargoState {
     fn idle_notifier_state(&mut self) -> &mut IdleNotifierState<Self> {
-        &mut self.idle_notifier_state
+        &mut self.protocols.idle_notifier
     }
 }
 
@@ -87,7 +87,8 @@ impl MargoState {
                 || (self.config.idle_inhibit_when_fullscreen && c.is_fullscreen)
         });
 
-        self.idle_notifier_state
+        self.protocols
+            .idle_notifier
             .set_is_inhibited(protocol_inhibited || heuristic_inhibited);
     }
 }

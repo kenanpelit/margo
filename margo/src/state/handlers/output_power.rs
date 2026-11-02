@@ -15,7 +15,7 @@ use crate::{
 
 impl OutputPowerHandler for MargoState {
     fn output_power_manager_state(&mut self) -> &mut OutputPowerManagerState {
-        &mut self.output_power_manager_state
+        &mut self.protocols.output_power_manager
     }
 
     fn set_output_power(&mut self, output: &Output, on: bool) {
