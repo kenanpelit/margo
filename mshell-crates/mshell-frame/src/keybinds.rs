@@ -245,17 +245,11 @@ fn format_key(key: &str) -> String {
 /// Humanise an action+args when there's no comment.
 fn humanise(action: &str, args: &str) -> String {
     match action {
-        "spawn" | "exec" => {
-            // The launched command, stripped of common wrappers.
-            let cmd = args
-                .trim_start_matches("uwsm app -a ")
-                .rsplit("--")
-                .next()
-                .unwrap_or(args)
-                .trim();
-            let cmd = if cmd.is_empty() { args } else { cmd };
-            cmd.split_whitespace().take(4).collect::<Vec<_>>().join(" ")
-        }
+        "spawn" | "exec" => launched_command(args)
+            .split_whitespace()
+            .take(4)
+            .collect::<Vec<_>>()
+            .join(" "),
         "" => "—".to_string(),
         other => {
             // dispatch action name → "Title Case".
@@ -273,6 +267,25 @@ fn humanise(action: &str, args: &str) -> String {
             words.join(" ")
         }
     }
+}
+
+/// The command a `spawn` bind launches, without a `uwsm app` launcher
+/// wrapper (`uwsm app -a -- foot` → `foot`). Only the wrapper's own `--`
+/// separator is stripped: a command's `--flags` are part of what it runs.
+fn launched_command(args: &str) -> &str {
+    let args = args.trim();
+    if !args.starts_with("uwsm ") {
+        return args;
+    }
+    if let Some((_, cmd)) = args.split_once(" -- ") {
+        return cmd.trim();
+    }
+    let cmd = args
+        .strip_prefix("uwsm app -a ")
+        .or_else(|| args.strip_prefix("uwsm app "))
+        .unwrap_or(args)
+        .trim();
+    if cmd.is_empty() { args } else { cmd }
 }
 
 /// Bucket a bind into a cheatsheet category from its action/command.
@@ -467,6 +480,25 @@ mod tests {
             bind("bind = SUPER,q,killclient   # close it").desc,
             "close it"
         );
+        // Only a launcher wrapper's `--` is stripped; a command's own
+        // `--flags` stay.
+        assert_eq!(
+            bind("bind = SUPER,c,spawn,picker --color=#ff0000").desc,
+            "picker --color=#ff0000"
+        );
+        assert_eq!(
+            bind("bind = SUPER,k,spawn,kitty --class scratch").desc,
+            "kitty --class scratch"
+        );
+        assert_eq!(
+            bind("bind = SUPER,b,spawn,uwsm app -a -- firefox --new-window https://x.y z w").desc,
+            "firefox --new-window https://x.y z"
+        );
+        assert_eq!(
+            bind("bind = SUPER,b,spawn,uwsm app -a firefox").desc,
+            "firefox"
+        );
+        assert_eq!(bind("bind = SUPER,b,spawn,uwsm app -- foot").desc, "foot");
         // An empty plain comment falls back to the humanised action.
         assert_eq!(bind("bind = SUPER,q,killclient #").desc, "Killclient");
         assert_eq!(
