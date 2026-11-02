@@ -107,22 +107,18 @@ fn init_logging() {
     //
     // Default to `$XDG_RUNTIME_DIR/mlock-debug.log` so the file is
     // per-user (no `/tmp/mlock-debug.log` collisions on shared
-    // machines, no symlink races in world-writable /tmp). Fall
-    // back to `/tmp/` only when XDG_RUNTIME_DIR is unset — that
-    // shouldn't happen on systemd-managed sessions, but mlock can
-    // run on weird setups (TTY-only, recovery shells) so we keep
-    // the fallback rather than refusing to log.
+    // machines). Fall back to `/tmp/` only when XDG_RUNTIME_DIR is
+    // unset — that shouldn't happen on systemd-managed sessions, but
+    // mlock can run on weird setups (TTY-only, recovery shells) so we
+    // keep the fallback; `open_log_file` refuses symlinks and files
+    // someone else planted there.
     let log_path = std::env::var("MLOCK_LOG_FILE").unwrap_or_else(|_| {
         match std::env::var("XDG_RUNTIME_DIR") {
             Ok(dir) if !dir.is_empty() => format!("{dir}/mlock-debug.log"),
             _ => "/tmp/mlock-debug.log".to_string(),
         }
     });
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .ok();
+    let file = open_log_file(std::path::Path::new(&log_path));
     if let Some(file) = file {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(filter)
@@ -135,6 +131,29 @@ fn init_logging() {
             .with_writer(std::io::stderr)
             .try_init();
     }
+}
+
+/// Open the debug log for appending without following a planted file.
+///
+/// With `XDG_RUNTIME_DIR` unset the log lands in world-writable `/tmp`,
+/// where another user can pre-create `/tmp/mlock-debug.log` as a symlink
+/// (appending to any file the locking user can write) or as their own file
+/// (reading the lock-screen log). `O_NOFOLLOW` refuses the symlink, and an
+/// existing file must be a regular file owned by us. New files are 0600.
+/// `None` means "log to stderr instead".
+fn open_log_file(path: &std::path::Path) -> Option<std::fs::File> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+        .ok()?;
+    let meta = file.metadata().ok()?;
+    // SAFETY: getuid has no preconditions.
+    let uid = unsafe { libc::getuid() };
+    (meta.file_type().is_file() && meta.uid() == uid).then_some(file)
 }
 
 fn run() -> Result<()> {
@@ -229,6 +248,45 @@ mod tests {
 
     fn args(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn scratch_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("mlock-log-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn log_file_is_created_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = scratch_dir("new");
+        let path = dir.join("mlock-debug.log");
+        assert!(open_log_file(&path).is_some());
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn log_file_refuses_a_planted_symlink() {
+        let dir = scratch_dir("link");
+        let victim = dir.join("victim");
+        std::fs::write(&victim, b"keep").unwrap();
+        let path = dir.join("mlock-debug.log");
+        std::os::unix::fs::symlink(&victim, &path).unwrap();
+        assert!(open_log_file(&path).is_none());
+        assert_eq!(std::fs::read(&victim).unwrap(), b"keep");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn log_file_refuses_a_non_regular_file() {
+        let dir = scratch_dir("dir");
+        let path = dir.join("mlock-debug.log");
+        std::fs::create_dir(&path).unwrap();
+        assert!(open_log_file(&path).is_none());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
