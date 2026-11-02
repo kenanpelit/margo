@@ -103,13 +103,14 @@ where
     // Pre-populate hovered with the focused window.
     let focused_address = {
         let hyprland = margo_service();
-        hyprland
-            .clients
-            .get()
-            .iter()
-            .filter(|c| c.mapped.get() && !c.hidden.get())
-            .min_by_key(|c| c.focus_history_id.get())
-            .map(|c| format!("{}", c.address.get()))
+        most_recently_focused(
+            hyprland
+                .clients
+                .get()
+                .iter()
+                .filter(|c| c.mapped.get() && !c.hidden.get())
+                .map(|c| (format!("{}", c.address.get()), c.focus_history_id.get())),
+        )
     };
 
     let state = Rc::new(SharedState {
@@ -132,6 +133,16 @@ where
     for info in state.overlays.borrow().iter() {
         info.window.present();
     }
+}
+
+/// Address with the lowest focus-history position among
+/// `(address, focus_history_id)` pairs. `-1` means "not in the focus
+/// history", so those never win over a window that is.
+fn most_recently_focused(clients: impl Iterator<Item = (String, i32)>) -> Option<String> {
+    clients
+        .filter(|(_, pos)| *pos >= 0)
+        .min_by_key(|(_, pos)| *pos)
+        .map(|(addr, _)| addr)
 }
 
 pub(crate) fn build_window_rects() -> Vec<WindowRect> {
@@ -365,5 +376,31 @@ fn draw_window_overlay(
             );
             cr.stroke().ok();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pick(items: &[(&str, i32)]) -> Option<String> {
+        most_recently_focused(items.iter().map(|(a, p)| (a.to_string(), *p)))
+    }
+
+    #[test]
+    fn prehover_is_the_most_recently_focused_window() {
+        assert_eq!(pick(&[("a", 2), ("b", 0), ("c", 1)]).as_deref(), Some("b"));
+    }
+
+    #[test]
+    fn windows_outside_the_focus_history_never_win() {
+        // -1 = not in the focus history; it sorted below 0 and was
+        // pre-hovered instead of the focused window.
+        assert_eq!(
+            pick(&[("never", -1), ("focused", 0)]).as_deref(),
+            Some("focused")
+        );
+        assert_eq!(pick(&[("never", -1)]), None);
+        assert_eq!(pick(&[]), None);
     }
 }
