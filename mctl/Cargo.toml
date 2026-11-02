@@ -3,6 +3,7 @@ name = "mctl"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "margo compositor IPC client: dispatch actions, query/watch state, check-config"
 
 [[bin]]
 name = "mctl"

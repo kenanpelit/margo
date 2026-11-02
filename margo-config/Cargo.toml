@@ -3,6 +3,7 @@ name = "margo-config"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Parser + validator for margo's compositor .conf (key=value, window/tag/layer rules)"
 
 [dependencies]
 anyhow.workspace = true
