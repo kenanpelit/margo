@@ -242,6 +242,14 @@ fn greeter_log_path(config: &Config) -> String {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // The unprivileged theme reader (see theme_sync): dispatched before any
+    // config is parsed or log opened — it is already running as the user.
+    let mut raw_args = std::env::args_os().skip(1);
+    if raw_args.next().as_deref() == Some(std::ffi::OsStr::new(theme_sync::READER_ARG)) {
+        let rest: Vec<std::ffi::OsString> = raw_args.collect();
+        std::process::exit(theme_sync::reader_main(&rest));
+    }
+
     let cli = Cli::parse().unwrap_or_else(|err| {
         eprintln!("{err}\n");
         cli::usage();

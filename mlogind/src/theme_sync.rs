@@ -9,21 +9,30 @@
 //! Root must not *open* them, though. `~/.cache/mshell/wallpaper.raw` is a path
 //! the user controls; a symlink pointing at `/etc/shadow` would be read as root
 //! and its derivative written world-readable. So root opens only the outputs, in
-//! its own directory, and forks a child that drops to the user to do the reading:
+//! its own directory, and runs a reader that drops to the user to do the
+//! reading:
 //!
 //! ```text
-//! root                              child (uid = the user)
+//! root                              reader (uid = the user)
 //!   open(background.raw.tmp)  → fd
 //!   open(theme.css.tmp)       → fd
-//!   fork() ───────────────────────▶ alarm(5)
-//!                                   setgroups → setgid → setuid
-//!                                   read  ~/.cache/mshell/wallpaper.raw
+//!   spawn /proc/self/exe ─────────▶ pre_exec: alarm(5), clear CLOEXEC on the
+//!     __theme-sync-reader             fds, setgroups → setgid → setuid
+//!                                   exec: read ~/.cache/mshell/wallpaper.raw
 //!                                   downscale + box_blur
 //!                                   write(inherited fd)
-//!   waitpid ◀─────────────────────  _exit(0)
+//!   wait ◀────────────────────────  exit(0)
 //!   validate header vs byte count
 //!   rename(tmp → final)
 //! ```
+//!
+//! The reader is an `exec`, not a bare `fork`. By the time the runner syncs, the
+//! session's log thread is running, so the runner is multi-threaded, and a fork
+//! child may only make async-signal-safe calls until it execs: no allocating
+//! (the group list, the blur, the file reads all do), since another thread may
+//! have held the allocator lock at the moment of the fork. `pre_exec` therefore
+//! does nothing but syscalls on data built beforehand, and all the real work
+//! happens in a freshly exec'd, single-threaded process.
 //!
 //! A symlink now buys the attacker exactly the privilege they already had.
 //!
@@ -50,8 +59,10 @@
 
 use std::fs::{self, File, OpenOptions, Permissions};
 use std::io::{self, Read, Write};
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use log::warn;
 
@@ -84,7 +95,7 @@ pub fn background_path() -> PathBuf {
     Path::new(STATE_DIR).join(BACKGROUND_NAME)
 }
 
-/// Sources, relative to the user's home. The child reads them all, taking the
+/// Sources, relative to the user's home. The reader reads them all, taking the
 /// first name in each list that both exists and looks like what it claims to be.
 const WALLPAPER_REL: &[&str] = &[".cache/mshell/wallpaper.raw"];
 const THEME_CSS_REL: &[&str] = &[".cache/mshell/last_theme.css"];
@@ -106,10 +117,14 @@ const MAX_TEXT_BYTES: u64 = 1024 * 1024;
 /// A face, not a photo album. GTK decodes this one in the greeter's address space.
 const MAX_AVATAR_BYTES: u64 = 8 * 1024 * 1024;
 
-/// The child's own watchdog. The work is ~10 ms; a wedged reader must never
-/// stall the next greeter.
+/// The reader's watchdog, armed before the exec (an alarm survives it). The work
+/// is ~10 ms; a wedged reader must never stall the next greeter.
 const CHILD_TIMEOUT_SECS: libc::c_uint = 5;
-const EXIT_DROP_FAILED: i32 = 70;
+
+/// `argv[1]` that turns mlogind into the theme-sync reader. Followed by the
+/// user's home and one inherited fd number per entry of [`READS`].
+pub const READER_ARG: &str = "__theme-sync-reader";
+const EXIT_BAD_ARGS: i32 = 64;
 
 const HEADER: usize = 8;
 
@@ -322,7 +337,6 @@ impl Kind {
 
 /// One file in flight: opened by root, written by the child, renamed by root.
 struct Output {
-    sources: &'static [&'static str],
     tmp: PathBuf,
     dest: PathBuf,
     file: File,
@@ -330,7 +344,7 @@ struct Output {
 }
 
 impl Output {
-    fn open(dest: PathBuf, sources: &'static [&'static str], kind: Kind) -> io::Result<Self> {
+    fn open(dest: PathBuf, kind: Kind) -> io::Result<Self> {
         let mut tmp = dest.clone().into_os_string();
         tmp.push(".tmp");
         let tmp = PathBuf::from(tmp);
@@ -346,7 +360,6 @@ impl Output {
         fs::set_permissions(&tmp, Permissions::from_mode(0o644))?;
 
         Ok(Self {
-            sources,
             tmp,
             dest,
             file,
@@ -445,39 +458,23 @@ fn read_capped(path: &Path, cap: u64) -> Option<Vec<u8>> {
     Some(buf)
 }
 
-/// Supplementary groups, then gid, then uid. `setgroups` and `setgid` both need
-/// the privilege we are about to give away, so `setuid` goes last.
-fn drop_privileges(user: &UserInfo) -> Result<(), nix::Error> {
-    use nix::unistd::{Gid, Uid};
+/// What the reader fills, in the order of its fd arguments.
+const READS: [(&[&str], Kind); 4] = [
+    (WALLPAPER_REL, Kind::Background),
+    (THEME_CSS_REL, Kind::Text),
+    (AVATAR_REL, Kind::Avatar),
+    (VARIABLES_REL, Kind::Variables),
+];
 
-    let groups: Vec<Gid> = user.all_gids.iter().copied().map(Gid::from_raw).collect();
-    nix::unistd::setgroups(&groups)?;
-    nix::unistd::setgid(Gid::from_raw(user.primary_gid))?;
-    nix::unistd::setuid(Uid::from_raw(user.uid))?;
-    Ok(())
-}
-
-/// The forked reader. Runs as the user, writes only to fds it was handed.
-///
-/// A missing or malformed source leaves its output empty, which the parent reads
-/// as "nothing to publish". There is no way to report *why* from here that is
-/// worth the interleaved log lines: the parent names every file it published,
-/// and the absent ones are the difference.
-fn child(user: &UserInfo, outputs: &mut [Output]) -> ! {
-    // SAFETY: `alarm` is async-signal-safe and this process is a fresh fork of a
-    // single-threaded parent.
-    unsafe { libc::alarm(CHILD_TIMEOUT_SECS) };
-
-    if drop_privileges(user).is_err() {
-        // SAFETY: skip every destructor — they belong to the parent's heap.
-        unsafe { libc::_exit(EXIT_DROP_FAILED) }
-    }
-
-    let home = Path::new(&user.home_dir);
-    for output in outputs.iter_mut() {
-        let kind = output.kind;
-        let Some(raw) = output
-            .sources
+/// Read every source under `home` into its output. A missing or malformed
+/// source leaves its output empty, which the parent reads as "nothing to
+/// publish". There is no way to report *why* from here that is worth the
+/// interleaved log lines: the parent names every file it published, and the
+/// absent ones are the difference.
+fn read_sources(home: &Path, outputs: &mut [(&[&str], Kind, File)]) {
+    for (sources, kind, file) in outputs.iter_mut() {
+        let kind = *kind;
+        let Some(raw) = sources
             .iter()
             .filter_map(|rel| read_capped(&home.join(rel), kind.cap()))
             .find(|raw| kind.accepts(raw))
@@ -491,12 +488,119 @@ fn child(user: &UserInfo, outputs: &mut [Output]) -> ! {
             },
             Kind::Avatar | Kind::Text | Kind::Variables => raw,
         };
-        let _ = output.file.write_all(&bytes);
+        let _ = file.write_all(&bytes);
     }
+}
 
-    // SAFETY: `File`'s writes are unbuffered syscalls, so there is nothing to
-    // flush; `_exit` keeps the parent's destructors from running twice.
-    unsafe { libc::_exit(0) }
+/// `home` and one fd per [`READS`] entry, from the reader's argv (after
+/// [`READER_ARG`]). Only descriptors above stderr are accepted.
+fn parse_reader_args(args: &[std::ffi::OsString]) -> Option<(PathBuf, Vec<RawFd>)> {
+    let (home, fds) = args.split_first()?;
+    if fds.len() != READS.len() {
+        return None;
+    }
+    let fds = fds
+        .iter()
+        .map(|fd| fd.to_str()?.parse::<RawFd>().ok().filter(|fd| *fd > 2))
+        .collect::<Option<Vec<_>>>()?;
+    Some((PathBuf::from(home), fds))
+}
+
+/// `mlogind __theme-sync-reader <home> <fd>…`: the unprivileged half, already
+/// running as the user (see [`sync`]). Returns the exit code.
+pub fn reader_main(args: &[std::ffi::OsString]) -> i32 {
+    let Some((home, fds)) = parse_reader_args(args) else {
+        return EXIT_BAD_ARGS;
+    };
+    let mut outputs = Vec::with_capacity(READS.len());
+    for (fd, (sources, kind)) in fds.into_iter().zip(READS) {
+        // SAFETY: F_GETFD only asks whether `fd` is open.
+        if unsafe { libc::fcntl(fd, libc::F_GETFD) } < 0 {
+            return EXIT_BAD_ARGS;
+        }
+        // SAFETY: `fd` is open, was inherited for exactly this purpose, and
+        // nothing else in this process refers to it.
+        let file = unsafe { File::from_raw_fd(fd) };
+        outputs.push((sources, kind, file));
+    }
+    read_sources(&home, &mut outputs);
+    0
+}
+
+/// Set FD_CLOEXEC on every descriptor above stderr. Async-signal-safe: only
+/// `close_range` or, on kernels before 5.11, `fcntl` per descriptor.
+fn mark_all_cloexec() {
+    const CLOSE_RANGE_CLOEXEC: libc::c_uint = 1 << 2;
+    // SAFETY: plain syscalls on descriptor numbers; none dereferences memory.
+    unsafe {
+        if libc::syscall(libc::SYS_close_range, 3u32, u32::MAX, CLOSE_RANGE_CLOEXEC) == 0 {
+            return;
+        }
+        let max = libc::sysconf(libc::_SC_OPEN_MAX);
+        let max = if max > 0 {
+            max.min(65_536) as RawFd
+        } else {
+            1024
+        };
+        for fd in 3..max {
+            let flags = libc::fcntl(fd, libc::F_GETFD);
+            if flags >= 0 {
+                libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+            }
+        }
+    }
+}
+
+/// Run the reader as `user`, writing into `outputs`. Returns its exit code.
+fn run_reader(user: &UserInfo, outputs: &[Output]) -> io::Result<i32> {
+    use std::os::unix::process::{CommandExt, ExitStatusExt};
+
+    // Everything the pre_exec hook touches is built here, before the fork.
+    let groups: Vec<libc::gid_t> = user.all_gids.clone();
+    let (uid, gid) = (user.uid, user.primary_gid);
+    let fds: Vec<RawFd> = outputs.iter().map(|o| o.file.as_raw_fd()).collect();
+
+    let mut cmd = Command::new("/proc/self/exe");
+    cmd.arg(READER_ARG).arg(&user.home_dir);
+    for fd in &fds {
+        cmd.arg(fd.to_string());
+    }
+    cmd.env_clear()
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    // SAFETY: the hook runs between fork and exec in a possibly multi-threaded
+    // process, so it only makes async-signal-safe syscalls on the vectors
+    // captured above, and allocates nothing (`last_os_error` reads errno).
+    unsafe {
+        cmd.pre_exec(move || {
+            libc::alarm(CHILD_TIMEOUT_SECS);
+            // The reader runs as the user, who may ptrace it once it has
+            // exec'd. Mark every other descriptor close-on-exec first, so no fd
+            // of the root runner (a PAM module's, a socket) crosses the exec.
+            mark_all_cloexec();
+            for &fd in &fds {
+                // Inherit only these, and only into this child.
+                if libc::fcntl(fd, libc::F_SETFD, 0) < 0 {
+                    return Err(io::Error::last_os_error());
+                }
+            }
+            // Supplementary groups, then gid, then uid. `setgroups` and
+            // `setgid` both need the privilege we are about to give away, so
+            // `setuid` goes last.
+            if libc::setgroups(groups.len(), groups.as_ptr()) < 0
+                || libc::setgid(gid) < 0
+                || libc::setuid(uid) < 0
+            {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let status = cmd.status()?;
+    Ok(status
+        .code()
+        .unwrap_or_else(|| 128 + status.signal().unwrap_or(0)))
 }
 
 /// Refresh everything the pre-login greeters render from `user`'s desktop.
@@ -509,26 +613,18 @@ pub fn sync(user: &UserInfo) -> io::Result<Vec<PathBuf>> {
     // World-readable: `mlogind-greeter` has to get in here.
     fs::set_permissions(state, Permissions::from_mode(0o755))?;
 
-    let mut outputs = vec![
-        Output::open(state.join(BACKGROUND_NAME), WALLPAPER_REL, Kind::Background)?,
-        Output::open(state.join(THEME_CSS_NAME), THEME_CSS_REL, Kind::Text)?,
-        Output::open(state.join(AVATAR_NAME), AVATAR_REL, Kind::Avatar)?,
-        Output::open(variables_path(), VARIABLES_REL, Kind::Variables)?,
+    // Same order as READS: the reader matches fds to sources by position.
+    let outputs = vec![
+        Output::open(state.join(BACKGROUND_NAME), Kind::Background)?,
+        Output::open(state.join(THEME_CSS_NAME), Kind::Text)?,
+        Output::open(state.join(AVATAR_NAME), Kind::Avatar)?,
+        Output::open(variables_path(), Kind::Variables)?,
     ];
 
-    // SAFETY: mlogind is single-threaded, and the child calls `_exit` without
-    // touching an allocator lock it could have inherited mid-acquisition.
-    let pid = unsafe { libc::fork() };
-    if pid < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    if pid == 0 {
-        child(user, &mut outputs);
-    }
-
-    let code = crate::wait_for(pid);
-    if code != 0 {
-        warn!("theme sync: the unprivileged reader exited with {code}");
+    match run_reader(user, &outputs) {
+        Ok(0) => {}
+        Ok(code) => warn!("theme sync: the unprivileged reader exited with {code}"),
+        Err(err) => warn!("theme sync: cannot run the unprivileged reader: {err}"),
     }
 
     let mut written = Vec::new();
@@ -697,6 +793,72 @@ mod tests {
         fs::write(&tmp, "bg = 1\n").unwrap();
         assert!(!rewrite_sanitized_variables(&tmp), "nothing valid: discard");
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn reader_args_carry_the_home_and_one_fd_per_output() {
+        use std::ffi::OsString;
+        let args: Vec<OsString> = ["/home/u", "7", "8", "9", "10"]
+            .iter()
+            .map(OsString::from)
+            .collect();
+        assert_eq!(
+            parse_reader_args(&args),
+            Some((PathBuf::from("/home/u"), vec![7, 8, 9, 10]))
+        );
+        // Wrong count, non-numbers and the std streams are refused.
+        assert_eq!(parse_reader_args(&args[..4]), None);
+        let bad: Vec<OsString> = ["/home/u", "7", "x", "9", "10"]
+            .iter()
+            .map(OsString::from)
+            .collect();
+        assert_eq!(parse_reader_args(&bad), None);
+        let stdio: Vec<OsString> = ["/home/u", "1", "8", "9", "10"]
+            .iter()
+            .map(OsString::from)
+            .collect();
+        assert_eq!(parse_reader_args(&stdio), None);
+    }
+
+    #[test]
+    fn the_reader_fills_each_output_from_the_first_acceptable_source() {
+        let base = std::env::temp_dir().join(format!("mlogind-reader-{}", std::process::id()));
+        let home = base.join("home");
+        fs::create_dir_all(home.join(".cache/mshell")).unwrap();
+        fs::create_dir_all(home.join(".config/margo")).unwrap();
+        fs::write(home.join(".cache/mshell/wallpaper.raw"), raw(4, 2, 9)).unwrap();
+        fs::write(home.join(".cache/mshell/last_theme.css"), "a { }").unwrap();
+        // `.face` is not an image, `.face.icon` is: the second one wins.
+        fs::write(home.join(".face"), "-----BEGIN OPENSSH PRIVATE KEY-----").unwrap();
+        fs::write(home.join(".face.icon"), [0xff, 0xd8, 0xff, 0xe0]).unwrap();
+        fs::write(
+            home.join(".config/margo/mlogind-variables.toml"),
+            "bg = \"#123456\"\n",
+        )
+        .unwrap();
+
+        let out = |name: &str| {
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(base.join(name))
+                .unwrap()
+        };
+        let mut outputs: Vec<(&[&str], Kind, File)> = READS
+            .iter()
+            .zip(["bg", "css", "avatar", "vars"])
+            .map(|((sources, kind), name)| (*sources, *kind, out(name)))
+            .collect();
+        read_sources(&home, &mut outputs);
+
+        let read = |name: &str| fs::read(base.join(name)).unwrap();
+        assert_eq!(parse_header(&read("bg")), Some((4, 2)));
+        assert_eq!(read("css"), b"a { }");
+        assert_eq!(read("avatar"), [0xff, 0xd8, 0xff, 0xe0]);
+        assert_eq!(read("vars"), b"bg = \"#123456\"\n");
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]
