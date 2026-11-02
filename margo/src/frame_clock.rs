@@ -15,8 +15,10 @@
 //!
 //! When `per_output_frame_clock = true`, each output instead carries
 //! its own [`OutputClock`]: a present `Timer` re-armed off that
-//! output's last vblank at `last_present + refresh_interval`, a dirty
-//! flag, and an in-flight gate. The render loop renders only the
+//! output's last vblank, a dirty flag, and an in-flight gate. A dirty
+//! output renders as soon as its previous flip has landed (the flip
+//! then lands on the next vblank); only after an empty render, which
+//! has no flip to pace it, does the timer wait `refresh_interval`. The render loop renders only the
 //! output(s) whose timer fired and that are dirty. Animations are
 //! sampled when an output ticks (they key off absolute time, so a
 //! per-output cadence samples each running animation at the correct
@@ -48,11 +50,16 @@ pub struct OutputClock {
     /// true the present timer must not render again (the DRM
     /// compositor accepts one pending page-flip per output).
     pub pending_vblank: bool,
-    /// Monotonic instant of this output's last vblank (page-flip
-    /// landing). The next present timer is armed at
-    /// `last_present + refresh_interval`. `None` before the first
-    /// vblank — the first tick fires immediately.
+    /// Monotonic instant of this output's last present: a real vblank
+    /// (page-flip landing) or an empty render standing in for one. `None`
+    /// before the first present — the first tick fires immediately.
     pub last_present: Option<Instant>,
+    /// Whether `last_present` was a real page-flip. After a real vblank
+    /// the DRM gate (`pending_vblank`) already paces us to one flip per
+    /// vblank, so a dirty output renders at once and its flip lands on
+    /// the very next vblank. After an empty render nothing paces us, so
+    /// the next tick waits a full `refresh_interval` instead of spinning.
+    pub last_present_was_vblank: bool,
     /// In-flight present `Timer` token, so we can cancel/replace it on
     /// re-arm. `None` when no timer is currently scheduled.
     pub timer_token: Option<RegistrationToken>,
@@ -63,38 +70,57 @@ pub struct OutputClock {
 }
 
 impl OutputClock {
-    /// Delay from `now` until this output's next present, given its
-    /// `refresh_interval` and `last_present`. Returns `Duration::ZERO`
-    /// when the output is already due (or has never presented), so the
-    /// timer fires on the next loop turn.
+    /// A real page-flip landed at `at`: drop the in-flight gate. A dirty
+    /// output is due immediately afterwards (see `last_present_was_vblank`).
+    pub fn note_vblank(&mut self, at: Instant) {
+        self.last_present = Some(at);
+        self.last_present_was_vblank = true;
+        self.pending_vblank = false;
+    }
+
+    /// An empty render (no damage, no page-flip) stood in for a present
+    /// at `at`. The next tick is held back by one refresh interval.
+    pub fn note_estimated_present(&mut self, at: Instant) {
+        self.last_present = Some(at);
+        self.last_present_was_vblank = false;
+        self.pending_vblank = false;
+    }
+
+    /// Earliest instant the next present may start, or `None` when it
+    /// may start right away.
+    fn earliest_next_present(&self, refresh_interval: Duration) -> Option<Instant> {
+        match self.last_present {
+            Some(last) if !self.last_present_was_vblank => Some(last + refresh_interval),
+            _ => None,
+        }
+    }
+
+    /// Delay from `now` until this output's next present. Zero after a
+    /// real vblank (or before the first present); after an empty render,
+    /// the time left until `last_present + refresh_interval`. A zero delay
+    /// makes the timer fire on the next loop turn.
     ///
     /// Pure: no clock reads, no side effects — `now` is passed in so
     /// the computation is unit-testable.
     pub fn next_tick_delay(&self, now: Instant, refresh_interval: Duration) -> Duration {
-        match self.last_present {
-            // Never presented → render as soon as possible.
+        match self.earliest_next_present(refresh_interval) {
             None => Duration::ZERO,
-            Some(last) => {
-                let target = last + refresh_interval;
-                // saturating: if we're already past the target, due now.
-                target.saturating_duration_since(now)
-            }
+            // saturating: if we're already past the target, due now.
+            Some(target) => target.saturating_duration_since(now),
         }
     }
 
     /// True when this output is ready to present at `now`: not waiting
-    /// on a vblank, dirty, and its refresh interval has elapsed since
-    /// the last present (or it has never presented).
+    /// on a vblank, dirty, and — only after an empty render — a refresh
+    /// interval has elapsed since that pseudo-present.
     ///
     /// Pure — `now` is injected for testability.
     pub fn is_due(&self, now: Instant, refresh_interval: Duration) -> bool {
         if self.pending_vblank || !self.dirty {
             return false;
         }
-        match self.last_present {
-            None => true,
-            Some(last) => now.saturating_duration_since(last) >= refresh_interval,
-        }
+        self.earliest_next_present(refresh_interval)
+            .is_none_or(|target| now >= target)
     }
 }
 
@@ -110,6 +136,28 @@ pub fn refresh_interval_from_mhz(refresh_mhz: i32) -> Duration {
         Duration::from_secs_f64(1000.0 / refresh_mhz as f64)
     } else {
         Duration::from_secs_f64(1.0 / 60.0)
+    }
+}
+
+/// Map a `CLOCK_MONOTONIC` timestamp (a DRM page-flip event's time) onto
+/// `Instant`, given a simultaneous reading of both clocks. `Instant` is
+/// `CLOCK_MONOTONIC` on Linux but has no public constructor from a raw
+/// timestamp, so step back from `now` by the event's age. A timestamp
+/// from the future (clock skew) maps to `now`.
+pub fn instant_at_monotonic(event: Duration, now_monotonic: Duration, now: Instant) -> Instant {
+    now.checked_sub(now_monotonic.saturating_sub(event))
+        .unwrap_or(now)
+}
+
+/// Next `wp_presentation_feedback` sequence number for an output. Uses the
+/// kernel's vblank counter from the page-flip event when it moves forward,
+/// so clients can count missed vblanks; otherwise (no event metadata, or the
+/// 32-bit kernel counter wrapped) just steps by one so the published value
+/// stays monotonic as the protocol requires.
+pub fn next_vblank_seq(prev: u64, kernel: Option<u32>) -> u64 {
+    match kernel.map(u64::from) {
+        Some(seq) if seq > prev => seq,
+        _ => prev.wrapping_add(1),
     }
 }
 
@@ -196,6 +244,133 @@ mod tests {
         let now = last + interval;
         assert_eq!(c.next_tick_delay(now, interval), Duration::ZERO);
         assert!(c.is_due(now, interval));
+    }
+
+    /// Drive one output through `vblanks` real 60 Hz vblanks with the
+    /// scene dirty the whole time, the way the live scheduler does: the
+    /// vblank handler runs `handler_latency` after the flip, the present
+    /// timer is armed for `next_tick_delay`, a due output submits a frame
+    /// that takes `render_time` to reach the kernel, and the flip lands on
+    /// the first vblank after that. Returns how many vblanks carried a
+    /// new frame.
+    fn presents_under_continuous_damage(
+        vblanks: u32,
+        handler_latency: Duration,
+        render_time: Duration,
+    ) -> u32 {
+        let interval = refresh_interval_from_mhz(HZ_60);
+        let start = Instant::now();
+        let vblank_at = |k: u32| start + interval * k;
+        let mut clock = OutputClock {
+            dirty: true,
+            ..Default::default()
+        };
+        // First frame: never presented → due right away, lands on vblank 1.
+        assert!(clock.is_due(start, interval));
+        clock.dirty = false;
+        clock.pending_vblank = true;
+        let mut landing = 1;
+        let mut presents = 0;
+        for k in 1..=vblanks {
+            if k != landing {
+                continue;
+            }
+            presents += 1;
+            clock.note_vblank(vblank_at(k));
+            // Animation still running: the frame callback / tick re-dirties.
+            clock.dirty = true;
+            let handled = vblank_at(k) + handler_latency;
+            let fire = handled + clock.next_tick_delay(handled, interval);
+            assert!(clock.is_due(fire, interval), "timer fired but not due");
+            clock.dirty = false;
+            clock.pending_vblank = true;
+            // Flip lands on the first vblank strictly after the submit.
+            let submitted = fire + render_time;
+            let mut next = k + 1;
+            while vblank_at(next) <= submitted {
+                next += 1;
+            }
+            landing = next;
+        }
+        presents
+    }
+
+    #[test]
+    fn continuous_damage_presents_on_every_vblank() {
+        // Regression: the timer used to wait a full interval after the
+        // vblank before rendering, so the frame always missed the next
+        // vblank and a 60 Hz panel animated at 30 Hz.
+        let presents = presents_under_continuous_damage(
+            120,
+            Duration::from_micros(200),
+            Duration::from_millis(3),
+        );
+        assert_eq!(presents, 120, "one present per vblank");
+    }
+
+    #[test]
+    fn real_vblank_makes_a_dirty_output_due_immediately() {
+        let interval = refresh_interval_from_mhz(HZ_60);
+        let t = Instant::now();
+        let mut c = OutputClock {
+            pending_vblank: true,
+            ..Default::default()
+        };
+        c.note_vblank(t);
+        c.dirty = true;
+        assert!(!c.pending_vblank);
+        assert_eq!(c.next_tick_delay(t, interval), Duration::ZERO);
+        assert!(c.is_due(t, interval));
+    }
+
+    #[test]
+    fn empty_render_keeps_the_interval_gate() {
+        // No page-flip happened, so nothing paces us: rendering again at
+        // once would spin. The next tick waits one refresh interval.
+        let interval = refresh_interval_from_mhz(HZ_60);
+        let t = Instant::now();
+        let mut c = OutputClock {
+            pending_vblank: true,
+            ..Default::default()
+        };
+        c.note_estimated_present(t);
+        c.dirty = true;
+        assert!(!c.pending_vblank);
+        assert_eq!(c.next_tick_delay(t, interval), interval);
+        assert!(!c.is_due(t + interval / 2, interval));
+        assert!(c.is_due(t + interval, interval));
+
+        // A real vblank after the empty render lifts the gate again.
+        c.note_vblank(t + interval / 2);
+        assert!(c.is_due(t + interval / 2, interval));
+    }
+
+    #[test]
+    fn page_flip_time_maps_onto_instant() {
+        let now = Instant::now();
+        let mono_now = Duration::from_secs(1000);
+        let flip = mono_now - Duration::from_millis(3);
+        assert_eq!(
+            instant_at_monotonic(flip, mono_now, now),
+            now - Duration::from_millis(3)
+        );
+        // A future timestamp never maps past `now`.
+        assert_eq!(
+            instant_at_monotonic(mono_now + Duration::from_millis(1), mono_now, now),
+            now
+        );
+    }
+
+    #[test]
+    fn vblank_seq_follows_the_kernel_counter_and_stays_monotonic() {
+        assert_eq!(next_vblank_seq(0, Some(5000)), 5000);
+        assert_eq!(next_vblank_seq(5000, Some(5002)), 5002);
+        // No metadata: step by one.
+        assert_eq!(next_vblank_seq(5002, None), 5003);
+        // Counter went backwards (wrap / CRTC reset): never publish a
+        // smaller value.
+        assert_eq!(next_vblank_seq(5003, Some(7)), 5004);
+        assert_eq!(next_vblank_seq(5004, Some(5004)), 5005);
     }
 
     #[test]

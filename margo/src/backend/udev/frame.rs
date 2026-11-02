@@ -30,8 +30,7 @@ use smithay::{
 use tracing::{error, warn};
 
 use super::{
-    MargoRenderElement, OutputDevice, build_render_elements,
-    helpers::{monotonic_now, output_refresh_duration},
+    MargoRenderElement, OutputDevice, build_render_elements, helpers::output_refresh_duration,
     serve_screencopies, take_pending_open_close_captures, take_pending_snapshots,
 };
 use crate::state::MargoState;
@@ -234,31 +233,27 @@ pub(super) fn build_presentation_feedback(
     feedback
 }
 
-/// Signal `presented(now, refresh, seq, Vsync)` on a feedback builder
+/// Signal `presented(time, refresh, seq, Vsync)` on a feedback builder
 /// previously stashed on the OutputDevice. Called from the
-/// `DrmEvent::VBlank` handler, so `now` reflects the actual page-flip
-/// moment — not the submit time, which is the cheap approximation we
-/// used to do.
+/// `DrmEvent::VBlank` handler with `time` = the kernel's page-flip
+/// timestamp (CLOCK_MONOTONIC) from the event metadata, falling back to
+/// the handler's own clock reading when the device can't provide one.
 ///
-/// `seq` is the per-output monotonic VBlank counter from
-/// `OutputDevice::vblank_seq`. Smithay 0.7's `DrmEvent::VBlank(crtc)`
-/// doesn't surface the kernel's `drm_event_vblank.sequence`, but the
-/// `wp_presentation` protocol contract is "implementation-defined
-/// monotonic counter" — a per-output increment satisfies that and
-/// is observably equivalent for frame-pacing-sensitive consumers
-/// (mpv `--vo=gpu-next`, kitty render loop).
+/// `seq` is `OutputDevice::vblank_seq`: the kernel's vblank counter
+/// when the event carried one, kept monotonic by
+/// [`crate::frame_clock::next_vblank_seq`].
 pub(super) fn flush_presentation_feedback(
     output: &Output,
     feedback: smithay::desktop::utils::OutputPresentationFeedback,
+    time: std::time::Duration,
     seq: u64,
 ) {
     use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 
     let mut feedback = feedback;
-    let now = monotonic_now();
     let refresh = output_refresh_duration(output);
     feedback.presented::<_, smithay::utils::Monotonic>(
-        now,
+        time,
         smithay::wayland::presentation::Refresh::fixed(refresh),
         seq,
         wp_presentation_feedback::Kind::Vsync,

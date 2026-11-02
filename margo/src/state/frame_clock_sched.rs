@@ -12,14 +12,17 @@
 //! 1. Something dirties the scene → [`MargoState::request_repaint`]
 //!    calls [`MargoState::mark_all_clocks_dirty`], which flags every
 //!    output clock dirty and ensures each has a present timer armed.
-//! 2. A clock's present `Timer` fires at `last_present + refresh` →
+//! 2. A clock's present `Timer` fires — at once if the output's last
+//!    present was a real vblank, else at `last_present + refresh` →
 //!    [`MargoState::present_timer_fired`] re-pings the repaint source.
 //! 3. The repaint ping callback (it owns the backend handle) renders
-//!    only the outputs that are *due* (dirty + interval elapsed + not
-//!    awaiting a vblank), via [`MargoState::take_due_outputs`].
+//!    only the outputs that are *due* (dirty + not awaiting a vblank +,
+//!    after an empty render, interval elapsed), via
+//!    [`MargoState::take_due_outputs`].
 //! 4. The DRM vblank lands → [`MargoState::note_vblank_per_output`]
-//!    stamps `last_present`, clears the in-flight gate, and re-arms the
-//!    timer for the next frame.
+//!    stamps `last_present`, clears the in-flight gate, and, if the
+//!    output is dirty again, arms a zero-delay timer so the next frame
+//!    is submitted in time for the next vblank.
 
 use std::time::{Duration, Instant};
 
@@ -182,8 +185,8 @@ impl MargoState {
         clock.pending_vblank = true;
     }
 
-    /// Arm (or re-arm) the present timer for `name`, scheduled at the
-    /// output's `last_present + refresh_interval`. If the output is
+    /// Arm (or re-arm) the present timer for `name`, scheduled per
+    /// [`crate::frame_clock::OutputClock::next_tick_delay`]. If the output is
     /// already in-flight (`pending_vblank`) or no timer is needed yet,
     /// this is a no-op — the vblank handler re-arms once the flip lands.
     pub fn arm_present_timer(&mut self, name: &str) {
@@ -287,8 +290,8 @@ impl MargoState {
         }
     }
 
-    /// Outputs that should render *now*: dirty, past their refresh
-    /// interval, and not awaiting a vblank. Clears each returned
+    /// Outputs that should render *now*: dirty, not awaiting a vblank,
+    /// and (after an empty render) past their refresh interval. Clears each returned
     /// output's dirty flag and marks it in-flight (`pending_vblank`)
     /// so a second tick can't double-submit before the flip lands.
     /// Returns the matching `Output`s for the render loop.
@@ -327,21 +330,27 @@ impl MargoState {
         due
     }
 
-    /// Per-output vblank: the page-flip for `output` landed. Stamp
-    /// `last_present`, drop the in-flight gate, and re-arm the present
-    /// timer (re-dirtied if the scene is still animating, which a later
-    /// `request_repaint` will flag). Mirrors the global path's
-    /// `note_vblank` but scoped to one output.
-    pub fn note_vblank_per_output(&mut self, output: &Output) {
+    /// Per-output vblank: the page-flip for `output` landed at
+    /// `presented_at` (the DRM event's timestamp; `None` → now). Stamp
+    /// `last_present`, drop the in-flight gate, and — if damage arrived
+    /// while the flip was in flight — arm a zero-delay present timer so
+    /// the next frame makes the next vblank. Damage that arrives later
+    /// arms its own timer via `mark_output_clock_dirty`. Mirrors the
+    /// global path's `note_vblank` (which pings immediately) but scoped
+    /// to one output.
+    pub fn note_vblank_per_output(&mut self, output: &Output, presented_at: Option<Instant>) {
         let name = output.name();
+        let mut dirty = false;
         if let Some(clock) = self.per_output_clocks.get_mut(&name) {
-            clock.last_present = Some(Instant::now());
-            clock.pending_vblank = false;
-            // A timer may still be pending from before the flip; leave
-            // it — `arm_present_timer` no-ops if a token exists. If
-            // none is pending, arm the next one now.
+            clock.note_vblank(presented_at.unwrap_or_else(Instant::now));
+            dirty = clock.dirty;
         }
-        self.arm_present_timer(&name);
+        if dirty {
+            // A timer may still be pending from before the flip; leave
+            // it — `arm_present_timer` no-ops if a token exists, and a
+            // pending one now finds the output due.
+            self.arm_present_timer(&name);
+        }
 
         // Frame callbacks: same contract as the global `note_vblank`,
         // scoped to this output so its clients pace at its refresh.
@@ -353,13 +362,15 @@ impl MargoState {
     /// the frame, rather than the config value at completion time. The config
     /// can be reloaded while a flip is in flight; choosing by the new value
     /// would leak either the per-output gate or the legacy global counter.
-    pub fn note_backend_vblank(&mut self, output: &Output) {
+    ///
+    /// `presented_at` is the page-flip time from the DRM event, if known.
+    pub fn note_backend_vblank(&mut self, output: &Output, presented_at: Option<Instant>) {
         let pending_on_output_clock = self
             .per_output_clocks
             .get(&output.name())
             .is_some_and(|clock| clock.pending_vblank);
         if pending_on_output_clock {
-            self.note_vblank_per_output(output);
+            self.note_vblank_per_output(output, presented_at);
         } else {
             self.note_vblank(output);
         }
@@ -378,8 +389,7 @@ impl MargoState {
         }
         let name = output.name();
         if let Some(clock) = self.per_output_clocks.get_mut(&name) {
-            clock.last_present = Some(Instant::now());
-            clock.pending_vblank = false;
+            clock.note_estimated_present(Instant::now());
         }
         self.arm_present_timer(&name);
 

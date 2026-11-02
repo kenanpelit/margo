@@ -291,7 +291,7 @@ fn vblank_completion_survives_frame_clock_mode_reload() {
     // the per-output gate.
     fx.server.state.begin_forced_render_per_output(&output);
     fx.server.state.config.per_output_frame_clock = false;
-    fx.server.state.note_backend_vblank(&output);
+    fx.server.state.note_backend_vblank(&output, None);
     assert!(!fx.server.state.per_output_clocks["DP-1"].pending_vblank);
 
     // false -> true while a legacy frame is in flight must still drain the
@@ -310,7 +310,7 @@ fn vblank_completion_survives_frame_clock_mode_reload() {
     fx.server.state.note_frame_queued();
     fx.server.state.request_repaint();
     fx.server.state.config.per_output_frame_clock = true;
-    fx.server.state.note_backend_vblank(&output);
+    fx.server.state.note_backend_vblank(&output, None);
     fx.server.dispatch();
     assert_eq!(wakes.load(Ordering::Relaxed), 1);
 }
