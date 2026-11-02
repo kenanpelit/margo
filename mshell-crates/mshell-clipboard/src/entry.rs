@@ -9,7 +9,14 @@ pub struct ClipboardEntry {
     pub id: u64,
     pub timestamp: OffsetDateTime,
     pub mime_type: String,
+    /// The payload. Empty when [`Self::data_in_blob`] is set.
     pub data: Vec<u8>,
+    /// The payload is not held in memory: it lives in the persisted,
+    /// content-addressed blob for `content_hash` and is read back only
+    /// when the entry is pasted (see `persist::read_blob`). Set for
+    /// image / binary entries restored from disk, so the history keeps
+    /// just their thumbnails resident.
+    pub data_in_blob: bool,
     pub preview: EntryPreview,
     pub content_hash: u64,
     /// Pinned (favourite) entries are exempt from `max_entries`

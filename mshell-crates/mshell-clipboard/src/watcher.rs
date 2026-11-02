@@ -263,12 +263,23 @@ impl ClipboardWatcher {
 
     pub fn copy_entry(&self, id: u64) {
         if let Some(entry) = self.history.get(id) {
+            let data = if entry.data_in_blob {
+                match persist::read_blob(entry.content_hash) {
+                    Some(data) => data,
+                    None => {
+                        warn!("clipboard: blob for entry {id} is gone; cannot paste it");
+                        return;
+                    }
+                }
+            } else {
+                entry.data
+            };
             self.history.promote(id);
             self.persister.request();
             self.broadcast(ClipboardEvent::NewEntry(id));
             let _ = self.command_tx.send(WatcherCommand::SetSelection {
-                mime_type: entry.mime_type.clone(),
-                data: entry.data.clone(),
+                mime_type: entry.mime_type,
+                data,
             });
             // Poke the wake pipe so the watcher's blocking poll() returns
             // and drains the command. One byte; the write end is
@@ -877,6 +888,7 @@ fn build_entry(mime_type: String, data: Vec<u8>) -> Option<ClipboardEntry> {
         content_hash,
         preview,
         data,
+        data_in_blob: false,
         pinned: false,
     })
 }
