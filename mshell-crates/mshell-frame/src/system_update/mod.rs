@@ -297,10 +297,12 @@ fn parse_flatpak_join(stdout: &str) -> Vec<UpdateEntry> {
 
 /// Package names from `dnf check-update -q` (exit 100): one
 /// `name.arch  version  repo` line per update; indented lines are
-/// continuations.
+/// continuations. The trailing `Obsoleting Packages` section repeats
+/// packages from the main list, so parsing stops at its header.
 fn parse_dnf_check_update(stdout: &str) -> Vec<UpdateEntry> {
     stdout
         .lines()
+        .take_while(|l| l.trim() != "Obsoleting Packages")
         .filter(|l| !l.trim().is_empty() && !l.starts_with(' '))
         .filter_map(|l| l.split_whitespace().next())
         .map(|name| UpdateEntry {
@@ -335,6 +337,9 @@ fn parse_arrow_list(stdout: &str, source: Source) -> Vec<UpdateEntry> {
     stdout
         .lines()
         .filter(|l| !l.trim().is_empty())
+        // IgnorePkg entries (`name old -> new [ignored]`) won't be
+        // upgraded by `-Syu`, so they aren't pending updates.
+        .filter(|l| !l.trim_end().ends_with("[ignored]"))
         .map(|line| {
             let (left, new) = match line.split_once(" -> ") {
                 Some((l, r)) => (l.trim(), Some(r.trim().to_string())),
@@ -504,6 +509,33 @@ mod tests {
             ]
         );
         assert!(parse_arrow_list("", Source::Repo).is_empty());
+    }
+
+    #[test]
+    fn arrow_list_skips_ignored_packages() {
+        // pacman -Qu / checkupdates and paru list IgnorePkg entries with
+        // an `[ignored]` tag; `-Syu` won't upgrade them, so they aren't
+        // pending updates.
+        let out = "linux 6.9.1-1 -> 6.9.2-1 [ignored]\nmesa 1-1 -> 2-1\n";
+        assert_eq!(
+            parse_arrow_list(out, Source::Repo),
+            vec![entry(Source::Repo, "mesa", Some("1-1"), Some("2-1"))]
+        );
+    }
+
+    #[test]
+    fn dnf_obsoleting_section_is_not_listed() {
+        // The section header is not a package, and the packages under it
+        // already appear in the main list.
+        let out = "grub2-tools.x86_64   1:2.06-100.fc39   updates\n\
+                   Obsoleting Packages\n\
+                   grub2-tools.x86_64   1:2.06-100.fc39   updates\n\
+                   \x20   grub2-tools.x86_64   1:2.06-95.fc39   @updates\n";
+        let names: Vec<_> = parse_dnf_check_update(out)
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(names, ["grub2-tools.x86_64"]);
     }
 
     #[test]
