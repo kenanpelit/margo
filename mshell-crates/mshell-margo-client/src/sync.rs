@@ -455,15 +455,15 @@ fn apply(service: &MargoService, state: &StateJson) {
             });
         }
     }
-    // Active window change.
-    let prev_focused: Option<Address> = current_clients
-        .iter()
-        .find(|c| c.focus_history_id.get() == 0)
-        .map(|c| c.address.get());
-    let new_focused: Option<Address> = next_clients
-        .iter()
-        .find(|c| c.focus_history_id.get() == 0)
-        .map(|c| c.address.get());
+    // Active window change. The focused client comes from `focused_idx`
+    // (see below); `focus_history_id == 0` can't identify it because
+    // every output's MRU head has position 0.
+    let focused_client = state
+        .focused_idx
+        .and_then(|i| usize::try_from(i).ok())
+        .and_then(|idx| next_clients.get(idx).cloned());
+    let prev_focused: Option<Address> = service.focused_client.get().map(|c| c.address.get());
+    let new_focused: Option<Address> = focused_client.as_ref().map(|c| c.address.get());
     if prev_focused != new_focused
         && let Some(addr) = new_focused
     {
@@ -475,10 +475,6 @@ fn apply(service: &MargoService, state: &StateJson) {
     // focused window. Only re-publish when the focused *client*
     // actually changes (same Arc is reused across title edits, so
     // typing doesn't spuriously fire `focused_client`).
-    let focused_client = state
-        .focused_idx
-        .and_then(|i| usize::try_from(i).ok())
-        .and_then(|idx| next_clients.get(idx).cloned());
     let focused_changed = match (service.focused_client.get(), &focused_client) {
         (Some(prev), Some(next)) => prev.address.get() != next.address.get(),
         (None, None) => false,
@@ -1206,6 +1202,46 @@ mod apply_tests {
         assert_eq!(svc.monitors.get().len(), 2);
         assert_eq!(svc.clients.get().len(), 3);
         assert!(svc.focused_client.get().is_some());
+    }
+
+    #[test]
+    fn focus_moving_to_another_output_emits_active_window() {
+        // Every output's MRU head has focus_history_id 0, so picking "the"
+        // active window by `focus_history_id == 0` always found the first
+        // output's window and never reported focus moving to mpv.
+        let svc = service();
+        apply(&svc, &frame());
+        let mut rx = svc.event_tx.subscribe();
+
+        let mut next = frame();
+        next.focused_idx = Some(2);
+        next.active_output = "HDMI-A-1".into();
+        next.outputs[0].active = false;
+        next.outputs[1].active = true;
+        apply(&svc, &next);
+
+        let events = drain(&mut rx);
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                MargoEvent::ActiveWindowV2 { address } if address.margo_id() == Some(3)
+            )),
+            "{events:?}"
+        );
+        assert_eq!(
+            svc.focused_client
+                .get()
+                .and_then(|c| c.address.get().margo_id()),
+            Some(3)
+        );
+
+        // …and back.
+        let mut rx = svc.event_tx.subscribe();
+        apply(&svc, &frame());
+        assert!(drain(&mut rx).iter().any(|e| matches!(
+            e,
+            MargoEvent::ActiveWindowV2 { address } if address.margo_id() == Some(1)
+        )));
     }
 
     #[test]
