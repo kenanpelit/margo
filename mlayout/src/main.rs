@@ -30,6 +30,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 
 mod apply;
+mod atomic;
 mod capture;
 mod parser;
 mod presets;
@@ -324,7 +325,7 @@ fn cmd_init(config_dir: &Path, name: &str, yes: bool, force: bool, no_reload: bo
     }
 
     let body = render_layout_file(name, &outputs, None, &[]);
-    std::fs::write(&target, body).with_context(|| format!("write {}", target.display()))?;
+    atomic::write_atomic(&target, &body)?;
     println!("\nWrote {}.", target.display());
 
     // ── config.conf wiring ────────────────────────────────────
@@ -497,7 +498,7 @@ fn cmd_suggest(
     let target = layouts_dir(config_dir).join(format!("layout_{}.conf", chosen.slug));
     let shortcut = presets::shortcut_for(chosen.slug, &[]);
     let body = presets::render(chosen, shortcut);
-    std::fs::write(&target, body).with_context(|| format!("write {}", target.display()))?;
+    atomic::write_atomic(&target, &body)?;
 
     // 8. Activate. Use the freshly-parsed file (not the
     //    in-memory preview layout) so the symlink target is
@@ -621,7 +622,7 @@ fn cmd_new(
 
     let outputs = capture::capture_via_wlr_randr()?;
     let body = render_layout_file(name, &outputs, title, shortcuts);
-    std::fs::write(&target, body).with_context(|| format!("write {}", target.display()))?;
+    atomic::write_atomic(&target, &body)?;
 
     println!("Wrote {}:", target.display());
     for o in &outputs {
@@ -755,14 +756,9 @@ fn wire_config_file(path: &Path) -> Result<()> {
     existing.push('\n');
     existing.push_str("source = conf.d/mlayout.conf\n");
 
-    // Write atomically (temp sibling + rename) so a crash or ^C mid-write
-    // can't truncate the user's primary config.conf. Mirrors the atomic
-    // rename the active-layout symlink already uses.
-    let tmp = path.with_extension("mlayout-tmp");
-    std::fs::write(&tmp, existing).with_context(|| format!("write {}", tmp.display()))?;
-    std::fs::rename(&tmp, path)
-        .with_context(|| format!("rename {} → {}", tmp.display(), path.display()))?;
-    Ok(())
+    // Atomic so a crash or ^C mid-write can't truncate the user's primary
+    // config.conf.
+    atomic::write_atomic(path, &existing)
 }
 
 /// The `layouts/` subdir under the margo config dir. All named
@@ -1195,16 +1191,12 @@ fn match_layout<'a>(layouts: &'a [Layout], needle: &str) -> Result<&'a Layout> {
 ///      to all outputs in one configure event
 fn activate(config_dir: &Path, layout: &Layout) -> Result<()> {
     let active = config_dir.join(ACTIVE_LINK);
-    let temp = config_dir.join(format!("{}.{}.tmp", ACTIVE_LINK, std::process::id()));
 
     // The active link lives at `conf.d/mlayout.conf`; make sure conf.d
     // exists before we drop the symlink in it.
     if let Some(parent) = active.parent() {
         std::fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
-
-    // Clean any leftover from a previous crash.
-    let _ = std::fs::remove_file(&temp);
 
     // Point `conf.d/mlayout.conf` at `../layouts/<file>` with a *relative*
     // target (conf.d/ and layouts/ are siblings) so the symlink survives
@@ -1214,10 +1206,7 @@ fn activate(config_dir: &Path, layout: &Layout) -> Result<()> {
         Some(name) => Path::new("..").join("layouts").join(name),
         None => layout.path.clone(),
     };
-    std::os::unix::fs::symlink(&link_target, &temp)
-        .with_context(|| format!("create symlink at {}", temp.display()))?;
-    std::fs::rename(&temp, &active)
-        .with_context(|| format!("rename {} → {}", temp.display(), active.display()))?;
+    atomic::replace_symlink(&link_target, &active)?;
 
     // Push geometry to the live session. Best-effort — failure
     // here just means the user has to log out / back in to see

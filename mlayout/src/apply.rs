@@ -51,13 +51,40 @@ pub fn apply(layout: &Layout) -> Result<()> {
         return Ok(());
     }
 
+    let args = wlr_randr_args(layout);
+    if args.is_empty() {
+        // Every output was matched by make/model — nothing wlr-randr can drive.
+        return Ok(());
+    }
     let mut cmd = Command::new("wlr-randr");
+    cmd.args(&args);
+
+    let status = cmd
+        .status()
+        .context("spawn wlr-randr to apply layout geometry")?;
+    if !status.success() {
+        eprintln!(
+            "(wlr-randr exited {} while applying layout `{}` — outputs may \
+             be at the previous positions)",
+            status, layout.name
+        );
+    }
+    Ok(())
+}
+
+/// The `wlr-randr` arguments that apply `layout`: one `--output` block per
+/// output with a connector name, all in one invocation so the compositor
+/// applies them in a single configure event.
+fn wlr_randr_args(layout: &Layout) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
     for o in &layout.outputs {
         if o.connector.is_empty() {
             continue; // monitorrule matched on make/model — wlr-randr can't drive that
         }
-        cmd.arg("--output").arg(&o.connector);
-        cmd.arg("--pos").arg(format!("{},{}", o.x, o.y));
+        args.push("--output".into());
+        args.push(o.connector.clone());
+        args.push("--pos".into());
+        args.push(format!("{},{}", o.x, o.y));
 
         // Mode: set if the layout's mode differs from the
         // connector's preferred — wlr-randr's internal diff
@@ -70,11 +97,13 @@ pub fn apply(layout: &Layout) -> Result<()> {
             // pass dimensions only and let wlr-randr pick the
             // closest matching mode. Phase 4 wiring: thread
             // refresh through to here.
-            cmd.arg("--mode").arg(format!("{}x{}", o.width, o.height));
+            args.push("--mode".into());
+            args.push(format!("{}x{}", o.width, o.height));
         }
         // Transform — only if non-zero (default = normal).
         if o.transform != 0 {
-            cmd.arg("--transform").arg(transform_to_str(o.transform));
+            args.push("--transform".into());
+            args.push(transform_to_str(o.transform).into());
         }
         // Scale: parser dropped scale into width/height already,
         // so layout coordinates are post-scale logical pixels.
@@ -89,18 +118,7 @@ pub fn apply(layout: &Layout) -> Result<()> {
         // wlr-randr "leave scale as-is" which is the safest
         // default for now.
     }
-
-    let status = cmd
-        .status()
-        .context("spawn wlr-randr to apply layout geometry")?;
-    if !status.success() {
-        eprintln!(
-            "(wlr-randr exited {} while applying layout `{}` — outputs may \
-             be at the previous positions)",
-            status, layout.name
-        );
-    }
-    Ok(())
+    args
 }
 
 fn transform_to_str(t: i32) -> &'static str {
@@ -126,4 +144,117 @@ fn is_command_available(cmd: &str) -> bool {
             .map(|m| m.is_file())
             .unwrap_or(false)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::LayoutOutput;
+    use std::path::PathBuf;
+
+    fn output(connector: &str, x: i32, y: i32, w: i32, h: i32, transform: i32) -> LayoutOutput {
+        LayoutOutput {
+            connector: connector.to_string(),
+            label: None,
+            color: None,
+            x,
+            y,
+            has_position: true,
+            width: w,
+            height: h,
+            transform,
+        }
+    }
+
+    fn layout(outputs: Vec<LayoutOutput>) -> Layout {
+        Layout {
+            path: PathBuf::from("/tmp/layout_t.conf"),
+            slug: "t".into(),
+            name: "t".into(),
+            shortcuts: Vec::new(),
+            outputs,
+        }
+    }
+
+    #[test]
+    fn one_block_per_output_with_pos_and_mode() {
+        let l = layout(vec![
+            output("eDP-1", 0, 0, 1920, 1200, 0),
+            output("DP-3", 1920, 0, 2560, 1440, 0),
+        ]);
+        assert_eq!(
+            wlr_randr_args(&l),
+            [
+                "--output",
+                "eDP-1",
+                "--pos",
+                "0,0",
+                "--mode",
+                "1920x1200",
+                "--output",
+                "DP-3",
+                "--pos",
+                "1920,0",
+                "--mode",
+                "2560x1440",
+            ]
+        );
+    }
+
+    #[test]
+    fn position_only_rule_has_no_mode() {
+        let l = layout(vec![output("DP-1", -1080, 200, 0, 0, 0)]);
+        assert_eq!(
+            wlr_randr_args(&l),
+            ["--output", "DP-1", "--pos", "-1080,200"]
+        );
+    }
+
+    #[test]
+    fn transform_is_passed_only_when_rotated() {
+        let l = layout(vec![output("DP-2", 0, 0, 1080, 1920, 1)]);
+        assert_eq!(
+            wlr_randr_args(&l),
+            [
+                "--output",
+                "DP-2",
+                "--pos",
+                "0,0",
+                "--mode",
+                "1080x1920",
+                "--transform",
+                "90"
+            ]
+        );
+    }
+
+    #[test]
+    fn make_model_outputs_are_skipped() {
+        let l = layout(vec![output("", 0, 0, 1920, 1080, 0)]);
+        assert!(wlr_randr_args(&l).is_empty());
+    }
+
+    #[test]
+    fn transform_names_match_wlr_randr() {
+        let names: Vec<&str> = (0..8).map(transform_to_str).collect();
+        assert_eq!(
+            names,
+            [
+                "normal",
+                "90",
+                "180",
+                "270",
+                "flipped",
+                "flipped-90",
+                "flipped-180",
+                "flipped-270"
+            ]
+        );
+        assert_eq!(transform_to_str(42), "normal");
+    }
+
+    #[test]
+    fn empty_layout_is_a_no_op() {
+        assert!(apply(&layout(Vec::new())).is_ok());
+    }
 }
