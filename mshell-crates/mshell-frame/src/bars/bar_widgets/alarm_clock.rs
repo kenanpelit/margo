@@ -2,8 +2,9 @@
 //!
 //! An alarm-bell glyph. While the stopwatch runs it shows the live
 //! elapsed time inline; while the tone is ringing it pulses (the
-//! `ringing` CSS class). Click toggles the menu. The heartbeat only
-//! fires while there's something to animate, so a quiet pill is free.
+//! `ringing` CSS class). Click toggles the menu. The pill sleeps until the
+//! stopwatch or the alarm changes state; while the stopwatch runs it wakes
+//! once per displayed second, so a quiet pill costs nothing.
 
 use crate::stopwatch::{self, StopwatchState};
 use mshell_sounds::{alarm_is_ringing, stop_alarm};
@@ -103,26 +104,28 @@ impl Component for AlarmClockModel {
 
         refresh(&model);
 
-        // Heartbeat — only relayouts while the stopwatch runs or the
-        // tone rings; one trailing tick settles the readout when that
-        // activity ends.
+        // Event-driven heartbeat: wait for a stopwatch / alarm state change,
+        // and while the stopwatch runs also wake on each whole displayed
+        // second (the readout is `MM:SS`). The ringing pulse is a CSS
+        // animation, so ringing alone needs no ticks.
+        mshell_sounds::set_alarm_state_listener(stopwatch::notify_changed);
         sender.command(|out, shutdown| async move {
             let shutdown_fut = shutdown.wait();
             tokio::pin!(shutdown_fut);
-            let mut tick = tokio::time::interval(Duration::from_millis(200));
-            let mut was_active = false;
+            let mut changes = stopwatch::changes();
             loop {
+                let running = stopwatch::state() == StopwatchState::Running;
+                let next_second = next_readout_change(running, stopwatch::elapsed());
                 tokio::select! {
                     () = &mut shutdown_fut => break,
-                    _ = tick.tick() => {
-                        let active =
-                            stopwatch::state() == StopwatchState::Running || alarm_is_ringing();
-                        if active || was_active {
-                            let _ = out.send(());
+                    changed = changes.changed() => {
+                        if changed.is_err() {
+                            break;
                         }
-                        was_active = active;
                     }
+                    () = sleep_or_forever(next_second) => {}
                 }
+                let _ = out.send(());
             }
         });
 
@@ -175,6 +178,23 @@ fn refresh(model: &AlarmClockModel) {
     }
 }
 
+/// How long until the `MM:SS` readout next changes: the rest of the current
+/// second while the stopwatch runs, `None` (nothing to tick) otherwise.
+fn next_readout_change(running: bool, elapsed: Duration) -> Option<Duration> {
+    running.then(|| {
+        let into_second = Duration::from_nanos(u64::from(elapsed.subsec_nanos()));
+        // A hair past the boundary so the readout has definitely rolled.
+        Duration::from_secs(1) - into_second + Duration::from_millis(5)
+    })
+}
+
+async fn sleep_or_forever(delay: Option<Duration>) {
+    match delay {
+        Some(d) => tokio::time::sleep(d).await,
+        None => std::future::pending().await,
+    }
+}
+
 /// Bar-friendly `MM:SS` (or `H:MM:SS`) — no flickering centiseconds.
 fn format_coarse(d: Duration) -> String {
     let secs = d.as_secs();
@@ -185,5 +205,26 @@ fn format_coarse(d: Duration) -> String {
         format!("{h}:{m:02}:{s:02}")
     } else {
         format!("{m:02}:{s:02}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn readout_ticks_only_while_running_and_on_second_boundaries() {
+        assert_eq!(
+            next_readout_change(false, Duration::from_millis(1234)),
+            None
+        );
+        assert_eq!(
+            next_readout_change(true, Duration::from_millis(1234)),
+            Some(Duration::from_millis(771))
+        );
+        assert_eq!(
+            next_readout_change(true, Duration::from_secs(7)),
+            Some(Duration::from_millis(1005))
+        );
     }
 }

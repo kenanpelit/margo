@@ -8,10 +8,28 @@
 //! `accumulated` holds the time from completed run segments, and while
 //! Running the live time is `accumulated + started_at.elapsed()`.
 
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
+use tokio::sync::watch;
+
 static INSTANCE: Mutex<Stopwatch> = Mutex::new(Stopwatch::new());
+
+/// Bumped whenever the stopwatch's state changes (and, via
+/// [`notify_changed`], when the alarm starts or stops ringing), so the bar
+/// pill can sleep until something happens instead of polling.
+static CHANGES: LazyLock<watch::Sender<u64>> = LazyLock::new(|| watch::channel(0).0);
+
+/// Subscribe to stopwatch / alarm activity changes.
+pub(crate) fn changes() -> watch::Receiver<u64> {
+    CHANGES.subscribe()
+}
+
+/// Signal a change to every [`changes`] subscriber. Callable from any thread
+/// (the alarm thread reports through this).
+pub(crate) fn notify_changed() {
+    CHANGES.send_modify(|generation| *generation = generation.wrapping_add(1));
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StopwatchState {
@@ -64,6 +82,8 @@ pub(crate) fn start() {
     if sw.state != StopwatchState::Running {
         sw.started_at = Some(Instant::now());
         sw.state = StopwatchState::Running;
+        drop(sw);
+        notify_changed();
     }
 }
 
@@ -76,6 +96,8 @@ pub(crate) fn pause() {
             sw.accumulated += started.elapsed();
         }
         sw.state = StopwatchState::Paused;
+        drop(sw);
+        notify_changed();
     }
 }
 
@@ -85,6 +107,8 @@ pub(crate) fn reset() {
     sw.state = StopwatchState::Stopped;
     sw.accumulated = Duration::ZERO;
     sw.started_at = None;
+    drop(sw);
+    notify_changed();
 }
 
 /// Format an elapsed duration as `MM:SS.cc` (centiseconds), promoting
@@ -102,5 +126,26 @@ pub(crate) fn format_elapsed(d: Duration) -> String {
         format!("{hours}:{mins:02}:{secs:02}.{cs:02}")
     } else {
         format!("{mins:02}:{secs:02}.{cs:02}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn state_changes_reach_subscribers() {
+        let mut rx = changes();
+        rx.mark_unchanged();
+        start();
+        assert!(rx.has_changed().unwrap_or(false), "start notifies");
+        rx.mark_unchanged();
+        start(); // already running: no change
+        assert!(!rx.has_changed().unwrap_or(true), "no-op start is silent");
+        pause();
+        assert!(rx.has_changed().unwrap_or(false), "pause notifies");
+        rx.mark_unchanged();
+        reset();
+        assert!(rx.has_changed().unwrap_or(false), "reset notifies");
     }
 }

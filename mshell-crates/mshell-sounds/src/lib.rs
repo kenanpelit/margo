@@ -25,14 +25,41 @@ const NOTIFICATION_CRITICAL_SOUND: &[u8] = include_bytes!("../assets/notificatio
 /// thread and `alarm_is_ringing()`.
 static ALARM_PLAYING: AtomicBool = AtomicBool::new(false);
 
+/// Called (from any thread) whenever [`alarm_is_ringing`] flips, so a UI can
+/// react instead of polling the flag.
+static ALARM_LISTENER: std::sync::Mutex<Option<fn()>> = std::sync::Mutex::new(None);
+
+/// Register the callback run whenever the ringing state changes. One
+/// listener; a later call replaces it. It may run on the alarm thread.
+pub fn set_alarm_state_listener(listener: fn()) {
+    if let Ok(mut slot) = ALARM_LISTENER.lock() {
+        *slot = Some(listener);
+    }
+}
+
+fn alarm_state_changed() {
+    let listener = ALARM_LISTENER.lock().ok().and_then(|slot| *slot);
+    if let Some(listener) = listener {
+        listener();
+    }
+}
+
+/// Clear the ringing flag, telling the listener if it was set.
+fn clear_ringing() {
+    if ALARM_PLAYING.swap(false, Ordering::SeqCst) {
+        alarm_state_changed();
+    }
+}
+
 /// Start the alarm tone, looping until [`stop_alarm`]. No-op if already ringing.
 pub fn play_alarm_loop() {
     if ALARM_PLAYING.swap(true, Ordering::SeqCst) {
         return; // already ringing
     }
+    alarm_state_changed();
     std::thread::spawn(|| {
         let Ok(mut handle) = rodio::DeviceSinkBuilder::open_default_sink() else {
-            ALARM_PLAYING.store(false, Ordering::SeqCst);
+            clear_ringing();
             return;
         };
         handle.log_on_drop(false);
@@ -47,13 +74,13 @@ pub fn play_alarm_loop() {
             }
             player.stop();
         }
-        ALARM_PLAYING.store(false, Ordering::SeqCst);
+        clear_ringing();
     });
 }
 
 /// Stop the looping alarm tone.
 pub fn stop_alarm() {
-    ALARM_PLAYING.store(false, Ordering::SeqCst);
+    clear_ringing();
 }
 
 /// Whether the alarm tone is currently ringing.
@@ -212,6 +239,26 @@ pub fn play_power_unplug_sound() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    static LISTENER_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    fn count_call() {
+        LISTENER_CALLS.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// The listener fires on a ringing → silent edge only, so a UI can wait
+    /// on it instead of polling `alarm_is_ringing`. (`play_alarm_loop` is not
+    /// driven here: it opens an audio device.)
+    #[test]
+    fn stopping_the_alarm_notifies_the_listener_once() {
+        set_alarm_state_listener(count_call);
+        ALARM_PLAYING.store(true, Ordering::SeqCst);
+        let before = LISTENER_CALLS.load(Ordering::SeqCst);
+        stop_alarm();
+        assert!(!alarm_is_ringing());
+        assert_eq!(LISTENER_CALLS.load(Ordering::SeqCst), before + 1);
+        stop_alarm(); // already silent: no edge, no call
+        assert_eq!(LISTENER_CALLS.load(Ordering::SeqCst), before + 1);
+    }
 
     /// Every embedded clip MUST decode with rodio's configured feature set
     /// (`vorbis` only — no WAV decoder). A `.wav` asset slips silently past a
