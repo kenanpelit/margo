@@ -149,10 +149,13 @@ impl SpawnedEnvironment {
 }
 
 impl PostLoginEnvironment {
+    /// Start the session as `user_info`, with exactly `session_env` as its
+    /// environment (see [`env_variables::session_env`]).
     pub fn spawn(
         &self,
         user_info: &UserInfo,
         config: &Config,
+        session_env: &[(std::ffi::OsString, std::ffi::OsString)],
     ) -> Result<SpawnedEnvironment, EnvironmentStartError> {
         let shell_login_flag = match config.shell_login_flag {
             ShellLoginFlag::None => None,
@@ -162,6 +165,7 @@ impl PostLoginEnvironment {
 
         let mut client =
             lower_command_permissions_to_user(Command::new(&config.system_shell), user_info);
+        client.env_clear().envs(session_env.iter().cloned());
 
         let log_path = config.do_log.then_some(Path::new(&config.client_log_path));
 
@@ -176,6 +180,11 @@ impl PostLoginEnvironment {
                 info!("Starting X11 session");
 
                 let server = setup_x(user_info, config).map_err(EnvironmentStartError::XSetup)?;
+                // setup_x has just exported XAUTHORITY, after `session_env` was
+                // taken.
+                if let Some(xauthority) = std::env::var_os("XAUTHORITY") {
+                    client.env("XAUTHORITY", xauthority);
+                }
 
                 client.arg(format!("{} {}", &config.x11.xsetup_path, xinitrc_path));
 

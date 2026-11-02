@@ -31,8 +31,8 @@ use crate::info_caching::set_cache;
 use crate::post_login::{
     self, PostLoginEnvironment,
     env_variables::{
-        remove_xdg, set_basic_variables, set_display, set_seat_vars, set_session_params,
-        set_session_vars, set_xdg_common_paths,
+        remove_xdg, session_env, set_basic_variables, set_display, set_seat_vars,
+        set_session_params, set_session_vars, set_xdg_common_paths, snapshot_env,
     },
 };
 
@@ -672,6 +672,11 @@ fn start_session<C: pam::Converse>(
     username: &str,
     user_info: &UserInfo,
 ) -> i32 {
+    // The daemon's own environment, before anything below adds to it. The
+    // session gets only what is set or changed from here on, plus the terminal
+    // and locale (`env_variables::session_env`).
+    let inherited_env = snapshot_env();
+
     // pam_systemd reads these to register the session on the right seat and VT.
     // It looks them up with `getenv_harder()`, which tries the PAM environment
     // first and falls back to the process environment — which is what these set.
@@ -706,7 +711,8 @@ fn start_session<C: pam::Converse>(
     // logind grants device access asynchronously. Do not race it to the DRM node.
     session_active::wait();
 
-    let spawned = match post_login_env.spawn(user_info, config) {
+    let env = session_env(&inherited_env, std::env::vars_os());
+    let spawned = match post_login_env.spawn(user_info, config, &env) {
         Ok(spawned) => spawned,
         Err(err) => {
             error!("runner: failed to start the session environment: {err}");
