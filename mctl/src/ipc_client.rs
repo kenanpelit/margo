@@ -168,6 +168,25 @@ mod tests {
     }
 
     #[test]
+    fn multi_line_requests_are_refused_before_sending() {
+        let path = temp_sock("inject");
+        let listener = UnixListener::bind(&path).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        for req in [
+            "dispatch spawn notify-send hi\ndispatch quit",
+            "get state\r\ndispatch quit",
+            "dispatch view 1\n",
+        ] {
+            let err = request_once_at(&path, req).unwrap_err();
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput, "{req:?}");
+            let err = watch_stream_at(&path, req, |_| true).unwrap_err();
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput, "{req:?}");
+        }
+        assert!(listener.accept().is_err(), "nothing reached the socket");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn request_once_errors_on_garbage_reply() {
         let path = temp_sock("garbage");
         let listener = UnixListener::bind(&path).unwrap();
