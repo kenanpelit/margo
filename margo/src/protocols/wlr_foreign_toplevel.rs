@@ -19,6 +19,7 @@
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use smithay::reexports::wayland_protocols_wlr::foreign_toplevel::v1::server::{
@@ -49,6 +50,9 @@ pub struct WlrForeignToplevelState {
     display: DisplayHandle,
     manager_instances: HashSet<ZwlrForeignToplevelManagerV1>,
     toplevels: HashMap<WlSurface, ToplevelData>,
+    /// [`toplevel_fingerprint`] of the client list the last `refresh`
+    /// mirrored; an unchanged list skips the snapshot and diff.
+    last_fingerprint: Option<u64>,
 }
 
 #[derive(Clone)]
@@ -87,6 +91,7 @@ impl WlrForeignToplevelState {
             display: display.clone(),
             manager_instances: HashSet::new(),
             toplevels: HashMap::new(),
+            last_fingerprint: None,
         }
     }
 }
@@ -120,11 +125,41 @@ impl ToplevelData {
     }
 }
 
+/// Hash of everything `refresh` mirrors, per toplevel in order: surface,
+/// title, app id, fullscreen, focused. Equal fingerprints mean `refresh`
+/// would send nothing. Hashing borrows; it allocates nothing.
+pub fn toplevel_fingerprint<'a, S: Hash + 'a>(
+    toplevels: impl Iterator<Item = (S, &'a str, &'a str, bool, bool)>,
+) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for (surface, title, app_id, fullscreen, focused) in toplevels {
+        (surface, title, app_id, fullscreen, focused).hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
 /// Diff `state.clients` against the tracked toplevel set and emit the wlr
-/// events. Called once per repaint from `MargoState::post_repaint`; cheap
-/// and idempotent (only sends events on an actual change).
+/// events. Called once per output repaint from `MargoState::post_repaint`,
+/// so it first compares a cheap fingerprint of the client list and returns
+/// when nothing changed — the full pass clones every title and app id and
+/// builds a HashSet of surfaces.
 pub fn refresh(state: &mut MargoState) {
     let focused_idx = state.focused_client_idx();
+    let fingerprint =
+        toplevel_fingerprint(state.clients.iter().enumerate().filter_map(|(i, client)| {
+            let surface = client.window.wl_surface()?;
+            Some((
+                surface.id(),
+                client.title.as_str(),
+                client.app_id.as_str(),
+                client.is_fullscreen,
+                Some(i) == focused_idx,
+            ))
+        }));
+    if state.wlr_foreign_toplevel.last_fingerprint == Some(fingerprint) {
+        return;
+    }
+    state.wlr_foreign_toplevel.last_fingerprint = Some(fingerprint);
 
     struct Snap {
         surface: WlSurface,
@@ -357,4 +392,32 @@ macro_rules! delegate_wlr_foreign_toplevel {
             smithay::reexports::wayland_protocols_wlr::foreign_toplevel::v1::server::zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1: ()
         ] => $crate::protocols::wlr_foreign_toplevel::WlrForeignToplevelState);
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::toplevel_fingerprint;
+
+    #[test]
+    fn fingerprint_tracks_every_mirrored_field() {
+        let base = [
+            (1_u32, "Firefox", "firefox", false, true),
+            (2, "kitty", "kitty", false, false),
+        ];
+        let fp = |list: &[(u32, &'static str, &'static str, bool, bool)]| {
+            toplevel_fingerprint(list.iter().copied())
+        };
+        assert_eq!(fp(&base), fp(&base), "unchanged list → refresh skipped");
+        let mut retitled = base;
+        retitled[0].1 = "Firefox — new tab";
+        assert_ne!(fp(&base), fp(&retitled));
+        let mut refocused = base;
+        refocused[0].4 = false;
+        refocused[1].4 = true;
+        assert_ne!(fp(&base), fp(&refocused));
+        let mut fullscreen = base;
+        fullscreen[1].3 = true;
+        assert_ne!(fp(&base), fp(&fullscreen));
+        assert_ne!(fp(&base), fp(&base[..1]), "closed window");
+    }
 }
