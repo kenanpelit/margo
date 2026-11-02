@@ -154,7 +154,7 @@ fn draw_corner_mask(ctx: &cairo::Context, corner: Corner, r: f64) {
         }
     }
     ctx.close_path();
-    ctx.set_source_rgb(0.0, 0.0, 0.0);
+    ctx.set_source_rgb(0.0, 0.0, 0.0); // design-lint: allow-colour masks the physical screen corners
     let _ = ctx.fill();
     let _ = ctx.restore();
 }

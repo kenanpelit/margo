@@ -8,7 +8,7 @@
 # the exception THERE first, then mirror it here. Don't loosen a rule to
 # make CI green.
 #
-# Covered: L1–L7 (all hard gates — the tree was audited clean when this
+# Covered: L1–L7 + L10 (all hard gates — the tree was audited clean when this
 # gate shipped). L8 (main-thread blocking) is advisory-only per DESIGN.md
 # (grep can't prove the thread) and L9 (fmt/clippy) already has its own
 # CI steps.
@@ -96,7 +96,29 @@ hits=$(grep -rn 'DragSource\|DropTarget' mshell-crates/mshell-settings/src 2>/de
     | strip_comments | grep -E 'DragSource|DropTarget' || true)
 report "L7" "DragSource/DropTarget row reorder (use reorder_dnd)" "$hits"
 
+# L10 — no hardcoded colours in mshell Rust (matugen owns colour; read the
+# theme from CSS instead). Flags RGBA::new(<literal>…), "#rrggbb[aa]" string
+# literals and cairo set_source_rgb[a](<literals>). Exceptions: the palette
+# crates (mshell-matugen, mshell-style), unit tests (everything after a
+# file's first #[cfg(test)]), comments, and lines carrying an explicit
+# `design-lint: allow-colour <why>` marker (e.g. a black scrim over
+# arbitrary screen content, a value written to another tool's config).
+hits=$(find mshell-crates -path '*/target' -prune -o -name '*.rs' -print 2>/dev/null \
+    | grep -vE '^mshell-crates/(mshell-matugen|mshell-style)/' \
+    | xargs awk '
+        FNR == 1 { in_test = 0 }
+        /#\[cfg\(test\)\]/ { in_test = 1 }
+        in_test { next }
+        /design-lint: allow-colour/ { next }
+        { line = $0; sub(/\/\/.*/, "", line) }
+        line ~ /RGBA::new\([[:space:]]*[0-9]/ \
+          || line ~ /"#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?"/ \
+          || line ~ /set_source_rgba?\([[:space:]]*[0-9.]+[[:space:]]*,/ {
+            print FILENAME ":" FNR ":" $0
+        }' || true)
+report "L10" "hardcoded colour in mshell Rust (use a theme colour)" "$hits"
+
 if [ "$fail" -ne 0 ]; then
     exit 1
 fi
-echo "design-lint OK: L1–L7 clean."
+echo "design-lint OK: L1–L7, L10 clean."

@@ -333,7 +333,7 @@ fn draw_window_overlay(
     outline: &gdk::RGBA,
 ) {
     // Dark overlay covering the entire monitor.
-    cr.set_source_rgba(0.0, 0.0, 0.0, 0.45);
+    cr.set_source_rgba(0.0, 0.0, 0.0, 0.45); // design-lint: allow-colour neutral scrim over arbitrary screen content
     cr.rectangle(0.0, 0.0, width as f64, height as f64);
     cr.fill().ok();
 

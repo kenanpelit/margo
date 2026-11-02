@@ -282,7 +282,7 @@ impl Component for LockSettingsModel {
                         gtk::Entry {
                             set_valign: gtk::Align::Center,
                             set_width_request: 200,
-                            set_placeholder_text: Some("#1e1e2e"),
+                            set_placeholder_text: Some("#1e1e2e"), // design-lint: allow-colour mlock.conf value hint, not a UI colour
                             #[block_signal(color_handler)]
                             set_text: &model.color,
                             connect_changed[sender] => move |e| {
@@ -525,7 +525,7 @@ fn mlock_conf_updates(
         _ => "wallpaper",
     };
     let color = match color.trim() {
-        "" => "#1e1e2e",
+        "" => "#1e1e2e", // design-lint: allow-colour mlock's own default, written to mlock.conf
         c => c,
     };
     let mut updates = vec![

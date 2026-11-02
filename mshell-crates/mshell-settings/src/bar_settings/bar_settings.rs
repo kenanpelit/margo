@@ -1237,12 +1237,12 @@ impl Component for BarSettingsModel {
             islands: false,
             frame_color_custom: !init_frame_fill.trim().is_empty(),
             frame_color: gdk::RGBA::parse(init_frame_fill.trim())
-                .unwrap_or_else(|_| gdk::RGBA::new(0.12, 0.12, 0.18, 1.0)),
+                .unwrap_or_else(|_| gdk::RGBA::new(0.12, 0.12, 0.18, 1.0)), // design-lint: allow-colour picker seed until a custom colour is set (TODO: seed from the live theme)
             frame_border_color: gdk::RGBA::parse(init_frame_border.trim())
-                .unwrap_or_else(|_| gdk::RGBA::new(0.19, 0.20, 0.27, 1.0)),
+                .unwrap_or_else(|_| gdk::RGBA::new(0.19, 0.20, 0.27, 1.0)), // design-lint: allow-colour picker seed until a custom colour is set (TODO: seed from the live theme)
             separator_color_custom: !init_separator.trim().is_empty(),
             separator_color: gdk::RGBA::parse(init_separator.trim())
-                .unwrap_or_else(|_| gdk::RGBA::new(0.27, 0.28, 0.35, 1.0)),
+                .unwrap_or_else(|_| gdk::RGBA::new(0.27, 0.28, 0.35, 1.0)), // design-lint: allow-colour picker seed until a custom colour is set (TODO: seed from the live theme)
             slide_duration: config_manager()
                 .config()
                 .bars()

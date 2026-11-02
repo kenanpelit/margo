@@ -662,7 +662,7 @@ fn build(
                         .properties
                         .get("color")
                         .map(String::as_str)
-                        .unwrap_or("#00000000");
+                        .unwrap_or("#00000000"); // design-lint: allow-colour fully transparent = no colour set
                     let size: i32 = node
                         .properties
                         .get("size")

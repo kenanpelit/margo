@@ -213,7 +213,7 @@ fn draw_monitor_overlay(
 ) {
     if is_hovered {
         // Hovered monitor: mostly clear with a subtle border.
-        cr.set_source_rgba(0.0, 0.0, 0.0, 0.05);
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.05); // design-lint: allow-colour neutral scrim over arbitrary screen content
         cr.rectangle(0.0, 0.0, width as f64, height as f64);
         cr.fill().ok();
 
@@ -229,7 +229,7 @@ fn draw_monitor_overlay(
         cr.stroke().ok();
     } else {
         // Non-hovered: dark overlay.
-        cr.set_source_rgba(0.0, 0.0, 0.0, 0.45);
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.45); // design-lint: allow-colour neutral scrim over arbitrary screen content
         cr.rectangle(0.0, 0.0, width as f64, height as f64);
         cr.fill().ok();
     }
