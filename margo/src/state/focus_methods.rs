@@ -821,6 +821,34 @@ fn index_after_move(i: usize, from: usize, to: usize) -> usize {
     }
 }
 
+impl MargoState {
+    /// Sets keyboard AND text-input-v3 focus together. The two are
+    /// independent pieces of smithay-side state, and — unlike keyboard
+    /// focus — text-input-v3 `enter`/`leave` are never sent implicitly:
+    /// `TextInputHandle::set_focus` only updates which surface is
+    /// considered focused; the wire events require explicit
+    /// `enter()`/`leave()` calls (both are no-ops when there is no
+    /// text-input instance for the relevant surface, so they're safe to
+    /// call unconditionally). Every direct `keyboard.set_focus()` call
+    /// in the compositor should go through this instead, so IME / an
+    /// on-screen keyboard can ever see a real enter/leave.
+    pub fn set_keyboard_focus(&mut self, target: Option<FocusTarget>, serial: Serial) {
+        self.seat.text_input().leave();
+
+        let text_input_surface = target
+            .as_ref()
+            .and_then(FocusTarget::inner_wl_surface)
+            .cloned();
+
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.set_focus(self, target, serial);
+        }
+
+        self.seat.text_input().set_focus(text_input_surface);
+        self.seat.text_input().enter();
+    }
+}
+
 #[cfg(test)]
 mod index_tests {
     use super::index_after_move;

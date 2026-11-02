@@ -1334,3 +1334,53 @@ fn configure_arranged_window(window: &Window, geom: Rect, configure_geom: Rect) 
         }
     }
 }
+
+impl MargoState {
+    pub(crate) fn refresh_output_work_area(&mut self, output: &Output) {
+        if let Some(mon_idx) = self.update_output_work_area(output) {
+            self.arrange_monitor(mon_idx);
+        }
+    }
+
+    /// Refresh the cached non-exclusive zone and return the affected monitor
+    /// only when its geometry changed. Callers whose layer is currently
+    /// suppressed (lock, exclusive fullscreen, scroller Top/Overlay) can keep
+    /// layout state current without scheduling invisible client animations or
+    /// a physical repaint; the normal reveal path arranges the monitor later.
+    pub(crate) fn update_output_work_area(&mut self, output: &Output) -> Option<usize> {
+        let work_area = {
+            let map = layer_map_for_output(output);
+            map.non_exclusive_zone()
+        };
+
+        if let Some(mon_idx) = self.monitors.iter().position(|m| m.output == *output) {
+            let monitor_area = self.monitors[mon_idx].monitor_area;
+            let new_work_area = crate::layout::Rect {
+                x: monitor_area.x + work_area.loc.x,
+                y: monitor_area.y + work_area.loc.y,
+                width: work_area.size.w,
+                height: work_area.size.h,
+            };
+            // Compositor commit handler calls us on every layer
+            // surface commit. mshell-frame's GTK4 + gtk4-layer-shell
+            // pair commits a fresh buffer 60 times a second during
+            // every menu Revealer animation — without this guard
+            // each one re-tiles the monitor (`arrange_monitor`
+            // re-computes geometry for every visible client and
+            // can spawn move-animation snapshots, each a full-size
+            // GlesTexture). That's the asymmetry between mshell
+            // (heavy churn → bar flicker, GPU memory spikes) and
+            // noctalia / Qt (commits less aggressively, work_area
+            // change check skips this entirely). Skip when the
+            // geometry is identical; the layer-shell exclusive zone
+            // is the only thing that can actually move the work
+            // area, and mshell-frame doesn't claim one.
+            if self.monitors[mon_idx].work_area == new_work_area {
+                return None;
+            }
+            self.monitors[mon_idx].work_area = new_work_area;
+            return Some(mon_idx);
+        }
+        None
+    }
+}

@@ -10,10 +10,13 @@
 
 use smithay::{
     reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as XdgDecorationMode,
-    wayland::shell::xdg::{ToplevelSurface, decoration::XdgDecorationHandler},
+    wayland::{
+        seat::WaylandFocus,
+        shell::xdg::{ToplevelSurface, decoration::XdgDecorationHandler},
+    },
 };
 
-use crate::state::MargoState;
+use crate::state::{MargoState, read_toplevel_identity};
 
 impl XdgDecorationHandler for MargoState {
     /// First time a client binds `xdg-decoration-unstable-v1` for this
@@ -56,5 +59,53 @@ impl XdgDecorationHandler for MargoState {
             state.decoration_mode = Some(mode);
         });
         toplevel.send_configure();
+    }
+}
+
+impl MargoState {
+    /// What decoration mode should we send to a freshly-bound or
+    /// reset toplevel? Defaults to `ServerSide`; flips to
+    /// `ClientSide` only when the client is in our `clients` vec
+    /// and matches a window-rule that whitelists CSD. At the time
+    /// `new_decoration` fires the toplevel may not even be in
+    /// `clients` yet (xdg-decoration arrives before the first
+    /// commit), in which case we ALSO check the raw window-rule
+    /// list against the toplevel's current app_id / title — the
+    /// rule machinery would otherwise only kick in at
+    /// `finalize_initial_map`, too late to influence the very first
+    /// configure.
+    pub(super) fn decoration_mode_for(&self, toplevel: &ToplevelSurface) -> XdgDecorationMode {
+        if self.client_allows_csd(toplevel) {
+            XdgDecorationMode::ClientSide
+        } else {
+            XdgDecorationMode::ServerSide
+        }
+    }
+
+    pub(super) fn client_allows_csd(&self, toplevel: &ToplevelSurface) -> bool {
+        let wl_surface = toplevel.wl_surface();
+        // Path A: client already mapped — read the resolved
+        // `allow_csd` flag right off the `MargoClient`.
+        if let Some(client) = self
+            .clients
+            .iter()
+            .find(|c| c.window.wl_surface().as_deref() == Some(wl_surface))
+        {
+            return client.allow_csd;
+        }
+        // Path B: client is between role bind and first commit —
+        // best we can do is look up the window-rule by the
+        // toplevel's currently-set app_id / title. This is the
+        // path that fires for the *first* `xdg_decoration.configure`
+        // many compositors get wrong (Chromium / Firefox often
+        // bind decoration before any role-data commit, so the
+        // initial mode the user sees depends entirely on what we
+        // send right now).
+        let (app_id, title) = read_toplevel_identity(toplevel);
+        self.config
+            .window_rules
+            .iter()
+            .filter(|rule| self.window_rule_matches(rule, &app_id, &title))
+            .any(|rule| rule.allow_csd == Some(true))
     }
 }

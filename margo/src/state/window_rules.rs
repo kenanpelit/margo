@@ -691,3 +691,109 @@ impl MargoState {
         }
     }
 }
+
+impl MargoState {
+    /// Single post-mount window-rule reapply path. All three trigger
+    /// sites — initial XDG mount, late `app_id` settle, config reload —
+    /// route through this with a [`WindowRuleReason`] tag so the debug
+    /// log says *why* a rule fired.
+    pub(crate) fn reapply_rules(&mut self, idx: usize, reason: WindowRuleReason) -> bool {
+        if idx >= self.clients.len() {
+            return false;
+        }
+        let (app_id, title) = {
+            let client = &self.clients[idx];
+            (client.app_id.clone(), client.title.clone())
+        };
+        let rules = self.matching_window_rules(&app_id, &title);
+        if rules.is_empty() {
+            tracing::trace!(
+                target: "windowrule",
+                reason = ?reason,
+                app_id = %app_id,
+                title = %title,
+                "reapply: no rules match",
+            );
+            return false;
+        }
+        // On the initial map, `selected` still points at the window that had
+        // focus when this client opened (focus doesn't move to the new window
+        // until after this reapply). Centre any rule-floated dialog over that
+        // trigger window rather than the work-area centre. Later reapplies
+        // (`AppIdSettled`, `Reload`) must NOT re-centre — the user may have
+        // moved the window since — so they pass `None`.
+        let focus_anchor = if reason == WindowRuleReason::InitialMap {
+            let mon = self.clients[idx].monitor;
+            self.focus_anchor_for(mon, idx)
+        } else {
+            None
+        };
+        Self::apply_matched_window_rules(
+            &self.monitors,
+            &mut self.clients[idx],
+            &rules,
+            focus_anchor,
+            &mut self.rule_once_consumed,
+        );
+        tracing::debug!(
+            target: "windowrule",
+            reason = ?reason,
+            count = rules.len(),
+            app_id = %app_id,
+            title = %title,
+            "reapply: applied {} rules",
+            rules.len(),
+        );
+        true
+    }
+
+    /// Matched rules paired with their position in `config.window_rules`
+    /// — `apply_matched_window_rules` needs the index to key
+    /// `rule_once_consumed` for `windowrule-once`.
+    pub(crate) fn matching_window_rules(
+        &self,
+        app_id: &str,
+        title: &str,
+    ) -> Vec<(usize, WindowRule)> {
+        self.config
+            .window_rules
+            .iter()
+            .enumerate()
+            .filter(|(_, rule)| self.window_rule_matches(rule, app_id, title))
+            .map(|(i, rule)| (i, rule.clone()))
+            .collect()
+    }
+
+    pub(crate) fn window_rule_matches(&self, rule: &WindowRule, app_id: &str, title: &str) -> bool {
+        // Positive matches: every present pattern must match.
+        let app_ok = rule
+            .id
+            .as_deref()
+            .filter(|p| !p.is_empty())
+            .map(|p| matches_rule_text(p, app_id))
+            .unwrap_or(true);
+        let title_ok = rule
+            .title
+            .as_deref()
+            .filter(|p| !p.is_empty())
+            .map(|p| matches_rule_text(p, title))
+            .unwrap_or(true);
+        if !(app_ok && title_ok) {
+            return false;
+        }
+
+        // Negative matches (niri-style): if either exclude pattern matches,
+        // the rule is rejected even if the positive matches succeed.
+        if let Some(p) = rule.exclude_id.as_deref().filter(|p| !p.is_empty()) {
+            if matches_rule_text(p, app_id) {
+                return false;
+            }
+        }
+        if let Some(p) = rule.exclude_title.as_deref().filter(|p| !p.is_empty()) {
+            if matches_rule_text(p, title) {
+                return false;
+            }
+        }
+        true
+    }
+}

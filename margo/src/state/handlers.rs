@@ -33,6 +33,7 @@ mod pointer_constraints;
 mod pointer_gestures;
 mod pointer_warp;
 mod screencopy;
+mod seat;
 mod security_context;
 mod selection;
 mod session_lock;
