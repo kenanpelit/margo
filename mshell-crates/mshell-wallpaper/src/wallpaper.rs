@@ -162,16 +162,9 @@ fn transition_stack(stack: &gtk::Stack, new_name: &str, old_child: Option<gtk::W
 }
 
 fn make_wallpaper_widget(image: &WallpaperImage, content_fit: gtk::ContentFit) -> gtk::Widget {
-    let bytes = glib::Bytes::from(&*image.buf);
-    let texture = gdk::MemoryTexture::new(
-        image.width as i32,
-        image.height as i32,
-        gdk::MemoryFormat::R8g8b8a8,
-        &bytes,
-        (image.width * 4) as usize,
-    );
-
-    let picture = gtk::Picture::for_paintable(&texture);
+    // The texture is shared by every monitor's wallpaper window and the lock
+    // screen — no per-surface pixel copy.
+    let picture = gtk::Picture::for_paintable(&image.texture);
     picture.set_hexpand(true);
     picture.set_vexpand(true);
     picture.set_content_fit(content_fit);

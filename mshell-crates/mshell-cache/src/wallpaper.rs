@@ -1,17 +1,19 @@
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, ThemeStoreFields, WallpaperStoreFields};
 use mshell_config::schema::themes::Themes;
-use mshell_image::lut::apply_theme_filter;
+use mshell_image::lut::{apply_theme_filter_rgba, decode_rgba_scaled};
 use reactive_graph::effect::Effect;
 use reactive_graph::prelude::{Get, GetUntracked, Update};
 use reactive_stores::{ArcStore, Store};
-use relm4::gtk::glib;
+use relm4::gtk::prelude::{Cast, DisplayExt, ListModelExt, MonitorExt};
+use relm4::gtk::{gdk, glib};
 use std::fs;
-use std::io::{Read, Write};
+use std::hash::{Hash, Hasher};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock};
-use tracing::info;
+use std::sync::{Arc, LazyLock, Mutex, mpsc};
+use tracing::{info, warn};
 
 // ── Cache paths ──────────────────────────────────────────────────────────────
 
@@ -24,7 +26,10 @@ pub fn source_path() -> PathBuf {
     cache_dir().join("wallpaper_source")
 }
 
-/// Persisted display wallpaper on disk: [u32 width][u32 height][RGBA pixels]
+/// The displayed (screen-sized, theme-filtered) wallpaper on disk:
+/// `[u32 LE width][u32 LE height][RGBA pixels]`. mshell itself never reads it
+/// back; it is the hand-off to `mlogind`'s greeter-backdrop sync
+/// (`mlogind/src/theme_sync.rs`), which blurs a copy for `mgreet`.
 fn display_cache_path() -> PathBuf {
     cache_dir().join("wallpaper.raw")
 }
@@ -48,25 +53,69 @@ pub fn default_wallpaper_path() -> Option<PathBuf> {
     candidates.into_iter().find(|p| p.exists())
 }
 
-/// Decode the bundled default wallpaper for the first-run / unconfigured
-/// display. Used only when no user wallpaper is cached.
-fn load_default_wallpaper() -> Option<WallpaperImage> {
-    let path = default_wallpaper_path()?;
-    info!(
-        "no wallpaper set — using bundled default {}",
-        path.display()
-    );
-    decode_source(&path)
-}
+// ── In-memory wallpaper ──────────────────────────────────────────────────────
 
-// ── In-memory wallpaper buffer ───────────────────────────────────────────────
-
-/// Shared RGBA image data ready for direct use with MemoryTexture.
+/// The current wallpaper as one shared GPU-uploadable texture. Every
+/// per-monitor wallpaper window and every lock-screen surface paints this same
+/// `gdk::Texture` (cloning it is a refcount bump), so the pixels exist once in
+/// memory instead of once per surface. It is decoded at the size the largest
+/// monitor needs (see [`cover_decode_size`]), not the source resolution.
 #[derive(Debug, Clone)]
 pub struct WallpaperImage {
-    pub buf: Arc<Vec<u8>>,
+    pub texture: gdk::Texture,
     pub width: u32,
     pub height: u32,
+}
+
+/// Decode target used when no monitor geometry is known (no display yet).
+const FALLBACK_TARGET: (u32, u32) = (3840, 2160);
+
+/// The size to decode a `src_w`×`src_h` image at so it still *covers* every
+/// target (monitor size in device pixels) without upscaling past the source.
+/// Cover is the most demanding fit: `Contain`/`ScaleDown` need less, and
+/// `Fill` needs at most the cover scale on each axis, so one cover-sized
+/// image serves every `content_fit`. With no targets, [`FALLBACK_TARGET`].
+fn cover_decode_size(src_w: u32, src_h: u32, targets: &[(u32, u32)]) -> (u32, u32) {
+    if src_w == 0 || src_h == 0 {
+        return (src_w, src_h);
+    }
+    let fallback = [FALLBACK_TARGET];
+    let targets = if targets.is_empty() {
+        &fallback[..]
+    } else {
+        targets
+    };
+    let (sw, sh) = (f64::from(src_w), f64::from(src_h));
+    let scale = targets
+        .iter()
+        .map(|&(tw, th)| f64::max(f64::from(tw) / sw, f64::from(th) / sh))
+        .fold(0.0, f64::max);
+    if scale >= 1.0 {
+        return (src_w, src_h);
+    }
+    let dim = |v: f64, max: u32| ((v * scale).ceil() as u32).clamp(1, max);
+    (dim(sw, src_w), dim(sh, src_h))
+}
+
+/// Every connected monitor's size in device pixels (logical size × scale).
+/// Main thread only (GDK).
+fn monitor_pixel_sizes() -> Vec<(u32, u32)> {
+    let Some(display) = gdk::Display::default() else {
+        return Vec::new();
+    };
+    let monitors = display.monitors();
+    (0..monitors.n_items())
+        .filter_map(|i| monitors.item(i)?.downcast::<gdk::Monitor>().ok())
+        .map(|m| {
+            let geometry = m.geometry();
+            let scale = m.scale();
+            (
+                (f64::from(geometry.width()) * scale).ceil() as u32,
+                (f64::from(geometry.height()) * scale).ceil() as u32,
+            )
+        })
+        .filter(|&(w, h)| w > 0 && h > 0)
+        .collect()
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────
@@ -86,11 +135,19 @@ struct WallpaperInner {
 static WALLPAPER: LazyLock<ArcStore<WallpaperState>> =
     LazyLock::new(|| ArcStore::new(WallpaperState { revision: 0 }));
 
-static WALLPAPER_INNER: LazyLock<std::sync::Mutex<WallpaperInner>> = LazyLock::new(|| {
-    // Load the persisted image from disk; when none is set (fresh profile /
-    // reset / never configured), fall back to the bundled margo default so the
-    // desktop is branded instead of blank.
-    let image = load_from_disk().or_else(load_default_wallpaper);
+static WALLPAPER_INNER: LazyLock<Mutex<WallpaperInner>> = LazyLock::new(|| {
+    // Nothing is decoded here: the first (debounced) refilter below decodes
+    // the source — or, when none is set (fresh profile / reset / never
+    // configured), the bundled margo default — off the main thread at screen
+    // size, and bumps the revision when it lands.
+    refilter();
+
+    // A new monitor may need a larger decode (or allow a smaller one).
+    if let Some(display) = gdk::Display::default() {
+        display
+            .monitors()
+            .connect_items_changed(|_, _, _, _| refilter());
+    }
 
     // React to theme changes
     Effect::new(move |_| {
@@ -118,19 +175,10 @@ static WALLPAPER_INNER: LazyLock<std::sync::Mutex<WallpaperInner>> = LazyLock::n
         refilter();
     });
 
-    let has_image = image.is_some();
-
-    let inner = std::sync::Mutex::new(WallpaperInner {
+    Mutex::new(WallpaperInner {
         cancel_token: Arc::new(AtomicBool::new(false)),
-        image,
-    });
-
-    // If we loaded a persisted image, bump revision so consumers pick it up
-    if has_image {
-        WALLPAPER.update(|s| s.revision = 1);
-    }
-
-    inner
+        image: None,
+    })
 });
 
 pub fn wallpaper_store() -> ArcStore<WallpaperState> {
@@ -414,6 +462,7 @@ pub fn clear_wallpaper() {
     fs::remove_file(source_path()).ok();
     fs::remove_file(display_cache_path()).ok();
     if let Ok(mut inner) = WALLPAPER_INNER.lock() {
+        inner.cancel_token.store(true, Ordering::Relaxed);
         inner.image = None;
     }
     bump_revision();
@@ -426,125 +475,281 @@ pub fn has_wallpaper() -> bool {
 
 // ── Internal ─────────────────────────────────────────────────────────────────
 
+/// Set while a refilter is queued on the main loop, so a burst of triggers
+/// (the three config effects all fire on creation; a theme switch can flip
+/// several keys at once) collapses into one decode.
+static REFILTER_QUEUED: AtomicBool = AtomicBool::new(false);
+
+/// Schedule a re-decode of the current wallpaper with the current filter
+/// settings. Debounced to one run per main-loop idle. Never touches
+/// `WALLPAPER_INNER` itself, so it is safe to call from its initialiser.
 fn refilter() {
-    let source = source_path();
-    if !source.exists() {
+    if REFILTER_QUEUED.swap(true, Ordering::SeqCst) {
         return;
     }
+    glib::idle_add_once(|| {
+        REFILTER_QUEUED.store(false, Ordering::SeqCst);
+        start_refilter();
+    });
+}
 
+/// One decode request for the wallpaper worker.
+struct Job {
+    path: PathBuf,
+    /// `Some((theme, strength))` when the theme filter applies.
+    filter: Option<(Themes, f64)>,
+    /// Monitor sizes in device pixels; the decode covers the largest.
+    targets: Vec<(u32, u32)>,
+    cancel: Arc<AtomicBool>,
+}
+
+/// The single wallpaper worker thread. Jobs queue on the channel; the worker
+/// skips straight to the newest one, and every job's cancel token is raised as
+/// soon as a newer one is issued, so at most one decode is ever in flight.
+static WORKER: LazyLock<Option<mpsc::Sender<Job>>> = LazyLock::new(|| {
+    let (tx, rx) = mpsc::channel::<Job>();
+    match std::thread::Builder::new()
+        .name("mshell-wallpaper".into())
+        .spawn(move || {
+            while let Ok(mut job) = rx.recv() {
+                while let Ok(newer) = rx.try_recv() {
+                    job = newer;
+                }
+                run_job(job);
+            }
+        }) {
+        Ok(_) => Some(tx),
+        Err(e) => {
+            warn!("wallpaper: cannot spawn worker thread: {e}");
+            None
+        }
+    }
+});
+
+/// Main thread: snapshot the config and monitor sizes, cancel any decode in
+/// flight and hand a fresh job to the worker.
+fn start_refilter() {
+    let source = source_path();
+    let (path, user_set) = if source.exists() {
+        (source, true)
+    } else if let Some(default) = default_wallpaper_path() {
+        info!(
+            "no wallpaper set — using bundled default {}",
+            default.display()
+        );
+        (default, false)
+    } else {
+        return;
+    };
+
+    let theme = config_manager().config().theme().theme().get_untracked();
+    let apply = config_manager()
+        .config()
+        .wallpaper()
+        .apply_theme_filter()
+        .get_untracked();
+    let strength = config_manager()
+        .config()
+        .wallpaper()
+        .theme_filter_strength()
+        .get_untracked()
+        .get();
+
+    // `Default` is now an alias for the static house theme (Kenp), so it
+    // grades the wallpaper like any other static theme; only `Wallpaper`
+    // (the dynamic-from-image mode) is excluded. The bundled default is shown
+    // as shipped.
+    let should_filter = user_set && apply && strength != 0.0 && theme != Themes::Wallpaper;
+
+    let cancel = Arc::new(AtomicBool::new(false));
     if let Ok(mut inner) = WALLPAPER_INNER.lock() {
         inner.cancel_token.store(true, Ordering::Relaxed);
-        let new_token = Arc::new(AtomicBool::new(false));
-        inner.cancel_token = new_token.clone();
+        inner.cancel_token = cancel.clone();
+    }
 
-        let cancel_token = new_token;
-
-        let theme = config_manager().config().theme().theme().get_untracked();
-        let apply = config_manager()
-            .config()
-            .wallpaper()
-            .apply_theme_filter()
-            .get_untracked();
-        let strength = config_manager()
-            .config()
-            .wallpaper()
-            .theme_filter_strength()
-            .get_untracked()
-            .get();
-
-        // `Default` is now an alias for the static house theme (Kenp), so it
-        // grades the wallpaper like any other static theme; only `Wallpaper`
-        // (the dynamic-from-image mode) is excluded.
-        let should_filter = apply && strength != 0.0 && theme != Themes::Wallpaper;
-
-        std::thread::spawn(move || {
-            let result = if should_filter {
-                apply_theme_filter(&source, &theme, strength, 1.0, 0.0, &cancel_token).map(
-                    |remap| WallpaperImage {
-                        buf: Arc::new(remap.buf),
-                        width: remap.width,
-                        height: remap.height,
-                    },
-                )
-            } else if !cancel_token.load(Ordering::Relaxed) {
-                decode_source(&source)
-            } else {
-                None
-            };
-
-            if cancel_token.load(Ordering::Relaxed) {
-                return;
-            }
-
-            if let Some(image) = result {
-                // Store in memory
-                if let Ok(mut inner) = WALLPAPER_INNER.lock() {
-                    inner.image = Some(image.clone());
-                }
-
-                glib::idle_add_once(|| {
-                    bump_revision();
-                });
-
-                // Persist to disk in background (cheap — just a write)
-                persist_to_disk(&image);
-            }
-        });
+    let job = Job {
+        path,
+        filter: should_filter.then_some((theme, strength)),
+        targets: monitor_pixel_sizes(),
+        cancel,
+    };
+    if let Some(tx) = WORKER.as_ref()
+        && tx.send(job).is_err()
+    {
+        warn!("wallpaper: worker thread is gone");
     }
 }
 
-/// Decode any image format into an RGBA WallpaperImage.
-fn decode_source(path: &Path) -> Option<WallpaperImage> {
-    let img = mshell_image::lut::decode_pixbuf_rgba(path)?;
+/// Worker thread: decode at screen size, filter, wrap in one shared texture,
+/// publish, persist.
+fn run_job(job: Job) {
+    let Job {
+        path,
+        filter,
+        targets,
+        cancel,
+    } = job;
+    if cancel.load(Ordering::Relaxed) {
+        return;
+    }
+    let Some(img) = decode_rgba_scaled(
+        &path,
+        move |w, h| cover_decode_size(w, h, &targets),
+        &cancel,
+    ) else {
+        return;
+    };
+    let img = match filter {
+        Some((theme, strength)) => {
+            match apply_theme_filter_rgba(img, &theme, strength, 1.0, 0.0, &cancel) {
+                Some(img) => img,
+                None => return,
+            }
+        }
+        None => img,
+    };
+
     let (width, height) = img.dimensions();
-    Some(WallpaperImage {
-        buf: Arc::new(img.into_raw()),
+    // `from_owned` hands the Vec to GLib without copying; the texture keeps it.
+    let bytes = glib::Bytes::from_owned(img.into_raw());
+    let texture: gdk::Texture = gdk::MemoryTexture::new(
+        width as i32,
+        height as i32,
+        gdk::MemoryFormat::R8g8b8a8,
+        &bytes,
+        (width * 4) as usize,
+    )
+    .upcast();
+
+    let Ok(mut inner) = WALLPAPER_INNER.lock() else {
+        return;
+    };
+    // Checked under the lock `start_refilter` cancels under, so a superseded
+    // job can never overwrite a newer image.
+    if cancel.load(Ordering::Relaxed) {
+        return;
+    }
+    inner.image = Some(WallpaperImage {
+        texture,
         width,
         height,
-    })
+    });
+    drop(inner);
+
+    glib::idle_add_once(|| {
+        bump_revision();
+    });
+
+    persist_if_changed(width, height, &bytes);
 }
 
 // ── Disk persistence ─────────────────────────────────────────────────────────
 // Format: [u32 LE width][u32 LE height][width*height*4 bytes RGBA]
 
-fn persist_to_disk(image: &WallpaperImage) {
-    let path = display_cache_path();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).ok();
-    }
-    let mut file = match fs::File::create(&path) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("Failed to persist wallpaper: {e}");
-            return;
-        }
-    };
-    file.write_all(&image.width.to_le_bytes()).ok();
-    file.write_all(&image.height.to_le_bytes()).ok();
-    file.write_all(&image.buf).ok();
+/// Hash of the pixels last written to [`display_cache_path`], so a refilter
+/// that produces the same image (a theme switch with the filter off, a
+/// monitor hotplug) doesn't rewrite the file.
+static LAST_PERSISTED: Mutex<Option<u64>> = Mutex::new(None);
+
+fn image_hash(width: u32, height: u32, rgba: &[u8]) -> u64 {
+    let mut hasher = std::hash::DefaultHasher::new();
+    (width, height).hash(&mut hasher);
+    rgba.hash(&mut hasher);
+    hasher.finish()
 }
 
-fn load_from_disk() -> Option<WallpaperImage> {
-    let path = display_cache_path();
-    let mut file = fs::File::open(&path).ok()?;
+fn persist_if_changed(width: u32, height: u32, rgba: &[u8]) {
+    let hash = image_hash(width, height, rgba);
+    let Ok(mut last) = LAST_PERSISTED.lock() else {
+        return;
+    };
+    if *last == Some(hash) {
+        return;
+    }
+    match write_raw_atomic(&display_cache_path(), width, height, rgba) {
+        Ok(()) => *last = Some(hash),
+        Err(e) => warn!("failed to persist wallpaper: {e}"),
+    }
+}
 
-    let mut header = [0u8; 8];
-    file.read_exact(&mut header).ok()?;
-    let width = u32::from_le_bytes([header[0], header[1], header[2], header[3]]);
-    let height = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
-
-    let expected_len = (width as usize) * (height as usize) * 4;
-    let mut buf = vec![0u8; expected_len];
-    file.read_exact(&mut buf).ok()?;
-
-    Some(WallpaperImage {
-        buf: Arc::new(buf),
-        width,
-        height,
-    })
+/// Write the raw `[w][h][RGBA]` file via a temp file + rename, so a reader
+/// (`mlogind`'s sync) never sees a half-written image.
+fn write_raw_atomic(path: &Path, width: u32, height: u32, rgba: &[u8]) -> std::io::Result<()> {
+    let dir = path.parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "cache path has no parent")
+    })?;
+    fs::create_dir_all(dir)?;
+    let tmp = dir.join(format!(".wallpaper.raw.{}.tmp", std::process::id()));
+    let mut file = fs::File::create(&tmp)?;
+    file.write_all(&width.to_le_bytes())?;
+    file.write_all(&height.to_le_bytes())?;
+    file.write_all(rgba)?;
+    drop(file);
+    fs::rename(&tmp, path)
 }
 
 fn bump_revision() {
     info!("bumping revision");
     WALLPAPER.update(|s| s.revision += 1);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cover_size_fits_the_largest_monitor() {
+        // The measured case: a 4896×3264 photo on a 1920×1200 panel.
+        assert_eq!(cover_decode_size(4896, 3264, &[(1920, 1200)]), (1920, 1280));
+        // Two monitors: the 2560-wide one dominates.
+        assert_eq!(
+            cover_decode_size(4896, 3264, &[(1920, 1200), (2560, 1440)]),
+            (2560, 1707)
+        );
+        // A tall monitor needs height coverage.
+        assert_eq!(cover_decode_size(4000, 2000, &[(1080, 1920)]), (3840, 1920));
+    }
+
+    #[test]
+    fn cover_size_never_upscales() {
+        assert_eq!(cover_decode_size(1280, 720, &[(1920, 1080)]), (1280, 720));
+        assert_eq!(cover_decode_size(1920, 1080, &[(1920, 1080)]), (1920, 1080));
+    }
+
+    #[test]
+    fn cover_size_without_monitors_uses_fallback() {
+        assert_eq!(cover_decode_size(7680, 4320, &[]), (3840, 2160));
+        assert_eq!(cover_decode_size(0, 10, &[]), (0, 10));
+    }
+
+    #[test]
+    fn cover_size_covers_every_target() {
+        for &(sw, sh) in &[(4896, 3264), (6000, 4000), (5000, 1000), (1000, 5000)] {
+            let targets = [(1920, 1200), (3840, 2160), (1366, 768)];
+            let (w, h) = cover_decode_size(sw, sh, &targets);
+            for (tw, th) in targets {
+                let scale = f64::max(f64::from(tw) / f64::from(w), f64::from(th) / f64::from(h));
+                // Covering never needs more than the decoded pixels allow,
+                // unless we are already at the source size.
+                assert!(scale <= 1.0 || (w, h) == (sw, sh), "{sw}x{sh} -> {w}x{h}");
+            }
+        }
+    }
+
+    #[test]
+    fn raw_file_round_trips_the_mlogind_format() {
+        let dir = std::env::temp_dir().join(format!("mshell-cache-raw-{}", std::process::id()));
+        let path = dir.join("wallpaper.raw");
+        let pixels: Vec<u8> = (0..3 * 2 * 4).map(|i| i as u8).collect();
+        write_raw_atomic(&path, 3, 2, &pixels).expect("write");
+        let bytes = fs::read(&path).expect("read");
+        assert_eq!(&bytes[..4], &3u32.to_le_bytes());
+        assert_eq!(&bytes[4..8], &2u32.to_le_bytes());
+        assert_eq!(&bytes[8..], &pixels[..]);
+        assert_eq!(bytes.len(), 8 + 3 * 2 * 4);
+        // No temp file left behind.
+        let leftovers = fs::read_dir(&dir).expect("dir").count();
+        assert_eq!(leftovers, 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

@@ -471,15 +471,8 @@ impl Component for LockScreenModel {
 /// Set the lock screen wallpaper picture from the in-memory buffer.
 fn set_wallpaper_picture(picture: &gtk::Picture) {
     if let Some(image) = current_wallpaper_image() {
-        let bytes = glib::Bytes::from(&*image.buf);
-        let texture = gdk::MemoryTexture::new(
-            image.width as i32,
-            image.height as i32,
-            gdk::MemoryFormat::R8g8b8a8,
-            &bytes,
-            (image.width * 4) as usize,
-        );
-        picture.set_paintable(Some(&texture));
+        // The desktop's shared texture: no per-monitor copy while locked.
+        picture.set_paintable(Some(&image.texture));
     } else {
         picture.set_paintable(None::<&gdk::Texture>);
     }
