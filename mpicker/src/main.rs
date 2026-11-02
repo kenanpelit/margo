@@ -609,3 +609,148 @@ fn wl_copy(text: &str) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn px(r: u8, g: u8, b: u8) -> Rgba<u8> {
+        Rgba([r, g, b, 255])
+    }
+
+    #[test]
+    fn cli_defaults_and_flags() {
+        let cli = Cli::try_parse_from(["mpicker"]).unwrap();
+        assert_eq!(cli.format, "hex");
+        assert!(!cli.autocopy && !cli.notify && !cli.lowercase_hex && !cli.no_zoom && !cli.quiet);
+        let cli =
+            Cli::try_parse_from(["mpicker", "-a", "-n", "-l", "-z", "-q", "-f", "hsl"]).unwrap();
+        assert_eq!(cli.format, "hsl");
+        assert!(cli.autocopy && cli.notify && cli.lowercase_hex && cli.no_zoom && cli.quiet);
+        assert!(Cli::try_parse_from(["mpicker", "--format"]).is_err());
+    }
+
+    #[test]
+    fn hex_formatting_respects_case_flag() {
+        let c = px(0xAB, 0x0C, 0xEF);
+        assert_eq!(format_color(c, "hex", false), "#AB0CEF");
+        assert_eq!(format_color(c, "hex", true), "#ab0cef");
+        assert_eq!(format_color(px(0, 0, 0), "hex", false), "#000000");
+    }
+
+    #[test]
+    fn format_name_is_case_insensitive_and_unknown_falls_back_to_hex() {
+        let c = px(1, 2, 3);
+        assert_eq!(format_color(c, "RGB", false), "rgb(1, 2, 3)");
+        assert_eq!(format_color(c, "Hsl", false), format_color(c, "hsl", false));
+        assert_eq!(format_color(c, "hsv", false), "#010203");
+        assert_eq!(format_color(c, "", true), "#010203");
+    }
+
+    #[test]
+    fn alpha_is_ignored_in_every_format() {
+        let opaque = px(10, 20, 30);
+        let clear = Rgba([10, 20, 30, 0]);
+        for f in ["hex", "rgb", "hsl", "cmyk"] {
+            assert_eq!(
+                format_color(opaque, f, false),
+                format_color(clear, f, false),
+                "{f}"
+            );
+        }
+    }
+
+    #[test]
+    fn hsl_of_reference_colours() {
+        let table: &[((u8, u8, u8), &str)] = &[
+            ((255, 0, 0), "hsl(0, 100%, 50%)"),
+            ((0, 255, 0), "hsl(120, 100%, 50%)"),
+            ((0, 0, 255), "hsl(240, 100%, 50%)"),
+            ((255, 255, 0), "hsl(60, 100%, 50%)"),
+            ((0, 255, 255), "hsl(180, 100%, 50%)"),
+            ((255, 0, 255), "hsl(300, 100%, 50%)"),
+            ((255, 255, 255), "hsl(0, 0%, 100%)"),
+            ((0, 0, 0), "hsl(0, 0%, 0%)"),
+            ((128, 128, 128), "hsl(0, 0%, 50%)"),
+            ((0x33, 0x66, 0x99), "hsl(210, 50%, 40%)"),
+            ((0xFF, 0x80, 0x00), "hsl(30, 100%, 50%)"),
+            // Light colour: exercises the `l > 0.5` saturation branch.
+            ((0xFF, 0xCC, 0xCC), "hsl(0, 100%, 90%)"),
+        ];
+        for ((r, g, b), want) in table {
+            assert_eq!(
+                format_color(px(*r, *g, *b), "hsl", false),
+                *want,
+                "{r},{g},{b}"
+            );
+        }
+    }
+
+    #[test]
+    fn hsl_hue_stays_in_range() {
+        for r in (0..=255u8).step_by(15) {
+            for g in (0..=255u8).step_by(15) {
+                for b in (0..=255u8).step_by(15) {
+                    let (h, s, l) = rgb_to_hsl(r, g, b);
+                    assert!((0.0..360.0).contains(&h), "h={h} for {r},{g},{b}");
+                    assert!((0.0..=1.0).contains(&s), "s={s} for {r},{g},{b}");
+                    assert!((0.0..=1.0).contains(&l), "l={l} for {r},{g},{b}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cmyk_of_reference_colours() {
+        let table: &[((u8, u8, u8), &str)] = &[
+            ((0, 0, 0), "cmyk(0%, 0%, 0%, 100%)"),
+            ((255, 255, 255), "cmyk(0%, 0%, 0%, 0%)"),
+            ((255, 0, 0), "cmyk(0%, 100%, 100%, 0%)"),
+            ((0, 255, 255), "cmyk(100%, 0%, 0%, 0%)"),
+            ((128, 128, 128), "cmyk(0%, 0%, 0%, 50%)"),
+            ((0x33, 0x66, 0x99), "cmyk(67%, 33%, 0%, 40%)"),
+        ];
+        for ((r, g, b), want) in table {
+            assert_eq!(
+                format_color(px(*r, *g, *b), "cmyk", false),
+                *want,
+                "{r},{g},{b}"
+            );
+        }
+    }
+
+    #[test]
+    fn sample_rounds_and_clamps_to_the_frame() {
+        let mut frame = RgbaImage::new(3, 2);
+        for (x, y, p) in frame.enumerate_pixels_mut() {
+            *p = Rgba([x as u8, y as u8, 0, 255]);
+        }
+        assert_eq!(sample_at(&frame, 0.0, 0.0), Some(Rgba([0, 0, 0, 255])));
+        assert_eq!(sample_at(&frame, 1.4, 0.6), Some(Rgba([1, 1, 0, 255])));
+        assert_eq!(sample_at(&frame, 1.5, 0.0), Some(Rgba([2, 0, 0, 255])));
+        assert_eq!(sample_at(&frame, -50.0, -1.0), Some(Rgba([0, 0, 0, 255])));
+        assert_eq!(sample_at(&frame, 1e9, 1e9), Some(Rgba([2, 1, 0, 255])));
+        assert_eq!(sample_at(&frame, f64::NAN, 0.0), Some(Rgba([0, 0, 0, 255])));
+    }
+
+    #[test]
+    fn sample_of_empty_frame_is_none() {
+        assert_eq!(sample_at(&RgbaImage::new(0, 0), 0.0, 0.0), None);
+        assert_eq!(sample_at(&RgbaImage::new(4, 0), 1.0, 0.0), None);
+    }
+
+    #[cfg(target_endian = "little")]
+    #[test]
+    fn cairo_surface_is_bgra_with_row_stride() {
+        let mut frame = RgbaImage::new(3, 2);
+        frame.put_pixel(0, 0, Rgba([0x11, 0x22, 0x33, 0xFF]));
+        frame.put_pixel(2, 1, Rgba([0xAA, 0xBB, 0xCC, 0xFF]));
+        let mut surface = rgba_image_to_cairo_surface(&frame).unwrap();
+        let stride = surface.stride() as usize;
+        assert!(stride >= 3 * 4);
+        let data = surface.data().unwrap();
+        assert_eq!(&data[0..4], &[0x33, 0x22, 0x11, 0xFF]);
+        let o = stride + 2 * 4;
+        assert_eq!(&data[o..o + 4], &[0xCC, 0xBB, 0xAA, 0xFF]);
+    }
+}
