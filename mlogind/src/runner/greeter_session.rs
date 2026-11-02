@@ -27,7 +27,7 @@ use std::process::Command;
 use log::{error, info};
 use pam::Authenticator;
 
-use crate::auth::{self, UserInfo};
+use crate::auth::{self, GreeterIdentity, UserInfo};
 use crate::config::Config;
 
 use super::session_active;
@@ -99,8 +99,14 @@ impl SilentConv {
 /// session here so that *this* pid is its leader — logind tears the session down
 /// the moment we exit — then drop privilege in the child and exec.
 pub fn run(config: &Config, mut cmd: Command) -> ! {
-    let greeter = auth::lookup_greeter(&config.greeter_user);
-    // Whose session logind is asked to create. With no greeter user we still
+    let greeter = match auth::lookup_greeter(&config.greeter_user) {
+        GreeterIdentity::User(user) => Some(user),
+        GreeterIdentity::Root => None,
+        // Logged by lookup_greeter. The non-zero exit makes the runner report
+        // the host unavailable, and the daemon falls back to the TTY greeter.
+        GreeterIdentity::Unresolved => std::process::exit(EXIT_NO_SESSION),
+    };
+    // Whose session logind is asked to create. With `greeter_user = ""` we still
     // want a session — that is what gives margo its DRM — just a root one.
     let session_user = greeter
         .as_ref()

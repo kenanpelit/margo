@@ -14,8 +14,9 @@ pam_service = "mlogind"
 # this user needs no supplementary groups.
 #
 # Created by systemd-sysusers from /usr/lib/sysusers.d/mlogind.conf. If it is
-# missing, mlogind logs an error and runs the greeter as root rather than leaving
-# you unable to log in. Set to "" to keep the greeter root deliberately.
+# missing, mlogind logs an error and falls back to the TTY greeter rather than
+# running the graphical one as root. Set to "" to run the greeter as root
+# deliberately.
 greeter_user = "mlogind-greeter"
 
 # PAM stack that opens the greeter's logind session (/etc/pam.d/mlogind-greeter).

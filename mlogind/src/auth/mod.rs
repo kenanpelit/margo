@@ -76,28 +76,39 @@ pub fn lookup(username: &str) -> Result<UserInfo, AuthenticationError> {
     })
 }
 
+/// Who the graphical greeter runs as. See [`lookup_greeter`].
+pub enum GreeterIdentity {
+    /// The configured unprivileged user.
+    User(UserInfo),
+    /// `greeter_user = ""`: the administrator explicitly asked for root.
+    Root,
+    /// The user is named but missing from the passwd database.
+    Unresolved,
+}
+
 /// Resolve the unprivileged user the greeter should run as.
 ///
-/// `None` means "stay root", and both routes to it are legitimate:
-///
-/// - `greeter_user = ""` — the administrator asked for it.
-/// - the user is named but absent from the passwd database — a package upgrade
-///   where `systemd-sysusers` never ran. This is a misconfiguration, and it is
-///   logged as an error, but it is not a reason to refuse to boot a greeter. A
-///   machine nobody can log into is worse than a greeter with too much privilege.
-pub fn lookup_greeter(greeter_user: &str) -> Option<UserInfo> {
+/// Root only when the administrator wrote `greeter_user = ""`. A named user
+/// absent from the passwd database (a package upgrade where
+/// `systemd-sysusers` never ran) is [`GreeterIdentity::Unresolved`]: the
+/// greeter session refuses to start and the daemon falls down the host ladder
+/// to the TTY greeter. That still lets people log in, without silently putting
+/// margo, mgreet and the whole GTK stack — the most exposed code on the machine
+/// — under uid 0 because of a missing user.
+pub fn lookup_greeter(greeter_user: &str) -> GreeterIdentity {
     if greeter_user.is_empty() {
         info!("greeter_user is empty; the greeter will run as root");
-        return None;
+        return GreeterIdentity::Root;
     }
     match lookup(greeter_user) {
-        Ok(info) => Some(info),
+        Ok(info) => GreeterIdentity::User(info),
         Err(err) => {
             log::error!(
-                "greeter user '{greeter_user}' cannot be resolved ({err}); \
-                 running the greeter as ROOT. Run `systemd-sysusers` to fix this."
+                "greeter user '{greeter_user}' cannot be resolved ({err}); refusing to run \
+                 the graphical greeter as root, falling back to the TTY greeter. Run \
+                 `systemd-sysusers` to fix this, or set greeter_user = \"\" to run it as root."
             );
-            None
+            GreeterIdentity::Unresolved
         }
     }
 }
@@ -117,20 +128,26 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_greeter_user_means_stay_root_without_a_lookup() {
-        assert!(lookup_greeter("").is_none());
+    fn an_empty_greeter_user_means_root_without_a_lookup() {
+        assert!(matches!(lookup_greeter(""), GreeterIdentity::Root));
     }
 
     #[test]
-    fn a_missing_greeter_user_means_stay_root_rather_than_fail() {
-        // Never a lockout: a machine nobody can log into is worse than a greeter
-        // with too much privilege.
-        assert!(lookup_greeter("\u{1}definitely-not-a-user").is_none());
+    fn a_missing_greeter_user_is_unresolved_not_root() {
+        // Only an explicit `greeter_user = ""` may run the GUI greeter as
+        // root; a missing user sends the daemon to the TTY greeter instead.
+        assert!(matches!(
+            lookup_greeter("\u{1}definitely-not-a-user"),
+            GreeterIdentity::Unresolved
+        ));
     }
 
     #[test]
     fn a_present_greeter_user_resolves() {
-        assert_eq!(lookup_greeter("root").map(|u| u.uid), Some(0));
+        assert!(matches!(
+            lookup_greeter("root"),
+            GreeterIdentity::User(UserInfo { uid: 0, .. })
+        ));
     }
 
     #[test]

@@ -427,7 +427,7 @@ MLOGIND_ETC
     "/usr/share/polkit-1/rules.d/60-mlogind-greeter.rules"
   # pacman creates the greeter user through its systemd-sysusers hook;
   # dpkg has no such hook, so run it here. mlogind survives the user being
-  # missing (it logs and runs the greeter as root), hence warn-and-continue.
+  # missing (it logs and falls back to the TTY greeter), hence warn-and-continue.
   $SUDO systemd-sysusers /usr/lib/sysusers.d/mlogind.conf 2>/dev/null || \
     warn "systemd-sysusers failed — the greeter runs as root until 'mlogind-greeter' exists"
 
