@@ -415,7 +415,16 @@ fn on_loop_iteration(state: &mut MargoState) {
     // `watch` snapshot frame here, once per iteration.
     state.flush_ipc_if_dirty();
     let now = utils::now_ms();
-    tick_frame_animations(state, now);
+    if animation::animation_tick_due(
+        state.animation_presented_since_tick,
+        state.animating_at_last_tick,
+        now,
+        state.animation_last_tick_ms,
+    ) {
+        state.animation_presented_since_tick = false;
+        state.animation_last_tick_ms = now;
+        state.animating_at_last_tick = tick_frame_animations(state, now);
+    }
 
     // Scroller-overview open/close zoom animation. Advances the
     // eased progress and keeps repainting until it settles (a close
@@ -441,8 +450,8 @@ fn on_loop_iteration(state: &mut MargoState) {
 }
 
 /// Advance every running animation one step and re-map / repaint what
-/// moved.
-fn tick_frame_animations(state: &mut MargoState, now: u32) {
+/// moved. Returns whether anything is still animating afterwards.
+fn tick_frame_animations(state: &mut MargoState, now: u32) -> bool {
     // Capture the client set before ticking as well as after: an
     // animation that settles on this tick still needs one final frame, but
     // its `running` flag will already be false afterwards.
@@ -703,6 +712,13 @@ fn tick_frame_animations(state: &mut MargoState, now: u32) {
             state.request_repaint_output(&output);
         }
     }
+    state.clients.iter().any(|client| {
+        client.animation.running
+            || client.opacity_animation.running
+            || client.opening_animation.is_some()
+            || client.resize_snapshot.is_some()
+    }) || !state.closing_clients.is_empty()
+        || !state.layer_animations.is_empty()
 }
 
 /// Stand up the Mutter / GNOME Shell D-Bus shims xdg-desktop-portal-gnome

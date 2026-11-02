@@ -279,6 +279,32 @@ pub struct OpacityAnimation {
     pub initial_border_color: [f32; 4],
 }
 
+// ── Tick pacing ───────────────────────────────────────────────────────────────
+
+/// Longest gap between animation ticks while animations run but no output
+/// presents (all outputs DPMS-off or disabled), so they still finish.
+pub const ANIMATION_TICK_FALLBACK_MS: u32 = 50;
+
+/// Whether the post-dispatch hook should advance animations now.
+///
+/// While animations run, a tick is only useful once per presented frame:
+/// ticking on every event-loop iteration (each pointer event of a 1000 Hz
+/// mouse) re-sampled every curve and re-mapped every animated window far
+/// more often than anything was drawn. So tick when an output presented
+/// since the last tick, or when nothing was animating at the last tick (an
+/// animation that just started gets its first sample before the next
+/// render, as before), or when the fallback interval passed.
+pub fn animation_tick_due(
+    presented_since_last_tick: bool,
+    animating_at_last_tick: bool,
+    now_ms: u32,
+    last_tick_ms: u32,
+) -> bool {
+    presented_since_last_tick
+        || !animating_at_last_tick
+        || now_ms.wrapping_sub(last_tick_ms) >= ANIMATION_TICK_FALLBACK_MS
+}
+
 // ── Layer-surface animation state ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, Default)]
@@ -290,6 +316,41 @@ pub struct LayerAnimation {
     pub current: Rect,
     pub is_open: bool,
     pub anim_type: String,
+}
+
+#[cfg(test)]
+mod tick_pacing_tests {
+    use super::*;
+
+    #[test]
+    fn running_animation_ticks_once_per_present_not_per_event() {
+        // A burst of input events between two vblanks: only the first
+        // iteration after the present ticks.
+        let mut presented = true;
+        let mut last = 1_000;
+        let mut ticks = 0;
+        for now in 1_000..1_016 {
+            if animation_tick_due(presented, true, now, last) {
+                ticks += 1;
+                presented = false;
+                last = now;
+            }
+        }
+        assert_eq!(ticks, 1);
+    }
+
+    #[test]
+    fn idle_or_starting_animation_ticks_immediately() {
+        assert!(animation_tick_due(false, false, 1_001, 1_000));
+    }
+
+    #[test]
+    fn fallback_keeps_animations_moving_without_presents() {
+        assert!(!animation_tick_due(false, true, 1_049, 1_000));
+        assert!(animation_tick_due(false, true, 1_050, 1_000));
+        // `now_ms` wraps (it's u32 milliseconds since the epoch).
+        assert!(animation_tick_due(false, true, 20, u32::MAX - 40));
+    }
 }
 
 #[cfg(test)]

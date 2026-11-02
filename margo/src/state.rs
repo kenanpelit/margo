@@ -867,6 +867,13 @@ pub struct MargoState {
     pub enable_gaps: bool,
     pub cursor_status: CursorImageStatus,
     pub cursor_manager: CursorManager,
+    /// Animation tick pacing (see [`crate::animation::animation_tick_due`]):
+    /// set by every present (`send_frame_callbacks`), cleared by the tick.
+    pub animation_presented_since_tick: bool,
+    /// Whether anything was still animating after the last tick.
+    pub animating_at_last_tick: bool,
+    /// `utils::now_ms()` of the last animation tick.
+    pub animation_last_tick_ms: u32,
     /// Compositor-painted wallpaper. `None` when no path resolves or
     /// the decode failed at startup — frame loop falls through to the
     /// solid `rootcolor` clear in that case. Re-decoded by
@@ -1475,6 +1482,9 @@ impl MargoState {
             enable_gaps: config.enable_gaps,
             cursor_status: CursorImageStatus::default_named(),
             cursor_manager: CursorManager::new(),
+            animation_presented_since_tick: false,
+            animating_at_last_tick: false,
+            animation_last_tick_ms: 0,
             wallpaper: crate::wallpaper::WallpaperState::load(config.wallpaper.as_deref()),
             overview_backdrop: config
                 .overview_backdrop_image
@@ -2229,6 +2239,9 @@ impl MargoState {
     /// mshell-on-niri are smooth.
     pub fn send_frame_callbacks(&mut self, output: &Output, time: impl Into<std::time::Duration>) {
         let time = time.into();
+        // Every real or estimated present ends here: the next post-dispatch
+        // hook may advance running animations for the next frame.
+        self.animation_presented_since_tick = true;
         // Current sequence for this output. Bumped by `note_vblank`
         // and `on_estimated_vblank_timer`; surfaces stamped with this
         // value already received a frame_done this cycle.
