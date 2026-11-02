@@ -252,10 +252,11 @@ async fn probe() -> VpnState {
 }
 
 fn parse(json: &str) -> VpnState {
+    let s = mshell_utils::mvpn::VpnStatus::parse(json);
     VpnState {
-        connected: json.contains("\"connected\":true"),
-        relay: json_str(json, "relay"),
-        location: json_str(json, "location"),
+        connected: s.connected,
+        relay: s.relay,
+        location: s.location,
         blocky: false,
         dns_label: String::new(),
     }
@@ -289,19 +290,6 @@ fn dns_short(ips: &str) -> String {
         }
     }
     String::new()
-}
-
-/// Extract `"<key>":"<value>"` from a flat JSON object.
-fn json_str(json: &str, key: &str) -> String {
-    let needle = format!("\"{key}\":\"");
-    let Some(i) = json.find(&needle) else {
-        return String::new();
-    };
-    let rest = &json[i + needle.len()..];
-    match rest.find('"') {
-        Some(end) => rest[..end].to_string(),
-        None => String::new(),
-    }
 }
 
 #[cfg(test)]

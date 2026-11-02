@@ -898,7 +898,9 @@ async fn vpn_connected() -> bool {
         .output()
         .await
     {
-        Ok(out) => String::from_utf8_lossy(&out.stdout).contains("\"connected\":true"),
+        Ok(out) => {
+            mshell_utils::mvpn::VpnStatus::parse(&String::from_utf8_lossy(&out.stdout)).connected
+        }
         Err(_) => false,
     }
 }

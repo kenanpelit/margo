@@ -10,11 +10,7 @@ use crate::row::Row;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Fav {
-    relay: String,
-    ping: String,
-}
+use mshell_utils::mvpn::{VpnFav as Fav, VpnStatus, parse_fav_list, toggle_value};
 
 pub struct VpnSettingsInit {}
 
@@ -372,31 +368,12 @@ fn reload(sender: &ComponentSender<VpnSettingsModel>) {
 
 /// Query `mvpn` for status + favourites.
 async fn load() -> VpnSettingsCmd {
-    let status_raw = capture(&["status", "--json"]).await;
-    let connected = status_raw.contains("\"connected\":true");
-    let status = if connected {
-        let relay = json_str(&status_raw, "relay");
-        let loc = json_str(&status_raw, "location");
-        format!(
-            "Connected · {relay}{}",
-            if loc.is_empty() {
-                String::new()
-            } else {
-                format!(" · {loc}")
-            }
-        )
-    } else {
-        "Disconnected".to_string()
-    };
+    let vpn = VpnStatus::parse(&capture(&["status", "--json"]).await);
+    let connected = vpn.connected;
+    let status = vpn.summary();
     let favs = parse_fav_list(&capture(&["fav", "list"]).await);
     let toggles = capture(&["toggles"]).await;
-    let kv = |key: &str| -> String {
-        toggles
-            .lines()
-            .find_map(|l| l.trim().strip_prefix(&format!("{key}=")))
-            .unwrap_or("")
-            .to_string()
-    };
+    let kv = |key: &str| toggle_value(&toggles, key);
     VpnSettingsCmd::Loaded {
         status,
         connected,
@@ -418,46 +395,4 @@ async fn capture(args: &[&str]) -> String {
         .await
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
         .unwrap_or_default()
-}
-
-fn parse_fav_list(out: &str) -> Vec<Fav> {
-    out.lines()
-        .filter_map(|line| {
-            let line = line.trim_end();
-            let relay = line.split_whitespace().last()?.to_string();
-            if relay.is_empty() {
-                return None;
-            }
-            // Everything before the relay token is the ping label.
-            let ping = line[..line.len() - relay.len()].trim().to_string();
-            Some(Fav { relay, ping })
-        })
-        .collect()
-}
-
-fn json_str(json: &str, key: &str) -> String {
-    let needle = format!("\"{key}\":\"");
-    let Some(i) = json.find(&needle) else {
-        return String::new();
-    };
-    let rest = &json[i + needle.len()..];
-    rest.find('"')
-        .map(|e| rest[..e].to_string())
-        .unwrap_or_default()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_fav_list() {
-        let out = "     45 ms  de-fra-wg-002\n    N/A    fr-par-wg-001\n";
-        let favs = parse_fav_list(out);
-        assert_eq!(favs.len(), 2);
-        assert_eq!(favs[0].relay, "de-fra-wg-002");
-        assert_eq!(favs[0].ping, "45 ms");
-        assert_eq!(favs[1].relay, "fr-par-wg-001");
-        assert_eq!(favs[1].ping, "N/A");
-    }
 }

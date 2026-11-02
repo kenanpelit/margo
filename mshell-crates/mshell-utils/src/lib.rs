@@ -14,6 +14,7 @@ pub mod launch;
 pub mod logout;
 pub mod margo;
 pub mod media;
+pub mod mvpn;
 pub mod network;
 pub mod notifications;
 pub mod picker;
