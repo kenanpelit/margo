@@ -56,8 +56,36 @@ fn config_path() -> PathBuf {
     base.join("margo").join("config.conf")
 }
 
+/// The path of a `source = …` / `include = …` line (margo treats the two
+/// alike), with a whitespace-led `# comment` and one pair of enclosing
+/// quotes removed the way margo's parser does. `None` for other lines.
+fn include_target(line: &str) -> Option<&str> {
+    let (key, val) = line.split_once('=')?;
+    if !matches!(key.trim(), "source" | "include") {
+        return None;
+    }
+    let val = strip_inline_comment(val).trim();
+    let b = val.as_bytes();
+    if b.len() >= 2 && (b[0] == b'"' || b[0] == b'\'') && b[b.len() - 1] == b[0] {
+        Some(val[1..val.len() - 1].trim())
+    } else {
+        Some(val)
+    }
+}
+
+/// Cut a `#` comment that starts after a space or tab.
+fn strip_inline_comment(s: &str) -> &str {
+    let bytes = s.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'#' && i > 0 && matches!(bytes[i - 1], b' ' | b'\t') {
+            return &s[..i];
+        }
+    }
+    s
+}
+
 fn expand(path: &str, base_dir: &Path) -> PathBuf {
-    let p = path.trim().trim_matches('"');
+    let p = path.trim();
     if let Some(rest) = p.strip_prefix("~/")
         && let Some(home) = std::env::var_os("HOME")
     {
@@ -83,10 +111,7 @@ fn read_all_lines(path: &Path, visited: &mut HashSet<PathBuf>, out: &mut Vec<Str
     };
     let base_dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
     for line in text.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("source")
-            && let Some(val) = rest.trim_start().strip_prefix('=')
-        {
+        if let Some(val) = include_target(line) {
             read_all_lines(&expand(val, &base_dir), visited, out);
             continue;
         }
@@ -599,5 +624,54 @@ mod tests {
             .map(|b| b.key.clone())
             .collect();
         assert_eq!(keys, ["A", "B", "C"]);
+    }
+
+    #[test]
+    fn include_and_commented_or_quoted_sources_match_margo() {
+        // margo treats `include` like `source`, strips a ` # comment` after
+        // the path and one pair of enclosing quotes (either kind).
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("config.conf");
+        std::fs::write(
+            &conf,
+            "include = a.conf\n\
+             source = b.conf   # my apps\n\
+             source = 'c.conf'\n\
+             source = \"d.conf\"\t# quoted\n",
+        )
+        .unwrap();
+        for (file, key) in [
+            ("a.conf", "a"),
+            ("b.conf", "b"),
+            ("c.conf", "c"),
+            ("d.conf", "d"),
+        ] {
+            std::fs::write(
+                dir.path().join(file),
+                format!("bind = SUPER,{key},killclient\n"),
+            )
+            .unwrap();
+        }
+        let keys: Vec<String> = all_binds(&load_sections_from(&conf))
+            .iter()
+            .map(|b| b.key.clone())
+            .collect();
+        assert_eq!(keys, ["A", "B", "C", "D"]);
+        assert_eq!(keys.len(), margo_bind_count(&conf, dir.path()));
+    }
+
+    /// Binds margo itself loads from `conf`, minus the ones it injects.
+    fn margo_bind_count(conf: &Path, dir: &Path) -> usize {
+        let empty = dir.join("margo-empty.conf");
+        std::fs::write(&empty, "").unwrap();
+        let injected = margo_config::parse_config(Some(&empty))
+            .unwrap()
+            .key_bindings
+            .len();
+        margo_config::parse_config(Some(conf))
+            .unwrap()
+            .key_bindings
+            .len()
+            - injected
     }
 }
