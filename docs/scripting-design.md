@@ -113,12 +113,14 @@ no editor support, and we'd own every parser bug forever. Hard pass.
   after window rules + focus, so handlers see the final
   app_id + title and `dispatch(...)` calls apply to the
   just-opened window.
-* Recursion guard: hooks fire by *taking* `ScriptingState` out
-  of `MargoState`, running the FnPtrs on the still-owned
-  engine/AST, then putting it back. A re-entrant `fire_*`
-  finds `None` and is a no-op — so a hook that calls
-  `dispatch(...)` triggering another event doesn't re-fire
-  itself.
+* Recursion guard: hooks fire by *taking* `ScriptingState` (the
+  engine) out of `MargoState`, running the FnPtrs, then putting
+  it back. A re-entrant `fire_*` finds `None` and is a no-op —
+  so a hook that calls `dispatch(...)` triggering another event
+  doesn't re-fire itself. The hook lists live on
+  `MargoState::script_hooks`, outside the taken box, so
+  registrations made while a script runs are kept; each hook
+  stores the AST of the script that registered it.
 * Hooks registered during a hook body are appended to the
   matching list when the outer fire returns; no handler is
   silently dropped.

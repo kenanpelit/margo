@@ -1,6 +1,6 @@
 # Scripting
 
-Margo embeds a [Rhai](https://rhai.rs/) interpreter — pure-Rust, sandboxed by default. Drop a script at `~/.config/margo/init.rhai`; margo evaluates it at startup and keeps any registered hooks alive across the session.
+Margo embeds a [Rhai](https://rhai.rs/) interpreter — pure-Rust, with no file or FFI access of its own. Drop a script at `~/.config/margo/init.rhai`; margo evaluates it at startup and keeps any registered hooks alive across the session. Scripts and plugins are trusted code, though: `spawn(cmd)` runs a shell command and `dispatch(...)` reaches every compositor action, so only run scripts and install plugins you would run as a shell script.
 
 For the design rationale (why Rhai over Lua, the recursion-guard pattern, phase rollout history), see [Scripting engine — design notes](scripting-design.md).
 
@@ -67,7 +67,7 @@ Each hook fires from a well-defined event site; the body runs synchronously on t
 | `on_window_open(fn())` | `finalize_initial_map`, after window-rules + focus | none |
 | `on_window_close(fn())` | after the client is gone, focus has shifted, arrange has run | `(app_id: String, title: String)` |
 
-Re-entrancy is guarded automatically: a hook that calls `dispatch(...)` and triggers another event will see the inner hook as a no-op rather than recursing. (Implementation: thread-local Option-take/restore.)
+Re-entrancy is guarded automatically: a hook that calls `dispatch(...)` and triggers another event will see the inner hook as a no-op rather than recursing. (Implementation: thread-local Option-take/restore.) For the same reason `dispatch("run_script", ...)` from inside a hook or script is ignored with a warning.
 
 ## Live edit
 

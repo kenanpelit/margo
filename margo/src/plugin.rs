@@ -15,11 +15,13 @@
 //! ```
 //!
 //! Same engine + binding surface as the user's existing
-//! `~/.config/margo/init.rhai`. The compositor doesn't sandbox
-//! per-plugin (Rhai is already sandboxed against host code) — all
-//! plugins share one engine + AST state. Hook registrations from
-//! a plugin survive in the same `ScriptingHooks` lists; events
-//! fire every plugin's handler.
+//! `~/.config/margo/init.rhai`. Plugins are trusted code: there is
+//! no sandbox (the bindings include `spawn(cmd)`, a shell command,
+//! and `dispatch(...)`, every compositor action), so a plugin can do
+//! anything the user can. All plugins share one engine; hook
+//! registrations from a plugin land in the same
+//! `MargoState::script_hooks` lists (each tied to the plugin's own
+//! AST), and events fire every plugin's handler.
 //!
 //! ## Why packaging matters
 //!

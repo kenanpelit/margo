@@ -381,12 +381,15 @@ pub struct MargoState {
     /// synchronously (the deferred-queue pattern can't help there).
     pub(crate) udev_backend:
         Option<std::rc::Rc<std::cell::RefCell<crate::backend::udev::BackendData>>>,
-    /// User-script engine + compiled AST + registered event hooks.
-    /// `None` if no `~/.config/margo/init.rhai` is present. Boxed so
-    /// the field is small + we can `Option::take()` it during hook
-    /// invocation (the recursion guard + borrow-checker dance lives
-    /// in `scripting::fire_hook`).
+    /// User-script engine. `None` until init.rhai, a plugin or
+    /// `mctl run` first needs it. Boxed so the field is small + we can
+    /// `Option::take()` it while a script runs (the recursion guard +
+    /// borrow-checker dance lives in `scripting::with_engine`).
     pub scripting: Option<Box<crate::scripting::ScriptingState>>,
+    /// Hooks registered by scripts (`on_focus_change(...)` & co.). Kept
+    /// outside `scripting` because that box is checked out while the
+    /// registering script runs.
+    pub script_hooks: crate::scripting::ScriptingHooks,
     /// Active screencasting state — PipeWire core, list of running
     /// casts, dynamic-cast queue. `None` until xdp-gnome opens its
     /// first ScreenCast session and the lazy PipeWire init runs;
@@ -1317,6 +1320,7 @@ impl MargoState {
             global_shortcuts: Default::default(),
             udev_backend: None,
             scripting: None,
+            script_hooks: Default::default(),
             #[cfg(feature = "xdp-gnome-screencast")]
             screencasting: None,
             #[cfg(feature = "dbus")]

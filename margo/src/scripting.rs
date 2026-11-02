@@ -1,37 +1,39 @@
 //! Embedded scripting engine for user-defined hooks.
 //!
-//! Status: **Phase 3** — event hooks fire mid-event-loop.
-//! `on_focus_change`, `on_tag_switch`, and `on_window_open`
-//! registered from `~/.config/margo/init.rhai` are now invoked
-//! at the matching compositor event sites with the live state
-//! reachable through the same binding surface as Phase 2.
+//! `~/.config/margo/init.rhai`, plugins and `mctl run` scripts run on
+//! the compositor thread with the live state reachable through the
+//! bindings below. Their `on_focus_change`, `on_tag_switch`,
+//! `on_window_open`, `on_window_close` and `on_output_change` calls
+//! register hooks that fire at the matching compositor events.
 //!
-//! The engine, the compiled AST, and the per-event hook lists
-//! all live on `MargoState::scripting`, so callbacks survive
-//! past startup. To fire a hook we briefly *take* the
-//! `ScriptingState` out of `MargoState`, run the FnPtr on the
-//! still-owned engine + AST, then put it back. This keeps the
-//! borrow checker happy without introducing unsafe pointer juggling
-//! beyond the thread-local state pointer that was already in
-//! place for Phase 2 — and gives us a free recursion guard: if a
-//! hook calls `dispatch(...)` and that triggers a re-entrant
-//! focus change, the inner `fire_*` finds `scripting = None` and
-//! is a no-op rather than a stack overflow.
+//! The engine lives on `MargoState::scripting`; the hook lists live
+//! on `MargoState::script_hooks`, outside the engine box. To run a
+//! script or fire a hook, [`with_engine`] briefly *takes* the engine
+//! out of `MargoState`, points the thread-local `STATE_PTR` at the
+//! state so bindings can reach it, runs, restores the previous
+//! pointer and puts the engine back. While it is checked out a nested
+//! `fire_*` finds `scripting = None` and is a no-op — the recursion
+//! guard for a hook whose `dispatch(...)` causes another event.
+//!
+//! Each hook remembers the AST of the script that registered it, so a
+//! `Fn("name")` handler from a plugin or `mctl run` file is called
+//! against the file that defines `name`.
 //!
 //! ## State flow
 //!
 //! ```text
 //!  startup:
 //!    main.rs → init_user_scripting(&mut state)
-//!      ↪ build engine, compile AST, store ScriptingState on state
-//!      ↪ eval script body → registers FnPtrs into hooks vecs
+//!      ↪ build engine (parked on state), compile AST
+//!      ↪ eval script body → on_*(...) pushes Hook{handler, ast}
+//!        into state.script_hooks
 //!  runtime:
 //!    state.focus_surface(...)
 //!      ↪ fire_focus_change(state)
-//!         ↪ take scripting out of state (now None)
-//!         ↪ for h in hooks: h.call(&engine, &ast, ())
+//!         ↪ take the hook list + the engine out of state
+//!         ↪ for h in hooks: h.handler.call(&engine, &h.ast, args)
 //!            ↪ binding code accesses state via STATE_PTR
-//!         ↪ put scripting back
+//!         ↪ put the engine back, merge hooks registered meanwhile
 //! ```
 //!
 //! ## Why not store engine in an Rc<RefCell<…>>?
@@ -42,8 +44,9 @@
 //! double-borrows. The take/restore dance gives us recursion
 //! safety for free.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use rhai::{AST, Array, Dynamic, Engine, FnPtr, Scope};
 use tracing::{error, info, warn};
@@ -54,6 +57,8 @@ use crate::state::MargoState;
 
 thread_local! {
     static STATE_PTR: Cell<*mut MargoState> = const { Cell::new(std::ptr::null_mut()) };
+    /// AST of the script or hook running right now; new hooks are tied to it.
+    static CURRENT_AST: RefCell<Option<Rc<AST>>> = const { RefCell::new(None) };
 }
 
 fn with_state<R>(f: impl FnOnce(&mut MargoState) -> R) -> Option<R> {
@@ -62,34 +67,38 @@ fn with_state<R>(f: impl FnOnce(&mut MargoState) -> R) -> Option<R> {
         warn!("scripting binding called outside an eval context — ignoring");
         return None;
     }
-    // Safety: STATE_PTR is non-null only during init or hook eval,
-    // both of which hold the unique mutable borrow of MargoState.
+    // Safety: STATE_PTR is non-null only inside `with_engine`, which
+    // holds the unique mutable borrow of MargoState for the duration.
     // Rhai runs synchronously on the compositor thread.
     let state = unsafe { &mut *ptr };
     Some(f(state))
 }
 
-/// Per-MargoState scripting context. Holds the running engine,
-/// the compiled init.rhai AST, and the lists of hook closures the
-/// user registered. Stored as `Option<Box<ScriptingState>>` on
-/// `MargoState` so we can `take()` the value out during hook
-/// invocation (see module docs).
+/// Per-MargoState scripting context: the running engine. Stored as
+/// `Option<Box<ScriptingState>>` on `MargoState` so [`with_engine`]
+/// can `take()` it out while a script or hook runs (see module docs).
 pub struct ScriptingState {
     engine: Engine,
-    ast: AST,
-    pub hooks: ScriptingHooks,
 }
 
+/// One registered hook: the handler plus the AST of the script that
+/// registered it (needed to resolve `Fn("name")` handlers).
+pub struct Hook {
+    handler: FnPtr,
+    ast: Rc<AST>,
+}
+
+/// Registered hooks, on `MargoState::script_hooks`.
 #[derive(Default)]
 pub struct ScriptingHooks {
-    pub on_focus_change: Vec<FnPtr>,
-    pub on_tag_switch: Vec<FnPtr>,
-    pub on_window_open: Vec<FnPtr>,
+    pub on_focus_change: Vec<Hook>,
+    pub on_tag_switch: Vec<Hook>,
+    pub on_window_open: Vec<Hook>,
     /// `on_window_close(|appid, title| { ... })` — handlers receive
     /// the closing window's identity as args (the window is about
     /// to be removed from `clients`, so `focused_*()` can't reach
     /// it; the focus has typically already moved to a sibling).
-    pub on_window_close: Vec<FnPtr>,
+    pub on_window_close: Vec<Hook>,
     /// `on_output_change(|name| { ... })` — fires after udev's
     /// hotplug coalescer settles and `rescan_outputs` has updated
     /// the monitor list. The arg is the affected output's connector
@@ -98,7 +107,7 @@ pub struct ScriptingHooks {
     /// output dominated the change. Handlers can query
     /// `monitor_count()`, `output_geometry(name)`, etc. from the
     /// scripting API to react.
-    pub on_output_change: Vec<FnPtr>,
+    pub on_output_change: Vec<Hook>,
 }
 
 /// Build an engine pre-loaded with the binding surface (Phase 2)
@@ -231,46 +240,26 @@ fn build_engine() -> Engine {
         with_state(|state| state.clients.len() as rhai::INT).unwrap_or(0)
     });
 
-    // ── Event hook registration (Phase 3) ───────────────────────────────
+    // ── Event hook registration ─────────────────────────────────────────
     //
-    // These now actually fire — the registered FnPtr is appended to
-    // the matching list in `ScriptingHooks` and invoked from the
-    // event site via `fire_*` helpers below.
+    // The handler is appended to the matching list in
+    // `MargoState::script_hooks` and invoked from the event site via
+    // the `fire_*` helpers below.
 
     engine.register_fn("on_focus_change", |handler: FnPtr| {
-        with_state(|s| {
-            if let Some(sc) = s.scripting.as_mut() {
-                sc.hooks.on_focus_change.push(handler);
-            }
-        });
+        register_hook(HookKind::FocusChange, handler);
     });
     engine.register_fn("on_tag_switch", |handler: FnPtr| {
-        with_state(|s| {
-            if let Some(sc) = s.scripting.as_mut() {
-                sc.hooks.on_tag_switch.push(handler);
-            }
-        });
+        register_hook(HookKind::TagSwitch, handler);
     });
     engine.register_fn("on_window_open", |handler: FnPtr| {
-        with_state(|s| {
-            if let Some(sc) = s.scripting.as_mut() {
-                sc.hooks.on_window_open.push(handler);
-            }
-        });
+        register_hook(HookKind::WindowOpen, handler);
     });
     engine.register_fn("on_window_close", |handler: FnPtr| {
-        with_state(|s| {
-            if let Some(sc) = s.scripting.as_mut() {
-                sc.hooks.on_window_close.push(handler);
-            }
-        });
+        register_hook(HookKind::WindowClose, handler);
     });
     engine.register_fn("on_output_change", |handler: FnPtr| {
-        with_state(|s| {
-            if let Some(sc) = s.scripting.as_mut() {
-                sc.hooks.on_output_change.push(handler);
-            }
-        });
+        register_hook(HookKind::OutputChange, handler);
     });
 
     engine
@@ -358,9 +347,9 @@ fn init_script_path() -> Option<PathBuf> {
 
 /// Stand up the scripting engine on `state`, compile init.rhai if
 /// present, and run its top-level statements once. Hook-registration
-/// statements populate `state.scripting.hooks`; non-hook statements
+/// statements populate `state.script_hooks`; non-hook statements
 /// (like a top-level `dispatch("setlayout", ["scroller"])`) execute
-/// immediately. After this returns, the engine + AST stay parked on
+/// immediately. After this returns, the engine stays parked on
 /// MargoState ready for the `fire_*` helpers to invoke registered
 /// hooks at runtime.
 ///
@@ -371,80 +360,87 @@ pub fn init_user_scripting(state: &mut MargoState) {
         return;
     };
     info!(path = %path.display(), "init.rhai: evaluating");
-
-    let engine = build_engine();
-    let ast = match engine.compile_file(path.clone()) {
-        Ok(ast) => ast,
-        Err(e) => {
-            error!(path = %path.display(), error = ?e, "init.rhai: compile error");
-            return;
-        }
-    };
-
-    state.scripting = Some(Box::new(ScriptingState {
-        engine,
-        ast,
-        hooks: ScriptingHooks::default(),
-    }));
-
-    // Eval top-level statements. The hook registration functions
-    // need state.scripting to exist (they push into hooks vecs), so
-    // we install ScriptingState first and run after.
-    let Some(sc) = state.scripting.take() else {
+    let Some(ast) = compile(state, Source::File(&path)) else {
         return;
     };
-
-    struct StateGuard;
-    impl Drop for StateGuard {
-        fn drop(&mut self) {
-            STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
-        }
-    }
-    STATE_PTR.with(|s| s.set(state as *mut _));
-    let _guard = StateGuard;
-
-    let mut scope = Scope::new();
-    let result = sc.engine.run_ast_with_scope(&mut scope, &sc.ast);
-
-    // Drop the state pointer before the explicit re-assignment so
-    // observers that count refcounts via STATE_PTR don't see two
-    // active refs.
-    STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
-    state.scripting = Some(sc);
-
-    match result {
-        Ok(()) => info!("init.rhai: ran cleanly"),
-        Err(e) => error!("init.rhai: runtime error — {e}"),
+    match eval(state, ast) {
+        Some(Ok(())) => info!("init.rhai: ran cleanly"),
+        Some(Err(e)) => error!("init.rhai: runtime error — {e}"),
+        None => {}
     }
 }
 
-/// Which hook list to fire. Used by `fire_hook` so it knows which
-/// vec to drain + which to restore — encoded explicitly instead of
-/// inferred so re-registration during a hook body (a hook calls
-/// `on_tag_switch(...)` while running an `on_focus_change`)
-/// doesn't make us put back the wrong list.
-#[derive(Copy, Clone)]
+/// Which hook list to fire or register into.
+#[derive(Copy, Clone, Debug)]
 enum HookKind {
     FocusChange,
     TagSwitch,
     WindowOpen,
+    WindowClose,
+    OutputChange,
+}
+
+impl ScriptingHooks {
+    fn list_mut(&mut self, kind: HookKind) -> &mut Vec<Hook> {
+        match kind {
+            HookKind::FocusChange => &mut self.on_focus_change,
+            HookKind::TagSwitch => &mut self.on_tag_switch,
+            HookKind::WindowOpen => &mut self.on_window_open,
+            HookKind::WindowClose => &mut self.on_window_close,
+            HookKind::OutputChange => &mut self.on_output_change,
+        }
+    }
 }
 
 /// Invoke every registered `on_focus_change` hook.
 pub fn fire_focus_change(state: &mut MargoState) {
-    fire_hook(state, HookKind::FocusChange);
+    fire(state, HookKind::FocusChange, Vec::new());
 }
 
 /// Invoke every registered `on_tag_switch` hook.
 pub fn fire_tag_switch(state: &mut MargoState) {
-    fire_hook(state, HookKind::TagSwitch);
+    fire(state, HookKind::TagSwitch, Vec::new());
 }
 
 /// Invoke every registered `on_window_open` hook. Called from
 /// `finalize_initial_map` so handlers see the final, post-rule
 /// app_id / title — not the empty initial values.
 pub fn fire_window_open(state: &mut MargoState) {
-    fire_hook(state, HookKind::WindowOpen);
+    fire(state, HookKind::WindowOpen, Vec::new());
+}
+
+/// Invoke every registered `on_window_close` hook. Called from the
+/// toplevel-destroyed path BEFORE the client is removed from
+/// `clients`, so `client_count()` and `focused_*()` still reflect
+/// the pre-close state. Handler receives `(app_id, title)` as Rhai
+/// strings — the closing window is rarely the focused one (focus
+/// has usually already shifted to a sibling), so the args are the
+/// only reliable identity channel.
+pub fn fire_window_close(state: &mut MargoState, app_id: &str, title: &str) {
+    fire(
+        state,
+        HookKind::WindowClose,
+        vec![
+            Dynamic::from(app_id.to_string()),
+            Dynamic::from(title.to_string()),
+        ],
+    );
+}
+
+/// Invoke every registered `on_output_change` hook. Called from the
+/// hotplug coalescer's timer body after `rescan_outputs` settles, so
+/// handlers see the final post-rescan monitor list. `output_name`
+/// is the connector that prompted the rescan when knowable
+/// (UdevEvent::Changed only gives us a device id, not the connector
+/// per-se, so we pass the empty string for now; future refinement
+/// can plumb the affected connector through `rescan_outputs`'s
+/// diff).
+pub fn fire_output_change(state: &mut MargoState, output_name: &str) {
+    fire(
+        state,
+        HookKind::OutputChange,
+        vec![Dynamic::from(output_name.to_string())],
+    );
 }
 
 /// W3.3: load every discovered plugin under
@@ -453,13 +449,15 @@ pub fn fire_window_open(state: &mut MargoState) {
 /// + state and plugins layer their hooks on top.
 ///
 /// Each plugin's init.rhai is compiled + run with the same
-/// engine the user's init.rhai uses, so plugins can share
-/// helpers via `import` (Rhai's module system) and see all the
-/// hook-registration bindings. The compositor doesn't sandbox
-/// per-plugin — Rhai's host-side sandboxing already prevents
-/// FFI / fs access; cross-plugin interference is the user's
-/// responsibility (don't install plugins that fight each
-/// other).
+/// engine the user's init.rhai uses and sees all the
+/// hook-registration bindings; its hooks are called against its
+/// own AST.
+///
+/// Plugins are trusted code, exactly like init.rhai: there is no
+/// sandbox. The binding surface includes `spawn(cmd)` (a shell
+/// command) and `dispatch(...)` (every compositor action), so a
+/// plugin can do anything the user can. Only install plugins you
+/// would run as a shell script.
 ///
 /// Plugins with `enabled = false` in their manifest are skipped.
 /// Compile / runtime errors don't abort the loader — the rest
@@ -470,17 +468,6 @@ pub fn init_plugins(state: &mut MargoState) {
         return;
     }
     info!(count = plugins.len(), "loading plugins");
-
-    // Stand up the engine if init.rhai didn't (no init.rhai on
-    // disk — plugins-only setup). Mirrors the same fallback as
-    // run_script_file.
-    if state.scripting.is_none() {
-        state.scripting = Some(Box::new(ScriptingState {
-            engine: build_engine(),
-            ast: rhai::AST::empty(),
-            hooks: ScriptingHooks::default(),
-        }));
-    }
 
     for plugin in plugins.iter_mut() {
         if !plugin.manifest.enabled {
@@ -499,27 +486,11 @@ pub fn init_plugins(state: &mut MargoState) {
             continue;
         }
 
-        // Compile against the live engine.
-        let Some(mut sc) = state.scripting.take() else {
-            return;
+        let Some(ast) = compile(state, Source::File(&plugin.script)) else {
+            continue;
         };
-        let ast = match sc.engine.compile_file(plugin.script.clone()) {
-            Ok(a) => a,
-            Err(e) => {
-                warn!(
-                    "plugin {}: compile error in {} — {e}",
-                    plugin.manifest.name,
-                    plugin.script.display()
-                );
-                state.scripting = Some(sc);
-                continue;
-            }
-        };
-        let original_ast = std::mem::replace(&mut sc.ast, ast);
-        state.scripting = Some(sc);
-        run_compiled(state);
-        if let Some(sc) = state.scripting.as_mut() {
-            sc.ast = original_ast;
+        if let Some(Err(e)) = eval(state, ast) {
+            warn!("plugin {}: runtime error — {e}", plugin.manifest.name);
         }
         plugin.loaded = true;
         info!(
@@ -540,15 +511,21 @@ pub fn init_plugins(state: &mut MargoState) {
 /// reloading init.rhai.
 ///
 /// Falls back gracefully:
-///   * If init.rhai never set up the engine (no scripting state
-///     parked on MargoState), we stand up a fresh one for this
-///     call so users can `mctl run` even without a config file.
+///   * If init.rhai never set up the engine, we stand one up so
+///     users can `mctl run` even without a config file.
 ///   * Compile / runtime errors log at error level and return —
 ///     the live compositor stays up.
 ///   * Hook registrations inside the script (e.g. an
 ///     `on_focus_change(...)` call) DO persist after this run,
 ///     same as init.rhai. Use case: live-edit your hook list.
+///   * Called from inside a running script or hook (a hook that
+///     dispatches `run_script`), it refuses with a warning: the
+///     engine is checked out by the outer eval.
 pub fn run_script_file(state: &mut MargoState, path: &std::path::Path) {
+    if in_eval() {
+        warn!(path = %path.display(), "run_script: ignored inside a running script or hook");
+        return;
+    }
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
@@ -556,233 +533,145 @@ pub fn run_script_file(state: &mut MargoState, path: &std::path::Path) {
             return;
         }
     };
-
-    // Stand up the engine if init.rhai never ran (no init.rhai on
-    // disk, or it errored out). This lets users `mctl run` from a
-    // fresh session without forcing them to author an init script.
-    if state.scripting.is_none() {
-        let engine = build_engine();
-        let ast = match engine.compile(&src) {
-            Ok(a) => a,
-            Err(e) => {
-                error!(path = %path.display(), error = ?e, "mctl run: compile failed");
-                return;
-            }
-        };
-        state.scripting = Some(Box::new(ScriptingState {
-            engine,
-            ast,
-            hooks: ScriptingHooks::default(),
-        }));
-        // Run the freshly-compiled script via the same eval path
-        // init_user_scripting uses.
-        run_compiled(state);
-        return;
-    }
-
-    // Engine already running. Compile against the same engine so
-    // any registered fns / consts from init.rhai are visible.
-    let Some(mut sc) = state.scripting.take() else {
+    let Some(ast) = compile(state, Source::Text(&src, path)) else {
         return;
     };
-    let ast = match sc.engine.compile(&src) {
-        Ok(a) => a,
+    match eval(state, ast) {
+        Some(Ok(())) => info!(path = %path.display(), "mctl run: ran"),
+        Some(Err(e)) => error!(path = %path.display(), "mctl run: runtime error — {e}"),
+        None => {}
+    }
+}
+
+/// Where a script's text comes from (for compiling and error messages).
+enum Source<'a> {
+    File(&'a std::path::Path),
+    Text(&'a str, &'a std::path::Path),
+}
+
+/// Whether a script or hook is running right now (the engine is checked
+/// out and `STATE_PTR` is set).
+fn in_eval() -> bool {
+    !STATE_PTR.with(|s| s.get()).is_null()
+}
+
+/// Compile `source` with the parked engine, standing the engine up first
+/// if nothing has yet. `None` (logged) on a compile error, or inside a
+/// running eval where the engine is checked out.
+fn compile(state: &mut MargoState, source: Source<'_>) -> Option<Rc<AST>> {
+    if in_eval() {
+        return None;
+    }
+    let sc = state.scripting.get_or_insert_with(|| {
+        Box::new(ScriptingState {
+            engine: build_engine(),
+        })
+    });
+    let (result, path) = match source {
+        Source::File(path) => (
+            sc.engine
+                .compile_file(path.to_path_buf())
+                .map_err(|e| e.to_string()),
+            path,
+        ),
+        Source::Text(src, path) => (sc.engine.compile(src).map_err(|e| e.to_string()), path),
+    };
+    match result {
+        Ok(ast) => Some(Rc::new(ast)),
         Err(e) => {
-            error!(path = %path.display(), error = ?e, "mctl run: compile failed");
-            state.scripting = Some(sc);
-            return;
+            error!(path = %path.display(), error = %e, "rhai: compile error");
+            None
         }
-    };
-    // Replace the stored AST temporarily so hook registrations
-    // resolve against the new file's symbols. Keep the old AST
-    // saved so the engine doesn't lose init.rhai's definitions.
-    let original_ast = std::mem::replace(&mut sc.ast, ast);
-    state.scripting = Some(sc);
-    run_compiled(state);
-    // Swap original AST back so the next hook fire still sees
-    // init.rhai's body.
-    if let Some(sc) = state.scripting.as_mut() {
-        sc.ast = original_ast;
     }
-    info!(path = %path.display(), "mctl run: ran");
 }
 
-fn run_compiled(state: &mut MargoState) {
-    let Some(sc) = state.scripting.take() else {
-        return;
-    };
-    struct StateGuard;
-    impl Drop for StateGuard {
+/// Run a compiled script's top-level statements once. Hooks it registers
+/// are tied to `ast`. `None` when the engine is unavailable.
+fn eval(state: &mut MargoState, ast: Rc<AST>) -> Option<Result<(), Box<rhai::EvalAltResult>>> {
+    with_engine(state, |engine| {
+        set_current_ast(Some(Rc::clone(&ast)));
+        engine.run_ast_with_scope(&mut Scope::new(), &ast)
+    })
+}
+
+fn set_current_ast(ast: Option<Rc<AST>>) -> Option<Rc<AST>> {
+    CURRENT_AST.with(|c| c.replace(ast))
+}
+
+/// The one place that checks the engine out of `state` and points the
+/// bindings at it. Runs `f` with `STATE_PTR` set to `state`, then restores
+/// the previous `STATE_PTR` / current AST (not null: nesting-safe, and a
+/// panic unwinding through `f` restores them too) and parks the engine
+/// again.
+///
+/// Returns `None` without running `f` when the engine isn't set up or is
+/// already checked out by an outer eval. That is the recursion guard: a
+/// hook whose `dispatch(...)` causes another event (a focus change inside
+/// `on_focus_change`) doesn't fire hooks re-entrantly.
+fn with_engine<R>(state: &mut MargoState, f: impl FnOnce(&Engine) -> R) -> Option<R> {
+    let sc = state.scripting.take()?;
+
+    struct Restore {
+        ptr: *mut MargoState,
+        ast: Option<Rc<AST>>,
+    }
+    impl Drop for Restore {
         fn drop(&mut self) {
-            STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
+            STATE_PTR.with(|s| s.set(self.ptr));
+            set_current_ast(self.ast.take());
         }
     }
-    STATE_PTR.with(|s| s.set(state as *mut _));
-    let _guard = StateGuard;
-    let mut scope = Scope::new();
-    if let Err(e) = sc.engine.run_ast_with_scope(&mut scope, &sc.ast) {
-        error!(error = ?e, "mctl run: runtime error");
-    }
-    STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
+    let restore = Restore {
+        ptr: STATE_PTR.with(|s| s.replace(state as *mut _)),
+        ast: set_current_ast(None),
+    };
+    let result = f(&sc.engine);
+    drop(restore);
+
     state.scripting = Some(sc);
+    Some(result)
 }
 
-/// Invoke every registered `on_window_close` hook. Called from the
-/// toplevel-destroyed path BEFORE the client is removed from
-/// `clients`, so `client_count()` and `focused_*()` still reflect
-/// the pre-close state. Handler receives `(app_id, title)` as Rhai
-/// strings — the closing window is rarely the focused one (focus
-/// has usually already shifted to a sibling), so the args are the
-/// only reliable identity channel.
-/// Invoke every registered `on_output_change` hook. Called from the
-/// hotplug coalescer's timer body after `rescan_outputs` settles, so
-/// handlers see the final post-rescan monitor list. `output_name`
-/// is the connector that prompted the rescan when knowable
-/// (UdevEvent::Changed only gives us a device id, not the connector
-/// per-se, so we pass the empty string for now; future refinement
-/// can plumb the affected connector through `rescan_outputs`'s
-/// diff).
-pub fn fire_output_change(state: &mut MargoState, output_name: &str) {
-    let Some(mut sc) = state.scripting.take() else {
+/// Register `handler` for `kind`, tied to the AST of the script that is
+/// running (so `Fn("name")` handlers resolve against the file that
+/// defines `name`).
+fn register_hook(kind: HookKind, handler: FnPtr) {
+    let Some(ast) = CURRENT_AST.with(|c| c.borrow().clone()) else {
+        warn!(
+            ?kind,
+            "rhai: hook registered outside a running script — ignoring"
+        );
         return;
     };
-    let hooks = std::mem::take(&mut sc.hooks.on_output_change);
-    if hooks.is_empty() {
-        state.scripting = Some(sc);
+    with_state(|s| {
+        s.script_hooks.list_mut(kind).push(Hook { handler, ast });
+    });
+}
+
+/// Fire every hook registered for `kind` with `args`.
+///
+/// The list lives on `state.script_hooks`, outside the engine box, so a
+/// hook body can register more hooks while it runs; those are appended
+/// after the existing ones.
+fn fire(state: &mut MargoState, kind: HookKind, args: Vec<Dynamic>) {
+    // Hot path: nothing registered, or no engine / engine checked out.
+    if state.script_hooks.list_mut(kind).is_empty() || state.scripting.is_none() {
         return;
     }
-
-    {
-        struct StateGuard;
-        impl Drop for StateGuard {
-            fn drop(&mut self) {
-                STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
-            }
-        }
-        STATE_PTR.with(|s| s.set(state as *mut _));
-        let _guard = StateGuard;
-
-        let name = output_name.to_string();
+    let hooks = std::mem::take(state.script_hooks.list_mut(kind));
+    with_engine(state, |engine| {
         for h in &hooks {
+            set_current_ast(Some(Rc::clone(&h.ast)));
             let res: Result<Dynamic, Box<rhai::EvalAltResult>> =
-                h.call(&sc.engine, &sc.ast, (name.clone(),));
+                h.handler.call(engine, &h.ast, args.clone());
             if let Err(e) = res {
-                warn!(error = ?e, "init.rhai: on_output_change handler error");
+                warn!(?kind, error = ?e, "rhai: hook error");
             }
         }
-    }
-
-    if sc.hooks.on_output_change.is_empty() {
-        sc.hooks.on_output_change = hooks;
-    } else {
-        let mut combined = hooks;
-        combined.extend(std::mem::take(&mut sc.hooks.on_output_change));
-        sc.hooks.on_output_change = combined;
-    }
-    state.scripting = Some(sc);
-}
-
-pub fn fire_window_close(state: &mut MargoState, app_id: &str, title: &str) {
-    let Some(mut sc) = state.scripting.take() else {
-        return;
-    };
-    let hooks = std::mem::take(&mut sc.hooks.on_window_close);
-    if hooks.is_empty() {
-        state.scripting = Some(sc);
-        return;
-    }
-
-    {
-        struct StateGuard;
-        impl Drop for StateGuard {
-            fn drop(&mut self) {
-                STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
-            }
-        }
-        STATE_PTR.with(|s| s.set(state as *mut _));
-        let _guard = StateGuard;
-
-        let app_id = app_id.to_string();
-        let title = title.to_string();
-        for h in &hooks {
-            let res: Result<Dynamic, Box<rhai::EvalAltResult>> =
-                h.call(&sc.engine, &sc.ast, (app_id.clone(), title.clone()));
-            if let Err(e) = res {
-                warn!(error = ?e, "init.rhai: on_window_close handler error");
-            }
-        }
-    }
-
-    if sc.hooks.on_window_close.is_empty() {
-        sc.hooks.on_window_close = hooks;
-    } else {
-        let mut combined = hooks;
-        combined.extend(std::mem::take(&mut sc.hooks.on_window_close));
-        sc.hooks.on_window_close = combined;
-    }
-    state.scripting = Some(sc);
-}
-
-fn fire_hook(state: &mut MargoState, kind: HookKind) {
-    // Take scripting out of state. A nested fire_hook (a hook calls
-    // dispatch which causes another event) finds None and is a
-    // no-op — recursion guard for free.
-    let Some(mut sc) = state.scripting.take() else {
-        return;
-    };
-    let hooks = match kind {
-        HookKind::FocusChange => std::mem::take(&mut sc.hooks.on_focus_change),
-        HookKind::TagSwitch => std::mem::take(&mut sc.hooks.on_tag_switch),
-        HookKind::WindowOpen => std::mem::take(&mut sc.hooks.on_window_open),
-    };
-
-    // Hot path: nothing registered. Restore + return without
-    // touching the state pointer.
-    if hooks.is_empty() {
-        // The list was empty before too, so nothing to restore.
-        state.scripting = Some(sc);
-        return;
-    }
-
-    {
-        // RAII state-pointer guard so a panic inside Rhai (caught by
-        // the engine but theoretically possible) clears the pointer.
-        struct StateGuard;
-        impl Drop for StateGuard {
-            fn drop(&mut self) {
-                STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
-            }
-        }
-        STATE_PTR.with(|s| s.set(state as *mut _));
-        let _guard = StateGuard;
-
-        for h in &hooks {
-            let res: Result<Dynamic, Box<rhai::EvalAltResult>> = h.call(&sc.engine, &sc.ast, ());
-            if let Err(e) = res {
-                warn!(error = ?e, "init.rhai: hook error");
-            }
-        }
-    }
-
-    // Restore the drained list — but if a hook body called
-    // `on_focus_change(...)` etc. while running, the matching
-    // vec is now non-empty; append rather than overwrite so we
-    // keep both old + new handlers.
-    let dst = match kind {
-        HookKind::FocusChange => &mut sc.hooks.on_focus_change,
-        HookKind::TagSwitch => &mut sc.hooks.on_tag_switch,
-        HookKind::WindowOpen => &mut sc.hooks.on_window_open,
-    };
-    if dst.is_empty() {
-        *dst = hooks;
-    } else {
-        // Newly-registered handlers came in during the run; keep
-        // them at the front and put the previous set behind.
-        let mut combined = hooks;
-        combined.extend(std::mem::take(dst));
-        *dst = combined;
-    }
-    state.scripting = Some(sc);
+    });
+    let dst = state.script_hooks.list_mut(kind);
+    let added = std::mem::replace(dst, hooks);
+    dst.extend(added);
 }
 
 #[cfg(test)]
