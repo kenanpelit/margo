@@ -7,6 +7,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::config::{InputFieldStyle, get_color};
 
@@ -21,7 +22,11 @@ pub enum InputFieldDisplayType {
 
 #[derive(Clone)]
 pub struct InputFieldWidget {
-    content: String,
+    /// What was typed. For the password field this is the password, inside
+    /// the root daemon, so it is scrubbed on clear and drop, and it never lets
+    /// `String` reallocate (a realloc frees the old buffer unscrubbed): see
+    /// [`RESERVED_BYTES`] and [`InputFieldWidget::reserve_scrubbed`].
+    content: Zeroizing<String>,
     /// Horizontal position of the cursor
     cursor: u16,
     /// Horizontal scroll in UTF-8 characters
@@ -35,6 +40,17 @@ pub struct InputFieldWidget {
     /// `None` on a field that never masks (the username).
     mask: Option<String>,
     style: InputFieldStyle,
+}
+
+/// Capacity reserved up front, so typing any realistic password never grows
+/// the buffer at all.
+const RESERVED_BYTES: usize = 256;
+
+/// `content` in a fresh scrubbing buffer with at least [`RESERVED_BYTES`].
+fn scrubbed(content: &str) -> Zeroizing<String> {
+    let mut buf = String::with_capacity(content.len().max(RESERVED_BYTES));
+    buf.push_str(content);
+    Zeroizing::new(buf)
 }
 
 fn get_byte_offset_of_char_offset(s: &str, offset: usize) -> usize {
@@ -60,7 +76,7 @@ impl InputFieldWidget {
         };
 
         Self {
-            content: preset_content,
+            content: scrubbed(&preset_content),
             cursor: initial_cursor_position,
             scroll: 0,
             width: 8, // Give it some initial width
@@ -191,6 +207,7 @@ impl InputFieldWidget {
             .nth(cursor + scroll)
             .map_or(self.content.len(), |(i, _)| i);
 
+        self.reserve_scrubbed(character.len_utf8());
         self.content.insert(index, character);
 
         if self.cursor == self.width - 1 {
@@ -228,16 +245,32 @@ impl InputFieldWidget {
         }
     }
 
+    /// Make room for `extra` more bytes ourselves: copy into a bigger
+    /// scrubbing buffer and let the old one zero itself on drop, instead of
+    /// letting `String::insert` reallocate and free it unscrubbed.
+    fn reserve_scrubbed(&mut self, extra: usize) {
+        let needed = self.content.len() + extra;
+        if needed <= self.content.capacity() {
+            return;
+        }
+        let mut grown = String::with_capacity(needed.max(self.content.capacity() * 2));
+        grown.push_str(&self.content);
+        self.content = Zeroizing::new(grown);
+    }
+
     pub fn clear(&mut self) {
         self.cursor = 0;
         self.scroll = 0;
-        self.content = String::new();
+        // Zeroes the whole capacity, keeps the allocation for the next try.
+        self.content.zeroize();
     }
 
     pub fn clear_before(&mut self) {
         let byte_offset =
             get_byte_offset_of_char_offset(&self.content, (self.cursor + self.scroll) as usize);
-        self.content = self.content[byte_offset..].to_string();
+        // In place: the bytes left past the new end stay in this buffer, which
+        // is scrubbed on clear and drop.
+        self.content.drain(..byte_offset);
 
         self.cursor = 0;
         self.scroll = 0;
@@ -370,12 +403,12 @@ impl InputFieldWidget {
 
     /// Get the real content of the input field
     pub fn get_content(&self) -> String {
-        self.content.clone()
+        self.content.to_string()
     }
 
     pub fn set_content(&mut self, content: &str) {
         self.cursor = content.len() as u16;
-        self.content = content.to_string();
+        self.content = scrubbed(content);
     }
 }
 
@@ -384,6 +417,63 @@ mod tests {
     use super::*;
     use crate::config::Config;
     use InputFieldDisplayType::*;
+
+    /// Every byte of the field's allocation, spare capacity included.
+    fn whole_buffer(field: &InputFieldWidget) -> Vec<u8> {
+        let s: &String = &field.content;
+        // SAFETY: zeroize wrote every byte up to `capacity`, and `s` is not
+        // mutated while the slice lives.
+        unsafe { std::slice::from_raw_parts(s.as_ptr(), s.capacity()) }.to_vec()
+    }
+
+    #[test]
+    fn clearing_the_password_scrubs_the_whole_buffer() {
+        let mut field = InputFieldWidget::new(
+            Replace("*".to_string()),
+            Config::default().password_field.style,
+            String::default(),
+        );
+        for c in "hunter2".chars() {
+            field.insert(c);
+        }
+        assert!(field.content.capacity() >= RESERVED_BYTES);
+        field.clear();
+        assert_eq!(field.get_content(), "");
+        assert!(whole_buffer(&field).iter().all(|b| *b == 0));
+    }
+
+    #[test]
+    fn a_long_password_grows_through_a_scrubbed_copy() {
+        let mut field = InputFieldWidget::new(
+            Replace("*".to_string()),
+            Config::default().password_field.style,
+            String::default(),
+        );
+        field.width = 40;
+        let typed: String = std::iter::repeat_n('p', RESERVED_BYTES + 10).collect();
+        for c in typed.chars() {
+            field.insert(c);
+        }
+        assert_eq!(field.get_content(), typed);
+        assert!(field.content.capacity() > RESERVED_BYTES);
+    }
+
+    #[test]
+    fn clear_before_keeps_the_tail_in_place() {
+        let mut field = InputFieldWidget::new(
+            Echo,
+            Config::default().username_field.style,
+            String::default(),
+        );
+        field.width = 40;
+        for c in "abcdef".chars() {
+            field.insert(c);
+        }
+        field.left();
+        field.left();
+        field.clear_before();
+        assert_eq!(field.get_content(), "ef");
+    }
 
     #[test]
     fn cursor_movement() {

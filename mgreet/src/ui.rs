@@ -1060,12 +1060,13 @@ pub fn on_runner_event(app: &gtk::Application, state: &Rc<State>) -> glib::Contr
 }
 
 /// Lift the password field's contents out as a scrubbing buffer and blank the
-/// field. This is a root process: freed heap survives in core dumps and swap.
+/// field. Freed heap survives in core dumps and swap.
 ///
-/// Only one Rust-side copy is made now, scrubbed on drop. The `GString` that
-/// `text()` hands back and the `EntryBuffer`'s own storage are glib-managed and
-/// freed without scrubbing — unavoidable short of patching GTK — so blank the
-/// field immediately to keep that unscrubbed window as short as possible.
+/// Only one Rust-side copy is made, scrubbed on drop. The field's own storage
+/// is a `gtk::PasswordEntryBuffer` (GTK secure memory, zeroed on free); the
+/// `GString` that `text()` hands back is glib-managed and freed without
+/// scrubbing — unavoidable short of patching GTK — so blank the field
+/// immediately to keep that unscrubbed window as short as possible.
 fn take_secret(state: &Rc<State>) -> Zeroizing<Vec<u8>> {
     let secret = Zeroizing::new(state.password.text().as_bytes().to_vec());
     state.password.set_text("");

@@ -223,7 +223,10 @@ fn main() -> glib::ExitCode {
             layouts: keyboard::layouts(),
             layout_index: Cell::new(0),
             username,
-            password: gtk::EntryBuffer::new(None::<&str>),
+            // GTK keeps a PasswordEntryBuffer's text in its secure memory
+            // (locked against swap, zeroed when freed), unlike a plain
+            // EntryBuffer, whose freed heap keeps the password.
+            password: gtk::PasswordEntryBuffer::new().upcast(),
             sessions: sessions::list(),
             // SAFETY: `raw` came from the `OwnedFd` moved in alongside it, and
             // `State` keeps that `OwnedFd` alive for the life of the `Conn`.
