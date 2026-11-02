@@ -13,8 +13,6 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-clap.workspace = true
-mshell-cli-style.workspace = true
 serde.workspace = true
 tokio.workspace = true
 zbus.workspace = true

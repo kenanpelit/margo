@@ -9,7 +9,6 @@ anyhow.workspace = true
 bitflags.workspace = true
 chrono.workspace = true
 serde.workspace = true
-thiserror.workspace = true
 tracing.workspace = true
 xkbcommon = { version = "0.8" }
 # Bench-only. Optional + gated behind the `bench` feature (with

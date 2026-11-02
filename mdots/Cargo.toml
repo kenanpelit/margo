@@ -29,7 +29,6 @@ log = "0.4"
 tracing-log = "0.2"
 margo-logging = { path = "../margo-logging" }
 walkdir = "2.5"
-glob = "0.3"
 which = "7.0"
 chrono = { version = "0.4", features = ["serde"] }
 regex.workspace = true

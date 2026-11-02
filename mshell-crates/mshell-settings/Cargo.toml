@@ -46,3 +46,8 @@ wayle-power-profiles.workspace = true
 
 [lints]
 workspace = true
+
+[package.metadata.cargo-machete]
+# futures is referenced by the expansion of the `watch!` macro, not in the
+# source text.
+ignored = ["futures"]

@@ -12,6 +12,7 @@ use nix::sys::stat::Mode;
 use nix::unistd::close;
 use std::error::Error;
 use std::fmt::{self, Debug, Display, Formatter};
+use std::os::fd::IntoRawFd;
 
 const VT_OPENQRY: RequestType = 0x5600;
 const VT_ACTIVATE: RequestType = 0x5606;
@@ -54,6 +55,8 @@ fn open_a_console(filename: &str) -> Result<c_int, ChvtError> {
     for oflag in [OFlag::O_RDWR, OFlag::O_RDONLY, OFlag::O_WRONLY] {
         match fcntl::open(filename, oflag, Mode::empty()) {
             Ok(fd) => {
+                // The fd is handed around (and closed) as a raw c_int below.
+                let fd = fd.into_raw_fd();
                 if !is_a_console(fd) {
                     close(fd).map_err(|_| ChvtError::Close)?;
                     return Err(ChvtError::NotAConsole);

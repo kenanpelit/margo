@@ -156,6 +156,26 @@ jobs:
           fi
           ./target/debug/mctl check-config --config "$CFG"
 
+  # Unused dependencies. cargo-machete is a static scan (no build), so it runs
+  # on the plain runner. Only workspace members are scanned — vendor/ holds
+  # verbatim upstream copies we don't trim. A false positive (a dep used under
+  # its lib name, or only for its features) goes into that crate's
+  # [package.metadata.cargo-machete] ignored list with a comment saying why.
+  machete:
+    name: cargo-machete (unused deps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-machete
+      - name: cargo machete (workspace members)
+        run: |
+          dirs=$(cargo metadata --no-deps --format-version 1 --locked \
+            | jq -r '.packages[].manifest_path | sub("/Cargo.toml$"; "")')
+          cargo machete $dirs
+
   # Supply-chain scan over the vendored + git-pinned + large dependency tree
   # (the audit's "no dependency-CVE scanning" gap). Runs on the plain Ubuntu
   # runner (no GTK needed — it reads Cargo.lock). Split into a hard gate + a
@@ -167,9 +187,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       # Hard gate — supply-chain hygiene WE control. A dependency with a
-      # disallowed license, a banned/duplicate crate, or an unknown
-      # registry/git source fails the build. These only change when we change
-      # deps, so they won't flip red on unrelated rolling churn.
+      # disallowed license, a banned crate, or an unknown registry/git source
+      # fails the build; duplicate versions are reported as warnings only
+      # (deny.toml `multiple-versions = "warn"`). These only change when we
+      # change deps, so they won't flip red on unrelated rolling churn.
       - name: cargo-deny (bans / licenses / sources)
         uses: EmbarkStudios/cargo-deny-action@v2
         with:

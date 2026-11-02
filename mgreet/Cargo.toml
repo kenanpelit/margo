@@ -25,3 +25,6 @@ mlogind-proto = { path = "../mlogind-proto" }
 
 [build-dependencies]
 grass.workspace = true
+
+[lints]
+workspace = true

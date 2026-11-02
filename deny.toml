@@ -8,8 +8,9 @@
 # leniently so the gate stays about vulnerabilities, not churn.
 #
 # CI (see ci.yml) runs this as a SPLIT gate: `bans licenses sources` is a hard
-# gate (supply-chain hygiene we control — a bad license, a banned/duplicate
-# crate, or an unknown source fails the build), while `advisories` stays
+# gate (supply-chain hygiene we control — a bad license, a banned crate, or an
+# unknown source fails the build; duplicate versions only WARN, see [bans]),
+# while `advisories` stays
 # report-only (RUSTSEC db churn flags transitive deps on its own schedule and
 # shouldn't block unrelated pushes — triage those into the ignore list below).
 
@@ -19,66 +20,59 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
-# Known, tracked exceptions — revisit when the dependency is migrated.
-# Real, reachable vulnerabilities with an available fix are NOT parked here;
-# they are bumped instead (e.g. anyhow >=1.0.103, memmap2 >=0.9.11).
+# Known, tracked exceptions — revisit when the dependency is migrated. Every
+# entry carries its reason (cargo-deny prints it). Real, reachable
+# vulnerabilities with an available fix are NOT parked here; they are bumped
+# instead (e.g. anyhow >=1.0.103, memmap2 >=0.9.11).
+#
+# The serde_yaml entry used to name RUSTSEC-2024-0320, which is yaml-rust (not
+# in the tree); the advisory that actually fires is RUSTSEC-2024-0449,
+# unsafe-libyaml (serde_yaml's parser) being unmaintained. RUSTSEC-2026-0196
+# (cgmath) is gone from the tree, so it was dropped.
 ignore = [
     # --- Unmaintained crates, no security vuln, no safe upgrade path ---------
-    # serde_yaml 0.9 is unmaintained/archived upstream. Migration to an
-    # alternative is tracked in docs/code-quality-roadmap.md.
-    "RUSTSEC-2024-0320",
-    "RUSTSEC-2025-0057", # fxhash — unmaintained (transitive; no replacement wired yet)
-    "RUSTSEC-2025-0119", # number_prefix — unmaintained (transitive)
-    "RUSTSEC-2024-0436", # paste — unmaintained proc-macro (deep transitive, ubiquitous)
-    "RUSTSEC-2026-0173", # proc-macro-error2 — unmaintained (transitive build dep)
-    "RUSTSEC-2026-0192", # ttf-parser — unmaintained (via GTK/pango font stack)
-    "RUSTSEC-2026-0196", # cgmath — unmaintained (transitive via wgpu/image stack; no replacement)
-    "RUSTSEC-2023-0040", # users — unmaintained (via mlogind's lemurs lineage)
+    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml unmaintained, via serde_yaml 0.9 (itself deprecated upstream); replacing serde_yaml is tracked in docs/code-quality-roadmap.md" },
+    { id = "RUSTSEC-2025-0057", reason = "fxhash unmaintained, no vuln; only via fxprof-processed-profile in the optional, unshipped wasmtime stack" },
+    { id = "RUSTSEC-2025-0119", reason = "number_prefix unmaintained, no vuln; transitive via indicatif" },
+    { id = "RUSTSEC-2024-0436", reason = "paste unmaintained proc-macro, no vuln; deep transitive and ubiquitous" },
+    { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 unmaintained, no vuln; build-time proc-macro via reactive_stores_macro" },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained, no vuln; via fontdue, no maintained drop-in yet" },
+    { id = "RUSTSEC-2023-0040", reason = "users unmaintained; via the pam 0.7 crate (mlogind/mlock), no maintained drop-in yet" },
 
     # --- Vulnerabilities with no reachable safe upgrade in our tree ----------
-    # users: `root` wrongly appended to group listings. No fixed release
-    # exists; the crate is unmaintained. mlogind does not use group listings
-    # for authorization, so this is not reachable in our usage.
-    "RUSTSEC-2025-0040",
-    # quick-xml quadratic-parse / namespace-alloc DoS. Pulled only by
-    # `wayland-scanner` (a build-time proc-macro) to parse the *vendored,
-    # trusted* Wayland protocol XML — never untrusted input, so the DoS is
-    # unreachable. The fix lands in 0.41 but wayland-scanner pins ^0.39
-    # (and another dep ^0.37), so 0.41 is unreachable without forking.
-    "RUSTSEC-2026-0194",
-    "RUSTSEC-2026-0195",
+    { id = "RUSTSEC-2025-0040", reason = "users: root appended to group listings; no fixed release, and mlogind never uses group listings for authorization" },
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml quadratic duplicate-attribute check; only wayland-scanner (build time) parses our vendored, trusted protocol XML; fix in 0.41 is blocked by wayland-scanner's ^0.39 pin" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml NsReader namespace-allocation DoS; same build-time-only, trusted-input wayland-scanner path; fix blocked by the ^0.39 pin" },
 
     # --- wasmtime cluster: feature-gated OFF, not in the shipped binary ------
-    # wasmtime/wasmtime-wasi are optional deps behind mshell-plugin-host's
-    # `wasm` feature, which is off by default and does NOT build into the
-    # released shell — deny only sees them because [graph] all-features=true.
-    # Every fix requires a major bump (27 -> 36.0.7+/42.0.2+/43.0.1+), a large
-    # API migration for an experimental, unshipped feature. Tracked in
-    # docs/code-quality-roadmap.md; revisit when the plugin runtime graduates.
-    "RUSTSEC-2025-0046",
-    "RUSTSEC-2025-0118",
-    "RUSTSEC-2026-0020",
-    "RUSTSEC-2026-0021",
-    "RUSTSEC-2026-0085",
-    "RUSTSEC-2026-0086",
-    "RUSTSEC-2026-0087",
-    "RUSTSEC-2026-0088",
-    "RUSTSEC-2026-0089",
-    "RUSTSEC-2026-0091",
-    "RUSTSEC-2026-0092",
-    "RUSTSEC-2026-0093",
-    "RUSTSEC-2026-0094",
-    "RUSTSEC-2026-0095",
-    "RUSTSEC-2026-0096",
-    "RUSTSEC-2026-0149",
-    "RUSTSEC-2026-0182",
-    "RUSTSEC-2026-0188",
+    # deny only sees these because [graph] all-features = true. Revisit when the
+    # plugin runtime graduates (tracked in docs/code-quality-roadmap.md).
+    { id = "RUSTSEC-2025-0046", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (fd_renumber host panic)" },
+    { id = "RUSTSEC-2025-0118", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (shared linear memory API unsound)" },
+    { id = "RUSTSEC-2026-0020", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (WASI resource exhaustion)" },
+    { id = "RUSTSEC-2026-0021", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (wasi:http fields panic; wasi-http not used)" },
+    { id = "RUSTSEC-2026-0085", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (panic lifting `flags` component value)" },
+    { id = "RUSTSEC-2026-0086", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (64-bit tables + Winch data leak)" },
+    { id = "RUSTSEC-2026-0087", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (f64x2.splat on Cranelift x86-64)" },
+    { id = "RUSTSEC-2026-0088", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (pooling allocator data leak)" },
+    { id = "RUSTSEC-2026-0089", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (Winch table.fill panic)" },
+    { id = "RUSTSEC-2026-0091", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (component-model string transcoding OOB write)" },
+    { id = "RUSTSEC-2026-0092", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (misaligned UTF-16 transcoding panic)" },
+    { id = "RUSTSEC-2026-0093", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (UTF-16 to latin1+utf16 transcoding OOB read)" },
+    { id = "RUSTSEC-2026-0094", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (Winch table.grow masking)" },
+    { id = "RUSTSEC-2026-0095", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (Winch sandbox-escaping access)" },
+    { id = "RUSTSEC-2026-0096", reason = "wasmtime is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (aarch64 Cranelift heap miscompile)" },
+    { id = "RUSTSEC-2026-0149", reason = "wasmtime-wasi is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (path_open TRUNCATE bypasses FilePerms::WRITE)" },
+    { id = "RUSTSEC-2026-0182", reason = "wasmtime-wasi is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (WASIp1 fd_renumber leak)" },
+    { id = "RUSTSEC-2026-0188", reason = "wasmtime-wasi is optional behind mshell-plugin-host's off-by-default `wasm` feature and not in the shipped shell; fix needs a 27 -> 36+ major migration (hard links / renames bypass FilePerms)" },
 ]
 
 [bans]
 # The workspace legitimately resolves several major versions of heavy
-# transitive deps (nix, zbus via keyring, glib). Surface them as a warning
-# rather than failing — de-duplication is a separate, non-security cleanup.
+# transitive deps (zbus via keyring, glib, windows-sys). Surface them as a
+# warning rather than failing — de-duplication is a separate, non-security
+# cleanup. Duplicates we cause ourselves (a member pinning its own version of
+# a workspace dependency) are avoided by using `workspace = true`.
 multiple-versions = "warn"
 wildcards = "warn"
 

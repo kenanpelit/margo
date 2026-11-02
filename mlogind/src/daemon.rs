@@ -22,12 +22,12 @@
 //! path keeps its classic signal behaviour.
 
 use std::io;
-use std::os::unix::io::AsRawFd;
+use std::os::fd::AsFd;
 use std::time::Duration;
 
 use log::{error, info, warn};
 use nix::errno::Errno;
-use nix::poll::{PollFd, PollFlags, poll};
+use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use nix::sys::signal::{SigSet, SigmaskHow, Signal, sigprocmask};
 use nix::sys::signalfd::{SfdFlags, SignalFd};
 use nix::sys::time::TimeSpec;
@@ -231,12 +231,12 @@ impl Events {
     /// readable. Returns whether the *timer* is the readable one.
     fn poll_fds(&self, with_timer: bool) -> io::Result<bool> {
         let mut fds = [
-            PollFd::new(self.sfd.as_raw_fd(), PollFlags::POLLIN),
-            PollFd::new(self.timer.as_raw_fd(), PollFlags::POLLIN),
+            PollFd::new(self.sfd.as_fd(), PollFlags::POLLIN),
+            PollFd::new(self.timer.as_fd(), PollFlags::POLLIN),
         ];
         let watched = if with_timer { 2 } else { 1 };
         loop {
-            match poll(&mut fds[..watched], -1) {
+            match poll(&mut fds[..watched], PollTimeout::NONE) {
                 Ok(_) => {
                     let timer_fired = with_timer
                         && fds[1]
@@ -332,8 +332,8 @@ mod tests {
             )
             .unwrap();
 
-        let mut fds = [PollFd::new(timer.as_raw_fd(), PollFlags::POLLIN)];
-        let ready = poll(&mut fds, 1000).unwrap();
+        let mut fds = [PollFd::new(timer.as_fd(), PollFlags::POLLIN)];
+        let ready = poll(&mut fds, 1000u16).unwrap();
         assert_eq!(ready, 1, "the timer never fired");
         timer.wait().unwrap(); // clears the expiration without blocking
     }

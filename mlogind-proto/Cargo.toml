@@ -19,3 +19,6 @@ rust-version.workspace = true
 # Scrubs decoded PAM responses (passwords, OTPs) from the heap on drop.
 zeroize.workspace = true
 libc.workspace = true
+
+[lints]
+workspace = true

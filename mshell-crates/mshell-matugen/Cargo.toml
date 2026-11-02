@@ -9,7 +9,6 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-gtk4.workspace = true
 mshell-config.workspace = true
 relm4.workspace = true
 serde.workspace = true

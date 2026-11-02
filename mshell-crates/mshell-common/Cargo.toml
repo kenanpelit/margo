@@ -21,3 +21,8 @@ tracing.workspace = true
 wayle-notification.workspace = true
 [lints]
 workspace = true
+
+[package.metadata.cargo-machete]
+# gtk4-session-lock is not named in the source, but removing it breaks the build:
+# relm4's widget macros then fail to resolve `gtk::Accessible`.
+ignored = ["gtk4-session-lock"]

@@ -19,10 +19,8 @@ mshell-utils.workspace = true
 reactive_graph.workspace = true
 relm4.workspace = true
 tokio.workspace = true
-tracing.workspace = true
 wayle-audio.workspace = true
 wayle-battery.workspace = true
-wayle-brightness.workspace = true
 wayle-network.workspace = true
 
 [lints]

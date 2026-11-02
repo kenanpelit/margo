@@ -35,3 +35,6 @@ rustls = { version = "0.23", default-features = false, features = [
 # Random hex for the ConnectionId/X-RequestId/cookie values below — a v4
 # UUID's bytes are random enough for that, so no separate `rand` dependency.
 uuid = { version = "1", features = ["v4"] }
+
+[lints]
+workspace = true

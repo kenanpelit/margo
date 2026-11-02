@@ -10,12 +10,7 @@ path = "src/bin/mctl.rs"
 
 [dependencies]
 anyhow.workspace = true
-serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
-wayland-client.workspace = true
-wayland-backend.workspace = true
-wayland-scanner.workspace = true
 clap.workspace = true
 clap_complete = "4"
 # Pulled in for `mctl rules` — config-only introspection, no Wayland.

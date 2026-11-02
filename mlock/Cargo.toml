@@ -37,3 +37,7 @@ zeroize = "1.8"
 
 [lints]
 workspace = true
+
+[package.metadata.cargo-machete]
+# cairo-rs is used as `cairo::` (its lib name), which machete does not map.
+ignored = ["cairo-rs"]
