@@ -503,7 +503,9 @@ fn format_color(c: Rgba<u8>, format: &str, lowercase: bool) -> String {
             let (h, s, l) = rgb_to_hsl(r, g, b);
             format!(
                 "hsl({}, {}%, {}%)",
-                h.round() as i32,
+                // A hue just under 360° rounds up to 360, the same
+                // angle as 0; keep the printed value in 0–359.
+                (h.round() as i32).rem_euclid(360),
                 (s * 100.0).round() as i32,
                 (l * 100.0).round() as i32
             )
@@ -684,6 +686,20 @@ mod tests {
                 "{r},{g},{b}"
             );
         }
+    }
+
+    #[test]
+    fn hsl_hue_just_below_360_wraps_to_0() {
+        // h = 359.53° rounds to 360, which is the same hue as 0 and
+        // outside the 0–359 range colour inputs expect.
+        assert_eq!(
+            format_color(px(255, 0, 2), "hsl", false),
+            "hsl(0, 100%, 50%)"
+        );
+        assert_eq!(
+            format_color(px(255, 0, 4), "hsl", false),
+            "hsl(359, 100%, 50%)"
+        );
     }
 
     #[test]
