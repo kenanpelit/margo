@@ -1,9 +1,9 @@
 # Margo CI — build / test / clippy / config-validate.
 #
 # Runs inside an Arch Linux container (not ubuntu-latest) on purpose:
-# the GTK shell crates (mshell, mpicker, mvisual, …) use gtk4-rs 0.10,
-# which needs GTK >= 4.19 at build time. GitHub's Ubuntu runners ship
-# GTK 4.14, so a `--workspace` build can't link there. Arch always
+# the GTK shell crates (mshell, mpicker, mvisual, …) use gtk4-rs 0.11
+# with its `v4_20` feature, which needs GTK >= 4.20 at build time. GitHub's
+# Ubuntu runners ship GTK 4.14, so a `--workspace` build can't link there. Arch always
 # tracks current GTK (4.22+) and is margo's real target distro
 # (CachyOS/Arch), so the whole workspace builds and the full test suite
 # runs against the same library versions users get.
@@ -85,10 +85,14 @@ jobs:
       # regenerates the lock and CI goes green on a tree that cannot be
       # packaged.
       - name: cargo build (compositor group)
-        run: cargo build --locked -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mdots -p mcal
+        run: cargo build --locked -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mdots -p mcal -p mtm
 
       - name: cargo build (shell group)
         run: cargo build --locked -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard -p mkeys -p mvpn -p mgreet -p margo-portal
+
+      - name: cargo build (mtune)
+        # Built on its own in the PKGBUILD too (its GStreamer/libadwaita stack).
+        run: cargo build --locked -p mtune
 
       - name: cargo test
         # Tests cover every crate; feature unification in the test build

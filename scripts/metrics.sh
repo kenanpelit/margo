@@ -7,8 +7,9 @@
 # can be regenerated instead of guessed.
 #
 # Output is a plain `key\tvalue` table (stable keys), so it can be diffed,
-# grepped, or spliced into a doc by a later tool. No dependencies beyond the
-# coreutils already assumed by the other scripts here.
+# grepped, or spliced into a doc by a later tool. No dependencies beyond cargo
+# and the coreutils already assumed by the other scripts here. For the
+# per-crate table, see scripts/crate-table.sh.
 #
 # Exclusions match panic-ratchet.sh: target/, .git/, integration-test trees,
 # benchmark trees, and generated dirs.
@@ -28,10 +29,13 @@ find_rs() {
 # Rust source lines (production, matching the panic-ratchet corpus).
 rust_loc=$(find_rs | xargs -0 cat | wc -l | tr -d '[:space:]')
 
-# Workspace member crates: every Cargo.toml carrying a [package] section
-# (the root virtual manifest has none, so it drops out on its own).
-crates=$(find . -name Cargo.toml -not -path './target/*' -not -path './.git/*' -print0 \
-    | xargs -0 grep -l '^\[package\]' 2>/dev/null | wc -l | tr -d '[:space:]')
+# Workspace member crates, as cargo sees them. Counting every Cargo.toml with
+# a [package] section over-counts: it also finds the excluded mplugin-sdk, the
+# plugin-host test fixtures and the vendored wayle crates. The member IDs carry
+# no quotes, so counting quoted strings in the array is enough (no jq needed).
+crates=$(cargo metadata --no-deps --format-version 1 --offline 2>/dev/null \
+    | grep -o '"workspace_members":\[[^]]*\]' \
+    | grep -o '"[^"]*"' | tail -n +2 | wc -l | tr -d '[:space:]')
 
 # Unit tests: #[test] + #[tokio::test] attributes across the tree.
 tests=$(find_rs | xargs -0 grep -hcE '^\s*#\[(test|tokio::test)\]' 2>/dev/null \

@@ -134,8 +134,12 @@ Touch all four or the knob silently no-ops / fails validation:
    default on a bool/scalar, add `#[serde(default = "fn")]`, or older saved
    profiles won't pick it up. (This is why a default-value flip can't reach
    existing profiles by editing `Default` alone.)
-3. Read it via `config_manager()`; writes go through `update_config`. There is
-   **no migration layer** — design new fields to default safely.
+3. Read it via `config_manager()`; writes go through `update_config`. Design
+   new fields to default safely. When an *existing* profile needs a different
+   value, or a key is renamed/reshaped, that is a migration: bump
+   `CONFIG_VERSION` in `mshell-config/src/migration.rs` and add a
+   `migrate_vN_to_vN1` step plus its round-trip test (the module doc lists the
+   steps). It runs once per profile on load and the result is written back.
 
 ## 6. Precedence & live-apply rules
 

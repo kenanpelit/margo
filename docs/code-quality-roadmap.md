@@ -1,13 +1,15 @@
 # Code-quality roadmap
 
 A grounded review of margo (compositor + mshell shell) as a codebase, with
-prioritised improvement work. Snapshot metrics (2026-07-12, v1.1.8): ~298k
-LOC Rust, 62 workspace crates, 1173 test fns, 249 `unsafe` sites,
-panic-ratchet baseline 320 (non-test `unwrap`/`expect`/`panic`). These figures
+prioritised improvement work. Snapshot metrics (2026-11-02, v4.5.0): ~347k
+LOC Rust, 59 workspace crates, 1630 test fns, 260 `unsafe` sites,
+panic-ratchet baseline 446 (non-test `unwrap`/`expect`/`panic`). These figures
 come from [`scripts/metrics.sh`](https://github.com/kenanpelit/margo/blob/main/scripts/metrics.sh),
 which is the canonical live source — run it for the current numbers rather than
 trusting this line, since the snapshot drifts between refreshes. (Earlier
-snapshots for trend: 2026-06-12 v1.0.3 was ~180k LOC / 53 crates / 765 tests.)
+snapshots for trend: 2026-06-12 v1.0.3 was ~180k LOC / 53 crates / 765 tests;
+2026-07-12 v1.1.8 was ~298k LOC / 1173 tests / baseline 320 — its "62 crates"
+counted every `Cargo.toml`, including excluded fixtures and vendored crates.)
 
 > **Update (1.0.6 internals pass, 2026-06-13):** the unwrap ratchet is now
 > a CI hard gate (`scripts/panic-ratchet.sh`, baseline 334 — can only drop);
@@ -51,14 +53,18 @@ files, and overlapping feature mechanisms.**
   registry that also emits the struct fields + `ComponentParts` assigns so the
   page-list lives in exactly one table (blocked on the heterogeneous typed
   `Controller<…>` fields + the `#[relm4::component]` struct context).
-- [x] **Split the god files — `state.rs`.** ✅ Done (1.0.6): 4045 → **2441**,
-  back under the Phase-2 <3k bar. Lifted into sibling `impl MargoState` blocks:
+- [ ] **Split the god files — `state.rs`.** *Reopened (4.5.0):* the file has
+  grown back to **2864** lines with a wide `pub` field surface (~160 fields),
+  just under the <3k bar again. Earlier pass (1.0.6): 4045 → 2441, lifted into
+  sibling `impl MargoState` blocks:
   `state/window_rules.rs` (window/tag rules + placement), `state/arrange.rs`
   (the tiling-arrange cluster incl. the ~526-line `arrange_monitor`),
   `state/focus_methods.rs` (keyboard-focus + pointer-monitor), `state/dpms.rs`,
   and `apply_theme_preset` beside its `ThemeBaseline` in `state/theme.rs`.
-  Still oversized (optional next): `udev/mod.rs` 3868, `frame.rs` 2885,
-  `mctl.rs` 2620, `settings.rs` ~2480.
+  Still oversized (sizes at 4.5.0): `mctl/src/bin/mctl.rs` 3236,
+  `mshell-settings/src/settings.rs` 3016, `backend/udev/render_elements.rs`
+  2738 (the old `udev/mod.rs` 3868 was split into `margo/src/backend/udev/`;
+  `mod.rs` is 1873 now), `mshell-frame/src/frame.rs` 2304.
 - [x] **Unify overlapping mechanisms.** ✅ The per-tag layout ambiguity is
   resolved: `state/window_rules.rs` builds a `taglayout_tags` set and gates
   `tagrule layout_name` behind `!taglayout_tags.contains(tag)`, with the
