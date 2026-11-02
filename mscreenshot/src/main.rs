@@ -440,19 +440,10 @@ fn focused_output_name_in(json: &serde_json::Value) -> Result<String> {
     let outputs = json["outputs"]
         .as_array()
         .ok_or_else(|| anyhow!("mctl status: no outputs array"))?;
-    // Prefer an output marked focused; else the active one;
-    // else the first.
+    // Prefer the active (focused) output; else the first.
     let pick = outputs
         .iter()
-        .find(|o| {
-            o["focused"].as_object().is_some_and(|f| {
-                !f.get("title")
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("")
-                    .is_empty()
-            })
-        })
-        .or_else(|| outputs.iter().find(|o| o["active"].as_bool() == Some(true)))
+        .find(|o| o["active"].as_bool() == Some(true))
         .or_else(|| outputs.first());
     let name = pick
         .and_then(|o| o["name"].as_str())
@@ -471,19 +462,19 @@ fn focused_window_geometry() -> Option<String> {
 /// `grim -g` geometry (`"X,Y WxH"`) of the focused window in a
 /// `mctl status --json` document, `None` when there is none.
 fn focused_window_geometry_in(json: &serde_json::Value) -> Option<String> {
-    let outputs = json["outputs"].as_array()?;
-    for o in outputs {
-        let f = o["focused"].as_object()?;
-        let x = f.get("x")?.as_i64().unwrap_or(0);
-        let y = f.get("y")?.as_i64().unwrap_or(0);
-        let w = f.get("width")?.as_i64().unwrap_or(0);
-        let h = f.get("height")?.as_i64().unwrap_or(0);
-        if w > 0 && h > 0 {
-            // grim -g "X,Y WxH"
-            return Some(format!("{},{} {}x{}", x, y, w, h));
-        }
-    }
-    None
+    // Focus lives on the client entry (`clients[].focused`); its
+    // x/y/width/height are global layout coordinates, which is what
+    // `grim -g` takes.
+    let c = json["clients"]
+        .as_array()?
+        .iter()
+        .find(|c| c["focused"].as_bool() == Some(true))?;
+    let x = c["x"].as_i64().unwrap_or(0);
+    let y = c["y"].as_i64().unwrap_or(0);
+    let w = c["width"].as_i64().unwrap_or(0);
+    let h = c["height"].as_i64().unwrap_or(0);
+    // grim -g "X,Y WxH"
+    (w > 0 && h > 0).then(|| format!("{x},{y} {w}x{h}"))
 }
 
 // ── Edit step ───────────────────────────────────────────────
@@ -971,6 +962,37 @@ mod tests {
         assert!(focused_output_name_in(&json!({ "outputs": [] })).is_err());
         assert!(focused_output_name_in(&json!({ "outputs": [{ "active": true }] })).is_err());
         assert!(focused_output_name_in(&json!({ "outputs": "DP-1" })).is_err());
+    }
+
+    /// `mctl status --json` is margo's `get state` snapshot: focus is a
+    /// `focused` flag on the entry in `clients`, outputs carry no window.
+    #[test]
+    fn window_geometry_comes_from_the_focused_client() {
+        let doc = json!({
+            "outputs": [{ "name": "DP-1", "active": true, "x": 0, "y": 0 }],
+            "clients": [
+                { "focused": false, "x": 0, "y": 0, "width": 640, "height": 480 },
+                { "focused": true, "x": 1930, "y": -20, "width": 800, "height": 600 },
+            ],
+        });
+        assert_eq!(
+            focused_window_geometry_in(&doc).as_deref(),
+            Some("1930,-20 800x600")
+        );
+    }
+
+    #[test]
+    fn window_geometry_skips_unfocused_and_degenerate_clients() {
+        let doc = json!({ "clients": [
+            { "focused": false, "x": 0, "y": 0, "width": 640, "height": 480 },
+        ]});
+        assert_eq!(focused_window_geometry_in(&doc), None);
+        let doc = json!({ "clients": [
+            { "focused": true, "x": 0, "y": 0, "width": 0, "height": 480 },
+        ]});
+        assert_eq!(focused_window_geometry_in(&doc), None);
+        let doc = json!({ "clients": [{ "focused": true, "x": 5, "y": 5 }] });
+        assert_eq!(focused_window_geometry_in(&doc), None);
     }
 
     #[test]
