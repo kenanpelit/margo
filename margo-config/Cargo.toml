@@ -21,6 +21,8 @@ criterion = { version = "0.5", optional = true }
 # Property-based parser fuzzing (tests/proptest_parser.rs).
 proptest = "1"
 tempfile = "3"
+# Captures parser warnings in tests/warning_location.rs.
+tracing-subscriber.workspace = true
 
 [features]
 bench = ["dep:criterion"]

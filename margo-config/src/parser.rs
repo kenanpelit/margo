@@ -191,6 +191,16 @@ fn parse_lines(
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
+        // Every warning the line's value parsing emits (a malformed number
+        // falling back to 0, an over-long keyword being clamped, an unknown
+        // rule option, …) carries the file and line through this span, so the
+        // log points at the culprit even inside a `source`d fragment.
+        let _location = tracing::warn_span!(
+            "config",
+            file = %origin.display(),
+            line = lineno + 1
+        )
+        .entered();
         if let Err(e) = parse_line(cfg, line, origin, visited, vars) {
             error!("{}:{}: {} — {:?}", origin.display(), lineno + 1, e, line);
         }
