@@ -60,6 +60,7 @@ mod pointer_constraints;
 mod repaint;
 mod screencopy;
 mod scripting;
+mod security_context;
 mod selection;
 mod session_lock;
 mod session_regressions;

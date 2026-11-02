@@ -7,11 +7,11 @@
 //! the listener source into its calloop and accepts incoming
 //! connections from there.
 //!
-//! Margo currently doesn't track "restricted" client state (niri
-//! does, to gate sensitive protocols). For now we just accept the
-//! socket — the protocol-level access boundary (the sandbox engine
-//! holds the fd) is what does the heavy lifting. Restricted-client
-//! enforcement is a follow-up enhancement.
+//! Clients that connect through such a socket get
+//! `MargoClientData { restricted: true }`, and every privileged global
+//! (screen capture, clipboard managers, virtual input, session lock,
+//! layer shell, output management, window lists, …) filters them out via
+//! `state::client_is_unrestricted` — the same split niri makes.
 
 use smithay::wayland::security_context::{
     SecurityContext, SecurityContextHandler, SecurityContextListenerSource,
@@ -33,7 +33,10 @@ impl SecurityContextHandler for MargoState {
                 // through this socket took margo (and every client) down.
                 if let Err(err) = state.display_handle.insert_client(
                     client_stream,
-                    std::sync::Arc::new(crate::state::MargoClientData::default()),
+                    std::sync::Arc::new(crate::state::MargoClientData {
+                        restricted: true,
+                        ..Default::default()
+                    }),
                 ) {
                     tracing::warn!(
                         error = %err,

@@ -130,7 +130,7 @@ runtime-checked even where the per-protocol behaviour isn't.
 |---|---|---|---|---|---|
 | `ext_idle_notifier_v1` | ✅ | ✅ | 🟢 `idle.rs` (3) | ❌ | — |
 | `zwp_idle_inhibit_manager_v1` | ✅ | ✅ | 🟢 `idle.rs` (3) | ❌ | inhibitor create/destroy |
-| `wp_security_context_v1` | ✅ | ✅ | ❌ | ❌ | sandbox/flatpak context; no probe |
+| `wp_security_context_v1` | ✅ | ✅ | 🟢 `security_context.rs` (3): restricted clients don't see the privileged globals | ❌ | context creation itself has no probe |
 
 ## Selection / clipboard
 

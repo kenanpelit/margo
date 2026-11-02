@@ -119,11 +119,27 @@ use crate::{
 #[derive(Default)]
 pub struct MargoClientData {
     pub compositor_state: CompositorClientState,
+    /// The client connected through a `wp_security_context_v1` listener
+    /// (Flatpak and other sandboxes). Restricted clients don't see the
+    /// privileged globals; see [`client_is_unrestricted`].
+    pub restricted: bool,
 }
 
 impl ClientData for MargoClientData {
     fn initialized(&self, _client_id: ClientId) {}
     fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+}
+
+/// Global filter for the privileged protocols (niri's approach): `false` for
+/// a sandboxed client that came in through a `wp_security_context_v1`
+/// listener. Those globals would let it escape the sandbox — read the screen
+/// or clipboard, inject input, lock the session, reconfigure outputs, list
+/// every window. Clients without `MargoClientData` (XWayland, which margo
+/// spawns itself) are unrestricted.
+pub fn client_is_unrestricted(client: &smithay::reexports::wayland_server::Client) -> bool {
+    client
+        .get_data::<MargoClientData>()
+        .is_none_or(|data| !data.restricted)
 }
 
 /// How long a live locker may hold the lock without a single lock surface
@@ -1101,26 +1117,36 @@ impl MargoState {
         );
         let primary_selection_state =
             PrimarySelectionState::new_with_filter::<Self, _>(&dh, |_| !middle_paste_disabled());
-        let data_control_state =
-            DataControlState::new::<Self, _>(&dh, Some(&primary_selection_state), |_| true);
-        let ext_data_control_state =
-            ExtDataControlState::new::<Self, _>(&dh, Some(&primary_selection_state), |_| true);
+        let data_control_state = DataControlState::new::<Self, _>(
+            &dh,
+            Some(&primary_selection_state),
+            client_is_unrestricted,
+        );
+        let ext_data_control_state = ExtDataControlState::new::<Self, _>(
+            &dh,
+            Some(&primary_selection_state),
+            client_is_unrestricted,
+        );
         let cursor_shape_manager_state =
             smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&dh);
         let fractional_scale_manager_state =
             smithay::wayland::fractional_scale::FractionalScaleManagerState::new::<Self>(&dh);
-        let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
-        let session_lock_state =
-            smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
+        let layer_shell_state =
+            WlrLayerShellState::new_with_filter::<Self, _>(&dh, client_is_unrestricted);
+        let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<
+            Self,
+            _,
+        >(&dh, client_is_unrestricted);
         let text_input_state = TextInputManagerState::new::<Self>(&dh);
-        let input_method_state = InputMethodManagerState::new::<Self, _>(&dh, |_client| true);
+        let input_method_state =
+            InputMethodManagerState::new::<Self, _>(&dh, client_is_unrestricted);
         let pointer_constraints_state = PointerConstraintsState::new::<Self>(&dh);
         let relative_pointer_state = RelativePointerManagerState::new::<Self>(&dh);
         let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
         let output_management_state =
             crate::protocols::output_management::OutputManagementManagerState::new::<Self, _>(
                 &dh,
-                |_client| true,
+                client_is_unrestricted,
             );
         // wp_color_management_v1 (staging) — opt-in via the
         // `color_management = 1` knob. Standing the global up lets
@@ -1146,15 +1172,25 @@ impl MargoState {
         // globals, xdp-wlr 0.8+ can't expose per-window share
         // (Window tab in meeting clients). Smithay ships full
         // helpers; output and toplevel source globals are
-        // independent so we can advertise both.
+        // independent so we can advertise both. Hidden from sandboxed
+        // clients: they capture through the portal.
         let image_capture_source_state =
             smithay::wayland::image_capture_source::ImageCaptureSourceState::new();
         let output_capture_source_state =
-            smithay::wayland::image_capture_source::OutputCaptureSourceState::new::<Self>(&dh);
+            smithay::wayland::image_capture_source::OutputCaptureSourceState::new_with_filter::<
+                Self,
+                _,
+            >(&dh, client_is_unrestricted);
         let toplevel_capture_source_state =
-            smithay::wayland::image_capture_source::ToplevelCaptureSourceState::new::<Self>(&dh);
+            smithay::wayland::image_capture_source::ToplevelCaptureSourceState::new_with_filter::<
+                Self,
+                _,
+            >(&dh, client_is_unrestricted);
         let image_copy_capture_state =
-            smithay::wayland::image_copy_capture::ImageCopyCaptureState::new::<Self>(&dh);
+            smithay::wayland::image_copy_capture::ImageCopyCaptureState::new_with_filter::<Self, _>(
+                &dh,
+                client_is_unrestricted,
+            );
         // Clock id 1 = CLOCK_MONOTONIC. That's the same domain
         // `monotonic_now()` in the udev backend uses, so the
         // timestamps we publish are consistent with the ones
@@ -1166,12 +1202,12 @@ impl MargoState {
             smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
         // `zwp_virtual_keyboard_v1` — required by wayvnc to inject
         // keystrokes from VNC clients, and used by `wtype` /
-        // `ydotool` for synthetic input. Open to all clients; the
-        // wayland socket is already per-user.
+        // `ydotool` for synthetic input. Hidden from sandboxed clients
+        // (`client_is_unrestricted`): injected input escapes the sandbox.
         let virtual_keyboard_manager_state =
             smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState::new::<Self, _>(
                 &dh,
-                |_client| true,
+                client_is_unrestricted,
             );
         // `zwp_keyboard_shortcuts_inhibit_v1` — required by vncviewer,
         // RDP clients, VirtualBox, and any app that needs the host
@@ -1194,12 +1230,14 @@ impl MargoState {
         let tablet_manager_state =
             smithay::wayland::tablet_manager::TabletManagerState::new::<Self>(&dh);
         // `wp_security_context_v1` — sandboxed-client socket
-        // pre-allocation. Filter accepts every client; the protocol's
-        // listener-fd mechanism is itself the access boundary.
+        // pre-allocation. Clients connecting through such a socket are
+        // marked restricted (see `state/handlers/security_context.rs`);
+        // they can't see this global themselves, so a sandboxed app can't
+        // mint a new context to shed its restrictions.
         let security_context_state = smithay::wayland::security_context::SecurityContextState::new::<
             Self,
             _,
-        >(&dh, |_client| true);
+        >(&dh, client_is_unrestricted);
         // `org_kde_kwin_server_decoration` — legacy KDE deco.
         // Default to server-side decoration since margo's existing
         // xdg-decoration policy is SSD-first.
@@ -1247,45 +1285,48 @@ impl MargoState {
         let input_keyboard = KeyboardState::new(&config);
 
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&dh);
-        let foreign_toplevel_list = ForeignToplevelListState::new::<Self>(&dh);
+        // Every privileged global below is hidden from sandboxed clients
+        // via `client_is_unrestricted` (window lists, workspace control,
+        // synthetic pointer, gamma, DPMS, screen capture).
+        let foreign_toplevel_list =
+            ForeignToplevelListState::new_with_filter::<Self>(&dh, client_is_unrestricted);
         let wlr_foreign_toplevel =
             crate::protocols::wlr_foreign_toplevel::WlrForeignToplevelState::new::<Self, _>(
                 &dh,
-                |_client| true,
+                client_is_unrestricted,
             );
         let ext_workspace_state = crate::protocols::ext_workspace::ExtWorkspaceManagerState::new::<
             Self,
             _,
-        >(&dh, |_client| true);
+        >(&dh, client_is_unrestricted);
         let virtual_pointer_state =
             crate::protocols::virtual_pointer::VirtualPointerManagerState::new::<Self, _>(
                 &dh,
-                |_client| true,
+                client_is_unrestricted,
             );
 
         // wlr_gamma_control_v1 — sunsetr / gammastep / wlsunset use this to
-        // push night-light ramps to outputs. Allow all clients (no privileged
-        // filter) so user services can drive it freely.
+        // push night-light ramps to outputs.
         let gamma_control_manager_state =
             crate::protocols::gamma_control::GammaControlManagerState::new::<Self, _>(
                 &dh,
-                |_client| true,
+                client_is_unrestricted,
             );
 
         // wlr-output-power-management-v1: lets idle daemons (`swayidle`) and
-        // `wlr-randr` power outputs off/on via DPMS. All clients allowed.
+        // `wlr-randr` power outputs off/on via DPMS.
         let output_power_manager_state =
             crate::protocols::output_power::OutputPowerManagerState::new::<Self, _>(
                 &dh,
-                |_client| true,
+                client_is_unrestricted,
             );
 
         // wlr-screencopy-unstable-v1: lets `grim`, `wf-recorder`, `screen rec`
         // etc. capture compositor outputs.
-        let screencopy_state =
-            crate::protocols::screencopy::ScreencopyManagerState::new::<Self, _>(&dh, |_client| {
-                true
-            });
+        let screencopy_state = crate::protocols::screencopy::ScreencopyManagerState::new::<Self, _>(
+            &dh,
+            client_is_unrestricted,
+        );
 
         Self {
             compositor_state,

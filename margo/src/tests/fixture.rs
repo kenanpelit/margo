@@ -187,6 +187,19 @@ impl Fixture {
     /// running `Server` over a fresh `UnixStream` pair. Returns the
     /// stable [`ClientId`] used by other helpers.
     pub fn add_client(&mut self) -> ClientId {
+        self.add_client_with_data(MargoClientData::default())
+    }
+
+    /// Like [`Self::add_client`], for a sandboxed client: what a client
+    /// connecting through a `wp_security_context_v1` listener gets.
+    pub fn add_restricted_client(&mut self) -> ClientId {
+        self.add_client_with_data(MargoClientData {
+            restricted: true,
+            ..Default::default()
+        })
+    }
+
+    fn add_client_with_data(&mut self, data: MargoClientData) -> ClientId {
         let (server_side, client_side) = UnixStream::pair().expect("UnixStream::pair");
         // Server registers our peer as a regular Wayland client —
         // `MargoClientData::default()` matches what main.rs hands
@@ -194,7 +207,7 @@ impl Fixture {
         self.server
             .state
             .display_handle
-            .insert_client(server_side, Arc::new(MargoClientData::default()))
+            .insert_client(server_side, Arc::new(data))
             .expect("insert_client");
 
         // Client::new emits `get_registry` and flushes; the round-
