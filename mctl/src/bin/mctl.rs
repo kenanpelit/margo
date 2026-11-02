@@ -1251,13 +1251,11 @@ fn mctl_plugins_dir() -> Option<std::path::PathBuf> {
 }
 
 /// Read a bare `key = value` field from a plugin.toml manifest (same flat
-/// grammar margo's loader uses — no nested tables).
+/// grammar margo's loader uses — no nested tables, and everything after a
+/// `#` is a comment, inline ones included).
 fn manifest_field(text: &str, key: &str) -> Option<String> {
     text.lines().find_map(|line| {
-        let line = line.trim();
-        if line.starts_with('#') {
-            return None;
-        }
+        let line = line.split('#').next().unwrap_or("").trim();
         let (k, v) = line.split_once('=')?;
         (k.trim() == key).then(|| v.trim().trim_matches('"').trim_matches('\'').to_string())
     })
@@ -3297,6 +3295,26 @@ mod helper_tests {
             manifest_field("# name = x\n", "name"),
             None,
             "commented out"
+        );
+    }
+
+    #[test]
+    fn manifest_inline_comments_are_stripped_like_the_loader() {
+        // margo's plugin loader drops everything after `#`; mctl read
+        // `true # …` as a non-true value and listed the plugin disabled
+        // (the loader's own doc example has such a comment).
+        assert!(manifest_enabled(
+            "name = clock\nenabled = true                # default true; flip to disable\n"
+        ));
+        assert!(!manifest_enabled("enabled = false # off for now\n"));
+        assert_eq!(
+            manifest_field("name = \"clock\"  # shown in lists\n", "name").as_deref(),
+            Some("clock")
+        );
+        assert_eq!(
+            manifest_field("   # name = x\n", "name"),
+            None,
+            "indented comment"
         );
     }
 
