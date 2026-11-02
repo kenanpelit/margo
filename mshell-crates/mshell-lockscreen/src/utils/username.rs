@@ -30,3 +30,15 @@ pub fn current_username() -> String {
         .or_else(|| std::env::var("USER").ok())
         .unwrap_or_else(|| "user".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn username_is_never_blank() {
+        let name = current_username();
+        assert!(!name.is_empty());
+        assert!(!name.contains('\0'));
+    }
+}

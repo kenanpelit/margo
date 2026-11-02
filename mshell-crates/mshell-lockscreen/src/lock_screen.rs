@@ -63,7 +63,7 @@ pub struct LockScreenModel {
     _effects: EffectScope,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LockScreenInput {
     OnShow,
     TogglePasswordVisibility,
@@ -300,15 +300,7 @@ impl Component for LockScreenModel {
             .clock_format_24_h()
             .get_untracked();
 
-        let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
-
-        let time = if format_24_h {
-            now.format(&TIME_FORMAT_24).unwrap()
-        } else {
-            now.format(&TIME_FORMAT_12).unwrap()
-        };
-
-        let day = now.format(&DAY_FORMAT).unwrap();
+        let (time, day) = clock_labels(now(), format_24_h);
 
         let mut effects = EffectScope::new();
         let sender_clone = sender.clone();
@@ -446,16 +438,7 @@ impl Component for LockScreenModel {
                 self.revealed = false
             }
             LockScreenInput::UpdateTime => {
-                let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
-
-                let time = if self.format_24_h {
-                    now.format(&TIME_FORMAT_24).unwrap()
-                } else {
-                    now.format(&TIME_FORMAT_12).unwrap()
-                };
-
-                let day = now.format(&DAY_FORMAT).unwrap();
-
+                let (time, day) = clock_labels(now(), self.format_24_h);
                 self.day_label = day;
                 self.time_label = time;
             }
@@ -466,6 +449,25 @@ impl Component for LockScreenModel {
 
         self.update_view(widgets, sender);
     }
+}
+
+fn now() -> OffsetDateTime {
+    OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc())
+}
+
+/// `(time, day)` labels for the lock screen clock, e.g. `("09:05", "Monday,
+/// November 2")` or `("09:05 pm", …)` in 12-hour mode. A formatting failure
+/// leaves the label blank rather than taking the lock screen down.
+fn clock_labels(now: OffsetDateTime, format_24_h: bool) -> (String, String) {
+    let time_format = if format_24_h {
+        &TIME_FORMAT_24
+    } else {
+        &TIME_FORMAT_12
+    };
+    (
+        now.format(time_format).unwrap_or_default(),
+        now.format(&DAY_FORMAT).unwrap_or_default(),
+    )
 }
 
 /// Set the lock screen wallpaper picture from the in-memory buffer.
@@ -483,5 +485,42 @@ impl Drop for LockScreenModel {
         if let Some(id) = self.timer_id.take() {
             id.remove();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::{Date, Month, Time};
+
+    fn at(h: u8, m: u8) -> OffsetDateTime {
+        let date = Date::from_calendar_date(2026, Month::November, 2).unwrap();
+        date.with_time(Time::from_hms(h, m, 0).unwrap())
+            .assume_utc()
+    }
+
+    #[test]
+    fn clock_24h_is_zero_padded() {
+        assert_eq!(clock_labels(at(9, 5), true).0, "09:05");
+        assert_eq!(clock_labels(at(0, 0), true).0, "00:00");
+        assert_eq!(clock_labels(at(23, 59), true).0, "23:59");
+    }
+
+    #[test]
+    fn clock_12h_uses_lower_case_period_and_twelve_for_midnight_noon() {
+        assert_eq!(clock_labels(at(9, 5), false).0, "09:05 am");
+        assert_eq!(clock_labels(at(21, 5), false).0, "09:05 pm");
+        assert_eq!(clock_labels(at(0, 30), false).0, "12:30 am");
+        assert_eq!(clock_labels(at(12, 0), false).0, "12:00 pm");
+    }
+
+    #[test]
+    fn day_label_spells_out_weekday_and_month_without_padding() {
+        assert_eq!(clock_labels(at(9, 5), true).1, "Monday, November 2");
+        let new_year = Date::from_calendar_date(2027, Month::January, 1)
+            .unwrap()
+            .midnight()
+            .assume_utc();
+        assert_eq!(clock_labels(new_year, false).1, "Friday, January 1");
     }
 }

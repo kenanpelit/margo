@@ -114,8 +114,8 @@ impl Component for LockScreenManagerModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             LockScreenManagerInput::LockScreenCreated(controller) => {
-                if self.fingerprint_active {
-                    controller.sender().emit(LockScreenInput::FingerprintReady);
+                if let Some(input) = input_for_new_screen(self.fingerprint_active) {
+                    controller.sender().emit(input);
                 }
                 self.lock_screens.push(controller);
             }
@@ -174,33 +174,19 @@ impl Component for LockScreenManagerModel {
     ) {
         match message {
             LockScreenManagerCommandOutput::FingerprintEvent(event) => {
-                match event {
-                    FingerprintEvent::Ready => {
+                if let FingerprintEvent::Error(e) = &event {
+                    info!("Fingerprint error: {e}");
+                }
+                match route_fingerprint_event(&event) {
+                    FingerprintRoute::Screens(input) => {
                         for ls in &self.lock_screens {
-                            ls.emit(LockScreenInput::FingerprintReady);
+                            ls.emit(input.clone());
                         }
                     }
-                    FingerprintEvent::Scanning => {
-                        for ls in &self.lock_screens {
-                            ls.emit(LockScreenInput::FingerprintScanning);
-                        }
+                    FingerprintRoute::AuthSuccess => {
+                        sender.input(LockScreenManagerInput::AuthSuccess);
                     }
-                    FingerprintEvent::Match => sender.input(LockScreenManagerInput::AuthSuccess),
-                    FingerprintEvent::NoMatch => {
-                        for ls in &self.lock_screens {
-                            ls.emit(LockScreenInput::FingerprintFailed);
-                        }
-                    }
-                    FingerprintEvent::UnknownError => {
-                        // shouldn't happen
-                    }
-                    FingerprintEvent::Error(e) => {
-                        info!("Fingerprint error: {e}");
-                        // Fingerprint unavailable, lock screens show password only
-                        for ls in &self.lock_screens {
-                            ls.emit(LockScreenInput::ShowPasswordEntry);
-                        }
-                    }
+                    FingerprintRoute::Ignore => {}
                 }
             }
         }
@@ -295,5 +281,79 @@ impl LockScreenManagerModel {
                 }
             }
         });
+    }
+}
+
+/// What a freshly created lock screen (a monitor hot-plugged, or a surface
+/// created after the lock began) should be told so it matches the others.
+fn input_for_new_screen(fingerprint_active: bool) -> Option<LockScreenInput> {
+    fingerprint_active.then_some(LockScreenInput::FingerprintReady)
+}
+
+/// Where a fingerprint event goes.
+#[derive(Debug)]
+enum FingerprintRoute {
+    /// Fan this input out to every lock screen.
+    Screens(LockScreenInput),
+    /// A finger matched: unlock.
+    AuthSuccess,
+    Ignore,
+}
+
+/// Route one fprintd event.
+fn route_fingerprint_event(event: &FingerprintEvent) -> FingerprintRoute {
+    match event {
+        FingerprintEvent::Ready => FingerprintRoute::Screens(LockScreenInput::FingerprintReady),
+        FingerprintEvent::Scanning => {
+            FingerprintRoute::Screens(LockScreenInput::FingerprintScanning)
+        }
+        FingerprintEvent::Match => FingerprintRoute::AuthSuccess,
+        FingerprintEvent::NoMatch => FingerprintRoute::Screens(LockScreenInput::FingerprintFailed),
+        // The scanner loop retries these itself; nothing reaches here.
+        FingerprintEvent::UnknownError => FingerprintRoute::Ignore,
+        // Fingerprint unavailable: the lock screens fall back to password.
+        FingerprintEvent::Error(_) => FingerprintRoute::Screens(LockScreenInput::ShowPasswordEntry),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_screen_joins_an_active_fingerprint_session() {
+        assert!(matches!(
+            input_for_new_screen(true),
+            Some(LockScreenInput::FingerprintReady)
+        ));
+    }
+
+    #[test]
+    fn fingerprint_events_fan_out_to_the_screens() {
+        let route = |e| route_fingerprint_event(&e);
+        assert!(matches!(
+            route(FingerprintEvent::Ready),
+            FingerprintRoute::Screens(LockScreenInput::FingerprintReady)
+        ));
+        assert!(matches!(
+            route(FingerprintEvent::Scanning),
+            FingerprintRoute::Screens(LockScreenInput::FingerprintScanning)
+        ));
+        assert!(matches!(
+            route(FingerprintEvent::NoMatch),
+            FingerprintRoute::Screens(LockScreenInput::FingerprintFailed)
+        ));
+        assert!(matches!(
+            route(FingerprintEvent::Match),
+            FingerprintRoute::AuthSuccess
+        ));
+        assert!(matches!(
+            route(FingerprintEvent::UnknownError),
+            FingerprintRoute::Ignore
+        ));
+        assert!(matches!(
+            route(FingerprintEvent::Error("no device".into())),
+            FingerprintRoute::Screens(LockScreenInput::ShowPasswordEntry)
+        ));
     }
 }
