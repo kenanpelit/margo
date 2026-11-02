@@ -3,20 +3,21 @@
 //! `keybind-cheatsheet` plugin adapted to margo's Hyprland-shaped
 //! config: `bind = MODS,KEY,ACTION,ARGS  # optional description`.
 //!
-//! `source = <path>` includes are followed (tilde + relative
-//! resolution, loop-guarded). Descriptions come from a trailing
+//! `source = <path>` / `include = <path>` are followed (tilde + relative
+//! resolution, loop-guarded) and `var = name,value` references expanded,
+//! as margo does. Descriptions come from a trailing
 //! `#"quoted"` or plain `# comment`; otherwise we humanise the
 //! action/command. Binds are grouped into a few action-type
 //! categories since margo configs don't carry category headers.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// One parsed shortcut.
 #[derive(Debug, Clone)]
 pub(crate) struct Keybind {
     /// Canonical modifier names in order: `Super` / `Ctrl` / `Shift`
-    /// / `Alt`.
+    /// / `Alt` / `Hyper`.
     pub mods: Vec<&'static str>,
     /// The (formatted) trigger key.
     pub key: String,
@@ -130,10 +131,13 @@ fn load_sections_from(path: &Path) -> Vec<Section> {
     let mut lines = Vec::new();
     read_all_lines(path, &mut HashSet::new(), &mut lines);
 
-    let mut by_cat: std::collections::HashMap<&'static str, Vec<Keybind>> =
-        std::collections::HashMap::new();
+    let mut by_cat: HashMap<&'static str, Vec<Keybind>> = HashMap::new();
+    let mut vars = HashMap::new();
     for line in &lines {
-        if let Some((cat, kb)) = parse_bind(line) {
+        if read_var(line, &mut vars) {
+            continue;
+        }
+        if let Some((cat, kb)) = parse_bind(&expand_vars(line, &vars)) {
             by_cat.entry(cat).or_default().push(kb);
         }
     }
@@ -176,12 +180,13 @@ fn parse_bind(line: &str) -> Option<(&'static str, Keybind)> {
     let mut parts = body.splitn(3, ',');
     let mod_part = parts.next()?.trim();
     let key_raw = parts.next()?.trim();
-    let action_rest = parts.next().unwrap_or("").trim();
+    // margo needs at least MODS,KEY,ACTION (the action may be empty).
+    let action_rest = parts.next()?.trim();
     if key_raw.is_empty() && mod_part.is_empty() {
         return None;
     }
 
-    let mods = parse_mods(mod_part);
+    let mods = parse_mods(mod_part)?;
     let key = format_key(key_raw);
 
     // action_rest = "ACTION,ARG1,ARG2,…"
@@ -217,24 +222,140 @@ fn split_comment(body: &str) -> (&str, Option<String>) {
     (body, None)
 }
 
-fn parse_mods(mod_part: &str) -> Vec<&'static str> {
-    let mut mods = Vec::new();
-    for m in mod_part.split('+') {
-        match m.trim().to_ascii_lowercase().as_str() {
-            "super" | "mod" | "mod4" | "logo" | "win" => push_unique(&mut mods, "Super"),
-            "ctrl" | "control" => push_unique(&mut mods, "Ctrl"),
-            "shift" => push_unique(&mut mods, "Shift"),
-            "alt" | "mod1" => push_unique(&mut mods, "Alt"),
-            _ => {}
+/// Modifier display names in the order the cheatsheet shows them.
+const MOD_ORDER: &[&str] = &["Super", "Ctrl", "Shift", "Alt", "Hyper"];
+
+/// The modifiers of a bind's MODS field, in [`MOD_ORDER`]. Mirrors margo's
+/// `parse_modifiers`: case-insensitive `super`/`ctrl`/`shift`/`alt`/`hyper`
+/// (with optional `_l`/`_r`), `code:N` keycodes and `none`; unknown names are
+/// skipped, but a non-empty field with nothing margo recognises is `None`
+/// because margo drops that bind.
+fn parse_mods(mod_part: &str) -> Option<Vec<&'static str>> {
+    let mod_part = mod_part.trim();
+    if mod_part.is_empty() || mod_part.eq_ignore_ascii_case("none") {
+        return Some(Vec::new());
+    }
+    let mut found: Vec<&'static str> = Vec::new();
+    let mut matched = false;
+    for token in mod_part.split('+') {
+        let t = token.trim().to_ascii_lowercase();
+        if t.is_empty() {
+            continue;
+        }
+        let name = if let Some(code) = t.strip_prefix("code:") {
+            // margo counts any `code:` token as a modifier, known or not.
+            matched = true;
+            match code.trim().parse::<u32>().unwrap_or(0) {
+                133 | 134 => Some("Super"),
+                37 | 105 => Some("Ctrl"),
+                50 | 62 => Some("Shift"),
+                64 | 108 => Some("Alt"),
+                _ => None,
+            }
+        } else {
+            let base = t
+                .strip_suffix("_l")
+                .or_else(|| t.strip_suffix("_r"))
+                .unwrap_or(&t);
+            match base {
+                "super" => Some("Super"),
+                "ctrl" => Some("Ctrl"),
+                "shift" => Some("Shift"),
+                "alt" => Some("Alt"),
+                "hyper" => Some("Hyper"),
+                _ => None,
+            }
+        };
+        if t == "none" || name.is_some() {
+            matched = true;
+        }
+        if let Some(name) = name
+            && !found.contains(&name)
+        {
+            found.push(name);
         }
     }
-    mods
+    if !matched {
+        return None;
+    }
+    Some(
+        MOD_ORDER
+            .iter()
+            .copied()
+            .filter(|m| found.contains(m))
+            .collect(),
+    )
 }
 
-fn push_unique(v: &mut Vec<&'static str>, s: &'static str) {
-    if !v.contains(&s) {
-        v.push(s);
+/// Record a `var = name,value` line (margo's config variables). Returns
+/// `false` for any other line.
+fn read_var(line: &str, vars: &mut HashMap<String, String>) -> bool {
+    let Some((key, val)) = line.split_once('=') else {
+        return false;
+    };
+    if key.trim() != "var" {
+        return false;
     }
+    let val = strip_inline_comment(val).trim();
+    let b = val.as_bytes();
+    let val = if b.len() >= 2 && (b[0] == b'"' || b[0] == b'\'') && b[b.len() - 1] == b[0] {
+        val[1..val.len() - 1].trim()
+    } else {
+        val
+    };
+    let val = expand_vars(val, vars);
+    if let Some((name, value)) = val.split_once(',') {
+        let name = name.trim();
+        let valid = name
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if valid {
+            vars.insert(name.to_string(), value.trim().to_string());
+        }
+    }
+    true
+}
+
+/// Expand `$name` / `${name}` for names defined by an earlier `var =`;
+/// anything else (`$HOME`, `$1`, `$(…)`) is left untouched, as in margo.
+fn expand_vars(value: &str, vars: &HashMap<String, String>) -> String {
+    if vars.is_empty() || !value.contains('$') {
+        return value.to_string();
+    }
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(pos) = rest.find('$') {
+        out.push_str(&rest[..pos]);
+        let after = &rest[pos + 1..];
+        let (name, used) = if let Some(braced) = after.strip_prefix('{') {
+            match braced.find('}') {
+                Some(close) => (&braced[..close], close + 2),
+                None => ("", 0),
+            }
+        } else {
+            let len = after
+                .char_indices()
+                .find(|&(i, c)| {
+                    !(c == '_' || c.is_ascii_alphabetic() || (i > 0 && c.is_ascii_digit()))
+                })
+                .map_or(after.len(), |(i, _)| i);
+            (&after[..len], len)
+        };
+        match vars.get(name) {
+            Some(v) if used > 0 => {
+                out.push_str(v);
+                rest = &after[used..];
+            }
+            _ => {
+                out.push('$');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// XF86 + a few special keys → readable; single letters upper-cased.
@@ -673,5 +794,112 @@ mod tests {
             .key_bindings
             .len()
             - injected
+    }
+
+    #[test]
+    fn modifiers_come_out_in_canonical_order() {
+        assert_eq!(
+            bind("bind = SHIFT+SUPER,q,killclient").mods,
+            ["Super", "Shift"]
+        );
+        assert_eq!(
+            bind("bind = alt+shift+ctrl+super,q,killclient").mods,
+            ["Super", "Ctrl", "Shift", "Alt"]
+        );
+    }
+
+    #[test]
+    fn modifier_vocabulary_matches_margo() {
+        assert_eq!(
+            bind("bind = SUPER_L+ctrl_r,q,killclient").mods,
+            ["Super", "Ctrl"]
+        );
+        assert_eq!(
+            bind("bind = code:133+code:50,q,killclient").mods,
+            ["Super", "Shift"]
+        );
+        assert_eq!(bind("bind = HYPER,q,killclient").mods, ["Hyper"]);
+        // Names margo doesn't know are ignored next to known ones…
+        assert_eq!(bind("bind = LOGO+SHIFT,q,killclient").mods, ["Shift"]);
+        // …and a field with none it knows makes margo drop the bind.
+        assert!(parse_bind("bind = MOD,q,killclient").is_none());
+        assert!(parse_bind("bind = win+mod4,q,killclient").is_none());
+    }
+
+    #[test]
+    fn binds_need_mods_key_and_action() {
+        // margo rejects a bind with fewer than three fields.
+        assert!(parse_bind("bind = SUPER,q").is_none());
+        assert!(parse_bind("bind = SUPER").is_none());
+    }
+
+    #[test]
+    fn var_references_expand_like_margo() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("config.conf");
+        std::fs::write(
+            &conf,
+            "var = mod, SUPER\n\
+             var = term,kitty   # terminal\n\
+             bind = $mod,Return,spawn,$term\n\
+             bind = ${mod}+SHIFT,q,killclient\n\
+             bind = $mod,e,spawn,echo $HOME\n",
+        )
+        .unwrap();
+        let binds = load_sections_from(&conf);
+        let binds = all_binds(&binds);
+        assert_eq!(binds.len(), 3, "{binds:#?}");
+        assert!(binds.iter().all(|b| b.mods.first() == Some(&"Super")));
+        assert!(binds.iter().any(|b| b.desc == "kitty"));
+        // Undefined `$NAME`s (shell variables) are left alone.
+        assert!(binds.iter().any(|b| b.desc == "echo $HOME"));
+    }
+
+    /// Per-bind golden check: the modifiers the cheatsheet shows are exactly
+    /// the ones margo binds, for every spelling margo accepts or rejects.
+    #[test]
+    fn modifiers_match_margo_bind_for_bind() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("config.conf");
+        std::fs::write(
+            &conf,
+            "var = mod,SUPER\n\
+             bind = SHIFT+SUPER,a,killclient\n\
+             bind = super_l+CTRL_R,b,killclient\n\
+             bind = code:133+code:64,c,killclient\n\
+             bind = NONE,d,killclient\n\
+             bind = ,e,killclient\n\
+             bind = LOGO+alt,f,killclient\n\
+             bind = MOD,g,killclient\n\
+             bind = $mod+shift,h,killclient\n\
+             bind = hyper,i,killclient\n\
+             bind = SUPER,j\n",
+        )
+        .unwrap();
+        let margo: Vec<Vec<&str>> = margo_config::parse_config(Some(&conf))
+            .unwrap()
+            .key_bindings
+            .iter()
+            .filter(|b| b.action != "chvt")
+            .map(|b| {
+                use margo_config::Modifiers as M;
+                [
+                    (M::LOGO, "Super"),
+                    (M::CTRL, "Ctrl"),
+                    (M::SHIFT, "Shift"),
+                    (M::ALT, "Alt"),
+                    (M::MOD3, "Hyper"),
+                ]
+                .into_iter()
+                .filter(|(m, _)| b.modifiers.contains(*m))
+                .map(|(_, n)| n)
+                .collect()
+            })
+            .collect();
+        let ours: Vec<Vec<&str>> = all_binds(&load_sections_from(&conf))
+            .iter()
+            .map(|b| b.mods.clone())
+            .collect();
+        assert_eq!(ours, margo);
     }
 }
