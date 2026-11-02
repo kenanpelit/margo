@@ -30,6 +30,7 @@
 //! on the shell's own toast bus when a sensor first goes active.
 
 use std::collections::{BTreeMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
@@ -212,22 +213,42 @@ fn record_edges(prev: &PrivacyLive, next: &PrivacyLive, cfg: &CfgSnapshot) {
 }
 
 fn edges_for(old: &[String], new: &[String], kind: &str, cfg: &CfgSnapshot) {
-    let was_active = !old.is_empty();
-    // Started: in `new` but not `old`.
-    for app in new {
-        if !old.contains(app) {
-            log_event(app, kind, "started", cfg.history_limit);
-        }
+    let edges = sensor_edges(old, new);
+    for app in edges.started {
+        log_event(app, kind, "started", cfg.history_limit);
     }
-    // Stopped: in `old` but not `new`.
-    for app in old {
-        if !new.contains(app) {
-            log_event(app, kind, "stopped", cfg.history_limit);
-        }
+    for app in edges.stopped {
+        log_event(app, kind, "stopped", cfg.history_limit);
     }
-    // Toast on the activation edge (idle → in use).
-    if cfg.enable_toast && !was_active && !new.is_empty() {
+    if cfg.enable_toast && edges.activated {
         toast(kind, new);
+    }
+}
+
+/// What changed for one sensor between two samples of its app list.
+#[derive(Debug, PartialEq, Eq)]
+struct SensorEdges<'a> {
+    /// In `new` but not `old`, in `new`'s order.
+    started: Vec<&'a str>,
+    /// In `old` but not `new`, in `old`'s order.
+    stopped: Vec<&'a str>,
+    /// The sensor went from idle to in use (the toast edge).
+    activated: bool,
+}
+
+fn sensor_edges<'a>(old: &'a [String], new: &'a [String]) -> SensorEdges<'a> {
+    SensorEdges {
+        started: new
+            .iter()
+            .filter(|a| !old.contains(a))
+            .map(String::as_str)
+            .collect(),
+        stopped: old
+            .iter()
+            .filter(|a| !new.contains(a))
+            .map(String::as_str)
+            .collect(),
+        activated: old.is_empty() && !new.is_empty(),
     }
 }
 
@@ -301,8 +322,14 @@ fn probe_camera_blocking() -> Vec<String> {
     if cam_devices.is_empty() {
         return Vec::new();
     }
+    camera_holders(Path::new("/proc"), &cam_devices)
+}
+
+/// `comm` names of the processes under `proc_root` holding an fd on one of
+/// `cam_devices`, sorted and deduplicated.
+fn camera_holders(proc_root: &Path, cam_devices: &[PathBuf]) -> Vec<String> {
     let mut pids: HashSet<u32> = HashSet::new();
-    let Ok(proc_dir) = std::fs::read_dir("/proc") else {
+    let Ok(proc_dir) = std::fs::read_dir(proc_root) else {
         return Vec::new();
     };
     for entry in proc_dir.flatten() {
@@ -325,7 +352,9 @@ fn probe_camera_blocking() -> Vec<String> {
     }
     let mut names: Vec<String> = pids
         .into_iter()
-        .filter_map(|pid| std::fs::read_to_string(format!("/proc/{pid}/comm")).ok())
+        .filter_map(|pid| {
+            std::fs::read_to_string(proc_root.join(pid.to_string()).join("comm")).ok()
+        })
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
@@ -336,9 +365,14 @@ fn probe_camera_blocking() -> Vec<String> {
 
 /// Real `/dev/video*` capture nodes, excluding metadata-only devices (the
 /// odd-numbered nodes UVC webcams expose alongside the capture node).
-fn real_camera_devices() -> Vec<std::path::PathBuf> {
+fn real_camera_devices() -> Vec<PathBuf> {
+    real_camera_devices_in(Path::new("/sys/class/video4linux"))
+}
+
+/// [`real_camera_devices`] for a `video4linux` class dir at `sysfs`.
+fn real_camera_devices_in(sysfs: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let Ok(dir) = std::fs::read_dir("/sys/class/video4linux") else {
+    let Ok(dir) = std::fs::read_dir(sysfs) else {
         return out;
     };
     for entry in dir.flatten() {
@@ -351,7 +385,7 @@ fn real_camera_devices() -> Vec<std::path::PathBuf> {
         if name.contains("Metadata") {
             continue;
         }
-        out.push(std::path::PathBuf::from(format!("/dev/{dev}")));
+        out.push(PathBuf::from(format!("/dev/{dev}")));
     }
     out
 }
@@ -359,16 +393,16 @@ fn real_camera_devices() -> Vec<std::path::PathBuf> {
 // ── Camera watch (inotify) ───────────────────────────────────────────────
 
 mod camera_watch {
-    use super::{CAM_DIRTY, WAKE, real_camera_devices};
+    use super::{
+        CAM_DEVICE_MASK as DEVICE_MASK, CAM_DIR_MASK as DIR_MASK, CAM_DIRTY, CameraWake, WAKE,
+        classify_camera_events, real_camera_devices,
+    };
     use std::ffi::CString;
     use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
     use std::sync::atomic::Ordering;
 
     use tokio::io::Interest;
     use tokio::io::unix::AsyncFd;
-
-    const DEVICE_MASK: u32 = libc::IN_OPEN | libc::IN_CLOSE_WRITE | libc::IN_CLOSE_NOWRITE;
-    const DIR_MASK: u32 = libc::IN_CREATE | libc::IN_DELETE;
 
     /// Watch the capture nodes; `false` when inotify is unavailable (the
     /// caller then polls). The watch task lives for the process, on relm4's
@@ -397,8 +431,7 @@ mod camera_watch {
                 let Ok(mut guard) = afd.readable().await else {
                     return;
                 };
-                let mut changed = false;
-                let mut hotplug = false;
+                let mut wake = CameraWake::default();
                 loop {
                     // SAFETY: reading into a local buffer of the given length.
                     let n = unsafe {
@@ -411,23 +444,16 @@ mod camera_watch {
                     if n <= 0 {
                         break;
                     }
-                    for ev in super::parse_inotify_events(&buf[..n as usize]) {
-                        if ev.mask & DIR_MASK != 0 {
-                            if ev.name.starts_with("video") {
-                                hotplug = true;
-                                changed = true;
-                            }
-                        } else if ev.mask & DEVICE_MASK != 0 {
-                            changed = true;
-                        }
-                    }
+                    wake.merge(classify_camera_events(&super::parse_inotify_events(
+                        &buf[..n as usize],
+                    )));
                 }
                 guard.clear_ready();
-                if hotplug {
+                if wake.hotplug {
                     // A new node gets its own watch; removed ones drop theirs.
                     watch_devices(afd.get_ref());
                 }
-                if changed {
+                if wake.changed {
                     CAM_DIRTY.store(true, Ordering::SeqCst);
                     WAKE.notify_one();
                 }
@@ -451,6 +477,45 @@ mod camera_watch {
         // SAFETY: valid fd and NUL-terminated path.
         unsafe { libc::inotify_add_watch(fd.as_raw_fd(), c_path.as_ptr(), mask) >= 0 }
     }
+}
+
+/// Inotify events on a watched capture node: someone opened or closed it.
+const CAM_DEVICE_MASK: u32 = libc::IN_OPEN | libc::IN_CLOSE_WRITE | libc::IN_CLOSE_NOWRITE;
+/// Inotify events on `/dev`: a node appeared or went away.
+const CAM_DIR_MASK: u32 = libc::IN_CREATE | libc::IN_DELETE;
+
+/// What a batch of camera inotify events asks the watcher to do.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct CameraWake {
+    /// Re-probe who holds the camera.
+    changed: bool,
+    /// Re-scan the capture nodes and (re-)add their watches.
+    hotplug: bool,
+}
+
+impl CameraWake {
+    fn merge(&mut self, other: CameraWake) {
+        self.changed |= other.changed;
+        self.hotplug |= other.hotplug;
+    }
+}
+
+/// Classify one read's worth of events from the camera inotify fd: a
+/// `video*` node created/deleted in `/dev` is a hotplug, an open/close on a
+/// watched node a change. Other `/dev` churn is ignored.
+fn classify_camera_events(events: &[InotifyEvent]) -> CameraWake {
+    let mut wake = CameraWake::default();
+    for ev in events {
+        if ev.mask & CAM_DIR_MASK != 0 {
+            if ev.name.starts_with("video") {
+                wake.hotplug = true;
+                wake.changed = true;
+            }
+        } else if ev.mask & CAM_DEVICE_MASK != 0 {
+            wake.changed = true;
+        }
+    }
+    wake
 }
 
 /// One decoded `struct inotify_event`.
@@ -808,5 +873,200 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn inotify_names_without_nul_and_oversized_lengths() {
+        // A name filling its whole `len` with no NUL terminator.
+        let mut buf = raw_event(libc::IN_DELETE, "video10", 7);
+        // A header claiming more name bytes than were read: dropped.
+        let mut short = raw_event(libc::IN_CREATE, "video3", 16);
+        short.truncate(16 + 4);
+        buf.extend(short);
+        assert_eq!(
+            parse_inotify_events(&buf),
+            vec![InotifyEvent {
+                mask: libc::IN_DELETE,
+                name: "video10".into()
+            }]
+        );
+        assert!(parse_inotify_events(&[]).is_empty());
+        // Non-UTF-8 names are kept lossily instead of failing the batch.
+        let ev = parse_inotify_events(&raw_event(libc::IN_CREATE, "vid\u{fffd}", 16));
+        assert_eq!(ev.len(), 1);
+    }
+
+    fn ev(mask: u32, name: &str) -> InotifyEvent {
+        InotifyEvent {
+            mask,
+            name: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn camera_events_classify_into_change_and_hotplug() {
+        let none = CameraWake::default();
+        let changed = CameraWake {
+            changed: true,
+            hotplug: false,
+        };
+        let plugged = CameraWake {
+            changed: true,
+            hotplug: true,
+        };
+        assert_eq!(classify_camera_events(&[]), none);
+        assert_eq!(classify_camera_events(&[ev(libc::IN_OPEN, "")]), changed);
+        assert_eq!(
+            classify_camera_events(&[ev(libc::IN_CLOSE_WRITE, "")]),
+            changed
+        );
+        assert_eq!(
+            classify_camera_events(&[ev(libc::IN_CLOSE_NOWRITE, "")]),
+            changed
+        );
+        assert_eq!(
+            classify_camera_events(&[ev(libc::IN_CREATE, "video2")]),
+            plugged
+        );
+        assert_eq!(
+            classify_camera_events(&[ev(libc::IN_DELETE, "video0")]),
+            plugged
+        );
+        // Unrelated /dev churn doesn't wake anything.
+        assert_eq!(
+            classify_camera_events(&[ev(libc::IN_CREATE, "ttyUSB0")]),
+            none
+        );
+        assert_eq!(
+            classify_camera_events(&[ev(libc::IN_DELETE, "v4l-subdev0")]),
+            none
+        );
+        // A watch dropped with its (unplugged) node is not itself a change.
+        assert_eq!(classify_camera_events(&[ev(libc::IN_IGNORED, "")]), none);
+        // Batches combine.
+        assert_eq!(
+            classify_camera_events(&[ev(libc::IN_CREATE, "tty1"), ev(libc::IN_OPEN, "")]),
+            changed
+        );
+    }
+
+    #[test]
+    fn sensor_edges_report_starts_stops_and_activation() {
+        let v = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let (idle, a, ab, b) = (v(&[]), v(&["a"]), v(&["a", "b"]), v(&["b"]));
+        assert_eq!(
+            sensor_edges(&idle, &ab),
+            SensorEdges {
+                started: vec!["a", "b"],
+                stopped: vec![],
+                activated: true
+            }
+        );
+        // A second app joining an active sensor is not a new activation.
+        assert_eq!(
+            sensor_edges(&a, &ab),
+            SensorEdges {
+                started: vec!["b"],
+                stopped: vec![],
+                activated: false
+            }
+        );
+        // Hand-over between apps: one stops, one starts, still active.
+        assert_eq!(
+            sensor_edges(&a, &b),
+            SensorEdges {
+                started: vec!["b"],
+                stopped: vec!["a"],
+                activated: false
+            }
+        );
+        assert_eq!(
+            sensor_edges(&ab, &idle),
+            SensorEdges {
+                started: vec![],
+                stopped: vec!["a", "b"],
+                activated: false
+            }
+        );
+        assert_eq!(
+            sensor_edges(&idle, &idle),
+            SensorEdges {
+                started: vec![],
+                stopped: vec![],
+                activated: false
+            }
+        );
+    }
+
+    #[test]
+    fn app_filter_drops_matches_and_tolerates_bad_regexes() {
+        let apps = || {
+            vec![
+                "Firefox".to_string(),
+                "obs".to_string(),
+                "speech-dispatcher".to_string(),
+            ]
+        };
+        assert_eq!(filter_apps(apps(), ""), apps());
+        assert_eq!(filter_apps(apps(), "^speech"), vec!["Firefox", "obs"]);
+        assert_eq!(
+            filter_apps(apps(), "(?i)firefox|obs"),
+            vec!["speech-dispatcher"]
+        );
+        // An invalid pattern filters nothing rather than hiding every app.
+        assert_eq!(filter_apps(apps(), "(unclosed"), apps());
+    }
+
+    #[test]
+    fn camera_devices_skip_metadata_nodes_and_non_video_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mk = |dev: &str, name: Option<&str>| {
+            let d = tmp.path().join(dev);
+            std::fs::create_dir(&d).unwrap();
+            if let Some(n) = name {
+                std::fs::write(d.join("name"), format!("{n}\n")).unwrap();
+            }
+        };
+        mk("video0", Some("Integrated Camera: Integrated C"));
+        mk("video1", Some("Integrated Camera: Metadata"));
+        mk("video2", None); // unreadable name → still a capture node
+        mk("v4l-subdev0", Some("ov5675"));
+        let mut devs = real_camera_devices_in(tmp.path());
+        devs.sort();
+        assert_eq!(
+            devs,
+            vec![PathBuf::from("/dev/video0"), PathBuf::from("/dev/video2")]
+        );
+        assert!(real_camera_devices_in(&tmp.path().join("missing")).is_empty());
+    }
+
+    #[test]
+    fn camera_holders_match_fd_links_to_capture_nodes() {
+        use std::os::unix::fs::symlink;
+        let proc = tempfile::tempdir().unwrap();
+        let task = |pid: &str, comm: Option<&str>, fds: &[&str]| {
+            let dir = proc.path().join(pid);
+            std::fs::create_dir_all(dir.join("fd")).unwrap();
+            if let Some(c) = comm {
+                std::fs::write(dir.join("comm"), format!("{c}\n")).unwrap();
+            }
+            for (i, target) in fds.iter().enumerate() {
+                symlink(target, dir.join("fd").join(i.to_string())).unwrap();
+            }
+        };
+        task("100", Some("firefox"), &["/dev/null", "/dev/video0"]);
+        task("101", Some("firefox"), &["/dev/video0"]); // second process, same name
+        task("102", Some("cheese"), &["/dev/video2"]);
+        task("103", Some("metadata-reader"), &["/dev/video1"]);
+        task("104", Some("bash"), &["/dev/pts/0"]);
+        task("105", None, &["/dev/video0"]); // exited before comm was read
+        task("self", Some("not-a-pid"), &["/dev/video0"]);
+        let devices = [PathBuf::from("/dev/video0"), PathBuf::from("/dev/video2")];
+        assert_eq!(
+            camera_holders(proc.path(), &devices),
+            vec!["cheese", "firefox"]
+        );
+        assert!(camera_holders(proc.path(), &[]).is_empty());
+        assert!(camera_holders(&proc.path().join("missing"), &devices).is_empty());
     }
 }
