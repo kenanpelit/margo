@@ -64,20 +64,74 @@ fn mlock_running() -> bool {
         if comm.trim() != "mlock" {
             continue;
         }
-        // Skip a zombie (`<defunct>`): an mlock that has exited but not
-        // yet been reaped still carries comm == "mlock", yet it isn't
-        // locking anything. Counting it would wedge `lock_session`
-        // forever ("already running" → never spawns a real lock), which
-        // is exactly the "mshellctl lock does nothing but check says
-        // locked" failure. /proc/<pid>/stat is `PID (comm) STATE …`;
-        // comm may contain ')', so read the state after the LAST ')'.
-        if let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat"))
-            && let Some((_, rest)) = stat.rsplit_once(')')
-            && rest.trim_start().starts_with('Z')
-        {
-            continue;
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok();
+        if is_live_mlock(&comm, stat.as_deref()) {
+            return true;
         }
-        return true;
     }
     false
+}
+
+/// Whether a process with these `/proc/<pid>/comm` and (if readable)
+/// `/proc/<pid>/stat` contents is a live `mlock`.
+fn is_live_mlock(comm: &str, stat: Option<&str>) -> bool {
+    if comm.trim() != "mlock" {
+        return false;
+    }
+    // Skip a zombie (`<defunct>`): an mlock that has exited but not
+    // yet been reaped still carries comm == "mlock", yet it isn't
+    // locking anything. Counting it would wedge `lock_session`
+    // forever ("already running" → never spawns a real lock), which
+    // is exactly the "mshellctl lock does nothing but check says
+    // locked" failure. /proc/<pid>/stat is `PID (comm) STATE …`;
+    // comm may contain ')', so read the state after the LAST ')'.
+    if let Some(stat) = stat
+        && let Some((_, rest)) = stat.rsplit_once(')')
+        && rest.trim_start().starts_with('Z')
+    {
+        return false;
+    }
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn running_or_sleeping_mlock_is_live() {
+        assert!(is_live_mlock(
+            "mlock\n",
+            Some("4242 (mlock) S 1 4242 4242 0 -1")
+        ));
+        assert!(is_live_mlock("mlock", Some("4242 (mlock) R 1")));
+        assert!(
+            is_live_mlock("mlock\n", None),
+            "an unreadable stat still counts: better a no-op lock than two lockers"
+        );
+    }
+
+    #[test]
+    fn zombie_mlock_is_not_live() {
+        assert!(!is_live_mlock(
+            "mlock\n",
+            Some("4242 (mlock) Z 1 4242 4242 0 -1")
+        ));
+        // The state is read after the last `)`.
+        assert!(!is_live_mlock("mlock", Some("7 (a) b) Z 1")));
+    }
+
+    #[test]
+    fn other_processes_are_not_mlock() {
+        for comm in ["mlockd", "xmlock", "", "MLOCK", "mlock2"] {
+            assert!(!is_live_mlock(comm, Some("1 (x) S")), "{comm:?}");
+        }
+    }
+
+    #[test]
+    fn malformed_stat_does_not_hide_a_live_locker() {
+        assert!(is_live_mlock("mlock", Some("")));
+        assert!(is_live_mlock("mlock", Some("garbage without parens")));
+        assert!(is_live_mlock("mlock", Some("1 (mlock)")));
+    }
 }
