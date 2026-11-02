@@ -75,8 +75,9 @@ pub(crate) fn patch_conf(updates: &[(&str, String)]) {
 }
 
 /// Pure in-place line patch (no IO) — see [`patch_conf`]. Each `key` is replaced
-/// at its first non-comment occurrence, or appended if absent.
-fn apply_patch(lines: &mut Vec<String>, updates: &[(&str, String)]) {
+/// at its first non-comment occurrence, or appended if absent. Also used for
+/// other `key = value` files Settings edits (mlock.conf).
+pub(crate) fn apply_patch(lines: &mut Vec<String>, updates: &[(&str, String)]) {
     for (key, val) in updates {
         let mut found = false;
         for line in lines.iter_mut() {

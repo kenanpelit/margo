@@ -512,7 +512,13 @@ fn mode_index(v: &str) -> u32 {
     }
 }
 
-fn write_mlock_conf(mode: u32, color: &str, image: &str, toggles: &Toggles) {
+/// The `key = value` pairs Settings → Lock owns in mlock.conf.
+fn mlock_conf_updates(
+    mode: u32,
+    color: &str,
+    image: &str,
+    toggles: &Toggles,
+) -> Vec<(&'static str, String)> {
     let mode_str = match mode {
         1 => "color",
         2 => "image",
@@ -522,19 +528,83 @@ fn write_mlock_conf(mode: u32, color: &str, image: &str, toggles: &Toggles) {
         "" => "#1e1e2e",
         c => c,
     };
-    let mut body = format!(
-        "# Lock-screen config — written by Settings \u{2192} Lock.\n\
-         background = {mode_str}\n\
-         background_color = {color}\n\
-         background_image = {}\n",
-        image.trim(),
-    );
+    let mut updates = vec![
+        ("background", mode_str.to_string()),
+        ("background_color", color.to_string()),
+        ("background_image", image.trim().to_string()),
+    ];
     for (toggle, key, _, _) in Toggle::ALL {
-        body.push_str(&format!("{key} = {}\n", toggles.get(toggle)));
+        updates.push((key, toggles.get(toggle).to_string()));
     }
+    updates
+}
+
+/// Patch `existing` mlock.conf text with `updates`: owned keys are replaced
+/// in place (or appended), every other line — comments, keys Settings
+/// doesn't know — is kept. A missing/empty file gets a header line first.
+fn patch_mlock_conf(existing: &str, updates: &[(&str, String)]) -> String {
+    let mut lines: Vec<String> = existing.lines().map(str::to_string).collect();
+    if lines.iter().all(|l| l.trim().is_empty()) {
+        lines = vec!["# Lock-screen config — written by Settings \u{2192} Lock.".to_string()];
+    }
+    crate::compositor_conf::apply_patch(&mut lines, updates);
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
+}
+
+fn write_mlock_conf(mode: u32, color: &str, image: &str, toggles: &Toggles) {
     let path = mlock_conf_path();
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let body = patch_mlock_conf(&existing, &mlock_conf_updates(mode, color, image, toggles));
+    if body == existing {
+        return;
     }
-    let _ = std::fs::write(&path, body);
+    // Symlink-preserving atomic replace (mlock.conf may live in a dotfiles
+    // repo), creating the parent dir if needed.
+    if let Err(e) = mshell_config::atomic_write::atomic_write(&path, body.as_bytes()) {
+        tracing::warn!(error = %e, path = %path.display(), "lock settings: failed to write mlock.conf");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A hand-edited mlock.conf keeps its comments and the keys Settings
+    /// doesn't own; only the owned values change, in place.
+    #[test]
+    fn patch_keeps_comments_and_unknown_keys() {
+        let existing = "# my lock screen\nbackground = image\nclock_font = Inter 48\n\n# toggles\nshow_date = false\n";
+        let updates = vec![
+            ("background", "color".to_string()),
+            ("show_date", "true".to_string()),
+            ("show_media", "false".to_string()),
+        ];
+        let out = patch_mlock_conf(existing, &updates);
+        assert_eq!(
+            out,
+            "# my lock screen\nbackground = color\nclock_font = Inter 48\n\n# toggles\nshow_date = true\nshow_media = false\n"
+        );
+    }
+
+    #[test]
+    fn empty_file_gets_header_and_every_owned_key() {
+        let updates = mlock_conf_updates(1, "", " /a.png ", &Toggles::default());
+        let out = patch_mlock_conf("", &updates);
+        assert!(out.starts_with("# Lock-screen config"));
+        assert!(out.contains("background = color\n"));
+        assert!(out.contains("background_color = #1e1e2e\n"));
+        assert!(out.contains("background_image = /a.png\n"));
+        for (_, key, _, _) in Toggle::ALL {
+            assert!(out.contains(&format!("\n{key} = ")), "{key}");
+        }
+    }
+
+    #[test]
+    fn patching_is_idempotent() {
+        let updates = mlock_conf_updates(2, "#000000", "/w.png", &Toggles::default());
+        let once = patch_mlock_conf("# x\nfoo = bar\n", &updates);
+        assert_eq!(patch_mlock_conf(&once, &updates), once);
+    }
 }
