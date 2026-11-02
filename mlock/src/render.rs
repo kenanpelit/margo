@@ -1032,8 +1032,19 @@ fn paint_wallpaper_cover(
     let (iw, ih) = (wp.width, wp.height);
 
     // Borrow the premultiplied buffer that was built once at resolve time —
-    // no per-frame copy or premultiply. cairo only reads from a source
-    // surface, and `wp` outlives this call, so the borrow is sound.
+    // no per-frame copy or premultiply.
+    //
+    // SAFETY: cairo's API wants `*mut u8`, but nothing here can write
+    // through it. `src` is only ever a *source*: it is set as the pattern
+    // and painted, never handed to `cairo::Context::new` as a target, and
+    // pixman reads source images. Its other lifecycle paths read too — when
+    // `src` is finished cairo detaches any snapshot by copying *out of* it,
+    // and flush on an image surface is a no-op for the pixels. `src` is a
+    // local and `cr.restore()` drops the pattern that references it; even if
+    // an error return skipped the restore, `wp` is the backdrop MlockState
+    // keeps for the whole run, which outlives the frame's cairo context.
+    // `wp.stride()` and the width/height match the buffer `wp.bgra` was
+    // built for.
     let src = unsafe {
         ImageSurface::create_for_data_unsafe(
             wp.bgra.as_ptr() as *mut u8,

@@ -71,10 +71,19 @@ impl MlockSurface {
         if self.width == 0 || self.height == 0 {
             return Ok(());
         }
-        let width = self.width as i32;
-        let height = self.height as i32;
-        let stride = width * 4;
-        let len = (stride * height) as usize;
+        let Some(BufferLayout {
+            width,
+            height,
+            stride,
+            len,
+        }) = buffer_layout(self.width, self.height)
+        else {
+            anyhow::bail!(
+                "lock surface {}x{} is too large for a wl_shm buffer",
+                self.width,
+                self.height
+            );
+        };
 
         // memfd-backed shm pool — `memfd_create` keeps the buffer
         // anonymous so nothing lands on disk.
@@ -105,7 +114,7 @@ impl MlockSurface {
 
         // Hand the buffer off to the compositor. wl_shm_pool needs an
         // OwnedFd; we kept `fd` until now.
-        let pool = shm.create_pool(fd.as_fd(), len as i32, qh, ());
+        let pool = shm.create_pool(fd.as_fd(), len_i32(len), qh, ());
         let buffer = pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, qh, ());
         // The pool can be released as soon as the buffer references it.
         pool.destroy();
@@ -126,6 +135,40 @@ impl MlockSurface {
     }
 }
 
+/// Geometry of one ARGB8888 shm buffer, in the integer types the Wayland
+/// and cairo calls take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BufferLayout {
+    pub width: i32,
+    pub height: i32,
+    pub stride: i32,
+    pub len: usize,
+}
+
+/// Size the buffer for a `width`×`height` configure, or `None` when it
+/// can't be represented. The compositor picks the size and the protocol
+/// sends it as u32, while wl_shm wants i32 width, height, stride and pool
+/// size: the old `width as i32 * 4` and `stride * height` could wrap to a
+/// negative or a too-small length for an absurd configure, and the mmap
+/// and cairo would then disagree about the buffer size.
+pub(crate) fn buffer_layout(width: u32, height: u32) -> Option<BufferLayout> {
+    let w = i32::try_from(width).ok()?;
+    let h = i32::try_from(height).ok()?;
+    let stride = w.checked_mul(4)?;
+    let len_i32 = stride.checked_mul(h)?;
+    Some(BufferLayout {
+        width: w,
+        height: h,
+        stride,
+        len: usize::try_from(len_i32).ok()?,
+    })
+}
+
+/// `len` came out of [`buffer_layout`], which proved it fits in an i32.
+fn len_i32(len: usize) -> i32 {
+    i32::try_from(len).unwrap_or(i32::MAX)
+}
+
 /// Anonymous shm fd via memfd_create. Falls back to memfd_create_syscall
 /// if the libc wrapper is unavailable.
 fn create_memfd(name: &str, size: usize) -> Result<std::os::fd::OwnedFd> {
@@ -143,4 +186,39 @@ fn create_memfd(name: &str, size: usize) -> Result<std::os::fd::OwnedFd> {
         anyhow::bail!("ftruncate: {}", std::io::Error::last_os_error());
     }
     Ok(fd)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BufferLayout, buffer_layout};
+
+    #[test]
+    fn a_normal_output_gets_an_argb8888_layout() {
+        assert_eq!(
+            buffer_layout(1920, 1080),
+            Some(BufferLayout {
+                width: 1920,
+                height: 1080,
+                stride: 7680,
+                len: 7680 * 1080,
+            })
+        );
+    }
+
+    #[test]
+    fn sizes_that_overflow_i32_are_refused() {
+        // stride * height wraps an i32.
+        assert_eq!(buffer_layout(40_000, 40_000), None);
+        // width * 4 wraps an i32.
+        assert_eq!(buffer_layout(600_000_000, 1), None);
+        // Not representable as i32 at all.
+        assert_eq!(buffer_layout(u32::MAX, 1), None);
+        assert_eq!(buffer_layout(1, u32::MAX), None);
+    }
+
+    #[test]
+    fn the_largest_size_that_fits_is_accepted() {
+        let l = buffer_layout(16_384, 32_767).expect("fits in i32");
+        assert_eq!(l.len, 16_384 * 4 * 32_767);
+    }
 }
