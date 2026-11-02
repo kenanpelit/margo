@@ -99,32 +99,17 @@ pub fn drain_to(mut stream: &UnixStream, buf: &mut Vec<u8>) -> DrainState {
     DrainState::Drained
 }
 
-/// Bind the socket and register the accept source on the loop. Removes
-/// any stale socket file first. Best-effort: a bind failure is logged
-/// but never fatal.
+/// Bind the socket and register the accept source on the loop. Best-effort:
+/// a bind failure is logged but never fatal.
 pub fn insert_ipc_source(handle: &LoopHandle<'static, MargoState>) {
     let path = super::socket_path();
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let _ = std::fs::remove_file(&path);
-    let listener = match UnixListener::bind(&path) {
+    let listener = match bind_listener(&path) {
         Ok(l) => l,
         Err(e) => {
             tracing::error!(?path, error = %e, "ipc: bind failed");
             return;
         }
     };
-    // Restrict the socket to the owner (0600). `dispatch spawn` runs arbitrary
-    // shell commands, so the socket must not be reachable by other local users.
-    // The runtime dir is normally 0700 already; this is defence-in-depth in
-    // case it isn't (e.g. a misconfigured `XDG_RUNTIME_DIR`). Best-effort.
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Err(e) = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)) {
-            tracing::warn!(error = %e, "ipc: set socket permissions");
-        }
-    }
     if let Err(e) = listener.set_nonblocking(true) {
         tracing::warn!(error = %e, "ipc: set_nonblocking");
     }
@@ -147,6 +132,53 @@ pub fn insert_ipc_source(handle: &LoopHandle<'static, MargoState>) {
     } else {
         tracing::info!(?path, "ipc: listening");
     }
+}
+
+/// Bind the IPC listener at `path`, owner-only.
+///
+/// `dispatch spawn` runs arbitrary shell commands, so the socket must not
+/// be reachable by other local users. A missing parent directory is
+/// created 0700 (an existing one is left alone: `MARGO_SOCKET` may point
+/// into a shared directory). The socket is bound under umask 077, so it
+/// is 0600 from the moment it exists rather than world-connectable until
+/// a later chmod.
+///
+/// A stale socket file (nobody accepting) is replaced. A *live* one —
+/// another margo session — is never removed: that would cut every client
+/// of the running session off its compositor. `export_socket_env` already
+/// steers this margo to a free path in that case; this is the last guard.
+pub fn bind_listener(path: &std::path::Path) -> std::io::Result<UnixListener> {
+    if let Some(dir) = path.parent()
+        && !dir.as_os_str().is_empty()
+        && !dir.exists()
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)?;
+    }
+    if super::socket_is_live(path) {
+        return Err(std::io::Error::new(
+            ErrorKind::AddrInUse,
+            "another margo is serving this socket",
+        ));
+    }
+    let _ = std::fs::remove_file(path);
+    // SAFETY: umask() has no preconditions and cannot fail. It is
+    // process-wide; the window is one bind() call at startup, and a
+    // tighter mask in that window only makes other files more private.
+    let old_mask = unsafe { libc::umask(0o077) };
+    let res = UnixListener::bind(path);
+    // SAFETY: as above, restoring the previous mask.
+    unsafe { libc::umask(old_mask) };
+    let listener = res?;
+    {
+        // Defence in depth on top of the umask.
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(listener)
 }
 
 /// Actions whose trailing tokens are one free-text payload — a shell
