@@ -448,11 +448,9 @@ pub fn cycle_wallpaper(direction: CycleDirection) {
     if list.is_empty() {
         return;
     }
-    // Where are we now? Default to the first image when the
-    // current wallpaper isn't (or is no longer) in the directory.
-    let current_idx = current_wallpaper_path()
-        .and_then(|cur| list.iter().position(|p| *p == cur))
-        .unwrap_or(0);
+    // Where are we now? `None` when the current wallpaper isn't (or is no
+    // longer) in the directory.
+    let current_idx = current_wallpaper_path().and_then(|cur| list.iter().position(|p| *p == cur));
     // Cheap, dependency-free PRNG seeded off the clock — wallpaper choice
     // doesn't need crypto randomness.
     let nanos = std::time::SystemTime::now()
@@ -464,21 +462,27 @@ pub fn cycle_wallpaper(direction: CycleDirection) {
     set_wallpaper(&list[target_idx]);
 }
 
-/// The index to step to from `current_idx` in a `len`-long (non-empty) list.
+/// The index to step to in a `len`-long (non-empty) list from `current`, the
+/// current wallpaper's index (`None` when it isn't in the list). From outside
+/// the list, `Next` starts at the first image and `Previous` at the last.
 /// `Random` picks `seed % len`, nudged forward so it never repeats the current
 /// image when there is another to choose.
-fn cycle_target(current_idx: usize, len: usize, direction: CycleDirection, seed: usize) -> usize {
-    match direction {
-        CycleDirection::Next => (current_idx + 1) % len,
-        CycleDirection::Previous => (current_idx + len - 1) % len,
-        CycleDirection::Random => {
-            if len == 1 {
-                0
+fn cycle_target(
+    current: Option<usize>,
+    len: usize,
+    direction: CycleDirection,
+    seed: usize,
+) -> usize {
+    match (direction, current) {
+        (CycleDirection::Next, Some(i)) => (i + 1) % len,
+        (CycleDirection::Next, None) => 0,
+        (CycleDirection::Previous, Some(i)) => (i + len - 1) % len,
+        (CycleDirection::Previous, None) => len - 1,
+        (CycleDirection::Random, _) => {
+            let idx = seed % len;
+            if len > 1 && Some(idx) == current {
+                (idx + 1) % len
             } else {
-                let mut idx = seed % len;
-                if idx == current_idx {
-                    idx = (idx + 1) % len;
-                }
                 idx
             }
         }
@@ -784,13 +788,29 @@ mod tests {
     #[test]
     fn cycle_steps_and_wraps() {
         use CycleDirection::*;
-        assert_eq!(cycle_target(0, 3, Next, 0), 1);
-        assert_eq!(cycle_target(2, 3, Next, 0), 0);
-        assert_eq!(cycle_target(0, 3, Previous, 0), 2);
-        assert_eq!(cycle_target(1, 3, Previous, 0), 0);
-        assert_eq!(cycle_target(0, 1, Next, 0), 0);
-        assert_eq!(cycle_target(0, 1, Previous, 0), 0);
-        assert_eq!(cycle_target(0, 1, Random, 12345), 0);
+        assert_eq!(cycle_target(Some(0), 3, Next, 0), 1);
+        assert_eq!(cycle_target(Some(2), 3, Next, 0), 0);
+        assert_eq!(cycle_target(Some(0), 3, Previous, 0), 2);
+        assert_eq!(cycle_target(Some(1), 3, Previous, 0), 0);
+        assert_eq!(cycle_target(Some(0), 1, Next, 0), 0);
+        assert_eq!(cycle_target(Some(0), 1, Previous, 0), 0);
+        assert_eq!(cycle_target(Some(0), 1, Random, 12345), 0);
+    }
+
+    #[test]
+    fn cycle_from_outside_the_directory_starts_at_either_end() {
+        // The current wallpaper isn't in the list (the bundled default, a
+        // daily download, or a file since deleted): Next must land on the
+        // first image, not skip it, and Previous on the last.
+        use CycleDirection::*;
+        assert_eq!(cycle_target(None, 3, Next, 0), 0);
+        assert_eq!(cycle_target(None, 3, Previous, 0), 2);
+        assert_eq!(cycle_target(None, 1, Next, 0), 0);
+        for seed in 0..6 {
+            assert!(cycle_target(None, 3, Random, seed) < 3);
+        }
+        // With a single image, Random may pick it when it isn't current.
+        assert_eq!(cycle_target(None, 1, Random, 7), 0);
     }
 
     #[test]
@@ -798,7 +818,7 @@ mod tests {
         for len in 2..6 {
             for cur in 0..len {
                 for seed in 0..20 {
-                    let idx = cycle_target(cur, len, CycleDirection::Random, seed);
+                    let idx = cycle_target(Some(cur), len, CycleDirection::Random, seed);
                     assert!(idx < len);
                     assert_ne!(idx, cur, "len {len} cur {cur} seed {seed}");
                 }
