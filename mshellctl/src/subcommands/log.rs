@@ -5,7 +5,7 @@
 //! methods and print the shell's reply. `path` / `open` are local conveniences
 //! over the shared log dir.
 
-use crate::bus::bus_command_with_arg_reply;
+use crate::bus::shell;
 use clap::Subcommand;
 use margo_logging::logs_dir;
 
@@ -29,15 +29,15 @@ pub enum LogCommands {
 pub async fn execute(command: LogCommands) -> anyhow::Result<()> {
     match command {
         LogCommands::Level { level } => {
-            let reply: String = bus_command_with_arg_reply("LogLevel", &level).await?;
+            let reply: String = shell().await?.log_level(&level).await?;
             println!("{reply}");
         }
         LogCommands::Enable => {
-            let reply: String = bus_command_with_arg_reply("LogEnabled", &true).await?;
+            let reply: String = shell().await?.log_enabled(true).await?;
             println!("{reply}");
         }
         LogCommands::Disable => {
-            let reply: String = bus_command_with_arg_reply("LogEnabled", &false).await?;
+            let reply: String = shell().await?.log_enabled(false).await?;
             println!("{reply}");
         }
         LogCommands::Path => {

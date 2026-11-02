@@ -7,6 +7,7 @@
 //! upgrade is the classic "my new feature isn't there" cause). Prints a
 //! ✓ / ⚠ / ✗ line per check and exits non-zero on any error.
 
+use crate::bus::shell;
 use std::io::IsTerminal;
 
 use zbus::connection;
@@ -112,7 +113,11 @@ pub async fn execute() -> anyhow::Result<()> {
     // 3. Version sync — only meaningful once the service is up.
     let mine = env!("CARGO_PKG_VERSION");
     if name_up {
-        match crate::bus::bus_command_with_reply::<String>("Version").await {
+        let version = match shell().await {
+            Ok(shell) => shell.version().await,
+            Err(e) => Err(e),
+        };
+        match version {
             Ok(running) if running == mine => r.line(
                 Level::Ok,
                 "version sync",

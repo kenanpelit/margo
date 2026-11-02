@@ -4,6 +4,7 @@
 //! interface at `/org/margo/Tune`) — no shell required. Actions launch
 //! mtune if it isn't running; reads fail cleanly if it isn't.
 
+use crate::bus::shell;
 use anyhow::{Context, Result, bail};
 use clap::Subcommand;
 use zbus::Connection;
@@ -82,7 +83,7 @@ pub enum MtuneCommands {
 pub async fn execute(command: MtuneCommands) -> Result<()> {
     match command {
         MtuneCommands::Menu => {
-            crate::bus::bus_command("Mtune").await?;
+            shell().await?.mtune().await?;
             return Ok(());
         }
         MtuneCommands::Status { json } => return status(json).await,

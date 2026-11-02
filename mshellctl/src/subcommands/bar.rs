@@ -1,4 +1,4 @@
-use crate::bus::{bus_command, bus_command_with_arg};
+use crate::bus::shell;
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
@@ -33,25 +33,34 @@ pub enum BarCommands {
 pub async fn execute(command: BarCommands) -> anyhow::Result<()> {
     match command {
         BarCommands::Top => {
-            bus_command("BarToggleTop").await?;
+            shell().await?.bar_toggle_top().await?;
         }
         BarCommands::Bottom => {
-            bus_command("BarToggleBottom").await?;
+            shell().await?.bar_toggle_bottom().await?;
         }
         BarCommands::ToggleAll {
             exclude_hidden_by_default,
         } => {
-            bus_command_with_arg("BarToggleAll", &exclude_hidden_by_default).await?;
+            shell()
+                .await?
+                .bar_toggle_all(exclude_hidden_by_default)
+                .await?;
         }
         BarCommands::RevealAll {
             exclude_hidden_by_default,
         } => {
-            bus_command_with_arg("BarRevealAll", &exclude_hidden_by_default).await?;
+            shell()
+                .await?
+                .bar_reveal_all(exclude_hidden_by_default)
+                .await?;
         }
         BarCommands::HideAll {
             exclude_hidden_by_default,
         } => {
-            bus_command_with_arg("BarHideAll", &exclude_hidden_by_default).await?;
+            shell()
+                .await?
+                .bar_hide_all(exclude_hidden_by_default)
+                .await?;
         }
     }
     Ok(())

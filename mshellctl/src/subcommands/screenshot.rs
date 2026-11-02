@@ -13,7 +13,7 @@
 //! A positional editor name (`mshellctl screenshot region satty`) forces
 //! that annotation tool and implies `--edit`.
 
-use crate::bus::{bus_command_with_arg, bus_command_with_reply};
+use crate::bus::shell;
 use clap::{Args, Subcommand};
 
 #[derive(Subcommand, Debug)]
@@ -78,7 +78,7 @@ impl Capture {
 async fn capture(area: &str, c: &Capture) -> anyhow::Result<()> {
     let editor = c.editor.as_deref().unwrap_or("-");
     let spec = format!("{area} {} {} {editor}", c.target(), c.delay.unwrap_or(0));
-    bus_command_with_arg("ScreenshotCapture", &spec).await?;
+    shell().await?.screenshot_capture(&spec).await?;
     Ok(())
 }
 
@@ -90,7 +90,7 @@ pub async fn execute(command: ScreenshotCommands) -> anyhow::Result<()> {
         ScreenshotCommands::Full(c) => capture("full", &c).await?,
         ScreenshotCommands::Repeat(c) => capture("repeat", &c).await?,
         ScreenshotCommands::SelectRegion => {
-            let geom: String = bus_command_with_reply("SelectRegion").await?;
+            let geom: String = shell().await?.select_region().await?;
             println!("{}", geom);
         }
     }

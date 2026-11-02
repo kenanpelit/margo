@@ -12,7 +12,7 @@
 //! `set` matching is forgiving: `kenp`, `Kenp`, `tokyo-night`,
 //! `tokyo_night`, `TokyoNight` and `"Tokyo Night"` all resolve.
 
-use crate::bus::{bus_command_with_arg_reply, bus_command_with_reply};
+use crate::bus::shell;
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
@@ -35,7 +35,7 @@ pub enum ThemeCommands {
 pub async fn execute(command: ThemeCommands) -> anyhow::Result<()> {
     match command {
         ThemeCommands::List { names_only } => {
-            let raw: String = bus_command_with_reply("ThemeList").await?;
+            let raw: String = shell().await?.theme_list().await?;
             if names_only {
                 for line in raw.lines() {
                     let name = line.split_once('\t').map(|(n, _)| n).unwrap_or(line);
@@ -46,18 +46,14 @@ pub async fn execute(command: ThemeCommands) -> anyhow::Result<()> {
             }
         }
         ThemeCommands::Get => {
-            let current: String = bus_command_with_reply("ThemeGet").await?;
+            let current: String = shell().await?.theme_get().await?;
             if !current.is_empty() {
                 println!("{current}");
             }
         }
         ThemeCommands::Set { name } => {
-            // The shell replies with an empty string on success, or an error
-            // message for an unknown name — surface it as a non-zero exit.
-            let err: String = bus_command_with_arg_reply("ThemeSet", &name).await?;
-            if !err.is_empty() {
-                anyhow::bail!("{err}");
-            }
+            // An unknown name comes back as a D-Bus error → non-zero exit.
+            shell().await?.theme_set(&name).await?;
         }
     }
     Ok(())

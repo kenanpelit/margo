@@ -11,7 +11,7 @@
 //! mshellctl translate text "<str>"  # skip capture, translate this string
 //! ```
 
-use crate::bus::bus_command_with_arg;
+use crate::bus::shell;
 use clap::Subcommand;
 use mshell_translate::{capture, config, looks_sensitive};
 use std::time::Duration;
@@ -107,14 +107,7 @@ fn copy_to_clipboard(text: &str) {
 /// (`mshellctl toast`'s own IPC path) — never fails the command if
 /// mshell isn't running or the bus call errors.
 async fn toast(title: &str, body: &str, severity: &str) {
-    let _ = bus_command_with_arg(
-        "Toast",
-        &(
-            title.to_string(),
-            body.to_string(),
-            String::new(),
-            severity.to_string(),
-        ),
-    )
-    .await;
+    if let Ok(shell) = shell().await {
+        let _ = shell.toast(title, body, "", severity).await;
+    }
 }

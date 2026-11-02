@@ -1,4 +1,4 @@
-use crate::bus::bus_command_with_arg;
+use crate::bus::shell;
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
@@ -23,6 +23,6 @@ pub async fn execute(command: BluetoothCommands) -> anyhow::Result<()> {
         BluetoothCommands::Disconnect => "disconnect".to_string(),
         BluetoothCommands::ConnectNumber { number } => format!("connect:{number}"),
     };
-    bus_command_with_arg("BluetoothCtl", &action).await?;
+    shell().await?.bluetooth_ctl(&action).await?;
     Ok(())
 }

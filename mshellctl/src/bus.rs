@@ -1,66 +1,13 @@
-use zbus::connection;
+//! The shell's D-Bus client: a typed [`mshell_ipc::ShellProxy`].
+//!
+//! Method names and argument types come from the shared proxy trait in
+//! `mshell-ipc`, so a server-side rename or signature change fails to compile
+//! here instead of silently erroring at runtime. A rejected argument comes
+//! back as a D-Bus error; `?` propagates it so `mshellctl` exits non-zero.
 
-pub async fn bus_command(method_name: &'static str) -> zbus::Result<()> {
-    let connection = connection::Builder::session()?.build().await?;
-    connection
-        .call_method(
-            Some("com.mshell.Shell"),
-            "/com/mshell/Shell",
-            Some("com.mshell.Shell"),
-            method_name,
-            &(),
-        )
-        .await?;
-    Ok(())
-}
+pub use mshell_ipc::ShellProxy;
 
-pub async fn bus_command_with_arg<A: serde::Serialize + zbus::zvariant::Type>(
-    method_name: &'static str,
-    arg: &A,
-) -> zbus::Result<()> {
-    let connection = connection::Builder::session()?.build().await?;
-    connection
-        .call_method(
-            Some("com.mshell.Shell"),
-            "/com/mshell/Shell",
-            Some("com.mshell.Shell"),
-            method_name,
-            arg,
-        )
-        .await?;
-    Ok(())
-}
-
-pub async fn bus_command_with_reply<R: serde::de::DeserializeOwned + zbus::zvariant::Type>(
-    method_name: &'static str,
-) -> zbus::Result<R> {
-    let connection = connection::Builder::session()?.build().await?;
-    let reply = connection
-        .call_method(
-            Some("com.mshell.Shell"),
-            "/com/mshell/Shell",
-            Some("com.mshell.Shell"),
-            method_name,
-            &(),
-        )
-        .await?;
-    reply.body().deserialize()
-}
-
-pub async fn bus_command_with_arg_reply<A, R>(method_name: &'static str, arg: &A) -> zbus::Result<R>
-where
-    A: serde::Serialize + zbus::zvariant::Type,
-    R: serde::de::DeserializeOwned + zbus::zvariant::Type,
-{
-    let connection = connection::Builder::session()?.build().await?;
-    let reply = connection
-        .call_method(
-            Some("com.mshell.Shell"),
-            "/com/mshell/Shell",
-            Some("com.mshell.Shell"),
-            method_name,
-            arg,
-        )
-        .await?;
-    reply.body().deserialize()
+/// Connect to the running shell.
+pub async fn shell() -> zbus::Result<ShellProxy<'static>> {
+    mshell_ipc::connect().await
 }

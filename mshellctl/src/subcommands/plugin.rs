@@ -1,4 +1,4 @@
-use crate::bus::bus_command_with_arg;
+use crate::bus::shell;
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
@@ -38,7 +38,7 @@ pub async fn execute(command: PluginCommands) -> anyhow::Result<()> {
     match command {
         PluginCommands::List { names, enabled } => list_plugins(names, enabled),
         PluginCommands::Reload { key } => {
-            bus_command_with_arg("PluginReload", &key).await?;
+            shell().await?.plugin_reload(&key).await?;
         }
         PluginCommands::Keybind { key, id } => {
             // zbus expects each method argument as a separate body item; the
@@ -46,7 +46,7 @@ pub async fn execute(command: PluginCommands) -> anyhow::Result<()> {
             // to pack the two into one delimited string and split on the
             // shell side. `|` doesn't appear in plugin keys or bind ids.
             let arg = format!("{key}|{id}");
-            bus_command_with_arg("PluginKeybind", &arg).await?;
+            shell().await?.plugin_keybind(&arg).await?;
         }
     }
     Ok(())

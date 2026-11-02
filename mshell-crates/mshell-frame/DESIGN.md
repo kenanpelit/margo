@@ -688,7 +688,15 @@ serde-round-tripped); see §9 of `docs/config-conventions.md` for that side.
 `mshellctl menu <name>` toggles a menu; the verb name matches the
 `IPCCommand`/`MenuType` name where possible (kebab-case on the CLI,
 PascalCase on the bus: `mshellctl menu cpu-dashboard` →
-`bus_command("CpuDashboard")`).
+`ShellProxy::cpu_dashboard()` → `CpuDashboard`).
+
+A new verb touches three places: the `#[interface]` method on `IPCService`
+(`mshell-core/src/ipc.rs`), the matching declaration in the shared
+`#[zbus::proxy]` trait (`mshell-crates/mshell-ipc`), and the CLI. The
+`proxy_matches_server_interface` test fails if the first two drift. Methods
+return `zbus::fdo::Result`: validate arguments in the bus method and reject
+unknown verbs / missing files with `InvalidArgs` (never fall back silently) so
+`mshellctl` exits non-zero.
 
 ---
 

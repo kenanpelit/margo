@@ -5352,6 +5352,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mshell-ipc"
+version = "4.5.0"
+dependencies = [
+ "zbus",
+]
+
+[[package]]
 name = "mshell-launcher"
 version = "4.5.0"
 dependencies = [
@@ -5703,6 +5710,7 @@ dependencies = [
  "margo-logging",
  "mctl",
  "mshell-cli-style",
+ "mshell-ipc",
  "mshell-plugins",
  "mshell-translate",
  "serde",
@@ -5720,9 +5728,8 @@ name = "mshellshare"
 version = "4.5.0"
 dependencies = [
  "anyhow",
- "serde",
+ "mshell-ipc",
  "tokio",
- "zbus",
 ]
 
 [[package]]

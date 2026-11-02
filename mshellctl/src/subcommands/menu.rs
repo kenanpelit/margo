@@ -1,4 +1,4 @@
-use crate::bus::{bus_command, bus_command_with_arg, bus_command_with_reply};
+use crate::bus::shell;
 use clap::Subcommand;
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -150,160 +150,160 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
     match command {
         MenuCommands::AppLauncher { tab, list_tabs } => {
             if list_tabs {
-                let tabs: Vec<String> = bus_command_with_reply("ListAppLauncherTabs").await?;
+                let tabs: Vec<String> = shell().await?.list_app_launcher_tabs().await?;
                 for t in tabs {
                     println!("{t}");
                 }
             } else if let Some(name) = tab {
-                bus_command_with_arg("AppLauncherTab", &name).await?;
+                shell().await?.app_launcher_tab(&name).await?;
             } else {
-                bus_command("AppLauncher").await?;
+                shell().await?.app_launcher().await?;
             }
         }
         MenuCommands::Clipboard => {
-            bus_command("Clipboard").await?;
+            shell().await?.clipboard().await?;
         }
         MenuCommands::Clock => {
-            bus_command("Clock").await?;
+            shell().await?.clock().await?;
         }
         MenuCommands::Notifications { action } => match action {
             None => {
-                bus_command("Notifications").await?;
+                shell().await?.notifications().await?;
             }
             Some(NotificationAction::Clears) => {
-                bus_command("NotificationsClearAll").await?;
+                shell().await?.notifications_clear_all().await?;
             }
             Some(NotificationAction::Read) => {
-                bus_command("NotificationsReadPopups").await?;
+                shell().await?.notifications_read_popups().await?;
             }
             Some(NotificationAction::Dnd { state }) => match state {
-                Some(DndState::On) => bus_command("NotificationDndOn").await?,
-                Some(DndState::Off) => bus_command("NotificationDndOff").await?,
-                None => bus_command("NotificationDndToggle").await?,
+                Some(DndState::On) => shell().await?.notification_dnd_on().await?,
+                Some(DndState::Off) => shell().await?.notification_dnd_off().await?,
+                None => shell().await?.notification_dnd_toggle().await?,
             },
             Some(NotificationAction::Count) => {
-                let count: u32 = bus_command_with_reply("NotificationCount").await?;
+                let count: u32 = shell().await?.notification_count().await?;
                 println!("{count}");
             }
         },
         MenuCommands::Screenshot => {
-            bus_command("Screenshot").await?;
+            shell().await?.screenshot().await?;
         }
         MenuCommands::Wallpaper => {
-            bus_command("Wallpaper").await?;
+            shell().await?.wallpaper().await?;
         }
         MenuCommands::Ufw => {
-            bus_command("Ufw").await?;
+            shell().await?.ufw().await?;
         }
         MenuCommands::Privacy => {
-            bus_command("Privacy").await?;
+            shell().await?.privacy().await?;
         }
         MenuCommands::Bluetooth => {
-            bus_command("Bluetooth").await?;
+            shell().await?.bluetooth().await?;
         }
         MenuCommands::CpuDashboard => {
-            bus_command("CpuDashboard").await?;
+            shell().await?.cpu_dashboard().await?;
         }
         MenuCommands::AudioDashboard => {
-            bus_command("AudioDashboard").await?;
+            shell().await?.audio_dashboard().await?;
         }
         MenuCommands::SystemUpdate => {
-            bus_command("SystemUpdate").await?;
+            shell().await?.system_update().await?;
         }
         MenuCommands::Valent => {
-            bus_command("Valent").await?;
+            shell().await?.valent().await?;
         }
         MenuCommands::KeepAwake => {
-            bus_command("KeepAwake").await?;
+            shell().await?.keep_awake().await?;
         }
         MenuCommands::Twilight => {
-            bus_command("Twilight").await?;
+            shell().await?.twilight().await?;
         }
         MenuCommands::MargoLayout => {
-            bus_command("MargoLayoutMenu").await?;
+            shell().await?.margo_layout_menu().await?;
         }
         MenuCommands::Weather => {
-            bus_command("Weather").await?;
+            shell().await?.weather().await?;
         }
         MenuCommands::Keybinds => {
-            bus_command("Keybinds").await?;
+            shell().await?.keybinds().await?;
         }
         MenuCommands::AlarmClock => {
-            bus_command("AlarmClock").await?;
+            shell().await?.alarm_clock().await?;
         }
         MenuCommands::ControlCenter => {
-            bus_command("ControlCenter").await?;
+            shell().await?.control_center().await?;
         }
         MenuCommands::SshSessions => {
-            bus_command("SshSessions").await?;
+            shell().await?.ssh_sessions().await?;
         }
         MenuCommands::Vpn => {
-            bus_command("Vpn").await?;
+            shell().await?.vpn().await?;
         }
         MenuCommands::Dns => {
-            bus_command("Dns").await?;
+            shell().await?.dns().await?;
         }
         MenuCommands::Translate => {
-            bus_command("TranslateMenu").await?;
+            shell().await?.translate_menu().await?;
         }
         MenuCommands::Ai => {
-            bus_command("Ai").await?;
+            shell().await?.ai().await?;
         }
         MenuCommands::Podman => {
-            bus_command("Podman").await?;
+            shell().await?.podman().await?;
         }
         MenuCommands::Notes => {
-            bus_command("Notes").await?;
+            shell().await?.notes().await?;
         }
         MenuCommands::Ip => {
-            bus_command("Ip").await?;
+            shell().await?.ip().await?;
         }
         MenuCommands::VpnIndicator => {
-            bus_command("VpnIndicator").await?;
+            shell().await?.vpn_indicator().await?;
         }
         MenuCommands::Network => {
-            bus_command("Network").await?;
+            shell().await?.network().await?;
         }
         MenuCommands::Power => {
-            bus_command("Power").await?;
+            shell().await?.power().await?;
         }
         MenuCommands::MediaPlayer => {
-            bus_command("MediaPlayer").await?;
+            shell().await?.media_player().await?;
         }
         MenuCommands::Mtune => {
-            bus_command("Mtune").await?;
+            shell().await?.mtune().await?;
         }
         MenuCommands::Lyrics => {
-            bus_command("Lyrics").await?;
+            shell().await?.lyrics().await?;
         }
         MenuCommands::Session { action } => match action {
             None => {
-                bus_command("Session").await?;
+                shell().await?.session().await?;
             }
             Some(SessionAction::Lock) => {
-                bus_command("SessionLock").await?;
+                shell().await?.session_lock().await?;
             }
             Some(SessionAction::Logout) => {
-                bus_command("SessionLogout").await?;
+                shell().await?.session_logout().await?;
             }
             Some(SessionAction::Suspend) => {
-                bus_command("SessionSuspend").await?;
+                shell().await?.session_suspend().await?;
             }
             Some(SessionAction::Reboot) => {
-                bus_command("SessionReboot").await?;
+                shell().await?.session_reboot().await?;
             }
             Some(SessionAction::Shutdown) => {
-                bus_command("SessionShutdown").await?;
+                shell().await?.session_shutdown().await?;
             }
         },
         MenuCommands::Mdash => {
-            bus_command("Mdash").await?;
+            shell().await?.mdash().await?;
         }
         MenuCommands::Plugin { key } => {
-            bus_command_with_arg("PluginMenu", &key).await?;
+            shell().await?.plugin_menu(&key).await?;
         }
         MenuCommands::CloseAll => {
-            bus_command("CloseAllMenus").await?;
+            shell().await?.close_all_menus().await?;
         }
     }
     Ok(())

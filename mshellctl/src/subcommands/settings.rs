@@ -1,4 +1,4 @@
-use crate::bus::bus_command;
+use crate::bus::shell;
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
@@ -12,10 +12,10 @@ pub enum SettingsCommands {
 pub async fn execute(command: SettingsCommands) -> anyhow::Result<()> {
     match command {
         SettingsCommands::Open => {
-            bus_command("OpenSettings").await?;
+            shell().await?.open_settings().await?;
         }
         SettingsCommands::Close => {
-            bus_command("CloseSettings").await?;
+            shell().await?.close_settings().await?;
         }
     }
     Ok(())

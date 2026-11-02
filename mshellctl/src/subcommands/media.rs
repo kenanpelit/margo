@@ -1,4 +1,4 @@
-use crate::bus::{bus_command_with_arg, bus_command_with_reply};
+use crate::bus::shell;
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
@@ -26,30 +26,39 @@ pub enum MediaCommands {
 pub async fn execute(command: MediaCommands) -> anyhow::Result<()> {
     match command {
         MediaCommands::Toggle { player } => {
-            bus_command_with_arg("MediaToggle", &player.unwrap_or_default()).await?;
+            shell()
+                .await?
+                .media_toggle(&player.unwrap_or_default())
+                .await?;
         }
         MediaCommands::Next { player } => {
-            bus_command_with_arg("MediaNext", &player.unwrap_or_default()).await?;
+            shell()
+                .await?
+                .media_next(&player.unwrap_or_default())
+                .await?;
         }
         MediaCommands::Prev { player } => {
-            bus_command_with_arg("MediaPrev", &player.unwrap_or_default()).await?;
+            shell()
+                .await?
+                .media_prev(&player.unwrap_or_default())
+                .await?;
         }
         MediaCommands::Status { json } => {
-            let method = if json {
-                "MediaStatusJson"
+            let shell = shell().await?;
+            let out = if json {
+                shell.media_status_json().await?
             } else {
-                "MediaStatusText"
+                shell.media_status_text().await?
             };
-            let out: String = bus_command_with_reply(method).await?;
             println!("{out}");
         }
         MediaCommands::List { json } => {
-            let method = if json {
-                "MediaListJson"
+            let shell = shell().await?;
+            let out = if json {
+                shell.media_list_json().await?
             } else {
-                "MediaListText"
+                shell.media_list_text().await?
             };
-            let out: String = bus_command_with_reply(method).await?;
             println!("{out}");
         }
     }

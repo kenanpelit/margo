@@ -2,7 +2,7 @@
 //! same live IPC as `mshellctl menu notifications`, promoted to a top-level
 //! command for scripts and keybinds).
 
-use crate::bus::{bus_command, bus_command_with_reply};
+use crate::bus::shell;
 use clap::Subcommand;
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
@@ -31,16 +31,16 @@ pub enum NotificationCommands {
 
 pub async fn execute(command: NotificationCommands) -> anyhow::Result<()> {
     match command {
-        NotificationCommands::Open => bus_command("Notifications").await?,
-        NotificationCommands::Clear => bus_command("NotificationsClearAll").await?,
-        NotificationCommands::Read => bus_command("NotificationsReadPopups").await?,
+        NotificationCommands::Open => shell().await?.notifications().await?,
+        NotificationCommands::Clear => shell().await?.notifications_clear_all().await?,
+        NotificationCommands::Read => shell().await?.notifications_read_popups().await?,
         NotificationCommands::Dnd { state } => match state {
-            Some(DndState::On) => bus_command("NotificationDndOn").await?,
-            Some(DndState::Off) => bus_command("NotificationDndOff").await?,
-            None => bus_command("NotificationDndToggle").await?,
+            Some(DndState::On) => shell().await?.notification_dnd_on().await?,
+            Some(DndState::Off) => shell().await?.notification_dnd_off().await?,
+            None => shell().await?.notification_dnd_toggle().await?,
         },
         NotificationCommands::Count => {
-            let count: u32 = bus_command_with_reply("NotificationCount").await?;
+            let count: u32 = shell().await?.notification_count().await?;
             println!("{count}");
         }
     }

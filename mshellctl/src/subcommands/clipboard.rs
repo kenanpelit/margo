@@ -13,7 +13,7 @@
 //! mshellctl clipboard wipe            # drop everything incl. favourites
 //! ```
 
-use crate::bus::{bus_command_with_arg, bus_command_with_reply};
+use crate::bus::shell;
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
@@ -41,7 +41,7 @@ pub enum ClipboardCommands {
 pub async fn execute(command: ClipboardCommands) -> anyhow::Result<()> {
     match command {
         ClipboardCommands::List { json } => {
-            let raw: String = bus_command_with_reply("ClipboardList").await?;
+            let raw: String = shell().await?.clipboard_list().await?;
             if json {
                 // Build a small JSON array without pulling serde_json here:
                 // the shell already sanitised tabs/newlines out of previews.
@@ -65,19 +65,28 @@ pub async fn execute(command: ClipboardCommands) -> anyhow::Result<()> {
             }
         }
         ClipboardCommands::Copy { id } => {
-            bus_command_with_arg("ClipboardAction", &format!("copy {id}")).await?;
+            shell()
+                .await?
+                .clipboard_action(&format!("copy {id}"))
+                .await?;
         }
         ClipboardCommands::Pin { id } | ClipboardCommands::Unpin { id } => {
-            bus_command_with_arg("ClipboardAction", &format!("pin {id}")).await?;
+            shell()
+                .await?
+                .clipboard_action(&format!("pin {id}"))
+                .await?;
         }
         ClipboardCommands::Delete { id } => {
-            bus_command_with_arg("ClipboardAction", &format!("delete {id}")).await?;
+            shell()
+                .await?
+                .clipboard_action(&format!("delete {id}"))
+                .await?;
         }
         ClipboardCommands::Clear => {
-            bus_command_with_arg("ClipboardAction", &"clear".to_string()).await?;
+            shell().await?.clipboard_action("clear").await?;
         }
         ClipboardCommands::Wipe => {
-            bus_command_with_arg("ClipboardAction", &"wipe".to_string()).await?;
+            shell().await?.clipboard_action("wipe").await?;
         }
     }
     Ok(())

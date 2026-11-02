@@ -1,0 +1,14 @@
+[package]
+name = "mshell-ipc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Typed client for mshell's com.mshell.Shell D-Bus interface."
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+zbus.workspace = true
+
+[lints]
+workspace = true

@@ -395,8 +395,6 @@ pub enum FrameInput {
     ToggleScreenshareMenu(tokio::sync::oneshot::Sender<String>, String),
     BarToggleTop,
     BarToggleBottom,
-    BarToggleLeft,
-    BarToggleRight,
     BarToggleAll(bool),
     BarRevealAll(bool),
     BarHideAll(bool),
@@ -1533,11 +1531,6 @@ impl Component for Frame {
             }
             FrameInput::BarToggleBottom => {
                 self.bottom_bar.sender().emit(BarInput::ToggleRevealed);
-            }
-            FrameInput::BarToggleLeft | FrameInput::BarToggleRight => {
-                // Vertical Left / Right bars removed; treat the input
-                // as a no-op so existing mshellctl bindings don't error.
-                tracing::debug!("BarToggleLeft/Right ignored — vertical bars removed");
             }
             FrameInput::BarToggleAll(exclude_hidden_by_default) => {
                 if exclude_hidden_by_default {

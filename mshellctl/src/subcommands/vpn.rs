@@ -5,7 +5,7 @@
 //! To merely open the shell's DNS/VPN menu, use `vpn menu` (or
 //! `mshellctl menu vpn`).
 
-use crate::bus::bus_command;
+use crate::bus::shell;
 use crate::subcommands::proxy;
 use clap::Subcommand;
 
@@ -43,7 +43,7 @@ pub async fn execute(command: VpnCommands) -> anyhow::Result<()> {
         VpnCommands::Random => "random",
         VpnCommands::Fastest => "fastest",
         VpnCommands::Menu => {
-            bus_command("Vpn").await?;
+            shell().await?.vpn().await?;
             return Ok(());
         }
         VpnCommands::Exec(args) => return proxy::run("mvpn", &args),

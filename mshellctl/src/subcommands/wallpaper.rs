@@ -1,4 +1,4 @@
-use crate::bus::bus_command_with_arg;
+use crate::bus::shell;
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
@@ -17,6 +17,6 @@ pub async fn execute(command: WallpaperCommands) -> anyhow::Result<()> {
         WallpaperCommands::Prev => "previous",
         WallpaperCommands::Random => "random",
     };
-    bus_command_with_arg("WallpaperCycle", &direction).await?;
+    shell().await?.wallpaper_cycle(direction).await?;
     Ok(())
 }

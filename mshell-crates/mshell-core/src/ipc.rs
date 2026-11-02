@@ -27,6 +27,7 @@ use wayle_audio::core::device::output::OutputDevice;
 use wayle_audio::volume::types::Volume;
 use wayle_brightness::Percentage;
 use zbus::connection;
+use zbus::fdo;
 use zbus::interface;
 
 pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
@@ -35,22 +36,30 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
     spawn_daily_wallpaper_task(shell_tx.clone());
     spawn_alarm_scheduler();
     spawn_plugin_watcher_task(shell_tx.clone());
-    tokio::spawn(start_shell_service(shell_tx));
+    tokio::spawn(async move {
+        if let Err(e) = start_shell_service(shell_tx).await {
+            // Without the bus name every `mshellctl` call (keybinds, scripts)
+            // fails — make it visible, not a silently dropped Result.
+            tracing::error!(error = %e, "ipc: failed to start the com.mshell.Shell D-Bus service");
+            push_toast(ToastEvent {
+                icon: "dialog-error-symbolic".to_string(),
+                title: "mshellctl unavailable".to_string(),
+                body: Some(format!("D-Bus service failed to start: {e}")),
+                severity: ToastSeverity::Danger,
+            });
+        }
+    });
 
     let app_sender = sender.input_sender().clone();
     glib::spawn_future_local(async move {
-        // Resolve the active monitor name via the focused-client-
-        // first heuristic in `MargoService::active_monitor_name`.
-        // We used to chain through `active_workspace().monitor` —
-        // that path bounces through the workspaces cache and
-        // can return None right after reboot before sync has
-        // populated, sending menus to whichever Frame iterated
-        // first (effectively eDP-1). `active_monitor_name`
-        // reads state.json directly + prefers the focused
-        // client's monitor over the top-level `active_output`
-        // field, which closes the boot-time window where margo's
-        // `active_output` stays pinned to the first-enumerated
-        // output until the user manually switches.
+        // Resolve the monitor a toggled menu opens on via
+        // `MargoService::active_monitor_name`: margo's recency-based
+        // `active_output` as mirrored into the reactive store by the
+        // `watch state` subscription (a zero-I/O read), with a one-shot
+        // socket read only before the first state push. We used to chain
+        // through `active_workspace().monitor`, which could return None
+        // right after boot and send menus to whichever Frame iterated
+        // first.
         async fn active_monitor() -> Option<String> {
             margo_service().active_monitor_name().await
         }
@@ -76,20 +85,20 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Clipboard => {
                     app_sender.emit(ShellInput::ToggleClipboard(active_monitor().await));
                 }
-                IPCCommand::ClipboardAction(spec) => {
+                IPCCommand::ClipboardAction(action) => {
                     // Handled directly against the clipboard service
                     // singleton (no UI round-trip needed). The verb→op parse
-                    // is a pure, unit-tested function.
+                    // (a pure, unit-tested function) ran in the bus method,
+                    // so an unknown verb was already rejected to the caller.
                     let svc = mshell_clipboard::clipboard_service();
-                    match parse_clipboard_action(&spec) {
-                        Some(ClipboardAction::Copy(id)) => svc.copy_entry(id),
-                        Some(ClipboardAction::TogglePin(id)) => svc.toggle_pin(id),
-                        Some(ClipboardAction::Delete(id)) => {
+                    match action {
+                        ClipboardAction::Copy(id) => svc.copy_entry(id),
+                        ClipboardAction::TogglePin(id) => svc.toggle_pin(id),
+                        ClipboardAction::Delete(id) => {
                             svc.history().remove(id);
                         }
-                        Some(ClipboardAction::Clear) => svc.clear_unpinned(),
-                        Some(ClipboardAction::Wipe) => svc.clear_history(),
-                        None => tracing::warn!(%spec, "clipboard: unknown action"),
+                        ClipboardAction::Clear => svc.clear_unpinned(),
+                        ClipboardAction::Wipe => svc.clear_history(),
                     }
                 }
                 IPCCommand::ClipboardList(reply) => {
@@ -184,6 +193,8 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                                 "disconnect" => {
                                     mshell_services::bluetooth::disconnect_configured().await;
                                 }
+                                // Validated by `parse_bluetooth_action`: the
+                                // only remaining verb is `toggle`.
                                 _ => mshell_services::bluetooth::toggle().await,
                             }
                         });
@@ -570,16 +581,12 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         .to_string();
                     let _ = reply.send(current);
                 }
-                IPCCommand::GameMode(action) => {
+                IPCCommand::GameMode(target) => {
                     // Just flip the persisted `active` flag; the reactive
                     // reconcile effect (mshell-core `run`) does the apply, so
                     // the CLI, the Settings toggle, and startup share one path.
                     let active = config_manager().config().game_mode().get_untracked().active;
-                    let target = match action.trim().to_ascii_lowercase().as_str() {
-                        "on" | "1" | "true" | "enable" => true,
-                        "off" | "0" | "false" | "disable" => false,
-                        _ => !active, // toggle
-                    };
+                    let target = target.unwrap_or(!active); // None = toggle
                     config_manager().update_config(|c| c.game_mode.active = target);
                 }
                 IPCCommand::GameModeStatus(reply) => {
@@ -603,12 +610,6 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 }
                 IPCCommand::BarToggleBottom => {
                     app_sender.emit(ShellInput::BarToggleBottom(active_monitor().await));
-                }
-                IPCCommand::BarToggleLeft => {
-                    app_sender.emit(ShellInput::BarToggleLeft(active_monitor().await));
-                }
-                IPCCommand::BarToggleRight => {
-                    app_sender.emit(ShellInput::BarToggleRight(active_monitor().await));
                 }
                 IPCCommand::BarToggleAll(exclude_hidden_by_default) => {
                     app_sender.emit(ShellInput::BarToggleAll(
@@ -653,8 +654,8 @@ enum IPCCommand {
     DockActivate(u32),
     AppLauncher,
     /// `mshellctl menu app-launcher --tab <name>` — open the
-    /// launcher and pre-select the named category tab. Unknown
-    /// names silently fall back to "All".
+    /// launcher and pre-select the named category tab (canonical
+    /// spelling; unknown names are rejected at the bus).
     AppLauncherTab(String),
     Clock,
     Clipboard,
@@ -686,8 +687,8 @@ enum IPCCommand {
     Valent,
     KeepAwake,
     /// `mshellctl gamemode on|off|toggle` — engage/release Game Mode (drops
-    /// compositor effects, DND, idle inhibitor). The String is the verb.
-    GameMode(String),
+    /// compositor effects, DND, idle inhibitor). `None` = toggle.
+    GameMode(Option<bool>),
     /// `mshellctl gamemode status` — reply "on" / "off".
     GameModeStatus(tokio::sync::oneshot::Sender<String>),
     Twilight,
@@ -758,10 +759,10 @@ enum IPCCommand {
     /// the rich in-shell selector (preview state, snap, aspect
     /// info) instead of the bare slurp overlay when mshell is up.
     SelectRegion(tokio::sync::oneshot::Sender<String>),
-    /// Headless clipboard op driven by `mshellctl clipboard …`. Spec is
-    /// `"copy <id>" | "pin <id>" | "unpin <id>" | "delete <id>" |
-    /// "clear" | "wipe"`.
-    ClipboardAction(String),
+    /// Headless clipboard op driven by `mshellctl clipboard …` (parsed from
+    /// `"copy <id>" | "pin <id>" | "unpin <id>" | "delete <id>" | "clear" |
+    /// "wipe"` in the bus method).
+    ClipboardAction(ClipboardAction),
     /// `mshellctl clipboard list` — reply with one `id\tcategory\tpreview`
     /// line per entry (newest first).
     ClipboardList(tokio::sync::oneshot::Sender<String>),
@@ -778,8 +779,6 @@ enum IPCCommand {
     Inspect,
     BarToggleTop,
     BarToggleBottom,
-    BarToggleLeft,
-    BarToggleRight,
     BarToggleAll(bool),
     BarRevealAll(bool),
     BarHideAll(bool),
@@ -1463,12 +1462,108 @@ impl IPCService {
     pub fn new(tx: mpsc::UnboundedSender<IPCCommand>) -> Self {
         Self { tx }
     }
+
+    /// Queue a command for the GTK-side dispatch loop. Fails only once that
+    /// loop is gone (the shell is shutting down).
+    fn send(&self, cmd: IPCCommand) -> fdo::Result<()> {
+        self.tx
+            .send(cmd)
+            .map_err(|_| fdo::Error::Failed("mshell is shutting down".into()))
+    }
+}
+
+/// The dispatch loop dropped a reply channel without answering.
+fn no_reply() -> fdo::Error {
+    fdo::Error::Failed("mshell dropped the request without replying".into())
+}
+
+fn no_notification_service() -> fdo::Error {
+    fdo::Error::Failed("notification service is not running".into())
+}
+
+/// CLI percent (0–150) → the fraction the audio setters take.
+fn volume_fraction(percent: f64) -> fdo::Result<f64> {
+    if percent.is_finite() && (0.0..=150.0).contains(&percent) {
+        Ok(percent / 100.0)
+    } else {
+        Err(fdo::Error::InvalidArgs(format!(
+            "volume {percent} is out of range (0–150)"
+        )))
+    }
+}
+
+/// `mshellctl gamemode <action>` → the target state; `None` = toggle.
+fn parse_game_mode(action: &str) -> Result<Option<bool>, String> {
+    match action.trim().to_ascii_lowercase().as_str() {
+        "on" | "1" | "true" | "enable" => Ok(Some(true)),
+        "off" | "0" | "false" | "disable" => Ok(Some(false)),
+        "toggle" => Ok(None),
+        other => Err(format!(
+            "unknown game mode action '{other}' (on|off|toggle)"
+        )),
+    }
+}
+
+/// `mshellctl wallpaper next|previous|prev|random`.
+fn parse_cycle_direction(
+    direction: &str,
+) -> Result<mshell_cache::wallpaper::CycleDirection, String> {
+    use mshell_cache::wallpaper::CycleDirection;
+    match direction.trim().to_ascii_lowercase().as_str() {
+        "next" => Ok(CycleDirection::Next),
+        "previous" | "prev" => Ok(CycleDirection::Previous),
+        "random" => Ok(CycleDirection::Random),
+        other => Err(format!(
+            "unknown wallpaper direction '{other}' (next|previous|random)"
+        )),
+    }
+}
+
+/// `mshellctl bluetooth …` verbs: `toggle` | `connect` | `disconnect` |
+/// `connect:<n>` (a numbered device slot).
+fn parse_bluetooth_action(action: &str) -> Result<String, String> {
+    let a = action.trim();
+    let valid = matches!(a, "toggle" | "connect" | "disconnect")
+        || a.strip_prefix("connect:")
+            .is_some_and(|n| n.parse::<u8>().is_ok());
+    if valid {
+        Ok(a.to_string())
+    } else {
+        Err(format!(
+            "unknown bluetooth action '{a}' (toggle|connect|disconnect|connect:<n>)"
+        ))
+    }
+}
+
+/// Match a launcher tab name case-insensitively against `APP_LAUNCHER_TABS`,
+/// returning its canonical spelling (the launcher's lookup is exact).
+fn parse_launcher_tab(tab: &str) -> Result<String, String> {
+    APP_LAUNCHER_TABS
+        .iter()
+        .find(|t| t.eq_ignore_ascii_case(tab.trim()))
+        .map(|t| (*t).to_string())
+        .ok_or_else(|| {
+            format!(
+                "unknown launcher tab '{tab}' ({})",
+                APP_LAUNCHER_TABS.join("|")
+            )
+        })
+}
+
+/// A wallpaper path must name an existing regular file.
+fn validate_wallpaper_path(path: &str) -> Result<PathBuf, String> {
+    let p = PathBuf::from(path);
+    if p.is_file() {
+        Ok(p)
+    } else {
+        Err(format!("'{path}' is not an existing file"))
+    }
 }
 
 #[interface(name = "com.mshell.Shell")]
 impl IPCService {
-    async fn quit(&self) {
-        let _ = self.tx.send(IPCCommand::Quit);
+    async fn quit(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Quit)
     }
     /// `mshellctl toast <title> [body] [--icon NAME] [--severity …]` — show a
     /// transient state-change toast. The `notify-send` equivalent for the
@@ -1476,13 +1571,17 @@ impl IPCService {
     /// and startup services. `push_toast` only fans out to the per-output
     /// surfaces (a thread-safe broadcast), so this is safe to call straight
     /// from the bus task. Explicit intent — it bypasses the per-event toggles.
-    async fn toast(&self, title: String, body: String, icon: String, severity: String) {
-        let severity = match severity.to_ascii_lowercase().as_str() {
-            "warn" | "warning" => ToastSeverity::Warn,
-            "danger" | "error" | "critical" => ToastSeverity::Danger,
-            "positive" | "success" | "ok" => ToastSeverity::Positive,
-            _ => ToastSeverity::Calm,
-        };
+    async fn toast(
+        &self,
+        title: String,
+        body: String,
+        icon: String,
+        severity: String,
+    ) -> fdo::Result<()> {
+        let severity: ToastSeverity = severity.parse().map_err(fdo::Error::InvalidArgs)?;
+        if title.trim().is_empty() {
+            return Err(fdo::Error::InvalidArgs("toast title is empty".into()));
+        }
         let icon = if icon.trim().is_empty() {
             "dialog-information-symbolic".to_string()
         } else {
@@ -1494,39 +1593,45 @@ impl IPCService {
             body: (!body.trim().is_empty()).then_some(body),
             severity,
         });
+        Ok(())
     }
     /// `mshellctl gamemode on|off|toggle` — engage/release Game Mode.
-    async fn game_mode(&self, action: String) {
-        let _ = self.tx.send(IPCCommand::GameMode(action));
+    async fn game_mode(&self, action: String) -> fdo::Result<()> {
+        let target = parse_game_mode(&action).map_err(fdo::Error::InvalidArgs)?;
+        self.send(IPCCommand::GameMode(target))
     }
     /// `mshellctl gamemode status` — "on" / "off".
-    async fn game_mode_status(&self) -> String {
+    async fn game_mode_status(&self) -> fdo::Result<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = self.tx.send(IPCCommand::GameModeStatus(tx));
-        rx.await.unwrap_or_default()
+        self.send(IPCCommand::GameModeStatus(tx))?;
+        rx.await.map_err(|_| no_reply())
     }
     /// Standalone mdock surface controls.
-    async fn dock_toggle(&self) {
-        let _ = self.tx.send(IPCCommand::DockToggle);
+    async fn dock_toggle(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::DockToggle)
     }
-    async fn dock_show(&self) {
-        let _ = self.tx.send(IPCCommand::DockShow);
+    async fn dock_show(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::DockShow)
     }
-    async fn dock_hide(&self) {
-        let _ = self.tx.send(IPCCommand::DockHide);
+    async fn dock_hide(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::DockHide)
     }
     /// Activate the Nth (1-based) pinned dock app — focus or launch.
-    async fn dock_activate(&self, index: u32) {
-        let _ = self.tx.send(IPCCommand::DockActivate(index));
+    async fn dock_activate(&self, index: u32) -> fdo::Result<()> {
+        if index == 0 {
+            return Err(fdo::Error::InvalidArgs("dock index is 1-based".into()));
+        }
+        self.send(IPCCommand::DockActivate(index))
     }
-    async fn app_launcher(&self) {
-        let _ = self.tx.send(IPCCommand::AppLauncher);
+    async fn app_launcher(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::AppLauncher)
     }
     /// Open (or refocus) the app launcher and pre-select the
-    /// named category tab. Unknown names silently fall back to
-    /// "All" — the launcher's `select_category` is permissive.
-    async fn app_launcher_tab(&self, tab: String) {
-        let _ = self.tx.send(IPCCommand::AppLauncherTab(tab));
+    /// named category tab (case-insensitive; see `APP_LAUNCHER_TABS`).
+    /// An unknown name is rejected.
+    async fn app_launcher_tab(&self, tab: String) -> fdo::Result<()> {
+        let tab = parse_launcher_tab(&tab).map_err(fdo::Error::InvalidArgs)?;
+        self.send(IPCCommand::AppLauncherTab(tab))
     }
     /// Return the known launcher category tab names so the CLI
     /// can offer `--list-tabs` without round-tripping through
@@ -1535,22 +1640,27 @@ impl IPCService {
     async fn list_app_launcher_tabs(&self) -> Vec<String> {
         APP_LAUNCHER_TABS.iter().map(|s| (*s).to_string()).collect()
     }
-    async fn clock(&self) {
-        let _ = self.tx.send(IPCCommand::Clock);
+    async fn clock(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Clock)
     }
-    async fn clipboard(&self) {
-        let _ = self.tx.send(IPCCommand::Clipboard);
+    async fn clipboard(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Clipboard)
     }
     /// Headless clipboard op for `mshellctl clipboard copy|pin|unpin|delete|
     /// clear|wipe`. `spec` is `"<verb> [id]"`.
-    async fn clipboard_action(&self, spec: String) {
-        let _ = self.tx.send(IPCCommand::ClipboardAction(spec));
+    async fn clipboard_action(&self, spec: String) -> fdo::Result<()> {
+        let action = parse_clipboard_action(&spec).ok_or_else(|| {
+            fdo::Error::InvalidArgs(format!(
+                "unknown clipboard action '{spec}' (copy|pin|unpin|delete <id>, clear, wipe)"
+            ))
+        })?;
+        self.send(IPCCommand::ClipboardAction(action))
     }
     /// `mshellctl clipboard list` — `id\tcategory\tpreview` per line.
-    async fn clipboard_list(&self) -> String {
+    async fn clipboard_list(&self) -> fdo::Result<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = self.tx.send(IPCCommand::ClipboardList(tx));
-        rx.await.unwrap_or_default()
+        self.send(IPCCommand::ClipboardList(tx))?;
+        rx.await.map_err(|_| no_reply())
     }
     /// `mshellctl theme list` — one `name\tlabel` line per built-in colour
     /// scheme. Static (sourced from `Themes::all()`), so it answers without
@@ -1564,23 +1674,21 @@ impl IPCService {
             .join("\n")
     }
     /// `mshellctl theme get` — the active scheme's canonical name.
-    async fn theme_get(&self) -> String {
+    async fn theme_get(&self) -> fdo::Result<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = self.tx.send(IPCCommand::ThemeGet(tx));
-        rx.await.unwrap_or_default()
+        self.send(IPCCommand::ThemeGet(tx))?;
+        rx.await.map_err(|_| no_reply())
     }
-    /// `mshellctl theme set <name>` — switch the colour scheme live. Returns
-    /// an empty string on success, or an error message for an unknown name
-    /// (so the CLI can fail loudly instead of silently no-op'ing).
-    async fn theme_set(&self, name: String) -> String {
+    /// `mshellctl theme set <name>` — switch the colour scheme live. An
+    /// unknown name is an `InvalidArgs` error, so the CLI fails loudly.
+    async fn theme_set(&self, name: String) -> fdo::Result<()> {
         use mshell_config::schema::themes::Themes;
-        match Themes::from_cli(&name) {
-            Some(theme) => {
-                let _ = self.tx.send(IPCCommand::ThemeSet(theme));
-                String::new()
-            }
-            None => format!("unknown theme '{name}' — run `mshellctl theme list`"),
-        }
+        let theme = Themes::from_cli(&name).ok_or_else(|| {
+            fdo::Error::InvalidArgs(format!(
+                "unknown theme '{name}' — run `mshellctl theme list`"
+            ))
+        })?;
+        self.send(IPCCommand::ThemeSet(theme))
     }
     /// `mshellctl doctor` — the running shell's version (the workspace
     /// version baked in at build time). Lets the doctor flag a shell that
@@ -1588,72 +1696,77 @@ impl IPCService {
     async fn version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_string()
     }
-    async fn notifications(&self) {
-        let _ = self.tx.send(IPCCommand::Notifications);
+    async fn notifications(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Notifications)
     }
-    async fn notifications_clear_all(&self) {
-        let _ = self.tx.send(IPCCommand::NotificationsClearAll);
+    async fn notifications_clear_all(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::NotificationsClearAll)
     }
-    async fn notifications_read_popups(&self) {
-        let _ = self.tx.send(IPCCommand::NotificationsReadPopups);
+    async fn notifications_read_popups(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::NotificationsReadPopups)
     }
     /// Do Not Disturb — set/clear/toggle directly on the global
     /// notification service (the bar pill + popups subscribe to it).
-    async fn notification_dnd_on(&self) {
-        if let Some(svc) = notification_service() {
-            svc.set_dnd(true);
-        }
+    async fn notification_dnd_on(&self) -> fdo::Result<()> {
+        notification_service()
+            .ok_or_else(no_notification_service)?
+            .set_dnd(true);
+        Ok(())
     }
-    async fn notification_dnd_off(&self) {
-        if let Some(svc) = notification_service() {
-            svc.set_dnd(false);
-        }
+    async fn notification_dnd_off(&self) -> fdo::Result<()> {
+        notification_service()
+            .ok_or_else(no_notification_service)?
+            .set_dnd(false);
+        Ok(())
     }
-    async fn notification_dnd_toggle(&self) {
-        if let Some(service) = notification_service() {
-            service.set_dnd(!service.dnd.get());
-        }
+    async fn notification_dnd_toggle(&self) -> fdo::Result<()> {
+        let service = notification_service().ok_or_else(no_notification_service)?;
+        service.set_dnd(!service.dnd.get());
+        Ok(())
     }
     /// Number of notifications currently in history (for bars / scripts).
-    async fn notification_count(&self) -> u32 {
-        notification_service()
-            .map(|s| s.notifications.get().len() as u32)
-            .unwrap_or(0)
+    async fn notification_count(&self) -> fdo::Result<u32> {
+        Ok(notification_service()
+            .ok_or_else(no_notification_service)?
+            .notifications
+            .get()
+            .len() as u32)
     }
-    async fn screenshot(&self) {
-        let _ = self.tx.send(IPCCommand::Screenshot);
+    async fn screenshot(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Screenshot)
     }
     /// Headless capture driven by `mshellctl screenshot <area>`. `spec` is
     /// `"<area> <target> <delay>"`.
-    async fn screenshot_capture(&self, spec: String) {
-        let _ = self.tx.send(IPCCommand::ScreenshotCapture(spec));
+    async fn screenshot_capture(&self, spec: String) -> fdo::Result<()> {
+        self.send(IPCCommand::ScreenshotCapture(spec))
     }
     /// Screen recording driven by `mshellctl screenrecord …`. `spec` is
     /// `"<action> <area> <audio>"`.
-    async fn screen_record(&self, spec: String) {
-        let _ = self.tx.send(IPCCommand::ScreenRecord(spec));
+    async fn screen_record(&self, spec: String) -> fdo::Result<()> {
+        self.send(IPCCommand::ScreenRecord(spec))
     }
-    async fn wallpaper(&self) {
-        let _ = self.tx.send(IPCCommand::Wallpaper);
+    async fn wallpaper(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Wallpaper)
     }
-    async fn ufw(&self) {
-        let _ = self.tx.send(IPCCommand::Ufw);
+    async fn ufw(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Ufw)
     }
-    async fn privacy(&self) {
-        let _ = self.tx.send(IPCCommand::Privacy);
+    async fn privacy(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Privacy)
     }
-    async fn bluetooth(&self) {
-        let _ = self.tx.send(IPCCommand::Bluetooth);
+    async fn bluetooth(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Bluetooth)
     }
     /// Native auto-connect engine: `toggle` | `connect` | `disconnect`.
-    async fn bluetooth_ctl(&self, action: String) {
-        let _ = self.tx.send(IPCCommand::BluetoothCtl(action));
+    async fn bluetooth_ctl(&self, action: String) -> fdo::Result<()> {
+        let action = parse_bluetooth_action(&action).map_err(fdo::Error::InvalidArgs)?;
+        self.send(IPCCommand::BluetoothCtl(action))
     }
-    async fn cpu_dashboard(&self) {
-        let _ = self.tx.send(IPCCommand::CpuDashboard);
+    async fn cpu_dashboard(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::CpuDashboard)
     }
-    async fn audio_dashboard(&self) {
-        let _ = self.tx.send(IPCCommand::AudioDashboard);
+    async fn audio_dashboard(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::AudioDashboard)
     }
     // ── Audio query / control (mshellctl audio …) ──────────────────────────
     // Queries read the live service directly (sync, like notification_count);
@@ -1672,64 +1785,64 @@ impl IPCService {
         render_audio_status(true)
     }
     /// Set the shell's file-log level live (error|warn|info|debug|trace).
-    async fn log_level(&self, level: String) -> String {
-        match mshell_logging::set_level(&level) {
-            Ok(()) => format!("shell log level set to {level}"),
-            Err(e) => format!("error: {e}"),
-        }
+    async fn log_level(&self, level: String) -> fdo::Result<String> {
+        mshell_logging::set_level(&level)
+            .map(|()| format!("shell log level set to {level}"))
+            .map_err(|e| fdo::Error::InvalidArgs(e.to_string()))
     }
     /// Enable/disable the shell's file logging live.
-    async fn log_enabled(&self, enabled: bool) -> String {
-        match mshell_logging::set_enabled(enabled) {
-            Ok(()) => format!(
-                "shell file logging {}",
-                if enabled { "enabled" } else { "disabled" }
-            ),
-            Err(e) => format!("error: {e}"),
-        }
+    async fn log_enabled(&self, enabled: bool) -> fdo::Result<String> {
+        mshell_logging::set_enabled(enabled)
+            .map(|()| {
+                format!(
+                    "shell file logging {}",
+                    if enabled { "enabled" } else { "disabled" }
+                )
+            })
+            .map_err(|e| fdo::Error::Failed(e.to_string()))
     }
     /// Absolute output volume as a percent (0–150).
-    async fn audio_volume_set(&self, percent: f64) {
-        let _ = self.tx.send(IPCCommand::VolumeSet(percent / 100.0));
+    async fn audio_volume_set(&self, percent: f64) -> fdo::Result<()> {
+        self.send(IPCCommand::VolumeSet(volume_fraction(percent)?))
     }
     /// Output mute: 0 = off, 1 = on, else toggle.
-    async fn audio_mute_set(&self, mode: i32) {
-        let _ = self.tx.send(IPCCommand::MuteSet(mode));
+    async fn audio_mute_set(&self, mode: i32) -> fdo::Result<()> {
+        self.send(IPCCommand::MuteSet(mode))
     }
-    async fn audio_mic_volume_set(&self, percent: f64) {
-        let _ = self.tx.send(IPCCommand::MicVolumeSet(percent / 100.0));
+    async fn audio_mic_volume_set(&self, percent: f64) -> fdo::Result<()> {
+        self.send(IPCCommand::MicVolumeSet(volume_fraction(percent)?))
     }
-    async fn audio_mic_mute_set(&self, mode: i32) {
-        let _ = self.tx.send(IPCCommand::MicMuteSet(mode));
+    async fn audio_mic_mute_set(&self, mode: i32) -> fdo::Result<()> {
+        self.send(IPCCommand::MicMuteSet(mode))
     }
-    async fn audio_mic_up(&self) {
-        let _ = self.tx.send(IPCCommand::MicUp);
+    async fn audio_mic_up(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::MicUp)
     }
-    async fn audio_mic_down(&self) {
-        let _ = self.tx.send(IPCCommand::MicDown);
+    async fn audio_mic_down(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::MicDown)
     }
     /// Switch the default output: "next" | "prev" | index | name fragment.
-    async fn audio_output_switch(&self, target: String) {
-        let _ = self.tx.send(IPCCommand::SwitchOutput(target));
+    async fn audio_output_switch(&self, target: String) -> fdo::Result<()> {
+        self.send(IPCCommand::SwitchOutput(target))
     }
     /// Cycle the default output to the next routable sink: skips HDMI/DP,
     /// name-sorted + wrapping, and follows the mic across the headset boundary
     /// when `audio.route_switch_microphone` is on.
-    async fn audio_route_cycle(&self) {
-        let _ = self.tx.send(IPCCommand::AudioRouteCycle);
+    async fn audio_route_cycle(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::AudioRouteCycle)
     }
-    async fn audio_input_switch(&self, target: String) {
-        let _ = self.tx.send(IPCCommand::SwitchInput(target));
+    async fn audio_input_switch(&self, target: String) -> fdo::Result<()> {
+        self.send(IPCCommand::SwitchInput(target))
     }
     // ── Media (mshellctl media …) — empty target = the active player ───────
-    async fn media_toggle(&self, target: String) {
-        let _ = self.tx.send(IPCCommand::MediaToggle(target));
+    async fn media_toggle(&self, target: String) -> fdo::Result<()> {
+        self.send(IPCCommand::MediaToggle(target))
     }
-    async fn media_next(&self, target: String) {
-        let _ = self.tx.send(IPCCommand::MediaNext(target));
+    async fn media_next(&self, target: String) -> fdo::Result<()> {
+        self.send(IPCCommand::MediaNext(target))
     }
-    async fn media_prev(&self, target: String) {
-        let _ = self.tx.send(IPCCommand::MediaPrev(target));
+    async fn media_prev(&self, target: String) -> fdo::Result<()> {
+        self.send(IPCCommand::MediaPrev(target))
     }
     async fn media_list_text(&self) -> String {
         render_media_list(false)
@@ -1743,229 +1856,207 @@ impl IPCService {
     async fn media_status_json(&self) -> String {
         render_media_status(true)
     }
-    async fn system_update(&self) {
-        let _ = self.tx.send(IPCCommand::SystemUpdate);
+    async fn system_update(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::SystemUpdate)
     }
-    async fn valent(&self) {
-        let _ = self.tx.send(IPCCommand::Valent);
+    async fn valent(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Valent)
     }
-    async fn keep_awake(&self) {
-        let _ = self.tx.send(IPCCommand::KeepAwake);
+    async fn keep_awake(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::KeepAwake)
     }
-    async fn twilight(&self) {
-        let _ = self.tx.send(IPCCommand::Twilight);
+    async fn twilight(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Twilight)
     }
-    async fn margo_layout_menu(&self) {
-        let _ = self.tx.send(IPCCommand::MargoLayoutMenu);
+    async fn margo_layout_menu(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::MargoLayoutMenu)
     }
-    async fn weather(&self) {
-        let _ = self.tx.send(IPCCommand::Weather);
+    async fn weather(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Weather)
     }
-    async fn keybinds(&self) {
-        let _ = self.tx.send(IPCCommand::Keybinds);
+    async fn keybinds(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Keybinds)
     }
-    async fn alarm_clock(&self) {
-        let _ = self.tx.send(IPCCommand::AlarmClock);
+    async fn alarm_clock(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::AlarmClock)
     }
-    async fn control_center(&self) {
-        let _ = self.tx.send(IPCCommand::ControlCenter);
+    async fn control_center(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::ControlCenter)
     }
     /// Control a Hidden Bar drawer: `toggle` / `expand` / `collapse` /
     /// `pin` / `unpin`. `name` targets a single named drawer; an empty
-    /// `name` reaches every drawer. Unknown actions are ignored.
-    async fn hidden_bar(&self, action: String, name: String) {
-        if let Some(verb) = mshell_common::hidden_bar::HiddenBarVerb::from_action(&action) {
-            let target = if name.trim().is_empty() {
-                None
-            } else {
-                Some(name)
-            };
-            let _ = self.tx.send(IPCCommand::HiddenBar(verb, target));
-        }
+    /// `name` reaches every drawer. An unknown action is rejected.
+    async fn hidden_bar(&self, action: String, name: String) -> fdo::Result<()> {
+        let verb =
+            mshell_common::hidden_bar::HiddenBarVerb::from_action(&action).ok_or_else(|| {
+                fdo::Error::InvalidArgs(format!(
+                    "unknown hidden-bar action '{action}' (toggle|expand|collapse|pin|unpin)"
+                ))
+            })?;
+        let target = if name.trim().is_empty() {
+            None
+        } else {
+            Some(name)
+        };
+        self.send(IPCCommand::HiddenBar(verb, target))
     }
-    async fn ssh_sessions(&self) {
-        let _ = self.tx.send(IPCCommand::SshSessions);
+    async fn ssh_sessions(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::SshSessions)
     }
-    async fn vpn(&self) {
-        let _ = self.tx.send(IPCCommand::Vpn);
+    async fn vpn(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Vpn)
     }
-    async fn ai(&self) {
-        let _ = self.tx.send(IPCCommand::Ai);
+    async fn ai(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Ai)
     }
-    async fn dns(&self) {
-        let _ = self.tx.send(IPCCommand::Dns);
+    async fn dns(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Dns)
     }
-    async fn translate_menu(&self) {
-        let _ = self.tx.send(IPCCommand::Translate);
+    async fn translate_menu(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Translate)
     }
-    async fn podman(&self) {
-        let _ = self.tx.send(IPCCommand::Podman);
+    async fn podman(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Podman)
     }
-    async fn notes(&self) {
-        let _ = self.tx.send(IPCCommand::Notes);
+    async fn notes(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Notes)
     }
-    async fn ip(&self) {
-        let _ = self.tx.send(IPCCommand::Ip);
+    async fn ip(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Ip)
     }
-    async fn vpn_indicator(&self) {
-        let _ = self.tx.send(IPCCommand::VpnIndicator);
+    async fn vpn_indicator(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::VpnIndicator)
     }
-    async fn network(&self) {
-        let _ = self.tx.send(IPCCommand::Network);
+    async fn network(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Network)
     }
-    async fn power(&self) {
-        let _ = self.tx.send(IPCCommand::Power);
+    async fn power(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Power)
     }
-    async fn media_player(&self) {
-        let _ = self.tx.send(IPCCommand::MediaPlayer);
+    async fn media_player(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::MediaPlayer)
     }
-    async fn mtune(&self) {
-        let _ = self.tx.send(IPCCommand::Mtune);
+    async fn mtune(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Mtune)
     }
-    async fn lyrics(&self) {
-        let _ = self.tx.send(IPCCommand::Lyrics);
+    async fn lyrics(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Lyrics)
     }
-    async fn session(&self) {
-        let _ = self.tx.send(IPCCommand::Session);
+    async fn session(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Session)
     }
-    async fn mdash(&self) {
-        let _ = self.tx.send(IPCCommand::Mdash);
+    async fn mdash(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Mdash)
     }
-    async fn plugin_reload(&self, key: String) {
-        let _ = self.tx.send(IPCCommand::PluginReload(key));
+    async fn plugin_reload(&self, key: String) -> fdo::Result<()> {
+        self.send(IPCCommand::PluginReload(key))
     }
 
-    async fn plugin_keybind(&self, arg: String) {
+    async fn plugin_keybind(&self, arg: String) -> fdo::Result<()> {
         let (key, id) = arg.split_once('|').unwrap_or((arg.as_str(), ""));
-        let _ = self
-            .tx
-            .send(IPCCommand::PluginKeybind(key.to_string(), id.to_string()));
+        self.send(IPCCommand::PluginKeybind(key.to_string(), id.to_string()))
     }
 
-    async fn plugin_menu(&self, key: String) {
-        let _ = self.tx.send(IPCCommand::PluginMenu(key));
+    async fn plugin_menu(&self, key: String) -> fdo::Result<()> {
+        self.send(IPCCommand::PluginMenu(key))
     }
-    async fn session_lock(&self) {
-        let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Lock));
+    async fn session_lock(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::SessionAction(SessionAction::Lock))
     }
-    async fn session_logout(&self) {
-        let _ = self
-            .tx
-            .send(IPCCommand::SessionAction(SessionAction::Logout));
+    async fn session_logout(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::SessionAction(SessionAction::Logout))
     }
-    async fn session_suspend(&self) {
-        let _ = self
-            .tx
-            .send(IPCCommand::SessionAction(SessionAction::Suspend));
+    async fn session_suspend(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::SessionAction(SessionAction::Suspend))
     }
-    async fn session_reboot(&self) {
-        let _ = self
-            .tx
-            .send(IPCCommand::SessionAction(SessionAction::Reboot));
+    async fn session_reboot(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::SessionAction(SessionAction::Reboot))
     }
-    async fn session_shutdown(&self) {
-        let _ = self
-            .tx
-            .send(IPCCommand::SessionAction(SessionAction::Shutdown));
+    async fn session_shutdown(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::SessionAction(SessionAction::Shutdown))
     }
-    async fn close_all_menus(&self) {
-        let _ = self.tx.send(IPCCommand::CloseAllMenus);
+    async fn close_all_menus(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::CloseAllMenus)
     }
-    async fn volume_up(&self) {
-        let _ = self.tx.send(IPCCommand::VolumeUp);
+    async fn volume_up(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::VolumeUp)
     }
-    async fn volume_down(&self) {
-        let _ = self.tx.send(IPCCommand::VolumeDown);
+    async fn volume_down(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::VolumeDown)
     }
-    async fn mute(&self) {
-        let _ = self.tx.send(IPCCommand::Mute);
+    async fn mute(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Mute)
     }
-    async fn mic_mute(&self) {
-        let _ = self.tx.send(IPCCommand::MicMute);
+    async fn mic_mute(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::MicMute)
     }
-    async fn brightness_up(&self) {
-        let _ = self.tx.send(IPCCommand::BrightnessUp);
+    async fn brightness_up(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::BrightnessUp)
     }
-    async fn brightness_down(&self) {
-        let _ = self.tx.send(IPCCommand::BrightnessDown);
+    async fn brightness_down(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::BrightnessDown)
     }
-    async fn set_wallpaper(&self, path: &str) {
-        let _ = self.tx.send(IPCCommand::SetWallpaper(PathBuf::from(path)));
+    /// `path` must name an existing file (relative paths resolve against
+    /// the shell's cwd, so the CLI sends an absolute one).
+    async fn set_wallpaper(&self, path: &str) -> fdo::Result<()> {
+        let path = validate_wallpaper_path(path).map_err(fdo::Error::InvalidArgs)?;
+        self.send(IPCCommand::SetWallpaper(path))
     }
     /// Step the wallpaper: `direction` is `next`, `previous` /
     /// `prev`, or `random`.
-    async fn wallpaper_cycle(&self, direction: &str) {
-        use mshell_cache::wallpaper::CycleDirection;
-        let dir = match direction.to_ascii_lowercase().as_str() {
-            "previous" | "prev" => CycleDirection::Previous,
-            "random" => CycleDirection::Random,
-            _ => CycleDirection::Next,
-        };
-        let _ = self.tx.send(IPCCommand::WallpaperCycle(dir));
+    async fn wallpaper_cycle(&self, direction: &str) -> fdo::Result<()> {
+        let dir = parse_cycle_direction(direction).map_err(fdo::Error::InvalidArgs)?;
+        self.send(IPCCommand::WallpaperCycle(dir))
     }
-    async fn lock(&self) {
-        let _ = self.tx.send(IPCCommand::Lock);
+    async fn lock(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Lock)
     }
-    async fn check_lock(&self) -> bool {
+    async fn check_lock(&self) -> fdo::Result<bool> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = self.tx.send(IPCCommand::CheckLock(tx));
-        rx.await.unwrap_or(false)
+        self.send(IPCCommand::CheckLock(tx))?;
+        rx.await.map_err(|_| no_reply())
     }
-    async fn screenshare(&self, payload: &str) -> String {
+    async fn screenshare(&self, payload: &str) -> fdo::Result<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = self
-            .tx
-            .send(IPCCommand::Screenshare(tx, payload.to_string()));
-        rx.await.unwrap_or(String::new())
+        self.send(IPCCommand::Screenshare(tx, payload.to_string()))?;
+        rx.await.map_err(|_| no_reply())
     }
     /// Open the in-shell area selector and block until the user
     /// commits a rect (or cancels). Returns the geometry in slurp
     /// format `"X,Y WxH"` on commit, empty string on cancel. Used
     /// by `mscreenshot` CLI's region capture path so the rich
     /// in-shell selector replaces `slurp` when mshell is running.
-    async fn select_region(&self) -> String {
+    async fn select_region(&self) -> fdo::Result<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = self.tx.send(IPCCommand::SelectRegion(tx));
-        rx.await.unwrap_or_default()
+        self.send(IPCCommand::SelectRegion(tx))?;
+        rx.await.map_err(|_| no_reply())
     }
-    async fn open_settings(&self) {
-        let _ = self.tx.send(IPCCommand::OpenSettings);
+    async fn open_settings(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::OpenSettings)
     }
-    async fn open_wizard(&self) {
-        let _ = self.tx.send(IPCCommand::OpenWizard);
+    async fn open_wizard(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::OpenWizard)
     }
-    async fn close_settings(&self) {
-        let _ = self.tx.send(IPCCommand::CloseSettings);
+    async fn close_settings(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::CloseSettings)
     }
-    async fn inspect(&self) {
-        let _ = self.tx.send(IPCCommand::Inspect);
+    async fn inspect(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::Inspect)
     }
-    async fn bar_toggle_top(&self) {
-        let _ = self.tx.send(IPCCommand::BarToggleTop);
+    async fn bar_toggle_top(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::BarToggleTop)
     }
-    async fn bar_toggle_bottom(&self) {
-        let _ = self.tx.send(IPCCommand::BarToggleBottom);
+    async fn bar_toggle_bottom(&self) -> fdo::Result<()> {
+        self.send(IPCCommand::BarToggleBottom)
     }
-    async fn bar_toggle_left(&self) {
-        let _ = self.tx.send(IPCCommand::BarToggleLeft);
+    async fn bar_toggle_all(&self, exclude_hidden_by_default: bool) -> fdo::Result<()> {
+        self.send(IPCCommand::BarToggleAll(exclude_hidden_by_default))
     }
-    async fn bar_toggle_right(&self) {
-        let _ = self.tx.send(IPCCommand::BarToggleRight);
+    async fn bar_reveal_all(&self, exclude_hidden_by_default: bool) -> fdo::Result<()> {
+        self.send(IPCCommand::BarRevealAll(exclude_hidden_by_default))
     }
-    async fn bar_toggle_all(&self, exclude_hidden_by_default: bool) {
-        let _ = self
-            .tx
-            .send(IPCCommand::BarToggleAll(exclude_hidden_by_default));
-    }
-    async fn bar_reveal_all(&self, exclude_hidden_by_default: bool) {
-        let _ = self
-            .tx
-            .send(IPCCommand::BarRevealAll(exclude_hidden_by_default));
-    }
-    async fn bar_hide_all(&self, exclude_hidden_by_default: bool) {
-        let _ = self
-            .tx
-            .send(IPCCommand::BarHideAll(exclude_hidden_by_default));
+    async fn bar_hide_all(&self, exclude_hidden_by_default: bool) -> fdo::Result<()> {
+        self.send(IPCCommand::BarHideAll(exclude_hidden_by_default))
     }
 }
 
@@ -1982,7 +2073,177 @@ async fn start_shell_service(tx: mpsc::UnboundedSender<IPCCommand>) -> zbus::Res
 
 #[cfg(test)]
 mod tests {
-    use super::{ClipboardAction, mute_target, parse_clipboard_action, pick_device};
+    use super::{
+        ClipboardAction, mute_target, parse_bluetooth_action, parse_clipboard_action,
+        parse_cycle_direction, parse_game_mode, parse_launcher_tab, pick_device,
+        validate_wallpaper_path,
+    };
+    use mshell_cache::wallpaper::CycleDirection;
+
+    /// D-Bus type code for the Rust types the proxy trait uses.
+    fn dbus_sig(rust: &str) -> &'static str {
+        match rust.trim() {
+            "&str" | "String" => "s",
+            "u32" => "u",
+            "i32" => "i",
+            "f64" => "d",
+            "bool" => "b",
+            "Vec<String>" => "as",
+            "()" => "",
+            other => panic!("map Rust type `{other}` to a D-Bus signature"),
+        }
+    }
+
+    fn pascal(snake: &str) -> String {
+        snake
+            .split('_')
+            .map(|w| {
+                let mut c = w.chars();
+                c.next()
+                    .map(|f| f.to_ascii_uppercase().to_string() + c.as_str())
+                    .unwrap_or_default()
+            })
+            .collect()
+    }
+
+    /// The typed client (`mshell-ipc`'s `ShellProxy`, used by mshellctl and
+    /// mshellshare) must describe exactly the methods this server exports,
+    /// with the same in/out signatures — the old hand-typed method strings
+    /// drifted silently.
+    #[test]
+    fn proxy_matches_server_interface() {
+        use std::collections::BTreeMap;
+        use zbus::object_server::Interface;
+
+        // Server: introspection XML of the real interface.
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut xml = String::new();
+        super::IPCService::new(tx).introspect_to_writer(&mut xml, 0);
+        let mut server: BTreeMap<String, (String, String)> = BTreeMap::new();
+        let mut current: Option<String> = None;
+        for line in xml.lines().map(str::trim) {
+            if let Some(rest) = line.strip_prefix("<method name=\"") {
+                let name = rest.split('"').next().unwrap().to_string();
+                server.insert(name.clone(), Default::default());
+                current = (!line.ends_with("/>")).then_some(name);
+            } else if line.starts_with("</method>") {
+                current = None;
+            } else if let (Some(m), true) = (&current, line.starts_with("<arg ")) {
+                let attr = |k: &str| {
+                    line.split(&format!("{k}=\""))
+                        .nth(1)
+                        .and_then(|r| r.split('"').next())
+                        .unwrap_or("")
+                        .to_string()
+                };
+                let entry = server.get_mut(m).unwrap();
+                if attr("direction") == "out" {
+                    entry.1 += &attr("type");
+                } else {
+                    entry.0 += &attr("type");
+                }
+            }
+        }
+
+        // Client: the proxy trait's declarations.
+        let src = include_str!("../../mshell-ipc/src/lib.rs");
+        let mut client: BTreeMap<String, (String, String)> = BTreeMap::new();
+        for line in src.lines().map(str::trim) {
+            let Some(rest) = line.strip_prefix("fn ") else {
+                continue;
+            };
+            let Some(sig) = rest.strip_suffix(';') else {
+                continue;
+            };
+            let (name, rest) = sig.split_once('(').unwrap();
+            let (args, ret) = rest.split_once(") -> zbus::Result<").unwrap();
+            let ret = ret.strip_suffix('>').unwrap();
+            let ins: String = args
+                .split(',')
+                .skip(1) // &self
+                .filter(|a| !a.trim().is_empty())
+                .map(|a| dbus_sig(a.split_once(':').unwrap().1))
+                .collect();
+            client.insert(pascal(name), (ins, dbus_sig(ret).to_string()));
+        }
+
+        assert!(client.len() > 100, "parsed the proxy trait");
+        for (name, sig) in &server {
+            if name.starts_with("org.") {
+                continue;
+            }
+            assert_eq!(
+                client.get(name),
+                Some(sig),
+                "{name}: proxy (left) vs server (right)"
+            );
+        }
+        for name in client.keys() {
+            assert!(
+                server.contains_key(name),
+                "proxy method {name} has no server side"
+            );
+        }
+    }
+
+    #[test]
+    fn game_mode_accepts_on_off_toggle_and_rejects_the_rest() {
+        assert_eq!(parse_game_mode("on"), Ok(Some(true)));
+        assert_eq!(parse_game_mode(" Enable "), Ok(Some(true)));
+        assert_eq!(parse_game_mode("off"), Ok(Some(false)));
+        assert_eq!(parse_game_mode("0"), Ok(Some(false)));
+        assert_eq!(parse_game_mode("toggle"), Ok(None));
+        // A typo used to silently toggle.
+        assert!(parse_game_mode("of").is_err());
+        assert!(parse_game_mode("").is_err());
+    }
+
+    #[test]
+    fn cycle_direction_rejects_unknown() {
+        assert_eq!(parse_cycle_direction("next"), Ok(CycleDirection::Next));
+        assert_eq!(parse_cycle_direction("PREV"), Ok(CycleDirection::Previous));
+        assert_eq!(
+            parse_cycle_direction("previous"),
+            Ok(CycleDirection::Previous)
+        );
+        assert_eq!(parse_cycle_direction("random"), Ok(CycleDirection::Random));
+        assert!(parse_cycle_direction("sideways").is_err());
+    }
+
+    #[test]
+    fn bluetooth_action_rejects_unknown() {
+        for ok in ["toggle", "connect", "disconnect", "connect:3"] {
+            assert_eq!(parse_bluetooth_action(ok), Ok(ok.to_string()), "{ok}");
+        }
+        assert!(parse_bluetooth_action("conect").is_err());
+        assert!(parse_bluetooth_action("connect:x").is_err());
+        assert!(parse_bluetooth_action("connect:999").is_err());
+    }
+
+    #[test]
+    fn launcher_tab_is_canonicalised_or_rejected() {
+        assert_eq!(parse_launcher_tab("apps"), Ok("Apps".to_string()));
+        assert_eq!(parse_launcher_tab("All"), Ok("All".to_string()));
+        assert!(parse_launcher_tab("Games").is_err());
+    }
+
+    #[test]
+    fn wallpaper_path_must_be_an_existing_file() {
+        let dir = std::env::temp_dir();
+        assert!(validate_wallpaper_path("/nonexistent/wall.png").is_err());
+        assert!(
+            validate_wallpaper_path(dir.to_str().unwrap()).is_err(),
+            "a directory is not a wallpaper"
+        );
+        assert!(validate_wallpaper_path("").is_err());
+        let file = dir.join(format!("mshell-wall-test-{}.png", std::process::id()));
+        std::fs::write(&file, b"x").unwrap();
+        assert_eq!(
+            validate_wallpaper_path(file.to_str().unwrap()),
+            Ok(file.clone())
+        );
+        let _ = std::fs::remove_file(&file);
+    }
 
     #[test]
     fn mute_target_encodes_off_on_and_toggle() {

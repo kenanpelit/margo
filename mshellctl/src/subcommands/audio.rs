@@ -1,4 +1,4 @@
-use crate::bus::{bus_command, bus_command_with_arg, bus_command_with_reply};
+use crate::bus::shell;
 use clap::{Subcommand, ValueEnum};
 
 /// Force a mute state; absence of the argument means "toggle".
@@ -64,61 +64,61 @@ fn mute_mode(state: Option<MuteArg>) -> i32 {
 pub async fn execute(command: AudioCommands) -> anyhow::Result<()> {
     match command {
         AudioCommands::List { json } => {
-            let method = if json {
-                "AudioListJson"
+            let shell = shell().await?;
+            let out = if json {
+                shell.audio_list_json().await?
             } else {
-                "AudioListText"
+                shell.audio_list_text().await?
             };
-            let out: String = bus_command_with_reply(method).await?;
             println!("{out}");
         }
         AudioCommands::Status { json } => {
-            let method = if json {
-                "AudioStatusJson"
+            let shell = shell().await?;
+            let out = if json {
+                shell.audio_status_json().await?
             } else {
-                "AudioStatusText"
+                shell.audio_status_text().await?
             };
-            let out: String = bus_command_with_reply(method).await?;
             println!("{out}");
         }
         AudioCommands::VolumeUp => {
-            bus_command("VolumeUp").await?;
+            shell().await?.volume_up().await?;
         }
         AudioCommands::VolumeDown => {
-            bus_command("VolumeDown").await?;
+            shell().await?.volume_down().await?;
         }
         AudioCommands::Volume { percent } => {
-            bus_command_with_arg("AudioVolumeSet", &percent).await?;
+            shell().await?.audio_volume_set(percent).await?;
         }
         AudioCommands::Mute { state } => {
-            bus_command_with_arg("AudioMuteSet", &mute_mode(state)).await?;
+            shell().await?.audio_mute_set(mute_mode(state)).await?;
         }
         AudioCommands::Output { target } => {
-            bus_command_with_arg("AudioOutputSwitch", &target).await?;
+            shell().await?.audio_output_switch(&target).await?;
         }
         AudioCommands::Input { target } => {
-            bus_command_with_arg("AudioInputSwitch", &target).await?;
+            shell().await?.audio_input_switch(&target).await?;
         }
         AudioCommands::Switch => {
-            bus_command_with_arg("AudioOutputSwitch", &"next".to_string()).await?;
+            shell().await?.audio_output_switch("next").await?;
         }
         AudioCommands::SwitchMic => {
-            bus_command_with_arg("AudioInputSwitch", &"next".to_string()).await?;
+            shell().await?.audio_input_switch("next").await?;
         }
         AudioCommands::RouteNext => {
-            bus_command("AudioRouteCycle").await?;
+            shell().await?.audio_route_cycle().await?;
         }
         AudioCommands::MicUp => {
-            bus_command("AudioMicUp").await?;
+            shell().await?.audio_mic_up().await?;
         }
         AudioCommands::MicDown => {
-            bus_command("AudioMicDown").await?;
+            shell().await?.audio_mic_down().await?;
         }
         AudioCommands::Mic { percent } => {
-            bus_command_with_arg("AudioMicVolumeSet", &percent).await?;
+            shell().await?.audio_mic_volume_set(percent).await?;
         }
         AudioCommands::MicMute { state } => {
-            bus_command_with_arg("AudioMicMuteSet", &mute_mode(state)).await?;
+            shell().await?.audio_mic_mute_set(mute_mode(state)).await?;
         }
     }
     Ok(())

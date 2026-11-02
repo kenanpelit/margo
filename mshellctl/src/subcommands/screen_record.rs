@@ -9,7 +9,7 @@
 //! mshellctl screenrecord stop
 //! ```
 
-use crate::bus::bus_command_with_arg;
+use crate::bus::shell;
 use clap::{Args, Subcommand, ValueEnum};
 
 #[derive(Subcommand, Debug)]
@@ -59,7 +59,7 @@ async fn send(action: &str, args: &RecordArgs) -> anyhow::Result<()> {
         args.area.as_str(),
         args.audio.as_deref().unwrap_or("-")
     );
-    bus_command_with_arg("ScreenRecord", &spec).await?;
+    shell().await?.screen_record(&spec).await?;
     Ok(())
 }
 
@@ -68,7 +68,7 @@ pub async fn execute(command: ScreenRecordCommands) -> anyhow::Result<()> {
         ScreenRecordCommands::Start(a) => send("start", &a).await?,
         ScreenRecordCommands::Toggle(a) => send("toggle", &a).await?,
         ScreenRecordCommands::Stop => {
-            bus_command_with_arg("ScreenRecord", &"stop".to_string()).await?;
+            shell().await?.screen_record("stop").await?;
         }
     }
     Ok(())

@@ -1,6 +1,6 @@
 //! `mshellctl dock …` — control the standalone mdock surface.
 
-use crate::bus::{bus_command, bus_command_with_arg};
+use crate::bus::shell;
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
@@ -21,10 +21,10 @@ pub enum DockCommands {
 
 pub async fn execute(command: DockCommands) -> anyhow::Result<()> {
     match command {
-        DockCommands::Toggle => bus_command("DockToggle").await?,
-        DockCommands::Show => bus_command("DockShow").await?,
-        DockCommands::Hide => bus_command("DockHide").await?,
-        DockCommands::Activate { index } => bus_command_with_arg("DockActivate", &index).await?,
+        DockCommands::Toggle => shell().await?.dock_toggle().await?,
+        DockCommands::Show => shell().await?.dock_show().await?,
+        DockCommands::Hide => shell().await?.dock_hide().await?,
+        DockCommands::Activate { index } => shell().await?.dock_activate(index).await?,
     }
     Ok(())
 }

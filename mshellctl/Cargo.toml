@@ -19,6 +19,7 @@ libc.workspace = true
 margo-logging = { path = "../margo-logging" }
 mctl = { path = "../mctl" }
 mshell-cli-style.workspace = true
+mshell-ipc.workspace = true
 mshell-plugins.workspace = true
 mshell-translate.workspace = true
 serde.workspace = true

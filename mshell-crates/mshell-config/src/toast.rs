@@ -31,6 +31,25 @@ impl ToastSeverity {
     }
 }
 
+impl std::str::FromStr for ToastSeverity {
+    type Err = String;
+
+    /// Parse a CLI / D-Bus severity name (`calm`, `warn`, `danger`,
+    /// `positive`, plus a few synonyms). An empty string is `calm`; anything
+    /// else unknown is an error rather than a silent fallback.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "" | "calm" | "info" => Ok(ToastSeverity::Calm),
+            "warn" | "warning" => Ok(ToastSeverity::Warn),
+            "danger" | "error" | "critical" => Ok(ToastSeverity::Danger),
+            "positive" | "success" | "ok" => Ok(ToastSeverity::Positive),
+            other => Err(format!(
+                "unknown toast severity '{other}' (calm | warn | danger | positive)"
+            )),
+        }
+    }
+}
+
 /// One toast: a symbolic icon, a title, an optional body line, and a severity.
 #[derive(Debug, Clone)]
 pub struct ToastEvent {
@@ -66,6 +85,15 @@ pub fn subscribe() -> broadcast::Receiver<ToastEvent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn severity_parses_known_names_and_rejects_typos() {
+        assert_eq!("".parse(), Ok(ToastSeverity::Calm));
+        assert_eq!("Warning".parse(), Ok(ToastSeverity::Warn));
+        assert_eq!("error".parse(), Ok(ToastSeverity::Danger));
+        assert_eq!("success".parse(), Ok(ToastSeverity::Positive));
+        assert!("wran".parse::<ToastSeverity>().is_err());
+    }
 
     #[test]
     fn push_reports_delivery_and_reaches_subscribers() {

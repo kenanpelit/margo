@@ -1,6 +1,6 @@
 use clap::Parser;
 use mshellctl::app::{Cli, Commands, GameModeAction};
-use mshellctl::bus::{bus_command, bus_command_with_arg, bus_command_with_reply};
+use mshellctl::bus::shell;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -8,15 +8,18 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Quit => {
-            bus_command("Quit").await?;
+            shell().await?.quit().await?;
         }
         Commands::Inspect => {
-            bus_command("Inspect").await?;
+            shell().await?.inspect().await?;
         }
         Commands::Menu { command } => mshellctl::subcommands::menu::execute(command).await?,
         Commands::Bar { command } => mshellctl::subcommands::bar::execute(command).await?,
         Commands::HiddenBar { action, name } => {
-            bus_command_with_arg("HiddenBar", &(action, name.unwrap_or_default())).await?;
+            shell()
+                .await?
+                .hidden_bar(&action, &name.unwrap_or_default())
+                .await?;
         }
         Commands::Audio { command } => mshellctl::subcommands::audio::execute(command).await?,
         Commands::Bluetooth { command } => {
@@ -30,7 +33,12 @@ async fn main() -> anyhow::Result<()> {
         Commands::Log { command } => mshellctl::subcommands::log::execute(command).await?,
         Commands::Dock { command } => mshellctl::subcommands::dock::execute(command).await?,
         Commands::SetWallpaper { path } => {
-            bus_command_with_arg("SetWallpaper", &path.to_string_lossy().as_ref()).await?;
+            // The shell resolves the path against its own cwd, not ours.
+            let path = std::path::absolute(&path)?;
+            shell()
+                .await?
+                .set_wallpaper(path.to_string_lossy().as_ref())
+                .await?;
         }
         Commands::Toast {
             title,
@@ -38,27 +46,24 @@ async fn main() -> anyhow::Result<()> {
             icon,
             severity,
         } => {
-            bus_command_with_arg(
-                "Toast",
-                &(
-                    title,
-                    body.unwrap_or_default(),
-                    icon.unwrap_or_default(),
-                    severity,
-                ),
-            )
-            .await?;
+            shell()
+                .await?
+                .toast(
+                    &title,
+                    &body.unwrap_or_default(),
+                    &icon.unwrap_or_default(),
+                    &severity,
+                )
+                .await?;
         }
         Commands::Gamemode { action } => match action {
             GameModeAction::Status => {
-                let s: String = bus_command_with_reply("GameModeStatus").await?;
+                let s: String = shell().await?.game_mode_status().await?;
                 println!("{s}");
             }
-            GameModeAction::On => bus_command_with_arg("GameMode", &"on".to_string()).await?,
-            GameModeAction::Off => bus_command_with_arg("GameMode", &"off".to_string()).await?,
-            GameModeAction::Toggle => {
-                bus_command_with_arg("GameMode", &"toggle".to_string()).await?
-            }
+            GameModeAction::On => shell().await?.game_mode("on").await?,
+            GameModeAction::Off => shell().await?.game_mode("off").await?,
+            GameModeAction::Toggle => shell().await?.game_mode("toggle").await?,
         },
         Commands::Lock { command } => mshellctl::subcommands::lock::execute(command).await?,
         Commands::Session { command } => mshellctl::subcommands::session::execute(command).await?,
@@ -79,7 +84,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Theme { command } => mshellctl::subcommands::theme::execute(command).await?,
         Commands::Wizard => {
-            bus_command("OpenWizard").await?;
+            shell().await?.open_wizard().await?;
         }
         Commands::Wallpaper { command } => {
             mshellctl::subcommands::wallpaper::execute(command).await?

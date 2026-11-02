@@ -1,4 +1,4 @@
-use crate::bus::{bus_command, bus_command_with_reply};
+use crate::bus::shell;
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
@@ -13,10 +13,10 @@ pub async fn execute(command: Option<LockCommands>) -> anyhow::Result<()> {
     match command {
         // Bare `mshellctl lock` (no subcommand) locks — the common case.
         None | Some(LockCommands::Activate) => {
-            bus_command("Lock").await?;
+            shell().await?.lock().await?;
         }
         Some(LockCommands::Check) => {
-            let locked: bool = bus_command_with_reply("CheckLock").await?;
+            let locked: bool = shell().await?.check_lock().await?;
             println!("{}", if locked { "locked" } else { "unlocked" });
         }
     }

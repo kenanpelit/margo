@@ -209,8 +209,6 @@ pub(crate) enum ShellInput {
     QueueFrameRedraw,
     BarToggleTop(Option<String>),
     BarToggleBottom(Option<String>),
-    BarToggleLeft(Option<String>),
-    BarToggleRight(Option<String>),
     BarToggleAll(Option<String>, bool),
     BarRevealAll(Option<String>, bool),
     BarHideAll(Option<String>, bool),
@@ -1004,16 +1002,6 @@ impl Component for Shell {
             ShellInput::BarToggleBottom(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::BarToggleBottom);
-                }
-            }
-            ShellInput::BarToggleLeft(monitor_name) => {
-                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::BarToggleLeft);
-                }
-            }
-            ShellInput::BarToggleRight(monitor_name) => {
-                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::BarToggleRight);
                 }
             }
             ShellInput::BarToggleAll(monitor_name, exclude_hidden_by_default) => {
