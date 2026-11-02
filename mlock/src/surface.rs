@@ -13,15 +13,14 @@ use crate::seat::SeatState;
 use crate::state::MlockState;
 
 pub struct MlockSurface {
-    // idx / output / lock_surface aren't read after construction, but
-    // their `Drop` semantics matter: dropping the lock_surface tells
-    // the compositor we no longer cover that output. Keep them alive.
+    /// Registry name of the `wl_output` global this surface covers.
     #[allow(dead_code)]
-    pub idx: usize,
+    pub global_name: u32,
     #[allow(dead_code)]
     pub output: wl_output::WlOutput,
     pub wl_surface: wl_surface::WlSurface,
-    #[allow(dead_code)]
+    /// Dropping a wayland-client proxy sends nothing; the compositor only
+    /// learns the output is no longer covered from `destroy()`.
     pub lock_surface: ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
     pub width: u32,
     pub height: u32,
@@ -31,13 +30,13 @@ pub struct MlockSurface {
 
 impl MlockSurface {
     pub fn new(
-        idx: usize,
+        global_name: u32,
         output: wl_output::WlOutput,
         wl_surface: wl_surface::WlSurface,
         lock_surface: ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
     ) -> Self {
         Self {
-            idx,
+            global_name,
             output,
             wl_surface,
             lock_surface,
@@ -46,6 +45,13 @@ impl MlockSurface {
             configured: false,
             needs_redraw: false,
         }
+    }
+
+    /// Tear the surface down when its output disappears. The protocol
+    /// requires the lock surface role object to go before its wl_surface.
+    pub fn destroy(self) {
+        self.lock_surface.destroy();
+        self.wl_surface.destroy();
     }
 
     /// Build a fresh ARGB8888 wl_shm buffer for this surface, paint

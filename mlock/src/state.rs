@@ -1,10 +1,12 @@
 //! Wayland client state — globals, outputs, the active session_lock,
 //! and per-output lock surfaces.
 
+use std::collections::BTreeMap;
+
 use anyhow::{Context, Result, anyhow, bail};
 use tracing::{debug, info, warn};
 use wayland_client::{
-    Connection, Dispatch, QueueHandle, WEnum,
+    Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum,
     globals::{GlobalList, GlobalListContents, registry_queue_init},
     protocol::{
         wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_output, wl_registry, wl_seat,
@@ -29,6 +31,105 @@ pub(crate) fn fail_message(fail_count: u32) -> String {
         format!("Wrong password · {fail_count} attempts")
     } else {
         "Wrong password".to_string()
+    }
+}
+
+/// One monitor as the registry advertised it, plus the lock surface that
+/// covers it once we hold the session lock.
+pub(crate) struct OutputSlot<O, S> {
+    pub output: O,
+    pub surface: Option<S>,
+}
+
+/// Outputs and their lock surfaces, keyed by the `wl_output` global's
+/// registry `name`.
+///
+/// The registry name is the only identity that survives hot-plug: it is
+/// what `wl_registry.global_remove` reports when a monitor goes away, and
+/// it is never reused for a different global during the connection. The
+/// previous layout kept outputs and surfaces in two `Vec`s matched by
+/// position and handed each lock surface its index as user data, so
+/// removing one monitor would have shifted every later index onto the
+/// wrong surface. Generic over the output and surface types so the
+/// bookkeeping can be tested without a compositor.
+pub(crate) struct OutputTable<O, S> {
+    slots: BTreeMap<u32, OutputSlot<O, S>>,
+}
+
+impl<O, S> OutputTable<O, S> {
+    pub fn new() -> Self {
+        Self {
+            slots: BTreeMap::new(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.slots.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.slots.is_empty()
+    }
+
+    /// Record a newly advertised output. Returns `false` (and keeps the
+    /// existing entry) if this global name is already known.
+    pub fn insert_output(&mut self, name: u32, output: O) -> bool {
+        if self.slots.contains_key(&name) {
+            return false;
+        }
+        self.slots.insert(
+            name,
+            OutputSlot {
+                output,
+                surface: None,
+            },
+        );
+        true
+    }
+
+    /// Forget an output whose global was removed, handing back the output
+    /// and its lock surface (if any) so the caller can destroy them.
+    /// `None` for names that are not outputs (seats, other globals).
+    pub fn remove(&mut self, name: u32) -> Option<OutputSlot<O, S>> {
+        self.slots.remove(&name)
+    }
+
+    /// Global names of the outputs that have no lock surface yet.
+    pub fn without_surface(&self) -> Vec<u32> {
+        self.slots
+            .iter()
+            .filter(|(_, slot)| slot.surface.is_none())
+            .map(|(name, _)| *name)
+            .collect()
+    }
+
+    pub fn output(&self, name: u32) -> Option<&O> {
+        self.slots.get(&name).map(|slot| &slot.output)
+    }
+
+    /// Attach the lock surface for `name`. Refuses (returns `false`) for an
+    /// unknown output or one that already has a surface — the protocol
+    /// allows only one lock surface per output.
+    pub fn set_surface(&mut self, name: u32, surface: S) -> bool {
+        match self.slots.get_mut(&name) {
+            Some(slot) if slot.surface.is_none() => {
+                slot.surface = Some(surface);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn surface_mut(&mut self, name: u32) -> Option<&mut S> {
+        self.slots
+            .get_mut(&name)
+            .and_then(|slot| slot.surface.as_mut())
+    }
+
+    pub fn surfaces_mut(&mut self) -> impl Iterator<Item = &mut S> {
+        self.slots
+            .values_mut()
+            .filter_map(|slot| slot.surface.as_mut())
     }
 }
 
@@ -62,12 +163,11 @@ pub struct MlockState {
     pub seat: Option<wl_seat::WlSeat>,
     pub session_lock_manager: Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
 
-    // Outputs discovered through the registry. Each entry becomes one
-    // MlockSurface once we hold the session_lock.
-    pub outputs: Vec<wl_output::WlOutput>,
+    // Outputs discovered through the registry, at startup and hot-plugged
+    // later, each with its MlockSurface once we hold the session_lock.
+    pub(crate) outputs: OutputTable<wl_output::WlOutput, MlockSurface>,
 
     pub session_lock: Option<ext_session_lock_v1::ExtSessionLockV1>,
-    pub surfaces: Vec<MlockSurface>,
 
     pub seat_state: SeatState,
 
@@ -82,14 +182,16 @@ pub struct MlockState {
 }
 
 impl MlockState {
-    pub fn new(conn: &Connection, qh: &QueueHandle<MlockState>) -> Result<Self> {
-        let (globals, _) = registry_queue_init::<MlockState>(conn).map_err(|e| {
+    /// Connect the registry and bind the startup globals. Returns the event
+    /// queue the registry lives on: it must be the queue the caller
+    /// dispatches, because later `global` / `global_remove` events (monitor
+    /// hot-plug) are delivered to it. Discarding it, as this used to, threw
+    /// every hot-plug event away.
+    pub fn new(conn: &Connection) -> Result<(Self, EventQueue<MlockState>)> {
+        let (globals, event_queue) = registry_queue_init::<MlockState>(conn).map_err(|e| {
             anyhow!("registry init failed: {e}. compositor doesn't speak Wayland properly?")
         })?;
-
-        // Re-register registry listeners on our event queue so we
-        // also see *future* outputs (hot-plug).
-        let _registry = globals.registry().clone();
+        let qh = event_queue.handle();
 
         let user = crate::auth::current_user()
             .unwrap_or_else(|| std::env::var("USER").unwrap_or_else(|_| "user".to_string()));
@@ -124,16 +226,15 @@ impl MlockState {
             shm: None,
             seat: None,
             session_lock_manager: None,
-            outputs: Vec::new(),
+            outputs: OutputTable::new(),
             session_lock: None,
-            surfaces: Vec::new(),
             seat_state: SeatState::new(),
             unlocked: false,
             user,
         };
 
-        state.bind_globals(&globals, qh);
-        Ok(state)
+        state.bind_globals(&globals, &qh);
+        Ok((state, event_queue))
     }
 
     fn bind_globals(&mut self, globals: &GlobalList, qh: &QueueHandle<MlockState>) {
@@ -157,17 +258,7 @@ impl MlockState {
                     let v = g.version.clamp(1, 8);
                     self.seat = Some(registry.bind(g.name, v, qh, ()));
                 }
-                "wl_output" => {
-                    let v = g.version.clamp(1, 4);
-                    let output = registry.bind(g.name, v, qh, ());
-                    info!(
-                        idx = self.outputs.len(),
-                        global_name = g.name,
-                        version = v,
-                        "wl_output bound (per-instance)"
-                    );
-                    self.outputs.push(output);
-                }
+                "wl_output" => self.add_output(registry, g.name, g.version, qh),
                 "ext_session_lock_manager_v1" if self.session_lock_manager.is_none() => {
                     self.session_lock_manager = Some(registry.bind(g.name, 1, qh, ()));
                 }
@@ -175,6 +266,59 @@ impl MlockState {
             }
         }
         debug!(outputs = self.outputs.len(), "globals bound");
+    }
+
+    /// Bind one advertised `wl_output` and, if the session is already
+    /// locked, cover it with a lock surface straight away.
+    fn add_output(
+        &mut self,
+        registry: &wl_registry::WlRegistry,
+        name: u32,
+        version: u32,
+        qh: &QueueHandle<MlockState>,
+    ) {
+        if self.outputs.output(name).is_some() {
+            return;
+        }
+        let v = version.clamp(1, 4);
+        let output: wl_output::WlOutput = registry.bind(name, v, qh, ());
+        info!(global_name = name, version = v, "wl_output bound");
+        self.outputs.insert_output(name, output);
+        if self.session_lock.is_some() && !self.unlocked {
+            self.create_lock_surface(name, qh);
+        }
+    }
+
+    /// The monitor behind global `name` went away: destroy its lock surface
+    /// and release the output. Ignores names that aren't outputs.
+    fn remove_output(&mut self, name: u32) {
+        let Some(slot) = self.outputs.remove(name) else {
+            return;
+        };
+        info!(global_name = name, "wl_output removed");
+        if let Some(surface) = slot.surface {
+            surface.destroy();
+        }
+        if slot.output.version() >= 3 {
+            slot.output.release();
+        }
+    }
+
+    /// Create the lock surface for the known output `name`.
+    fn create_lock_surface(&mut self, name: u32, qh: &QueueHandle<MlockState>) {
+        let (Some(lock), Some(compositor)) = (self.session_lock.as_ref(), self.compositor.as_ref())
+        else {
+            return;
+        };
+        let Some(output) = self.outputs.output(name) else {
+            return;
+        };
+        let wl_surface = compositor.create_surface(qh, ());
+        let lock_surface = lock.get_lock_surface(&wl_surface, output, qh, name);
+        let surface = MlockSurface::new(name, output.clone(), wl_surface, lock_surface);
+        if self.outputs.set_surface(name, surface) {
+            info!(global_name = name, "lock_surface created");
+        }
     }
 
     pub fn assert_globals(&self) -> Result<()> {
@@ -208,25 +352,19 @@ impl MlockState {
             .session_lock_manager
             .as_ref()
             .context("session_lock_manager missing")?;
-        let compositor = self.compositor.as_ref().context("compositor missing")?;
+        if self.compositor.is_none() {
+            bail!("compositor missing");
+        }
 
         let lock = manager.lock(qh, ());
-        self.session_lock = Some(lock.clone());
+        self.session_lock = Some(lock);
 
         info!(
             output_count = self.outputs.len(),
             "creating per-output lock surfaces"
         );
-        for (idx, output) in self.outputs.iter().enumerate() {
-            let wl_surface = compositor.create_surface(qh, ());
-            let lock_surface = lock.get_lock_surface(&wl_surface, output, qh, idx);
-            info!(idx, "lock_surface created");
-            self.surfaces.push(MlockSurface::new(
-                idx,
-                output.clone(),
-                wl_surface,
-                lock_surface,
-            ));
+        for name in self.outputs.without_surface() {
+            self.create_lock_surface(name, qh);
         }
 
         Ok(())
@@ -334,14 +472,14 @@ impl MlockState {
     }
 
     pub fn request_redraw_all(&mut self) {
-        for s in self.surfaces.iter_mut() {
+        for s in self.outputs.surfaces_mut() {
             s.needs_redraw = true;
         }
     }
 
     pub fn render_pending(&mut self, qh: &QueueHandle<MlockState>) -> Result<()> {
         let shm = self.shm.as_ref().context("shm missing")?;
-        for surface in self.surfaces.iter_mut() {
+        for surface in self.outputs.surfaces_mut() {
             if surface.needs_redraw && surface.configured {
                 surface.render(
                     shm,
@@ -364,21 +502,34 @@ impl MlockState {
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for MlockState {
     fn event(
-        _state: &mut Self,
-        _registry: &wl_registry::WlRegistry,
+        state: &mut Self,
+        registry: &wl_registry::WlRegistry,
         event: wl_registry::Event,
         _: &GlobalListContents,
         _conn: &Connection,
-        _qh: &QueueHandle<Self>,
+        qh: &QueueHandle<Self>,
     ) {
-        // Hot-plug handling could go here. For MVP we lock the
-        // outputs present at startup; new outputs would need a fresh
-        // lock surface. Keeping it simple — just log.
-        if let wl_registry::Event::Global {
-            interface, name, ..
-        } = event
-        {
-            debug!("registry global: {interface} (name={name})");
+        // Monitor hot-plug while locked (docking, closing the lid with only
+        // the external screen left). margo paints outputs without a lock
+        // surface black, so nothing leaks, but without these arms a new
+        // monitor stays black with no password prompt and a removed one
+        // keeps a dead lock surface.
+        match event {
+            wl_registry::Event::Global {
+                interface,
+                name,
+                version,
+            } => {
+                debug!("registry global: {interface} (name={name})");
+                if interface == "wl_output" {
+                    state.add_output(registry, name, version, qh);
+                }
+            }
+            wl_registry::Event::GlobalRemove { name } => {
+                debug!("registry global_remove: name={name}");
+                state.remove_output(name);
+            }
+            _ => {}
         }
     }
 }
@@ -541,12 +692,12 @@ impl Dispatch<ext_session_lock_v1::ExtSessionLockV1, ()> for MlockState {
     }
 }
 
-impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for MlockState {
+impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, u32> for MlockState {
     fn event(
         state: &mut Self,
         lock_surface: &ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
         event: ext_session_lock_surface_v1::Event,
-        idx: &usize,
+        global_name: &u32,
         _: &Connection,
         qh: &QueueHandle<Self>,
     ) {
@@ -556,13 +707,20 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for M
             height,
         } = event
         {
-            info!(idx, width, height, serial, "lock surface configure");
+            let name = *global_name;
+            info!(
+                global_name = name,
+                width, height, serial, "lock surface configure"
+            );
             lock_surface.ack_configure(serial);
             if width == 0 || height == 0 {
-                warn!(idx, "configure with zero dimensions — skipping render");
+                warn!(
+                    global_name = name,
+                    "configure with zero dimensions — skipping render"
+                );
                 return;
             }
-            if let Some(surface) = state.surfaces.get_mut(*idx) {
+            if let Some(surface) = state.outputs.surface_mut(name) {
                 surface.configured = true;
                 surface.width = width;
                 surface.height = height;
@@ -575,7 +733,7 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for M
             // split all along.
             let MlockState {
                 shm,
-                surfaces,
+                outputs,
                 seat_state,
                 user,
                 backdrop,
@@ -586,7 +744,7 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for M
                 ..
             } = state;
             if let Some(shm) = shm.as_ref()
-                && let Some(surface) = surfaces.get_mut(*idx)
+                && let Some(surface) = outputs.surface_mut(name)
             {
                 match surface.render(
                     shm,
@@ -599,8 +757,8 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for M
                     toggles,
                     info,
                 ) {
-                    Ok(()) => info!(idx, "initial render dispatched"),
-                    Err(e) => warn!(idx, "initial render failed: {e:#}"),
+                    Ok(()) => info!(global_name = name, "initial render dispatched"),
+                    Err(e) => warn!(global_name = name, "initial render failed: {e:#}"),
                 }
             }
         }
@@ -609,7 +767,71 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for M
 
 #[cfg(test)]
 mod tests {
-    use super::fail_message;
+    use super::{OutputTable, fail_message};
+
+    #[test]
+    fn removing_an_output_leaves_the_others_on_their_own_surfaces() {
+        // Keyed by registry name, not position: removing the first monitor
+        // must not shift the second one's surface onto a different output.
+        let mut t: OutputTable<&str, &str> = OutputTable::new();
+        assert!(t.insert_output(30, "eDP-1"));
+        assert!(t.insert_output(31, "HDMI-A-1"));
+        assert!(t.set_surface(30, "lock-eDP"));
+        assert!(t.set_surface(31, "lock-HDMI"));
+
+        let gone = t.remove(30).expect("output 30 was known");
+        assert_eq!(gone.output, "eDP-1");
+        assert_eq!(gone.surface, Some("lock-eDP"));
+
+        assert_eq!(t.len(), 1);
+        assert_eq!(t.surface_mut(31).copied(), Some("lock-HDMI"));
+        assert_eq!(t.surface_mut(30), None);
+    }
+
+    #[test]
+    fn removing_a_non_output_global_is_ignored() {
+        let mut t: OutputTable<&str, &str> = OutputTable::new();
+        t.insert_output(30, "eDP-1");
+        assert!(t.remove(7).is_none(), "a seat / other global name");
+        assert_eq!(t.len(), 1);
+    }
+
+    #[test]
+    fn a_hotplugged_output_is_the_only_one_without_a_surface() {
+        let mut t: OutputTable<&str, &str> = OutputTable::new();
+        t.insert_output(30, "eDP-1");
+        t.set_surface(30, "lock-eDP");
+        // Docked while locked.
+        t.insert_output(45, "DP-2");
+        assert_eq!(t.without_surface(), vec![45]);
+        assert!(t.set_surface(45, "lock-DP"));
+        assert!(t.without_surface().is_empty());
+        assert_eq!(t.surfaces_mut().count(), 2);
+    }
+
+    #[test]
+    fn one_lock_surface_per_output_and_no_duplicate_outputs() {
+        let mut t: OutputTable<&str, &str> = OutputTable::new();
+        assert!(t.insert_output(30, "eDP-1"));
+        assert!(!t.insert_output(30, "eDP-1 again"), "same global twice");
+        assert_eq!(t.output(30).copied(), Some("eDP-1"));
+        assert!(t.set_surface(30, "first"));
+        assert!(!t.set_surface(30, "second"), "ext-session-lock allows one");
+        assert_eq!(t.surface_mut(30).copied(), Some("first"));
+        assert!(!t.set_surface(99, "orphan"), "unknown output");
+    }
+
+    #[test]
+    fn every_output_removed_then_one_returns() {
+        // Lid closed on the only monitor, then reopened.
+        let mut t: OutputTable<&str, &str> = OutputTable::new();
+        t.insert_output(30, "eDP-1");
+        t.set_surface(30, "lock-eDP");
+        t.remove(30);
+        assert!(t.is_empty());
+        t.insert_output(52, "eDP-1");
+        assert_eq!(t.without_surface(), vec![52]);
+    }
 
     #[test]
     fn first_failure_shows_plain_message() {

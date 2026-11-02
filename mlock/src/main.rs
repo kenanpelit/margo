@@ -15,7 +15,8 @@
 //!   1. Connect to Wayland, bind globals
 //!   2. ExtSessionLockManagerV1::lock() → SessionLock
 //!   3. For each wl_output: SessionLock::get_lock_surface() and submit
-//!      an initial buffer
+//!      an initial buffer (outputs hot-plugged later get one too; removed
+//!      outputs have theirs destroyed)
 //!   4. Spin the event queue, handle keystrokes
 //!   5. Enter → PAM auth → on success SessionLock::unlock_and_destroy()
 //!   6. Drain the queue, exit cleanly
@@ -139,10 +140,9 @@ fn init_logging() {
 fn run() -> Result<()> {
     info!("mlock starting");
     let conn = Connection::connect_to_env().context("connect to Wayland")?;
-    let mut event_queue = conn.new_event_queue();
+    // The registry's queue is the main queue: monitor hot-plug arrives on it.
+    let (mut state, mut event_queue) = MlockState::new(&conn)?;
     let qh = event_queue.handle();
-
-    let mut state = MlockState::new(&conn, &qh)?;
 
     // Initial roundtrip: registry → globals → outputs.
     event_queue
