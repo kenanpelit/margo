@@ -26,6 +26,7 @@
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::mem;
 
 use smithay::output::Output;
@@ -65,6 +66,9 @@ pub struct ExtWorkspaceManagerState {
     instances: HashMap<ExtWorkspaceManagerV1, Vec<Action>>,
     groups: HashMap<Output, GroupData>,
     workspaces: HashMap<WsKey, WorkspaceData>,
+    /// [`monitor_fingerprint`] of the monitors the last `refresh` mirrored;
+    /// unchanged monitors skip the snapshot and diff.
+    last_fingerprint: Option<u64>,
 }
 
 struct GroupData {
@@ -180,8 +184,22 @@ impl ExtWorkspaceManagerState {
             instances: HashMap::new(),
             groups: HashMap::new(),
             workspaces: HashMap::new(),
+            last_fingerprint: None,
         }
     }
+}
+
+/// Hash of everything `refresh` mirrors, per monitor in order: output,
+/// name, current tagset (the index is the position). Equal fingerprints
+/// mean `refresh` would send nothing. Allocates nothing.
+pub fn monitor_fingerprint<'a, O: Hash + 'a>(
+    monitors: impl Iterator<Item = (&'a O, &'a str, u32)>,
+) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for (idx, (output, name, tagset)) in monitors.enumerate() {
+        (idx, output, name, tagset).hash(&mut hasher);
+    }
+    hasher.finish()
 }
 
 /// Emit `workspace_enter`/`workspace_leave` linking a workspace to its
@@ -214,6 +232,18 @@ fn remove_workspace_instances(groups: &HashMap<Output, GroupData>, data: &Worksp
 /// Diff margo's monitors/tags against the tracked workspace set and emit
 /// events. Called once per repaint from `MargoState::post_repaint`.
 pub fn refresh(state: &mut MargoState) {
+    // Runs after every rendered frame on every output; nearly always
+    // nothing changed. New managers are primed in `bind`, not here.
+    let fingerprint = monitor_fingerprint(
+        state
+            .monitors
+            .iter()
+            .map(|m| (&m.output, m.name.as_str(), m.current_tagset())),
+    );
+    if state.ext_workspace_state.last_fingerprint == Some(fingerprint) {
+        return;
+    }
+    state.ext_workspace_state.last_fingerprint = Some(fingerprint);
     // Monitor snapshot — avoid borrowing `state` while we mutate the proto.
     struct MonSnap {
         output: Output,
@@ -548,4 +578,34 @@ macro_rules! delegate_ext_workspace {
             smithay::reexports::wayland_protocols::ext::workspace::v1::server::ext_workspace_group_handle_v1::ExtWorkspaceGroupHandleV1: smithay::reexports::wayland_protocols::ext::workspace::v1::server::ext_workspace_manager_v1::ExtWorkspaceManagerV1
         ] => $crate::protocols::ext_workspace::ExtWorkspaceManagerState);
     };
+}
+
+#[cfg(test)]
+mod fingerprint_tests {
+    use super::monitor_fingerprint;
+
+    #[test]
+    fn fingerprint_tracks_outputs_names_and_tagsets() {
+        let fp = |list: &[(u32, &'static str, u32)]| {
+            monitor_fingerprint(list.iter().map(|(o, n, t)| (o, *n, *t)))
+        };
+        let base = [(1_u32, "DP-1", 0b1), (2, "DP-2", 0b10)];
+        assert_eq!(fp(&base), fp(&base));
+        assert_ne!(
+            fp(&base),
+            fp(&[(1, "DP-1", 0b11), (2, "DP-2", 0b10)]),
+            "tag change"
+        );
+        assert_ne!(
+            fp(&base),
+            fp(&[(3, "DP-1", 0b1), (2, "DP-2", 0b10)]),
+            "replugged output"
+        );
+        assert_ne!(fp(&base), fp(&base[..1]), "unplugged output");
+        assert_ne!(
+            fp(&base),
+            fp(&[(2, "DP-2", 0b10), (1, "DP-1", 0b1)]),
+            "reordered"
+        );
+    }
 }
