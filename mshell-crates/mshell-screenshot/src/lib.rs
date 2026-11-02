@@ -152,14 +152,16 @@ pub fn record_screen<S, D>(
                 Ok(o) => o,
                 Err(e) => return on_started(Err(e.into())),
             };
+            let layout = outputs.clone();
             select_region(&outputs, move |region_result| match region_result {
                 // Recording cares only about the rect — Ctrl+S /
                 // Ctrl+E shortcut overrides are screenshot-only,
                 // so the second tuple element is discarded.
                 Ok((region, _override)) => {
+                    let (x, y) = region_global_origin(&region, &layout);
                     let args = WfRecorderArgs::Region {
-                        x: region.x,
-                        y: region.y,
+                        x,
+                        y,
                         width: region.width,
                         height: region.height,
                     };
@@ -428,6 +430,18 @@ fn finish_with_editor(
     }
 }
 
+/// Global layout origin of an area-selector region. The selector reports
+/// coordinates local to `region.output`; wf-recorder's `--geometry` (like
+/// slurp/grim) takes global ones. An unknown output is left untranslated.
+fn region_global_origin(region: &RegionSelection, outputs: &[OutputInfo]) -> (i32, i32) {
+    let (ox, oy) = outputs
+        .iter()
+        .find(|o| o.name == region.output)
+        .map(|o| (o.x, o.y))
+        .unwrap_or((0, 0));
+    (region.x + ox, region.y + oy)
+}
+
 fn annotated_sibling(path: &Path) -> PathBuf {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("shot");
     let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("png");
@@ -547,6 +561,35 @@ mod tests {
             annotated_sibling(Path::new("/p/noext")),
             PathBuf::from("/p/noext-edit.png")
         );
+    }
+
+    fn output(name: &str, x: i32, y: i32) -> OutputInfo {
+        OutputInfo {
+            name: name.into(),
+            x,
+            y,
+            width: 1920,
+            height: 1080,
+            scale: 1.0,
+        }
+    }
+
+    #[test]
+    fn recording_region_is_translated_to_global_coordinates() {
+        let outputs = [output("DP-1", 0, 0), output("HDMI-A-1", 1920, -200)];
+        let region = |name: &str| RegionSelection {
+            output: name.into(),
+            x: 100,
+            y: 50,
+            width: 640,
+            height: 480,
+        };
+        assert_eq!(region_global_origin(&region("DP-1"), &outputs), (100, 50));
+        assert_eq!(
+            region_global_origin(&region("HDMI-A-1"), &outputs),
+            (2020, -150)
+        );
+        assert_eq!(region_global_origin(&region("gone"), &outputs), (100, 50));
     }
 
     #[test]
