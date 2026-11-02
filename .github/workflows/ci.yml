@@ -62,6 +62,10 @@ jobs:
           rustup component add clippy
 
       - uses: actions/checkout@v5
+        with:
+          # Full history: the panic ratchet walks the commits since the base
+          # to check every baseline raise carries its reason trailer.
+          fetch-depth: 0
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -114,8 +118,15 @@ jobs:
         # Non-test .unwrap()/.expect()/panic!() count may only go down.
         # Baseline lives in scripts/panic-baseline.txt; the script fails in
         # BOTH directions (up = regression, down = please lock the cleanup
-        # in by lowering the baseline).
-        run: ./scripts/panic-ratchet.sh
+        # in by lowering the baseline). A commit that raises the baseline
+        # must carry a `PANIC-BASELINE-RAISE: <reason>` trailer
+        # (scripts/panic-baseline-guard.sh), checked from the PR base or,
+        # on a push, from the previous tip.
+        env:
+          PANIC_RATCHET_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          ./scripts/test-panic-baseline-guard.sh
+          ./scripts/panic-ratchet.sh
 
       - name: mtune de-brand (gate)
         # The mtune/ tree is a fork of an upstream GPL-3.0 GTK player; the

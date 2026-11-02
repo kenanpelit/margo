@@ -98,7 +98,11 @@ files, and overlapping feature mechanisms.**
   panic kills the whole desktop; in mshell it kills the bar. Sweep hot paths
   (render, input, IPC handlers, config/file I/O) toward `Result` + graceful
   degrade. **CI-ratcheted** via `scripts/panic-ratchet.sh` +
-  `scripts/panic-baseline.txt` (baseline **370**) — the count can only go down.
+  `scripts/panic-baseline.txt` (baseline **446** on 4.5.0; it went 321 → 457 →
+  468 → 446 because raises were allowed with only a commit-message note). A
+  raise now needs a `PANIC-BASELINE-RAISE: <reason>` trailer on the commit that
+  makes it, enforced in CI by `scripts/panic-baseline-guard.sh`; lowering it
+  needs nothing.
   The ratchet now also counts `unreachable!`/`todo!`/`unimplemented!` and skips
   test code by brace depth (so a mid-file `#[cfg(test)]` no longer hides the
   production code after it). The screencast pod-parsing path (`pw_utils.rs`,

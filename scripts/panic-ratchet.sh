@@ -10,7 +10,11 @@
 #   * count > baseline  → CI fails. Convert the new call sites to graceful
 #     handling (Result + log/degrade), or — when a new unwrap is genuinely
 #     justified (provably infallible, startup-only assert) — raise the
-#     baseline in the same PR and say why in the commit message.
+#     baseline in the same PR, in a commit carrying a
+#     `PANIC-BASELINE-RAISE: <reason>` trailer. scripts/panic-baseline-guard.sh
+#     (run at the end of this script) fails any commit since the base
+#     ($PANIC_RATCHET_BASE, else the merge-base with origin/main) that raises
+#     the baseline without that trailer.
 #   * count < baseline  → CI fails too, with a friendly message: ratchet the
 #     baseline DOWN to the new count so the cleanup is locked in.
 #
@@ -103,7 +107,8 @@ echo "panic-prone calls (non-test): $count  (baseline: $baseline)"
 if [ "$count" -gt "$baseline" ]; then
     echo "FAIL: count rose above the baseline ($count > $baseline)."
     echo "Convert the new .unwrap()/.expect()/panic!() call sites to graceful"
-    echo "handling, or raise $baseline_file in this PR with a rationale."
+    echo "handling, or raise $baseline_file in this PR in a commit with a"
+    echo "'PANIC-BASELINE-RAISE: <reason>' trailer."
     exit 1
 elif [ "$count" -lt "$baseline" ]; then
     echo "FAIL (the good kind): count dropped below the baseline ($count < $baseline)."
@@ -112,3 +117,6 @@ elif [ "$count" -lt "$baseline" ]; then
 fi
 
 echo "OK: at baseline."
+
+# The number only goes up on purpose: every raise needs a reason trailer.
+./scripts/panic-baseline-guard.sh
