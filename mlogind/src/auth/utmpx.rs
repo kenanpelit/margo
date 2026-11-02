@@ -1,3 +1,12 @@
+/// `ut_line` and `ut_id` for VT `tty`: `"tty10"` and `"10"`. The old code
+/// added the number to `b'0'` as one character, which only works for 0–9:
+/// VTs 10–12 were recorded as `tty:`, `tty;` and `tty<`. `None` outside 1–12.
+fn line_and_id(tty: u8) -> Option<(String, String)> {
+    (1..=12)
+        .contains(&tty)
+        .then(|| (format!("tty{tty}"), tty.to_string()))
+}
+
 pub struct UtmpxSession {
     #[cfg(target_env = "gnu")]
     session: libc::utmpx,
@@ -35,18 +44,16 @@ pub fn add_utmpx_entry(username: &str, tty: u8, pid: u32) -> UtmpxSession {
             s.ut_user[i] = *b as libc::c_char;
         }
 
-        if tty > 12 {
+        let Some((line, id)) = line_and_id(tty) else {
             log::error!("Invalid TTY");
             std::process::exit(1);
+        };
+        for (slot, b) in s.ut_line.iter_mut().zip(line.bytes()) {
+            *slot = b as libc::c_char;
         }
-        let tty_c_char = (b'0' + tty) as libc::c_char;
-
-        s.ut_line[0] = b't' as libc::c_char;
-        s.ut_line[1] = b't' as libc::c_char;
-        s.ut_line[2] = b'y' as libc::c_char;
-        s.ut_line[3] = tty_c_char;
-
-        s.ut_id[0] = tty_c_char;
+        for (slot, b) in s.ut_id.iter_mut().zip(id.bytes()) {
+            *slot = b as libc::c_char;
+        }
 
         use std::time::SystemTime;
 
@@ -107,5 +114,27 @@ impl Drop for UtmpxSession {
             libc::pututxline(entry as *const libc::utmpx);
             libc::endutxent();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::line_and_id;
+
+    #[test]
+    fn single_digit_vts() {
+        assert_eq!(line_and_id(2), Some(("tty2".into(), "2".into())));
+    }
+
+    #[test]
+    fn two_digit_vts_are_spelled_out_not_offset_past_nine() {
+        assert_eq!(line_and_id(10), Some(("tty10".into(), "10".into())));
+        assert_eq!(line_and_id(12), Some(("tty12".into(), "12".into())));
+    }
+
+    #[test]
+    fn out_of_range_vts_are_refused() {
+        assert_eq!(line_and_id(0), None);
+        assert_eq!(line_and_id(13), None);
     }
 }
