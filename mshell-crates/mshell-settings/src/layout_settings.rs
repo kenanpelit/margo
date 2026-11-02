@@ -1077,7 +1077,7 @@ fn build_tile(o: &EditorOut, tw: f64, th: f64) -> gtk::Box {
     tile.set_size_request(tw as i32, th as i32);
     tile.set_cursor_from_name(Some("grab"));
 
-    let dot = o.color.as_deref().unwrap_or("#888888");
+    let dot = dot_markup(o.color.as_deref());
     let name = if o.label.is_empty() {
         o.connector.clone()
     } else {
@@ -1091,7 +1091,7 @@ fn build_tile(o: &EditorOut, tw: f64, th: f64) -> gtk::Box {
     label.set_hexpand(true);
     label.set_vexpand(true);
     label.set_markup(&format!(
-        "<span foreground=\"{}\">●</span> {}\n<span size=\"x-small\">{}×{}</span>",
+        "{} {}\n<span size=\"x-small\">{}×{}</span>",
         dot,
         gtk::glib::markup_escape_text(&name),
         o.width,
@@ -1099,6 +1099,17 @@ fn build_tile(o: &EditorOut, tw: f64, th: f64) -> gtk::Box {
     ));
     tile.append(&label);
     tile
+}
+
+/// The tile's output-colour dot. An output without (or with an unreadable)
+/// mlayout colour gets a plain dot in the label's own theme colour rather
+/// than a hardcoded grey; a readable one is re-emitted as `#rrggbb`, so the
+/// raw config string never lands inside the markup attribute.
+fn dot_markup(color: Option<&str>) -> String {
+    match color.and_then(mshell_common::color::parse_hex_bytes) {
+        Some((r, g, b, _)) => format!("<span foreground=\"#{r:02x}{g:02x}{b:02x}\">●</span>"),
+        None => "●".to_string(),
+    }
 }
 
 fn parse_catalogue(body: &str) -> Result<LayoutCatalogue, String> {
@@ -1281,15 +1292,11 @@ fn rounded_rect(cr: &gtk::cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64
     cr.close_path();
 }
 
+/// An output's mlayout colour as RGB (alpha ignored — the preview paints
+/// its own translucency).
 fn parse_hex_rgb(s: Option<&str>) -> Option<(f64, f64, f64)> {
-    let s = s?.trim().trim_start_matches('#');
-    if s.len() < 6 {
-        return None;
-    }
-    let r = u8::from_str_radix(&s[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&s[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&s[4..6], 16).ok()?;
-    Some((r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0))
+    let (r, g, b, _) = mshell_common::color::parse_hex_rgba(s?)?;
+    Some((r, g, b))
 }
 
 /// Distinct fallback swatches when an output carries no mlayout colour.
@@ -1312,4 +1319,27 @@ fn is_valid_slug(s: &str) -> bool {
     !s.is_empty()
         && s.chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dot_markup_uses_theme_colour_without_a_valid_output_colour() {
+        assert_eq!(dot_markup(None), "●");
+        assert_eq!(dot_markup(Some("\"><b>x")), "●");
+        assert_eq!(
+            dot_markup(Some("0x3366ccff")),
+            "<span foreground=\"#3366cc\">●</span>"
+        );
+    }
+
+    #[test]
+    fn output_colour_parses_to_rgb() {
+        assert_eq!(parse_hex_rgb(Some("#ff0000")), Some((1.0, 0.0, 0.0)));
+        // The old byte-slicing parser panicked here (non-char-boundary slice).
+        assert_eq!(parse_hex_rgb(Some("1ä23456")), None);
+        assert_eq!(parse_hex_rgb(None), None);
+    }
 }

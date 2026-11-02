@@ -1,4 +1,5 @@
 pub mod box_with_resize;
+pub mod color;
 pub mod diagonal_revealer;
 pub mod dynamic_box;
 pub mod hidden_bar;

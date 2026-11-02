@@ -222,26 +222,7 @@ fn apply_node_properties(widget: &gtk::Widget, props: &HashMap<String, String>) 
 /// margo's compositor-conf (`0xrrggbbaa`) form. Returns `(r, g, b, a)` in
 /// the unit range; bogus input → opaque black so the swatch still renders.
 fn parse_hex_rgba(input: &str) -> (f64, f64, f64, f64) {
-    let s = input.trim();
-    let hex = s
-        .strip_prefix("0x")
-        .or_else(|| s.strip_prefix('#'))
-        .unwrap_or(s);
-    let bytes: Vec<u8> = (0..hex.len())
-        .step_by(2)
-        .filter_map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok())
-        .collect();
-    let to_unit = |b: u8| b as f64 / 255.0;
-    match bytes.len() {
-        3 => (to_unit(bytes[0]), to_unit(bytes[1]), to_unit(bytes[2]), 1.0),
-        4 => (
-            to_unit(bytes[0]),
-            to_unit(bytes[1]),
-            to_unit(bytes[2]),
-            to_unit(bytes[3]),
-        ),
-        _ => (0.0, 0.0, 0.0, 1.0),
-    }
+    mshell_common::color::parse_hex_rgba(input).unwrap_or((0.0, 0.0, 0.0, 1.0))
 }
 
 fn parse_align(s: &str) -> Option<gtk::Align> {

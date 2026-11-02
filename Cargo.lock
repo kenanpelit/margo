@@ -5489,6 +5489,7 @@ version = "4.5.0"
 dependencies = [
  "anyhow",
  "gtk4",
+ "mshell-common",
  "mshell-plugin-host",
  "tracing",
 ]
@@ -5636,6 +5637,7 @@ name = "mshell-sounds"
 version = "4.5.0"
 dependencies = [
  "rodio",
+ "tracing",
 ]
 
 [[package]]

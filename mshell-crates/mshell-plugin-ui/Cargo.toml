@@ -10,12 +10,18 @@ license.workspace = true
 [features]
 # Pulls gtk4 + the wasm host; off by default so non-WASM shell builds stay lean.
 default = []
-wasm = ["dep:gtk4", "dep:mshell-plugin-host", "mshell-plugin-host/wasm"]
+wasm = [
+    "dep:gtk4",
+    "dep:mshell-common",
+    "dep:mshell-plugin-host",
+    "mshell-plugin-host/wasm",
+]
 
 [dependencies]
 anyhow.workspace = true
 tracing.workspace = true
 gtk4 = { workspace = true, optional = true }
+mshell-common = { workspace = true, optional = true }
 mshell-plugin-host = { workspace = true, optional = true }
 
 [lints]

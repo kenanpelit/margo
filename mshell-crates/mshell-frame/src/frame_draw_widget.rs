@@ -98,8 +98,8 @@ fn resolve_var<'a>(value: &'a str, vars: &'a HashMap<String, String>) -> &'a str
 fn parse_color(s: &str) -> Option<(f64, f64, f64, f64)> {
     let s = s.trim();
 
-    if let Some(hex) = s.strip_prefix('#') {
-        return parse_hex_color(hex);
+    if s.starts_with('#') {
+        return mshell_common::color::parse_hex_rgba(s);
     }
 
     if let Some(inner) = s.strip_prefix("rgba(").and_then(|s| s.strip_suffix(')')) {
@@ -133,39 +133,6 @@ fn parse_channel(s: &str) -> Option<f64> {
         Some((v / 255.0).clamp(0.0, 1.0))
     } else {
         Some(v.clamp(0.0, 1.0))
-    }
-}
-
-fn parse_hex_color(hex: &str) -> Option<(f64, f64, f64, f64)> {
-    let hex = hex.trim();
-    match hex.len() {
-        3 => {
-            let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()? as f64 / 255.0;
-            let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()? as f64 / 255.0;
-            let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()? as f64 / 255.0;
-            Some((r, g, b, 1.0))
-        }
-        4 => {
-            let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()? as f64 / 255.0;
-            let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()? as f64 / 255.0;
-            let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()? as f64 / 255.0;
-            let a = u8::from_str_radix(&hex[3..4].repeat(2), 16).ok()? as f64 / 255.0;
-            Some((r, g, b, a))
-        }
-        6 => {
-            let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f64 / 255.0;
-            let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f64 / 255.0;
-            let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f64 / 255.0;
-            Some((r, g, b, 1.0))
-        }
-        8 => {
-            let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f64 / 255.0;
-            let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f64 / 255.0;
-            let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f64 / 255.0;
-            let a = u8::from_str_radix(&hex[6..8], 16).ok()? as f64 / 255.0;
-            Some((r, g, b, a))
-        }
-        _ => None,
     }
 }
 
