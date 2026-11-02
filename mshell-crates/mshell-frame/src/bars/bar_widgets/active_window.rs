@@ -19,24 +19,16 @@ use mshell_services::margo_service;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Marquee tick cadence + per-tick step + end dwell (in ticks).
+/// Marquee scroll cadence + per-tick step, and the dwell at each end. The
+/// dwell is one one-shot timer, not 50 idle ticks of the scroll timer.
 const MARQUEE_INTERVAL: Duration = Duration::from_millis(30);
 const MARQUEE_STEP_PX: f64 = 2.0;
-const MARQUEE_PAUSE_TICKS: u32 = 50;
-
-/// One-directional title-marquee phases: dwell at the start, scroll to the
-/// end, dwell, snap back, repeat. (Mirrors the media-player track marquee.)
-#[derive(Clone, Copy)]
-enum ScrollState {
-    PauseStart(u32),
-    Scrolling,
-    PauseEnd(u32),
-}
+const MARQUEE_PAUSE: Duration = Duration::from_millis(1500);
 
 pub(crate) struct ActiveWindowModel {
     watcher_token: WatcherToken,
@@ -293,11 +285,11 @@ fn sync_marquee(
     slot: &Rc<RefCell<Option<glib::SourceId>>>,
 ) {
     let overflow = adj.upper() - adj.page_size() > 0.0;
-    let mut current = slot.borrow_mut();
-    match (overflow, current.is_some()) {
-        (true, false) => *current = Some(start_scroll(scrolled_window)),
+    let running = slot.borrow().is_some();
+    match (overflow, running) {
+        (true, false) => start_scroll(scrolled_window, slot),
         (false, true) => {
-            if let Some(id) = current.take() {
+            if let Some(id) = slot.borrow_mut().take() {
                 id.remove();
             }
             adj.set_value(0.0);
@@ -306,44 +298,65 @@ fn sync_marquee(
     }
 }
 
-/// Start the title marquee: a periodic timer that scrolls the capped
-/// scroller from start → end with a dwell at each end, then snaps back.
-/// Only armed (by `wire_marquee`) while the title overflows. Returns the
-/// source id so the caller can stop it when overflow goes away.
-fn start_scroll(scrolled_window: &gtk::ScrolledWindow) -> glib::SourceId {
-    let state = Rc::new(Cell::new(ScrollState::PauseStart(0)));
-    let scroll = scrolled_window.clone();
-    glib::timeout_add_local(MARQUEE_INTERVAL, move || {
-        let adj = scroll.hadjustment();
+/// The marquee's next scroll position, or `None` once it has reached the
+/// end (`max` = content width − visible width).
+fn marquee_step(value: f64, max: f64) -> Option<f64> {
+    (value < max).then(|| (value + MARQUEE_STEP_PX).min(max))
+}
+
+/// Start the title marquee: dwell at the start, scroll to the end, dwell,
+/// snap back, repeat (mirrors the media-player track marquee). Each phase
+/// arms only its own source — a one-shot for a dwell, the 30 ms timer only
+/// while actually scrolling — and stores it in `slot`, so whoever stops the
+/// marquee always removes the live source. Only armed (by `wire_marquee`)
+/// while the title overflows.
+fn start_scroll(scrolled_window: &gtk::ScrolledWindow, slot: &Rc<RefCell<Option<glib::SourceId>>>) {
+    let sw = scrolled_window.clone();
+    let next = slot.clone();
+    let id = glib::timeout_add_local_once(MARQUEE_PAUSE, move || {
+        // This one-shot is done; forget its id before arming the next phase.
+        next.borrow_mut().take();
+        scroll_phase(&sw, &next);
+    });
+    *slot.borrow_mut() = Some(id);
+}
+
+fn scroll_phase(scrolled_window: &gtk::ScrolledWindow, slot: &Rc<RefCell<Option<glib::SourceId>>>) {
+    let sw = scrolled_window.clone();
+    let next = slot.clone();
+    let id = glib::timeout_add_local(MARQUEE_INTERVAL, move || {
+        let adj = sw.hadjustment();
         let max = adj.upper() - adj.page_size();
         if max <= 0.0 {
             return glib::ControlFlow::Continue;
         }
-        match state.get() {
-            ScrollState::PauseStart(n) => {
-                if n >= MARQUEE_PAUSE_TICKS {
-                    state.set(ScrollState::Scrolling);
-                } else {
-                    state.set(ScrollState::PauseStart(n + 1));
-                }
-            }
-            ScrollState::Scrolling => {
-                let current = adj.value();
-                if current >= max {
-                    state.set(ScrollState::PauseEnd(0));
-                } else {
-                    adj.set_value(current + MARQUEE_STEP_PX);
-                }
-            }
-            ScrollState::PauseEnd(n) => {
-                if n >= MARQUEE_PAUSE_TICKS {
-                    adj.set_value(0.0);
-                    state.set(ScrollState::PauseStart(0));
-                } else {
-                    state.set(ScrollState::PauseEnd(n + 1));
-                }
-            }
+        if let Some(value) = marquee_step(adj.value(), max) {
+            adj.set_value(value);
+            return glib::ControlFlow::Continue;
         }
-        glib::ControlFlow::Continue
-    })
+        // Reached the end: dwell, snap back, start over. Replacing the slot
+        // before returning `Break` keeps it pointing at a live source.
+        let sw_end = sw.clone();
+        let again = next.clone();
+        let dwell = glib::timeout_add_local_once(MARQUEE_PAUSE, move || {
+            again.borrow_mut().take();
+            sw_end.hadjustment().set_value(0.0);
+            start_scroll(&sw_end, &again);
+        });
+        *next.borrow_mut() = Some(dwell);
+        glib::ControlFlow::Break
+    });
+    *slot.borrow_mut() = Some(id);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn marquee_steps_to_the_end_then_stops() {
+        assert_eq!(marquee_step(0.0, 5.0), Some(2.0));
+        assert_eq!(marquee_step(4.0, 5.0), Some(5.0));
+        assert_eq!(marquee_step(5.0, 5.0), None);
+    }
 }
