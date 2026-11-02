@@ -271,3 +271,56 @@ fn subtitle_for(state: &NetState) -> String {
         NetState::Wired | NetState::None => String::new(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn wifi(ssid: &str) -> NetState {
+        NetState::Wifi(Some(ssid.to_string()))
+    }
+
+    #[test]
+    fn icon_follows_the_new_link_kind() {
+        assert_eq!(
+            icon_for(&wifi("home")),
+            "network-wireless-signal-good-symbolic"
+        );
+        assert_eq!(
+            icon_for(&NetState::Wifi(None)),
+            "network-wireless-signal-good-symbolic"
+        );
+        assert_eq!(icon_for(&NetState::Wired), "network-wired-symbolic");
+        assert_eq!(
+            icon_for(&NetState::None),
+            "network-wired-disconnected-symbolic"
+        );
+    }
+
+    #[test]
+    fn titles_for_connect_disconnect_and_roam() {
+        assert_eq!(title_for(&NetState::None, &wifi("a")), "Wi-Fi connected");
+        assert_eq!(
+            title_for(&NetState::None, &NetState::Wired),
+            "Ethernet connected"
+        );
+        assert_eq!(title_for(&wifi("a"), &NetState::None), "Disconnected");
+        assert_eq!(title_for(&NetState::Wired, &NetState::None), "Disconnected");
+        // Roaming between SSIDs and swapping link kinds both read as a connect.
+        assert_eq!(title_for(&wifi("a"), &wifi("b")), "Wi-Fi connected");
+        assert_eq!(title_for(&NetState::Wired, &wifi("b")), "Wi-Fi connected");
+        assert_eq!(
+            title_for(&wifi("a"), &NetState::Wired),
+            "Ethernet connected"
+        );
+    }
+
+    #[test]
+    fn subtitle_names_the_ssid_or_falls_back() {
+        assert_eq!(subtitle_for(&wifi("Café 5G")), "Café 5G");
+        assert_eq!(subtitle_for(&wifi("")), "Unknown network");
+        assert_eq!(subtitle_for(&NetState::Wifi(None)), "Unknown network");
+        assert_eq!(subtitle_for(&NetState::Wired), "");
+        assert_eq!(subtitle_for(&NetState::None), "");
+    }
+}

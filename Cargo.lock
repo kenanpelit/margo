@@ -5148,6 +5148,7 @@ dependencies = [
  "relm4",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
 ]
 
@@ -5466,6 +5467,7 @@ dependencies = [
  "mshell-utils",
  "reactive_graph",
  "relm4",
+ "tempfile",
  "tokio",
  "wayle-audio",
  "wayle-battery",

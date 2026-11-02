@@ -26,7 +26,7 @@ pub struct MicOsdModel {
     icon_name: String,
     slider_value: f64,
     value_label: String,
-    shown_count: u16,
+    show_gate: crate::ShowGate,
 }
 
 #[derive(Debug)]
@@ -117,7 +117,7 @@ impl Component for MicOsdModel {
             icon_name: "audio-input-microphone-symbolic".to_string(),
             slider_value: 0.0,
             value_label: "0%".to_string(),
-            shown_count: 0,
+            show_gate: crate::ShowGate::default(),
         };
 
         let widgets = view_output!();
@@ -141,7 +141,7 @@ impl Component for MicOsdModel {
                 } else {
                     let volume = device.volume.get();
                     self.slider_value = volume.average();
-                    self.value_label = format!("{}%", volume.average_percentage().round() as i32);
+                    self.value_label = crate::percent_label(volume.average_percentage());
                 }
 
                 let token = self.hide_token.reset();
@@ -157,10 +157,8 @@ impl Component for MicOsdModel {
                 });
             }
             MicOsdInput::Show => {
-                if self.shown_count > 1 {
+                if self.show_gate.allow() {
                     root.set_visible(true);
-                } else {
-                    self.shown_count += 1;
                 }
             }
             MicOsdInput::Hide => {

@@ -12,7 +12,7 @@ pub struct BrightnessOsdModel {
     icon_name: String,
     slider_value: f64,
     value_label: String,
-    shown_count: u16,
+    show_gate: crate::ShowGate,
 }
 
 #[derive(Debug)]
@@ -104,7 +104,7 @@ impl Component for BrightnessOsdModel {
             icon_name: "brightness-medium-symbolic".to_string(),
             slider_value: 0.0,
             value_label: "0%".to_string(),
-            shown_count: 0,
+            show_gate: crate::ShowGate::default(),
         };
 
         let widgets = view_output!();
@@ -129,7 +129,7 @@ impl Component for BrightnessOsdModel {
 
                         self.icon_name = get_brightness_icon(brightness.value()).to_string();
                         self.slider_value = brightness.fraction();
-                        self.value_label = format!("{}%", brightness.value().round() as i32);
+                        self.value_label = crate::percent_label(brightness.value());
 
                         let token = self.hide_token.reset();
                         sender.command(|out, shutdown| {
@@ -146,10 +146,8 @@ impl Component for BrightnessOsdModel {
                 }
             }
             BrightnessOsdInput::Show => {
-                if self.shown_count > 1 {
+                if self.show_gate.allow() {
                     root.set_visible(true);
-                } else {
-                    self.shown_count += 1;
                 }
             }
             BrightnessOsdInput::Hide => {

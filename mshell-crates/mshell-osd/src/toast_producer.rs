@@ -45,7 +45,7 @@ use mshell_utils::power_profile::{
 use reactive_graph::effect::Effect;
 use reactive_graph::traits::{Get, GetUntracked};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::path::PathBuf;
+use std::path::Path;
 use std::time::Duration;
 use wayle_battery::types::DeviceState;
 
@@ -440,9 +440,15 @@ impl ToastProducerModel {
         }
         let pctu = pct.round().clamp(0.0, 100.0) as u8;
 
-        let crit = cfg.battery_critical_level;
-        if crit > 0 && pctu <= crit {
-            if !self.bat_crit_warned {
+        match battery_alert(
+            pctu,
+            cfg.battery_critical_level,
+            &cfg.battery_warn_levels,
+            self.bat_warned,
+            self.bat_crit_warned,
+        ) {
+            BatteryAlert::Quiet => {}
+            BatteryAlert::Critical => {
                 self.bat_crit_warned = true;
                 push_toast(ToastEvent {
                     icon: get_battery_icon(pct).to_string(),
@@ -451,28 +457,15 @@ impl ToastProducerModel {
                     severity: ToastSeverity::Danger,
                 });
             }
-            return;
-        }
-
-        // The most urgent warn level reached (lowest threshold ≥ which the
-        // charge has fallen). Firing only when it changes gives exactly one
-        // toast per level as the battery drains.
-        let reached = cfg
-            .battery_warn_levels
-            .iter()
-            .copied()
-            .filter(|&l| l > crit && pctu <= l)
-            .min();
-        if let Some(level) = reached
-            && self.bat_warned != Some(level)
-        {
-            self.bat_warned = Some(level);
-            push_toast(ToastEvent {
-                icon: get_battery_icon(pct).to_string(),
-                title: "Battery low".to_string(),
-                body: Some(format!("{pctu}% remaining")),
-                severity: ToastSeverity::Warn,
-            });
+            BatteryAlert::Low(level) => {
+                self.bat_warned = Some(level);
+                push_toast(ToastEvent {
+                    icon: get_battery_icon(pct).to_string(),
+                    title: "Battery low".to_string(),
+                    body: Some(format!("{pctu}% remaining")),
+                    severity: ToastSeverity::Warn,
+                });
+            }
         }
     }
 
@@ -708,16 +701,7 @@ impl ToastProducerModel {
             self.prev_bt = Some(prev);
             return;
         }
-        let newly: Vec<String> = connected
-            .iter()
-            .filter(|n| !prev.contains(n))
-            .cloned()
-            .collect();
-        let gone: Vec<String> = prev
-            .iter()
-            .filter(|n| !connected.contains(n))
-            .cloned()
-            .collect();
+        let (newly, gone) = connection_diff(&prev, &connected);
         self.prev_bt = Some(connected);
 
         let cfg = toasts_cfg();
@@ -854,13 +838,85 @@ impl ToastProducerModel {
 /// previous value that differs from `cur` (the first observation just
 /// baselines), and the toggle is on. The caller stores `cur` as the new prev.
 fn lock_key_step(prev: Option<bool>, cur: bool, label: &str, cfg: &Toasts) {
+    if let Some(event) = lock_key_toast(prev, cur, label, cfg) {
+        push_toast(event);
+    }
+}
+
+fn lock_key_toast(prev: Option<bool>, cur: bool, label: &str, cfg: &Toasts) -> Option<ToastEvent> {
     if matches!(prev, Some(p) if p != cur) && cfg.enabled && cfg.lock_keys {
-        push_toast(ToastEvent {
+        Some(ToastEvent {
             icon: "input-keyboard-symbolic".to_string(),
             title: format!("{label} {}", if cur { "on" } else { "off" }),
             body: None,
             severity: ToastSeverity::Calm,
-        });
+        })
+    } else {
+        None
+    }
+}
+
+/// What the battery ladder should announce for a (non-charging) sample.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BatteryAlert {
+    Quiet,
+    /// At or below the critical level, not yet announced this cycle.
+    Critical,
+    /// The most urgent warn level reached; the caller records it as warned.
+    Low(u8),
+}
+
+/// The battery warning ladder for one sample at `pct` %. `crit == 0`
+/// disables the critical toast; warn levels at or below `crit` are ignored
+/// (the critical toast covers that range). `warned` / `crit_warned` are what
+/// was already announced this discharge cycle.
+fn battery_alert(
+    pct: u8,
+    crit: u8,
+    levels: &[u8],
+    warned: Option<u8>,
+    crit_warned: bool,
+) -> BatteryAlert {
+    if crit > 0 && pct <= crit {
+        return if crit_warned {
+            BatteryAlert::Quiet
+        } else {
+            BatteryAlert::Critical
+        };
+    }
+    // The most urgent warn level reached (lowest threshold ≥ which the
+    // charge has fallen). Firing only when it changes gives exactly one
+    // toast per level as the battery drains.
+    let reached = levels
+        .iter()
+        .copied()
+        .filter(|&l| l > crit && pct <= l)
+        .min();
+    match reached {
+        Some(level) if warned != Some(level) => BatteryAlert::Low(level),
+        _ => BatteryAlert::Quiet,
+    }
+}
+
+/// Names in `cur` but not `prev` (newly connected) and in `prev` but not
+/// `cur` (gone), each in the order of its source list.
+fn connection_diff(prev: &[String], cur: &[String]) -> (Vec<String>, Vec<String>) {
+    let newly = cur.iter().filter(|n| !prev.contains(n)).cloned().collect();
+    let gone = prev.iter().filter(|n| !cur.contains(n)).cloned().collect();
+    (newly, gone)
+}
+
+/// `title — artist`, or just the title when the artist is blank. Empty when
+/// the title is blank (nothing worth announcing).
+fn format_track(title: &str, artist: &str) -> String {
+    let title = title.trim();
+    let artist = artist.trim();
+    if title.is_empty() {
+        String::new()
+    } else if artist.is_empty() {
+        title.to_string()
+    } else {
+        format!("{title} — {artist}")
     }
 }
 
@@ -877,15 +933,7 @@ fn current_track() -> String {
         Some(p) => {
             let title = p.metadata.title.get();
             let artist = p.metadata.artist.get();
-            let title = title.trim();
-            let artist = artist.trim();
-            if title.is_empty() {
-                String::new()
-            } else if artist.is_empty() {
-                title.to_string()
-            } else {
-                format!("{title} — {artist}")
-            }
+            format_track(&title, &artist)
         }
         None => String::new(),
     }
@@ -908,9 +956,14 @@ async fn vpn_connected() -> bool {
 /// Read Caps / Num lock from `/sys/class/leds` (kernel LED state, focus- and
 /// display-server-independent). Mirrors the lock-keys bar pill.
 fn read_lock_state() -> (bool, bool, bool) {
-    let dir = PathBuf::from("/sys/class/leds");
+    read_lock_state_in(Path::new("/sys/class/leds"))
+}
+
+/// [`read_lock_state`] against an arbitrary LED class directory. The first
+/// readable LED of each kind wins; a missing kind reads as off.
+fn read_lock_state_in(dir: &Path) -> (bool, bool, bool) {
     let (mut caps, mut num, mut scroll) = (None, None, None);
-    let Ok(entries) = std::fs::read_dir(&dir) else {
+    let Ok(entries) = std::fs::read_dir(dir) else {
         return (false, false, false);
     };
     for entry in entries.flatten() {
@@ -937,4 +990,165 @@ fn read_lock_state() -> (bool, bool, bool) {
         num.unwrap_or(false),
         scroll.unwrap_or(false),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const LEVELS: &[u8] = &[20, 10, 5];
+
+    /// Feed a discharge curve through the ladder the way `on_battery` does,
+    /// returning the alerts that fired.
+    fn drain(samples: &[u8], crit: u8, levels: &[u8]) -> Vec<BatteryAlert> {
+        let (mut warned, mut crit_warned) = (None, false);
+        let mut fired = Vec::new();
+        for &pct in samples {
+            let alert = battery_alert(pct, crit, levels, warned, crit_warned);
+            match alert {
+                BatteryAlert::Quiet => continue,
+                BatteryAlert::Critical => crit_warned = true,
+                BatteryAlert::Low(l) => warned = Some(l),
+            }
+            fired.push(alert);
+        }
+        fired
+    }
+
+    #[test]
+    fn battery_ladder_fires_once_per_level_then_critical() {
+        let curve: Vec<u8> = (0..=30).rev().collect();
+        assert_eq!(
+            drain(&curve, 3, LEVELS),
+            vec![
+                BatteryAlert::Low(20),
+                BatteryAlert::Low(10),
+                BatteryAlert::Low(5),
+                BatteryAlert::Critical,
+            ]
+        );
+    }
+
+    #[test]
+    fn battery_ladder_jumping_past_levels_announces_the_most_urgent() {
+        // Resume from suspend: 50 % → 7 % in one sample skips 20 and 10.
+        assert_eq!(drain(&[50, 7], 3, LEVELS), vec![BatteryAlert::Low(10)]);
+        assert_eq!(drain(&[50, 2], 3, LEVELS), vec![BatteryAlert::Critical]);
+    }
+
+    #[test]
+    fn battery_ladder_ignores_warn_levels_inside_the_critical_band() {
+        // crit 10 swallows the 10 and 5 warn levels.
+        assert_eq!(
+            drain(&[25, 20, 15, 10, 5, 1], 10, LEVELS),
+            vec![BatteryAlert::Low(20), BatteryAlert::Critical]
+        );
+    }
+
+    #[test]
+    fn battery_ladder_crit_zero_disables_the_critical_toast() {
+        assert_eq!(
+            drain(&[6, 5, 1, 0], 0, LEVELS),
+            vec![BatteryAlert::Low(10), BatteryAlert::Low(5)]
+        );
+    }
+
+    #[test]
+    fn battery_ladder_empty_levels_only_criticals() {
+        assert_eq!(drain(&[50, 10, 3, 2], 3, &[]), vec![BatteryAlert::Critical]);
+        assert_eq!(drain(&[50, 10, 0], 0, &[]), vec![]);
+    }
+
+    #[test]
+    fn battery_ladder_unsorted_levels_are_fine() {
+        assert_eq!(
+            drain(&[21, 20, 10, 5], 3, &[5, 20, 10]),
+            vec![
+                BatteryAlert::Low(20),
+                BatteryAlert::Low(10),
+                BatteryAlert::Low(5)
+            ]
+        );
+    }
+
+    #[test]
+    fn connection_diff_splits_new_and_gone() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        let (newly, gone) = connection_diff(&s(&["Buds", "Mouse"]), &s(&["Keyboard", "Mouse"]));
+        assert_eq!(newly, s(&["Keyboard"]));
+        assert_eq!(gone, s(&["Buds"]));
+
+        let (newly, gone) = connection_diff(&[], &s(&["A", "B"]));
+        assert_eq!((newly, gone), (s(&["A", "B"]), vec![]));
+        let (newly, gone) = connection_diff(&s(&["A"]), &[]);
+        assert_eq!((newly, gone), (vec![], s(&["A"])));
+        let (newly, gone) = connection_diff(&s(&["A"]), &s(&["A"]));
+        assert!(newly.is_empty() && gone.is_empty());
+    }
+
+    #[test]
+    fn format_track_trims_and_drops_blank_parts() {
+        assert_eq!(format_track("Song", "Band"), "Song — Band");
+        assert_eq!(format_track("  Song \n", "  "), "Song");
+        assert_eq!(format_track("", "Band"), "");
+        assert_eq!(format_track("   ", "Band"), "");
+    }
+
+    #[test]
+    fn lock_key_toast_only_on_a_known_change_with_toggle_on() {
+        let cfg = Toasts {
+            enabled: true,
+            lock_keys: true,
+            ..Toasts::default()
+        };
+        // First observation baselines.
+        assert!(lock_key_toast(None, true, "Caps Lock", &cfg).is_none());
+        assert!(lock_key_toast(Some(true), true, "Caps Lock", &cfg).is_none());
+        let on = lock_key_toast(Some(false), true, "Caps Lock", &cfg).map(|e| e.title);
+        assert_eq!(on.as_deref(), Some("Caps Lock on"));
+        let off = lock_key_toast(Some(true), false, "Num Lock", &cfg).map(|e| e.title);
+        assert_eq!(off.as_deref(), Some("Num Lock off"));
+
+        let muted = Toasts {
+            lock_keys: false,
+            ..cfg.clone()
+        };
+        assert!(lock_key_toast(Some(false), true, "Caps Lock", &muted).is_none());
+        let disabled = Toasts {
+            enabled: false,
+            ..cfg
+        };
+        assert!(lock_key_toast(Some(false), true, "Caps Lock", &disabled).is_none());
+    }
+
+    fn led(dir: &Path, name: &str, brightness: Option<&str>) {
+        let d = dir.join(name);
+        std::fs::create_dir(&d).unwrap();
+        if let Some(b) = brightness {
+            std::fs::write(d.join("brightness"), b).unwrap();
+        }
+    }
+
+    #[test]
+    fn lock_state_reads_led_brightness_by_suffix() {
+        let tmp = tempfile::tempdir().unwrap();
+        led(tmp.path(), "input3::capslock", Some("1\n"));
+        led(tmp.path(), "input3::numlock", Some("0\n"));
+        led(tmp.path(), "input3::scrolllock", Some("255"));
+        led(tmp.path(), "phy0-led", Some("1"));
+        assert_eq!(read_lock_state_in(tmp.path()), (true, false, true));
+    }
+
+    #[test]
+    fn lock_state_skips_unreadable_leds_and_defaults_off() {
+        let tmp = tempfile::tempdir().unwrap();
+        // No `brightness` file on the first capslock LED → the next one counts.
+        led(tmp.path(), "input1::capslock", None);
+        led(tmp.path(), "input9::capslock", Some("1"));
+        assert_eq!(read_lock_state_in(tmp.path()), (true, false, false));
+        assert_eq!(
+            read_lock_state_in(&tmp.path().join("missing")),
+            (false, false, false)
+        );
+    }
 }

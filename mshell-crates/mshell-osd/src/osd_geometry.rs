@@ -23,6 +23,18 @@ pub fn read() -> (OsdPosition, i32) {
     )
 }
 
+/// The single edge `position` anchors to, or `None` for `Center` (no anchors
+/// → layer-shell centres the window on the output).
+pub(crate) fn anchor_edge(position: &OsdPosition) -> Option<Edge> {
+    match position {
+        OsdPosition::Top => Some(Edge::Top),
+        OsdPosition::Bottom => Some(Edge::Bottom),
+        OsdPosition::Left => Some(Edge::Left),
+        OsdPosition::Right => Some(Edge::Right),
+        OsdPosition::Center => None,
+    }
+}
+
 /// Anchor `root` to the edge named by `position`, with `distance` px of margin
 /// from that edge (`distance` is ignored for `Center`). All four anchors +
 /// margins are set explicitly so the call is idempotent.
@@ -31,24 +43,26 @@ pub fn apply(root: &gtk::Window, position: &OsdPosition, distance: i32) {
         root.set_anchor(edge, false);
         root.set_margin(edge, 0);
     }
-    match position {
-        OsdPosition::Top => {
-            root.set_anchor(Edge::Top, true);
-            root.set_margin(Edge::Top, distance);
-        }
-        OsdPosition::Bottom => {
-            root.set_anchor(Edge::Bottom, true);
-            root.set_margin(Edge::Bottom, distance);
-        }
-        OsdPosition::Left => {
-            root.set_anchor(Edge::Left, true);
-            root.set_margin(Edge::Left, distance);
-        }
-        OsdPosition::Right => {
-            root.set_anchor(Edge::Right, true);
-            root.set_margin(Edge::Right, distance);
-        }
-        // No anchors → layer-shell centres the window on the output.
-        OsdPosition::Center => {}
+    if let Some(edge) = anchor_edge(position) {
+        root.set_anchor(edge, true);
+        root.set_margin(edge, distance);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_side_position_anchors_its_own_edge() {
+        assert_eq!(anchor_edge(&OsdPosition::Top), Some(Edge::Top));
+        assert_eq!(anchor_edge(&OsdPosition::Bottom), Some(Edge::Bottom));
+        assert_eq!(anchor_edge(&OsdPosition::Left), Some(Edge::Left));
+        assert_eq!(anchor_edge(&OsdPosition::Right), Some(Edge::Right));
+    }
+
+    #[test]
+    fn center_anchors_nothing() {
+        assert_eq!(anchor_edge(&OsdPosition::Center), None);
     }
 }

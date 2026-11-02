@@ -33,6 +33,21 @@ use tokio::sync::broadcast;
 use mshell_config::toast::subscribe;
 pub use mshell_config::toast::{ToastEvent, ToastSeverity, push_toast};
 
+/// The edges a toast at `position` anchors to: one for a side (the compositor
+/// centres the card along it), two for a corner.
+fn placement_edges(position: &Position) -> &'static [Edge] {
+    match position {
+        Position::Top => &[Edge::Top],
+        Position::Bottom => &[Edge::Bottom],
+        Position::Left => &[Edge::Left],
+        Position::Right => &[Edge::Right],
+        Position::TopLeft => &[Edge::Top, Edge::Left],
+        Position::TopRight => &[Edge::Top, Edge::Right],
+        Position::BottomLeft => &[Edge::Bottom, Edge::Left],
+        Position::BottomRight => &[Edge::Bottom, Edge::Right],
+    }
+}
+
 /// Anchor the toast window per the `toasts` config: a single edge (the
 /// compositor centres the card on it) or a corner (two edges), with `distance`
 /// px of margin from each anchored edge.
@@ -51,31 +66,9 @@ fn apply_placement(root: &gtk::Window) {
         root.set_anchor(edge, false);
         root.set_margin(edge, 0);
     }
-    let dock = |edge: Edge| {
-        root.set_anchor(edge, true);
-        root.set_margin(edge, distance);
-    };
-    match position {
-        Position::Top => dock(Edge::Top),
-        Position::Bottom => dock(Edge::Bottom),
-        Position::Left => dock(Edge::Left),
-        Position::Right => dock(Edge::Right),
-        Position::TopLeft => {
-            dock(Edge::Top);
-            dock(Edge::Left);
-        }
-        Position::TopRight => {
-            dock(Edge::Top);
-            dock(Edge::Right);
-        }
-        Position::BottomLeft => {
-            dock(Edge::Bottom);
-            dock(Edge::Left);
-        }
-        Position::BottomRight => {
-            dock(Edge::Bottom);
-            dock(Edge::Right);
-        }
+    for edge in placement_edges(&position) {
+        root.set_anchor(*edge, true);
+        root.set_margin(*edge, distance);
     }
 }
 
@@ -270,6 +263,60 @@ impl Component for ToastSurfaceModel {
             ToastSurfaceCommandOutput::Hide => {
                 sender.input(ToastSurfaceInput::Hide);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sides_anchor_one_edge_and_corners_two() {
+        assert_eq!(placement_edges(&Position::Top), &[Edge::Top]);
+        assert_eq!(placement_edges(&Position::Bottom), &[Edge::Bottom]);
+        assert_eq!(placement_edges(&Position::Left), &[Edge::Left]);
+        assert_eq!(placement_edges(&Position::Right), &[Edge::Right]);
+        assert_eq!(
+            placement_edges(&Position::TopLeft),
+            &[Edge::Top, Edge::Left]
+        );
+        assert_eq!(
+            placement_edges(&Position::TopRight),
+            &[Edge::Top, Edge::Right]
+        );
+        assert_eq!(
+            placement_edges(&Position::BottomLeft),
+            &[Edge::Bottom, Edge::Left]
+        );
+        assert_eq!(
+            placement_edges(&Position::BottomRight),
+            &[Edge::Bottom, Edge::Right]
+        );
+    }
+
+    #[test]
+    fn no_placement_anchors_opposite_edges() {
+        // Anchoring both Top+Bottom (or Left+Right) would stretch the card.
+        for pos in [
+            Position::Top,
+            Position::Bottom,
+            Position::Left,
+            Position::Right,
+            Position::TopLeft,
+            Position::TopRight,
+            Position::BottomLeft,
+            Position::BottomRight,
+        ] {
+            let e = placement_edges(&pos);
+            assert!(
+                !(e.contains(&Edge::Top) && e.contains(&Edge::Bottom)),
+                "{pos:?}"
+            );
+            assert!(
+                !(e.contains(&Edge::Left) && e.contains(&Edge::Right)),
+                "{pos:?}"
+            );
         }
     }
 }
