@@ -260,9 +260,13 @@ fn between<'a>(s: &'a str, start: &str, end: &str) -> Option<&'a str> {
 fn bing_urls(locale: &str) -> Result<(String, String), String> {
     let url = format!("https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt={locale}");
     let body = curl_text(&url)?;
-    let urlbase = between(&body, "\"urlbase\":\"", "\"")
-        .ok_or_else(|| "Bing: urlbase not found".to_string())?;
-    Ok((
+    parse_bing_urls(&body).ok_or_else(|| "Bing: urlbase not found".to_string())
+}
+
+/// `(UHD, 1080p)` image URLs from Bing's `HPImageArchive` JSON.
+fn parse_bing_urls(body: &str) -> Option<(String, String)> {
+    let urlbase = between(body, "\"urlbase\":\"", "\"")?;
+    Some((
         format!("https://www.bing.com{urlbase}_UHD.jpg"),
         format!("https://www.bing.com{urlbase}_1920x1080.jpg"),
     ))
@@ -277,18 +281,31 @@ fn meta_content(body: &str, key: &str) -> Option<String> {
 /// `(primary, fallback)` URLs for NASA's image of the day (HTML-scraped).
 fn nasa_urls() -> Result<(String, String), String> {
     let body = curl_text("https://www.nasa.gov/image-of-the-day/")?;
+    parse_nasa_urls(&body).ok_or_else(|| "NASA: no image URL found".to_string())
+}
+
+/// `(gallery image, og/twitter meta image)` from the NASA page; either may be
+/// empty, `None` when both are.
+fn parse_nasa_urls(body: &str) -> Option<(String, String)> {
     let primary = body
         .find("hds-gallery-image")
         .and_then(|i| between(&body[i..], "src=\"", "\""))
         .unwrap_or("")
         .to_string();
-    let fallback = meta_content(&body, "og:image")
-        .or_else(|| meta_content(&body, "twitter:image"))
+    let fallback = meta_content(body, "og:image")
+        .or_else(|| meta_content(body, "twitter:image"))
         .unwrap_or_default();
     if primary.is_empty() && fallback.is_empty() {
-        return Err("NASA: no image URL found".to_string());
+        return None;
     }
-    Ok((primary, fallback))
+    Some((primary, fallback))
+}
+
+/// Bing market code from the configured locale: lower-case, `_` → `-`,
+/// `en-us` when blank.
+fn bing_market(locale: &str) -> String {
+    let l = locale.trim().to_lowercase().replace('_', "-");
+    if l.is_empty() { "en-us".to_string() } else { l }
 }
 
 /// Ensure today's Bing/NASA image-of-the-day is downloaded and return its
@@ -318,10 +335,7 @@ pub fn fetch_daily_wallpaper(source: &str, locale: &str) -> Result<PathBuf, Stri
         return Ok(file);
     }
 
-    let loc = {
-        let l = locale.trim().to_lowercase().replace('_', "-");
-        if l.is_empty() { "en-us".to_string() } else { l }
-    };
+    let loc = bing_market(locale);
     let (primary, fallback) = if source == "nasa" {
         nasa_urls()?
     } else {
@@ -342,6 +356,11 @@ pub fn fetch_daily_wallpaper(source: &str, locale: &str) -> Result<PathBuf, Stri
 /// Delete `<prefix>-*.jpg` in `dir` older than 5 days.
 fn prune_daily(dir: &Path, prefix: &str) {
     let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(5 * 24 * 60 * 60);
+    prune_daily_before(dir, prefix, cutoff);
+}
+
+/// Delete `<prefix>-*.jpg` in `dir` last modified before `cutoff`.
+fn prune_daily_before(dir: &Path, prefix: &str, cutoff: std::time::SystemTime) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
@@ -397,24 +416,29 @@ pub fn list_wallpapers() -> Vec<PathBuf> {
         // next/prev cycling and the menu still have something to land on.
         return default_wallpaper_path().into_iter().collect();
     }
-    let mut entries: Vec<PathBuf> = match fs::read_dir(&dir) {
-        Ok(rd) => rd
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| {
-                p.extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| WALLPAPER_EXTENSIONS.contains(&e.to_lowercase().as_str()))
-                    .unwrap_or(false)
-            })
-            .collect(),
+    match list_wallpapers_in(Path::new(&dir)) {
+        Ok(entries) => entries,
         Err(e) => {
             eprintln!("wallpaper: cannot read dir {dir}: {e}");
             Vec::new()
         }
-    };
+    }
+}
+
+/// Image files (by extension, case-insensitive) directly in `dir`, sorted.
+fn list_wallpapers_in(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut entries: Vec<PathBuf> = fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| WALLPAPER_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+                .unwrap_or(false)
+        })
+        .collect();
     entries.sort();
-    entries
+    Ok(entries)
 }
 
 /// Step the wallpaper in the given direction within `wallpaper_dir`
@@ -424,37 +448,41 @@ pub fn cycle_wallpaper(direction: CycleDirection) {
     if list.is_empty() {
         return;
     }
-    let len = list.len();
-
     // Where are we now? Default to the first image when the
     // current wallpaper isn't (or is no longer) in the directory.
     let current_idx = current_wallpaper_path()
         .and_then(|cur| list.iter().position(|p| *p == cur))
         .unwrap_or(0);
+    // Cheap, dependency-free PRNG seeded off the clock — wallpaper choice
+    // doesn't need crypto randomness.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as usize)
+        .unwrap_or(0);
+    let target_idx = cycle_target(current_idx, list.len(), direction, nanos);
 
-    let target_idx = match direction {
+    set_wallpaper(&list[target_idx]);
+}
+
+/// The index to step to from `current_idx` in a `len`-long (non-empty) list.
+/// `Random` picks `seed % len`, nudged forward so it never repeats the current
+/// image when there is another to choose.
+fn cycle_target(current_idx: usize, len: usize, direction: CycleDirection, seed: usize) -> usize {
+    match direction {
         CycleDirection::Next => (current_idx + 1) % len,
         CycleDirection::Previous => (current_idx + len - 1) % len,
         CycleDirection::Random => {
             if len == 1 {
                 0
             } else {
-                // Cheap, dependency-free PRNG seeded off the clock —
-                // wallpaper choice doesn't need crypto randomness.
-                let nanos = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.subsec_nanos() as usize)
-                    .unwrap_or(0);
-                let mut idx = nanos % len;
+                let mut idx = seed % len;
                 if idx == current_idx {
                     idx = (idx + 1) % len;
                 }
                 idx
             }
         }
-    };
-
-    set_wallpaper(&list[target_idx]);
+    }
 }
 
 /// Clear the wallpaper entirely.
@@ -751,5 +779,149 @@ mod tests {
         let leftovers = fs::read_dir(&dir).expect("dir").count();
         assert_eq!(leftovers, 1);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cycle_steps_and_wraps() {
+        use CycleDirection::*;
+        assert_eq!(cycle_target(0, 3, Next, 0), 1);
+        assert_eq!(cycle_target(2, 3, Next, 0), 0);
+        assert_eq!(cycle_target(0, 3, Previous, 0), 2);
+        assert_eq!(cycle_target(1, 3, Previous, 0), 0);
+        assert_eq!(cycle_target(0, 1, Next, 0), 0);
+        assert_eq!(cycle_target(0, 1, Previous, 0), 0);
+        assert_eq!(cycle_target(0, 1, Random, 12345), 0);
+    }
+
+    #[test]
+    fn cycle_random_never_repeats_the_current_image() {
+        for len in 2..6 {
+            for cur in 0..len {
+                for seed in 0..20 {
+                    let idx = cycle_target(cur, len, CycleDirection::Random, seed);
+                    assert!(idx < len);
+                    assert_ne!(idx, cur, "len {len} cur {cur} seed {seed}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn list_wallpapers_filters_by_extension_and_sorts() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        for name in [
+            "b.PNG",
+            "a.jpg",
+            "c.webp",
+            "notes.txt",
+            "noext",
+            "d.JpEg",
+            "e.gif",
+        ] {
+            fs::write(tmp.path().join(name), b"x").expect("write");
+        }
+        fs::create_dir(tmp.path().join("sub.png.d")).expect("mkdir");
+        let names: Vec<String> = list_wallpapers_in(tmp.path())
+            .expect("list")
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["a.jpg", "b.PNG", "c.webp", "d.JpEg", "e.gif"]);
+        assert!(list_wallpapers_in(&tmp.path().join("missing")).is_err());
+    }
+
+    #[test]
+    fn bing_json_yields_uhd_and_1080p_urls() {
+        let body = r#"{"images":[{"startdate":"20261102","url":"/th?id=OHR.Owl_EN-US1_1920x1080.jpg","urlbase":"/th?id=OHR.Owl_EN-US1","copyright":"x"}]}"#;
+        assert_eq!(
+            parse_bing_urls(body),
+            Some((
+                "https://www.bing.com/th?id=OHR.Owl_EN-US1_UHD.jpg".to_string(),
+                "https://www.bing.com/th?id=OHR.Owl_EN-US1_1920x1080.jpg".to_string(),
+            ))
+        );
+        assert_eq!(parse_bing_urls(r#"{"images":[]}"#), None);
+        // Truncated body: the opening quote is there, the closing one isn't.
+        assert_eq!(parse_bing_urls(r#"{"urlbase":"/th?id=OHR"#), None);
+    }
+
+    #[test]
+    fn nasa_html_prefers_gallery_then_meta() {
+        let page = r#"<meta property="og:image" content="https://nasa.gov/og.jpg">
+<div class="hds-gallery-image"><img src="https://nasa.gov/big.jpg" alt=""></div>"#;
+        assert_eq!(
+            parse_nasa_urls(page),
+            Some((
+                "https://nasa.gov/big.jpg".to_string(),
+                "https://nasa.gov/og.jpg".to_string()
+            ))
+        );
+        let meta_only = r#"<meta name="twitter:image" content="https://nasa.gov/tw.jpg">"#;
+        assert_eq!(
+            parse_nasa_urls(meta_only),
+            Some((String::new(), "https://nasa.gov/tw.jpg".to_string()))
+        );
+        assert_eq!(parse_nasa_urls("<html>maintenance</html>"), None);
+    }
+
+    #[test]
+    fn bing_market_normalises_locale() {
+        assert_eq!(bing_market("en_US"), "en-us");
+        assert_eq!(bing_market("  de-DE "), "de-de");
+        assert_eq!(bing_market(""), "en-us");
+        assert_eq!(bing_market("   "), "en-us");
+    }
+
+    #[test]
+    fn prune_removes_only_old_matching_jpgs() {
+        use std::time::{Duration, SystemTime};
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let now = SystemTime::now();
+        let old = now - Duration::from_secs(10 * 24 * 3600);
+        let mk = |name: &str, mtime: SystemTime| {
+            let path = tmp.path().join(name);
+            let f = fs::File::create(&path).expect("create");
+            f.set_modified(mtime).expect("mtime");
+        };
+        mk("bing-2026-10-01.jpg", old);
+        mk("bing-2026-11-02.jpg", now);
+        mk("nasa-2026-10-01.jpg", old);
+        mk("bing-notes.txt", old);
+        mk("mybing-2026-10-01.jpg", old);
+        prune_daily_before(tmp.path(), "bing", now - Duration::from_secs(5 * 24 * 3600));
+        let mut left: Vec<String> = fs::read_dir(tmp.path())
+            .expect("dir")
+            .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(
+            left,
+            [
+                "bing-2026-11-02.jpg",
+                "bing-notes.txt",
+                "mybing-2026-10-01.jpg",
+                "nasa-2026-10-01.jpg"
+            ]
+        );
+    }
+
+    #[test]
+    fn image_hash_tells_dimensions_apart() {
+        let px = [0u8; 16];
+        assert_eq!(image_hash(2, 2, &px), image_hash(2, 2, &px));
+        assert_ne!(image_hash(2, 2, &px), image_hash(4, 1, &px));
+        assert_ne!(image_hash(2, 2, &px), image_hash(2, 2, &[1u8; 16]));
+    }
+
+    #[test]
+    fn raw_file_overwrite_replaces_the_previous_image() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("nested").join("wallpaper.raw");
+        write_raw_atomic(&path, 1, 1, &[1, 2, 3, 4]).expect("first");
+        write_raw_atomic(&path, 2, 1, &[5; 8]).expect("second");
+        let bytes = fs::read(&path).expect("read");
+        assert_eq!(bytes.len(), 8 + 8);
+        assert_eq!(&bytes[..4], &2u32.to_le_bytes());
+        assert_eq!(&bytes[8..], &[5; 8]);
     }
 }

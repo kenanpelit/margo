@@ -14,7 +14,7 @@ use reactive_stores::{ArcStore, Store};
 use relm4::gtk::glib;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 /// One sensor access event.
@@ -102,17 +102,76 @@ fn history_path() -> PathBuf {
 }
 
 fn load_history() -> Vec<PrivacyEvent> {
-    match fs::read_to_string(history_path()) {
+    load_history_from(&history_path())
+}
+
+/// A missing or corrupt log reads as empty (the next save overwrites it).
+fn load_history_from(path: &Path) -> Vec<PrivacyEvent> {
+    match fs::read_to_string(path) {
         Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
         Err(_) => Vec::new(),
     }
 }
 
 fn save_history(events: &[PrivacyEvent]) -> std::io::Result<()> {
-    let path = history_path();
+    save_history_to(&history_path(), events)
+}
+
+fn save_history_to(path: &Path, events: &[PrivacyEvent]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     let json = serde_json::to_string_pretty(events).map_err(std::io::Error::other)?;
-    fs::write(&path, json)
+    fs::write(path, json)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(kind: &str, ts: i64) -> PrivacyEvent {
+        PrivacyEvent {
+            app: "Firefox".to_string(),
+            kind: kind.to_string(),
+            action: "started".to_string(),
+            time: "14:07:32".to_string(),
+            timestamp: ts,
+        }
+    }
+
+    #[test]
+    fn icon_follows_the_sensor_kind() {
+        assert_eq!(event("Camera", 0).icon_name(), "camera-video-symbolic");
+        assert_eq!(event("Screen", 0).icon_name(), "video-display-symbolic");
+        assert_eq!(
+            event("Microphone", 0).icon_name(),
+            "microphone-sensitivity-high-symbolic"
+        );
+        // Unknown kinds fall back to the microphone glyph.
+        assert_eq!(
+            event("camera", 0).icon_name(),
+            "microphone-sensitivity-high-symbolic"
+        );
+    }
+
+    #[test]
+    fn history_round_trips_in_order() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("mshell").join("privacy_history.json");
+        let events = vec![event("Camera", 20), event("Microphone", 10)];
+        save_history_to(&path, &events).unwrap();
+        assert_eq!(load_history_from(&path), events);
+    }
+
+    #[test]
+    fn corrupt_or_missing_history_reads_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("privacy_history.json");
+        assert!(load_history_from(&path).is_empty());
+        fs::write(&path, "{ not json").unwrap();
+        assert!(load_history_from(&path).is_empty());
+        // Schema drift (a field missing) is treated the same way.
+        fs::write(&path, r#"[{"app":"x","kind":"Camera"}]"#).unwrap();
+        assert!(load_history_from(&path).is_empty());
+    }
 }

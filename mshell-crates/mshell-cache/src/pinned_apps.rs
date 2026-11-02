@@ -3,7 +3,7 @@ use reactive_stores::{ArcStore, Patch, Store};
 use relm4::gtk::glib;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 #[derive(Debug, Clone, PartialEq, Eq, Store)]
@@ -70,11 +70,14 @@ fn pinned_apps_path() -> PathBuf {
 }
 
 fn load_pinned_apps() -> Vec<PinnedApp> {
-    let path = pinned_apps_path();
+    load_pinned_apps_from(&pinned_apps_path())
+}
+
+fn load_pinned_apps_from(path: &Path) -> Vec<PinnedApp> {
     // Read the whole (tiny) file at once: simpler than a line
     // iterator and sidesteps the `lines().filter_map(Result::ok)`
     // loop-forever hazard clippy flags.
-    match fs::read_to_string(&path) {
+    match fs::read_to_string(path) {
         Ok(contents) => contents
             .lines()
             .filter(|l| !l.trim().is_empty())
@@ -85,11 +88,14 @@ fn load_pinned_apps() -> Vec<PinnedApp> {
 }
 
 fn save_pinned_apps(apps: &[PinnedApp]) -> std::io::Result<()> {
-    let path = pinned_apps_path();
+    save_pinned_apps_to(&pinned_apps_path(), apps)
+}
+
+fn save_pinned_apps_to(path: &Path, apps: &[PinnedApp]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut file = fs::File::create(&path)?;
+    let mut file = fs::File::create(path)?;
     for app in apps {
         writeln!(file, "{}", app.to_line())?;
     }
@@ -109,5 +115,64 @@ impl PinnedApp {
             return None;
         }
         Some(Self { desktop_id, app_id })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn app(desktop_id: &str, app_id: &str) -> PinnedApp {
+        PinnedApp {
+            desktop_id: desktop_id.to_string(),
+            app_id: app_id.to_string(),
+        }
+    }
+
+    #[test]
+    fn line_format_round_trips() {
+        let a = app("org.mozilla.firefox.desktop", "firefox");
+        assert_eq!(a.to_line(), "org.mozilla.firefox.desktop\tfirefox");
+        assert_eq!(PinnedApp::from_line(&a.to_line()), Some(a));
+    }
+
+    #[test]
+    fn from_line_rejects_incomplete_lines() {
+        assert_eq!(PinnedApp::from_line("firefox"), None);
+        assert_eq!(PinnedApp::from_line("firefox\t"), None);
+        assert_eq!(PinnedApp::from_line("\tfirefox"), None);
+        assert_eq!(PinnedApp::from_line("  \t  "), None);
+    }
+
+    #[test]
+    fn from_line_trims_fields_and_keeps_extra_tabs_in_app_id() {
+        assert_eq!(
+            PinnedApp::from_line(" kitty.desktop \t kitty \r"),
+            Some(app("kitty.desktop", "kitty"))
+        );
+        assert_eq!(
+            PinnedApp::from_line("a.desktop\tb\tc"),
+            Some(app("a.desktop", "b\tc"))
+        );
+    }
+
+    #[test]
+    fn disk_round_trip_skips_garbage_lines() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("mshell").join("pinned_apps.txt");
+        let apps = vec![app("a.desktop", "a"), app("b.desktop", "org.b")];
+        save_pinned_apps_to(&path, &apps).unwrap();
+        assert_eq!(load_pinned_apps_from(&path), apps);
+
+        fs::write(
+            &path,
+            "a.desktop\ta\n\nlegacy-line-without-tab\nb.desktop\tb\n",
+        )
+        .unwrap();
+        assert_eq!(
+            load_pinned_apps_from(&path),
+            vec![app("a.desktop", "a"), app("b.desktop", "b")]
+        );
+        assert!(load_pinned_apps_from(&tmp.path().join("missing")).is_empty());
     }
 }
