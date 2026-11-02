@@ -6,3 +6,4 @@ pub mod migration;
 pub mod paths;
 pub mod plugin_bridge;
 pub mod schema;
+pub mod toast;

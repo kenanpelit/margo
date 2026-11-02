@@ -9,7 +9,8 @@
 //!
 //! Architecture: a single central producer ([`crate::toast_producer`])
 //! subscribes to every event source *once* and calls [`push_toast`], which
-//! fans the event out over a process-wide broadcast channel. Each output then
+//! fans the event out over a process-wide broadcast channel (the bus lives in
+//! `mshell_config::toast`). Each output then
 //! owns one [`ToastSurfaceModel`] that mirrors the OSD pattern (one window per
 //! monitor, show on event, auto-hide after a few seconds). Centralising the
 //! producer keeps the subprocess pollers (VPN, lock-key sysfs reads) running
@@ -24,56 +25,13 @@ use mshell_config::schema::config::{ConfigStoreFields, ToastsStoreFields};
 use mshell_config::schema::position::Position;
 use reactive_graph::prelude::GetUntracked;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::sync::OnceLock;
 use tokio::sync::broadcast;
 
-/// Severity tint for a toast — maps to the DESIGN.md §2 calm/warn/danger
-/// ladder (plus the stable `positive` green) via a CSS class on the card.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToastSeverity {
-    Calm,
-    Warn,
-    Danger,
-    Positive,
-}
-
-impl ToastSeverity {
-    fn class(self) -> &'static str {
-        match self {
-            ToastSeverity::Calm => "calm",
-            ToastSeverity::Warn => "warn",
-            ToastSeverity::Danger => "danger",
-            ToastSeverity::Positive => "positive",
-        }
-    }
-}
-
-/// One toast: a symbolic icon, a title, an optional body line, and a severity.
-#[derive(Debug, Clone)]
-pub struct ToastEvent {
-    pub icon: String,
-    pub title: String,
-    pub body: Option<String>,
-    pub severity: ToastSeverity,
-}
-
-static TOAST_BUS: OnceLock<broadcast::Sender<ToastEvent>> = OnceLock::new();
-
-fn bus() -> &'static broadcast::Sender<ToastEvent> {
-    TOAST_BUS.get_or_init(|| broadcast::channel(16).0)
-}
-
-/// Broadcast a toast to every per-output toast surface. A no-op (the `Err`
-/// when there are no live receivers is intentionally swallowed) before the
-/// surfaces exist or after they're all gone.
-pub fn push_toast(event: ToastEvent) {
-    let _ = bus().send(event);
-}
-
-/// Subscribe a per-output surface to the toast bus.
-fn subscribe() -> broadcast::Receiver<ToastEvent> {
-    bus().subscribe()
-}
+// The bus itself lives in `mshell-config` so lower crates can raise toasts
+// in-process; re-exported here so existing `mshell_osd::toast::…` users keep
+// working.
+use mshell_config::toast::subscribe;
+pub use mshell_config::toast::{ToastEvent, ToastSeverity, push_toast};
 
 /// Anchor the toast window per the `toasts` config: a single edge (the
 /// compositor centres the card on it) or a corner (two edges), with `distance`
