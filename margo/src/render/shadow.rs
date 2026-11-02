@@ -36,6 +36,7 @@
 //! `ShadowRenderElement` directly underneath the window's
 //! `WaylandSurface`.
 
+use crate::render::shader_cache::ShaderSlot;
 use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement, UnderlyingStorage};
 use smithay::backend::renderer::gles::{
     GlesError, GlesFrame, GlesPixelProgram, GlesRenderer, Uniform, UniformName, UniformType,
@@ -65,27 +66,18 @@ impl ShadowProgram {
 }
 
 thread_local! {
-    static CACHED: std::cell::RefCell<Option<ShadowProgram>> = const { std::cell::RefCell::new(None) };
+    static CACHED: std::cell::RefCell<ShaderSlot<ShadowProgram>> =
+        const { std::cell::RefCell::new(ShaderSlot::Pending) };
 }
 
 /// Compile-once-per-renderer cache. Mirrors the `clipped_surface`
-/// pattern: failures are non-fatal — `push_client_elements` skips
-/// the shadow if the program isn't available.
+/// pattern: failures are non-fatal (and cached, logged once) —
+/// `push_client_elements` skips the shadow if the program isn't available.
 pub fn shader(renderer: &mut GlesRenderer) -> Option<ShadowProgram> {
     CACHED.with(|slot| {
-        if let Some(s) = slot.borrow().as_ref() {
-            return Some(s.clone());
-        }
-        match ShadowProgram::compile(renderer) {
-            Ok(p) => {
-                *slot.borrow_mut() = Some(p.clone());
-                Some(p)
-            }
-            Err(e) => {
-                tracing::error!("shadow shader compile failed: {e:?}");
-                None
-            }
-        }
+        slot.borrow_mut()
+            .get_or_compile("shadow", || ShadowProgram::compile(renderer))
+            .cloned()
     })
 }
 

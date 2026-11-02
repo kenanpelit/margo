@@ -4,6 +4,7 @@
 //! `WaylandSurfaceRenderElement` and temporarily replaces Smithay's default
 //! texture shader so the client pixels are masked to the same rounded rect.
 
+use crate::render::shader_cache::ShaderSlot;
 use std::cell::RefCell;
 
 use smithay::{
@@ -41,25 +42,16 @@ impl ClippedSurfaceShader {
 }
 
 thread_local! {
-    static CACHED: RefCell<Option<ClippedSurfaceShader>> = const { RefCell::new(None) };
+    static CACHED: RefCell<ShaderSlot<ClippedSurfaceShader>> = const { RefCell::new(ShaderSlot::Pending) };
 }
 
 pub fn shader(renderer: &mut GlesRenderer) -> Option<ClippedSurfaceShader> {
     CACHED.with(|slot| {
-        if let Some(s) = slot.borrow().as_ref() {
-            return Some(s.clone());
-        }
-
-        match ClippedSurfaceShader::compile(renderer) {
-            Ok(s) => {
-                *slot.borrow_mut() = Some(s.clone());
-                Some(s)
-            }
-            Err(e) => {
-                tracing::error!("clipped_surface shader compile failed: {e:?}");
-                None
-            }
-        }
+        slot.borrow_mut()
+            .get_or_compile("clipped_surface", || {
+                ClippedSurfaceShader::compile(renderer)
+            })
+            .cloned()
     })
 }
 

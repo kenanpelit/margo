@@ -14,6 +14,7 @@
 //!   border thickness     = `bw`
 //! ```
 
+use crate::render::shader_cache::ShaderSlot;
 use std::cell::RefCell;
 
 use smithay::backend::renderer::{
@@ -49,26 +50,16 @@ impl RoundedBorderShader {
 thread_local! {
     /// Renderer-scoped (GLES context lives on a single thread) compile cache.
     /// Smithay's `GlesPixelProgram` is `Arc`-backed so cloning is cheap.
-    static CACHED: RefCell<Option<RoundedBorderShader>> = const { RefCell::new(None) };
+    static CACHED: RefCell<ShaderSlot<RoundedBorderShader>> = const { RefCell::new(ShaderSlot::Pending) };
 }
 
 /// Get the program, compiling it if not yet built. Must be called from
 /// the render thread (where the GLES context is current).
 pub fn shader(renderer: &mut GlesRenderer) -> Option<RoundedBorderShader> {
     CACHED.with(|slot| {
-        if let Some(s) = slot.borrow().as_ref() {
-            return Some(s.clone());
-        }
-        match RoundedBorderShader::compile(renderer) {
-            Ok(s) => {
-                *slot.borrow_mut() = Some(s.clone());
-                Some(s)
-            }
-            Err(e) => {
-                tracing::error!("rounded_border shader compile failed: {e:?}");
-                None
-            }
-        }
+        slot.borrow_mut()
+            .get_or_compile("rounded_border", || RoundedBorderShader::compile(renderer))
+            .cloned()
     })
 }
 

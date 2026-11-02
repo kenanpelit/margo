@@ -9,6 +9,7 @@
 //! Uniforms: `rect_size` (physical px), `corner_radius` (physical px),
 //! `fill_color` (straight RGBA, premultiplied in the shader).
 
+use crate::render::shader_cache::ShaderSlot;
 use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement, UnderlyingStorage};
 use smithay::backend::renderer::gles::{
     GlesError, GlesFrame, GlesPixelProgram, GlesRenderer, Uniform, UniformName, UniformType,
@@ -36,27 +37,17 @@ impl RoundedSolidProgram {
 }
 
 thread_local! {
-    static CACHED: std::cell::RefCell<Option<RoundedSolidProgram>> =
-        const { std::cell::RefCell::new(None) };
+    static CACHED: std::cell::RefCell<ShaderSlot<RoundedSolidProgram>> =
+        const { std::cell::RefCell::new(ShaderSlot::Pending) };
 }
 
-/// Compile-once-per-renderer cache. Failures are non-fatal — callers fall
-/// back to a flat `SolidColorRenderElement`.
+/// Compile-once-per-renderer cache. Failures are non-fatal (and cached,
+/// logged once) — callers fall back to a flat `SolidColorRenderElement`.
 pub fn shader(renderer: &mut GlesRenderer) -> Option<RoundedSolidProgram> {
     CACHED.with(|slot| {
-        if let Some(s) = slot.borrow().as_ref() {
-            return Some(s.clone());
-        }
-        match RoundedSolidProgram::compile(renderer) {
-            Ok(p) => {
-                *slot.borrow_mut() = Some(p.clone());
-                Some(p)
-            }
-            Err(e) => {
-                tracing::error!("rounded-solid shader compile failed: {e:?}");
-                None
-            }
-        }
+        slot.borrow_mut()
+            .get_or_compile("rounded-solid", || RoundedSolidProgram::compile(renderer))
+            .cloned()
     })
 }
 

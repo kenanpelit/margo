@@ -44,6 +44,7 @@
 //! `no_blur`, and the surface is translucent, a `BlurRenderElement` is
 //! pushed directly underneath the surface.
 
+use crate::render::shader_cache::ShaderSlot;
 use std::cell::RefCell;
 
 use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement, UnderlyingStorage};
@@ -125,7 +126,7 @@ struct PoolTex {
 }
 
 thread_local! {
-    static CACHED: RefCell<Option<BlurGl>> = const { RefCell::new(None) };
+    static CACHED: RefCell<ShaderSlot<BlurGl>> = const { RefCell::new(ShaderSlot::Pending) };
 }
 
 /// One-shot diagnostic: log the first `draw_blur` invocation's geometry
@@ -146,25 +147,15 @@ pub struct BlurReady;
 /// the caller simply skips the blur element.
 pub fn shader(renderer: &mut GlesRenderer) -> Option<BlurReady> {
     CACHED.with(|slot| {
-        if slot.borrow().is_some() {
-            return Some(BlurReady);
-        }
-        // SAFETY: `with_context` makes the renderer's GL context current for the closure.
-        let compiled = renderer.with_context(|gl| unsafe { compile_blur_gl(gl) });
-        match compiled {
-            Ok(Ok(blur_gl)) => {
-                *slot.borrow_mut() = Some(blur_gl);
-                Some(BlurReady)
-            }
-            Ok(Err(e)) => {
-                tracing::error!("blur shader compile failed: {e:?}");
-                None
-            }
-            Err(e) => {
-                tracing::error!("blur shader compile failed (context): {e:?}");
-                None
-            }
-        }
+        slot.borrow_mut()
+            .get_or_compile("blur", || {
+                // SAFETY: `with_context` makes the renderer's GL context current for the closure.
+                match renderer.with_context(|gl| unsafe { compile_blur_gl(gl) }) {
+                    Ok(compiled) => compiled.map_err(|e| format!("{e:?}")),
+                    Err(e) => Err(format!("context: {e:?}")),
+                }
+            })
+            .map(|_| BlurReady)
     })
 }
 
@@ -418,7 +409,7 @@ impl RenderElement<GlesRenderer> for BlurRenderElement {
         frame.with_context(|gl| unsafe {
             CACHED.with(|slot| {
                 let mut borrow = slot.borrow_mut();
-                let Some(blur_gl) = borrow.as_mut() else {
+                let Some(blur_gl) = borrow.ready_mut() else {
                     return;
                 };
                 draw_blur(gl, blur_gl, dst, region_w, region_h, corner_px, &params);
