@@ -267,7 +267,8 @@ fn save_modules_state(state_file: &Path, state: &ModulesState) -> Result<()> {
 
     let yaml = serde_yaml::to_string(state).context("Failed to serialize modules state")?;
 
-    std::fs::write(state_file, yaml).context("Failed to write modules state file")?;
+    crate::atomic_write::write_atomic(state_file, &yaml)
+        .context("Failed to write modules state file")?;
 
     Ok(())
 }
@@ -980,98 +981,98 @@ fn prune_undeclared_packages(paths: &ConfigPaths, config: &Config) -> Result<()>
 
     crate::ui::step("Pruning", "undeclared packages");
 
-    // Load state file to find packages from disabled modules
-    if let Ok(state) = load_state_file(paths) {
-        let declared_names: HashSet<String> = declared.iter().map(|p| p.name.clone()).collect();
+    // Load state file to find packages from disabled modules. An unreadable
+    // state file is a hard error: pruning against a guess is not safe.
+    let state = load_prune_state(paths)?;
+    let declared_names: HashSet<String> = declared.iter().map(|p| p.name.clone()).collect();
 
-        // Get currently installed packages
-        let installed_pacman = pkg_manager.get_installed_native_packages(config)?;
-        let installed_pacman_map: HashMap<String, String> = installed_pacman.into_iter().collect();
+    // Get currently installed packages
+    let installed_pacman = pkg_manager.get_installed_native_packages(config)?;
+    let installed_pacman_map: HashMap<String, String> = installed_pacman.into_iter().collect();
 
-        let flatpak_scope_str = match config.flatpak_scope {
+    let flatpak_scope_str = match config.flatpak_scope {
+        FlatpakScope::User => "--user",
+        FlatpakScope::System => "--system",
+    };
+    let installed_flatpaks = pkg_manager.get_installed_flatpaks(flatpak_scope_str)?;
+    let installed_flatpak_set: HashSet<String> = installed_flatpaks.into_iter().collect();
+
+    // Packages tracked in state but no longer declared (and still
+    // installed) are prune candidates.
+    let (pacman_to_remove, flatpak_to_remove) = compute_prunable(
+        &state.packages,
+        &declared_names,
+        &installed_pacman_map,
+        &installed_flatpak_set,
+    );
+
+    // Never auto-remove critical system packages, even if a disabled
+    // module used to track them.
+    let (pacman_to_remove, protected_skipped) = partition_protected(pacman_to_remove);
+    if !protected_skipped.is_empty() {
+        println!(
+            "  {} Skipping protected package{} (remove manually if intended): {}",
+            "⚠".yellow(),
+            if protected_skipped.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            protected_skipped.join(", ")
+        );
+    }
+
+    // Remove packages
+    if !pacman_to_remove.is_empty() {
+        let backend = crate::backend::create_backend(config)?;
+        println!(
+            "  {} Removing {} native package{} from disabled modules: {}",
+            "→".blue(),
+            pacman_to_remove.len(),
+            if pacman_to_remove.len() == 1 { "" } else { "s" },
+            pacman_to_remove.join(", ")
+        );
+
+        let pkg_refs: Vec<&str> = pacman_to_remove.iter().map(|s| s.as_str()).collect();
+        let success = backend.remove_packages_batch(&pkg_refs)?;
+
+        if !success {
+            crate::ui::warn("Pruning", "failed to remove some packages");
+        }
+    }
+
+    if !flatpak_to_remove.is_empty() {
+        println!(
+            "  {} Removing {} flatpak{} from disabled modules: {}",
+            "→".blue(),
+            flatpak_to_remove.len(),
+            if flatpak_to_remove.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            flatpak_to_remove.join(", ")
+        );
+
+        let scope_flag = match config.flatpak_scope {
             FlatpakScope::User => "--user",
             FlatpakScope::System => "--system",
         };
-        let installed_flatpaks = pkg_manager.get_installed_flatpaks(flatpak_scope_str)?;
-        let installed_flatpak_set: HashSet<String> = installed_flatpaks.into_iter().collect();
 
-        // Packages tracked in state but no longer declared (and still
-        // installed) are prune candidates.
-        let (pacman_to_remove, flatpak_to_remove) = compute_prunable(
-            &state.packages,
-            &declared_names,
-            &installed_pacman_map,
-            &installed_flatpak_set,
-        );
+        for pkg in &flatpak_to_remove {
+            let status = std::process::Command::new("flatpak")
+                .args(["uninstall", "-y", scope_flag, pkg])
+                .status()
+                .context(format!("Failed to remove flatpak: {}", pkg))?;
 
-        // Never auto-remove critical system packages, even if a disabled
-        // module used to track them.
-        let (pacman_to_remove, protected_skipped) = partition_protected(pacman_to_remove);
-        if !protected_skipped.is_empty() {
-            println!(
-                "  {} Skipping protected package{} (remove manually if intended): {}",
-                "⚠".yellow(),
-                if protected_skipped.len() == 1 {
-                    ""
-                } else {
-                    "s"
-                },
-                protected_skipped.join(", ")
-            );
-        }
-
-        // Remove packages
-        if !pacman_to_remove.is_empty() {
-            let backend = crate::backend::create_backend(config)?;
-            println!(
-                "  {} Removing {} native package{} from disabled modules: {}",
-                "→".blue(),
-                pacman_to_remove.len(),
-                if pacman_to_remove.len() == 1 { "" } else { "s" },
-                pacman_to_remove.join(", ")
-            );
-
-            let pkg_refs: Vec<&str> = pacman_to_remove.iter().map(|s| s.as_str()).collect();
-            let success = backend.remove_packages_batch(&pkg_refs)?;
-
-            if !success {
-                crate::ui::warn("Pruning", "failed to remove some packages");
+            if !status.success() {
+                crate::ui::warn("Pruning", &format!("failed to remove {}", pkg));
             }
         }
+    }
 
-        if !flatpak_to_remove.is_empty() {
-            println!(
-                "  {} Removing {} flatpak{} from disabled modules: {}",
-                "→".blue(),
-                flatpak_to_remove.len(),
-                if flatpak_to_remove.len() == 1 {
-                    ""
-                } else {
-                    "s"
-                },
-                flatpak_to_remove.join(", ")
-            );
-
-            let scope_flag = match config.flatpak_scope {
-                FlatpakScope::User => "--user",
-                FlatpakScope::System => "--system",
-            };
-
-            for pkg in &flatpak_to_remove {
-                let status = std::process::Command::new("flatpak")
-                    .args(["uninstall", "-y", scope_flag, pkg])
-                    .status()
-                    .context(format!("Failed to remove flatpak: {}", pkg))?;
-
-                if !status.success() {
-                    crate::ui::warn("Pruning", &format!("failed to remove {}", pkg));
-                }
-            }
-        }
-
-        if pacman_to_remove.is_empty() && flatpak_to_remove.is_empty() {
-            crate::ui::detail("nothing to prune");
-        }
+    if pacman_to_remove.is_empty() && flatpak_to_remove.is_empty() {
+        crate::ui::detail("nothing to prune");
     }
 
     Ok(())
@@ -1391,17 +1392,16 @@ pub fn run(paths: &ConfigPaths, opts: SyncOptions) -> Result<()> {
     let mut flatpak_to_remove: Vec<String> = Vec::new();
 
     if should_prune {
-        if let Ok(state) = load_state_file(paths) {
-            let declared_names: HashSet<String> = declared.iter().map(|p| p.name.clone()).collect();
-            let (native, flatpak) = compute_prunable(
-                &state.packages,
-                &declared_names,
-                &installed_pacman_map,
-                &installed_flatpak_set,
-            );
-            to_remove = native;
-            flatpak_to_remove = flatpak;
-        }
+        let state = load_prune_state(paths)?;
+        let declared_names: HashSet<String> = declared.iter().map(|p| p.name.clone()).collect();
+        let (native, flatpak) = compute_prunable(
+            &state.packages,
+            &declared_names,
+            &installed_pacman_map,
+            &installed_flatpak_set,
+        );
+        to_remove = native;
+        flatpak_to_remove = flatpak;
     }
 
     // Never auto-remove critical system packages, even when pruning.
@@ -2227,52 +2227,72 @@ fn load_state_file(paths: &ConfigPaths) -> Result<StateFile> {
     Ok(StateFile { packages })
 }
 
-fn update_state_file(paths: &ConfigPaths, declared: &[Package]) -> Result<()> {
+/// State for `--prune`: the packages mdots recorded as managed. A missing file
+/// means nothing is tracked yet (first sync) and is fine; a file that exists but
+/// can't be read or parsed is an error — silently treating it as empty would
+/// make `--prune` a no-op without telling anyone.
+fn load_prune_state(paths: &ConfigPaths) -> Result<StateFile> {
+    if !paths.state_file.exists() {
+        return Ok(StateFile {
+            packages: Vec::new(),
+        });
+    }
+    load_state_file(paths).with_context(|| {
+        format!(
+            "package state file {} is unreadable; refusing to prune. Fix it, or delete it \
+             (mdots then forgets which packages it installed) and re-run `mdots sync`",
+            paths.state_file.display()
+        )
+    })
+}
+
+/// Render the package state file. `version_of` looks up the installed
+/// version; packages without one are recorded without a `version:` key.
+fn render_package_state(
+    declared: &[Package],
+    mut version_of: impl FnMut(&Package) -> Option<String>,
+) -> String {
     use chrono::Utc;
-    use std::io::Write as _;
+    use std::fmt::Write as _;
 
-    // Ensure state directory exists
-    std::fs::create_dir_all(&paths.state_dir).context(format!(
-        "Failed to create state directory: {:?}",
-        paths.state_dir
-    ))?;
-
-    let mut file = std::fs::File::create(&paths.state_file).context(format!(
-        "Failed to create state file: {:?}",
-        paths.state_file
-    ))?;
-
-    writeln!(
-        file,
-        "# Auto-generated state file - tracks mdots-managed packages"
-    )?;
-    writeln!(file, "# Generated: {}", Utc::now().to_rfc3339())?;
-    writeln!(file)?;
-    writeln!(file, "packages:")?;
-
+    let mut out = String::new();
+    out.push_str("# Auto-generated state file - tracks mdots-managed packages\n");
+    let _ = writeln!(out, "# Generated: {}", Utc::now().to_rfc3339());
+    out.push_str("\npackages:\n");
     for pkg in declared {
-        writeln!(file, "  - name: {}", pkg.name)?;
-
-        // Get current version (don't fail if we can't get it)
-        let version = if pkg.package_type == PackageType::Flatpak {
-            get_flatpak_version(&pkg.name).unwrap_or(None)
-        } else {
-            get_package_version(&pkg.name, paths).unwrap_or(None)
-        };
-
-        if let Some(ver) = version {
-            writeln!(file, "    version: \"{}\"", ver)?;
+        let _ = writeln!(out, "  - name: {}", pkg.name);
+        if let Some(ver) = version_of(pkg) {
+            let _ = writeln!(out, "    version: \"{}\"", ver);
         }
-
         let type_str = match pkg.package_type {
             PackageType::Flatpak => "flatpak",
             PackageType::Native => "native",
             PackageType::Nix => "nix",
         };
-        writeln!(file, "    type: {}", type_str)?;
+        let _ = writeln!(out, "    type: {}", type_str);
     }
+    out
+}
 
-    Ok(())
+/// Write the rendered package state atomically: this file drives `--prune`,
+/// so a crash mid-write must leave the previous version, not a torn one.
+fn write_package_state(paths: &ConfigPaths, contents: &str) -> Result<()> {
+    crate::atomic_write::write_atomic(&paths.state_file, contents).context(format!(
+        "Failed to write state file: {:?}",
+        paths.state_file
+    ))
+}
+
+fn update_state_file(paths: &ConfigPaths, declared: &[Package]) -> Result<()> {
+    // Get current versions (don't fail if we can't get one).
+    let contents = render_package_state(declared, |pkg| {
+        if pkg.package_type == PackageType::Flatpak {
+            get_flatpak_version(&pkg.name).unwrap_or(None)
+        } else {
+            get_package_version(&pkg.name, paths).unwrap_or(None)
+        }
+    });
+    write_package_state(paths, &contents)
 }
 
 /// Path of the "a sync is mid-flight" marker inside the state directory.
@@ -2372,74 +2392,127 @@ pub enum HookStatus {
     Modified, // Hook exists but script has been modified
 }
 
+/// Identity of a hook script's content, recorded in the hooks state so a
+/// "once" hook is re-run only when its script changes. SHA-256, so the value is
+/// stable across Rust releases (unlike `DefaultHasher`, whose algorithm is
+/// explicitly unspecified).
+pub(crate) fn hook_script_hash(script: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(script.as_bytes());
+    let mut out = String::with_capacity(7 + 64);
+    out.push_str("sha256:");
+    for b in digest {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{b:02x}");
+    }
+    out
+}
+
+/// The identity older mdots versions recorded: `DefaultHasher` over the
+/// script `String`, as a decimal `u64`. Only used to recognise existing
+/// entries so they can be migrated to [`hook_script_hash`] without re-running
+/// hooks that already ran.
+fn legacy_hook_script_hash(script: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    // `String` hashes exactly like `str`, which is what the old code fed in.
+    script.hash(&mut hasher);
+    hasher.finish().to_string()
+}
+
+fn load_hooks_yaml(paths: &ConfigPaths) -> Result<serde_yaml::Value> {
+    if paths.hooks_state_file.exists() {
+        let content = std::fs::read_to_string(&paths.hooks_state_file)?;
+        Ok(serde_yaml::from_str(&content)?)
+    } else {
+        Ok(serde_yaml::from_str("hooks: []")?)
+    }
+}
+
+/// Write the hooks state atomically: it decides whether `sudo bash` hooks
+/// re-run, so a torn file must never replace a good one.
+fn save_hooks_yaml(paths: &ConfigPaths, yaml: &serde_yaml::Value) -> Result<()> {
+    let content = serde_yaml::to_string(yaml)?;
+    crate::atomic_write::write_atomic(&paths.hooks_state_file, &content)
+}
+
 pub fn check_hook_status(
     paths: &ConfigPaths,
     module: &str,
     hook_path: &std::path::PathBuf,
 ) -> Result<HookStatus> {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
     if !paths.hooks_state_file.exists() {
         return Ok(HookStatus::NotRun);
     }
 
-    let content = std::fs::read_to_string(&paths.hooks_state_file)?;
-    let yaml: serde_yaml::Value = serde_yaml::from_str(&content)?;
+    let mut yaml = load_hooks_yaml(paths)?;
 
     // Get current hash of script
     let script_content = std::fs::read_to_string(hook_path)?;
-    let mut hasher = DefaultHasher::new();
-    script_content.hash(&mut hasher);
-    let current_hash = hasher.finish().to_string();
+    let current_hash = hook_script_hash(&script_content);
 
     // Check stored hash and status
-    if let Some(hooks) = yaml.get("hooks").and_then(|v| v.as_sequence()) {
-        for hook in hooks {
-            if let Some(hook_map) = hook.as_mapping() {
-                let stored_module = hook_map
-                    .get("module")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-
-                if stored_module == module {
-                    let status = hook_map
-                        .get("status")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("executed");
-
-                    // If marked as skipped, always return skipped
-                    if status == "skipped" {
-                        return Ok(HookStatus::Skipped);
-                    }
-
-                    let stored_hash = hook_map
-                        .get("script_hash")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-
-                    // If executed, check if script has been modified
-                    if stored_hash == current_hash {
-                        return Ok(HookStatus::Executed);
-                    } else {
-                        return Ok(HookStatus::Modified);
-                    }
-                }
+    let mut migrate = false;
+    let mut result = HookStatus::NotRun;
+    if let Some(hooks) = yaml.get_mut("hooks").and_then(|v| v.as_sequence_mut()) {
+        for hook in hooks.iter_mut() {
+            let Some(hook_map) = hook.as_mapping_mut() else {
+                continue;
+            };
+            let stored_module = hook_map
+                .get("module")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if stored_module != module {
+                continue;
             }
+
+            let status = hook_map
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("executed");
+
+            // If marked as skipped, always return skipped
+            if status == "skipped" {
+                return Ok(HookStatus::Skipped);
+            }
+
+            let stored_hash = hook_map
+                .get("script_hash")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // If executed, check if script has been modified. An entry written
+            // by an older mdots carries the legacy `DefaultHasher` value:
+            // accept it if it matches this script and rewrite it as SHA-256.
+            result = if stored_hash == current_hash {
+                HookStatus::Executed
+            } else if !stored_hash.starts_with("sha256:")
+                && stored_hash == legacy_hook_script_hash(&script_content)
+            {
+                hook_map.insert(
+                    serde_yaml::Value::from("script_hash"),
+                    serde_yaml::Value::from(current_hash.clone()),
+                );
+                migrate = true;
+                HookStatus::Executed
+            } else {
+                HookStatus::Modified
+            };
+            break;
         }
     }
 
-    Ok(HookStatus::NotRun)
+    if migrate {
+        save_hooks_yaml(paths, &yaml)?;
+    }
+    Ok(result)
 }
 
 pub fn mark_hook_skipped(paths: &ConfigPaths, module: &str) -> Result<()> {
     // Initialize or load hooks state file
-    let mut yaml: serde_yaml::Value = if paths.hooks_state_file.exists() {
-        let content = std::fs::read_to_string(&paths.hooks_state_file)?;
-        serde_yaml::from_str(&content)?
-    } else {
-        serde_yaml::from_str("hooks: []")?
-    };
+    let mut yaml = load_hooks_yaml(paths)?;
 
     // Remove existing entry for this module
     if let Some(hooks) = yaml.get_mut("hooks").and_then(|v| v.as_sequence_mut()) {
@@ -2459,12 +2532,7 @@ pub fn mark_hook_skipped(paths: &ConfigPaths, module: &str) -> Result<()> {
         hooks.push(new_hook);
     }
 
-    // Write back to file
-    std::fs::create_dir_all(paths.state_dir.as_path())?;
-    let content = serde_yaml::to_string(&yaml)?;
-    std::fs::write(&paths.hooks_state_file, content)?;
-
-    Ok(())
+    save_hooks_yaml(paths, &yaml)
 }
 
 pub fn mark_hook_executed(
@@ -2473,24 +2541,15 @@ pub fn mark_hook_executed(
     hook_path: &std::path::PathBuf,
 ) -> Result<()> {
     use chrono::Utc;
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
 
     // Get hash of script
     let script_content = std::fs::read_to_string(hook_path)?;
-    let mut hasher = DefaultHasher::new();
-    script_content.hash(&mut hasher);
-    let script_hash = hasher.finish().to_string();
+    let script_hash = hook_script_hash(&script_content);
 
     let timestamp = Utc::now().to_rfc3339();
 
     // Initialize or load hooks state file
-    let mut yaml: serde_yaml::Value = if paths.hooks_state_file.exists() {
-        let content = std::fs::read_to_string(&paths.hooks_state_file)?;
-        serde_yaml::from_str(&content)?
-    } else {
-        serde_yaml::from_str("hooks: []")?
-    };
+    let mut yaml = load_hooks_yaml(paths)?;
 
     // Remove existing entry for this module
     if let Some(hooks) = yaml.get_mut("hooks").and_then(|v| v.as_sequence_mut()) {
@@ -2513,12 +2572,7 @@ pub fn mark_hook_executed(
         hooks.push(new_hook);
     }
 
-    // Write back to file
-    std::fs::create_dir_all(paths.state_dir.as_path())?;
-    let content = serde_yaml::to_string(&yaml)?;
-    std::fs::write(&paths.hooks_state_file, content)?;
-
-    Ok(())
+    save_hooks_yaml(paths, &yaml)
 }
 
 /// Run pre-flight validation before sync (similar to NixOS rebuild)
@@ -3156,6 +3210,169 @@ mod tests {
         assert!(
             flatpak.is_empty(),
             "no state file → nothing to prune (flatpak)"
+        );
+    }
+
+    #[test]
+    fn prune_state_missing_file_means_nothing_tracked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        let state = load_prune_state(&paths).expect("a missing state file is not an error");
+        assert!(state.packages.is_empty());
+    }
+
+    #[test]
+    fn prune_state_corrupt_file_is_a_hard_error() {
+        // A corrupt state file used to be skipped silently (`if let Ok`), so
+        // `--prune` quietly did nothing. It must refuse instead.
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        std::fs::create_dir_all(&paths.state_dir).unwrap();
+        std::fs::write(&paths.state_file, "packages: [unterminated\n  - :::\n").unwrap();
+        let err = load_prune_state(&paths).expect_err("corrupt state must not be ignored");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("refusing to prune"),
+            "unexpected message: {msg}"
+        );
+        assert!(
+            msg.contains("installed.yaml"),
+            "message must name the file: {msg}"
+        );
+    }
+
+    #[test]
+    fn package_state_render_roundtrips_through_loader() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        let declared = vec![
+            pkg("vim", PackageType::Native),
+            pkg("org.gimp.GIMP", PackageType::Flatpak),
+        ];
+        let text = render_package_state(&declared, |p| {
+            (p.name == "vim").then(|| "9.1-1".to_string())
+        });
+        write_package_state(&paths, &text).unwrap();
+        assert!(!paths.state_file.with_extension("mdots-tmp").exists());
+        let state = load_state_file(&paths).unwrap();
+        assert_eq!(state.packages.len(), 2);
+        assert_eq!(state.packages[0].name, "vim");
+        assert_eq!(state.packages[0].version.as_deref(), Some("9.1-1"));
+        assert_eq!(state.packages[0].pkg_type.as_deref(), Some("native"));
+        assert_eq!(state.packages[1].name, "org.gimp.GIMP");
+        assert_eq!(state.packages[1].version, None);
+        assert_eq!(state.packages[1].pkg_type.as_deref(), Some("flatpak"));
+    }
+
+    #[test]
+    fn hook_hash_is_stable_sha256() {
+        // Fixed digest: the identity must not depend on the Rust release.
+        assert_eq!(
+            hook_script_hash("echo hi\n"),
+            "sha256:ab08508fdf5ca4da5c4995987bc41c56c048aaa5eeb046417ae4049b7d40286e"
+        );
+        let h = hook_script_hash("echo hi\n");
+        assert!(h.starts_with("sha256:"));
+        assert_eq!(h.len(), "sha256:".len() + 64);
+        assert_ne!(h, hook_script_hash("echo bye\n"));
+    }
+
+    fn write_hook(root: &std::path::Path, body: &str) -> PathBuf {
+        let p = root.join("hook.sh");
+        std::fs::write(&p, body).unwrap();
+        p
+    }
+
+    fn stored_hash(paths: &ConfigPaths, module: &str) -> Option<String> {
+        let content = std::fs::read_to_string(&paths.hooks_state_file).ok()?;
+        let yaml: serde_yaml::Value = serde_yaml::from_str(&content).ok()?;
+        yaml.get("hooks")?
+            .as_sequence()?
+            .iter()
+            .find(|h| h.get("module").and_then(|m| m.as_str()) == Some(module))?
+            .get("script_hash")?
+            .as_str()
+            .map(str::to_string)
+    }
+
+    #[test]
+    fn executed_hook_records_sha256_and_is_recognised() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        let hook = write_hook(tmp.path(), "echo once\n");
+        mark_hook_executed(&paths, "m", &hook).unwrap();
+        assert_eq!(
+            stored_hash(&paths, "m"),
+            Some(hook_script_hash("echo once\n"))
+        );
+        assert!(matches!(
+            check_hook_status(&paths, "m", &hook).unwrap(),
+            HookStatus::Executed
+        ));
+        std::fs::write(&hook, "echo changed\n").unwrap();
+        assert!(matches!(
+            check_hook_status(&paths, "m", &hook).unwrap(),
+            HookStatus::Modified
+        ));
+    }
+
+    #[test]
+    fn legacy_default_hasher_entry_is_accepted_once_and_migrated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        let hook = write_hook(tmp.path(), "echo legacy\n");
+        std::fs::create_dir_all(&paths.state_dir).unwrap();
+        let legacy = legacy_hook_script_hash("echo legacy\n");
+        std::fs::write(
+            &paths.hooks_state_file,
+            format!(
+                "hooks:\n- module: m\n  script: {}\n  script_hash: '{legacy}'\n  executed_at: x\n  status: executed\n- module: other\n  status: skipped\n",
+                hook.display()
+            ),
+        )
+        .unwrap();
+
+        // An existing user's already-run hook must not re-run as root.
+        assert!(matches!(
+            check_hook_status(&paths, "m", &hook).unwrap(),
+            HookStatus::Executed
+        ));
+        // ...and the entry is rewritten with the SHA-256 identity.
+        assert_eq!(
+            stored_hash(&paths, "m"),
+            Some(hook_script_hash("echo legacy\n"))
+        );
+        // Other entries survive the rewrite.
+        assert!(matches!(
+            check_hook_status(&paths, "other", &hook).unwrap(),
+            HookStatus::Skipped
+        ));
+        assert!(matches!(
+            check_hook_status(&paths, "m", &hook).unwrap(),
+            HookStatus::Executed
+        ));
+    }
+
+    #[test]
+    fn legacy_entry_for_a_changed_script_is_modified() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        let hook = write_hook(tmp.path(), "echo new\n");
+        std::fs::create_dir_all(&paths.state_dir).unwrap();
+        let legacy = legacy_hook_script_hash("echo old\n");
+        std::fs::write(
+            &paths.hooks_state_file,
+            format!("hooks:\n- module: m\n  script_hash: '{legacy}'\n  status: executed\n"),
+        )
+        .unwrap();
+        assert!(matches!(
+            check_hook_status(&paths, "m", &hook).unwrap(),
+            HookStatus::Modified
+        ));
+        assert_eq!(
+            stored_hash(&paths, "m"),
+            Some(legacy),
+            "no migration on mismatch"
         );
     }
 }

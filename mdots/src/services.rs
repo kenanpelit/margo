@@ -789,7 +789,7 @@ pub fn save_services_state(state_file: &Path, state: &ServicesState) -> Result<(
     let yaml =
         serde_yaml::to_string(state).context("Failed to serialize services state to YAML")?;
 
-    fs::write(state_file, yaml).context(format!(
+    crate::atomic_write::write_atomic(state_file, &yaml).context(format!(
         "Failed to write services state file: {:?}",
         state_file
     ))?;

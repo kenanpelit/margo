@@ -638,9 +638,9 @@ fn save_hooks_state(
         "hooks": hooks_vec
     });
 
-    std::fs::create_dir_all(&paths.state_dir)?;
+    // Atomic: this file decides whether `sudo bash` hooks re-run.
     let content = serde_yaml::to_string(&yaml_value)?;
-    std::fs::write(&paths.hooks_state_file, content)?;
+    crate::atomic_write::write_atomic(&paths.hooks_state_file, &content)?;
 
     Ok(())
 }
