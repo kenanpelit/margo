@@ -88,7 +88,10 @@ impl MargoState {
                 });
                 self.ipc_send_line(token, line);
             } else {
-                let payload = project_topic(&snap, &self.current_kb_layout, &topic, &args);
+                let payload = match self.ipc_non_snapshot_topic(&topic) {
+                    Some(payload) => payload,
+                    None => project_topic(&snap, &self.current_kb_layout, &topic, &args),
+                };
                 self.ipc_send(token, &payload);
             }
         }

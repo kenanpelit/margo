@@ -32,6 +32,12 @@ const IPC_IN_CAP: usize = 1024 * 1024;
 /// `MAX_WATCHES_TOTAL`).
 const MAX_IPC_CONNECTIONS: usize = 256;
 
+/// Cap on requests handled per readable wakeup of one connection. A client
+/// that writes thousands of requests at once would otherwise keep margo in
+/// one callback (no input, no frames) until every one was answered. The
+/// rest are continued from an idle callback on the next loop turn.
+pub const MAX_LINES_PER_WAKEUP: usize = 64;
+
 /// Result of trying to drain a connection's outbound buffer.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DrainState {
@@ -58,6 +64,9 @@ pub struct IpcConn {
     /// True once this connection issued a `watch` (stays open, receives
     /// pushed frames).
     pub watching: bool,
+    /// An idle callback is queued to work off this connection's request
+    /// backlog (see [`MAX_LINES_PER_WAKEUP`]).
+    pub resume_scheduled: bool,
 }
 
 /// Pop the next complete `\n`-terminated line off `buf` (draining the
@@ -253,6 +262,7 @@ impl MargoState {
                 out_buf: Vec::new(),
                 write_token: None,
                 watching: false,
+                resume_scheduled: false,
             },
         );
         let source = Generic::new(read_fd, Interest::READ, Mode::Level);
@@ -272,7 +282,32 @@ impl MargoState {
 
     /// Drain readable bytes for one connection, handling each complete
     /// `\n`-terminated request line.
+    #[cfg(test)]
+    pub fn ipc_readable_for_test(&mut self, token: u32) -> PostAction {
+        let Some(fd) = self
+            .ipc_conns
+            .get(&token)
+            .and_then(|c| c.stream.try_clone().ok())
+        else {
+            return PostAction::Remove;
+        };
+        self.ipc_readable(token, &fd)
+    }
+
+    /// Drain readable bytes for one connection, handling each complete
+    /// `\n`-terminated request line.
     fn ipc_readable(&mut self, token: u32, fd: &UnixStream) -> PostAction {
+        match self.ipc_conns.get(&token) {
+            // Dropped elsewhere (`ipc_drop_conn` shut the socket down, which
+            // is what woke us): retire this source.
+            None => return PostAction::Remove,
+            // A backlog from an earlier wakeup is still being worked off by
+            // the idle continuation. Don't read more until it's done; the
+            // kernel buffer pushes back on the client meanwhile.
+            Some(c) if c.resume_scheduled => return PostAction::Continue,
+            Some(_) => {}
+        }
+        let mut budget = MAX_LINES_PER_WAKEUP;
         let mut chunk = [0u8; 4096];
         // `impl Read for &UnixStream` — read through a shared ref.
         let mut reader: &UnixStream = fd;
@@ -286,9 +321,9 @@ impl MargoState {
                     if let Some(c) = self.ipc_conns.get_mut(&token) {
                         c.buf.extend_from_slice(&chunk[..n]);
                         // Guard against an un-framed flood: `ipc_process_lines`
-                        // below drains every complete line, so `buf` only
-                        // retains a partial trailing line. If that partial line
-                        // grows past the cap, the client is streaming without a
+                        // below drains complete lines (and reading stops while
+                        // a backlog of them is queued), so `buf` only grows
+                        // past the cap when the client streams without a
                         // newline — drop it instead of growing without bound.
                         if c.buf.len() > IPC_IN_CAP {
                             tracing::warn!(
@@ -300,7 +335,14 @@ impl MargoState {
                             return PostAction::Remove;
                         }
                     }
-                    self.ipc_process_lines(token);
+                    if self.ipc_process_lines(token, &mut budget) {
+                        self.ipc_schedule_resume(token);
+                        return PostAction::Continue;
+                    }
+                    if budget == 0 {
+                        // Level-triggered: any unread data wakes us again.
+                        return PostAction::Continue;
+                    }
                 }
                 Err(e) if e.kind() == ErrorKind::WouldBlock => return PostAction::Continue,
                 Err(_) => {
@@ -311,22 +353,49 @@ impl MargoState {
         }
     }
 
-    fn ipc_process_lines(&mut self, token: u32) {
+    /// Handle complete request lines from `token`'s buffer until `budget`
+    /// runs out. Returns `true` when complete lines are still queued.
+    fn ipc_process_lines(&mut self, token: u32, budget: &mut usize) -> bool {
         loop {
             let line = {
                 let Some(c) = self.ipc_conns.get_mut(&token) else {
-                    return;
+                    return false;
                 };
+                if *budget == 0 {
+                    return c.buf.contains(&b'\n');
+                }
                 match pop_line(&mut c.buf) {
                     Some(l) => l,
-                    None => return,
+                    None => return false,
                 }
             };
             if line.is_empty() {
                 continue;
             }
+            *budget -= 1;
             self.ipc_handle_request(token, &line);
         }
+    }
+
+    /// Continue a connection's request backlog on the next loop turn.
+    fn ipc_schedule_resume(&mut self, token: u32) {
+        let Some(c) = self.ipc_conns.get_mut(&token) else {
+            return;
+        };
+        if c.resume_scheduled {
+            return;
+        }
+        c.resume_scheduled = true;
+        self.loop_handle.insert_idle(move |state: &mut MargoState| {
+            let Some(c) = state.ipc_conns.get_mut(&token) else {
+                return;
+            };
+            c.resume_scheduled = false;
+            let mut budget = MAX_LINES_PER_WAKEUP;
+            if state.ipc_process_lines(token, &mut budget) {
+                state.ipc_schedule_resume(token);
+            }
+        });
     }
 
     fn ipc_handle_request(&mut self, token: u32, line: &str) {
@@ -353,6 +422,12 @@ impl MargoState {
                 self.ipc_send(token, &reply);
             }
             Verb::Watch => {
+                // Reject unknown topics up front: registered, they would
+                // push an error frame on every state change.
+                if !super::topics::is_known_topic(&req.head) {
+                    let err = format!("unknown topic: {}", req.head);
+                    return self.ipc_send(token, &serde_json::json!({ "error": err }));
+                }
                 if let Some(c) = self.ipc_conns.get_mut(&token) {
                     c.watching = true;
                 }
@@ -503,11 +578,18 @@ impl MargoState {
         }
     }
 
+    /// Forget a connection and close it. The READ source holds its own
+    /// clone of the fd and can't be removed from inside its own callback
+    /// (most drops happen there), so the socket is shut down instead: the
+    /// peer sees EOF right away (a slow watcher cut loose reconnects and
+    /// re-syncs), and the READ source wakes, finds the entry gone and
+    /// retires itself, closing the last fd.
     pub fn ipc_drop_conn(&mut self, token: u32) {
-        if let Some(c) = self.ipc_conns.remove(&token)
-            && let Some(rt) = c.write_token
-        {
-            self.loop_handle.remove(rt);
+        if let Some(c) = self.ipc_conns.remove(&token) {
+            let _ = c.stream.shutdown(std::net::Shutdown::Both);
+            if let Some(rt) = c.write_token {
+                self.loop_handle.remove(rt);
+            }
         }
         self.ipc_watches.remove_conn(token);
     }

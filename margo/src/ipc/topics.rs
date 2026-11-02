@@ -22,25 +22,35 @@ impl MargoState {
         if topic == "state" {
             return self.ipc_state_snapshot();
         }
-        // `perf` is not a projection of the snapshot: the per-output frame
-        // counters live in `perf_counters`, mirrored from the udev backend,
-        // and are deliberately kept out of the hot `state` document.
-        // Event-stream topic: the initial frame lists the currently
-        // bound portal shortcut sessions; live frames arrive from
-        // `push_global_shortcut_event`, not the state-dirty fan-out.
-        if topic == "shortcuts" {
-            return self.global_shortcuts.summary();
-        }
-        if topic == "perf" {
-            return build_perf_payload(&self.perf_counters, std::time::Instant::now());
-        }
-        // Layer-shell surfaces live in smithay's per-output layer maps, not
-        // in the state snapshot.
-        if topic == "layers" {
-            return self.build_layers_payload();
+        if let Some(payload) = self.ipc_non_snapshot_topic(topic) {
+            return payload;
         }
         let snap = self.ipc_state_snapshot();
         project_topic(&snap, &self.current_kb_layout, topic, args)
+    }
+
+    /// Payload of a topic that is *not* a projection of the state snapshot,
+    /// or `None` for snapshot topics. The one routing point for these, used
+    /// by `get`/`watch` (via [`Self::ipc_topic`]) and the watch fan-out.
+    pub fn ipc_non_snapshot_topic(&self, topic: &str) -> Option<Value> {
+        match topic {
+            // Event-stream topic: the initial frame lists the currently
+            // bound portal shortcut sessions; live frames arrive from
+            // `push_global_shortcut_event`, not the state-dirty fan-out.
+            "shortcuts" => Some(self.global_shortcuts.summary()),
+            // `perf` is not a projection of the snapshot: the per-output
+            // frame counters live in `perf_counters`, mirrored from the udev
+            // backend, and are deliberately kept out of the hot `state`
+            // document.
+            "perf" => Some(build_perf_payload(
+                &self.perf_counters,
+                std::time::Instant::now(),
+            )),
+            // Layer-shell surfaces live in smithay's per-output layer maps,
+            // not in the state snapshot.
+            "layers" => Some(self.build_layers_payload()),
+            _ => None,
+        }
     }
 
     /// `layers` topic: every layer-shell surface currently on an output as
@@ -181,6 +191,31 @@ pub fn build_perf_payload(
         })
         .collect();
     json!({ "outputs": outputs })
+}
+
+/// Every topic `get` / `watch` understand: the snapshot projections in
+/// [`project_topic`] plus the non-snapshot topics in
+/// `MargoState::ipc_non_snapshot_topic`.
+pub const TOPICS: &[&str] = &[
+    "state",
+    "clients",
+    "monitors",
+    "layouts",
+    "twilight",
+    "config-errors",
+    "keyboard-layout",
+    "focused",
+    "client",
+    "monitor",
+    "tags",
+    "shortcuts",
+    "perf",
+    "layers",
+];
+
+/// Whether `topic` is one of [`TOPICS`].
+pub fn is_known_topic(topic: &str) -> bool {
+    TOPICS.contains(&topic)
 }
 
 /// Project a `get`/`watch` topic out of an already-built state snapshot.
