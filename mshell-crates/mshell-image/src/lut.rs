@@ -1,18 +1,20 @@
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use image::{ImageBuffer, Rgb, RgbaImage};
+use image::{ImageBuffer, Rgb, RgbImage, RgbaImage};
 use lutgen::GenerateLut;
-use lutgen::identity::correct_image;
+use lutgen::identity::{correct_image, correct_pixel};
 use lutgen::interpolation::GaussianRemapper;
 use mshell_config::schema::themes::Themes;
 use mshell_matugen::json_struct::MatugenTheme;
 use mshell_matugen::static_theme_mapping::static_theme;
 use relm4::gtk;
-use relm4::gtk::gdk_pixbuf::Pixbuf;
-use relm4::gtk::prelude::{Cast, GskRendererExt, SnapshotExt, TextureExt, TextureExtManual};
+use relm4::gtk::gdk_pixbuf::{Pixbuf, PixbufLoader};
+use relm4::gtk::prelude::{
+    Cast, GskRendererExt, PixbufLoaderExt, SnapshotExt, TextureExt, TextureExtManual,
+};
 use tracing::warn;
 
 /// Every static theme that owns a CLUT, paired with its stable file/cache
@@ -251,17 +253,66 @@ pub fn apply_theme_filter(
     monochrome: f64,
     cancel: &AtomicBool,
 ) -> Option<RemapResult> {
-    let clut_bytes = load_clut(theme)?;
+    let hald_clut = load_hald_clut(theme)?;
 
     if cancel.load(Ordering::Relaxed) {
         return None;
     }
 
-    let hald_clut = ImageBuffer::<Rgb<u8>, _>::from_raw(HALD8_DIM, HALD8_DIM, clut_bytes)?;
-
-    let mut img = decode_pixbuf_rgba(path)?;
+    let img = decode_pixbuf_rgba(path)?;
+    let img = filter_with_clut(
+        img,
+        &hald_clut,
+        theme,
+        strength,
+        contrast_adjustment,
+        monochrome,
+        cancel,
+    )?;
     let (width, height) = img.dimensions();
+    Some(RemapResult {
+        buf: img.into_raw(),
+        width,
+        height,
+    })
+}
 
+/// [`apply_theme_filter`] for an already-decoded image (e.g. one decoded at
+/// screen size with [`decode_rgba_scaled`]). Grades `img` in place and hands it
+/// back; `None` when the theme has no CLUT or `cancel` was raised mid-way.
+pub fn apply_theme_filter_rgba(
+    img: RgbaImage,
+    theme: &Themes,
+    strength: f64,
+    contrast_adjustment: f64,
+    monochrome: f64,
+    cancel: &AtomicBool,
+) -> Option<RgbaImage> {
+    let hald_clut = load_hald_clut(theme)?;
+    filter_with_clut(
+        img,
+        &hald_clut,
+        theme,
+        strength,
+        contrast_adjustment,
+        monochrome,
+        cancel,
+    )
+}
+
+fn load_hald_clut(theme: &Themes) -> Option<RgbImage> {
+    ImageBuffer::<Rgb<u8>, _>::from_raw(HALD8_DIM, HALD8_DIM, load_clut(theme)?)
+}
+
+fn filter_with_clut(
+    mut img: RgbaImage,
+    hald_clut: &RgbImage,
+    theme: &Themes,
+    strength: f64,
+    contrast_adjustment: f64,
+    monochrome: f64,
+    cancel: &AtomicBool,
+) -> Option<RgbaImage> {
     if monochrome > 0.0 {
         let tint = static_theme(theme, None)
             .map(|t| {
@@ -272,35 +323,106 @@ pub fn apply_theme_filter(
         apply_monochrome(img.as_mut(), tint, monochrome);
     }
 
-    let original = if strength < 1.0 {
-        Some(img.clone())
-    } else {
-        None
-    };
+    grade_in_place(
+        img.as_mut(),
+        hald_clut,
+        strength,
+        contrast_adjustment,
+        cancel,
+    )
+    .then_some(img)
+}
 
-    correct_image(&mut img, &hald_clut);
+/// Pixels graded between two cancel checks (~1 ms of work).
+const GRADE_CHUNK_PIXELS: usize = 64 * 1024;
 
-    adjust_contrast(img.as_mut(), contrast_adjustment);
-
-    if cancel.load(Ordering::Relaxed) {
-        return None;
+/// CLUT-correct, contrast-adjust and blend an RGBA buffer back toward its
+/// original colours by `strength`, all in one pass per pixel. Fusing the
+/// stages means a partial-strength grade no longer needs a full copy of the
+/// image to blend against (a 4K wallpaper is 33 MB of RGBA). Alpha is left
+/// untouched. Returns `false` when `cancel` was raised part-way (the buffer is
+/// then partly graded and should be thrown away).
+fn grade_in_place(
+    buf: &mut [u8],
+    hald_clut: &RgbImage,
+    strength: f64,
+    contrast: f64,
+    cancel: &AtomicBool,
+) -> bool {
+    let blend = strength < 1.0;
+    for chunk in buf.chunks_mut(GRADE_CHUNK_PIXELS * 4) {
+        if cancel.load(Ordering::Relaxed) {
+            return false;
+        }
+        for px in chunk.chunks_exact_mut(4) {
+            let original = [px[0], px[1], px[2]];
+            let graded = correct_pixel(&original, hald_clut, HALD_LEVEL);
+            for i in 0..3 {
+                let v = contrast_channel(graded[i], contrast);
+                px[i] = if blend {
+                    lerp_u8(original[i], v, strength)
+                } else {
+                    v
+                };
+            }
+        }
     }
-
-    if let Some(original) = original {
-        blend_buffers(img.as_mut(), original.as_raw(), strength);
-    }
-
-    Some(RemapResult {
-        buf: img.into_raw(),
-        width,
-        height,
-    })
+    !cancel.load(Ordering::Relaxed)
 }
 
 /// Decode an image file to RGBA using gdk-pixbuf.
 pub fn decode_pixbuf_rgba(path: &Path) -> Option<RgbaImage> {
     let pixbuf = Pixbuf::from_file(path).ok()?;
+    pixbuf_to_rgba(&pixbuf)
+}
 
+/// Bytes fed to the pixbuf loader between two cancel checks.
+const DECODE_CHUNK_BYTES: usize = 256 * 1024;
+
+/// Decode an image file to RGBA at the size `size_for(source_w, source_h)`
+/// returns. The loader is told the target size before it decodes, so JPEGs
+/// are scaled during the DCT and the full-resolution image never exists in
+/// memory. `cancel` is checked between file chunks; `None` on cancel or
+/// decode failure.
+pub fn decode_rgba_scaled(
+    path: &Path,
+    size_for: impl Fn(u32, u32) -> (u32, u32) + 'static,
+    cancel: &AtomicBool,
+) -> Option<RgbaImage> {
+    let mut file = fs::File::open(path).ok()?;
+    let loader = PixbufLoader::new();
+    loader.connect_size_prepared(move |loader, w, h| {
+        let (src_w, src_h) = (w.max(0) as u32, h.max(0) as u32);
+        let (tw, th) = size_for(src_w, src_h);
+        if (tw, th) != (src_w, src_h) && tw > 0 && th > 0 {
+            loader.set_size(tw as i32, th as i32);
+        }
+    });
+
+    let mut chunk = vec![0u8; DECODE_CHUNK_BYTES];
+    let fed = loop {
+        if cancel.load(Ordering::Relaxed) {
+            break false;
+        }
+        match file.read(&mut chunk) {
+            Ok(0) => break true,
+            Ok(n) => {
+                if loader.write(&chunk[..n]).is_err() {
+                    break false;
+                }
+            }
+            Err(_) => break false,
+        }
+    };
+    // Always close: a loader finalized open logs a GLib critical.
+    let closed = loader.close().is_ok();
+    if !fed || !closed || cancel.load(Ordering::Relaxed) {
+        return None;
+    }
+    pixbuf_to_rgba(&loader.pixbuf()?)
+}
+
+fn pixbuf_to_rgba(pixbuf: &Pixbuf) -> Option<RgbaImage> {
     let width = pixbuf.width() as u32;
     let height = pixbuf.height() as u32;
     let n_channels = pixbuf.n_channels() as u32;
@@ -362,12 +484,6 @@ fn lerp_u8(a: u8, b: u8, t: f64) -> u8 {
     (a as f64 + (b as f64 - a as f64) * t).clamp(0.0, 255.0) as u8
 }
 
-fn blend_buffers(dst: &mut [u8], src: &[u8], t: f64) {
-    for (d, s) in dst.iter_mut().zip(src.iter()) {
-        *d = lerp_u8(*s, *d, t);
-    }
-}
-
 /// Render a paintable to pixels via snapshot, apply the CLUT, return a new texture.
 pub fn snapshot_and_recolor(
     paintable: &gtk::IconPaintable,
@@ -418,19 +534,10 @@ pub fn rgba_to_texture(buf: &[u8], width: u32, height: u32) -> Option<gtk::gdk::
     Some(texture.upcast())
 }
 
-/// Adjust contrast of an RGBA buffer in-place.
-/// `factor` > 1.0 increases contrast, < 1.0 decreases it.
-/// 1.0 is no change.
-fn adjust_contrast(buf: &mut [u8], factor: f64) {
-    for chunk in buf.chunks_exact_mut(4) {
-        chunk[0] =
-            ((((chunk[0] as f64 / 255.0) - 0.5) * factor + 0.5) * 255.0).clamp(0.0, 255.0) as u8;
-        chunk[1] =
-            ((((chunk[1] as f64 / 255.0) - 0.5) * factor + 0.5) * 255.0).clamp(0.0, 255.0) as u8;
-        chunk[2] =
-            ((((chunk[2] as f64 / 255.0) - 0.5) * factor + 0.5) * 255.0).clamp(0.0, 255.0) as u8;
-        // leave alpha (chunk[3]) untouched
-    }
+/// One channel of the contrast curve: `factor` > 1.0 increases contrast,
+/// < 1.0 decreases it, 1.0 is no change.
+fn contrast_channel(v: u8, factor: f64) -> u8 {
+    ((((v as f64 / 255.0) - 0.5) * factor + 0.5) * 255.0).clamp(0.0, 255.0) as u8
 }
 
 /// Desaturate toward a tint color.
@@ -450,5 +557,118 @@ fn apply_monochrome(buf: &mut [u8], tint: [u8; 3], factor: f64) {
         chunk[1] = lerp_u8(chunk[1], tinted_g as u8, factor);
         chunk[2] = lerp_u8(chunk[2], tinted_b as u8, factor);
         // alpha untouched
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A non-identity level-8 Hald CLUT: the identity with every channel
+    /// rotated (r,g,b) → (g,b,255-r), so a no-op grade can't pass by accident.
+    fn test_clut() -> RgbImage {
+        let mut clut = lutgen::identity::generate(HALD_LEVEL);
+        for px in clut.pixels_mut() {
+            let [r, g, b] = px.0;
+            px.0 = [g, b, 255 - r];
+        }
+        clut
+    }
+
+    fn test_image(w: u32, h: u32) -> RgbaImage {
+        RgbaImage::from_fn(w, h, |x, y| {
+            image::Rgba([
+                (x * 37 % 256) as u8,
+                (y * 91 % 256) as u8,
+                ((x + y) * 13 % 256) as u8,
+                (x * y % 256) as u8,
+            ])
+        })
+    }
+
+    /// The pre-fusion pipeline: clone, CLUT, contrast, blend over full buffers.
+    fn reference_grade(img: &mut RgbaImage, clut: &RgbImage, strength: f64, contrast: f64) {
+        let original = (strength < 1.0).then(|| img.clone());
+        correct_image(img, clut);
+        for chunk in img.as_mut().chunks_exact_mut(4) {
+            for c in chunk.iter_mut().take(3) {
+                *c = ((((*c as f64 / 255.0) - 0.5) * contrast + 0.5) * 255.0).clamp(0.0, 255.0)
+                    as u8;
+            }
+        }
+        if let Some(original) = original {
+            for (d, s) in img.as_mut().iter_mut().zip(original.as_raw().iter()) {
+                *d = lerp_u8(*s, *d, strength);
+            }
+        }
+    }
+
+    #[test]
+    fn fused_grade_matches_reference_pipeline() {
+        let clut = test_clut();
+        let cancel = AtomicBool::new(false);
+        for (strength, contrast) in [(1.0, 1.0), (0.5, 1.0), (0.3, 1.4), (1.0, 0.7), (0.0, 1.0)] {
+            let mut expected = test_image(67, 41);
+            reference_grade(&mut expected, &clut, strength, contrast);
+            let mut got = test_image(67, 41);
+            assert!(grade_in_place(
+                got.as_mut(),
+                &clut,
+                strength,
+                contrast,
+                &cancel
+            ));
+            assert_eq!(
+                got.as_raw(),
+                expected.as_raw(),
+                "strength {strength} contrast {contrast}"
+            );
+        }
+    }
+
+    #[test]
+    fn grade_stops_when_cancelled() {
+        let clut = test_clut();
+        let cancel = AtomicBool::new(true);
+        let mut img = test_image(8, 8);
+        assert!(!grade_in_place(img.as_mut(), &clut, 1.0, 1.0, &cancel));
+    }
+
+    fn write_test_png(name: &str, w: u32, h: u32) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "mshell-image-{name}-{}-{w}x{h}.png",
+            std::process::id()
+        ));
+        test_image(w, h).save(&path).expect("write test png");
+        path
+    }
+
+    #[test]
+    fn scaled_decode_produces_the_requested_size() {
+        let path = write_test_png("scaled", 400, 200);
+        let cancel = AtomicBool::new(false);
+        let img = decode_rgba_scaled(
+            &path,
+            |w, h| {
+                assert_eq!((w, h), (400, 200), "size_for sees the source size");
+                (100, 50)
+            },
+            &cancel,
+        )
+        .expect("decode");
+        assert_eq!(img.dimensions(), (100, 50));
+        // Unscaled request keeps the source size and pixels.
+        let full = decode_rgba_scaled(&path, |w, h| (w, h), &cancel).expect("decode");
+        assert_eq!(full.dimensions(), (400, 200));
+        assert_eq!(full.as_raw(), test_image(400, 200).as_raw());
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn scaled_decode_honours_cancel() {
+        let path = write_test_png("cancel", 16, 16);
+        let cancel = AtomicBool::new(true);
+        assert!(decode_rgba_scaled(&path, |w, h| (w, h), &cancel).is_none());
+        let _ = fs::remove_file(&path);
     }
 }
