@@ -916,6 +916,7 @@ mod apply_tests {
             focused_client: Reactive::new(None),
             keyboard_layout: Reactive::new(String::new()),
             config_errors: Reactive::new(Vec::new()),
+            active_layout: Reactive::new(None),
             event_tx,
         }
     }
