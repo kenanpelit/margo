@@ -8,9 +8,9 @@ use std::time::Duration;
 /// Accept one IPC connection; returns the client end and its token.
 fn connect(fx: &mut Fixture) -> (UnixStream, u32) {
     let (server, client) = UnixStream::pair().expect("pair");
-    let token = fx.server.state.ipc_next_token;
+    let token = fx.server.state.ipc.next_token;
     fx.server.state.ipc_accept(server);
-    assert!(fx.server.state.ipc_conns.contains_key(&token));
+    assert!(fx.server.state.ipc.conns.contains_key(&token));
     client
         .set_read_timeout(Some(Duration::from_millis(50)))
         .expect("timeout");
@@ -70,7 +70,7 @@ fn a_slow_watcher_over_the_outbound_cap_is_disconnected() {
     // Nobody reads: queue more than the 4 MiB cap.
     let big = format!("{}\n", "x".repeat(5 * 1024 * 1024));
     fx.server.state.ipc_send_line(token, &big);
-    assert!(!fx.server.state.ipc_conns.contains_key(&token));
+    assert!(!fx.server.state.ipc.conns.contains_key(&token));
 
     // Drain what made it into the socket before the drop, then expect EOF.
     let mut saw_eof = false;
@@ -153,7 +153,8 @@ fn watching_an_unknown_topic_is_refused() {
     assert!(
         !fx.server
             .state
-            .ipc_watches
+            .ipc
+            .watches
             .watches
             .iter()
             .any(|w| w.token == token),

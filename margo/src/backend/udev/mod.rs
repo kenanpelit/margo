@@ -143,7 +143,7 @@ pub struct OutputDevice {
     pub(super) connector: connector::Handle,
     /// `true` while this output is DPMS-off (panel powered down via
     /// `DrmCompositor::clear()`). The render loop skips it until woken; a
-    /// `pending_dpms (output, true)` re-renders + re-enables it.
+    /// `output_pending.dpms (output, true)` re-renders + re-enables it.
     pub(super) dpms_off: bool,
     /// `wp_presentation_feedback` builders that have been collected at
     /// submit time but not yet signalled. We hold them here until the
@@ -901,22 +901,22 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                 // Apply any wlr_output_management mode changes
                 // before rendering. The handler that accepted them
                 // ran on MargoState (no backend handle), so it
-                // queued requests onto state.pending_output_mode_changes;
+                // queued requests onto state.output_pending.mode_changes;
                 // we drain here where DrmCompositor::use_mode is
                 // reachable. A successful apply re-arranges and
                 // re-pings repaint internally.
-                if !state.pending_output_mode_changes.is_empty() {
+                if !state.output_pending.mode_changes.is_empty() {
                     let mut bd = backend_data.borrow_mut();
                     apply_pending_mode_changes(&mut bd, state);
                 }
                 // DPMS changes MUST go through the all-outputs path: a
                 // DPMS-off output stops producing vblanks, so its per-output
                 // clock stalls and it never becomes "due" — meaning a wake
-                // queued in `pending_dpms` would never drain on the per-output
+                // queued in `output_pending.dpms` would never drain on the per-output
                 // path and the panel would stay dark. Forcing the global path
-                // whenever `pending_dpms` is non-empty guarantees the queue is
+                // whenever `output_pending.dpms` is non-empty guarantees the queue is
                 // serviced (and is the recovery path the VT-switch relies on).
-                let force_all_for_dpms = !state.pending_dpms.is_empty();
+                let force_all_for_dpms = !state.output_pending.dpms.is_empty();
                 if state.per_output_frame_clock_enabled() && !force_all_for_dpms {
                     // Opt-in per-output path: render ONLY the outputs
                     // whose present timer has come due (dirty + refresh
@@ -1098,13 +1098,13 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                     // either runs `rescan_outputs` once or re-arms for
                     // another 50 ms if more events arrived in the
                     // window.
-                    state.hotplug_last_event_at = Some(std::time::Instant::now());
-                    if state.hotplug_rescan_pending {
+                    state.output_pending.hotplug_last_event_at = Some(std::time::Instant::now());
+                    if state.output_pending.hotplug_rescan_pending {
                         // Burst still in flight, existing timer will
                         // pick up the freshly-updated timestamp.
                         return;
                     }
-                    state.hotplug_rescan_pending = true;
+                    state.output_pending.hotplug_rescan_pending = true;
                     let timer = calloop::timer::Timer::from_duration(
                         std::time::Duration::from_millis(50),
                     );
@@ -1114,7 +1114,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                         move |_, _, state: &mut MargoState| {
                             let now = std::time::Instant::now();
                             let stale = state
-                                .hotplug_last_event_at
+                                .output_pending.hotplug_last_event_at
                                 .map(|t| {
                                     now.duration_since(t)
                                         >= std::time::Duration::from_millis(50)
@@ -1123,8 +1123,8 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                             if stale {
                                 info!("udev hotplug burst settled, rescanning outputs");
                                 rescan_outputs(&backend_data_for_timer, state);
-                                state.hotplug_rescan_pending = false;
-                                state.hotplug_last_event_at = None;
+                                state.output_pending.hotplug_rescan_pending = false;
+                                state.output_pending.hotplug_last_event_at = None;
                                 // Fire on_output_change so Rhai scripts can
                                 // react to topology / mode / scale changes.
                                 // Empty arg for now: the udev event only
@@ -1150,8 +1150,8 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
                             "hotplug coalescer: timer insert failed ({e:?}); running rescan immediately"
                         );
                         rescan_outputs(&backend_data, state);
-                        state.hotplug_rescan_pending = false;
-                        state.hotplug_last_event_at = None;
+                        state.output_pending.hotplug_rescan_pending = false;
+                        state.output_pending.hotplug_last_event_at = None;
                     }
                 }
                 UdevEvent::Removed { device_id: _ } => {}

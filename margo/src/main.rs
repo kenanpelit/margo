@@ -1613,7 +1613,7 @@ fn main() -> Result<()> {
         let initial_delay = margo.tick_twilight();
         let loop_handle = event_loop.handle();
         let timer = calloop::timer::Timer::from_duration(initial_delay);
-        margo.twilight_timer_token = loop_handle
+        margo.twilight.timer_token = loop_handle
             .insert_source(timer, move |_, _, state: &mut MargoState| {
                 let next = state.tick_twilight();
                 calloop::timer::TimeoutAction::ToDuration(next)

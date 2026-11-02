@@ -286,16 +286,16 @@ impl MargoState {
                     margo_config::TwilightMode::Static => "static",
                     margo_config::TwilightMode::Schedule => "schedule",
                 },
-                "current_temp_k": self.twilight.last_target.map(|t| t.temp_k),
-                "current_gamma_pct": self.twilight.last_target.map(|t| t.gamma_pct),
-                "phase": match self.twilight.last_phase {
+                "current_temp_k": self.twilight.engine.last_target.map(|t| t.temp_k),
+                "current_gamma_pct": self.twilight.engine.last_target.map(|t| t.gamma_pct),
+                "phase": match self.twilight.engine.last_phase {
                     Some(crate::twilight::schedule::Phase::Day) => "day",
                     Some(crate::twilight::schedule::Phase::Night) => "night",
                     Some(crate::twilight::schedule::Phase::TransitionToDay { .. }) => "transition_to_day",
                     Some(crate::twilight::schedule::Phase::TransitionToNight { .. }) => "transition_to_night",
                     None => "idle",
                 },
-                "source": match self.twilight.source {
+                "source": match self.twilight.engine.source {
                     crate::twilight::Source::Scheduled => "scheduled",
                     crate::twilight::Source::Preview => "preview",
                     crate::twilight::Source::Test { .. } => "test",

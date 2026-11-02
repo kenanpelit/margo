@@ -1,7 +1,7 @@
 //! `wlr-gamma-control-v1` handler — night-light / blue-light filter
 //! pipeline (sunsetr / gammastep / wlsunset all bind here).
 //!
-//! `set_gamma` requests are queued onto `MargoState::pending_gamma`
+//! `set_gamma` requests are queued onto `MargoState::output_pending.gamma`
 //! and drained by the backend's render path. Coalescing collapses
 //! duplicate ramps for the same output so a client that spams
 //! `set_gamma` (sunsetr does, every minute) doesn't grow the queue
@@ -32,10 +32,15 @@ impl GammaControlHandler for MargoState {
         // Coalesce: if a pending entry already exists for this
         // output, replace it. Avoids unbounded queue growth if a
         // client spams set_gamma faster than the backend drains.
-        if let Some(existing) = self.pending_gamma.iter_mut().find(|(o, _)| o == output) {
+        if let Some(existing) = self
+            .output_pending
+            .gamma
+            .iter_mut()
+            .find(|(o, _)| o == output)
+        {
             existing.1 = ramp;
         } else {
-            self.pending_gamma.push((output.clone(), ramp));
+            self.output_pending.gamma.push((output.clone(), ramp));
         }
         self.request_repaint();
         Some(())

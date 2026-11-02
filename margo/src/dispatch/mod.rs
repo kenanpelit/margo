@@ -340,7 +340,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
         "sendkey" => state.send_key(arg),
 
         // ── Twilight (built-in blue-light filter) ───────────────────
-        // All four follow the same shape: mutate `state.twilight`
+        // All four follow the same shape: mutate `state.twilight.engine`
         // and then force a resample via `tick_twilight()` so the
         // change lands on the very next frame instead of waiting
         // for the calloop timer.
@@ -348,25 +348,25 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
             // arg.i = Kelvin, arg.i2 = gamma % (0 ⇒ keep current 100)
             let k = if arg.i > 0 { arg.i as u32 } else { 4000 };
             let g = if arg.i2 > 0 { arg.i2 as u32 } else { 100 };
-            state.twilight.set_preview(k, g);
+            state.twilight.engine.set_preview(k, g);
             state.force_tick_twilight();
             tracing::info!(temp_k = k, gamma_pct = g, "twilight preview");
         }
         "twilight_test" => {
             // arg.i = duration seconds (clamped 1–60 in the CLI)
             let dur_s = if arg.i > 0 { arg.i as u64 } else { 5 };
-            state.twilight.start_test(dur_s.saturating_mul(1000));
+            state.twilight.engine.start_test(dur_s.saturating_mul(1000));
             state.force_tick_twilight();
             tracing::info!(duration_s = dur_s, "twilight test: sweeping day→night");
         }
         "twilight_reset" => {
-            state.twilight.reset();
+            state.twilight.engine.reset();
             state.force_tick_twilight();
             tracing::info!("twilight reset to schedule");
         }
         "twilight_toggle" => {
             state.config.twilight = !state.config.twilight;
-            state.twilight.reset();
+            state.twilight.engine.reset();
             state.force_tick_twilight();
             tracing::info!(enabled = state.config.twilight, "twilight toggled");
         }
@@ -431,7 +431,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) -> Dispa
                         _ => None,
                     };
                     if applied.is_some() {
-                        state.twilight.reset();
+                        state.twilight.engine.reset();
                         state.force_tick_twilight();
                         tracing::info!(field = %field, value = %val, "twilight_set");
                     } else {

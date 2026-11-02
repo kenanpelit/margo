@@ -55,13 +55,14 @@ impl MargoState {
     /// Push a fresh frame to every active watch subscription. Called
     /// once per loop iteration when state changed.
     pub fn ipc_push_watches(&mut self) {
-        if self.ipc_watches.watches.is_empty() {
+        if self.ipc.watches.watches.is_empty() {
             return;
         }
         // Snapshot (token, topic, args) first to avoid borrow conflicts
-        // with `ipc_send` (which mutates `ipc_conns`).
+        // with `ipc_send` (which mutates `ipc.conns`).
         let subs: Vec<(u32, String, Vec<String>)> = self
-            .ipc_watches
+            .ipc
+            .watches
             .watches
             .iter()
             .map(|w| (w.token, w.topic.clone(), w.args.clone()))

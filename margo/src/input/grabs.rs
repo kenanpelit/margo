@@ -424,18 +424,18 @@ fn frame_interval(refresh_mhz: i32) -> std::time::Duration {
 fn throttled_grab_arrange(data: &mut MargoState, window: &Window, tiled: bool) {
     let interval = grab_arrange_interval(data, grab_monitor(data, window), tiled);
     let now = std::time::Instant::now();
-    match grab_arrange_due(data.grab_arrange_last, now, interval) {
+    match grab_arrange_due(data.input_timers.grab_arrange_last, now, interval) {
         Ok(()) => {
-            if let Some(token) = data.grab_arrange_timer.take() {
+            if let Some(token) = data.input_timers.grab_arrange_timer.take() {
                 data.loop_handle.remove(token);
             }
-            data.grab_arrange_last = Some(now);
+            data.input_timers.grab_arrange_last = Some(now);
             let mon = grab_monitor(data, window);
             if mon < data.monitors.len() {
                 data.arrange_monitor(mon);
             }
         }
-        Err(_) if data.grab_arrange_timer.is_some() => {}
+        Err(_) if data.input_timers.grab_arrange_timer.is_some() => {}
         Err(wait) => {
             let window = window.clone();
             let timer = calloop::timer::Timer::from_duration(wait);
@@ -443,15 +443,15 @@ fn throttled_grab_arrange(data: &mut MargoState, window: &Window, tiled: bool) {
                 .loop_handle
                 .insert_source(timer, move |_, _, state: &mut MargoState| {
                     // Clear first: the source is dropped on return.
-                    state.grab_arrange_timer = None;
-                    state.grab_arrange_last = Some(std::time::Instant::now());
+                    state.input_timers.grab_arrange_timer = None;
+                    state.input_timers.grab_arrange_last = Some(std::time::Instant::now());
                     let mon = grab_monitor(state, &window);
                     if mon < state.monitors.len() {
                         state.arrange_monitor(mon);
                     }
                     calloop::timer::TimeoutAction::Drop
                 }) {
-                Ok(token) => data.grab_arrange_timer = Some(token),
+                Ok(token) => data.input_timers.grab_arrange_timer = Some(token),
                 Err(e) => tracing::warn!("grab arrange timer: {e}"),
             }
         }
@@ -461,10 +461,10 @@ fn throttled_grab_arrange(data: &mut MargoState, window: &Window, tiled: bool) {
 /// End of a move/resize grab: drop any pending throttled update and
 /// arrange once with the final geometry.
 fn finish_grab_arrange(data: &mut MargoState, window: &Window) {
-    if let Some(token) = data.grab_arrange_timer.take() {
+    if let Some(token) = data.input_timers.grab_arrange_timer.take() {
         data.loop_handle.remove(token);
     }
-    data.grab_arrange_last = None;
+    data.input_timers.grab_arrange_last = None;
     let mon = grab_monitor(data, window);
     if mon < data.monitors.len() {
         data.arrange_monitor(mon);

@@ -21,7 +21,9 @@ mod frame_clock_sched;
 mod groups;
 mod reload;
 pub(crate) use groups::GroupLock;
+mod input_timers;
 pub mod mru_switcher;
+mod output_pending;
 mod overview;
 mod pacing;
 mod protocols;
@@ -46,10 +48,14 @@ pub(crate) use self::data::{
     read_toplevel_identity_if_changed, read_toplevel_size_hints,
 };
 pub use self::focus_target::FocusTarget;
+pub use self::input_timers::InputTimers;
+pub use self::output_pending::OutputPending;
 use self::protocols::DISABLE_MIDDLE_PASTE;
 pub use self::protocols::Protocols;
 pub use self::scroller_overview::{ScrollerOverview, overview_cells};
 pub(crate) use self::theme::ThemeBaseline;
+pub use self::twilight_methods::Twilight;
+use crate::ipc::server::IpcServer;
 
 use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
@@ -268,14 +274,8 @@ pub struct MargoState {
     pub protocols: Protocols,
     pub dmabuf_import_hook: Option<DmabufImportHook>,
     pub seat_state: SeatState<MargoState>,
-    /// Mode changes accepted by `apply_output_pending` but not yet
-    /// applied at the DRM layer. The udev repaint handler drains
-    /// this and feeds each entry through `DrmCompositor::use_mode`,
-    /// then updates the smithay `Output` state so wl_output mode
-    /// events fire for any client (kanshi watcher, status bar).
-    /// Held outside the apply path because the handler runs on
-    /// MargoState and doesn't have a borrow on the udev BackendData.
-    pub pending_output_mode_changes: Vec<crate::PendingOutputModeChange>,
+    /// Output changes queued for the backend to drain (`state/output_pending.rs`).
+    pub output_pending: OutputPending,
     /// Active leases; dropping one revokes it.
     pub drm_lease_active: Vec<smithay::wayland::drm_lease::DrmLease>,
     /// Snapshot loaded from the crash autosave at startup — applied by
@@ -468,12 +468,8 @@ pub struct MargoState {
     /// per event-loop iteration — see `mark_state_dirty` /
     /// `flush_state_file_if_dirty`.
     pub state_dirty: std::cell::Cell<bool>,
-    /// Active IPC socket connections, keyed by a monotonic token.
-    pub ipc_conns: std::collections::HashMap<u32, crate::ipc::server::IpcConn>,
-    /// Next IPC connection token.
-    pub ipc_next_token: u32,
-    /// `watch`-mode IPC subscriptions, fanned out on each dirty flush.
-    pub ipc_watches: crate::ipc::watch::WatchRegistry,
+    /// IPC socket server state (`ipc/server.rs`).
+    pub ipc: IpcServer,
     /// Transient carousel slide direction for the next `view_tag`
     /// transition: 0 = derive from the tag-index delta (default),
     /// +1 = force forward, -1 = force backward. Set by relative tag
@@ -640,15 +636,6 @@ pub struct MargoState {
     /// surface is finally mapped. Cleared on unmap/destroy.
     pub or_positions: std::collections::HashMap<u32, (i32, i32)>,
     pub libinput: Option<smithay::reexports::input::Libinput>,
-    /// Pending gamma ramp updates drained by the udev backend each frame.
-    /// Tuple is (output, ramp). `None` ramp = restore default. The udev
-    /// backend pops these and applies them via DRM `GAMMA_LUT`. Winit just
-    /// drops them silently.
-    pub pending_gamma: Vec<(Output, Option<Vec<u16>>)>,
-    /// Pending DPMS power changes drained by the udev backend each frame.
-    /// `(output, on)` — `on = false` calls `DrmCompositor::clear()` (panel
-    /// off); `true` re-renders the output (panel on). Winit drops them.
-    pub pending_dpms: Vec<(Output, bool)>,
     /// `true` while ANY output is DPMS-off. Lets `handle_input` cheaply gate
     /// the "any input wakes the screen" safety net without touching the
     /// backend, and lets a `dpms toggle` decide direction.
@@ -750,75 +737,12 @@ pub struct MargoState {
     /// closed. See [`ScrollerOverview`] and `state/scroller_overview.rs`.
     pub scroller_overview: Option<ScrollerOverview>,
 
-    /// Which hot corner the pointer is currently dwelling in (if any).
-    /// `None` while pointer is anywhere else; set on entry, cleared on
-    /// exit. Together with [`hot_corner_armed_at`] drives the dwell
-    /// threshold before the corner's action fires.
-    pub hot_corner_dwelling: Option<HotCorner>,
+    /// Pointer/input dwell and throttle timers (`state/input_timers.rs`).
+    pub input_timers: InputTimers,
 
-    /// Last udev `Changed` event timestamp, used by the hotplug
-    /// debouncer in `backend/udev/mod.rs`. A burst of udev events
-    /// (gamma daemon racing the lock screen, kernel firing
-    /// `udev_device_get_changed` for every property tweak, …) used
-    /// to call `rescan_outputs` synchronously per event — hundreds
-    /// of times in 100 ms during the worst-case crash that
-    /// surfaced this. `Some` ⇒ a coalesce timer is currently armed
-    /// and a rescan will fire ~50 ms after the last event.
-    /// Twilight (blue-light filter) state. Always present; activity
-    /// is gated by `Config::twilight`. `tick_twilight()` advances
-    /// this on the calloop timer and pushes gamma ramps into
-    /// `pending_gamma` for every connected output.
-    pub twilight: crate::twilight::TwilightState,
-    /// Token of the single self-re-arming twilight tick timer. A
-    /// force-tick (from `mctl twilight …` / `reload_config`) removes
-    /// this one and re-inserts at the near-term interval instead of
-    /// stacking a fresh permanent ticker per dispatch — the old
-    /// `bool` guard was never consulted, so every toggle leaked a
-    /// timer that kept waking the loop forever.
-    pub twilight_timer_token: Option<smithay::reexports::calloop::RegistrationToken>,
-    /// Whether a non-identity twilight ramp is currently applied. Starts
-    /// `true` so the first disabled tick clears once (guaranteeing
-    /// identity at startup); thereafter `clear_twilight_ramp` no-ops
-    /// while already cleared, so a disabled-twilight session stops
-    /// re-pushing gamma + repainting every 60 s.
-    pub twilight_ramp_active: bool,
-    /// Cached `(schedule_dir, ScheduleData)` for Schedule mode. The schedule
-    /// presets are static between explicit changes, but `tick_twilight` runs
-    /// as often as every 50 ms during a sunrise/sunset sweep — re-reading +
-    /// parsing the seven preset files on every one of those ticks was pure
-    /// waste. We load once and serve from here; the cache is cleared on
-    /// config reload and on every `mctl twilight` command (both invalidation
-    /// points users actually change presets through).
-    pub twilight_schedule_cache: Option<(String, crate::twilight::preset::ScheduleData)>,
+    /// Twilight (blue-light filter) engine and its timer (`state/twilight_methods.rs`).
+    pub twilight: Twilight,
 
-    pub hotplug_last_event_at: Option<std::time::Instant>,
-    /// Sentinel: a debounce timer is already armed in the event
-    /// loop. Set true when the first event of a burst arrives,
-    /// cleared by the timer once it actually runs the rescan.
-    pub hotplug_rescan_pending: bool,
-    /// `Instant` the pointer entered the current dwell corner; `None`
-    /// once the corner has fired (until the pointer leaves and re-enters).
-    pub hot_corner_armed_at: Option<std::time::Instant>,
-    /// One-shot timer that fires the dwell for a cursor parked in a
-    /// corner (no further motion needed). Cleared by its own callback
-    /// before the source drops.
-    pub hot_corner_timer: Option<smithay::reexports::calloop::RegistrationToken>,
-    /// When a move/resize grab last re-arranged (see
-    /// `input::grabs::throttled_grab_arrange`), and the timer that
-    /// applies a throttled update once the interval is over.
-    pub grab_arrange_last: Option<std::time::Instant>,
-    pub grab_arrange_timer: Option<smithay::reexports::calloop::RegistrationToken>,
-    /// `cursor_hide_timeout`: the pointer sprite is hidden after that many
-    /// seconds without pointer activity. `pointer_activity_at` is the last
-    /// motion / button / scroll; the timer re-arms itself until the
-    /// timeout has really elapsed since then.
-    pub cursor_hidden: bool,
-    pub pointer_activity_at: std::time::Instant,
-    pub cursor_hide_timer: Option<smithay::reexports::calloop::RegistrationToken>,
-    /// Last `axisbind` scroll (ms) and its direction sign, for
-    /// `axis_bind_apply_timeout` throttling.
-    pub axis_bind_time: u32,
-    pub axis_bind_dir: i8,
     /// Source of the keyboard event being processed: physical, or a
     /// `zwp_virtual_keyboard_v1` device (smithay tracks held keys per
     /// source). `virtual_input` marks the latter for the binding filter.
@@ -854,7 +778,7 @@ impl MargoState {
             protocols,
             dmabuf_import_hook: None,
             seat_state,
-            pending_output_mode_changes: Vec::new(),
+            output_pending: OutputPending::default(),
             drm_lease_active: Vec::new(),
             pending_crash_restore: None,
             global_shortcuts: Default::default(),
@@ -880,9 +804,7 @@ impl MargoState {
             loop_handle,
             loop_signal,
             state_dirty: std::cell::Cell::new(false),
-            ipc_conns: std::collections::HashMap::new(),
-            ipc_next_token: 0,
-            ipc_watches: crate::ipc::watch::WatchRegistry::default(),
+            ipc: crate::ipc::server::IpcServer::default(),
             tag_carousel_dir: 0,
             edge_scroller_armed: true,
             clock: Clock::new(),
@@ -955,8 +877,6 @@ impl MargoState {
             xwm: None,
             or_positions: std::collections::HashMap::new(),
             libinput: None,
-            pending_gamma: Vec::new(),
-            pending_dpms: Vec::new(),
             any_dpms_off: false,
             dpms_off_at: None,
             libinput_devices: Vec::new(),
@@ -975,22 +895,8 @@ impl MargoState {
             focus_counter: 0,
             overview_cycle_modifier_mask: margo_config::Modifiers::empty(),
             scroller_overview: None,
-            hot_corner_dwelling: None,
-            twilight: crate::twilight::TwilightState::default(),
-            twilight_timer_token: None,
-            twilight_ramp_active: true,
-            twilight_schedule_cache: None,
-            hotplug_last_event_at: None,
-            hotplug_rescan_pending: false,
-            hot_corner_armed_at: None,
-            hot_corner_timer: None,
-            grab_arrange_last: None,
-            grab_arrange_timer: None,
-            cursor_hidden: false,
-            pointer_activity_at: std::time::Instant::now(),
-            cursor_hide_timer: None,
-            axis_bind_time: 0,
-            axis_bind_dir: 0,
+            input_timers: InputTimers::new(),
+            twilight: Twilight::new(),
             keyboard_source: smithay::input::keyboard::KeyboardSource::MAIN,
             virtual_input: false,
             active_virtual_keymap: None,
@@ -1079,7 +985,7 @@ impl MargoState {
         }
         self.space.unmap_output(output);
         self.lock_surfaces.retain(|(o, _)| o != output);
-        self.pending_gamma.retain(|(o, _)| o != output);
+        self.output_pending.gamma.retain(|(o, _)| o != output);
         // Per-output frame clock: drop this output's clock + cancel its
         // present timer so a gone display doesn't keep waking the loop
         // (no-op when the opt-in flag is off / no clock exists).

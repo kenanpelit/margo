@@ -1,7 +1,7 @@
 //! `wlr-output-management-v1` handler — runtime topology / scale /
 //! transform / mode / disable changes via `wlr-randr` and `kanshi`.
 //!
-//! Mode changes are deferred onto `pending_output_mode_changes`
+//! Mode changes are deferred onto `output_pending.mode_changes`
 //! because the actual DRM re-modeset happens in the udev backend
 //! (which holds the DrmCompositor); doing it here would require
 //! plumbing a backend handle onto MargoState. Disable refuses to
@@ -124,7 +124,8 @@ impl OutputManagementHandler for MargoState {
                 local_change = true;
             }
             if let Some((w, h, refresh_mhz)) = p.mode() {
-                self.pending_output_mode_changes
+                self.output_pending
+                    .mode_changes
                     .push(PendingOutputModeChange {
                         output_name: name.clone(),
                         width: w,
@@ -146,7 +147,7 @@ impl OutputManagementHandler for MargoState {
         if changed {
             self.arrange_all();
             self.request_repaint();
-            if !self.pending_output_mode_changes.is_empty() {
+            if !self.output_pending.mode_changes.is_empty() {
                 self.wake_repaint_backend();
             }
             // Re-publish topology so other wlr-output-management

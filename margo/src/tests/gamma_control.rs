@@ -9,7 +9,7 @@
 //!   backend on a connector without GAMMA_LUT, or winit nested
 //!   mode).
 //! * On `set_gamma`, queues `(output, ramp)` onto
-//!   `state.pending_gamma`, **coalescing** by output — a client
+//!   `state.output_pending.gamma`, **coalescing** by output — a client
 //!   that spams set_gamma must not grow the queue unbounded.
 //!
 //! The render path drains the queue at the next backend repaint;
@@ -46,7 +46,7 @@ fn output_with_zero_gamma_size_is_skipped_for_gamma() {
     let monitor = &fx.server.state.monitors[0];
     assert_eq!(monitor.gamma_size, 0);
     assert!(
-        fx.server.state.pending_gamma.is_empty(),
+        fx.server.state.output_pending.gamma.is_empty(),
         "no gamma operations should have been queued",
     );
 }

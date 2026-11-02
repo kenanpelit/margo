@@ -36,7 +36,7 @@
 //!      below 1 LSB at u16 quantisation in the ramp's mid-band).
 //!
 //! The output `Vec<u16>` is fed straight to
-//! `MargoState::pending_gamma`, picked up by the udev frame
+//! `MargoState::output_pending.gamma`, picked up by the udev frame
 //! handler, written to the CRTC's `GAMMA_LUT` blob.
 
 /// Build the planar LUT for one output. Length = `3 * n` u16.

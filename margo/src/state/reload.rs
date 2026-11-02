@@ -275,7 +275,7 @@ impl MargoState {
         // take effect immediately instead of waiting for the next
         // tick. Drop the schedule cache first so edited presets /
         // a changed schedule dir are re-read on this resample.
-        self.twilight_schedule_cache = None;
+        self.twilight.schedule_cache = None;
         self.tick_twilight();
         // `auto_reload_config` itself, or the source/include tree, may
         // have just changed — start/stop/re-sync the watcher to match.

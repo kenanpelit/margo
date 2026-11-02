@@ -138,18 +138,18 @@ fn cursor_hides_after_timeout_and_returns_on_activity() {
     fx.server.state.note_pointer_activity();
     // Pretend the last activity was long ago so the timer's first check
     // already sees the timeout elapsed.
-    fx.server.state.pointer_activity_at =
+    fx.server.state.input_timers.pointer_activity_at =
         std::time::Instant::now() - std::time::Duration::from_secs(5);
     std::thread::sleep(std::time::Duration::from_millis(1100));
     fx.dispatch();
-    assert!(fx.server.state.cursor_hidden);
+    assert!(fx.server.state.input_timers.cursor_hidden);
 
     fx.server.state.note_pointer_activity();
-    assert!(!fx.server.state.cursor_hidden);
+    assert!(!fx.server.state.input_timers.cursor_hidden);
 
     fx.server.state.config.cursor_hide_timeout = 0;
     fx.server.state.arm_cursor_hide_timer();
-    assert!(fx.server.state.cursor_hide_timer.is_none());
+    assert!(fx.server.state.input_timers.cursor_hide_timer.is_none());
 }
 
 #[test]

@@ -5,7 +5,7 @@
 //!     monitor rule (kanshi-style config), falls back to the
 //!     `PREFERRED` flag, then to the first advertised mode.
 //!   * **Apply queued mode changes mid-session.** [`apply_pending_mode_changes`]
-//!     drains `MargoState::pending_output_mode_changes` (populated by
+//!     drains `MargoState::output_pending.mode_changes` (populated by
 //!     `wlr_output_management`) and runs each through
 //!     `DrmCompositor::use_mode`. Runs at the top of the repaint
 //!     handler so a kanshi profile flip lands within one frame.
@@ -20,7 +20,7 @@ use smithay::{
 use super::BackendData;
 use crate::state::MargoState;
 
-/// Drain `state.pending_output_mode_changes` and apply each via
+/// Drain `state.output_pending.mode_changes` and apply each via
 /// `DrmCompositor::use_mode`, then update the smithay `Output` so
 /// wl_output mode events reach clients (kanshi, status bar).
 ///
@@ -33,7 +33,7 @@ use crate::state::MargoState;
 ///     refused the modeset, e.g. CRTC pixel-clock limit).
 pub(super) fn apply_pending_mode_changes(bd: &mut BackendData, state: &mut MargoState) {
     let drained: Vec<crate::PendingOutputModeChange> =
-        state.pending_output_mode_changes.drain(..).collect();
+        state.output_pending.mode_changes.drain(..).collect();
     if drained.is_empty() {
         return;
     }

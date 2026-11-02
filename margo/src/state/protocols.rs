@@ -122,7 +122,7 @@ pub struct Protocols {
     /// `wlr-randr`, `way-displays` etc. discover the output
     /// topology and apply scale / transform / position changes
     /// at runtime. Disable still rejected; mode changes are now
-    /// queued via `pending_output_mode_changes` for the udev
+    /// queued via `output_pending.mode_changes` for the udev
     /// backend to drain at the next repaint.
     pub output_management: crate::protocols::output_management::OutputManagementManagerState,
     /// `wp_color_management_v1` (staging) — Phase 1 scaffolding.

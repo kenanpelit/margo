@@ -238,7 +238,8 @@ impl crate::state::MargoState {
             }
         });
         let subs: Vec<u32> = self
-            .ipc_watches
+            .ipc
+            .watches
             .watches
             .iter()
             .filter(|w| w.topic == "shortcuts")

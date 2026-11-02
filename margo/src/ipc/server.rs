@@ -27,7 +27,7 @@ const IPC_IN_CAP: usize = 1024 * 1024;
 /// legitimate use never comes close — this only stops the same local
 /// user's own runaway/malicious process from opening connections in a
 /// loop and never sending data, which would otherwise grow
-/// `ipc_conns` plus one calloop registration per connection without
+/// `ipc.conns` plus one calloop registration per connection without
 /// bound (the accept-side mirror of `watch`'s existing
 /// `MAX_WATCHES_TOTAL`).
 const MAX_IPC_CONNECTIONS: usize = 256;
@@ -47,6 +47,18 @@ pub enum DrainState {
     Blocked,
     /// The peer closed or the write errored — drop the connection.
     Closed,
+}
+
+/// IPC socket server state on `MargoState` (`state.ipc`): the live
+/// connections and the `watch` subscriptions fanned out over them.
+#[derive(Default)]
+pub struct IpcServer {
+    /// Active IPC socket connections, keyed by a monotonic token.
+    pub conns: std::collections::HashMap<u32, IpcConn>,
+    /// Next IPC connection token.
+    pub next_token: u32,
+    /// `watch`-mode IPC subscriptions, fanned out on each dirty flush.
+    pub watches: crate::ipc::watch::WatchRegistry,
 }
 
 /// Per-connection framing state.
@@ -265,7 +277,7 @@ impl MargoState {
     /// Register a freshly-accepted connection: stash it under a new
     /// token and add a calloop READ source that drains complete lines.
     pub fn ipc_accept(&mut self, stream: UnixStream) {
-        if self.ipc_conns.len() >= MAX_IPC_CONNECTIONS {
+        if self.ipc.conns.len() >= MAX_IPC_CONNECTIONS {
             tracing::warn!(
                 limit = MAX_IPC_CONNECTIONS,
                 "ipc: too many simultaneous connections, refusing new one"
@@ -277,8 +289,8 @@ impl MargoState {
         if let Err(e) = stream.set_nonblocking(true) {
             tracing::warn!(error = %e, "ipc: client set_nonblocking");
         }
-        let token = self.ipc_next_token;
-        self.ipc_next_token = self.ipc_next_token.wrapping_add(1);
+        let token = self.ipc.next_token;
+        self.ipc.next_token = self.ipc.next_token.wrapping_add(1);
         let read_fd = match stream.try_clone() {
             Ok(fd) => fd,
             Err(e) => {
@@ -286,7 +298,7 @@ impl MargoState {
                 return;
             }
         };
-        self.ipc_conns.insert(
+        self.ipc.conns.insert(
             token,
             IpcConn {
                 stream,
@@ -317,7 +329,8 @@ impl MargoState {
     #[cfg(test)]
     pub fn ipc_readable_for_test(&mut self, token: u32) -> PostAction {
         let Some(fd) = self
-            .ipc_conns
+            .ipc
+            .conns
             .get(&token)
             .and_then(|c| c.stream.try_clone().ok())
         else {
@@ -329,7 +342,7 @@ impl MargoState {
     /// Drain readable bytes for one connection, handling each complete
     /// `\n`-terminated request line.
     fn ipc_readable(&mut self, token: u32, fd: &UnixStream) -> PostAction {
-        match self.ipc_conns.get(&token) {
+        match self.ipc.conns.get(&token) {
             // Dropped elsewhere (`ipc_drop_conn` shut the socket down, which
             // is what woke us): retire this source.
             None => return PostAction::Remove,
@@ -350,7 +363,7 @@ impl MargoState {
                     return PostAction::Remove;
                 }
                 Ok(n) => {
-                    if let Some(c) = self.ipc_conns.get_mut(&token) {
+                    if let Some(c) = self.ipc.conns.get_mut(&token) {
                         c.buf.extend_from_slice(&chunk[..n]);
                         // Guard against an un-framed flood: `ipc_process_lines`
                         // below drains complete lines (and reading stops while
@@ -390,7 +403,7 @@ impl MargoState {
     fn ipc_process_lines(&mut self, token: u32, budget: &mut usize) -> bool {
         loop {
             let line = {
-                let Some(c) = self.ipc_conns.get_mut(&token) else {
+                let Some(c) = self.ipc.conns.get_mut(&token) else {
                     return false;
                 };
                 if *budget == 0 {
@@ -411,7 +424,7 @@ impl MargoState {
 
     /// Continue a connection's request backlog on the next loop turn.
     fn ipc_schedule_resume(&mut self, token: u32) {
-        let Some(c) = self.ipc_conns.get_mut(&token) else {
+        let Some(c) = self.ipc.conns.get_mut(&token) else {
             return;
         };
         if c.resume_scheduled {
@@ -419,7 +432,7 @@ impl MargoState {
         }
         c.resume_scheduled = true;
         self.loop_handle.insert_idle(move |state: &mut MargoState| {
-            let Some(c) = state.ipc_conns.get_mut(&token) else {
+            let Some(c) = state.ipc.conns.get_mut(&token) else {
                 return;
             };
             c.resume_scheduled = false;
@@ -460,10 +473,11 @@ impl MargoState {
                     let err = format!("unknown topic: {}", req.head);
                     return self.ipc_send(token, &serde_json::json!({ "error": err }));
                 }
-                if let Some(c) = self.ipc_conns.get_mut(&token) {
+                if let Some(c) = self.ipc.conns.get_mut(&token) {
                     c.watching = true;
                 }
-                self.ipc_watches
+                self.ipc
+                    .watches
                     .add(token, req.head.clone(), req.args.clone());
                 let payload = self.ipc_topic(&req.head, &req.args);
                 self.ipc_send(token, &payload);
@@ -489,7 +503,7 @@ impl MargoState {
     /// [`Self::ipc_send`].
     pub fn ipc_send_line(&mut self, token: u32, line: &str) {
         let over_cap = {
-            let Some(c) = self.ipc_conns.get_mut(&token) else {
+            let Some(c) = self.ipc.conns.get_mut(&token) else {
                 return;
             };
             if c.out_buf.len().saturating_add(line.len()) > IPC_OUT_CAP {
@@ -516,7 +530,7 @@ impl MargoState {
     /// [`Self::ipc_flush_out_from_write_source`]).
     fn ipc_flush_out(&mut self, token: u32) {
         let state = {
-            let Some(c) = self.ipc_conns.get_mut(&token) else {
+            let Some(c) = self.ipc.conns.get_mut(&token) else {
                 return;
             };
             drain_to(&c.stream, &mut c.out_buf)
@@ -532,14 +546,14 @@ impl MargoState {
     /// the `PostAction` for that source so calloop removes it on drain —
     /// we must not `remove()` it from under ourselves here.
     fn ipc_flush_out_from_write_source(&mut self, token: u32) -> PostAction {
-        let state = match self.ipc_conns.get_mut(&token) {
+        let state = match self.ipc.conns.get_mut(&token) {
             Some(c) => drain_to(&c.stream, &mut c.out_buf),
             None => return PostAction::Remove,
         };
         match state {
             DrainState::Blocked => PostAction::Continue,
             DrainState::Drained => {
-                if let Some(c) = self.ipc_conns.get_mut(&token) {
+                if let Some(c) = self.ipc.conns.get_mut(&token) {
                     c.write_token = None;
                 }
                 PostAction::Remove
@@ -548,7 +562,7 @@ impl MargoState {
                 // Forget the token first so `ipc_drop_conn` doesn't try to
                 // remove this still-running source; calloop removes it via
                 // the returned `Remove`.
-                if let Some(c) = self.ipc_conns.get_mut(&token) {
+                if let Some(c) = self.ipc.conns.get_mut(&token) {
                     c.write_token = None;
                 }
                 self.ipc_drop_conn(token);
@@ -562,7 +576,8 @@ impl MargoState {
     /// in the same epoll instance.
     fn ipc_arm_write(&mut self, token: u32) {
         let already = self
-            .ipc_conns
+            .ipc
+            .conns
             .get(&token)
             .map(|c| c.write_token.is_some())
             .unwrap_or(true);
@@ -570,7 +585,8 @@ impl MargoState {
             return;
         }
         let fd = match self
-            .ipc_conns
+            .ipc
+            .conns
             .get(&token)
             .and_then(|c| c.stream.try_clone().ok())
         {
@@ -588,7 +604,7 @@ impl MargoState {
             });
         match res {
             Ok(rtoken) => {
-                if let Some(c) = self.ipc_conns.get_mut(&token) {
+                if let Some(c) = self.ipc.conns.get_mut(&token) {
                     c.write_token = Some(rtoken);
                 }
             }
@@ -602,7 +618,8 @@ impl MargoState {
     /// Remove a connection's WRITE source once its backlog has drained.
     fn ipc_disarm_write(&mut self, token: u32) {
         let rt = self
-            .ipc_conns
+            .ipc
+            .conns
             .get_mut(&token)
             .and_then(|c| c.write_token.take());
         if let Some(rt) = rt {
@@ -617,13 +634,13 @@ impl MargoState {
     /// re-syncs), and the READ source wakes, finds the entry gone and
     /// retires itself, closing the last fd.
     pub fn ipc_drop_conn(&mut self, token: u32) {
-        if let Some(c) = self.ipc_conns.remove(&token) {
+        if let Some(c) = self.ipc.conns.remove(&token) {
             let _ = c.stream.shutdown(std::net::Shutdown::Both);
             if let Some(rt) = c.write_token {
                 self.loop_handle.remove(rt);
             }
         }
-        self.ipc_watches.remove_conn(token);
+        self.ipc.watches.remove_conn(token);
     }
 }
 

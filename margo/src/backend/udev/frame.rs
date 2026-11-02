@@ -263,7 +263,7 @@ pub(super) fn flush_presentation_feedback(
 /// Apply any gamma ramp updates queued by wlr_gamma_control clients
 /// (and the built-in twilight scheduler). Multi-GPU care: this runs
 /// once per `BackendData` (= once per DRM device), and
-/// `state.pending_gamma` is shared across all devices. Draining
+/// `state.output_pending.gamma` is shared across all devices. Draining
 /// unconditionally would consume entries destined for the *next*
 /// device's render pass and silently drop them — so we only consume
 /// entries whose output we can see in this device's `outputs` map, and
@@ -273,10 +273,10 @@ fn apply_pending_gamma(
     drm: &DrmDevice,
     state: &mut MargoState,
 ) {
-    if state.pending_gamma.is_empty() {
+    if state.output_pending.gamma.is_empty() {
         return;
     }
-    let pending = std::mem::take(&mut state.pending_gamma);
+    let pending = std::mem::take(&mut state.output_pending.gamma);
     let mut deferred: Vec<(smithay::output::Output, Option<Vec<u16>>)> = Vec::new();
     for (output, ramp) in pending {
         let target = outputs.values_mut().find(|od| od.output == output);
@@ -304,7 +304,7 @@ fn apply_pending_gamma(
         }
     }
     if !deferred.is_empty() {
-        state.pending_gamma = deferred;
+        state.output_pending.gamma = deferred;
         // Kick another repaint so the deferred device picks up its
         // ramps on the next frame instead of sitting idle until
         // something else schedules it.
@@ -313,16 +313,16 @@ fn apply_pending_gamma(
     }
 }
 
-/// Drain `state.pending_dpms` — real panel power off/on. `off` calls
+/// Drain `state.output_pending.dpms` — real panel power off/on. `off` calls
 /// smithay's `DrmCompositor::clear()` (which sets DPMS off + disables the
 /// planes); `on` just drops the flag, and the normal render below re-renders
 /// + `queue_frame`s the output, which re-enables it. Entries for outputs on
 /// another device are re-parked, like the gamma drain.
 fn apply_pending_dpms(outputs: &mut HashMap<crtc::Handle, OutputDevice>, state: &mut MargoState) {
-    if state.pending_dpms.is_empty() {
+    if state.output_pending.dpms.is_empty() {
         return;
     }
-    let pending = std::mem::take(&mut state.pending_dpms);
+    let pending = std::mem::take(&mut state.output_pending.dpms);
     let mut deferred: Vec<(Output, bool)> = Vec::new();
     for (output, on) in pending {
         let Some(od) = outputs.values_mut().find(|od| od.output == output) else {
@@ -350,7 +350,7 @@ fn apply_pending_dpms(outputs: &mut HashMap<crtc::Handle, OutputDevice>, state: 
         }
     }
     if !deferred.is_empty() {
-        state.pending_dpms = deferred;
+        state.output_pending.dpms = deferred;
         state.wake_repaint_backend();
     }
 }
@@ -415,7 +415,7 @@ fn render_output(
 
     // DPMS-off output: the panel is powered down via `compositor.clear()`.
     // Rendering + queueing a frame would re-enable it, so skip entirely
-    // until a `pending_dpms (output, true)` clears the flag.
+    // until a `output_pending.dpms (output, true)` clears the flag.
     if od.dpms_off {
         if per_output {
             state.clear_pending_vblank_per_output(&od.output);

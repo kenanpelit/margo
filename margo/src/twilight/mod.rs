@@ -5,7 +5,7 @@
 //! redshift) on the same compositor. Built into margo so the
 //! whole pipeline — scheduling, interpolation, gamma writes —
 //! lives inside the same event loop and reuses the existing
-//! `pending_gamma` → DRM `GAMMA_LUT` plumbing the wlr-gamma-control
+//! `output_pending.gamma` → DRM `GAMMA_LUT` plumbing the wlr-gamma-control
 //! protocol server already drives. End result: one less moving
 //! part on the user's machine, smoother ramps because we tick on
 //! the compositor's own frame loop, and live config swap via
@@ -98,7 +98,7 @@ pub struct TickInputs {
 }
 
 /// What the tick produced. The caller (compositor event loop) uses
-/// `target` to build the ramp + push it to `pending_gamma`, and
+/// `target` to build the ramp + push it to `output_pending.gamma`, and
 /// `next_tick_ms` to re-arm the calloop timer.
 #[derive(Debug, Clone)]
 pub struct TickOutput {
@@ -269,7 +269,7 @@ pub fn settings_from_config(cfg: &margo_config::Config) -> Settings {
 }
 
 /// 1 s — minimum gap between gamma pushes when the target didn't
-/// change. Stops the tick loop from spamming `pending_gamma`
+/// change. Stops the tick loop from spamming `output_pending.gamma`
 /// every minute with a byte-identical ramp.
 pub const _SKIP_REWRITE_GRACE: Duration = Duration::from_secs(1);
 

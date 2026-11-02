@@ -4,12 +4,60 @@
 //! lives in `crate::twilight` — schedule math, settings, the LUT
 //! builder. This module is the thin glue between that pure engine
 //! and the live compositor: scheduling the calloop tick timer, and
-//! pushing computed ramps onto every monitor's `pending_gamma`
+//! pushing computed ramps onto every monitor's `output_pending.gamma`
 //! queue for the udev backend to consume on the next frame.
 
 use smithay::output::Output;
 
 use super::MargoState;
+
+/// Twilight's live state: the pure schedule engine plus the compositor-side
+/// bits that drive it (tick timer, applied-ramp flag, preset cache).
+pub struct Twilight {
+    /// Twilight (blue-light filter) state. Always present; activity
+    /// is gated by `Config::twilight`. `tick_twilight()` advances
+    /// this on the calloop timer and pushes gamma ramps into
+    /// `output_pending.gamma` for every connected output.
+    pub engine: crate::twilight::TwilightState,
+    /// Token of the single self-re-arming twilight tick timer. A
+    /// force-tick (from `mctl twilight …` / `reload_config`) removes
+    /// this one and re-inserts at the near-term interval instead of
+    /// stacking a fresh permanent ticker per dispatch — the old
+    /// `bool` guard was never consulted, so every toggle leaked a
+    /// timer that kept waking the loop forever.
+    pub timer_token: Option<smithay::reexports::calloop::RegistrationToken>,
+    /// Whether a non-identity twilight ramp is currently applied. Starts
+    /// `true` so the first disabled tick clears once (guaranteeing
+    /// identity at startup); thereafter `clear_twilight_ramp` no-ops
+    /// while already cleared, so a disabled-twilight session stops
+    /// re-pushing gamma + repainting every 60 s.
+    pub ramp_active: bool,
+    /// Cached `(schedule_dir, ScheduleData)` for Schedule mode. The schedule
+    /// presets are static between explicit changes, but `tick_twilight` runs
+    /// as often as every 50 ms during a sunrise/sunset sweep — re-reading +
+    /// parsing the seven preset files on every one of those ticks was pure
+    /// waste. We load once and serve from here; the cache is cleared on
+    /// config reload and on every `mctl twilight` command (both invalidation
+    /// points users actually change presets through).
+    pub schedule_cache: Option<(String, crate::twilight::preset::ScheduleData)>,
+}
+
+impl Twilight {
+    pub fn new() -> Self {
+        Self {
+            engine: crate::twilight::TwilightState::default(),
+            timer_token: None,
+            ramp_active: true,
+            schedule_cache: None,
+        }
+    }
+}
+
+impl Default for Twilight {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl MargoState {
     /// Force-tick twilight from a dispatch path and schedule the
@@ -40,7 +88,7 @@ impl MargoState {
         // test, and the `mctl twilight preset` writers) funnels through here,
         // so this is the right place to drop the schedule cache and pick up
         // edited preset files on the resample below.
-        self.twilight_schedule_cache = None;
+        self.twilight.schedule_cache = None;
         let next = self.tick_twilight();
         // Persist the new twilight state to state snapshot. Every explicit
         // user action (`mctl twilight toggle/reset/set/preview/test`,
@@ -53,11 +101,11 @@ impl MargoState {
         // Drop the currently-scheduled tick and replace it with one at the
         // freshly-computed interval, so exactly one twilight timer is ever
         // in flight.
-        if let Some(token) = self.twilight_timer_token.take() {
+        if let Some(token) = self.twilight.timer_token.take() {
             self.loop_handle.remove(token);
         }
         let timer = smithay::reexports::calloop::timer::Timer::from_duration(next);
-        self.twilight_timer_token = self
+        self.twilight.timer_token = self
             .loop_handle
             .insert_source(timer, move |_, _, state: &mut MargoState| {
                 let next = state.tick_twilight();
@@ -66,7 +114,7 @@ impl MargoState {
             .ok();
     }
 
-    /// Schedule-mode presets, served from `twilight_schedule_cache`.
+    /// Schedule-mode presets, served from `twilight.schedule_cache`.
     ///
     /// Non-schedule modes get an empty table (the tick branches on
     /// `Mode::Schedule`, so a populated table only matters there). In schedule
@@ -83,12 +131,13 @@ impl MargoState {
             return crate::twilight::preset::ScheduleData::default();
         }
         let dir = &self.config.twilight_schedule_dir;
-        let fresh = matches!(&self.twilight_schedule_cache, Some((d, _)) if d == dir);
+        let fresh = matches!(&self.twilight.schedule_cache, Some((d, _)) if d == dir);
         if !fresh {
             let data = crate::twilight::preset::ScheduleData::load(dir);
-            self.twilight_schedule_cache = Some((dir.clone(), data));
+            self.twilight.schedule_cache = Some((dir.clone(), data));
         }
-        self.twilight_schedule_cache
+        self.twilight
+            .schedule_cache
             .as_ref()
             .map(|(_, d)| d.clone())
             .unwrap_or_default()
@@ -115,7 +164,7 @@ impl MargoState {
             now: std::time::SystemTime::now(),
             presets,
         };
-        let out = self.twilight.tick(inputs);
+        let out = self.twilight.engine.tick(inputs);
 
         if let Some(target) = out.target {
             self.apply_twilight_ramp(target.temp_k, target.gamma_pct);
@@ -131,7 +180,7 @@ impl MargoState {
     /// Build a ramp per output (each CRTC may declare a different
     /// `GAMMA_LUT_SIZE` — Intel Arc reports 1024, older AMD parts
     /// often 256, virtio sometimes 4096) and push them to
-    /// `pending_gamma`. The udev frame handler picks each one up
+    /// `output_pending.gamma`. The udev frame handler picks each one up
     /// on the very next render and hands it to `g.set_gamma`,
     /// which validates the length against the kernel's declared
     /// size and rejects mismatches.
@@ -143,7 +192,7 @@ impl MargoState {
         let mut cached: Vec<u16> = Vec::new();
 
         // Clone the outputs we need to push to up-front so we can
-        // mutate `pending_gamma` without overlapping borrows.
+        // mutate `output_pending.gamma` without overlapping borrows.
         let targets: Vec<(Output, u32)> = self
             .monitors
             .iter()
@@ -164,10 +213,12 @@ impl MargoState {
             }
             // Drop any pending entry for this output first so we
             // never queue stale ramps behind the latest one.
-            self.pending_gamma.retain(|(o, _)| o != &output);
-            self.pending_gamma.push((output, Some(cached.clone())));
+            self.output_pending.gamma.retain(|(o, _)| o != &output);
+            self.output_pending
+                .gamma
+                .push((output, Some(cached.clone())));
         }
-        self.twilight_ramp_active = true;
+        self.twilight.ramp_active = true;
         self.request_repaint();
     }
 
@@ -177,14 +228,14 @@ impl MargoState {
     /// gamma + repaint every tick — the disabled branch of
     /// `tick_twilight` calls this once per minute otherwise.
     fn clear_twilight_ramp(&mut self) {
-        if !self.twilight_ramp_active {
+        if !self.twilight.ramp_active {
             return;
         }
         for mon in &self.monitors {
-            self.pending_gamma.retain(|(o, _)| o != &mon.output);
-            self.pending_gamma.push((mon.output.clone(), None));
+            self.output_pending.gamma.retain(|(o, _)| o != &mon.output);
+            self.output_pending.gamma.push((mon.output.clone(), None));
         }
-        self.twilight_ramp_active = false;
+        self.twilight.ramp_active = false;
         self.request_repaint();
     }
 }

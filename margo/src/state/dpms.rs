@@ -24,7 +24,7 @@ impl MargoState {
     /// backend's `DrmCompositor::clear()` / re-render). `on = Some(false)`
     /// powers the panel(s) OFF, `Some(true)` ON; `None` toggles globally
     /// (any-off → on-all, else off-all). `target = Some(name)` scopes to one
-    /// output, `None` = all. Pushes to `pending_dpms` + kicks a repaint;
+    /// output, `None` = all. Pushes to `output_pending.dpms` + kicks a repaint;
     /// no-ops on winit. Any subsequent input wakes the screen (see
     /// `wake_dpms_on_input`), so a black screen is always recoverable.
     pub fn request_dpms(&mut self, on: Option<bool>, target: Option<&str>) {
@@ -39,7 +39,7 @@ impl MargoState {
         }
         let want_on = on.unwrap_or(self.any_dpms_off);
         for o in &outputs {
-            self.pending_dpms.push((o.clone(), want_on));
+            self.output_pending.dpms.push((o.clone(), want_on));
             // Tell wlr-output-power clients (swayidle etc.) about the change,
             // whatever triggered it (protocol, keybind, or mctl).
             self.protocols

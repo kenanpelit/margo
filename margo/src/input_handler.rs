@@ -1021,7 +1021,7 @@ pub(crate) fn update_hot_corner(state: &mut MargoState) {
         return;
     }
     let corner = hot_corner_at(state, state.input_pointer.x, state.input_pointer.y);
-    if state.hot_corner_dwelling != corner {
+    if state.input_timers.hot_corner_dwelling != corner {
         set_hot_corner(state, corner);
         return;
     }
@@ -1085,14 +1085,14 @@ fn hot_corner_at(state: &MargoState, x: f64, y: f64) -> Option<crate::state::Hot
 /// for it, so a cursor parked in the corner fires without further
 /// motion; leaving disarms both.
 fn set_hot_corner(state: &mut MargoState, corner: Option<crate::state::HotCorner>) {
-    if state.hot_corner_dwelling == corner {
+    if state.input_timers.hot_corner_dwelling == corner {
         return;
     }
-    if let Some(token) = state.hot_corner_timer.take() {
+    if let Some(token) = state.input_timers.hot_corner_timer.take() {
         state.loop_handle.remove(token);
     }
-    state.hot_corner_dwelling = corner;
-    state.hot_corner_armed_at = corner.map(|_| std::time::Instant::now());
+    state.input_timers.hot_corner_dwelling = corner;
+    state.input_timers.hot_corner_armed_at = corner.map(|_| std::time::Instant::now());
     if corner.is_none() {
         return;
     }
@@ -1103,7 +1103,7 @@ fn set_hot_corner(state: &mut MargoState, corner: Option<crate::state::HotCorner
         .insert_source(timer, |_, _, state: &mut MargoState| {
             // Clear before anything else: the source is dropped on return,
             // and `remove` on a stale token could hit a reused slot.
-            state.hot_corner_timer = None;
+            state.input_timers.hot_corner_timer = None;
             if hot_corner_blocked(state) {
                 set_hot_corner(state, None);
             } else {
@@ -1111,7 +1111,7 @@ fn set_hot_corner(state: &mut MargoState, corner: Option<crate::state::HotCorner
             }
             calloop::timer::TimeoutAction::Drop
         }) {
-        Ok(token) => state.hot_corner_timer = Some(token),
+        Ok(token) => state.input_timers.hot_corner_timer = Some(token),
         Err(e) => tracing::warn!("hot corner dwell timer: {e}"),
     }
 }
@@ -1120,15 +1120,18 @@ fn set_hot_corner(state: &mut MargoState, corner: Option<crate::state::HotCorner
 /// disarm so it doesn't re-fire while the cursor stays put — the user
 /// has to leave and re-enter.
 fn fire_hot_corner_if_due(state: &mut MargoState) {
-    let (Some(corner), Some(armed)) = (state.hot_corner_dwelling, state.hot_corner_armed_at) else {
+    let (Some(corner), Some(armed)) = (
+        state.input_timers.hot_corner_dwelling,
+        state.input_timers.hot_corner_armed_at,
+    ) else {
         return;
     };
     let dwell = std::time::Duration::from_millis(state.config.hot_corner_dwell_ms as u64);
     if armed.elapsed() < dwell {
         return;
     }
-    state.hot_corner_armed_at = None;
-    if let Some(token) = state.hot_corner_timer.take() {
+    state.input_timers.hot_corner_armed_at = None;
+    if let Some(token) = state.input_timers.hot_corner_timer.take() {
         state.loop_handle.remove(token);
     }
     let action = corner.action_str(&state.config).trim().to_string();
@@ -1705,10 +1708,12 @@ fn run_axis_binding<B: InputBackend, E: PointerAxisEvent<B>>(
     };
     let now = event.time().millis();
     let sign: i8 = if delta > 0.0 { 1 } else { -1 };
-    let reversed = state.axis_bind_dir != 0 && state.axis_bind_dir != sign;
-    let due = now.wrapping_sub(state.axis_bind_time) > state.config.axis_bind_apply_timeout;
-    state.axis_bind_time = now;
-    state.axis_bind_dir = sign;
+    let reversed =
+        state.input_timers.axis_bind_dir != 0 && state.input_timers.axis_bind_dir != sign;
+    let due =
+        now.wrapping_sub(state.input_timers.axis_bind_time) > state.config.axis_bind_apply_timeout;
+    state.input_timers.axis_bind_time = now;
+    state.input_timers.axis_bind_dir = sign;
     if due || reversed {
         crate::dispatch::dispatch_action(state, &bind.action, &bind.arg);
         state.request_repaint();

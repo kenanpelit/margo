@@ -41,7 +41,7 @@ fn fullscreen_focus_suppresses_the_hot_corner_by_default() {
     update_hot_corner(&mut fx.server.state);
 
     assert_eq!(
-        fx.server.state.hot_corner_dwelling, None,
+        fx.server.state.input_timers.hot_corner_dwelling, None,
         "a fullscreen focused window must block corner entry from arming at all"
     );
 }
@@ -54,7 +54,7 @@ fn non_fullscreen_focus_still_arms_the_hot_corner() {
     update_hot_corner(&mut fx.server.state);
 
     assert_eq!(
-        fx.server.state.hot_corner_dwelling,
+        fx.server.state.input_timers.hot_corner_dwelling,
         Some(HotCorner::TopLeft),
         "a non-fullscreen focus must not be affected by the fullscreen guard"
     );
@@ -68,7 +68,7 @@ fn disabling_the_guard_lets_fullscreen_arm_the_corner_too() {
     update_hot_corner(&mut fx.server.state);
 
     assert_eq!(
-        fx.server.state.hot_corner_dwelling,
+        fx.server.state.input_timers.hot_corner_dwelling,
         Some(HotCorner::TopLeft),
         "with hot_corner_disable_on_fullscreen off, fullscreen must not suppress the corner"
     );
@@ -96,8 +96,8 @@ fn a_cursor_parked_in_the_corner_fires_without_further_motion() {
         fx.server.state.monitors[0].is_overview,
         "the dwell timer must fire the action with no further motion event"
     );
-    assert!(fx.server.state.hot_corner_armed_at.is_none());
-    assert!(fx.server.state.hot_corner_timer.is_none());
+    assert!(fx.server.state.input_timers.hot_corner_armed_at.is_none());
+    assert!(fx.server.state.input_timers.hot_corner_timer.is_none());
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn leaving_the_corner_cancels_the_dwell_timer() {
     fx.server.state.input_pointer.x = 500.0;
     fx.server.state.input_pointer.y = 500.0;
     update_hot_corner(&mut fx.server.state);
-    assert!(fx.server.state.hot_corner_timer.is_none());
+    assert!(fx.server.state.input_timers.hot_corner_timer.is_none());
 
     std::thread::sleep(std::time::Duration::from_millis(40));
     fx.dispatch();
@@ -140,7 +140,7 @@ fn hotarea_corner_toggles_overview_from_a_sized_zone() {
     fx.server.state.input_pointer.y = 1074.0;
     update_hot_corner(&mut fx.server.state);
     assert_eq!(
-        fx.server.state.hot_corner_dwelling,
+        fx.server.state.input_timers.hot_corner_dwelling,
         Some(HotCorner::BottomRight)
     );
     update_hot_corner(&mut fx.server.state);
