@@ -12,5 +12,6 @@ license.workspace = true
 # play_bytes() — Edge TTS (mshell-translate::speak) returns mp3, rodio's
 # vorbis decoder can't touch it.
 rodio = { workspace = true, features = ["mp3"] }
+tracing.workspace = true
 [lints]
 workspace = true

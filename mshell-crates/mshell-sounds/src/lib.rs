@@ -161,79 +161,58 @@ pub fn play_bytes(bytes: Vec<u8>) {
 
 /// Fire-and-forget playback of an embedded clip on its own thread.
 fn play_embedded(bytes: &'static [u8]) {
+    play_embedded_padded(bytes, Duration::ZERO, Duration::ZERO);
+}
+
+/// [`play_embedded`] with a delay before opening the device and a hold after
+/// the clip ends. No audio device (or a busy one) is logged and skipped —
+/// a sound effect must never take a thread down.
+fn play_embedded_padded(bytes: &'static [u8], before: Duration, after: Duration) {
     std::thread::spawn(move || {
-        let Ok(mut handle) = rodio::DeviceSinkBuilder::open_default_sink() else {
-            return;
+        if !before.is_zero() {
+            std::thread::sleep(before);
+        }
+        let mut handle = match rodio::DeviceSinkBuilder::open_default_sink() {
+            Ok(h) => h,
+            Err(e) => {
+                tracing::debug!(error = %e, "sounds: no default audio device; skipping clip");
+                return;
+            }
         };
         handle.log_on_drop(false);
         if let Ok(player) = rodio::play(handle.mixer(), Cursor::new(bytes)) {
             player.sleep_until_end();
+            if !after.is_zero() {
+                std::thread::sleep(after);
+            }
         }
     });
 }
 
 pub fn play_shutter() {
-    std::thread::spawn(|| {
-        let mut handle =
-            rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio device");
-        handle.log_on_drop(false);
-        let cursor = Cursor::new(CAMERA_SHUTTER_SOUND);
-        if let Ok(player) = rodio::play(handle.mixer(), cursor) {
-            player.sleep_until_end();
-        }
-    });
+    play_embedded(CAMERA_SHUTTER_SOUND);
 }
 
 pub fn play_audio_volume_change() {
-    std::thread::spawn(|| {
-        // give volume changes a moment to happen
-        std::thread::sleep(Duration::from_millis(50));
-        let mut handle =
-            rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio device");
-        handle.log_on_drop(false);
-        let cursor = Cursor::new(AUDIO_VOLUME_CHANGED_SOUND);
-        if let Ok(player) = rodio::play(handle.mixer(), cursor) {
-            player.sleep_until_end();
-            // sleep to make sure the sounds plays.  It's very short and might not without the sleep.
-            std::thread::sleep(Duration::from_millis(100));
-        }
-    });
+    // Give the volume change a moment to land first; hold the (very short)
+    // clip's device open briefly so it actually plays out.
+    play_embedded_padded(
+        AUDIO_VOLUME_CHANGED_SOUND,
+        Duration::from_millis(50),
+        Duration::from_millis(100),
+    );
 }
 
 pub fn play_battery_low() {
-    std::thread::spawn(|| {
-        let mut handle =
-            rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio device");
-        handle.log_on_drop(false);
-        let cursor = Cursor::new(BATTERY_LOW_SOUND);
-        if let Ok(player) = rodio::play(handle.mixer(), cursor) {
-            player.sleep_until_end();
-        }
-    });
+    play_embedded(BATTERY_LOW_SOUND);
 }
 
 pub fn play_power_plug_sound() {
-    std::thread::spawn(|| {
-        let mut handle =
-            rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio device");
-        handle.log_on_drop(false);
-        let cursor = Cursor::new(POWER_PLUG_SOUND);
-        if let Ok(player) = rodio::play(handle.mixer(), cursor) {
-            player.sleep_until_end();
-        }
-    });
+    play_embedded(POWER_PLUG_SOUND);
 }
 
 pub fn play_power_unplug_sound() {
-    std::thread::spawn(|| {
-        let mut handle =
-            rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio device");
-        handle.log_on_drop(false);
-        let cursor = Cursor::new(POWER_UNPLUG_SOUND);
-        if let Ok(player) = rodio::play(handle.mixer(), cursor) {
-            player.sleep_until_end();
-        }
-    });
+    play_embedded(POWER_UNPLUG_SOUND);
 }
 
 #[cfg(test)]
