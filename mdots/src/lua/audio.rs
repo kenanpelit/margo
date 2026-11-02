@@ -2,7 +2,7 @@
 //!
 //! Provides the `mdots.audio.*` API for detecting audio system configuration.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use mlua::{Lua, Table};
 use std::fs;
 use std::path::Path;
@@ -215,25 +215,25 @@ fn list_sound_cards() -> Vec<String> {
             // Format: " 0 [PCH            ]: HDA-Intel - HDA Intel PCH"
             if let Some(stripped) = line.strip_prefix(' ') {
                 let parts: Vec<&str> = stripped.split('[').collect();
-                if parts.len() >= 2 {
-                    if let Some(name_part) = parts[1].split(']').next() {
-                        cards.push(name_part.trim().to_string());
-                    }
+                if parts.len() >= 2
+                    && let Some(name_part) = parts[1].split(']').next()
+                {
+                    cards.push(name_part.trim().to_string());
                 }
             }
         }
     }
 
     // Alternative: read from /sys/class/sound
-    if cards.is_empty() {
-        if let Ok(entries) = fs::read_dir("/sys/class/sound") {
-            for entry in entries.filter_map(|e| e.ok()) {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with("card") {
-                    let id_path = entry.path().join("id");
-                    if let Ok(id) = fs::read_to_string(&id_path) {
-                        cards.push(id.trim().to_string());
-                    }
+    if cards.is_empty()
+        && let Ok(entries) = fs::read_dir("/sys/class/sound")
+    {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("card") {
+                let id_path = entry.path().join("id");
+                if let Ok(id) = fs::read_to_string(&id_path) {
+                    cards.push(id.trim().to_string());
                 }
             }
         }
@@ -245,24 +245,23 @@ fn list_sound_cards() -> Vec<String> {
 /// Get default sink (output device)
 fn get_default_sink() -> Option<String> {
     // Try PipeWire first
-    if has_pipewire() {
-        if let Ok(output) = Command::new("pw-cli").args(["info", "all"]).output() {
-            // This is a simplified check - real implementation would parse JSON output
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if let Some(line) = stdout.lines().find(|l| l.contains("default.audio.sink")) {
-                // Extract sink name from line
-                return Some(line.trim().to_string());
-            }
+    if has_pipewire()
+        && let Ok(output) = Command::new("pw-cli").args(["info", "all"]).output()
+    {
+        // This is a simplified check - real implementation would parse JSON output
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if let Some(line) = stdout.lines().find(|l| l.contains("default.audio.sink")) {
+            // Extract sink name from line
+            return Some(line.trim().to_string());
         }
     }
 
     // Try PulseAudio
-    if has_pulseaudio() {
-        if let Ok(output) = Command::new("pactl").args(["get-default-sink"]).output() {
-            if output.status.success() {
-                return Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
-            }
-        }
+    if has_pulseaudio()
+        && let Ok(output) = Command::new("pactl").args(["get-default-sink"]).output()
+        && output.status.success()
+    {
+        return Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
     }
 
     None
@@ -271,22 +270,21 @@ fn get_default_sink() -> Option<String> {
 /// Get default source (input device)
 fn get_default_source() -> Option<String> {
     // Try PipeWire first
-    if has_pipewire() {
-        if let Ok(output) = Command::new("pw-cli").args(["info", "all"]).output() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if let Some(line) = stdout.lines().find(|l| l.contains("default.audio.source")) {
-                return Some(line.trim().to_string());
-            }
+    if has_pipewire()
+        && let Ok(output) = Command::new("pw-cli").args(["info", "all"]).output()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if let Some(line) = stdout.lines().find(|l| l.contains("default.audio.source")) {
+            return Some(line.trim().to_string());
         }
     }
 
     // Try PulseAudio
-    if has_pulseaudio() {
-        if let Ok(output) = Command::new("pactl").args(["get-default-source"]).output() {
-            if output.status.success() {
-                return Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
-            }
-        }
+    if has_pulseaudio()
+        && let Ok(output) = Command::new("pactl").args(["get-default-source"]).output()
+        && output.status.success()
+    {
+        return Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
     }
 
     None
@@ -300,15 +298,14 @@ fn is_bluetooth_audio_available() -> bool {
     }
 
     // Check if PulseAudio or PipeWire has Bluetooth module
-    if has_pulseaudio() {
-        if let Ok(output) = Command::new("pactl")
+    if has_pulseaudio()
+        && let Ok(output) = Command::new("pactl")
             .args(["list", "modules", "short"])
             .output()
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if stdout.contains("bluetooth") {
-                return true;
-            }
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.contains("bluetooth") {
+            return true;
         }
     }
 

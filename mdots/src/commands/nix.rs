@@ -2,7 +2,7 @@ use anyhow::Result;
 use colored::*;
 use serde_json::json;
 
-use crate::config::{load_config, ConfigPaths};
+use crate::config::{ConfigPaths, load_config};
 
 /// Install nix and home-manager
 pub fn install(paths: &ConfigPaths) -> Result<()> {
@@ -51,7 +51,9 @@ pub fn switch(paths: &ConfigPaths) -> Result<()> {
     let config = load_config(paths)?;
 
     if !config.nix.home_manager_enabled {
-        anyhow::bail!("Home Manager is not enabled in your config. Set nix.home_manager_enabled: true in your host config.");
+        anyhow::bail!(
+            "Home Manager is not enabled in your config. Set nix.home_manager_enabled: true in your host config."
+        );
     }
 
     if !crate::nix::is_home_manager_installed() {
@@ -66,7 +68,9 @@ pub fn update(paths: &ConfigPaths) -> Result<()> {
     let config = load_config(paths)?;
 
     if !config.nix.home_manager_enabled {
-        anyhow::bail!("Home Manager is not enabled in your config. Set nix.home_manager_enabled: true in your host config.");
+        anyhow::bail!(
+            "Home Manager is not enabled in your config. Set nix.home_manager_enabled: true in your host config."
+        );
     }
 
     if !crate::nix::is_home_manager_installed() {

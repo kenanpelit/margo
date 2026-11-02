@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 use std::process::Command;
 
@@ -200,15 +200,15 @@ fn validate_config_structure(
     }
 
     if obj.contains_key("host") {
-        if let Some(host) = obj.get("host") {
-            if !host.is_string() {
-                result.add_error(NixError {
-                    kind: NixErrorKind::InvalidType,
-                    message: "'host' field must be a string".to_string(),
-                    line: None,
-                    hint: Some("Use: host = \"myhost\";".to_string()),
-                });
-            }
+        if let Some(host) = obj.get("host")
+            && !host.is_string()
+        {
+            result.add_error(NixError {
+                kind: NixErrorKind::InvalidType,
+                message: "'host' field must be a string".to_string(),
+                line: None,
+                hint: Some("Use: host = \"myhost\";".to_string()),
+            });
         }
     } else {
         let path_str = path.to_string_lossy();
@@ -217,15 +217,15 @@ fn validate_config_structure(
         }
     }
 
-    if let Some(pkgs) = obj.get("packages") {
-        if !pkgs.is_array() {
-            result.add_error(NixError {
-                kind: NixErrorKind::InvalidType,
-                message: "'packages' must be a list".to_string(),
-                line: None,
-                hint: Some("Use: packages = [ \"vim\" \"git\" ];".to_string()),
-            });
-        }
+    if let Some(pkgs) = obj.get("packages")
+        && !pkgs.is_array()
+    {
+        result.add_error(NixError {
+            kind: NixErrorKind::InvalidType,
+            message: "'packages' must be a list".to_string(),
+            line: None,
+            hint: Some("Use: packages = [ \"vim\" \"git\" ];".to_string()),
+        });
     }
 }
 
@@ -355,13 +355,14 @@ pub fn detect_pointer_nix_config(
 
     match evaluate_nix_file_to_json(path, system_facts) {
         Ok(value) => {
-            if let Some(obj) = value.as_object() {
-                if obj.len() == 1 && obj.contains_key("host") {
-                    return Ok(obj
-                        .get("host")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()));
-                }
+            if let Some(obj) = value.as_object()
+                && obj.len() == 1
+                && obj.contains_key("host")
+            {
+                return Ok(obj
+                    .get("host")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()));
             }
             Ok(None)
         }

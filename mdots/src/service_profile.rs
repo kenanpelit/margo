@@ -154,14 +154,13 @@ impl ServiceProfileManager {
 
         // Also check reverse conflicts
         for enabled in enabled_profiles {
-            if let Ok(enabled_profile) = self.load_profile(enabled) {
-                if enabled_profile
+            if let Ok(enabled_profile) = self.load_profile(enabled)
+                && enabled_profile
                     .conflicts
                     .contains(&profile_name.to_string())
-                    && !conflicts.contains(enabled)
-                {
-                    conflicts.push(enabled.clone());
-                }
+                && !conflicts.contains(enabled)
+            {
+                conflicts.push(enabled.clone());
             }
         }
 

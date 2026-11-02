@@ -13,7 +13,7 @@
 //! shows up at a specific terminal size, which is exactly what nobody tests
 //! by hand.
 
-use ratatui::{backend::TestBackend, layout::Rect, Terminal};
+use ratatui::{Terminal, backend::TestBackend, layout::Rect};
 
 use crate::config::{Config, ConfigPaths};
 use crate::tui::app::App;

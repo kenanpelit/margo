@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use colored::*;
 use serde::{Deserialize, Serialize};
@@ -7,20 +7,20 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use crate::config::{
-    load_config, resolve_flatpak_remote, Config, ConfigPaths, FlatpakScope, ModuleProcessing,
-    PackageType, ServicesConfig,
+    Config, ConfigPaths, FlatpakScope, ModuleProcessing, PackageType, ServicesConfig, load_config,
+    resolve_flatpak_remote,
 };
 use crate::defaults::{
-    create_updated_state as create_updated_defaults_state, load_defaults_state,
-    save_defaults_state, DefaultsManager,
+    DefaultsManager, create_updated_state as create_updated_defaults_state, load_defaults_state,
+    save_defaults_state,
 };
 use crate::package::{Package, PackageManager};
 use crate::service_profile::ServiceProfileManager;
 use crate::services::{
-    create_updated_state, load_services_state, save_services_state, ServiceManager, ServicesPreview,
+    ServiceManager, ServicesPreview, create_updated_state, load_services_state, save_services_state,
 };
-use crate::theming::state::{create_theming_state, load_theming_state, save_theming_state};
 use crate::theming::ThemingManager;
+use crate::theming::state::{create_theming_state, load_theming_state, save_theming_state};
 
 /// Native packages mdots must never auto-remove during `--prune`, even if they
 /// fall out of the declared set. Removing any of these can make the system
@@ -1491,13 +1491,11 @@ pub fn run(paths: &ConfigPaths, opts: SyncOptions) -> Result<()> {
     // Run post-install hooks. Failures here are reported but do NOT abort the
     // sync: the packages are already installed and must still be recorded in
     // state (otherwise the next sync sees an inconsistent system).
-    if !no_hooks {
-        if let Err(e) = run_post_install_hooks(paths, &config, json) {
-            eprintln!("{} {}", "⚠".yellow(), e);
-            eprintln!(
-                "  Packages are installed and tracked; fix the hook(s) and re-run `mdots hooks run`."
-            );
-        }
+    if !no_hooks && let Err(e) = run_post_install_hooks(paths, &config, json) {
+        eprintln!("{} {}", "⚠".yellow(), e);
+        eprintln!(
+            "  Packages are installed and tracked; fix the hook(s) and re-run `mdots hooks run`."
+        );
     }
 
     // Update state file (commit point — clears the marker on success; a later
@@ -1520,12 +1518,12 @@ pub fn run(paths: &ConfigPaths, opts: SyncOptions) -> Result<()> {
 
     // Auto-commit changes to git if enabled
     let should_auto_commit = auto_commit || config.auto_commit;
-    if should_auto_commit && !dry_run {
-        if let Err(e) = auto_commit_changes(paths, json) {
-            if !json {
-                eprintln!("{} Auto-commit failed: {}", "Warning:".yellow(), e);
-            }
-        }
+    if should_auto_commit
+        && !dry_run
+        && let Err(e) = auto_commit_changes(paths, json)
+        && !json
+    {
+        eprintln!("{} Auto-commit failed: {}", "Warning:".yellow(), e);
     }
 
     Ok(())
@@ -2373,10 +2371,10 @@ fn get_flatpak_version(package: &str) -> Result<Option<String>> {
         Ok(out) if out.status.success() => {
             let result = String::from_utf8_lossy(&out.stdout);
             for line in result.lines() {
-                if line.starts_with("Version:") {
-                    if let Some(ver) = line.split(':').nth(1) {
-                        return Ok(Some(ver.trim().to_string()));
-                    }
+                if line.starts_with("Version:")
+                    && let Some(ver) = line.split(':').nth(1)
+                {
+                    return Ok(Some(ver.trim().to_string()));
                 }
             }
             Ok(None)

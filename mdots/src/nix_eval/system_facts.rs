@@ -261,12 +261,11 @@ fn collect_memory_mb() -> u64 {
     fs::read_to_string("/proc/meminfo")
         .map(|s| {
             for line in s.lines() {
-                if let Some(rest) = line.strip_prefix("MemTotal:") {
-                    if let Some(kb_str) = rest.split_whitespace().next() {
-                        if let Ok(kb) = kb_str.parse::<u64>() {
-                            return kb / 1024;
-                        }
-                    }
+                if let Some(rest) = line.strip_prefix("MemTotal:")
+                    && let Some(kb_str) = rest.split_whitespace().next()
+                    && let Ok(kb) = kb_str.parse::<u64>()
+                {
+                    return kb / 1024;
                 }
             }
             0
@@ -311,23 +310,22 @@ fn detect_gpu_vendors() -> Vec<String> {
         for entry in entries.filter_map(|e| e.ok()) {
             let class_path = entry.path().join("class");
             let vendor_path = entry.path().join("vendor");
-            if let Ok(class) = fs::read_to_string(&class_path) {
-                if class.trim().starts_with("0x03") {
-                    if let Ok(vendor) = fs::read_to_string(&vendor_path) {
-                        let v = vendor.trim();
-                        match v {
-                            "0x10de" if !vendors.contains(&"nvidia".to_string()) => {
-                                vendors.push("nvidia".to_string())
-                            }
-                            "0x1002" if !vendors.contains(&"amd".to_string()) => {
-                                vendors.push("amd".to_string())
-                            }
-                            "0x8086" if !vendors.contains(&"intel".to_string()) => {
-                                vendors.push("intel".to_string())
-                            }
-                            _ => {}
-                        }
+            if let Ok(class) = fs::read_to_string(&class_path)
+                && class.trim().starts_with("0x03")
+                && let Ok(vendor) = fs::read_to_string(&vendor_path)
+            {
+                let v = vendor.trim();
+                match v {
+                    "0x10de" if !vendors.contains(&"nvidia".to_string()) => {
+                        vendors.push("nvidia".to_string())
                     }
+                    "0x1002" if !vendors.contains(&"amd".to_string()) => {
+                        vendors.push("amd".to_string())
+                    }
+                    "0x8086" if !vendors.contains(&"intel".to_string()) => {
+                        vendors.push("intel".to_string())
+                    }
+                    _ => {}
                 }
             }
         }
@@ -355,10 +353,10 @@ fn detect_has_battery() -> bool {
     if let Ok(entries) = fs::read_dir("/sys/class/power_supply") {
         for entry in entries.filter_map(|e| e.ok()) {
             let type_path = entry.path().join("type");
-            if let Ok(supply_type) = fs::read_to_string(&type_path) {
-                if supply_type.trim() == "Battery" {
-                    return true;
-                }
+            if let Ok(supply_type) = fs::read_to_string(&type_path)
+                && supply_type.trim() == "Battery"
+            {
+                return true;
             }
         }
     }
@@ -443,10 +441,10 @@ fn is_connected() -> bool {
             if name == "lo" {
                 continue;
             }
-            if let Ok(state) = fs::read_to_string(entry.path().join("operstate")) {
-                if state.trim() == "up" {
-                    return true;
-                }
+            if let Ok(state) = fs::read_to_string(entry.path().join("operstate"))
+                && state.trim() == "up"
+            {
+                return true;
             }
         }
     }
@@ -476,10 +474,10 @@ fn get_active_interface() -> Option<String> {
         .output()
     {
         let stdout = String::from_utf8_lossy(&output.stdout);
-        if let Some(stripped) = stdout.split("dev ").nth(1) {
-            if let Some(iface) = stripped.split_whitespace().next() {
-                return Some(iface.to_string());
-            }
+        if let Some(stripped) = stdout.split("dev ").nth(1)
+            && let Some(iface) = stripped.split_whitespace().next()
+        {
+            return Some(iface.to_string());
         }
     }
     None
@@ -509,10 +507,10 @@ fn get_interface_type(name: &str) -> String {
 }
 
 fn has_ipv6() -> bool {
-    if let Ok(content) = fs::read_to_string("/proc/sys/net/ipv6/conf/all/disable_ipv6") {
-        if content.trim() == "1" {
-            return false;
-        }
+    if let Ok(content) = fs::read_to_string("/proc/sys/net/ipv6/conf/all/disable_ipv6")
+        && content.trim() == "1"
+    {
+        return false;
     }
     Command::new("ip")
         .args(["-6", "addr", "show", "scope", "global"])
@@ -726,10 +724,10 @@ fn get_screen_resolution() -> Option<String> {
     if let Ok(output) = Command::new("xrandr").output() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         for line in stdout.lines() {
-            if line.contains('*') {
-                if let Some(res) = line.split_whitespace().next() {
-                    return Some(res.to_string());
-                }
+            if line.contains('*')
+                && let Some(res) = line.split_whitespace().next()
+            {
+                return Some(res.to_string());
             }
         }
     }
@@ -820,14 +818,12 @@ impl PowerFacts {
 fn is_on_battery() -> bool {
     if let Ok(entries) = fs::read_dir("/sys/class/power_supply") {
         for entry in entries.filter_map(|e| e.ok()) {
-            if let Ok(t) = fs::read_to_string(entry.path().join("type")) {
-                if t.trim() == "Battery" {
-                    if let Ok(s) = fs::read_to_string(entry.path().join("status")) {
-                        if s.trim() == "Discharging" {
-                            return true;
-                        }
-                    }
-                }
+            if let Ok(t) = fs::read_to_string(entry.path().join("type"))
+                && t.trim() == "Battery"
+                && let Ok(s) = fs::read_to_string(entry.path().join("status"))
+                && s.trim() == "Discharging"
+            {
+                return true;
             }
         }
     }
@@ -837,14 +833,12 @@ fn is_on_battery() -> bool {
 fn is_on_ac() -> bool {
     if let Ok(entries) = fs::read_dir("/sys/class/power_supply") {
         for entry in entries.filter_map(|e| e.ok()) {
-            if let Ok(t) = fs::read_to_string(entry.path().join("type")) {
-                if t.trim() == "Mains" {
-                    if let Ok(o) = fs::read_to_string(entry.path().join("online")) {
-                        if o.trim() == "1" {
-                            return true;
-                        }
-                    }
-                }
+            if let Ok(t) = fs::read_to_string(entry.path().join("type"))
+                && t.trim() == "Mains"
+                && let Ok(o) = fs::read_to_string(entry.path().join("online"))
+                && o.trim() == "1"
+            {
+                return true;
             }
         }
     }
@@ -854,14 +848,12 @@ fn is_on_ac() -> bool {
 fn get_battery_percent() -> Option<u8> {
     if let Ok(entries) = fs::read_dir("/sys/class/power_supply") {
         for entry in entries.filter_map(|e| e.ok()) {
-            if let Ok(t) = fs::read_to_string(entry.path().join("type")) {
-                if t.trim() == "Battery" {
-                    if let Ok(c) = fs::read_to_string(entry.path().join("capacity")) {
-                        if let Ok(p) = c.trim().parse::<u8>() {
-                            return Some(p);
-                        }
-                    }
-                }
+            if let Ok(t) = fs::read_to_string(entry.path().join("type"))
+                && t.trim() == "Battery"
+                && let Ok(c) = fs::read_to_string(entry.path().join("capacity"))
+                && let Ok(p) = c.trim().parse::<u8>()
+            {
+                return Some(p);
             }
         }
     }
@@ -871,12 +863,11 @@ fn get_battery_percent() -> Option<u8> {
 fn get_battery_status() -> String {
     if let Ok(entries) = fs::read_dir("/sys/class/power_supply") {
         for entry in entries.filter_map(|e| e.ok()) {
-            if let Ok(t) = fs::read_to_string(entry.path().join("type")) {
-                if t.trim() == "Battery" {
-                    if let Ok(s) = fs::read_to_string(entry.path().join("status")) {
-                        return s.trim().to_lowercase();
-                    }
-                }
+            if let Ok(t) = fs::read_to_string(entry.path().join("type"))
+                && t.trim() == "Battery"
+                && let Ok(s) = fs::read_to_string(entry.path().join("status"))
+            {
+                return s.trim().to_lowercase();
             }
         }
     }
@@ -963,12 +954,11 @@ impl SecurityFacts {
 }
 
 fn detect_tpm_version() -> Option<String> {
-    if Path::new("/sys/class/tpm/tpm0/tpm_version_major").exists() {
-        if let Ok(major) = fs::read_to_string("/sys/class/tpm/tpm0/tpm_version_major") {
-            if major.trim() == "2" {
-                return Some("2.0".to_string());
-            }
-        }
+    if Path::new("/sys/class/tpm/tpm0/tpm_version_major").exists()
+        && let Ok(major) = fs::read_to_string("/sys/class/tpm/tpm0/tpm_version_major")
+        && major.trim() == "2"
+    {
+        return Some("2.0".to_string());
     }
     if Path::new("/sys/class/tpm/tpm0/device/caps").exists() {
         return Some("1.2".to_string());
@@ -1080,10 +1070,10 @@ fn list_sound_cards() -> Vec<String> {
         for line in content.lines() {
             if let Some(stripped) = line.strip_prefix(' ') {
                 let parts: Vec<&str> = stripped.split('[').collect();
-                if parts.len() >= 2 {
-                    if let Some(name) = parts[1].split(']').next() {
-                        cards.push(name.trim().to_string());
-                    }
+                if parts.len() >= 2
+                    && let Some(name) = parts[1].split(']').next()
+                {
+                    cards.push(name.trim().to_string());
                 }
             }
         }
@@ -1092,12 +1082,12 @@ fn list_sound_cards() -> Vec<String> {
 }
 
 fn get_default_sink() -> Option<String> {
-    if let Ok(output) = Command::new("pactl").args(["get-default-sink"]).output() {
-        if output.status.success() {
-            let sink = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !sink.is_empty() {
-                return Some(sink);
-            }
+    if let Ok(output) = Command::new("pactl").args(["get-default-sink"]).output()
+        && output.status.success()
+    {
+        let sink = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !sink.is_empty() {
+            return Some(sink);
         }
     }
     None
@@ -1174,12 +1164,11 @@ fn has_swap_space() -> bool {
 fn get_swap_size_bytes() -> Option<u64> {
     if let Ok(content) = fs::read_to_string("/proc/meminfo") {
         for line in content.lines() {
-            if let Some(rest) = line.strip_prefix("SwapTotal:") {
-                if let Some(kb_str) = rest.split_whitespace().next() {
-                    if let Ok(kb) = kb_str.parse::<u64>() {
-                        return Some(kb * 1024);
-                    }
-                }
+            if let Some(rest) = line.strip_prefix("SwapTotal:")
+                && let Some(kb_str) = rest.split_whitespace().next()
+                && let Ok(kb) = kb_str.parse::<u64>()
+            {
+                return Some(kb * 1024);
             }
         }
     }

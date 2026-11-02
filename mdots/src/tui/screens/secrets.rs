@@ -1,17 +1,17 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 
 use crate::config::{Config, ConfigPaths};
 use crate::secrets::{
-    classify_secret_status, resolve_key_path, resolve_secret_target, secret_name, sops_available,
-    SecretState,
+    SecretState, classify_secret_status, resolve_key_path, resolve_secret_target, secret_name,
+    sops_available,
 };
 use crate::tui::app::Action;
 use crate::tui::screens::{ScreenAction, ScreenTrait};
@@ -152,11 +152,11 @@ impl ScreenTrait for SecretsScreenState {
         frame: &mut Frame,
         area: Rect,
     ) -> Result<()> {
-        if !self.loaded {
-            if let Err(e) = self.load_data(paths, config) {
-                self.load_error = Some(format!("{e:#}"));
-                self.loaded = true;
-            }
+        if !self.loaded
+            && let Err(e) = self.load_data(paths, config)
+        {
+            self.load_error = Some(format!("{e:#}"));
+            self.loaded = true;
         }
 
         let has_error = self.load_error.is_some();

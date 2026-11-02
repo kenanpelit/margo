@@ -3,7 +3,7 @@
 //! Provides the `mdots.package.*` API for querying installed packages
 //! and package availability.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use mlua::{Lua, Table};
 use std::process::Command;
 

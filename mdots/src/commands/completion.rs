@@ -5,7 +5,7 @@
 //! `clap_complete` knows about (bash, zsh, fish, elvish, powershell).
 
 use clap::CommandFactory;
-use clap_complete::{generate, Shell};
+use clap_complete::{Shell, generate};
 use std::io::Write;
 
 /// Write the completion script for `shell` to `out`.

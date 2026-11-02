@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 
 use crate::config::{
-    declared_packages_paths, load_config, load_package_list_any, resolve_config_path, ConfigPaths,
+    ConfigPaths, declared_packages_paths, load_config, load_package_list_any, resolve_config_path,
 };
 use crate::package::PackageManager;
 

@@ -18,10 +18,10 @@ mod theme;
 pub(crate) mod ui;
 
 use app::{Action, App, Dialog, MessageLevel};
-use events::{is_quit_key, EventHandler, TuiEvent};
+use events::{EventHandler, TuiEvent, is_quit_key};
 use screens::ScreenAction;
 
-use crate::config::{load_config, ConfigPaths};
+use crate::config::{ConfigPaths, load_config};
 
 pub fn run(paths: ConfigPaths, mut terminal: terminal::Tui) -> Result<()> {
     // Load config
@@ -87,21 +87,19 @@ pub fn run(paths: ConfigPaths, mut terminal: terminal::Tui) -> Result<()> {
                 let handled = app.handle_global_key(key)?;
 
                 // If not handled globally, pass to current screen
-                if !handled {
-                    if let Some(action) = app.current_screen.handle_key(key)? {
-                        match action {
-                            ScreenAction::Back => app.navigate_back(),
-                            ScreenAction::Refresh => app.needs_refresh = true,
-                            ScreenAction::None => {}
-                            ScreenAction::Request(action) => {
-                                let (title, message) = action.confirm_text();
-                                app.dialog = Some(Dialog::Confirm {
-                                    title,
-                                    message,
-                                    confirmed: false,
-                                });
-                                app.pending_action = Some(action);
-                            }
+                if !handled && let Some(action) = app.current_screen.handle_key(key)? {
+                    match action {
+                        ScreenAction::Back => app.navigate_back(),
+                        ScreenAction::Refresh => app.needs_refresh = true,
+                        ScreenAction::None => {}
+                        ScreenAction::Request(action) => {
+                            let (title, message) = action.confirm_text();
+                            app.dialog = Some(Dialog::Confirm {
+                                title,
+                                message,
+                                confirmed: false,
+                            });
+                            app.pending_action = Some(action);
                         }
                     }
                 }
@@ -133,11 +131,11 @@ pub fn run(paths: ConfigPaths, mut terminal: terminal::Tui) -> Result<()> {
             }
             TuiEvent::Tick => {
                 // Check if status message expired
-                if let Some(msg) = &app.status_message {
-                    if msg.expires_at < Instant::now() {
-                        app.status_message = None;
-                        app.needs_refresh = true;
-                    }
+                if let Some(msg) = &app.status_message
+                    && msg.expires_at < Instant::now()
+                {
+                    app.status_message = None;
+                    app.needs_refresh = true;
                 }
                 // A screen waiting on a background probe has no input event
                 // coming to wake it, so keep drawing while work is in flight

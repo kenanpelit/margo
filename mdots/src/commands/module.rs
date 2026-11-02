@@ -3,7 +3,7 @@ use colored::*;
 use serde::Serialize;
 use std::io::{self, Write};
 
-use crate::config::{load_config, load_module, ConfigPaths};
+use crate::config::{ConfigPaths, load_config, load_module};
 use crate::module::ModuleManager;
 
 #[derive(Serialize)]
@@ -276,10 +276,8 @@ fn enable_internal(paths: &ConfigPaths, module_name: &str, json: bool) -> Result
     // Check if already enabled
     if config.enabled_modules.contains(&resolved_name) {
         let message = format!("Module '{}' is already enabled", resolved_name);
-        if !json {
-            if let Some(s) = spinner {
-                s.finish_with_message(message.clone());
-            }
+        if !json && let Some(s) = spinner {
+            s.finish_with_message(message.clone());
         }
         return Ok(EnableOutcome {
             output: ModuleActionOutput {
@@ -457,51 +455,45 @@ pub fn disable(paths: &ConfigPaths, module_name: &str, json: bool) -> Result<()>
             None
         };
 
-        if let Some(path) = module_path {
-            if let Ok(module) = load_module(&path) {
-                if let Some(hook_script) = module.post_disable_hook() {
-                    if !hook_script.is_empty() {
-                        let hook_path = if std::path::Path::new(hook_script).is_absolute() {
-                            std::path::PathBuf::from(hook_script)
-                        } else if module.is_directory() {
-                            module.root_dir().join(hook_script)
-                        } else {
-                            paths.config_dir.join(hook_script)
-                        };
+        if let Some(path) = module_path
+            && let Ok(module) = load_module(&path)
+            && let Some(hook_script) = module.post_disable_hook()
+            && !hook_script.is_empty()
+        {
+            let hook_path = if std::path::Path::new(hook_script).is_absolute() {
+                std::path::PathBuf::from(hook_script)
+            } else if module.is_directory() {
+                module.root_dir().join(hook_script)
+            } else {
+                paths.config_dir.join(hook_script)
+            };
 
-                        if hook_path.exists() {
-                            println!();
-                            println!(
-                                "{}",
-                                format!("Running post-disable hook for '{}'...", resolved_name)
-                                    .blue()
-                            );
-                            println!("Script: {}", hook_path.display());
+            if hook_path.exists() {
+                println!();
+                println!(
+                    "{}",
+                    format!("Running post-disable hook for '{}'...", resolved_name).blue()
+                );
+                println!("Script: {}", hook_path.display());
 
-                            let mut hook = std::process::Command::new("sudo");
-                            hook.args(["bash", hook_path.to_str().unwrap()]);
-                            let status = crate::process::status_inherited(&mut hook);
+                let mut hook = std::process::Command::new("sudo");
+                hook.args(["bash", hook_path.to_str().unwrap()]);
+                let status = crate::process::status_inherited(&mut hook);
 
-                            match status {
-                                Ok(s) if s.success() => {
-                                    println!(
-                                        "{}",
-                                        "✓ Post-disable hook executed successfully".green()
-                                    );
-                                }
-                                _ => {
-                                    eprintln!(
-                                        "{} Post-disable hook failed - packages already removed",
-                                        "✗".red()
-                                    );
-                                    eprintln!(
-                                        "{} Run the script manually to complete cleanup:",
-                                        "→".blue()
-                                    );
-                                    eprintln!("   sudo bash {}", hook_path.display());
-                                }
-                            }
-                        }
+                match status {
+                    Ok(s) if s.success() => {
+                        println!("{}", "✓ Post-disable hook executed successfully".green());
+                    }
+                    _ => {
+                        eprintln!(
+                            "{} Post-disable hook failed - packages already removed",
+                            "✗".red()
+                        );
+                        eprintln!(
+                            "{} Run the script manually to complete cleanup:",
+                            "→".blue()
+                        );
+                        eprintln!("   sudo bash {}", hook_path.display());
                     }
                 }
             }
@@ -912,10 +904,10 @@ pub fn run_hook_interactive(paths: &ConfigPaths) -> Result<()> {
 
         match load_module(&module_path) {
             Ok(module) => {
-                if let Some(hook) = module.post_install_hook() {
-                    if !hook.is_empty() {
-                        modules_with_hooks.push((module_name.clone(), hook.to_string()));
-                    }
+                if let Some(hook) = module.post_install_hook()
+                    && !hook.is_empty()
+                {
+                    modules_with_hooks.push((module_name.clone(), hook.to_string()));
                 }
             }
             Err(_) => continue,

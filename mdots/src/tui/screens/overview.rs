@@ -1,11 +1,11 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
-    Frame,
 };
 use std::path::PathBuf;
 use walkdir::WalkDir;
@@ -77,10 +77,10 @@ impl ScreenTrait for OverviewScreenState {
         area: Rect,
     ) -> Result<()> {
         // Load data on first render if not already loaded
-        if !self.loaded {
-            if let Err(e) = self.load_data(paths, config) {
-                eprintln!("Error loading overview data: {}", e);
-            }
+        if !self.loaded
+            && let Err(e) = self.load_data(paths, config)
+        {
+            eprintln!("Error loading overview data: {}", e);
         }
 
         // Split into two sections: System Info (top) and Config Tree (bottom)
@@ -161,12 +161,11 @@ impl OverviewScreenState {
 
     fn get_installed_package_count(&self) -> Result<usize> {
         // Try to count installed native packages via backend
-        if let Ok(config) = crate::config::load_config(&crate::config::ConfigPaths::new()?) {
-            if let Ok(backend) = crate::backend::create_backend(&config) {
-                if let Ok(installed) = backend.get_installed_packages() {
-                    return Ok(installed.len());
-                }
-            }
+        if let Ok(config) = crate::config::load_config(&crate::config::ConfigPaths::new()?)
+            && let Ok(backend) = crate::backend::create_backend(&config)
+            && let Ok(installed) = backend.get_installed_packages()
+        {
+            return Ok(installed.len());
         }
         Ok(0)
     }

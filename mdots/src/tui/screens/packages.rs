@@ -1,11 +1,11 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 use std::collections::HashMap;
 
@@ -32,11 +32,7 @@ impl PackageRow {
     }
 
     fn status_char(&self) -> &'static str {
-        if self.installed {
-            "✓"
-        } else {
-            "✗"
-        }
+        if self.installed { "✓" } else { "✗" }
     }
 
     fn status_color(&self) -> Color {
@@ -151,10 +147,10 @@ impl PackagesScreenState {
 
     fn rebuild_visible(&mut self) {
         self.visible = filter_package_rows(&self.all_packages, &self.filter_query);
-        if let Some(sel) = self.list_state.selected() {
-            if sel >= self.visible.len() {
-                self.list_state.select(self.visible.len().checked_sub(1));
-            }
+        if let Some(sel) = self.list_state.selected()
+            && sel >= self.visible.len()
+        {
+            self.list_state.select(self.visible.len().checked_sub(1));
         }
     }
 

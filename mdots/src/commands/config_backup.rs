@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::config::{load_config, ConfigPaths};
+use crate::config::{ConfigPaths, load_config};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct BackupMetadata {
@@ -585,20 +585,18 @@ fn select_backup_interactive(paths: &ConfigPaths, hostname: &str) -> Result<Stri
         let entry = entry?;
         let path = entry.path();
 
-        if path.extension().map(|e| e == "json").unwrap_or(false) {
-            if let Ok(metadata_content) = fs::read_to_string(&path) {
-                if let Ok(metadata) = serde_json::from_str::<BackupMetadata>(&metadata_content) {
-                    if metadata.hostname == hostname {
-                        let backup_name = path
-                            .file_stem()
-                            .unwrap()
-                            .to_string_lossy()
-                            .trim_end_matches(".metadata")
-                            .to_string();
-                        backups.push((backup_name, metadata));
-                    }
-                }
-            }
+        if path.extension().map(|e| e == "json").unwrap_or(false)
+            && let Ok(metadata_content) = fs::read_to_string(&path)
+            && let Ok(metadata) = serde_json::from_str::<BackupMetadata>(&metadata_content)
+            && metadata.hostname == hostname
+        {
+            let backup_name = path
+                .file_stem()
+                .unwrap()
+                .to_string_lossy()
+                .trim_end_matches(".metadata")
+                .to_string();
+            backups.push((backup_name, metadata));
         }
     }
 

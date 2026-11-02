@@ -1,11 +1,11 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 
 use crate::commands::hooks::gather_hooks;
@@ -103,15 +103,15 @@ impl ScreenTrait for HooksScreenState {
             KeyCode::Down | KeyCode::Char('j') => self.select_next(),
             KeyCode::Up | KeyCode::Char('k') => self.select_prev(),
             KeyCode::Enter => {
-                if let Some(entry) = self.selected_entry() {
-                    if let Some((pre, disable)) = entry.run_flags {
-                        return Ok(Some(ScreenAction::Request(Action::RunHook {
-                            module: entry.module.clone(),
-                            pre,
-                            disable,
-                            label: entry.hook_type.clone(),
-                        })));
-                    }
+                if let Some(entry) = self.selected_entry()
+                    && let Some((pre, disable)) = entry.run_flags
+                {
+                    return Ok(Some(ScreenAction::Request(Action::RunHook {
+                        module: entry.module.clone(),
+                        pre,
+                        disable,
+                        label: entry.hook_type.clone(),
+                    })));
                 }
             }
             _ => {}
@@ -131,11 +131,11 @@ impl ScreenTrait for HooksScreenState {
         frame: &mut Frame,
         area: Rect,
     ) -> Result<()> {
-        if !self.loaded {
-            if let Err(e) = self.load_data(paths, config) {
-                self.load_error = Some(format!("{e:#}"));
-                self.loaded = true;
-            }
+        if !self.loaded
+            && let Err(e) = self.load_data(paths, config)
+        {
+            self.load_error = Some(format!("{e:#}"));
+            self.loaded = true;
         }
 
         let has_error = self.load_error.is_some();

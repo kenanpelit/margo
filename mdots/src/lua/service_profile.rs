@@ -3,7 +3,7 @@
 //! Loads service profiles from the services/ directory.
 //! Service profiles are Lua files that define which systemd services to enable/disable.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use mlua::{Table, Value};
 use std::path::Path;
 

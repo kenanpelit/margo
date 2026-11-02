@@ -2,7 +2,7 @@
 //!
 //! Provides the `mdots.security.*` API for detecting security features.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use mlua::{Lua, Table};
 use std::fs;
 use std::path::Path;
@@ -207,12 +207,11 @@ fn has_tpm() -> bool {
 /// Get TPM version
 fn get_tpm_version() -> Option<String> {
     // Check TPM 2.0 first
-    if Path::new("/sys/class/tpm/tpm0/tpm_version_major").exists() {
-        if let Ok(major) = fs::read_to_string("/sys/class/tpm/tpm0/tpm_version_major") {
-            if major.trim() == "2" {
-                return Some("2.0".to_string());
-            }
-        }
+    if Path::new("/sys/class/tpm/tpm0/tpm_version_major").exists()
+        && let Ok(major) = fs::read_to_string("/sys/class/tpm/tpm0/tpm_version_major")
+        && major.trim() == "2"
+    {
+        return Some("2.0".to_string());
     }
 
     // Check for TPM 1.2

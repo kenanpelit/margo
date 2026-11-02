@@ -2,7 +2,7 @@
 //!
 //! Provides the `mdots.storage.*` API for detecting storage devices and filesystems.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use mlua::{Lua, Table};
 use std::fs;
 use std::process::Command;
@@ -237,11 +237,11 @@ fn get_disk_type(name: &str) -> String {
 /// Get disk size in bytes
 fn get_disk_size(name: &str) -> Option<u64> {
     let size_path = format!("/sys/block/{}/size", name);
-    if let Ok(content) = fs::read_to_string(&size_path) {
-        if let Ok(sectors) = content.trim().parse::<u64>() {
-            // Size is in 512-byte sectors
-            return Some(sectors * 512);
-        }
+    if let Ok(content) = fs::read_to_string(&size_path)
+        && let Ok(sectors) = content.trim().parse::<u64>()
+    {
+        // Size is in 512-byte sectors
+        return Some(sectors * 512);
     }
     None
 }
@@ -308,10 +308,10 @@ fn get_free_space(path: &str) -> Option<u64> {
         if let Some(line) = stdout.lines().nth(1) {
             let parts: Vec<&str> = line.split_whitespace().collect();
             // Format: Filesystem 1B-blocks Used Available Use% Mounted
-            if parts.len() >= 4 {
-                if let Ok(free) = parts[3].parse::<u64>() {
-                    return Some(free);
-                }
+            if parts.len() >= 4
+                && let Ok(free) = parts[3].parse::<u64>()
+            {
+                return Some(free);
             }
         }
     }
@@ -326,10 +326,10 @@ fn get_total_space(path: &str) -> Option<u64> {
         if let Some(line) = stdout.lines().nth(1) {
             let parts: Vec<&str> = line.split_whitespace().collect();
             // Format: Filesystem 1B-blocks Used Available Use% Mounted
-            if parts.len() >= 2 {
-                if let Ok(total) = parts[1].parse::<u64>() {
-                    return Some(total);
-                }
+            if parts.len() >= 2
+                && let Ok(total) = parts[1].parse::<u64>()
+            {
+                return Some(total);
             }
         }
     }
@@ -352,10 +352,10 @@ fn get_swap_size() -> Option<u64> {
             if let Some(rest) = line.strip_prefix("SwapTotal:") {
                 // Format: "SwapTotal:       8388604 kB"
                 let parts: Vec<&str> = rest.split_whitespace().collect();
-                if let Some(kb_str) = parts.first() {
-                    if let Ok(kb) = kb_str.parse::<u64>() {
-                        return Some(kb * 1024); // Convert to bytes
-                    }
+                if let Some(kb_str) = parts.first()
+                    && let Ok(kb) = kb_str.parse::<u64>()
+                {
+                    return Some(kb * 1024); // Convert to bytes
                 }
             }
         }

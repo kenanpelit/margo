@@ -3,7 +3,7 @@ use colored::*;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use super::{pkgbuild::generate_pkgbuild, SourceInfo};
+use super::{SourceInfo, pkgbuild::generate_pkgbuild};
 
 /// Result of a build operation
 pub struct BuildResult {

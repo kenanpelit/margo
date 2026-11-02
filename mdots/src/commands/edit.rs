@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use walkdir::WalkDir;
 
-use crate::config::{load_config, resolve_editor, ConfigPaths};
+use crate::config::{ConfigPaths, load_config, resolve_editor};
 
 /// Discover all config files (YAML or Lua) in arch-config directory
 fn discover_config_files(paths: &ConfigPaths) -> Result<Vec<PathBuf>> {

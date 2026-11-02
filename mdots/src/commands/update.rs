@@ -3,7 +3,7 @@ use colored::*;
 use std::io::{self, IsTerminal, Write};
 use std::process::Command;
 
-use crate::config::{load_config, ConfigPaths};
+use crate::config::{ConfigPaths, load_config};
 
 pub fn run(
     paths: &ConfigPaths,
@@ -203,7 +203,7 @@ fn execute_update_hook(
     hook_type: &str,
 ) -> Result<()> {
     use crate::commands::sync::{
-        check_hook_status, mark_hook_executed, mark_hook_skipped, HookStatus,
+        HookStatus, check_hook_status, mark_hook_executed, mark_hook_skipped,
     };
     use std::io::{self, Write};
 

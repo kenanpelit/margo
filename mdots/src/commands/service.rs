@@ -7,7 +7,7 @@ use colored::*;
 use serde::Serialize;
 use std::io::{self, Write};
 
-use crate::config::{load_config, ConfigPaths};
+use crate::config::{ConfigPaths, load_config};
 use crate::service_profile::ServiceProfileManager;
 
 #[derive(Serialize)]

@@ -3,7 +3,7 @@ use colored::*;
 use serde::Serialize;
 use std::collections::HashSet;
 
-use crate::config::{load_config, resolve_config_path, ConfigPaths, PackageManagerType};
+use crate::config::{ConfigPaths, PackageManagerType, load_config, resolve_config_path};
 use crate::package::PackageManager;
 
 /// Parse /etc/os-release and get the NAME field

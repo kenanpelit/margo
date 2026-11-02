@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::process::Command;
 use walkdir::WalkDir;
 
-use crate::config::{load_config, ConfigPaths};
+use crate::config::{ConfigPaths, load_config};
 use crate::lua::service_profile::load_service_profile;
 use crate::package::PackageManager;
 
@@ -298,14 +298,13 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
 
             // Skip any YAML/Lua/Nix files that are inside a directory module
             // (i.e., if there's a module.yaml, module.lua, or module.nix in the same directory)
-            if let Some(parent) = path.parent() {
-                if parent != modules_dir
-                    && (parent.join("module.yaml").exists()
-                        || parent.join("module.lua").exists()
-                        || parent.join("module.nix").exists())
-                {
-                    continue;
-                }
+            if let Some(parent) = path.parent()
+                && parent != modules_dir
+                && (parent.join("module.yaml").exists()
+                    || parent.join("module.lua").exists()
+                    || parent.join("module.nix").exists())
+            {
+                continue;
             }
 
             if is_yaml {
@@ -473,53 +472,51 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
     if !json && !quiet {
         println!("{} Checking enabled modules...", "→".blue());
     }
-    if has_config {
-        if let Ok(config) = load_config(paths) {
-            if config.enabled_modules.is_empty() {
-                if !json && !quiet {
-                    println!("  {} No modules enabled", "✓".green());
-                }
-            } else {
-                let mut all_exist = true;
-                for module in &config.enabled_modules {
-                    let module_yaml = modules_dir.join(format!("{}.yaml", module));
-                    let module_lua = modules_dir.join(format!("{}.lua", module));
-                    let module_nix = modules_dir.join(format!("{}.nix", module));
-                    let module_dir = modules_dir.join(module);
+    if has_config && let Ok(config) = load_config(paths) {
+        if config.enabled_modules.is_empty() {
+            if !json && !quiet {
+                println!("  {} No modules enabled", "✓".green());
+            }
+        } else {
+            let mut all_exist = true;
+            for module in &config.enabled_modules {
+                let module_yaml = modules_dir.join(format!("{}.yaml", module));
+                let module_lua = modules_dir.join(format!("{}.lua", module));
+                let module_nix = modules_dir.join(format!("{}.nix", module));
+                let module_dir = modules_dir.join(module);
 
-                    let exists = module_yaml.exists()
-                        || module_lua.exists()
-                        || module_nix.exists()
-                        || (module_dir.exists()
-                            && (module_dir.join("module.yaml").exists()
-                                || module_dir.join("module.lua").exists()
-                                || module_dir.join("module.nix").exists()));
+                let exists = module_yaml.exists()
+                    || module_lua.exists()
+                    || module_nix.exists()
+                    || (module_dir.exists()
+                        && (module_dir.join("module.yaml").exists()
+                            || module_dir.join("module.lua").exists()
+                            || module_dir.join("module.nix").exists()));
 
-                    if !exists {
-                        errors += 1;
-                        all_exist = false;
-                        if !json && !quiet {
-                            println!("  {} Enabled module not found: {}", "✗".red(), module);
-                            println!(
-                                "      Expected: {}, {}, {}, {}/module.yaml, {}/module.lua, or {}/module.nix",
-                                module_yaml.display(),
-                                module_lua.display(),
-                                module_nix.display(),
-                                module_dir.display(),
-                                module_dir.display(),
-                                module_dir.display()
-                            );
-                        }
+                if !exists {
+                    errors += 1;
+                    all_exist = false;
+                    if !json && !quiet {
+                        println!("  {} Enabled module not found: {}", "✗".red(), module);
+                        println!(
+                            "      Expected: {}, {}, {}, {}/module.yaml, {}/module.lua, or {}/module.nix",
+                            module_yaml.display(),
+                            module_lua.display(),
+                            module_nix.display(),
+                            module_dir.display(),
+                            module_dir.display(),
+                            module_dir.display()
+                        );
                     }
                 }
+            }
 
-                if all_exist && !json {
-                    println!(
-                        "  {} All {} enabled module(s) exist",
-                        "✓".green(),
-                        config.enabled_modules.len()
-                    );
-                }
+            if all_exist && !json {
+                println!(
+                    "  {} All {} enabled module(s) exist",
+                    "✓".green(),
+                    config.enabled_modules.len()
+                );
             }
         }
     }
@@ -528,75 +525,73 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
     if !json && !quiet {
         println!("{} Checking services configuration...", "→".blue());
     }
-    if has_config {
-        if let Ok(config) = load_config(paths) {
-            let total_services = config.services.enabled.len() + config.services.disabled.len();
+    if has_config && let Ok(config) = load_config(paths) {
+        let total_services = config.services.enabled.len() + config.services.disabled.len();
 
-            if total_services == 0 {
+        if total_services == 0 {
+            if !json && !quiet {
+                println!("  {} No services configured", "✓".green());
+            }
+        } else {
+            // Validate that systemctl is available
+            let systemctl_available = Command::new("which")
+                .arg("systemctl")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+
+            if !systemctl_available {
+                errors += 1;
                 if !json && !quiet {
-                    println!("  {} No services configured", "✓".green());
+                    println!(
+                        "  {} systemctl not found but services are configured",
+                        "✗".red()
+                    );
+                    println!("      Services feature requires systemd");
                 }
             } else {
-                // Validate that systemctl is available
-                let systemctl_available = Command::new("which")
-                    .arg("systemctl")
-                    .output()
-                    .map(|o| o.status.success())
-                    .unwrap_or(false);
+                // Validate service names (basic check - must not be empty)
+                let mut invalid_services = Vec::new();
 
-                if !systemctl_available {
-                    errors += 1;
+                for service in config
+                    .services
+                    .enabled
+                    .iter()
+                    .chain(config.services.disabled.iter())
+                {
+                    if service.trim().is_empty() {
+                        invalid_services.push(service.clone());
+                    }
+                }
+
+                if !invalid_services.is_empty() {
+                    errors += invalid_services.len();
                     if !json && !quiet {
                         println!(
-                            "  {} systemctl not found but services are configured",
-                            "✗".red()
+                            "  {} Found {} invalid service name(s):",
+                            "✗".red(),
+                            invalid_services.len()
                         );
-                        println!("      Services feature requires systemd");
+                        for svc in &invalid_services {
+                            println!("      - '{}'", svc);
+                        }
                     }
                 } else {
-                    // Validate service names (basic check - must not be empty)
-                    let mut invalid_services = Vec::new();
-
-                    for service in config
-                        .services
-                        .enabled
-                        .iter()
-                        .chain(config.services.disabled.iter())
-                    {
-                        if service.trim().is_empty() {
-                            invalid_services.push(service.clone());
-                        }
+                    if !json && !quiet {
+                        println!(
+                            "  {} {} service(s) configured ({} enabled, {} disabled)",
+                            "✓".green(),
+                            total_services,
+                            config.services.enabled.len(),
+                            config.services.disabled.len()
+                        );
                     }
-
-                    if !invalid_services.is_empty() {
-                        errors += invalid_services.len();
-                        if !json && !quiet {
-                            println!(
-                                "  {} Found {} invalid service name(s):",
-                                "✗".red(),
-                                invalid_services.len()
-                            );
-                            for svc in &invalid_services {
-                                println!("      - '{}'", svc);
-                            }
-                        }
-                    } else {
-                        if !json && !quiet {
-                            println!(
-                                "  {} {} service(s) configured ({} enabled, {} disabled)",
-                                "✓".green(),
-                                total_services,
-                                config.services.enabled.len(),
-                                config.services.disabled.len()
-                            );
-                        }
-                        checks.push(json!({
-                            "check": "services",
-                            "status": "ok",
-                            "enabled": config.services.enabled.len(),
-                            "disabled": config.services.disabled.len()
-                        }));
-                    }
+                    checks.push(json!({
+                        "check": "services",
+                        "status": "ok",
+                        "enabled": config.services.enabled.len(),
+                        "disabled": config.services.disabled.len()
+                    }));
                 }
             }
         }
@@ -606,90 +601,86 @@ fn run_internal(paths: &ConfigPaths, check_packages: bool, json: bool, quiet: bo
     if !json && !quiet {
         println!("{} Checking default applications...", "→".blue());
     }
-    if has_config {
-        if let Ok(config) = load_config(paths) {
-            let apps_map = config.default_apps.to_apps_map();
-            let total_defaults = apps_map.len() + config.default_apps.mime_types.len();
+    if has_config && let Ok(config) = load_config(paths) {
+        let apps_map = config.default_apps.to_apps_map();
+        let total_defaults = apps_map.len() + config.default_apps.mime_types.len();
 
-            if total_defaults == 0 {
+        if total_defaults == 0 {
+            if !json && !quiet {
+                println!("  {} No default applications configured", "✓".green());
+            }
+        } else {
+            // Validate that xdg-mime is available
+            let xdg_mime_available = Command::new("which")
+                .arg("xdg-mime")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+
+            if !xdg_mime_available {
+                warnings += 1;
                 if !json && !quiet {
-                    println!("  {} No default applications configured", "✓".green());
+                    println!(
+                        "  {} xdg-mime not found but default apps are configured",
+                        "⚠".yellow()
+                    );
+                    println!("      Install xdg-utils to enable default applications feature");
                 }
             } else {
-                // Validate that xdg-mime is available
-                let xdg_mime_available = Command::new("which")
-                    .arg("xdg-mime")
-                    .output()
-                    .map(|o| o.status.success())
-                    .unwrap_or(false);
+                // Validate .desktop files exist
+                let mut invalid_apps = Vec::new();
 
-                if !xdg_mime_available {
-                    warnings += 1;
+                for (app_type, desktop_file) in &apps_map {
+                    let resolved = if desktop_file.ends_with(".desktop") {
+                        desktop_file.clone()
+                    } else {
+                        format!("{}.desktop", desktop_file)
+                    };
+
+                    // Check if .desktop file exists in standard locations
+                    let desktop_exists = [
+                        format!("/usr/share/applications/{}", resolved),
+                        format!("/usr/local/share/applications/{}", resolved),
+                        format!(
+                            "{}/.local/share/applications/{}",
+                            std::env::var("HOME").unwrap_or_default(),
+                            resolved
+                        ),
+                    ]
+                    .iter()
+                    .any(|path| std::path::Path::new(path).exists());
+
+                    if !desktop_exists {
+                        invalid_apps.push((app_type.clone(), desktop_file.clone()));
+                    }
+                }
+
+                if !invalid_apps.is_empty() {
+                    errors += invalid_apps.len();
                     if !json && !quiet {
                         println!(
-                            "  {} xdg-mime not found but default apps are configured",
-                            "⚠".yellow()
+                            "  {} Found {} invalid .desktop file(s):",
+                            "✗".red(),
+                            invalid_apps.len()
                         );
-                        println!("      Install xdg-utils to enable default applications feature");
+                        for (app_type, desktop_file) in &invalid_apps {
+                            println!("      - {} -> {}", app_type, desktop_file);
+                        }
+                        println!("      These .desktop files don't exist in standard locations");
                     }
                 } else {
-                    // Validate .desktop files exist
-                    let mut invalid_apps = Vec::new();
-
-                    for (app_type, desktop_file) in &apps_map {
-                        let resolved = if desktop_file.ends_with(".desktop") {
-                            desktop_file.clone()
-                        } else {
-                            format!("{}.desktop", desktop_file)
-                        };
-
-                        // Check if .desktop file exists in standard locations
-                        let desktop_exists = [
-                            format!("/usr/share/applications/{}", resolved),
-                            format!("/usr/local/share/applications/{}", resolved),
-                            format!(
-                                "{}/.local/share/applications/{}",
-                                std::env::var("HOME").unwrap_or_default(),
-                                resolved
-                            ),
-                        ]
-                        .iter()
-                        .any(|path| std::path::Path::new(path).exists());
-
-                        if !desktop_exists {
-                            invalid_apps.push((app_type.clone(), desktop_file.clone()));
-                        }
+                    if !json && !quiet {
+                        println!(
+                            "  {} {} default application(s) configured",
+                            "✓".green(),
+                            total_defaults
+                        );
                     }
-
-                    if !invalid_apps.is_empty() {
-                        errors += invalid_apps.len();
-                        if !json && !quiet {
-                            println!(
-                                "  {} Found {} invalid .desktop file(s):",
-                                "✗".red(),
-                                invalid_apps.len()
-                            );
-                            for (app_type, desktop_file) in &invalid_apps {
-                                println!("      - {} -> {}", app_type, desktop_file);
-                            }
-                            println!(
-                                "      These .desktop files don't exist in standard locations"
-                            );
-                        }
-                    } else {
-                        if !json && !quiet {
-                            println!(
-                                "  {} {} default application(s) configured",
-                                "✓".green(),
-                                total_defaults
-                            );
-                        }
-                        checks.push(json!({
-                            "check": "default_apps",
-                            "status": "ok",
-                            "count": total_defaults
-                        }));
-                    }
+                    checks.push(json!({
+                        "check": "default_apps",
+                        "status": "ok",
+                        "count": total_defaults
+                    }));
                 }
             }
         }

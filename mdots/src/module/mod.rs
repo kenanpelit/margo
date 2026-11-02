@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use walkdir::WalkDir;
 
-use crate::config::{load_module, ConfigPaths};
+use crate::config::{ConfigPaths, load_module};
 
 /// Module manager for handling module operations
 pub struct ModuleManager {

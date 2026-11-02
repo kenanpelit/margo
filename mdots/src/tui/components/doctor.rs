@@ -1,14 +1,14 @@
 use anyhow::Result;
 use ratatui::{
+    Frame,
     layout::{Alignment, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
-    Frame,
 };
 
 use super::centered_rect;
-use crate::commands::doctor::{summarize, Check, Health};
+use crate::commands::doctor::{Check, Health, summarize};
 
 /// Render the modal doctor health-check overlay (opened with `D`) on top of
 /// everything. Groups the gathered [`Check`]s by area exactly like the CLI

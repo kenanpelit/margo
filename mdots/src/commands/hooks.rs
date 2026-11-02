@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{self, Write};
 
-use crate::config::{load_config, load_module, ConfigPaths};
+use crate::config::{ConfigPaths, load_config, load_module};
 
 #[derive(Serialize)]
 struct HooksListOutput {

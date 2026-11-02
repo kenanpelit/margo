@@ -3,7 +3,7 @@
 //! Restricts Lua capabilities to prevent arbitrary code execution
 //! while allowing necessary hardware detection operations.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use mlua::{Lua, Value};
 
 /// Apply sandbox restrictions to Lua environment

@@ -17,7 +17,7 @@ mod service;
 pub mod service_profile;
 mod storage;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use mlua::{Lua, Table, Value};
 use std::path::{Path, PathBuf};
 
@@ -448,19 +448,19 @@ fn validate_module_table_detailed(table: &Table, result: &mut LuaValidationResul
     }
 
     // Validate hook_behavior if present
-    if let Ok(Value::String(s)) = table.get::<Value>("hook_behavior") {
-        if let Ok(behavior_borrowed) = s.to_str() {
-            let behavior = behavior_borrowed.to_string();
-            if !["ask", "once", "always", "skip", "never"].contains(&behavior.as_str()) {
-                result.add_error(LuaError {
-                    kind: LuaErrorKind::InvalidValue,
-                    message: format!("Invalid hook_behavior: '{}'", behavior),
-                    line: None,
-                    hint: Some(
-                        "Valid values are: 'ask', 'once', 'always', 'skip', 'never'".to_string(),
-                    ),
-                });
-            }
+    if let Ok(Value::String(s)) = table.get::<Value>("hook_behavior")
+        && let Ok(behavior_borrowed) = s.to_str()
+    {
+        let behavior = behavior_borrowed.to_string();
+        if !["ask", "once", "always", "skip", "never"].contains(&behavior.as_str()) {
+            result.add_error(LuaError {
+                kind: LuaErrorKind::InvalidValue,
+                message: format!("Invalid hook_behavior: '{}'", behavior),
+                line: None,
+                hint: Some(
+                    "Valid values are: 'ask', 'once', 'always', 'skip', 'never'".to_string(),
+                ),
+            });
         }
     }
 
@@ -556,37 +556,37 @@ fn validate_module_content(table: &Table, path: &Path, result: &mut LuaValidatio
     }
 
     // Validate pre_install_hook path if specified
-    if let Ok(Value::String(hook)) = table.get::<Value>("pre_install_hook") {
-        if let Ok(hook_borrowed) = hook.to_str() {
-            let hook_str = hook_borrowed.to_string();
-            if !hook_str.is_empty() {
-                let hook_path = module_dir.join(&hook_str);
-                if !hook_path.exists() {
-                    result.add_error(LuaError {
-                        kind: LuaErrorKind::FileNotFound,
-                        message: format!("pre_install_hook script not found: {}", hook_str),
-                        line: None,
-                        hint: Some(format!("Expected at: {:?}", hook_path)),
-                    });
-                }
+    if let Ok(Value::String(hook)) = table.get::<Value>("pre_install_hook")
+        && let Ok(hook_borrowed) = hook.to_str()
+    {
+        let hook_str = hook_borrowed.to_string();
+        if !hook_str.is_empty() {
+            let hook_path = module_dir.join(&hook_str);
+            if !hook_path.exists() {
+                result.add_error(LuaError {
+                    kind: LuaErrorKind::FileNotFound,
+                    message: format!("pre_install_hook script not found: {}", hook_str),
+                    line: None,
+                    hint: Some(format!("Expected at: {:?}", hook_path)),
+                });
             }
         }
     }
 
     // Validate post_install_hook path if specified
-    if let Ok(Value::String(hook)) = table.get::<Value>("post_install_hook") {
-        if let Ok(hook_borrowed) = hook.to_str() {
-            let hook_str = hook_borrowed.to_string();
-            if !hook_str.is_empty() {
-                let hook_path = module_dir.join(&hook_str);
-                if !hook_path.exists() {
-                    result.add_error(LuaError {
-                        kind: LuaErrorKind::FileNotFound,
-                        message: format!("post_install_hook script not found: {}", hook_str),
-                        line: None,
-                        hint: Some(format!("Expected at: {:?}", hook_path)),
-                    });
-                }
+    if let Ok(Value::String(hook)) = table.get::<Value>("post_install_hook")
+        && let Ok(hook_borrowed) = hook.to_str()
+    {
+        let hook_str = hook_borrowed.to_string();
+        if !hook_str.is_empty() {
+            let hook_path = module_dir.join(&hook_str);
+            if !hook_path.exists() {
+                result.add_error(LuaError {
+                    kind: LuaErrorKind::FileNotFound,
+                    message: format!("post_install_hook script not found: {}", hook_str),
+                    line: None,
+                    hint: Some(format!("Expected at: {:?}", hook_path)),
+                });
             }
         }
     }
@@ -2100,44 +2100,44 @@ fn validate_config_table_detailed(table: &Table, result: &mut LuaValidationResul
     }
 
     // Check for valid description (optional)
-    if let Ok(v) = table.get::<Value>("description") {
-        if !matches!(v, Value::String(_) | Value::Nil) {
+    if let Ok(v) = table.get::<Value>("description")
+        && !matches!(v, Value::String(_) | Value::Nil)
+    {
+        result.add_error(LuaError {
+            kind: LuaErrorKind::InvalidType,
+            message: "'description' field must be a string".to_string(),
+            line: None,
+            hint: Some("Use: description = \"My config description\"".to_string()),
+        });
+    }
+
+    // Validate flatpak_scope if present
+    if let Ok(Value::String(s)) = table.get::<Value>("flatpak_scope")
+        && let Ok(scope_borrowed) = s.to_str()
+    {
+        let scope = scope_borrowed.to_string();
+        if !["user", "system"].contains(&scope.as_str()) {
             result.add_error(LuaError {
-                kind: LuaErrorKind::InvalidType,
-                message: "'description' field must be a string".to_string(),
+                kind: LuaErrorKind::InvalidValue,
+                message: format!("Invalid flatpak_scope: '{}'", scope),
                 line: None,
-                hint: Some("Use: description = \"My config description\"".to_string()),
+                hint: Some("Valid values are: 'user', 'system'".to_string()),
             });
         }
     }
 
-    // Validate flatpak_scope if present
-    if let Ok(Value::String(s)) = table.get::<Value>("flatpak_scope") {
-        if let Ok(scope_borrowed) = s.to_str() {
-            let scope = scope_borrowed.to_string();
-            if !["user", "system"].contains(&scope.as_str()) {
-                result.add_error(LuaError {
-                    kind: LuaErrorKind::InvalidValue,
-                    message: format!("Invalid flatpak_scope: '{}'", scope),
-                    line: None,
-                    hint: Some("Valid values are: 'user', 'system'".to_string()),
-                });
-            }
-        }
-    }
-
     // Validate module_processing if present
-    if let Ok(Value::String(s)) = table.get::<Value>("module_processing") {
-        if let Ok(mode_borrowed) = s.to_str() {
-            let mode = mode_borrowed.to_string();
-            if !["parallel", "sequential"].contains(&mode.as_str()) {
-                result.add_error(LuaError {
-                    kind: LuaErrorKind::InvalidValue,
-                    message: format!("Invalid module_processing: '{}'", mode),
-                    line: None,
-                    hint: Some("Valid values are: 'parallel', 'sequential'".to_string()),
-                });
-            }
+    if let Ok(Value::String(s)) = table.get::<Value>("module_processing")
+        && let Ok(mode_borrowed) = s.to_str()
+    {
+        let mode = mode_borrowed.to_string();
+        if !["parallel", "sequential"].contains(&mode.as_str()) {
+            result.add_error(LuaError {
+                kind: LuaErrorKind::InvalidValue,
+                message: format!("Invalid module_processing: '{}'", mode),
+                line: None,
+                hint: Some("Valid values are: 'parallel', 'sequential'".to_string()),
+            });
         }
     }
 

@@ -7,7 +7,7 @@
 //! mdots does not implement crypto; it shells out to `sops`. See
 //! `docs/superpowers/specs/2026-06-30-sops-secrets-design.md`.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -993,10 +993,12 @@ mod tests {
     #[test]
     fn secrets_state_defaults_when_absent() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(load_secrets_state(dir.path())
-            .unwrap()
-            .decrypted_targets
-            .is_empty());
+        assert!(
+            load_secrets_state(dir.path())
+                .unwrap()
+                .decrypted_targets
+                .is_empty()
+        );
     }
 
     // --- Integration: real sops/age round-trip (self-skips when binaries absent) ---

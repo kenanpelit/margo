@@ -1589,10 +1589,10 @@ pub fn load_config(paths: &ConfigPaths) -> Result<Config> {
             if let Ok(pkg_list) = load_package_list_any(&packages_lua) {
                 config.packages.extend(pkg_list.packages);
             }
-        } else if packages_yaml.exists() {
-            if let Ok(pkg_list) = load_package_list_any(&packages_yaml) {
-                config.packages.extend(pkg_list.packages);
-            }
+        } else if packages_yaml.exists()
+            && let Ok(pkg_list) = load_package_list_any(&packages_yaml)
+        {
+            config.packages.extend(pkg_list.packages);
         }
     }
 
@@ -2100,12 +2100,12 @@ fn discover_package_files(dir: &Path) -> Result<Vec<PathBuf>> {
         let entry = entry?;
         let path = entry.path();
 
-        if path.is_file() && !excluded.contains(&path.file_name().unwrap_or_default()) {
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if ext == "yaml" || ext == "nix" || ext == "lua" {
-                    files.push(path);
-                }
-            }
+        if path.is_file()
+            && !excluded.contains(&path.file_name().unwrap_or_default())
+            && let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && (ext == "yaml" || ext == "nix" || ext == "lua")
+        {
+            files.push(path);
         }
     }
 
@@ -2151,22 +2151,22 @@ pub fn validate_module(module: &ModuleStructure, module_name: &str) -> ModuleVal
 
             // Empty pre_install_hook is fine - just ignore it
             // Only validate if hook is actually specified with a non-empty value
-            if let Some(hook) = &content.pre_install_hook {
-                if !hook.is_empty() {
-                    // Hook is specified - for legacy modules, we can't validate the path
-                    // since it's resolved relative to config_dir at runtime
-                    // Just check that it's not obviously invalid
-                }
+            if let Some(hook) = &content.pre_install_hook
+                && !hook.is_empty()
+            {
+                // Hook is specified - for legacy modules, we can't validate the path
+                // since it's resolved relative to config_dir at runtime
+                // Just check that it's not obviously invalid
             }
 
             // Empty post_install_hook is fine - just ignore it
             // Only validate if hook is actually specified with a non-empty value
-            if let Some(hook) = &content.post_install_hook {
-                if !hook.is_empty() {
-                    // Hook is specified - for legacy modules, we can't validate the path
-                    // since it's resolved relative to config_dir at runtime
-                    // Just check that it's not obviously invalid
-                }
+            if let Some(hook) = &content.post_install_hook
+                && !hook.is_empty()
+            {
+                // Hook is specified - for legacy modules, we can't validate the path
+                // since it's resolved relative to config_dir at runtime
+                // Just check that it's not obviously invalid
             }
 
             // Validate no duplicate packages
@@ -2209,62 +2209,62 @@ pub fn validate_module(module: &ModuleStructure, module_name: &str) -> ModuleVal
             }
 
             // Validate pre-install hook exists if specified (non-empty)
-            if let Some(hook) = &dir.manifest.pre_install_hook {
-                if !hook.is_empty() {
-                    // Hook is specified - validate it exists
-                    let hook_path = if Path::new(hook).is_absolute() {
-                        PathBuf::from(hook)
-                    } else {
-                        dir.root.join(hook)
-                    };
+            if let Some(hook) = &dir.manifest.pre_install_hook
+                && !hook.is_empty()
+            {
+                // Hook is specified - validate it exists
+                let hook_path = if Path::new(hook).is_absolute() {
+                    PathBuf::from(hook)
+                } else {
+                    dir.root.join(hook)
+                };
 
-                    if !hook_path.exists() {
-                        result.errors.push(format!(
-                            "pre_install_hook script not found: {} (resolved to {:?})",
-                            hook, hook_path
-                        ));
-                    } else if !hook_path.is_file() {
-                        result
-                            .errors
-                            .push(format!("pre_install_hook is not a file: {}", hook));
-                    }
+                if !hook_path.exists() {
+                    result.errors.push(format!(
+                        "pre_install_hook script not found: {} (resolved to {:?})",
+                        hook, hook_path
+                    ));
+                } else if !hook_path.is_file() {
+                    result
+                        .errors
+                        .push(format!("pre_install_hook is not a file: {}", hook));
+                }
 
-                    // If hook is in scripts/ subdirectory, ensure it's in our scripts dir
-                    if hook.starts_with("scripts/") && dir.scripts_dir.is_none() {
-                        result.errors.push(
+                // If hook is in scripts/ subdirectory, ensure it's in our scripts dir
+                if hook.starts_with("scripts/") && dir.scripts_dir.is_none() {
+                    result.errors.push(
                             "pre_install_hook references 'scripts/' but scripts directory doesn't exist".to_string()
                         );
-                    }
                 }
             }
 
             // Validate post-install hook exists if specified (non-empty)
-            if let Some(hook) = &dir.manifest.post_install_hook {
-                if !hook.is_empty() {
-                    // Hook is specified - validate it exists
-                    let hook_path = if Path::new(hook).is_absolute() {
-                        PathBuf::from(hook)
-                    } else {
-                        dir.root.join(hook)
-                    };
+            if let Some(hook) = &dir.manifest.post_install_hook
+                && !hook.is_empty()
+            {
+                // Hook is specified - validate it exists
+                let hook_path = if Path::new(hook).is_absolute() {
+                    PathBuf::from(hook)
+                } else {
+                    dir.root.join(hook)
+                };
 
-                    if !hook_path.exists() {
-                        result.errors.push(format!(
-                            "post_install_hook script not found: {} (resolved to {:?})",
-                            hook, hook_path
-                        ));
-                    } else if !hook_path.is_file() {
-                        result
-                            .errors
-                            .push(format!("post_install_hook is not a file: {}", hook));
-                    }
+                if !hook_path.exists() {
+                    result.errors.push(format!(
+                        "post_install_hook script not found: {} (resolved to {:?})",
+                        hook, hook_path
+                    ));
+                } else if !hook_path.is_file() {
+                    result
+                        .errors
+                        .push(format!("post_install_hook is not a file: {}", hook));
+                }
 
-                    // If hook is in scripts/ subdirectory, ensure it's in our scripts dir
-                    if hook.starts_with("scripts/") && dir.scripts_dir.is_none() {
-                        result.errors.push(
+                // If hook is in scripts/ subdirectory, ensure it's in our scripts dir
+                if hook.starts_with("scripts/") && dir.scripts_dir.is_none() {
+                    result.errors.push(
                             "post_install_hook references 'scripts/' but scripts directory doesn't exist".to_string()
                         );
-                    }
                 }
             }
 
@@ -2310,33 +2310,33 @@ pub fn validate_module(module: &ModuleStructure, module_name: &str) -> ModuleVal
             }
 
             // Validate hook paths if specified
-            if let Some(hook) = &lua.pre_install_hook {
-                if !hook.is_empty() {
-                    let hook_path = lua
-                        .path
-                        .parent()
-                        .map(|p| p.join(hook))
-                        .unwrap_or_else(|| std::path::PathBuf::from(hook));
-                    if !hook_path.exists() {
-                        result
-                            .errors
-                            .push(format!("pre_install_hook script not found: {}", hook));
-                    }
+            if let Some(hook) = &lua.pre_install_hook
+                && !hook.is_empty()
+            {
+                let hook_path = lua
+                    .path
+                    .parent()
+                    .map(|p| p.join(hook))
+                    .unwrap_or_else(|| std::path::PathBuf::from(hook));
+                if !hook_path.exists() {
+                    result
+                        .errors
+                        .push(format!("pre_install_hook script not found: {}", hook));
                 }
             }
 
-            if let Some(hook) = &lua.post_install_hook {
-                if !hook.is_empty() {
-                    let hook_path = lua
-                        .path
-                        .parent()
-                        .map(|p| p.join(hook))
-                        .unwrap_or_else(|| std::path::PathBuf::from(hook));
-                    if !hook_path.exists() {
-                        result
-                            .errors
-                            .push(format!("post_install_hook script not found: {}", hook));
-                    }
+            if let Some(hook) = &lua.post_install_hook
+                && !hook.is_empty()
+            {
+                let hook_path = lua
+                    .path
+                    .parent()
+                    .map(|p| p.join(hook))
+                    .unwrap_or_else(|| std::path::PathBuf::from(hook));
+                if !hook_path.exists() {
+                    result
+                        .errors
+                        .push(format!("post_install_hook script not found: {}", hook));
                 }
             }
         }
@@ -2355,33 +2355,33 @@ pub fn validate_module(module: &ModuleStructure, module_name: &str) -> ModuleVal
                 }
             }
 
-            if let Some(hook) = &dyn_mod.pre_install_hook {
-                if !hook.is_empty() {
-                    let hook_path = dyn_mod
-                        .path
-                        .parent()
-                        .map(|p| p.join(hook))
-                        .unwrap_or_else(|| std::path::PathBuf::from(hook));
-                    if !hook_path.exists() {
-                        result
-                            .errors
-                            .push(format!("pre_install_hook script not found: {}", hook));
-                    }
+            if let Some(hook) = &dyn_mod.pre_install_hook
+                && !hook.is_empty()
+            {
+                let hook_path = dyn_mod
+                    .path
+                    .parent()
+                    .map(|p| p.join(hook))
+                    .unwrap_or_else(|| std::path::PathBuf::from(hook));
+                if !hook_path.exists() {
+                    result
+                        .errors
+                        .push(format!("pre_install_hook script not found: {}", hook));
                 }
             }
 
-            if let Some(hook) = &dyn_mod.post_install_hook {
-                if !hook.is_empty() {
-                    let hook_path = dyn_mod
-                        .path
-                        .parent()
-                        .map(|p| p.join(hook))
-                        .unwrap_or_else(|| std::path::PathBuf::from(hook));
-                    if !hook_path.exists() {
-                        result
-                            .errors
-                            .push(format!("post_install_hook script not found: {}", hook));
-                    }
+            if let Some(hook) = &dyn_mod.post_install_hook
+                && !hook.is_empty()
+            {
+                let hook_path = dyn_mod
+                    .path
+                    .parent()
+                    .map(|p| p.join(hook))
+                    .unwrap_or_else(|| std::path::PathBuf::from(hook));
+                if !hook_path.exists() {
+                    result
+                        .errors
+                        .push(format!("post_install_hook script not found: {}", hook));
                 }
             }
         }
@@ -2399,10 +2399,10 @@ pub fn resolve_editor(config: &Config) -> Result<String> {
     }
 
     // Priority 2: $EDITOR environment variable
-    if let Ok(editor) = std::env::var("EDITOR") {
-        if !editor.trim().is_empty() {
-            return Ok(editor);
-        }
+    if let Ok(editor) = std::env::var("EDITOR")
+        && !editor.trim().is_empty()
+    {
+        return Ok(editor);
     }
 
     // Priority 3: Fallback to commonly available editors
@@ -2459,10 +2459,10 @@ pub fn detect_package_manager_type() -> Result<PackageManagerType> {
         }
 
         // Check ID_LIKE for derivative distros
-        if let Some(ref id_like) = id_like {
-            if id_like.contains("arch") {
-                return Ok(PackageManagerType::Pacman);
-            }
+        if let Some(ref id_like) = id_like
+            && id_like.contains("arch")
+        {
+            return Ok(PackageManagerType::Pacman);
         }
     }
 
@@ -2586,9 +2586,11 @@ mod tests {
         assert_eq!(entries[1].package_type(), PackageType::Flatpak);
         assert_eq!(entries[2].remote(), None);
         // Written back only when set.
-        assert!(!serde_yaml::to_string(&entries[2])
-            .unwrap()
-            .contains("remote"));
+        assert!(
+            !serde_yaml::to_string(&entries[2])
+                .unwrap()
+                .contains("remote")
+        );
     }
 
     #[test]

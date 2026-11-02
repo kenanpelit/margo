@@ -1,18 +1,18 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 
 use std::collections::HashSet;
 
 use crate::config::{Config, ConfigPaths};
 use crate::module::ModuleManager;
-use crate::tui::app::{module_toggle_enable, Action};
+use crate::tui::app::{Action, module_toggle_enable};
 use crate::tui::screens::{ScreenAction, ScreenTrait};
 
 /// A row of data about one module, kept separately from the heavy `ModuleInfo`.
@@ -99,10 +99,10 @@ impl ModulesScreenState {
     fn rebuild_visible(&mut self) {
         self.visible = filter_module_entries(&self.modules, &self.filter_query);
         // Clamp selection to valid range
-        if let Some(sel) = self.list_state.selected() {
-            if sel >= self.visible.len() {
-                self.list_state.select(self.visible.len().checked_sub(1));
-            }
+        if let Some(sel) = self.list_state.selected()
+            && sel >= self.visible.len()
+        {
+            self.list_state.select(self.visible.len().checked_sub(1));
         }
     }
 
@@ -261,11 +261,11 @@ impl ScreenTrait for ModulesScreenState {
         frame: &mut Frame,
         area: Rect,
     ) -> Result<()> {
-        if !self.loaded {
-            if let Err(e) = self.load_data(paths, config) {
-                self.load_error = Some(format!("{e:#}"));
-                self.loaded = true; // avoid re-trying every frame on hard errors
-            }
+        if !self.loaded
+            && let Err(e) = self.load_data(paths, config)
+        {
+            self.load_error = Some(format!("{e:#}"));
+            self.loaded = true; // avoid re-trying every frame on hard errors
         }
 
         // Layout: optional error banner, then list + detail pane

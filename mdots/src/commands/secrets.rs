@@ -3,16 +3,16 @@
 //! Decryption logic lives in `crate::secrets`; this module is the CLI surface:
 //! `status`, `sync`, `edit`, `list`, and `keygen`.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use colored::*;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::config::{load_config, ConfigPaths};
+use crate::config::{ConfigPaths, load_config};
 use crate::secrets::{
-    classify_secret_status, compute_orphans, load_secrets_state, resolve_key_path,
-    resolve_secret_target, secret_name, sops_available, SecretState,
+    SecretState, classify_secret_status, compute_orphans, load_secrets_state, resolve_key_path,
+    resolve_secret_target, secret_name, sops_available,
 };
 
 pub(crate) fn home_dir() -> Result<PathBuf> {

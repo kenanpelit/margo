@@ -65,26 +65,26 @@ fn get_snapper_config(paths: &ConfigPaths) -> String {
     // Try to read from snapper configs (auto-detection)
     let output = Command::new("snapper").args(["list-configs"]).output();
 
-    if let Ok(output) = output {
-        if output.status.success() {
-            let configs = String::from_utf8_lossy(&output.stdout);
-            // Look for "root" config first, otherwise use first available
-            for line in configs.lines().skip(2) {
-                // Skip header lines
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if !parts.is_empty() {
-                    let config_name = parts[0];
-                    if config_name == "root" {
-                        return config_name.to_string();
-                    }
+    if let Ok(output) = output
+        && output.status.success()
+    {
+        let configs = String::from_utf8_lossy(&output.stdout);
+        // Look for "root" config first, otherwise use first available
+        for line in configs.lines().skip(2) {
+            // Skip header lines
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if !parts.is_empty() {
+                let config_name = parts[0];
+                if config_name == "root" {
+                    return config_name.to_string();
                 }
             }
-            // If no "root" config, use first available
-            for line in configs.lines().skip(2) {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if !parts.is_empty() {
-                    return parts[0].to_string();
-                }
+        }
+        // If no "root" config, use first available
+        for line in configs.lines().skip(2) {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if !parts.is_empty() {
+                return parts[0].to_string();
             }
         }
     }
@@ -279,10 +279,10 @@ fn rotate_snapper_backups(paths: &ConfigPaths, max_backups: u32) -> Result<()> {
         if line.to_lowercase().contains("mdots") {
             // Extract snapshot number (first field)
             let parts: Vec<&str> = line.split_whitespace().collect();
-            if let Some(num_str) = parts.first() {
-                if let Ok(num) = num_str.parse::<u32>() {
-                    mdots_snapshots.push(num);
-                }
+            if let Some(num_str) = parts.first()
+                && let Ok(num) = num_str.parse::<u32>()
+            {
+                mdots_snapshots.push(num);
             }
         }
     }

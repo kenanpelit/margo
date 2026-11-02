@@ -6,7 +6,7 @@ use std::fs;
 use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::{load_module, Config, ConfigPaths};
+use crate::config::{Config, ConfigPaths, load_module};
 
 /// State file tracking which dotfiles have been backed up
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -130,11 +130,11 @@ fn sync_single_dotfile(
     let module_name = &df.module_name;
 
     // Ensure parent directory exists
-    if let Some(parent) = target.parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent)
-                .context(format!("Failed to create parent directory: {:?}", parent))?;
-        }
+    if let Some(parent) = target.parent()
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent)
+            .context(format!("Failed to create parent directory: {:?}", parent))?;
     }
 
     // Get display name for output
@@ -155,12 +155,13 @@ fn sync_single_dotfile(
     if target.is_symlink() || target.exists() {
         // Check if it's already a symlink pointing to our source
         if target.is_symlink() {
-            if let Ok(link_target) = fs::read_link(target) {
-                if link_target == *source && !force {
-                    // Already correctly linked, skip (unless force is enabled)
-                    stats.skipped += 1;
-                    return Ok(());
-                }
+            if let Ok(link_target) = fs::read_link(target)
+                && link_target == *source
+                && !force
+            {
+                // Already correctly linked, skip (unless force is enabled)
+                stats.skipped += 1;
+                return Ok(());
             }
 
             // Symlink exists but points elsewhere (or force is enabled), remove it

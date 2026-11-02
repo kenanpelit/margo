@@ -4,7 +4,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
-use crate::config::{load_config, ConfigPaths};
+use crate::config::{ConfigPaths, load_config};
 
 /// The host's machine description: the user's trimmed input, or a hostname-based
 /// default when they leave it blank.
@@ -1392,15 +1392,15 @@ fn detect_xdg_default(mime_type: &str) -> Option<String> {
 /// Detect default terminal (terminals don't have a standard MIME type)
 fn detect_terminal() -> Option<String> {
     // Check $TERMINAL environment variable first
-    if let Ok(terminal) = std::env::var("TERMINAL") {
-        if !terminal.is_empty() {
-            // Extract just the binary name
-            let name = std::path::Path::new(&terminal)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or(&terminal);
-            return Some(name.to_string());
-        }
+    if let Ok(terminal) = std::env::var("TERMINAL")
+        && !terminal.is_empty()
+    {
+        // Extract just the binary name
+        let name = std::path::Path::new(&terminal)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or(&terminal);
+        return Some(name.to_string());
     }
 
     // Check for common terminals in order of preference
@@ -1435,15 +1435,14 @@ fn copy_user_docs(config_dir: &Path) -> Result<()> {
 
     // Development: relative to executable (target/debug or target/release)
     // e.g., /home/user/mdots/target/release/mdots -> /home/user/mdots/docs
-    if let Some(ref exe) = exe_path {
-        if let Some(docs_path) = exe
+    if let Some(ref exe) = exe_path
+        && let Some(docs_path) = exe
             .parent()
             .and_then(|p| p.parent())
             .and_then(|p| p.parent())
             .map(|p| p.join("docs"))
-        {
-            possible_paths.push(docs_path);
-        }
+    {
+        possible_paths.push(docs_path);
     }
 
     // Compile-time path: embedded from CARGO_MANIFEST_DIR during build.
@@ -2025,7 +2024,9 @@ fn run_nix_init(paths: &ConfigPaths) -> Result<()> {
 
     // Step 4: Ask about flakes
     println!();
-    print!("Enable flakes for Home Manager? (Nix flakes provide better reproducibility, recommended) [Y/n] ");
+    print!(
+        "Enable flakes for Home Manager? (Nix flakes provide better reproducibility, recommended) [Y/n] "
+    );
     io::stdout().flush()?;
     let mut flake_input = String::new();
     io::stdin().read_line(&mut flake_input)?;
@@ -2331,18 +2332,17 @@ fn ensure_nix_on_path() {
             _ => return,
         };
 
-        if let Ok(existing) = std::fs::read_to_string(&rc_file) {
-            if !existing.contains("mdots")
-                && !existing.contains(nix_profile_bin)
-                && std::fs::write(&rc_file, format!("{}{}", existing, line)).is_ok()
-            {
-                println!(
-                    "{} Added {} to {}",
-                    "✓".green(),
-                    nix_profile_bin.cyan(),
-                    rc_file.display()
-                );
-            }
+        if let Ok(existing) = std::fs::read_to_string(&rc_file)
+            && !existing.contains("mdots")
+            && !existing.contains(nix_profile_bin)
+            && std::fs::write(&rc_file, format!("{}{}", existing, line)).is_ok()
+        {
+            println!(
+                "{} Added {} to {}",
+                "✓".green(),
+                nix_profile_bin.cyan(),
+                rc_file.display()
+            );
         }
     }
 }

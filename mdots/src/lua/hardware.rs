@@ -2,7 +2,7 @@
 //!
 //! Provides the `mdots.hardware.*` API for detecting system hardware.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use mlua::{Lua, Table};
 use std::fs;
 
@@ -130,23 +130,22 @@ fn detect_gpu_vendors() -> Vec<String> {
             let vendor_path = entry.path().join("vendor");
 
             // Check if it's a VGA controller (class 0x03xxxx)
-            if let Ok(class) = fs::read_to_string(&class_path) {
-                if class.trim().starts_with("0x03") {
-                    if let Ok(vendor) = fs::read_to_string(&vendor_path) {
-                        let vendor = vendor.trim();
-                        match vendor {
-                            "0x10de" if !vendors.contains(&"nvidia".to_string()) => {
-                                vendors.push("nvidia".to_string());
-                            }
-                            "0x1002" if !vendors.contains(&"amd".to_string()) => {
-                                vendors.push("amd".to_string());
-                            }
-                            "0x8086" if !vendors.contains(&"intel".to_string()) => {
-                                vendors.push("intel".to_string());
-                            }
-                            _ => {}
-                        }
+            if let Ok(class) = fs::read_to_string(&class_path)
+                && class.trim().starts_with("0x03")
+                && let Ok(vendor) = fs::read_to_string(&vendor_path)
+            {
+                let vendor = vendor.trim();
+                match vendor {
+                    "0x10de" if !vendors.contains(&"nvidia".to_string()) => {
+                        vendors.push("nvidia".to_string());
                     }
+                    "0x1002" if !vendors.contains(&"amd".to_string()) => {
+                        vendors.push("amd".to_string());
+                    }
+                    "0x8086" if !vendors.contains(&"intel".to_string()) => {
+                        vendors.push("intel".to_string());
+                    }
+                    _ => {}
                 }
             }
         }
@@ -197,10 +196,10 @@ fn detect_has_battery() -> bool {
     if let Ok(entries) = fs::read_dir("/sys/class/power_supply") {
         for entry in entries.filter_map(|e| e.ok()) {
             let type_path = entry.path().join("type");
-            if let Ok(supply_type) = fs::read_to_string(&type_path) {
-                if supply_type.trim() == "Battery" {
-                    return true;
-                }
+            if let Ok(supply_type) = fs::read_to_string(&type_path)
+                && supply_type.trim() == "Battery"
+            {
+                return true;
             }
         }
     }

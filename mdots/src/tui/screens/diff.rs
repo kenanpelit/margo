@@ -1,17 +1,17 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 use std::collections::HashSet;
 
-use crate::commands::diff::{compute_drift, Drift};
+use crate::commands::diff::{Drift, compute_drift};
 use crate::config::{Config, ConfigPaths};
-use crate::dotfiles::{compute_dotfile_drift, DotfileAction, DotfileDrift};
+use crate::dotfiles::{DotfileAction, DotfileDrift, compute_dotfile_drift};
 use crate::package::PackageManager;
 use crate::tui::app::Action;
 use crate::tui::job::Job;
@@ -479,9 +479,11 @@ mod tests {
             dotfiles: vec![],
         };
         let rows = build_rows(&data);
-        assert!(!rows
-            .iter()
-            .any(|r| matches!(r, DiffRow::Section(t) if t.is_empty())));
+        assert!(
+            !rows
+                .iter()
+                .any(|r| matches!(r, DiffRow::Section(t) if t.is_empty()))
+        );
         assert_eq!(rows.iter().filter(|r| r.is_selectable()).count(), 1);
     }
 

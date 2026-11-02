@@ -3,8 +3,8 @@ use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 // Note: io and Write were imported but are unused - keeping commented for reference
 // use std::io::{self, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 /// Create a dot-style spinner for indeterminate operations

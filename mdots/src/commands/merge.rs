@@ -6,7 +6,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::sync::LazyLock;
 
-use crate::config::{load_config, Config, ConfigPaths, RunHooksAsUser};
+use crate::config::{Config, ConfigPaths, RunHooksAsUser, load_config};
 use crate::defaults::DefaultsManager;
 use crate::package::PackageManager;
 use crate::services::ServiceManager;

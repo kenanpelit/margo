@@ -2,7 +2,7 @@
 //!
 //! Provides the `mdots.*` API for Lua modules.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use mlua::{Lua, Table, Value};
 
 use super::sandbox;
@@ -689,10 +689,10 @@ fn get_memory_total_mb() -> u64 {
             if let Some(rest) = line.strip_prefix("MemTotal:") {
                 // Format: "MemTotal:       16384000 kB"
                 let parts: Vec<&str> = rest.split_whitespace().collect();
-                if let Some(kb_str) = parts.first() {
-                    if let Ok(kb) = kb_str.parse::<u64>() {
-                        return kb / 1024; // Convert to MB
-                    }
+                if let Some(kb_str) = parts.first()
+                    && let Ok(kb) = kb_str.parse::<u64>()
+                {
+                    return kb / 1024; // Convert to MB
                 }
             }
         }

@@ -1,6 +1,6 @@
 //! Generate configuration files
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use colored::*;
 use std::fs;
 use std::io::{self, Write};
@@ -18,13 +18,13 @@ fn check_lua_support(paths: &ConfigPaths) -> Result<()> {
 
     // Check for any .lua files in hosts directory
     let hosts_dir = paths.config_dir.join("hosts");
-    if hosts_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&hosts_dir) {
-            for entry in entries.filter_map(|e| e.ok()) {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("lua") {
-                    return Ok(());
-                }
+    if hosts_dir.exists()
+        && let Ok(entries) = fs::read_dir(&hosts_dir)
+    {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("lua") {
+                return Ok(());
             }
         }
     }

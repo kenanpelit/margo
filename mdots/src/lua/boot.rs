@@ -2,7 +2,7 @@
 //!
 //! Provides the `mdots.boot.*` API for detecting bootloader configuration.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use mlua::{Lua, Table};
 use std::fs;
 use std::path::Path;

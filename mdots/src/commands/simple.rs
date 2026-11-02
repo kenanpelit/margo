@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use std::fs;
 
 use crate::config::{
-    declared_packages_paths, load_config, load_package_list_any, write_package_list_any,
-    ConfigPaths, PackageList, RunHooksAsUser,
+    ConfigPaths, PackageList, RunHooksAsUser, declared_packages_paths, load_config,
+    load_package_list_any, write_package_list_any,
 };
 use crate::package::PackageManager;
 

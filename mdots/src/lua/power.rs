@@ -2,7 +2,7 @@
 //!
 //! Provides the `mdots.power.*` API for querying power management features.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use mlua::{Lua, Table};
 use std::fs;
 use std::path::Path;
@@ -130,14 +130,12 @@ fn is_on_battery() -> bool {
             let type_path = entry.path().join("type");
             let status_path = entry.path().join("status");
 
-            if let Ok(supply_type) = fs::read_to_string(&type_path) {
-                if supply_type.trim() == "Battery" {
-                    if let Ok(status) = fs::read_to_string(&status_path) {
-                        if status.trim() == "Discharging" {
-                            return true;
-                        }
-                    }
-                }
+            if let Ok(supply_type) = fs::read_to_string(&type_path)
+                && supply_type.trim() == "Battery"
+                && let Ok(status) = fs::read_to_string(&status_path)
+                && status.trim() == "Discharging"
+            {
+                return true;
             }
         }
     }
@@ -152,14 +150,12 @@ fn is_on_ac() -> bool {
             let type_path = entry.path().join("type");
             let online_path = entry.path().join("online");
 
-            if let Ok(supply_type) = fs::read_to_string(&type_path) {
-                if supply_type.trim() == "Mains" {
-                    if let Ok(online) = fs::read_to_string(&online_path) {
-                        if online.trim() == "1" {
-                            return true;
-                        }
-                    }
-                }
+            if let Ok(supply_type) = fs::read_to_string(&type_path)
+                && supply_type.trim() == "Mains"
+                && let Ok(online) = fs::read_to_string(&online_path)
+                && online.trim() == "1"
+            {
+                return true;
             }
         }
     }
@@ -173,14 +169,12 @@ fn get_battery_percent() -> Option<u8> {
             let type_path = entry.path().join("type");
             let capacity_path = entry.path().join("capacity");
 
-            if let Ok(supply_type) = fs::read_to_string(&type_path) {
-                if supply_type.trim() == "Battery" {
-                    if let Ok(capacity) = fs::read_to_string(&capacity_path) {
-                        if let Ok(percent) = capacity.trim().parse::<u8>() {
-                            return Some(percent);
-                        }
-                    }
-                }
+            if let Ok(supply_type) = fs::read_to_string(&type_path)
+                && supply_type.trim() == "Battery"
+                && let Ok(capacity) = fs::read_to_string(&capacity_path)
+                && let Ok(percent) = capacity.trim().parse::<u8>()
+            {
+                return Some(percent);
             }
         }
     }
@@ -194,12 +188,11 @@ fn get_battery_status() -> String {
             let type_path = entry.path().join("type");
             let status_path = entry.path().join("status");
 
-            if let Ok(supply_type) = fs::read_to_string(&type_path) {
-                if supply_type.trim() == "Battery" {
-                    if let Ok(status) = fs::read_to_string(&status_path) {
-                        return status.trim().to_lowercase();
-                    }
-                }
+            if let Ok(supply_type) = fs::read_to_string(&type_path)
+                && supply_type.trim() == "Battery"
+                && let Ok(status) = fs::read_to_string(&status_path)
+            {
+                return status.trim().to_lowercase();
             }
         }
     }

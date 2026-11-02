@@ -2,7 +2,7 @@
 //!
 //! Provides the `mdots.service.*` API for querying systemd services.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use mlua::{Lua, Table};
 use std::process::Command;
 

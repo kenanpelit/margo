@@ -10,10 +10,10 @@ use std::path::PathBuf;
 use anyhow::Result;
 use colored::*;
 
-use crate::config::{load_config, ConfigPaths, PackageType};
+use crate::config::{ConfigPaths, PackageType, load_config};
 use crate::secrets::{
-    classify_secret_status, resolve_key_path, resolve_secret_target, secret_name, sops_available,
-    SecretState,
+    SecretState, classify_secret_status, resolve_key_path, resolve_secret_target, secret_name,
+    sops_available,
 };
 
 // ─── Check result types ────────────────────────────────────────────────────────

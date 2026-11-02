@@ -321,15 +321,21 @@ mod tests {
 
     #[test]
     fn empty_flatpak_output_means_no_updates() {
-        assert!(parse_flatpak_updates("", &HashMap::new())
-            .unwrap()
-            .is_empty());
-        assert!(parse_flatpak_updates("  \n", &HashMap::new())
-            .unwrap()
-            .is_empty());
-        assert!(parse_flatpak_updates("null", &HashMap::new())
-            .unwrap()
-            .is_empty());
+        assert!(
+            parse_flatpak_updates("", &HashMap::new())
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            parse_flatpak_updates("  \n", &HashMap::new())
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            parse_flatpak_updates("null", &HashMap::new())
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

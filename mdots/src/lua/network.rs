@@ -2,7 +2,7 @@
 //!
 //! Provides the `mdots.network.*` API for detecting network configuration and connectivity.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use mlua::{Lua, Table};
 use std::fs;
 use std::path::Path;
@@ -185,10 +185,10 @@ fn is_connected() -> bool {
             }
 
             let operstate_path = entry.path().join("operstate");
-            if let Ok(state) = fs::read_to_string(&operstate_path) {
-                if state.trim() == "up" {
-                    return true;
-                }
+            if let Ok(state) = fs::read_to_string(&operstate_path)
+                && state.trim() == "up"
+            {
+                return true;
             }
         }
     }
@@ -227,10 +227,10 @@ fn get_active_interface() -> Option<String> {
         let stdout = String::from_utf8_lossy(&output.stdout);
         // Format: "default via 192.168.1.1 dev eth0 ..."
         // Look for interface name after "dev"
-        if let Some(stripped) = stdout.split("dev ").nth(1) {
-            if let Some(iface) = stripped.split_whitespace().next() {
-                return Some(iface.to_string());
-            }
+        if let Some(stripped) = stdout.split("dev ").nth(1)
+            && let Some(iface) = stripped.split_whitespace().next()
+        {
+            return Some(iface.to_string());
         }
     }
 
@@ -243,10 +243,10 @@ fn get_active_interface() -> Option<String> {
             }
 
             let operstate_path = entry.path().join("operstate");
-            if let Ok(state) = fs::read_to_string(&operstate_path) {
-                if state.trim() == "up" {
-                    return Some(name);
-                }
+            if let Ok(state) = fs::read_to_string(&operstate_path)
+                && state.trim() == "up"
+            {
+                return Some(name);
             }
         }
     }
@@ -268,10 +268,10 @@ fn get_interface_type(name: &str) -> String {
     }
 
     // Check if it's a virtual interface
-    if let Ok(uevent) = fs::read_to_string(iface_path.join("uevent")) {
-        if uevent.contains("DEVTYPE=wlan") {
-            return "wifi".to_string();
-        }
+    if let Ok(uevent) = fs::read_to_string(iface_path.join("uevent"))
+        && uevent.contains("DEVTYPE=wlan")
+    {
+        return "wifi".to_string();
     }
 
     // Check type file
@@ -312,10 +312,10 @@ fn is_interface_up(name: &str) -> bool {
 /// Check if IPv6 is enabled and available
 fn has_ipv6() -> bool {
     // Check if IPv6 is disabled
-    if let Ok(content) = fs::read_to_string("/proc/sys/net/ipv6/conf/all/disable_ipv6") {
-        if content.trim() == "1" {
-            return false;
-        }
+    if let Ok(content) = fs::read_to_string("/proc/sys/net/ipv6/conf/all/disable_ipv6")
+        && content.trim() == "1"
+    {
+        return false;
     }
 
     // Check if any interface has an IPv6 address

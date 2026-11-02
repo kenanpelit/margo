@@ -4,8 +4,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::config::{
-    declared_packages_paths, load_config, load_package_list, load_package_list_any,
-    write_package_list_any, ConfigPaths,
+    ConfigPaths, declared_packages_paths, load_config, load_package_list, load_package_list_any,
+    write_package_list_any,
 };
 
 /// Represents where a package was found and removed from
@@ -38,22 +38,20 @@ pub fn run(paths: &ConfigPaths, package_name: &str) -> Result<()> {
         PathBuf::new()
     };
 
-    if declared_file.exists() {
-        if let Ok(mut pkg_list) = load_package_list_any(&declared_file) {
-            if let Some(pos) = pkg_list
-                .packages
-                .iter()
-                .position(|p| p.name() == package_name)
-            {
-                pkg_list.packages.remove(pos);
-                write_package_list_any(&preferred_declared, &pkg_list)
-                    .context("Failed to write declared-packages file")?;
-                removed_from.push(RemovalLocation {
-                    source: "declared-packages".to_string(),
-                    file: preferred_declared.clone(),
-                });
-            }
-        }
+    if declared_file.exists()
+        && let Ok(mut pkg_list) = load_package_list_any(&declared_file)
+        && let Some(pos) = pkg_list
+            .packages
+            .iter()
+            .position(|p| p.name() == package_name)
+    {
+        pkg_list.packages.remove(pos);
+        write_package_list_any(&preferred_declared, &pkg_list)
+            .context("Failed to write declared-packages file")?;
+        removed_from.push(RemovalLocation {
+            source: "declared-packages".to_string(),
+            file: preferred_declared.clone(),
+        });
     }
 
     // 2. Check and remove from system-packages-{host}
@@ -61,34 +59,30 @@ pub fn run(paths: &ConfigPaths, package_name: &str) -> Result<()> {
     let module_dir = paths.config_dir.join("modules").join(&module_name);
     let system_packages_file = module_dir.join("packages.yaml");
 
-    if system_packages_file.exists() {
-        if let Ok(mut pkg_list) = load_package_list(&system_packages_file) {
-            if let Some(pos) = pkg_list
-                .packages
-                .iter()
-                .position(|p| p.name() == package_name)
-            {
-                pkg_list.packages.remove(pos);
-                let yaml = serde_yaml::to_string(&pkg_list)
-                    .context("Failed to serialize system-packages")?;
-                fs::write(&system_packages_file, yaml)
-                    .context("Failed to write system-packages file")?;
-                removed_from.push(RemovalLocation {
-                    source: format!("system-packages-{}", config.host),
-                    file: system_packages_file.clone(),
-                });
-            }
-        }
+    if system_packages_file.exists()
+        && let Ok(mut pkg_list) = load_package_list(&system_packages_file)
+        && let Some(pos) = pkg_list
+            .packages
+            .iter()
+            .position(|p| p.name() == package_name)
+    {
+        pkg_list.packages.remove(pos);
+        let yaml =
+            serde_yaml::to_string(&pkg_list).context("Failed to serialize system-packages")?;
+        fs::write(&system_packages_file, yaml).context("Failed to write system-packages file")?;
+        removed_from.push(RemovalLocation {
+            source: format!("system-packages-{}", config.host),
+            file: system_packages_file.clone(),
+        });
     }
 
     // 3. Check base.yaml (read-only warning)
     let base_file = paths.base_packages_file();
-    if base_file.exists() {
-        if let Ok(pkg_list) = load_package_list_any(&base_file) {
-            if pkg_list.packages.iter().any(|p| p.name() == package_name) {
-                found_in_readonly.push(("base".to_string(), base_file));
-            }
-        }
+    if base_file.exists()
+        && let Ok(pkg_list) = load_package_list_any(&base_file)
+        && pkg_list.packages.iter().any(|p| p.name() == package_name)
+    {
+        found_in_readonly.push(("base".to_string(), base_file));
     }
 
     // 4. Check host config packages (read-only warning)
@@ -124,10 +118,10 @@ pub fn run(paths: &ConfigPaths, package_name: &str) -> Result<()> {
             if module.packages().iter().any(|p| p.name() == package_name) {
                 found_in_readonly.push((format!("module ({})", module_name), module_path));
             }
-        } else if let Ok(module) = crate::config::load_module(&module_path) {
-            if module.packages().iter().any(|p| p.name() == package_name) {
-                found_in_readonly.push((format!("module ({})", module_name), module_path));
-            }
+        } else if let Ok(module) = crate::config::load_module(&module_path)
+            && module.packages().iter().any(|p| p.name() == package_name)
+        {
+            found_in_readonly.push((format!("module ({})", module_name), module_path));
         }
     }
 

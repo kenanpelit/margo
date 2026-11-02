@@ -2,7 +2,7 @@
 //!
 //! Provides the `mdots.desktop.*` API for detecting desktop environments and display servers.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use mlua::{Lua, Table};
 use std::env;
 use std::fs;
@@ -314,15 +314,14 @@ fn get_desktop_theme() -> Option<String> {
     if let Ok(output) = Command::new("gsettings")
         .args(["get", "org.gnome.desktop.interface", "gtk-theme"])
         .output()
+        && output.status.success()
     {
-        if output.status.success() {
-            let theme = String::from_utf8_lossy(&output.stdout)
-                .trim()
-                .trim_matches('\'')
-                .to_string();
-            if !theme.is_empty() {
-                return Some(theme);
-            }
+        let theme = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .trim_matches('\'')
+            .to_string();
+        if !theme.is_empty() {
+            return Some(theme);
         }
     }
 
@@ -347,15 +346,14 @@ fn get_icon_theme() -> Option<String> {
     if let Ok(output) = Command::new("gsettings")
         .args(["get", "org.gnome.desktop.interface", "icon-theme"])
         .output()
+        && output.status.success()
     {
-        if output.status.success() {
-            let theme = String::from_utf8_lossy(&output.stdout)
-                .trim()
-                .trim_matches('\'')
-                .to_string();
-            if !theme.is_empty() {
-                return Some(theme);
-            }
+        let theme = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .trim_matches('\'')
+            .to_string();
+        if !theme.is_empty() {
+            return Some(theme);
         }
     }
 
@@ -365,32 +363,32 @@ fn get_icon_theme() -> Option<String> {
 /// Get screen resolution
 fn get_screen_resolution() -> Option<String> {
     // Try xrandr for X11
-    if is_x11() {
-        if let Ok(output) = Command::new("xrandr").output() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if line.contains("*") {
-                    // Current resolution line looks like: "   1920x1080     60.00*+"
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if let Some(res) = parts.first() {
-                        return Some(res.to_string());
-                    }
+    if is_x11()
+        && let Ok(output) = Command::new("xrandr").output()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            if line.contains("*") {
+                // Current resolution line looks like: "   1920x1080     60.00*+"
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if let Some(res) = parts.first() {
+                    return Some(res.to_string());
                 }
             }
         }
     }
 
     // Try wlr-randr for Wayland (wlroots compositors)
-    if is_wayland() {
-        if let Ok(output) = Command::new("wlr-randr").output() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if line.contains("current") {
-                    // Line looks like: "  1920x1080 px, 60.000000 Hz (current)"
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if let Some(res) = parts.first() {
-                        return Some(res.trim().to_string());
-                    }
+    if is_wayland()
+        && let Ok(output) = Command::new("wlr-randr").output()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            if line.contains("current") {
+                // Line looks like: "  1920x1080 px, 60.000000 Hz (current)"
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if let Some(res) = parts.first() {
+                    return Some(res.trim().to_string());
                 }
             }
         }
@@ -401,10 +399,10 @@ fn get_screen_resolution() -> Option<String> {
         for entry in entries.filter_map(|e| e.ok()) {
             if entry.file_name().to_string_lossy().starts_with("fb") {
                 let modes_path = entry.path().join("modes");
-                if let Ok(content) = fs::read_to_string(modes_path) {
-                    if let Some(mode) = content.lines().next() {
-                        return Some(mode.trim().to_string());
-                    }
+                if let Ok(content) = fs::read_to_string(modes_path)
+                    && let Some(mode) = content.lines().next()
+                {
+                    return Some(mode.trim().to_string());
                 }
             }
         }

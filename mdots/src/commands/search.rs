@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use colored::*;
 use std::process::{Command, Stdio};
 
-use crate::config::{load_config, ConfigPaths, PackageManagerType};
+use crate::config::{ConfigPaths, PackageManagerType, load_config};
 
 /// Run interactive package search with fzf and install selected packages
 pub fn run(paths: &ConfigPaths) -> Result<()> {

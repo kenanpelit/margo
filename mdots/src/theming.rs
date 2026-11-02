@@ -7,7 +7,7 @@
 pub mod state;
 
 use crate::config::{QtBackend, ThemingConfig};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use log::{debug, info, warn};
 use std::collections::HashMap;
@@ -39,10 +39,8 @@ impl ThemingManager {
         }
 
         // Phase 2: Backup existing configs
-        if !dry_run {
-            if let Err(e) = Self::backup_configs() {
-                warn!("Failed to backup existing theming configs: {}", e);
-            }
+        if !dry_run && let Err(e) = Self::backup_configs() {
+            warn!("Failed to backup existing theming configs: {}", e);
         }
 
         // Phase 3: Apply GTK settings
@@ -279,11 +277,11 @@ impl ThemingManager {
                 }
             }
 
-            if let Some(ref font) = config.font {
-                if let Some(ref family) = font.family {
-                    let size = font.size.map(|s| format!(" {:.1}", s)).unwrap_or_default();
-                    settings.insert("gtk-font-name".to_string(), format!("{}{}", family, size));
-                }
+            if let Some(ref font) = config.font
+                && let Some(ref family) = font.family
+            {
+                let size = font.size.map(|s| format!(" {:.1}", s)).unwrap_or_default();
+                settings.insert("gtk-font-name".to_string(), format!("{}{}", family, size));
             }
 
             if let Some(ref dark_or_light) = config.dark_or_light {
@@ -475,15 +473,15 @@ impl ThemingManager {
     ) -> Result<()> {
         let mut commands: Vec<(String, String, String, String)> = Vec::new();
 
-        if let Some(ref qt) = config.qt {
-            if let Some(ref style) = qt.style {
-                commands.push((
-                    "kwriteconfig5".to_string(),
-                    "kcm_style".to_string(),
-                    "widgetStyle".to_string(),
-                    style.clone(),
-                ));
-            }
+        if let Some(ref qt) = config.qt
+            && let Some(ref style) = qt.style
+        {
+            commands.push((
+                "kwriteconfig5".to_string(),
+                "kcm_style".to_string(),
+                "widgetStyle".to_string(),
+                style.clone(),
+            ));
         }
 
         if let Some(ref icons) = config.icons {
@@ -499,20 +497,20 @@ impl ThemingManager {
             ));
         }
 
-        if let Some(ref font) = config.font {
-            if let Some(ref family) = font.family {
-                let font_str = if let Some(size) = font.size {
-                    format!("{}, {}", family, size)
-                } else {
-                    family.clone()
-                };
-                commands.push((
-                    "kwriteconfig5".to_string(),
-                    "kcm_fonts".to_string(),
-                    "font".to_string(),
-                    font_str,
-                ));
-            }
+        if let Some(ref font) = config.font
+            && let Some(ref family) = font.family
+        {
+            let font_str = if let Some(size) = font.size {
+                format!("{}, {}", family, size)
+            } else {
+                family.clone()
+            };
+            commands.push((
+                "kwriteconfig5".to_string(),
+                "kcm_fonts".to_string(),
+                "font".to_string(),
+                font_str,
+            ));
         }
 
         let has_commands = !commands.is_empty();
@@ -680,8 +678,7 @@ impl ThemingManager {
 
         let source_line =
             "# mdots theming\n[ -f ~/.mdots/environment ] && source ~/.mdots/environment\n";
-        let fish_source_line =
-            "# mdots theming\nif test -f ~/.mdots/environment\n  source ~/.mdots/environment\nend\n";
+        let fish_source_line = "# mdots theming\nif test -f ~/.mdots/environment\n  source ~/.mdots/environment\nend\n";
 
         for (config_file, shell) in &shell_configs {
             let config_path = PathBuf::from(&home).join(config_file);
@@ -745,10 +742,10 @@ fn find_theme_name_in_dir(dir: &Path, theme_name: &str) -> Option<String> {
 
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
-            if let Ok(file_name) = entry.file_name().into_string() {
-                if file_name.to_lowercase() == theme_name_lower {
-                    return Some(file_name);
-                }
+            if let Ok(file_name) = entry.file_name().into_string()
+                && file_name.to_lowercase() == theme_name_lower
+            {
+                return Some(file_name);
             }
         }
     }
